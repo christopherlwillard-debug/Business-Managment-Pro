@@ -40,7 +40,7 @@ function fmt(n: string | number | null | undefined, signed = false) {
 // ─── Home Library Modal ───────────────────────────────────────────────────────
 type LibTab = "library" | "pricing" | "addons";
 
-function HomeLibraryModal({ onClose }: { onClose: () => void }) {
+export function HomeLibraryModal({ onClose }: { onClose: () => void }) {
   const { toast } = useToast();
   const [tab, setTab] = useState<LibTab>("library");
   const [activeMfgId, setActiveMfgId] = useState<number | null>(null);
@@ -810,10 +810,6 @@ export function MfhPanel({
               {mode === "spec" && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-semibold">Applied ✓</span>}
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => setLibraryOpen(true)}
-                className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-amber-600 hover:bg-amber-50 border border-amber-200 transition-colors">
-                <BookOpen className="w-3 h-3" /> Home Library
-              </button>
               <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted/50 transition-colors">
                 <X className="w-4 h-4 text-muted-foreground" />
               </button>

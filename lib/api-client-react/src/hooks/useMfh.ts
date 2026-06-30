@@ -550,3 +550,31 @@ export function usePatchKnowledgeRecord() {
     },
   });
 }
+
+export interface ProductionServiceType {
+  id: number;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+  createdAt: string;
+}
+
+export function useListProductionServiceTypes() {
+  return useQuery({
+    queryKey: ["/api/production-service-types"],
+    queryFn: () => customFetch<ProductionServiceType[]>("/api/production-service-types", { method: "GET" }),
+  });
+}
+
+export function useCreateProductionServiceType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; sortOrder?: number }) =>
+      customFetch<ProductionServiceType>("/api/production-service-types", {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/production-service-types"] }),
+  });
+}

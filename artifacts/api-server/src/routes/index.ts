@@ -74,6 +74,7 @@ import checklistTemplatesRouter from "./checklist-templates";
 import jobChecklistsRouter from "./job-checklists";
 import { mfhLibraryRouter, mfhJobRouter } from "./mfh";
 import laborEntriesRouter from "./mfh-labor";
+import productionServiceTypesRouter from "./production-service-types";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -288,6 +289,7 @@ router.use("/jobs", sectionGuard("jobs"), jobChecklistsRouter);
 router.use("/mfh", sectionGuard("jobs"), mfhJobRouter);
 router.use("/mfh", sectionGuard("jobs"), requireOwnerForWrites, mfhLibraryRouter);
 router.use("/jobs", sectionGuard("jobs"), laborEntriesRouter);
+router.use("/production-service-types", sectionGuard("jobs"), requireOwnerForWrites, productionServiceTypesRouter);
 
 router.get("/integrations/wix/config", requireOwner, (req, res) => {
   const token = process.env["WIX_WEBHOOK_SECRET"] ?? null;

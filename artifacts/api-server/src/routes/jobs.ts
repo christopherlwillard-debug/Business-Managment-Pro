@@ -89,6 +89,8 @@ type JobRow = {
   phases: PhaseItem[] | null;
   permitChecklist: PermitChecklistItem[] | null;
   serviceBilling: ServiceBilling | null;
+  mfhConstructionType: string | null;
+  mhProductionServices: { id: number; name: string }[] | null;
   createdAt: Date;
   subcontractorId?: number | null;
   subcontractorName?: string | null;
@@ -138,6 +140,8 @@ async function getJobWithSubs(jobId: number) {
       phases: jobsTable.phases,
       permitChecklist: jobsTable.permitChecklist,
       serviceBilling: jobsTable.serviceBilling,
+      mfhConstructionType: jobsTable.mfhConstructionType,
+      mhProductionServices: jobsTable.mhProductionServices,
       createdAt: jobsTable.createdAt,
       subcontractorId: jobSubcontractorsTable.subcontractorId,
       subcontractorName: subcontractorsTable.name,
@@ -228,6 +232,8 @@ router.get("/", async (req, res) => {
         permitChecklist: jobsTable.permitChecklist,
         serviceBilling: jobsTable.serviceBilling,
         homeModel: jobsTable.homeModel,
+        mfhConstructionType: jobsTable.mfhConstructionType,
+        mhProductionServices: jobsTable.mhProductionServices,
         createdAt: jobsTable.createdAt,
         subcontractorId: jobSubcontractorsTable.subcontractorId,
         subcontractorName: subcontractorsTable.name,
@@ -260,7 +266,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist } = req.body;
+    const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
@@ -289,6 +295,11 @@ router.post("/", async (req, res) => {
       phases: parsedPhases,
       permitChecklist: parsedPermitChecklist,
       jobNumber: nextJobNumber,
+      mfhManufacturerId: mfhManufacturerId || null,
+      mfhModelId: mfhModelId || null,
+      mfhModelYear: mfhModelYear != null ? parseInt(mfhModelYear) : null,
+      mfhConstructionType: mfhConstructionType || null,
+      mhProductionServices: Array.isArray(mhProductionServices) ? mhProductionServices : null,
     }).returning();
 
     if (Array.isArray(subcontractorIds) && subcontractorIds.length > 0) {
@@ -842,7 +853,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling } = req.body;
+    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices } = req.body;
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
 
@@ -889,6 +900,11 @@ router.put("/:id", async (req, res) => {
         updates.serviceBilling = parsed.data;
       }
     }
+    if ("mfhManufacturerId" in req.body) updates.mfhManufacturerId = mfhManufacturerId || null;
+    if ("mfhModelId" in req.body) updates.mfhModelId = mfhModelId || null;
+    if ("mfhModelYear" in req.body) updates.mfhModelYear = mfhModelYear != null ? parseInt(mfhModelYear) : null;
+    if ("mfhConstructionType" in req.body) updates.mfhConstructionType = mfhConstructionType || null;
+    if ("mhProductionServices" in req.body) updates.mhProductionServices = Array.isArray(mhProductionServices) ? mhProductionServices : null;
 
     const [job] = await db.update(jobsTable).set(updates).where(eq(jobsTable.id, id)).returning();
     if (!job) return res.status(404).json({ error: "Job not found" });

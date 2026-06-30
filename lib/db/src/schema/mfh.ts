@@ -121,6 +121,14 @@ export const jobKnowledgeRecordVersionsTable = pgTable("job_knowledge_record_ver
   afterValues: jsonb("after_values").$type<Record<string, unknown>>().notNull(),
 });
 
+export const productionServiceTypesTable = pgTable("production_service_types", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export type MfhConstructionType = typeof mfhConstructionTypesTable.$inferSelect;
 export type MfhManufacturer = typeof mfhManufacturersTable.$inferSelect;
 export type MfhModel = typeof mfhModelsTable.$inferSelect;
@@ -131,3 +139,4 @@ export type MfhClientPricing = typeof mfhClientPricingTable.$inferSelect;
 export type JobLaborEntry = typeof jobLaborEntriesTable.$inferSelect;
 export type JobKnowledgeRecord = typeof jobKnowledgeRecordsTable.$inferSelect;
 export type JobKnowledgeRecordVersion = typeof jobKnowledgeRecordVersionsTable.$inferSelect;
+export type ProductionServiceType = typeof productionServiceTypesTable.$inferSelect;

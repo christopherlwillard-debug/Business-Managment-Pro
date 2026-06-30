@@ -164,6 +164,10 @@ export interface CreateJobRequest {
   subcontractorIds?: number[];
   status?: CreateJobRequestStatus;
   jobType?: string | null;
+  homeModel?: string | null;
+  mfhManufacturerId?: number | null;
+  mfhModelId?: number | null;
+  mfhModelYear?: number | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
@@ -172,11 +176,14 @@ export interface CreateJobRequest {
   endDate?: string | null;
   notes?: string | null;
   businessLine?: string | null;
+  workflow?: string | null;
   subPaid?: boolean;
   sqFt?: number | null;
   coats?: number | null;
   phases?: PhaseItem[] | null;
   serviceBilling?: ServiceBilling | null;
+  mfhConstructionType?: string | null;
+  mhProductionServices?: { id: number; name: string }[] | null;
 }
 
 export interface DraftLineItem {

@@ -11,12 +11,13 @@ import {
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
   Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2,
-  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy, ClipboardList,
+  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy, ClipboardList, BookOpen,
 } from "lucide-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
 import { useToast } from "@/hooks/use-toast";
 import { FEATURE_OPTIONS } from "@/lib/featureOptions";
+import { HomeLibraryModal } from "@/components/MfhPanel";
 import { SignaturePad } from "@/components/SignaturePad";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1451,6 +1452,7 @@ export default function Settings() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [features, setFeatures] = useState<Record<string, boolean>>({});
+  const [homeLibraryOpen, setHomeLibraryOpen] = useState(false);
   const [bottomNavHrefs, setBottomNavHrefs] = useState<string[]>(DEFAULT_BOTTOM_NAV_HREFS);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
@@ -2271,6 +2273,24 @@ export default function Settings() {
                 ))}
               </CardContent>
             </Card>
+
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-amber-500" /> Manufactured Home Library
+                </CardTitle>
+                <CardDescription>Browse and manage builder models, construction types, pricing templates, and add-ons.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-4">
+                <button
+                  onClick={() => setHomeLibraryOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 transition-colors text-sm font-semibold text-amber-700">
+                  <BookOpen className="w-4 h-4" /> Open Home Library
+                </button>
+              </CardContent>
+            </Card>
+
+            {homeLibraryOpen && <HomeLibraryModal onClose={() => setHomeLibraryOpen(false)} />}
 
             <Card className="border-border/50 shadow-md bg-card">
               <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">

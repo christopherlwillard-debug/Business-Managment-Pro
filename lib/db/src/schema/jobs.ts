@@ -79,6 +79,8 @@ export const jobsTable = pgTable("jobs", {
   ownerPayIncluded: boolean("owner_pay_included").notNull().default(true),
   workflow: text("workflow"),
   serviceBilling: jsonb("service_billing").$type<ServiceBilling>(),
+  mfhConstructionType: text("mfh_construction_type"),
+  mhProductionServices: jsonb("mh_production_services").$type<{ id: number; name: string }[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

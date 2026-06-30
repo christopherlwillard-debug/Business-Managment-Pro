@@ -15,7 +15,11 @@ import {
   MaterialList, MaterialListItemInput,
   Estimate, CreateEstimateRequest, getListEstimatesQueryKey,
 } from "@workspace/api-client-react";
-import { useListMfhManufacturers, useMfhPanelData } from "@workspace/api-client-react";
+import {
+  useListMfhManufacturers, useMfhPanelData, useListMfhConstructionTypes,
+  useCreateMfhManufacturer, useCreateMfhModel,
+  useListProductionServiceTypes, useCreateProductionServiceType,
+} from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
@@ -2887,6 +2891,13 @@ function JobCard({
                   {JOB_WORKFLOWS[jobWorkflow].emoji} {JOB_WORKFLOWS[jobWorkflow].label}
                 </span>
               )}
+              {jobWorkflow === "mh_production" && Array.isArray((job as Record<string, unknown>).mhProductionServices) &&
+                ((job as Record<string, unknown>).mhProductionServices as { id: number; name: string }[]).map(s => (
+                  <span key={s.id} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
+                    {s.name}
+                  </span>
+                ))
+              }
               {hasSubExpenses && localSubPaid && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
                   <HardHat className="w-2.5 h-2.5" />
@@ -3061,7 +3072,8 @@ function JobCard({
           )}
         </button>
 
-        {/* Estimates button */}
+        {/* Estimates button — not shown for MH Production */}
+        {jobWorkflow !== "mh_production" && (
         <button
           onClick={() => setEstimatesPanelOpen(true)}
           className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
@@ -3069,43 +3081,6 @@ function JobCard({
           <span className="flex-1 text-left">Estimates</span>
           <span className="text-[10px] text-muted-foreground">View / Build</span>
         </button>
-
-        {/* Smart Estimate Wizard — MH Production only, hidden behind a toggle */}
-        {jobWorkflow === "mh_production" && onSmartEstimate && canEdit("estimates") && (
-          showSmartEstimate ? (
-            <button
-              onClick={() => onSmartEstimate(job)}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-xs font-bold text-amber-700 w-full">
-              <Wand2 className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-              <span className="flex-1 text-left">Smart Estimate Wizard</span>
-              <span className="text-[10px] text-amber-500 font-semibold">KY Rates</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => setShowSmartEstimate(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-muted-foreground hover:text-amber-600 transition-colors w-full">
-              <Wand2 className="w-3 h-3 flex-shrink-0" />
-              <span>Smart Estimate Wizard</span>
-              <ChevronDown className="w-3 h-3 ml-auto" />
-            </button>
-          )
-        )}
-
-        {/* Phases — MH Production only, hidden when a checklist is active */}
-        {jobWorkflow === "mh_production" && !checklistSummary && (
-          <button
-            onClick={() => setPhasesPanelOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
-            <ListChecks className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-            <span className="flex-1 text-left">Phases</span>
-            {Array.isArray(job.phases) && job.phases.length > 0 ? (
-              <span className="text-[10px] font-bold text-blue-600">
-                {(job.phases as Phase[]).filter(p => p.completed).length}/{job.phases.length}
-              </span>
-            ) : (
-              <span className="text-[10px] text-muted-foreground">Run wizard</span>
-            )}
-          </button>
         )}
 
         {/* Manufactured Home panel — MH Production and MH Service only */}
@@ -3491,6 +3466,69 @@ function JobFormDialog({
   const { data: mfhMfgs = [] } = useListMfhManufacturers();
   const { data: mfhPanelData } = useMfhPanelData(mfhMfgId);
   const mfhModels = mfhPanelData?.models ?? [];
+  const { data: constructionTypes = [] } = useListMfhConstructionTypes();
+  const { data: productionServiceTypes = [] } = useListProductionServiceTypes();
+  const createMfhManufacturer = useCreateMfhManufacturer();
+  const createMfhModel = useCreateMfhModel();
+  const createProductionServiceType = useCreateProductionServiceType();
+
+  // MH Production: job-level construction type + services included
+  const [mfhConstructionType, setMfhConstructionType] = useState<string>(
+    (editJob as Record<string, unknown>)?.mfhConstructionType as string ?? ""
+  );
+  const [mhProductionServices, setMhProductionServices] = useState<{ id: number; name: string }[]>(
+    (editJob as Record<string, unknown>)?.mhProductionServices as { id: number; name: string }[] ?? []
+  );
+  const [showAddService, setShowAddService] = useState(false);
+  const [newServiceName, setNewServiceName] = useState("");
+
+  // Combobox state for builder/model
+  const [builderQuery, setBuilderQuery] = useState<string>("");
+  const [builderDropOpen, setBuilderDropOpen] = useState(false);
+  const [modelQuery, setModelQuery] = useState<string>("");
+  const [modelDropOpen, setModelDropOpen] = useState(false);
+
+  const builderFiltered = mfhMfgs.filter(m => m.name.toLowerCase().includes(builderQuery.toLowerCase()));
+  const showBuilderCreate = builderQuery.trim().length > 0 &&
+    !mfhMfgs.some(m => m.name.toLowerCase() === builderQuery.trim().toLowerCase());
+  const modelFiltered = mfhModels.filter(m => m.name.toLowerCase().includes(modelQuery.toLowerCase()));
+  const showModelCreate = modelQuery.trim().length > 0 &&
+    !mfhModels.some(m => m.name.toLowerCase() === modelQuery.trim().toLowerCase());
+
+  // Sync combobox text from loaded data (edit mode, or after mutation)
+  useEffect(() => {
+    if (mfhMfgId && mfhMfgs.length > 0) {
+      const name = mfhMfgs.find(m => m.id === mfhMfgId)?.name ?? "";
+      setBuilderQuery(prev => prev || name);
+    }
+  }, [mfhMfgId, mfhMfgs.length]);
+  useEffect(() => {
+    if (mfhModelId && mfhModels.length > 0) {
+      const m = mfhModels.find(m => m.id === mfhModelId);
+      if (m) {
+        setModelQuery(prev => prev || m.name);
+        if (m.constructionTypeName && !mfhConstructionType) setMfhConstructionType(m.constructionTypeName);
+      }
+    }
+  }, [mfhModelId, mfhModels.length]);
+
+  async function handleCreateModel(name: string, ctId: number, ctName: string) {
+    if (!mfhMfgId) return;
+    const created = await createMfhModel.mutateAsync({ manufacturerId: mfhMfgId, name, constructionTypeId: ctId });
+    setMfhModelId(created.id);
+    setModelQuery(name);
+    setMfhConstructionType(ctName);
+    setModelDropOpen(false);
+  }
+
+  async function handleAddService() {
+    if (!newServiceName.trim()) return;
+    const created = await createProductionServiceType.mutateAsync({ name: newServiceName.trim() });
+    setMhProductionServices(prev => [...prev, { id: created.id, name: created.name }]);
+    setNewServiceName("");
+    setShowAddService(false);
+  }
+
   const [clearHoursForSubIds, setClearHoursForSubIds] = useState<number[]>([]);
   const [removeSubPrompt, setRemoveSubPrompt] = useState<{ subId: number; subName: string; pendingIds: number[] } | null>(null);
 
@@ -3498,6 +3536,12 @@ function JobFormDialog({
     setClearHoursForSubIds([]);
     setRemoveSubPrompt(null);
     setSelectedWorkflow(editJob?.workflow ?? null);
+    setMfhConstructionType((editJob as Record<string, unknown>)?.mfhConstructionType as string ?? "");
+    setMhProductionServices((editJob as Record<string, unknown>)?.mhProductionServices as { id: number; name: string }[] ?? []);
+    setBuilderQuery("");
+    setModelQuery("");
+    setShowAddService(false);
+    setNewServiceName("");
   }, [open, editJob?.id]);
 
   // Pre-populate compensation types/rates when opening an existing job for edit
@@ -3540,11 +3584,13 @@ function JobFormDialog({
         clientId: form.clientId ? parseInt(form.clientId) : undefined,
         subcontractorIds: subIds,
         status: form.status as CreateJobRequest["status"],
-        jobType: form.jobType || undefined,
+        jobType: selectedWorkflow === "mh_production" ? undefined : (form.jobType || undefined),
         homeModel: form.homeModel || undefined,
         mfhManufacturerId: mfhMfgId,
         mfhModelId: mfhModelId,
         mfhModelYear: mfhYear ? parseInt(mfhYear) : null,
+        mfhConstructionType: selectedWorkflow === "mh_production" ? (mfhConstructionType || null) : null,
+        mhProductionServices: selectedWorkflow === "mh_production" ? mhProductionServices : null,
         address: form.address || undefined,
         locationName: form.locationName || undefined,
         city: form.city || undefined,
@@ -3768,7 +3814,53 @@ function JobFormDialog({
             </div>
           )}
 
-          {(editJob || selectedWorkflow) && form.businessLine !== "asphalt_sealing" && (
+          {selectedWorkflow === "mh_production" && (
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              <ListChecks className="w-3.5 h-3.5 inline mr-1 text-amber-500" />Services Included
+            </label>
+            <div className="rounded-xl border border-border p-3 space-y-2">
+              {productionServiceTypes.map(svc => {
+                const isChecked = mhProductionServices.some(s => s.id === svc.id);
+                return (
+                  <label key={svc.id} className="flex items-center gap-2.5 cursor-pointer group">
+                    <input type="checkbox" className="rounded accent-amber-500"
+                      checked={isChecked}
+                      onChange={() => {
+                        if (isChecked) setMhProductionServices(prev => prev.filter(s => s.id !== svc.id));
+                        else setMhProductionServices(prev => [...prev, { id: svc.id, name: svc.name }]);
+                      }}
+                    />
+                    <span className="text-sm text-foreground group-hover:text-amber-700 transition-colors">{svc.name}</span>
+                  </label>
+                );
+              })}
+              {showAddService ? (
+                <div className="flex gap-2 pt-1.5 border-t border-border">
+                  <input
+                    type="text" autoFocus
+                    className="flex-1 px-2 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="New service name…"
+                    value={newServiceName}
+                    onChange={e => setNewServiceName(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddService(); } if (e.key === "Escape") { setShowAddService(false); setNewServiceName(""); } }}
+                  />
+                  <button type="button" onClick={handleAddService} disabled={!newServiceName.trim()}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold disabled:opacity-50 hover:bg-amber-600 transition-colors">Add</button>
+                  <button type="button" onClick={() => { setShowAddService(false); setNewServiceName(""); }}
+                    className="px-2 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:bg-muted/50"><X className="w-3 h-3" /></button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setShowAddService(true)}
+                  className="flex items-center gap-1.5 text-xs text-amber-600 hover:text-amber-700 transition-colors pt-0.5">
+                  <Plus className="w-3 h-3" /> Add Service
+                </button>
+              )}
+            </div>
+          </div>
+          )}
+
+          {(editJob || selectedWorkflow) && form.businessLine !== "asphalt_sealing" && selectedWorkflow !== "mh_production" && (
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
               <Briefcase className="w-3 h-3 inline mr-1 text-amber-500" />Job Type
@@ -3777,15 +3869,6 @@ function JobFormDialog({
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
               value={form.jobType} onChange={e => setField("jobType", e.target.value)}>
               <option value="">Select type…</option>
-              {(selectedWorkflow === "mh_production" || (!selectedWorkflow && form.businessLine !== "general_contracting")) && (<>
-                <option value="Trim Out">Trim Out</option>
-                <option value="Plumbing Hookup">Plumbing Hookup</option>
-                <option value="Marriage Line">Marriage Line</option>
-                <option value="Flooring">Flooring</option>
-                <option value="Underpinning">Underpinning</option>
-                <option value="Complete Finish">Complete Finish</option>
-                <option value="Warranty Completion">Warranty Completion</option>
-              </>)}
               {selectedWorkflow === "mh_service" && (<>
                 <option value="Warranty Repair">Warranty Repair</option>
                 <option value="Service Call">Service Call</option>
@@ -3804,6 +3887,15 @@ function JobFormDialog({
                 <option value="Repair">Repair</option>
                 <option value="Other">Other</option>
               </>)}
+              {(!selectedWorkflow && form.businessLine !== "general_contracting") && (<>
+                <option value="Trim Out">Trim Out</option>
+                <option value="Plumbing Hookup">Plumbing Hookup</option>
+                <option value="Marriage Line">Marriage Line</option>
+                <option value="Flooring">Flooring</option>
+                <option value="Underpinning">Underpinning</option>
+                <option value="Complete Finish">Complete Finish</option>
+                <option value="Warranty Completion">Warranty Completion</option>
+              </>)}
             </select>
           </div>
           )}
@@ -3816,27 +3908,86 @@ function JobFormDialog({
               <span className="text-xs font-normal text-muted-foreground ml-1">(optional)</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
-              <div>
+              <div className="relative">
                 <label className="block text-xs text-muted-foreground mb-1">Builder</label>
-                <select
+                <input
+                  type="text"
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  value={mfhMfgId ?? ""}
-                  onChange={e => { setMfhMfgId(e.target.value ? parseInt(e.target.value) : null); setMfhModelId(null); }}>
-                  <option value="">Select…</option>
-                  {mfhMfgs.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
+                  placeholder="Search or type to add…"
+                  value={builderQuery}
+                  onChange={e => {
+                    setBuilderQuery(e.target.value);
+                    setBuilderDropOpen(true);
+                    if (!e.target.value) { setMfhMfgId(null); setMfhModelId(null); setModelQuery(""); }
+                  }}
+                  onFocus={() => setBuilderDropOpen(true)}
+                  onBlur={() => setTimeout(() => setBuilderDropOpen(false), 150)}
+                />
+                {builderDropOpen && (
+                  <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-44 overflow-y-auto">
+                    {builderFiltered.map(m => (
+                      <button key={m.id} type="button"
+                        onMouseDown={e => { e.preventDefault(); setMfhMfgId(m.id); setBuilderQuery(m.name); setMfhModelId(null); setModelQuery(""); setBuilderDropOpen(false); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors">
+                        {m.name}
+                      </button>
+                    ))}
+                    {showBuilderCreate && (
+                      <button type="button"
+                        onMouseDown={async e => { e.preventDefault(); const c = await createMfhManufacturer.mutateAsync({ name: builderQuery.trim() }); setMfhMfgId(c.id); setBuilderDropOpen(false); }}
+                        className="w-full text-left px-3 py-2 text-xs text-amber-600 hover:bg-amber-50 border-t border-border font-medium flex items-center gap-1.5">
+                        <Plus className="w-3 h-3" /> Add "{builderQuery.trim()}"
+                      </button>
+                    )}
+                    {builderFiltered.length === 0 && !showBuilderCreate && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">No builders found</p>
+                    )}
+                  </div>
+                )}
                 <p className="text-[10px] text-muted-foreground mt-1">Who built the home — e.g. Southern, Giles, Norris</p>
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-xs text-muted-foreground mb-1">Model</label>
-                <select
-                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  value={mfhModelId ?? ""}
-                  onChange={e => setMfhModelId(e.target.value ? parseInt(e.target.value) : null)}
-                  disabled={!mfhMfgId}>
-                  <option value="">Select…</option>
-                  {mfhModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  placeholder={mfhMfgId ? "Search or type to add…" : "Select builder first"}
+                  disabled={!mfhMfgId}
+                  value={modelQuery}
+                  onChange={e => { setModelQuery(e.target.value); setModelDropOpen(true); if (!e.target.value) setMfhModelId(null); }}
+                  onFocus={() => { if (mfhMfgId) setModelDropOpen(true); }}
+                  onBlur={() => setTimeout(() => setModelDropOpen(false), 150)}
+                />
+                {modelDropOpen && mfhMfgId && (
+                  <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                    {modelFiltered.map(m => (
+                      <button key={m.id} type="button"
+                        onMouseDown={e => { e.preventDefault(); setMfhModelId(m.id); setModelQuery(m.name); if (m.constructionTypeName) setMfhConstructionType(m.constructionTypeName); setModelDropOpen(false); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors flex items-center justify-between">
+                        <span>{m.name}</span>
+                        {m.constructionTypeName && <span className="text-[10px] text-muted-foreground ml-2">{m.constructionTypeName}</span>}
+                      </button>
+                    ))}
+                    {showModelCreate && (
+                      <div className="border-t border-border p-2.5 space-y-2">
+                        <p className="text-xs font-semibold text-amber-600 flex items-center gap-1.5"><Plus className="w-3 h-3" /> Add "{modelQuery.trim()}"</p>
+                        <p className="text-[10px] text-muted-foreground">Pick construction type:</p>
+                        <div className="flex gap-1 flex-wrap">
+                          {constructionTypes.map(ct => (
+                            <button key={ct.id} type="button"
+                              onMouseDown={e => { e.preventDefault(); handleCreateModel(modelQuery.trim(), ct.id, ct.name); }}
+                              className="px-2.5 py-1 rounded-lg border border-amber-200 text-xs font-medium text-amber-700 hover:bg-amber-50 transition-colors">
+                              {ct.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {modelFiltered.length === 0 && !showModelCreate && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">No models — type to add one</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -3851,7 +4002,24 @@ function JobFormDialog({
                   max={new Date().getFullYear() + 1}
                   onChange={e => setMfhYear(e.target.value)} />
               </div>
-              {mfhModelId && (
+              {selectedWorkflow === "mh_production" ? (
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">Construction Type</label>
+                  <div className="flex gap-1">
+                    {["VOG", "Hybrid", "Drywall"].map(ct => (
+                      <button key={ct} type="button"
+                        onClick={() => setMfhConstructionType(mfhConstructionType === ct ? "" : ct)}
+                        className={`flex-1 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+                          mfhConstructionType === ct
+                            ? "bg-amber-500 border-amber-500 text-white"
+                            : "border-border text-muted-foreground hover:border-amber-300 hover:text-amber-600"
+                        }`}>
+                        {ct}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : mfhModelId ? (
                 <div className="flex items-end pb-0.5">
                   <div>
                     <label className="block text-xs text-muted-foreground mb-1">Construction</label>
@@ -3861,7 +4029,7 @@ function JobFormDialog({
                     </span>
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
             {!mfhMfgId && (
               <p className="text-xs text-muted-foreground">Pricing &amp; checklists are applied from the <strong>Manufactured Home</strong> panel on the job card.</p>
