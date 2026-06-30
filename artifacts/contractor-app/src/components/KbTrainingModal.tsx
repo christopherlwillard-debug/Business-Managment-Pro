@@ -143,8 +143,13 @@ export function KbTrainingModal({ job, onComplete, onClose }: Props) {
       await saveRecord();
       await acceptKb.mutateAsync(job.id);
       onComplete("accept");
-    } catch {
-      toast({ title: "Failed to save", description: "Could not save knowledge record.", variant: "destructive" });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast({
+        title: msg?.includes("crew member") ? "Crew required" : "Failed to save",
+        description: msg ?? "Could not save knowledge record.",
+        variant: "destructive",
+      });
     } finally { setActing(false); }
   }
 

@@ -96,9 +96,16 @@ function ModelCard({ model, onClick }: { model: MfhKnowledgeBaseEntry; onClick: 
         </div>
       </div>
 
-      {model.notes && (
-        <p className="text-xs text-muted-foreground mt-2 line-clamp-1 italic">{model.notes}</p>
-      )}
+      <div className="mt-2 flex items-center justify-between">
+        {model.acceptedCount > 0 ? (
+          <p className="text-[10px] text-amber-600 font-medium">Based on {model.acceptedCount} accepted job{model.acceptedCount !== 1 ? "s" : ""}</p>
+        ) : (
+          <p className="text-[10px] text-muted-foreground/60">No KB data yet</p>
+        )}
+        {model.notes && (
+          <p className="text-xs text-muted-foreground line-clamp-1 italic flex-1 ml-2 text-right">{model.notes}</p>
+        )}
+      </div>
     </button>
   );
 }
@@ -267,11 +274,16 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <StatTile label="Completed Jobs" value={String(model.jobCount)} />
+        <StatTile label="KB Jobs" value={String(model.jobCount)} />
         <StatTile label="Avg Invoice (KB)" value={fmt(model.avgInvoice)} />
         <StatTile label="Avg Prod. Hours" value={model.avgProductiveHours != null ? `${fmt(model.avgProductiveHours, "decimal")} hrs` : model.avgHours != null ? `${fmt(model.avgHours, "decimal")} hrs` : "—"} />
         <StatTile label="Avg Margin" value={margin != null ? fmt(margin) : "—"} sub={margin != null && model.avgDealerPrice ? `dealer ${fmt(model.avgDealerPrice)}` : undefined} />
       </div>
+      {model.acceptedCount > 0 ? (
+        <p className="text-xs text-amber-600 font-medium -mt-1">Based on {model.acceptedCount} accepted job{model.acceptedCount !== 1 ? "s" : ""}</p>
+      ) : (
+        <p className="text-xs text-muted-foreground/60 -mt-1">No accepted KB records yet</p>
+      )}
 
       {/* Baseline price */}
       <div className="bg-card border border-border rounded-xl p-4 space-y-2">
@@ -863,7 +875,10 @@ export default function MfhKnowledgeBase() {
                       <td className="px-3 py-3 text-right font-mono font-semibold text-amber-700 text-sm">
                         {m.basePrice ? fmt(m.basePrice) : <span className="text-muted-foreground/50 font-normal text-xs">—</span>}
                       </td>
-                      <td className="px-3 py-3 text-right font-bold text-foreground text-sm">{m.jobCount}</td>
+                      <td className="px-3 py-3 text-right">
+                        <p className="font-bold text-foreground text-sm">{m.jobCount}</p>
+                        {m.acceptedCount > 0 && <p className="text-[10px] text-amber-600">KB accepted</p>}
+                      </td>
                       <td className="px-3 py-3 text-right text-muted-foreground text-sm hidden md:table-cell">
                         {fmt(m.avgInvoice)}
                       </td>

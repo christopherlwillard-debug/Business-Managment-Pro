@@ -400,6 +400,14 @@ router.post("/:jobId/knowledge-record/accept", async (req, res) => {
     const jobId = parseInt(req.params.jobId);
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
 
+    // Gate: at least one crew member must be logged before accepting into the KB
+    const [laborAgg] = await db.select({ crewCount: sql<number>`COUNT(*)` })
+      .from(jobLaborEntriesTable)
+      .where(eq(jobLaborEntriesTable.jobId, jobId));
+    if (Number(laborAgg?.crewCount ?? 0) === 0) {
+      return res.status(400).json({ error: "At least one crew member must be logged before accepting into the Knowledge Base." });
+    }
+
     const [existing] = await db.select({ id: jobKnowledgeRecordsTable.id }).from(jobKnowledgeRecordsTable)
       .where(eq(jobKnowledgeRecordsTable.jobId, jobId));
 

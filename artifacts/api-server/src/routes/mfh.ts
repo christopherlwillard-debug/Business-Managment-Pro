@@ -17,7 +17,6 @@ import {
   jobChecklistsTable,
   jobChecklistSectionsTable,
   jobChecklistItemsTable,
-  jobSubHoursTable,
   invoicesTable,
   clientsTable,
   jobKnowledgeRecordsTable,
@@ -744,31 +743,24 @@ mfhLibraryRouter.get("/knowledge-base", async (_req, res) => {
       .leftJoin(mfhConstructionTypesTable, eq(mfhModelsTable.constructionTypeId, mfhConstructionTypesTable.id))
       .orderBy(asc(mfhManufacturersTable.name), asc(mfhModelsTable.name));
 
-    // Stats per model — 3 separate queries to avoid row multiplication from simultaneous joins
-    const completedWhere = and(
-      sql`${jobsTable.mfhModelId} IS NOT NULL`,
-      sql`${jobsTable.status} IN ('completed', 'invoiced')`,
-    );
-    const [baseRows, hoursRows, invoiceRows] = await Promise.all([
-      // Q1: job count + avg quoted/dealer price (no join needed)
-      db.select({
-        modelId: jobsTable.mfhModelId,
-        jobCount: sql<number>`COUNT(*)`,
-        avgQuotedPrice: sql<string>`AVG(${jobsTable.mfhQuotedPrice}::numeric)`,
-        avgDealerPrice: sql<string>`AVG(${jobsTable.mfhDealerPrice}::numeric)`,
-      }).from(jobsTable).where(completedWhere).groupBy(jobsTable.mfhModelId),
-      // Q2: avg productive hours from accepted KB records
+    // Stats per model — all metrics sourced exclusively from accepted KB records;
+    // pricing metadata (avgQuotedPrice/avgDealerPrice) fetched via jobs join scoped to accepted KB records
+    const [kbBaseRows, invoiceRows] = await Promise.all([
+      // Q1: KB metrics + pricing metadata, joined to jobs, scoped to accepted records
       db.select({
         modelId: jobKnowledgeRecordsTable.mfhModelId,
-        avgProductiveHours: sql<string>`AVG(${jobKnowledgeRecordsTable.productiveHours}::numeric)`,
         acceptedCount: sql<number>`COUNT(*)`,
+        avgProductiveHours: sql<string>`AVG(${jobKnowledgeRecordsTable.productiveHours}::numeric)`,
+        avgQuotedPrice: sql<string>`AVG(${jobsTable.mfhQuotedPrice}::numeric)`,
+        avgDealerPrice: sql<string>`AVG(${jobsTable.mfhDealerPrice}::numeric)`,
       }).from(jobKnowledgeRecordsTable)
+        .innerJoin(jobsTable, eq(jobKnowledgeRecordsTable.jobId, jobsTable.id))
         .where(and(
           sql`${jobKnowledgeRecordsTable.mfhModelId} IS NOT NULL`,
           sql`${jobKnowledgeRecordsTable.status} = 'accepted'`,
         ))
         .groupBy(jobKnowledgeRecordsTable.mfhModelId),
-      // Q3: avg invoice from accepted KB records only
+      // Q2: avg invoice from accepted KB records only
       db.select({
         modelId: jobKnowledgeRecordsTable.mfhModelId,
         avgInvoice: sql<string>`AVG(${jobKnowledgeRecordsTable.invoiceAmount}::numeric)`,
@@ -780,18 +772,16 @@ mfhLibraryRouter.get("/knowledge-base", async (_req, res) => {
         ))
         .groupBy(jobKnowledgeRecordsTable.mfhModelId),
     ]);
-    const kbHoursMap = new Map(hoursRows.map(r => [r.modelId, { avgProductiveHours: r.avgProductiveHours, acceptedCount: r.acceptedCount }]));
+    const kbMap = new Map(kbBaseRows.map(r => [r.modelId, r]));
     const invoiceMap = new Map((invoiceRows as Array<{ modelId: number; avgInvoice: string }>).map(r => [r.modelId, r.avgInvoice]));
-    const statsMap = new Map(baseRows.map(r => [r.modelId, r]));
 
     const result = models.map(m => {
-      const s = statsMap.get(m.id);
-      const kb = kbHoursMap.get(m.id);
+      const kb = kbMap.get(m.id);
       return {
         ...m,
-        jobCount: s ? Number(s.jobCount) : 0,
-        avgQuotedPrice: s?.avgQuotedPrice ? parseFloat(s.avgQuotedPrice) : null,
-        avgDealerPrice: s?.avgDealerPrice ? parseFloat(s.avgDealerPrice) : null,
+        jobCount: kb ? Number(kb.acceptedCount) : 0,
+        avgQuotedPrice: kb?.avgQuotedPrice ? parseFloat(kb.avgQuotedPrice) : null,
+        avgDealerPrice: kb?.avgDealerPrice ? parseFloat(kb.avgDealerPrice) : null,
         avgHours: kb?.avgProductiveHours ? parseFloat(kb.avgProductiveHours) : null,
         avgProductiveHours: kb?.avgProductiveHours ? parseFloat(kb.avgProductiveHours) : null,
         acceptedCount: kb ? Number(kb.acceptedCount) : 0,
@@ -828,20 +818,7 @@ mfhLibraryRouter.get("/knowledge-base/:modelId", async (req, res) => {
 
     if (!model) return res.status(404).json({ error: "Model not found" });
 
-    // Aggregate stats — base counts/pricing from jobs; averages from KB records
-    const detailWhere = and(eq(jobsTable.mfhModelId, modelId), sql`${jobsTable.status} IN ('completed','invoiced')`);
-    const [[baseStats]] = await Promise.all([
-      db.select({
-        jobCount: sql<number>`COUNT(*)`,
-        avgQuotedPrice: sql<string>`AVG(${jobsTable.mfhQuotedPrice}::numeric)`,
-        avgDealerPrice: sql<string>`AVG(${jobsTable.mfhDealerPrice}::numeric)`,
-      }).from(jobsTable).where(detailWhere),
-    ]);
-    const stats = {
-      jobCount: baseStats?.jobCount ?? 0,
-      avgQuotedPrice: baseStats?.avgQuotedPrice ?? null,
-      avgDealerPrice: baseStats?.avgDealerPrice ?? null,
-    };
+    // All aggregate stats sourced exclusively from accepted KB records
 
     // Related completed jobs
     const jobs = await db.select({
@@ -882,18 +859,21 @@ mfhLibraryRouter.get("/knowledge-base/:modelId", async (req, res) => {
     // Knowledge records (learning history) — accepted and excluded
     const [kbStats, knowledgeRecords] = await Promise.all([
       db.select({
-        avgProductiveHours: sql<string>`AVG(productive_hours::numeric)`,
-        avgTravelHours: sql<string>`AVG(travel_hours::numeric)`,
-        avgCrewSize: sql<string>`AVG(crew_size::numeric)`,
-        avgDaysOnSite: sql<string>`AVG(days_on_site::numeric)`,
-        avgInvoiceAmount: sql<string>`AVG(invoice_amount::numeric)`,
-        avgMaterialCost: sql<string>`AVG(material_cost::numeric)`,
-        avgConsumablesCost: sql<string>`AVG(consumables_cost::numeric)`,
-        avgGrossProfit: sql<string>`AVG(gross_profit::numeric)`,
-        avgNetProfit: sql<string>`AVG(net_profit::numeric)`,
+        avgProductiveHours: sql<string>`AVG(${jobKnowledgeRecordsTable.productiveHours}::numeric)`,
+        avgTravelHours: sql<string>`AVG(${jobKnowledgeRecordsTable.travelHours}::numeric)`,
+        avgCrewSize: sql<string>`AVG(${jobKnowledgeRecordsTable.crewSize}::numeric)`,
+        avgDaysOnSite: sql<string>`AVG(${jobKnowledgeRecordsTable.daysOnSite}::numeric)`,
+        avgInvoiceAmount: sql<string>`AVG(${jobKnowledgeRecordsTable.invoiceAmount}::numeric)`,
+        avgMaterialCost: sql<string>`AVG(${jobKnowledgeRecordsTable.materialCost}::numeric)`,
+        avgConsumablesCost: sql<string>`AVG(${jobKnowledgeRecordsTable.consumablesCost}::numeric)`,
+        avgGrossProfit: sql<string>`AVG(${jobKnowledgeRecordsTable.grossProfit}::numeric)`,
+        avgNetProfit: sql<string>`AVG(${jobKnowledgeRecordsTable.netProfit}::numeric)`,
         acceptedCount: sql<number>`COUNT(*)`,
+        avgQuotedPrice: sql<string>`AVG(${jobsTable.mfhQuotedPrice}::numeric)`,
+        avgDealerPrice: sql<string>`AVG(${jobsTable.mfhDealerPrice}::numeric)`,
       }).from(jobKnowledgeRecordsTable)
-        .where(and(eq(jobKnowledgeRecordsTable.mfhModelId, modelId), sql`status = 'accepted'`)),
+        .innerJoin(jobsTable, eq(jobKnowledgeRecordsTable.jobId, jobsTable.id))
+        .where(and(eq(jobKnowledgeRecordsTable.mfhModelId, modelId), sql`${jobKnowledgeRecordsTable.status} = 'accepted'`)),
       db.select({
         id: jobKnowledgeRecordsTable.id,
         jobId: jobKnowledgeRecordsTable.jobId,
@@ -928,9 +908,9 @@ mfhLibraryRouter.get("/knowledge-base/:modelId", async (req, res) => {
     res.json({
       model: {
         ...model,
-        jobCount: Number(stats.jobCount ?? 0),
-        avgQuotedPrice: stats.avgQuotedPrice ? parseFloat(String(stats.avgQuotedPrice)) : null,
-        avgDealerPrice: stats.avgDealerPrice ? parseFloat(String(stats.avgDealerPrice)) : null,
+        jobCount: Number(kb?.acceptedCount ?? 0),
+        avgQuotedPrice: p(kb?.avgQuotedPrice),
+        avgDealerPrice: p(kb?.avgDealerPrice),
         avgHours: p(kb?.avgProductiveHours),
         avgProductiveHours: p(kb?.avgProductiveHours),
         avgTravelHours: p(kb?.avgTravelHours),
