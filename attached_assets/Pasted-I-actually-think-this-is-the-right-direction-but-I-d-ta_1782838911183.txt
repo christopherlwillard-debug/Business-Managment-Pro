@@ -1,0 +1,200 @@
+I actually think this is the right direction, but I'd take it one step further.
+
+The problem isn't just that the MH Production job card has too many fields. It's that you're trying to make one job form serve three completely different businesses.
+
+You really have three workflows:
+
+Manufactured Home Production
+Manufactured Home Service
+General Contracting
+
+Each one should have its own experience.
+
+Manufactured Home Production
+
+This should be the simplest workflow in your app because it's your core business.
+
+Job Information
+Client
+Job Name
+Builder (searchable with inline add)
+Model (searchable with inline add)
+Construction Type (VOG / Hybrid / Drywall)
+Services Included (editable checklist with + Add Service)
+Job Management
+Address
+Dealer
+Dates
+Assigned Crew
+Financial
+Invoice (manual)
+Expenses
+Labor
+Payments
+Knowledge
+Production Knowledge Base
+
+That's it.
+
+No Smart Estimate Wizard.
+
+No Phases.
+
+No Estimate Builder.
+
+No Home Library button.
+
+Manufactured Home Service
+
+Completely different.
+
+Instead of Services Included:
+
+Work Order
+Warranty
+Complaint
+Diagnosis
+Repair Performed
+Parts
+Service Billing Worksheet
+Photos
+Invoice
+General Contracting
+
+This is where all the estimating tools belong.
+
+Show:
+
+Smart Estimate Wizard
+Estimates
+Phases
+Change Orders
+Progress Billing
+Materials
+Customer Selections
+
+That's where those features actually make sense.
+
+Home Library
+
+I think this is where your app has drifted.
+
+The Home Library has become both:
+
+A management tool
+A job creation tool
+
+It should only be a management tool.
+
+I'd move it completely out of the job flow.
+
+Instead, put it under something like:
+
+Settings
+
+Home Library
+Pricing Guides
+Production Services
+Billing Profiles
+Checklists
+Knowledge Base
+
+You'd only go there when you want to manage your data—not every time you create a job.
+
+Builder and Model
+
+This should work exactly like adding a new customer.
+
+Builder
+
+▼ Champion
+
+Type:
+
+Southern
+
+Popup:
+
+Create "Southern"?
+
+Yes
+
+Done.
+
+Model
+
+▼ Freedom
+
+Type:
+
+Farmhouse 3268
+
+Popup:
+
+Create "Farmhouse 3268"?
+
+Construction Type
+
+○ VOG
+
+● Hybrid
+
+○ Drywall
+
+Save.
+
+Done.
+
+No Home Library.
+
+Services Included
+
+I also agree with your latest direction.
+
+Keep it extremely simple.
+
+Services Included
+
+☑ Interior Trim Out
+
+☑ Exterior Trim Out
+
+☑ Plumbing Hookup
+
+☑ 4×4 Deck / Step Platform
+
++ Add Service
+
+The app doesn't do anything with these except record them.
+
+You're still creating your own invoice.
+
+One thing I would add
+
+I wouldn't call them Production Services.
+
+I'd call them:
+
+Services Included
+
+Because that's exactly what they are.
+
+It's immediately understandable.
+
+One final thought
+
+I think your app is starting to mature enough that it needs to stop thinking in terms of one giant Job Card.
+
+Instead, think of it as:
+
+Production Workspace
+Service Workspace
+General Contracting Workspace
+
+All three still create jobs in the same database, use the same financials, photos, invoices, subcontractors, and scheduling.
+
+The difference is each workspace only shows the tools that are relevant to that type of work.
+
+That keeps the interface much cleaner without changing your underlying data model.
+
+I think that's the direction that will make the app feel much more professional. It isn't removing functionality—it's showing the right functionality at the right time. When you create a Manufactured Home Production job, you shouldn't even see estimating features because you'll never use them there. When you create a General Contracting job, those same tools become front and center because that's where they add value. That's a much more natural workflow than trying to fit every feature into one form.

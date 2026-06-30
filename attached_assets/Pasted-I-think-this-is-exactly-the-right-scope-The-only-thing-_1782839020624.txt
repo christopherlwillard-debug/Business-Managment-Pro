@@ -1,0 +1,160 @@
+I think this is exactly the right scope. The only thing I'd change is the wording so Replit understands the long-term architecture instead of thinking this is just a UI cleanup.
+
+I'd rewrite it like this:
+
+I think this is the correct architectural direction.
+
+The real problem isn't that the Production job card has too many fields. The problem is that three completely different business workflows are being forced into one job card.
+
+The application should still have one unified Job system, but each workflow should have its own workspace that only displays the tools relevant to that type of work.
+
+The three workspaces are:
+
+Manufactured Home Production
+Manufactured Home Service
+General Contracting
+
+The underlying database, invoices, financials, subcontractors, photos, scheduling, payments, and job records all remain shared. Only the user interface changes depending on the selected workflow.
+
+Task #1057 Scope
+
+This task should focus only on simplifying the Manufactured Home Production workspace.
+
+Manufactured Home Production
+
+Keep the workflow as simple as possible.
+
+The Production workflow should be:
+
+Select or create Builder.
+Select or create Model.
+Select Construction Type (VOG / Hybrid / Drywall).
+Select Services Included.
+Create the job.
+
+No unnecessary setup screens.
+
+Builder
+
+Replace the Builder dropdown with a searchable combobox.
+
+If the Builder doesn't exist, allow me to type the name and create it immediately without leaving the job.
+
+Model
+
+Replace the Model dropdown with a searchable combobox.
+
+If the Model doesn't exist, allow me to create it inline.
+
+When creating a new Model, prompt for Construction Type before saving.
+
+Construction Type
+
+Every Production job should have its own Construction Type field.
+
+Options:
+
+VOG
+Hybrid
+Drywall
+
+If a Model already has a Construction Type, auto-fill it, but always allow it to be overridden for that individual job.
+
+Services Included
+
+Replace the current Job Type dropdown for Manufactured Home Production only.
+
+Display a simple checklist called Services Included.
+
+Default items:
+
+Interior Trim Out
+Exterior Trim Out
+Plumbing Hookup
+4×4 Deck / Step Platform
+
+These are simply labels describing what work was included on the Production job.
+
+They do not automatically build invoices, pricing, estimates, checklists, or any other automation.
+
+I will continue creating invoice line items manually.
+
+Add Service
+
+Include a simple + Add Service option.
+
+If I type a new service, save it immediately so it becomes available on all future Production jobs.
+
+Examples:
+
+Underpinning
+Flooring
+Septic Hookup
+Concrete Pad
+
+No code changes should ever be required simply because I start offering another Production service.
+
+Remove Production Clutter
+
+Manufactured Home Production should not display features that belong to General Contracting.
+
+Hide the following from the Production workspace:
+
+Estimates
+Smart Estimate Wizard
+Phases
+
+These features remain fully available for General Contracting jobs.
+
+Keep Existing Features
+
+The following remain exactly as they work today:
+
+P&L
+Invoices
+Expenses
+Subcontractors
+Labor
+Payments
+Photos
+Job Notes
+Job Financials
+Knowledge Base
+
+No existing data should be modified.
+
+Home Library
+
+Remove the Home Library button from the Production workflow.
+
+Move Home Library into a Settings or Management area.
+
+The Home Library becomes a reference and management tool, not part of everyday job creation.
+
+Long-Term Direction
+
+This task only simplifies the Manufactured Home Production workspace.
+
+Future tasks will polish the other workspaces independently:
+
+Manufactured Home Service
+
+Work Orders
+Complaint
+Diagnosis
+Parts
+Service Billing Worksheet
+Photos
+Invoice
+
+General Contracting
+
+Estimates
+Smart Estimate Wizard
+Phases
+Change Orders
+Progress Billing
+
+Each workspace should present only the tools that make sense for that type of work while continuing to share the same underlying job, financial, customer, and reporting systems.
+
+I actually think this is becoming one of the most important architectural changes you've made. Up until now, you've been adding features to a single job screen. What you're really doing now is defining three specialized workspaces that all use one common backend. That keeps your data unified while making each workflow dramatically simpler to use. In the long run, I think that will make the app feel much more polished and purpose-built for each side of your business.

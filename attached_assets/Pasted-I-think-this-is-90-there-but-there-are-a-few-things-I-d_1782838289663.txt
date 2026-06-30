@@ -1,0 +1,298 @@
+I think this is 90% there, but there are a few things I'd change based on everything we've designed over the last couple of weeks.
+
+#1057 - Simplify Manufactured Home Production Job Workflow
+
+What & Why
+
+The Manufactured Home Production job form has gradually become too complicated. Creating a new Production job requires too many steps, exposes too many management features, and forces the user into screens that should only be used for administration.
+
+The goal is to make creating a Production job fast and intuitive.
+
+A Production job should follow the natural workflow used in the field:
+
+Select (or create) the Builder.
+Select (or create) the Model.
+Select the Construction Type.
+Select the Production Services included.
+Create the job.
+
+The user should never need to leave the job form just to create a Builder or Model.
+
+The Home Library should become a management/reference area rather than part of the everyday Production job workflow.
+
+Design Philosophy
+
+The Production job form should collect only the information needed to describe the job.
+
+It should not attempt to automate invoices, pricing, checklists, or estimating.
+
+The owner prefers to build invoices manually.
+
+Production Services exist only to describe what work was included on the job and provide better filtering, reporting, and historical records.
+
+The workflow should reduce clicks and eliminate unnecessary navigation.
+
+Done Looks Like
+Inline Builder Creation
+
+Builder becomes a searchable combobox.
+
+If the typed Builder doesn't exist:
+
+Create "Champion"
+
+Selecting it immediately creates the Builder and selects it.
+
+The user never leaves the job.
+
+Inline Model Creation
+
+Model becomes a searchable combobox.
+
+If the typed Model doesn't exist:
+
+Create "Freedom 3276"
+
+When creating a new Model, prompt for:
+
+Construction Type
+VOG
+Hybrid
+Drywall
+
+Save the Model and immediately select it.
+
+The user never leaves the job.
+
+Construction Type
+
+Construction Type becomes a visible field on every Production job.
+
+Options:
+
+VOG
+Hybrid
+Drywall
+
+If a selected Model already has a Construction Type, auto-fill it.
+
+The user can always override it for the current job.
+
+Construction Type determines which pricing guide applies but remains editable on the job.
+
+Services Included
+
+Replace the "Job Type" dropdown for Manufactured Home Production jobs.
+
+Instead display:
+
+Services Included
+
+☐ Interior Trim Out
+
+☐ Exterior Trim Out
+
+☐ Plumbing Hookup
+
+☐ 4×4 Deck / Step Platform
+
+Services are simply labels describing what work was performed.
+
+They do not:
+
+Create invoice line items.
+Create estimates.
+Create pricing.
+Create checklists.
+Trigger automation.
+
+The owner will continue creating invoice line items manually.
+
+Add Service
+
+Below the checklist:
+
++ Add Service
+
+Typing:
+
+Underpinning
+Flooring
+Concrete Pad
+Septic Hookup
+
+creates a reusable Production Service.
+
+The new service immediately appears in the checklist and is automatically available on all future Production jobs.
+
+No code changes should ever be required simply because a new service is offered.
+
+Job Cards
+
+Production jobs display the selected Services Included as small tags.
+
+Example:
+
+🏷 Interior Trim Out
+
+🏷 Plumbing Hookup
+
+🏷 4×4 Deck
+
+This allows the owner to quickly see what work was included without opening the job.
+
+Home Library
+
+Remove the Home Library button from the Manufactured Home Production workflow.
+
+The Home Library should become a management/reference area used only for:
+
+Builders
+Models
+Pricing Guides
+Knowledge Base
+Documents
+Photos
+
+It should not be required during normal Production job creation.
+
+Move access to the Home Library into a Settings or Management area.
+
+Out of Scope
+Invoice automation
+Pricing automation
+Checklist automation
+Smart Estimate Wizard
+Knowledge Base changes
+MH Service workflow
+Residential workflow
+
+These workflows are separate and should remain independent.
+
+Steps
+Database
+
+Add:
+
+mfhConstructionType
+
+to the Jobs table.
+
+Create:
+
+production_service_types
+
+Stores:
+
+id
+businessId
+name
+sortOrder
+active
+createdAt
+
+Seed:
+
+Interior Trim Out
+Exterior Trim Out
+Plumbing Hookup
+4×4 Deck / Step Platform
+
+Add:
+
+mhProductionServices
+
+(JSON array of selected IDs)
+
+to Jobs.
+
+Create and apply migration.
+
+API
+
+Create:
+
+/api/production-service-types
+
+Supports:
+
+GET
+
+POST
+
+DELETE (deactivate)
+
+Update Job Create/Edit endpoints to save:
+
+mfhConstructionType
+mhProductionServices
+Job Form
+
+Builder:
+
+Searchable combobox
+
+Inline creation
+
+Model:
+
+Searchable combobox
+
+Inline creation
+
+Construction Type picker during creation
+
+Construction Type
+
+Visible selector
+
+VOG
+
+Hybrid
+
+Drywall
+
+Auto-fill from Model
+
+Always editable
+
+Services Included
+
+Visible only for:
+
+Manufactured Home Production
+
+Render active Production Services as checkboxes.
+
+Support:
+
++ Add Service
+
+which immediately creates and selects the new service.
+
+Job Card
+
+Display selected Services Included as small tags.
+
+Home Library
+
+Move access from the Production workflow into a Settings/Management area.
+
+The Home Library remains available but is no longer part of everyday job creation.
+
+Relevant Files
+artifacts/contractor-app/src/pages/Jobs.tsx
+artifacts/contractor-app/src/components/MfhPanel.tsx
+lib/db/src/schema/jobs.ts
+lib/db/src/schema/mfh.ts
+artifacts/api-server/src/routes/mfh.ts
+artifacts/api-server/src/routes/index.ts
+One thing I'd change from your current task
+
+I would remove this sentence:
+
+"Construction Type lives on the model, not the job..."
+
+That describes the current implementation rather than the new design. The task should describe the desired state, not why the old one was confusing.
+
+I also would remove any mention of automatically building invoices. Based on what you've told me, that's not how you want to work anymore. Keeping Production Services as simple, reusable labels makes the workflow cleaner and gives you flexibility without unnecessary automation. I think this version better matches how you actually run your business every day.
