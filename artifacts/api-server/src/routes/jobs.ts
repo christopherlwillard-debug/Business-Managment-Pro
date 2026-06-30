@@ -566,6 +566,52 @@ router.get("/:id/invoice-draft", async (req, res) => {
       }
     }
 
+    // If this job has a saved Service Billing worksheet, override line items with its
+    // client-facing totals (Repair Labor, Drive Time, Mileage, reimbursable parts).
+    // Internal cost/profit fields (internalLaborRate, fuelEstimate) are never included.
+    if (job.serviceBilling) {
+      const sb = job.serviceBilling;
+      const snap = sb.rateSnapshot ?? {};
+      const repairRate = sb.techCount === 1
+        ? (snap.repairRate1Tech ?? 0)
+        : (snap.repairRate2Tech ?? 0);
+      const driveRate = sb.techCount === 1
+        ? (snap.driveRate1Tech ?? 0)
+        : (snap.driveRate2Tech ?? 0);
+      const mileageRate = snap.mileageRate ?? 0;
+
+      const sbLines: InvoiceLine[] = [];
+
+      const repairLabor = sb.repairHours * repairRate;
+      if (repairLabor > 0) {
+        sbLines.push({ description: "Repair Labor", quantity: 1, unitPrice: parseFloat(repairLabor.toFixed(2)) });
+      }
+
+      const driveTime = sb.driveHours * driveRate;
+      if (driveTime > 0) {
+        sbLines.push({ description: "Drive Time", quantity: 1, unitPrice: parseFloat(driveTime.toFixed(2)) });
+      }
+
+      const mileageCharge = sb.mileage * mileageRate;
+      if (mileageCharge > 0) {
+        sbLines.push({ description: "Mileage", quantity: 1, unitPrice: parseFloat(mileageCharge.toFixed(2)) });
+      }
+
+      for (const part of sb.parts) {
+        if (part.reimbursable) {
+          sbLines.push({
+            description: part.description || "Part",
+            quantity: part.quantity,
+            unitPrice: parseFloat(part.unitCost.toFixed(2)),
+          });
+        }
+      }
+
+      if (sbLines.length > 0) {
+        lineItems = sbLines;
+      }
+    }
+
     const draft = {
       clientId: job.clientId ?? null,
       clientName: job.clientName ?? null,
