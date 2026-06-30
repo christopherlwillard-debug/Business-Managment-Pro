@@ -697,13 +697,6 @@ export function MfhPanel({
     }
   }, [guides, j.mfhGuideName]);
 
-  // Sync manualPrice from baselinePrice when model or overrides change
-  useEffect(() => {
-    if (baselinePrice != null && !manualPrice) {
-      setManualPrice(String(Math.round(baselinePrice)));
-    }
-  }, [baselinePrice]);
-
   // Clear manual price when model changes so it gets re-filled from baseline
   const selectedModel = models.find(m => m.id === modelId);
   useEffect(() => {
@@ -730,6 +723,13 @@ export function MfhPanel({
     ? (clientOverrides[modelId] ? parseFloat(clientOverrides[modelId]) : (selectedModel?.basePrice ? parseFloat(selectedModel.basePrice) : null))
     : null;
   const hasClientOverride = modelId != null && clientOverrides[modelId] != null;
+
+  // Sync manualPrice from baselinePrice when model or overrides change
+  useEffect(() => {
+    if (baselinePrice != null && !manualPrice) {
+      setManualPrice(String(Math.round(baselinePrice)));
+    }
+  }, [baselinePrice]);
 
   function addonTotal() {
     return activeAddons.filter(a => selectedAddonKeys.includes(a.addonKey))
