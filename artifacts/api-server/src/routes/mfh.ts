@@ -7,6 +7,7 @@ import {
   mfhPricingGuidesTable,
   mfhGuideItemsTable,
   mfhGuideAddonsTable,
+  mfhClientPricingTable,
   jobsTable,
   estimatesTable,
   jobTypeBenchmarksTable,
@@ -16,8 +17,11 @@ import {
   jobChecklistsTable,
   jobChecklistSectionsTable,
   jobChecklistItemsTable,
+  jobSubHoursTable,
+  invoicesTable,
+  clientsTable,
 } from "@workspace/db/schema";
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import crypto from "crypto";
 
 // ── Seed ──────────────────────────────────────────────────────────────────────
@@ -169,7 +173,7 @@ mfhLibraryRouter.get("/models", async (req, res) => {
 });
 mfhLibraryRouter.post("/models", async (req, res) => {
   try {
-    const { manufacturerId, name, constructionTypeId, benchmarkId, checklistTemplateId, defaultAddonKeys, notes, active, introducedYear, discontinuedYear } = req.body;
+    const { manufacturerId, name, constructionTypeId, benchmarkId, checklistTemplateId, defaultAddonKeys, basePrice, notes, active, introducedYear, discontinuedYear } = req.body;
     if (!manufacturerId || !name?.trim() || !constructionTypeId) return res.status(400).json({ error: "manufacturerId, name, constructionTypeId required" });
     const [row] = await db.insert(mfhModelsTable).values({
       manufacturerId: parseInt(manufacturerId), name: name.trim(),
@@ -177,6 +181,7 @@ mfhLibraryRouter.post("/models", async (req, res) => {
       benchmarkId: benchmarkId ? parseInt(benchmarkId) : null,
       checklistTemplateId: checklistTemplateId ? parseInt(checklistTemplateId) : null,
       defaultAddonKeys: defaultAddonKeys ?? [],
+      basePrice: basePrice != null ? String(basePrice) : null,
       notes: notes || null, active: active !== false,
       introducedYear: introducedYear ? parseInt(introducedYear) : null,
       discontinuedYear: discontinuedYear ? parseInt(discontinuedYear) : null,
@@ -187,13 +192,14 @@ mfhLibraryRouter.post("/models", async (req, res) => {
 mfhLibraryRouter.patch("/models/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, constructionTypeId, benchmarkId, checklistTemplateId, defaultAddonKeys, notes, active, introducedYear, discontinuedYear } = req.body;
+    const { name, constructionTypeId, benchmarkId, checklistTemplateId, defaultAddonKeys, basePrice, notes, active, introducedYear, discontinuedYear } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name.trim();
     if (constructionTypeId !== undefined) updates.constructionTypeId = parseInt(constructionTypeId);
     if (benchmarkId !== undefined) updates.benchmarkId = benchmarkId ? parseInt(benchmarkId) : null;
     if (checklistTemplateId !== undefined) updates.checklistTemplateId = checklistTemplateId ? parseInt(checklistTemplateId) : null;
     if (defaultAddonKeys !== undefined) updates.defaultAddonKeys = defaultAddonKeys;
+    if (basePrice !== undefined) updates.basePrice = basePrice != null && basePrice !== "" ? String(basePrice) : null;
     if (notes !== undefined) updates.notes = notes || null;
     if (active !== undefined) updates.active = active;
     if (introducedYear !== undefined) updates.introducedYear = introducedYear ? parseInt(introducedYear) : null;
@@ -323,7 +329,8 @@ mfhLibraryRouter.get("/panel-data", async (req, res) => {
         benchmarkId: mfhModelsTable.benchmarkId, benchmarkName: jobTypeBenchmarksTable.jobType,
         benchmarkHours: jobTypeBenchmarksTable.estimatedHours,
         checklistTemplateId: mfhModelsTable.checklistTemplateId, checklistTemplateName: checklistTemplatesTable.name,
-        defaultAddonKeys: mfhModelsTable.defaultAddonKeys, notes: mfhModelsTable.notes,
+        defaultAddonKeys: mfhModelsTable.defaultAddonKeys, basePrice: mfhModelsTable.basePrice,
+        notes: mfhModelsTable.notes,
         active: mfhModelsTable.active, introducedYear: mfhModelsTable.introducedYear, discontinuedYear: mfhModelsTable.discontinuedYear,
       }).from(mfhModelsTable)
         .leftJoin(mfhConstructionTypesTable, eq(mfhModelsTable.constructionTypeId, mfhConstructionTypesTable.id))
@@ -596,6 +603,204 @@ mfhJobRouter.patch("/jobs/:id/reset", async (req, res) => {
     await regenerateMfhPricing(jobId, req.body);
     res.json({ ok: true });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed to reset" }); }
+});
+
+// ── Knowledge Base ─────────────────────────────────────────────────────────────
+
+// GET /api/mfh/knowledge-base — all models with aggregated stats from completed jobs
+mfhLibraryRouter.get("/knowledge-base", async (_req, res) => {
+  try {
+    await ensureSeeded();
+    const models = await db.select({
+      id: mfhModelsTable.id,
+      manufacturerId: mfhModelsTable.manufacturerId,
+      manufacturerName: mfhManufacturersTable.name,
+      name: mfhModelsTable.name,
+      constructionTypeId: mfhModelsTable.constructionTypeId,
+      constructionTypeName: mfhConstructionTypesTable.name,
+      basePrice: mfhModelsTable.basePrice,
+      notes: mfhModelsTable.notes,
+      active: mfhModelsTable.active,
+      introducedYear: mfhModelsTable.introducedYear,
+      discontinuedYear: mfhModelsTable.discontinuedYear,
+    }).from(mfhModelsTable)
+      .leftJoin(mfhManufacturersTable, eq(mfhModelsTable.manufacturerId, mfhManufacturersTable.id))
+      .leftJoin(mfhConstructionTypesTable, eq(mfhModelsTable.constructionTypeId, mfhConstructionTypesTable.id))
+      .orderBy(asc(mfhManufacturersTable.name), asc(mfhModelsTable.name));
+
+    // Stats per model from completed jobs
+    const statsRows = await db.select({
+      modelId: jobsTable.mfhModelId,
+      jobCount: sql<number>`COUNT(DISTINCT ${jobsTable.id})`,
+      avgQuotedPrice: sql<string>`AVG(${jobsTable.mfhQuotedPrice}::numeric)`,
+      avgDealerPrice: sql<string>`AVG(${jobsTable.mfhDealerPrice}::numeric)`,
+      avgHours: sql<string>`SUM(${jobSubHoursTable.hours}::numeric) / NULLIF(COUNT(DISTINCT ${jobsTable.id}), 0)`,
+      avgInvoice: sql<string>`AVG(${invoicesTable.total}::numeric)`,
+    }).from(jobsTable)
+      .leftJoin(jobSubHoursTable, eq(jobSubHoursTable.jobId, jobsTable.id))
+      .leftJoin(invoicesTable, and(eq(invoicesTable.jobId, jobsTable.id), sql`${invoicesTable.status} NOT IN ('draft', 'void')`))
+      .where(and(
+        sql`${jobsTable.mfhModelId} IS NOT NULL`,
+        sql`${jobsTable.status} IN ('completed', 'invoiced')`,
+      ))
+      .groupBy(jobsTable.mfhModelId);
+
+    const statsMap = new Map(statsRows.map(s => [s.modelId, s]));
+
+    const result = models.map(m => {
+      const s = statsMap.get(m.id);
+      return {
+        ...m,
+        jobCount: s ? Number(s.jobCount) : 0,
+        avgQuotedPrice: s?.avgQuotedPrice ? parseFloat(s.avgQuotedPrice) : null,
+        avgDealerPrice: s?.avgDealerPrice ? parseFloat(s.avgDealerPrice) : null,
+        avgHours: s?.avgHours ? parseFloat(s.avgHours) : null,
+        avgInvoice: s?.avgInvoice ? parseFloat(s.avgInvoice) : null,
+      };
+    });
+
+    res.json(result);
+  } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
+});
+
+// GET /api/mfh/knowledge-base/:modelId — model detail with stats + related completed jobs
+mfhLibraryRouter.get("/knowledge-base/:modelId", async (req, res) => {
+  try {
+    const modelId = parseInt(req.params.modelId);
+    if (isNaN(modelId)) return res.status(400).json({ error: "Invalid modelId" });
+
+    const [model] = await db.select({
+      id: mfhModelsTable.id,
+      manufacturerId: mfhModelsTable.manufacturerId,
+      manufacturerName: mfhManufacturersTable.name,
+      name: mfhModelsTable.name,
+      constructionTypeId: mfhModelsTable.constructionTypeId,
+      constructionTypeName: mfhConstructionTypesTable.name,
+      basePrice: mfhModelsTable.basePrice,
+      notes: mfhModelsTable.notes,
+      active: mfhModelsTable.active,
+      introducedYear: mfhModelsTable.introducedYear,
+      discontinuedYear: mfhModelsTable.discontinuedYear,
+    }).from(mfhModelsTable)
+      .leftJoin(mfhManufacturersTable, eq(mfhModelsTable.manufacturerId, mfhManufacturersTable.id))
+      .leftJoin(mfhConstructionTypesTable, eq(mfhModelsTable.constructionTypeId, mfhConstructionTypesTable.id))
+      .where(eq(mfhModelsTable.id, modelId));
+
+    if (!model) return res.status(404).json({ error: "Model not found" });
+
+    // Aggregate stats
+    const [stats] = await db.select({
+      jobCount: sql<number>`COUNT(DISTINCT ${jobsTable.id})`,
+      avgQuotedPrice: sql<string>`AVG(${jobsTable.mfhQuotedPrice}::numeric)`,
+      avgDealerPrice: sql<string>`AVG(${jobsTable.mfhDealerPrice}::numeric)`,
+      avgHours: sql<string>`SUM(${jobSubHoursTable.hours}::numeric) / NULLIF(COUNT(DISTINCT ${jobsTable.id}), 0)`,
+      avgInvoice: sql<string>`AVG(${invoicesTable.total}::numeric)`,
+    }).from(jobsTable)
+      .leftJoin(jobSubHoursTable, eq(jobSubHoursTable.jobId, jobsTable.id))
+      .leftJoin(invoicesTable, and(eq(invoicesTable.jobId, jobsTable.id), sql`${invoicesTable.status} NOT IN ('draft', 'void')`))
+      .where(and(
+        eq(jobsTable.mfhModelId, modelId),
+        sql`${jobsTable.status} IN ('completed', 'invoiced')`,
+      ));
+
+    // Related completed jobs
+    const jobs = await db.select({
+      id: jobsTable.id,
+      title: jobsTable.title,
+      status: jobsTable.status,
+      clientId: jobsTable.clientId,
+      clientName: clientsTable.name,
+      mfhModelYear: jobsTable.mfhModelYear,
+      mfhQuotedPrice: jobsTable.mfhQuotedPrice,
+      mfhDealerPrice: jobsTable.mfhDealerPrice,
+      mfhGuideName: jobsTable.mfhGuideName,
+      closedAt: jobsTable.closedAt,
+      startDate: jobsTable.startDate,
+      address: jobsTable.address,
+      city: jobsTable.city,
+    }).from(jobsTable)
+      .leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id))
+      .where(and(
+        eq(jobsTable.mfhModelId, modelId),
+        sql`${jobsTable.status} IN ('completed', 'invoiced')`,
+      ))
+      .orderBy(sql`${jobsTable.closedAt} DESC NULLS LAST, ${jobsTable.id} DESC`)
+      .limit(50);
+
+    // Client pricing overrides
+    const clientPricing = await db.select({
+      id: mfhClientPricingTable.id,
+      clientId: mfhClientPricingTable.clientId,
+      clientName: clientsTable.name,
+      price: mfhClientPricingTable.price,
+      notes: mfhClientPricingTable.notes,
+    }).from(mfhClientPricingTable)
+      .leftJoin(clientsTable, eq(mfhClientPricingTable.clientId, clientsTable.id))
+      .where(eq(mfhClientPricingTable.modelId, modelId))
+      .orderBy(asc(clientsTable.name));
+
+    res.json({
+      model: {
+        ...model,
+        jobCount: Number(stats?.jobCount ?? 0),
+        avgQuotedPrice: stats?.avgQuotedPrice ? parseFloat(stats.avgQuotedPrice) : null,
+        avgDealerPrice: stats?.avgDealerPrice ? parseFloat(stats.avgDealerPrice) : null,
+        avgHours: stats?.avgHours ? parseFloat(stats.avgHours) : null,
+        avgInvoice: stats?.avgInvoice ? parseFloat(stats.avgInvoice) : null,
+      },
+      jobs,
+      clientPricing,
+    });
+  } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
+});
+
+// ── Client Pricing ─────────────────────────────────────────────────────────────
+
+// GET /api/mfh/client-pricing?modelId=X
+mfhLibraryRouter.get("/client-pricing", async (req, res) => {
+  try {
+    const { modelId } = req.query;
+    if (!modelId) return res.status(400).json({ error: "modelId required" });
+    const rows = await db.select({
+      id: mfhClientPricingTable.id,
+      modelId: mfhClientPricingTable.modelId,
+      clientId: mfhClientPricingTable.clientId,
+      clientName: clientsTable.name,
+      price: mfhClientPricingTable.price,
+      notes: mfhClientPricingTable.notes,
+    }).from(mfhClientPricingTable)
+      .leftJoin(clientsTable, eq(mfhClientPricingTable.clientId, clientsTable.id))
+      .where(eq(mfhClientPricingTable.modelId, parseInt(modelId as string)))
+      .orderBy(asc(clientsTable.name));
+    res.json(rows);
+  } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
+});
+
+// PUT /api/mfh/client-pricing — upsert (model_id + client_id → price)
+mfhLibraryRouter.put("/client-pricing", async (req, res) => {
+  try {
+    const { modelId, clientId, price, notes } = req.body;
+    if (!modelId || !clientId || price == null) return res.status(400).json({ error: "modelId, clientId, price required" });
+    const existing = await db.select().from(mfhClientPricingTable)
+      .where(and(eq(mfhClientPricingTable.modelId, parseInt(modelId)), eq(mfhClientPricingTable.clientId, parseInt(clientId)))).limit(1);
+    if (existing.length > 0) {
+      const [row] = await db.update(mfhClientPricingTable)
+        .set({ price: String(price), notes: notes || null })
+        .where(eq(mfhClientPricingTable.id, existing[0].id)).returning();
+      return res.json(row);
+    }
+    const [row] = await db.insert(mfhClientPricingTable)
+      .values({ modelId: parseInt(modelId), clientId: parseInt(clientId), price: String(price), notes: notes || null }).returning();
+    res.status(201).json(row);
+  } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
+});
+
+// DELETE /api/mfh/client-pricing/:id
+mfhLibraryRouter.delete("/client-pricing/:id", async (req, res) => {
+  try {
+    await db.delete(mfhClientPricingTable).where(eq(mfhClientPricingTable.id, parseInt(req.params.id)));
+    res.json({ ok: true });
+  } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 
 // Default export (backward compat — not used for new registrations)

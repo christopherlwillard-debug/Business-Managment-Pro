@@ -15,10 +15,60 @@ export interface MfhModel {
   checklistTemplateId?: number | null;
   checklistTemplateName?: string | null;
   defaultAddonKeys?: string[];
+  basePrice?: string | null;
   notes?: string | null;
   active: boolean;
   introducedYear?: number | null;
   discontinuedYear?: number | null;
+}
+
+export interface MfhKnowledgeBaseEntry {
+  id: number;
+  manufacturerId: number;
+  manufacturerName?: string | null;
+  name: string;
+  constructionTypeId: number;
+  constructionTypeName?: string | null;
+  basePrice?: string | null;
+  notes?: string | null;
+  active: boolean;
+  introducedYear?: number | null;
+  discontinuedYear?: number | null;
+  jobCount: number;
+  avgQuotedPrice?: number | null;
+  avgDealerPrice?: number | null;
+  avgHours?: number | null;
+  avgInvoice?: number | null;
+}
+
+export interface MfhKbJob {
+  id: number;
+  title: string;
+  status: string;
+  clientId?: number | null;
+  clientName?: string | null;
+  mfhModelYear?: number | null;
+  mfhQuotedPrice?: string | null;
+  mfhDealerPrice?: string | null;
+  mfhGuideName?: string | null;
+  closedAt?: string | null;
+  startDate?: string | null;
+  address?: string | null;
+  city?: string | null;
+}
+
+export interface MfhKbClientPrice {
+  id: number;
+  clientId: number;
+  clientName?: string | null;
+  price: string;
+  notes?: string | null;
+}
+
+export interface MfhModelDetail {
+  model: MfhKnowledgeBaseEntry;
+  jobs: MfhKbJob[];
+  clientPricing: MfhKbClientPrice[];
 }
 export interface MfhPricingGuide { id: number; manufacturerId: number; name: string; isDealerGuide: boolean; }
 export interface MfhGuideItem { id: number; guideId: number; modelId: number; basePrice: string; }
@@ -258,6 +308,46 @@ export function useResetMfhPricing() {
     onSuccess: (_r, vars) => {
       qc.invalidateQueries({ queryKey: ["/api/mfh/jobs", vars.jobId] });
       qc.invalidateQueries({ queryKey: ["/api/estimates"] });
+    },
+  });
+}
+
+export function useMfhKnowledgeBase() {
+  return useQuery({
+    queryKey: ["/api/mfh/knowledge-base"],
+    queryFn: () => customFetch<MfhKnowledgeBaseEntry[]>("/api/mfh/knowledge-base", { method: "GET" }),
+  });
+}
+
+export function useMfhModelDetail(modelId: number | null) {
+  return useQuery({
+    queryKey: ["/api/mfh/knowledge-base", modelId],
+    queryFn: () => customFetch<MfhModelDetail>(`/api/mfh/knowledge-base/${modelId}`, { method: "GET" }),
+    enabled: modelId != null,
+  });
+}
+
+export function useSetMfhClientPrice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { modelId: number; clientId: number; price: number; notes?: string }) =>
+      customFetch<{ id: number; modelId: number; clientId: number; price: string; notes?: string | null }>(
+        "/api/mfh/client-pricing",
+        { method: "PUT", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }
+      ),
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId] });
+    },
+  });
+}
+
+export function useDeleteMfhClientPrice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, modelId }: { id: number; modelId: number }) =>
+      customFetch<{ ok: boolean }>(`/api/mfh/client-pricing/${id}`, { method: "DELETE" }),
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId] });
     },
   });
 }

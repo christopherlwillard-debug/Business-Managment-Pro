@@ -41,6 +41,7 @@ const PublicSite = lazy(() => import("./pages/website/PublicSite"));
 const AdminErrorLog = lazy(() => import("./pages/AdminErrorLog"));
 const ChecklistTemplates = lazy(() => import("./pages/ChecklistTemplates"));
 const JobStatusPage = lazy(() => import("./pages/JobStatusPage"));
+const MfhKnowledgeBase = lazy(() => import("./pages/MfhKnowledgeBase"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -317,6 +318,9 @@ function AdminApp() {
           </Route>
           <Route path="/checklist-templates">
             <PermissionGuard ownerOnly><ChecklistTemplates /></PermissionGuard>
+          </Route>
+          <Route path="/mfh-homes">
+            <PermissionGuard ownerOnly><MfhKnowledgeBase /></PermissionGuard>
           </Route>
           <Route component={NotFound} />
         </Switch>

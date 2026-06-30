@@ -1,6 +1,7 @@
 import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb } from "drizzle-orm/pg-core";
 import { jobTypeBenchmarksTable } from "./job-type-benchmarks";
 import { checklistTemplatesTable } from "./job-checklists";
+import { clientsTable } from "./clients";
 
 export const mfhConstructionTypesTable = pgTable("mfh_construction_types", {
   id: serial("id").primaryKey(),
@@ -22,6 +23,7 @@ export const mfhModelsTable = pgTable("mfh_models", {
   benchmarkId: integer("benchmark_id").references(() => jobTypeBenchmarksTable.id, { onDelete: "set null" }),
   checklistTemplateId: integer("checklist_template_id").references(() => checklistTemplatesTable.id, { onDelete: "set null" }),
   defaultAddonKeys: jsonb("default_addon_keys").$type<string[]>().default([]),
+  basePrice: numeric("base_price", { precision: 12, scale: 2 }),
   notes: text("notes"),
   active: boolean("active").notNull().default(true),
   introducedYear: integer("introduced_year"),
@@ -55,9 +57,19 @@ export const mfhGuideAddonsTable = pgTable("mfh_guide_addons", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const mfhClientPricingTable = pgTable("mfh_client_pricing", {
+  id: serial("id").primaryKey(),
+  modelId: integer("model_id").notNull().references(() => mfhModelsTable.id, { onDelete: "cascade" }),
+  clientId: integer("client_id").notNull().references(() => clientsTable.id, { onDelete: "cascade" }),
+  price: numeric("price", { precision: 12, scale: 2 }).notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export type MfhConstructionType = typeof mfhConstructionTypesTable.$inferSelect;
 export type MfhManufacturer = typeof mfhManufacturersTable.$inferSelect;
 export type MfhModel = typeof mfhModelsTable.$inferSelect;
 export type MfhPricingGuide = typeof mfhPricingGuidesTable.$inferSelect;
 export type MfhGuideItem = typeof mfhGuideItemsTable.$inferSelect;
 export type MfhGuideAddon = typeof mfhGuideAddonsTable.$inferSelect;
+export type MfhClientPricing = typeof mfhClientPricingTable.$inferSelect;

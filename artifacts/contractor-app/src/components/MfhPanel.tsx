@@ -808,6 +808,13 @@ export function MfhPanel({
                     <p className={`font-mono font-bold text-sm ${snapProfit != null && snapProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmt(snapProfit, true)}</p>
                   </div>
                 </div>
+                {/* Baseline reference */}
+                {(() => { const m = selectedModel ?? models.find(mod => mod.id === j.mfhModelId); return m?.basePrice ? (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <ChevronRight className="w-3 h-3 flex-shrink-0" />
+                    <span>Clayton baseline for this model: <span className="font-semibold text-foreground">{fmt(m.basePrice)}</span></span>
+                  </div>
+                ) : null; })()}
 
                 {/* Model notes */}
                 {(selectedModel?.notes ?? models.find(m => m.id === j.mfhModelId)?.notes) && (
@@ -904,9 +911,10 @@ export function MfhPanel({
                     <p className="text-xs font-bold text-amber-800">{selectedModel.name}</p>
                     <span className="text-[10px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded font-mono">{selectedModel.constructionTypeName} <span className="opacity-60">(auto)</span></span>
                   </div>
-                  <div className="flex gap-4 text-xs">
+                  <div className="flex gap-4 text-xs flex-wrap">
                     {selectedModel.benchmarkName && <div><span className="text-muted-foreground">Benchmark:</span> <span className="font-medium">{selectedModel.benchmarkName}</span></div>}
                     {selectedModel.checklistTemplateName && <div><span className="text-muted-foreground">Checklist:</span> <span className="font-medium">{selectedModel.checklistTemplateName}</span></div>}
+                    {selectedModel.basePrice && <div><span className="text-muted-foreground">Baseline:</span> <span className="font-semibold text-amber-700">{fmt(selectedModel.basePrice)}</span></div>}
                   </div>
                   {selectedModel.notes && (
                     <div className="flex items-start gap-1.5 text-xs text-amber-800 bg-amber-100/60 rounded-lg p-2">
