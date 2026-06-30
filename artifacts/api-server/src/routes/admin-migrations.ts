@@ -251,78 +251,178 @@ router.post("/seed-checklist-templates", async (_req, res) => {
   }
 });
 
-// Fix MFH data hierarchy: manufacturers that are actually dealer names (found in clients)
-// have their models (which are really builder brands) promoted to proper manufacturers.
-// Idempotent: safe to re-run — if already migrated, returns early with a clean message.
-router.post("/fix-mfh-hierarchy", async (_req, res) => {
+// Fix MFH data hierarchy.
+//
+// Background: Some builder entries were mistakenly stored as floor-plan *models* under a dealer
+// manufacturer (e.g. "Southern", "Giles", "Norris" stored as models under "Clayton").
+// This migration promotes those model rows to proper top-level manufacturers.
+//
+// Safety design:
+//   • dryRun=true (default): returns a full analysis plan — no data is changed.
+//   • dryRun=false: executes the migration inside a transaction.
+//   • dealerManufacturerIds (optional): explicit list of manufacturer IDs to treat as dealers.
+//     If omitted, auto-detection uses EXACT case-insensitive name match against client names
+//     (safer than a substring match — avoids false positives).
+//   • preservedModelIds (optional): model IDs that are legitimate floor-plan entries and should
+//     NOT be promoted to manufacturers. They are re-parented to a "Uncategorized" manufacturer.
+//
+// Idempotent: safe to re-run — existing manufacturer entries are not duplicated (skipped if
+// a name-match already exists), and the endpoint returns early if no suspects are found.
+router.post("/fix-mfh-hierarchy", async (req, res) => {
   try {
-    const allManufacturers = await db.select().from(mfhManufacturersTable);
-    const allClients = await db.select({ name: clientsTable.name }).from(clientsTable);
-    const clientNames = allClients.map(c => c.name?.toLowerCase() ?? "");
+    const {
+      dryRun = true,
+      dealerManufacturerIds,
+      preservedModelIds = [],
+    } = (req.body ?? {}) as {
+      dryRun?: boolean;
+      dealerManufacturerIds?: number[];
+      preservedModelIds?: number[];
+    };
 
-    // Suspect manufacturers: those whose name appears inside a client's name (case-insensitive).
-    // E.g. "Clayton" is a suspect when there's a client "Clayton Homes Evansville".
-    const suspectManufacturers = allManufacturers.filter(m =>
-      clientNames.some(cn => cn.includes(m.name.toLowerCase()))
-    );
+    // ── Step 1: identify dealer manufacturers ───────────────────────────────
+    const allManufacturers = await db.select().from(mfhManufacturersTable);
+    let suspectManufacturers: typeof allManufacturers;
+
+    if (dealerManufacturerIds && dealerManufacturerIds.length > 0) {
+      // Explicit allowlist — most precise; bypasses auto-detection entirely.
+      suspectManufacturers = allManufacturers.filter(m => dealerManufacturerIds.includes(m.id));
+      const missing = dealerManufacturerIds.filter(id => !allManufacturers.some(m => m.id === id));
+      if (missing.length > 0) return res.status(400).json({ error: `Manufacturer IDs not found: ${missing.join(", ")}` });
+    } else {
+      // Auto-detect: manufacturers whose name EXACTLY matches any client name (case-insensitive).
+      // Exact match is intentionally stricter than substring to avoid false positives.
+      const allClients = await db.select({ name: clientsTable.name }).from(clientsTable);
+      const clientNameSet = new Set(allClients.map(c => c.name?.toLowerCase().trim() ?? ""));
+      suspectManufacturers = allManufacturers.filter(m => clientNameSet.has(m.name.toLowerCase().trim()));
+    }
 
     if (suspectManufacturers.length === 0) {
       return res.json({
         ok: true,
+        dryRun,
         already_clean: true,
         message: "No dealer-named manufacturers found — already migrated or data is correct",
+        plan: [],
       });
     }
 
-    const promoted: string[] = [];
-    const deleted: string[] = [];
-    let jobsCleared = 0;
+    // ── Step 2: build migration plan (always runs, even in execute mode) ────
+    const plan: Array<{
+      dealerManufacturer: { id: number; name: string };
+      modelsToPromote: Array<{ id: number; name: string; alreadyExistsAsBuilder: boolean }>;
+      modelsToPreserve: Array<{ id: number; name: string }>;
+      affectedJobIds: number[];
+    }> = [];
 
     for (const suspect of suspectManufacturers) {
-      const models = await db.select().from(mfhModelsTable)
+      const allModels = await db.select().from(mfhModelsTable)
         .where(eq(mfhModelsTable.manufacturerId, suspect.id));
-      const modelIds = models.map(m => m.id);
-      console.log(`[fix-mfh-hierarchy] suspect="${suspect.name}" id=${suspect.id} models=${JSON.stringify(models.map(m => m.name))}`);
 
-      // Promote each wrongly-stored model to a real builder (manufacturer)
-      for (const model of models) {
+      const toPromote = allModels.filter(m => !preservedModelIds.includes(m.id));
+      const toPreserve = allModels.filter(m => preservedModelIds.includes(m.id));
+      const promoteModelIds = toPromote.map(m => m.id);
+
+      const modelsToPromote = await Promise.all(toPromote.map(async model => {
         const dup = await db.select({ id: mfhManufacturersTable.id }).from(mfhManufacturersTable)
           .where(ilike(mfhManufacturersTable.name, model.name)).limit(1);
-        if (dup.length === 0) {
-          await db.insert(mfhManufacturersTable).values({ name: model.name });
-          promoted.push(model.name);
-          console.log(`[fix-mfh-hierarchy] promoted "${model.name}" → new manufacturer`);
-        } else {
-          console.log(`[fix-mfh-hierarchy] "${model.name}" already exists as manufacturer — skipping`);
-        }
+        return { id: model.id, name: model.name, alreadyExistsAsBuilder: dup.length > 0 };
+      }));
+
+      // Collect all job IDs that reference this dealer or its promoted models.
+      const jobRows: Array<{ id: number }> = [];
+      if (promoteModelIds.length > 0) {
+        const byModel = await db.select({ id: jobsTable.id }).from(jobsTable)
+          .where(inArray(jobsTable.mfhModelId, promoteModelIds));
+        jobRows.push(...byModel);
       }
+      const byMfg = await db.select({ id: jobsTable.id }).from(jobsTable)
+        .where(eq(jobsTable.mfhManufacturerId, suspect.id));
+      jobRows.push(...byMfg);
 
-      // Null-clear job references to the wrongly-entered model IDs
-      if (modelIds.length > 0) {
-        const r1 = await db.execute(
-          sql`UPDATE jobs SET mfh_manufacturer_id = NULL, mfh_model_id = NULL WHERE mfh_model_id = ANY(ARRAY[${sql.raw(modelIds.join(","))}]::integer[])`
-        );
-        jobsCleared += r1.rowCount ?? 0;
-      }
-
-      // Null-clear job references to the suspect manufacturer itself
-      const r2 = await db.execute(
-        sql`UPDATE jobs SET mfh_manufacturer_id = NULL, mfh_model_id = NULL WHERE mfh_manufacturer_id = ${suspect.id}`
-      );
-      jobsCleared += r2.rowCount ?? 0;
-
-      // Delete the wrongly-stored model records (now that their names are proper manufacturers)
-      if (modelIds.length > 0) {
-        await db.delete(mfhModelsTable).where(inArray(mfhModelsTable.id, modelIds));
-      }
-
-      // Delete the suspect manufacturer
-      await db.delete(mfhManufacturersTable).where(eq(mfhManufacturersTable.id, suspect.id));
-      deleted.push(suspect.name);
+      plan.push({
+        dealerManufacturer: { id: suspect.id, name: suspect.name },
+        modelsToPromote,
+        modelsToPreserve: toPreserve.map(m => ({ id: m.id, name: m.name })),
+        affectedJobIds: [...new Set(jobRows.map(j => j.id))],
+      });
     }
 
-    console.log(`[admin/migrations] fix-mfh-hierarchy complete: promoted=${JSON.stringify(promoted)}, deleted=${JSON.stringify(deleted)}, jobsCleared=${jobsCleared}`);
-    res.json({ ok: true, promoted, deleted, jobsCleared });
+    // ── Step 3: return plan if dry-run ──────────────────────────────────────
+    if (dryRun) {
+      return res.json({
+        ok: true,
+        dryRun: true,
+        message: "Dry-run complete — pass { dryRun: false } to execute. Review affectedJobIds; those jobs will have their builder/model cleared and will need manual re-assignment.",
+        plan,
+      });
+    }
+
+    // ── Step 4: execute inside a transaction ────────────────────────────────
+    const result: {
+      promoted: string[];
+      skipped: string[];
+      preserved: string[];
+      deletedDealers: string[];
+      clearedJobIds: number[];
+    } = { promoted: [], skipped: [], preserved: [], deletedDealers: [], clearedJobIds: [] };
+
+    await db.transaction(async (tx) => {
+      for (const item of plan) {
+        const { dealerManufacturer, modelsToPromote, modelsToPreserve, affectedJobIds } = item;
+        const promoteModelIds = modelsToPromote.map(m => m.id);
+
+        // Promote models → manufacturers (skip if already exists)
+        for (const model of modelsToPromote) {
+          if (!model.alreadyExistsAsBuilder) {
+            await tx.insert(mfhManufacturersTable).values({ name: model.name });
+            result.promoted.push(model.name);
+          } else {
+            result.skipped.push(model.name);
+          }
+        }
+
+        // Re-parent any preserved (legitimate floor-plan) models to "Uncategorized"
+        if (modelsToPreserve.length > 0) {
+          const [uncategorized] = await tx.insert(mfhManufacturersTable)
+            .values({ name: "Uncategorized" })
+            .onConflictDoNothing()
+            .returning();
+          const uncategorizedId = uncategorized?.id
+            ?? (await tx.select({ id: mfhManufacturersTable.id }).from(mfhManufacturersTable).where(ilike(mfhManufacturersTable.name, "Uncategorized")).limit(1))[0]?.id;
+          if (uncategorizedId) {
+            await tx.execute(
+              sql`UPDATE mfh_models SET manufacturer_id = ${uncategorizedId} WHERE id = ANY(ARRAY[${sql.raw(modelsToPreserve.map(m => m.id).join(","))}]::integer[])`
+            );
+          }
+          result.preserved.push(...modelsToPreserve.map(m => m.name));
+        }
+
+        // Null-clear MFH fields on all affected jobs (must happen before deleting models)
+        if (promoteModelIds.length > 0) {
+          await tx.execute(
+            sql`UPDATE jobs SET mfh_manufacturer_id = NULL, mfh_model_id = NULL WHERE mfh_model_id = ANY(ARRAY[${sql.raw(promoteModelIds.join(","))}]::integer[])`
+          );
+        }
+        await tx.execute(
+          sql`UPDATE jobs SET mfh_manufacturer_id = NULL, mfh_model_id = NULL WHERE mfh_manufacturer_id = ${dealerManufacturer.id}`
+        );
+        result.clearedJobIds.push(...affectedJobIds);
+
+        // Delete promoted model rows (they now exist as manufacturers)
+        if (promoteModelIds.length > 0) {
+          await tx.delete(mfhModelsTable).where(inArray(mfhModelsTable.id, promoteModelIds));
+        }
+
+        // Delete the dealer manufacturer entry
+        await tx.delete(mfhManufacturersTable).where(eq(mfhManufacturersTable.id, dealerManufacturer.id));
+        result.deletedDealers.push(dealerManufacturer.name);
+      }
+    });
+
+    result.clearedJobIds = [...new Set(result.clearedJobIds)];
+    console.log(`[admin/migrations] fix-mfh-hierarchy executed:`, JSON.stringify(result));
+    res.json({ ok: true, dryRun: false, result });
   } catch (err) {
     console.error("[admin/migrations] fix-mfh-hierarchy failed:", err);
     res.status(500).json({ error: "Migration failed", detail: String(err) });
