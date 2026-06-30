@@ -11,3 +11,4 @@
 - [PDF generation: use pdfkit not Puppeteer](pdf-generation.md) — Puppeteer/Chrome is broken in production; use pdfkit (pure Node.js) for all server-side PDF generation
 - [MFH production schema baseline](mfh-production-schema.md) — production has manufacturer-based schema (e45b289); Task #1019 Home Series rename was NEVER deployed; always restore from e45b289 not 6e6380d
 - [Prod schema via Publish](prod-schema-via-publish.md) — never add a migration endpoint/hook for prod DDL; fix "column does not exist" by applying to dev + re-publish; push-force prompts to truncate invoices, use targeted ALTER instead
+- [Prod data migrations](prod-data-migrations.md) — a MERGED data-migration only fixes dev; production data needs the migration run against the live URL (x-migration-key) or publish data-overwrite; MFH Clayton stayed broken in prod for this reason
