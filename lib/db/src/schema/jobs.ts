@@ -38,7 +38,7 @@ export const jobsTable = pgTable("jobs", {
   phases: jsonb("phases").$type<PhaseItem[]>(),
   permitChecklist: jsonb("permit_checklist").$type<PermitChecklistItem[]>(),
   homeModel: text("home_model"),
-  mfhManufacturerId: integer("mfh_manufacturer_id"),
+  mfhSeriesId: integer("mfh_series_id"),
   mfhModelId: integer("mfh_model_id"),
   mfhModelYear: integer("mfh_model_year"),
   mfhDealerPrice: numeric("mfh_dealer_price", { precision: 12, scale: 2 }),

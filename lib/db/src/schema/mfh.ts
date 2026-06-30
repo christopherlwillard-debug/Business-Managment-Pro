@@ -8,15 +8,12 @@ export const mfhConstructionTypesTable = pgTable("mfh_construction_types", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const mfhManufacturersTable = pgTable("mfh_manufacturers", {
+// Home Series = the priced, field-recognised designation (Southern, Giles,
+// Appalachia, …). Carries the construction type, pricing, benchmark, checklist,
+// default add-ons and notes. The dealer is captured by the job's Client field,
+// so there is intentionally no manufacturer/dealer entity here.
+export const mfhHomeSeriesTable = pgTable("mfh_home_series", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const mfhModelsTable = pgTable("mfh_models", {
-  id: serial("id").primaryKey(),
-  manufacturerId: integer("manufacturer_id").notNull().references(() => mfhManufacturersTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   constructionTypeId: integer("construction_type_id").notNull().references(() => mfhConstructionTypesTable.id),
   benchmarkId: integer("benchmark_id").references(() => jobTypeBenchmarksTable.id, { onDelete: "set null" }),
@@ -29,9 +26,24 @@ export const mfhModelsTable = pgTable("mfh_models", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Model = the genuine model name (Farmhouse, Freedom, Heritage, …) sitting under
+// a Home Series. Optional and descriptive; it inherits the series' construction
+// type, pricing, benchmark, checklist and add-ons.
+export const mfhModelsTable = pgTable("mfh_models", {
+  id: serial("id").primaryKey(),
+  homeSeriesId: integer("home_series_id").notNull().references(() => mfhHomeSeriesTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  notes: text("notes"),
+  active: boolean("active").notNull().default(true),
+  introducedYear: integer("introduced_year"),
+  discontinuedYear: integer("discontinued_year"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Pricing guides are global (Dealer Guide / My Pricing). They are no longer
+// scoped to a dealer/manufacturer.
 export const mfhPricingGuidesTable = pgTable("mfh_pricing_guides", {
   id: serial("id").primaryKey(),
-  manufacturerId: integer("manufacturer_id").notNull().references(() => mfhManufacturersTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   isDealerGuide: boolean("is_dealer_guide").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -40,7 +52,7 @@ export const mfhPricingGuidesTable = pgTable("mfh_pricing_guides", {
 export const mfhGuideItemsTable = pgTable("mfh_guide_items", {
   id: serial("id").primaryKey(),
   guideId: integer("guide_id").notNull().references(() => mfhPricingGuidesTable.id, { onDelete: "cascade" }),
-  modelId: integer("model_id").notNull().references(() => mfhModelsTable.id, { onDelete: "cascade" }),
+  homeSeriesId: integer("home_series_id").notNull().references(() => mfhHomeSeriesTable.id, { onDelete: "cascade" }),
   basePrice: numeric("base_price", { precision: 12, scale: 2 }).notNull().default("0"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -56,7 +68,7 @@ export const mfhGuideAddonsTable = pgTable("mfh_guide_addons", {
 });
 
 export type MfhConstructionType = typeof mfhConstructionTypesTable.$inferSelect;
-export type MfhManufacturer = typeof mfhManufacturersTable.$inferSelect;
+export type MfhHomeSeries = typeof mfhHomeSeriesTable.$inferSelect;
 export type MfhModel = typeof mfhModelsTable.$inferSelect;
 export type MfhPricingGuide = typeof mfhPricingGuidesTable.$inferSelect;
 export type MfhGuideItem = typeof mfhGuideItemsTable.$inferSelect;
