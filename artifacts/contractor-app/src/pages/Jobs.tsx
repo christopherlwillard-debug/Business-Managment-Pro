@@ -3863,6 +3863,11 @@ function JobFormDialog({
               <ListChecks className="w-3.5 h-3.5 inline mr-1 text-amber-500" />Services Included
             </label>
             <div className="rounded-xl border border-border p-3 space-y-2">
+              {productionServiceTypes.length === 0 && !showAddService && (
+                <p className="text-xs text-muted-foreground">
+                  No service types yet — click <span className="font-semibold text-amber-600">+ Add Service</span> to create your first one.
+                </p>
+              )}
               {productionServiceTypes.map(svc => {
                 const isChecked = mhProductionServices.includes(svc.id);
                 return (
