@@ -1,0 +1,61 @@
+think Replit is making this far more complicated than it needs to be.
+
+From everything you’ve shared over the last several days, the problem started as:
+
+“Rename the current mfh_models (which actually stores Home Series) into mfh_home_series and create a real mfh_models table underneath it.”
+
+That is a database migration, not an application rewrite.
+
+Now the proposal has grown into:
+
+* Three schema states (LEGACY, MIGRATED_A, MIGRATED_B)
+* Runtime schema detection
+* Conditional SQL throughout the API
+* Raw SQL fallbacks
+* Compatibility layers
+* Temporary feature disabling
+* A future cleanup task to remove the compatibility layer
+
+That is a huge increase in complexity for what is essentially a one-time schema migration.
+
+I would send Replit this:
+
+⸻
+
+I think we’re over-engineering this solution.
+
+The compatibility layer introduces a lot of permanent complexity into the application for a temporary migration problem.
+
+Specifically, I don’t want to add:
+
+* Three runtime schema states
+* Schema detection on every startup/request
+* Raw SQL fallbacks
+* Conditional routing throughout the MFH API
+* Temporary application behavior that must later be removed
+
+That’s a significant amount of technical debt for a migration that should only happen once.
+
+Instead, I’d rather solve this as a proper database migration.
+
+My preferred approach is:
+
+1. Create a production backup or snapshot.
+2. Run a well-tested, fully idempotent migration.
+3. Publish the new application against the migrated schema.
+4. Verify everything works.
+5. If something unexpected happens, restore from the snapshot rather than maintaining a permanent compatibility layer.
+
+I want the application to have one database schema, not multiple supported schemas.
+
+The migration itself can be as defensive and as staged as necessary, but once complete, the application should only target the new Home Series → Model structure.
+
+Please see if there’s a way to simplify the migration rather than adding long-term compatibility code throughout the API.
+
+If a compatibility layer truly cannot be avoided, I’d like to understand exactly why a clean database migration isn’t sufficient before adding hundreds of lines of temporary application logic.
+
+The goal should be to keep the production codebase as simple and maintainable as possible, not to permanently support multiple schema versions for a one-time migration.
+
+⸻
+
+I really think this is the right direction. One of the biggest lessons in software architecture is that temporary migration logic has a habit of becoming permanent. If you can solve the problem with a robust migration and a backup/snapshot, that’s usually preferable to carrying compatibility code in your application for years.

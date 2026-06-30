@@ -1,0 +1,70 @@
+actually think you’ve finally gotten back to the simplest solution.
+
+The only thing I’d change is I would not drop the production tables before you’ve exported them and verified the export. Beyond that, this is much simpler than the weeks of migration gymnastics.
+
+Here’s what I’d send Replit:
+
+⸻
+
+I think we’ve over-engineered this.
+
+We’re trying to preserve a very small amount of MFH setup data:
+
+* ~10 Home Series
+* 3 Construction Types
+* 2 Pricing Guides
+* Guide Items
+* Guide Add-ons
+* No production jobs currently depend on the MFH feature.
+
+Instead of building permanent compatibility layers and complicated migrations, I’d rather treat this like a one-time data conversion.
+
+Proposed approach
+
+1. Take a production database snapshot (rollback point).
+2. Export all existing MFH data:
+    * Construction Types
+    * Home Series (currently stored in mfh_models)
+    * Pricing Guides
+    * Guide Items
+    * Guide Add-ons
+3. Verify the export before deleting anything.
+4. Remove the old MFH tables from production.
+5. Publish the new application so Replit creates the new schema exactly as defined by the current code.
+6. Import the exported data into the new schema, preserving IDs where appropriate.
+7. Verify:
+    * Home Series are present
+    * Pricing Guides work
+    * Guide Items map correctly
+    * Construction Types match
+    * Applying a Home Series still produces the correct estimate
+
+Why I prefer this
+
+The current deployment blocker exists because Replit’s schema validator is trying to infer a complex rename.
+
+If the old MFH tables don’t exist, there is nothing to rename. The validator simply creates the new tables from the current schema.
+
+That removes the need for:
+
+* compatibility layers
+* multi-phase migrations
+* rename heuristics
+* temporary schemas
+* cleanup migrations
+
+The result is a clean production schema that exactly matches development.
+
+The only requirement is that we export and verify the existing MFH data before dropping the old tables, and preserve IDs during the import so guide relationships remain intact.
+
+Before doing anything destructive, I’d like confirmation that this approach is safe with Replit’s deployment workflow.
+
+⸻
+
+One thing I would ask them to verify
+
+The only remaining unknown is whether Replit’s deployment validator will happily create the new schema if those MFH tables are absent. That’s a much smaller question than everything you’ve been fighting.
+
+If the answer is “yes,” this is probably the cleanest path forward. If the answer is “no,” then the issue isn’t the migration itself—it’s the way Replit’s deployment system handles schema synchronization.
+
+After following this thread with you, I honestly think you’ve been trying to preserve a dozen setup records with enterprise-level migration complexity. Given that there are essentially no production jobs using this feature yet, a controlled export → rebuild → import is far easier to reason about and maintain than carrying permanent migration code.

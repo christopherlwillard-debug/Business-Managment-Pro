@@ -1,0 +1,90 @@
+I don’t think we should run this migration against production yet. The migration logic is much better than before, but there are still several assumptions that could cause it to fail on the live database.
+
+Here are the items I want verified or made resilient before this is deployed.
+
+1. Constraint names are assumed.
+
+The migration drops constraints using hardcoded names like:
+
+* jobs_mfh_manufacturer_id_fkey
+* jobs_mfh_model_id_fkey
+
+Those names may not match production exactly. Before dropping constraints, inspect the actual names from PostgreSQL or write the migration so it discovers them dynamically instead of assuming they exist.
+
+2. Sequence names are assumed.
+
+The migration renames:
+
+ALTER SEQUENCE mfh_models_id_seq RENAME TO mfh_home_series_id_seq;
+
+That only works if the production sequence is actually named mfh_models_id_seq. Verify the sequence name first or make the migration resilient.
+
+3. New columns should use IF NOT EXISTS.
+
+Instead of:
+
+ALTER TABLE jobs ADD COLUMN mfh_series_id integer;
+
+use:
+
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS mfh_series_id integer;
+
+The migration should be safe if it is ever run twice or partially applied.
+
+4. Don’t assume tables have no remaining dependencies.
+
+Before dropping mfh_manufacturers, verify there are no remaining foreign keys pointing at it.
+
+The migration should inspect remaining dependencies first instead of assuming they’re gone.
+
+5. Don’t immediately destroy data structures.
+
+These statements permanently remove information:
+
+* DROP COLUMN manufacturer_id
+* DROP TABLE mfh_manufacturers
+
+Those should only happen after we’ve verified everything has been successfully migrated and the application is working correctly.
+
+My recommendation is to split this into two migrations.
+
+Migration A
+
+* Rename tables
+* Rename columns
+* Create the new tables
+* Copy data
+* Add new foreign keys
+* Preserve all existing data
+
+No destructive operations.
+
+Publish.
+
+Verify the application works.
+
+Migration B
+
+Only after verification:
+
+* Drop obsolete columns
+* Drop obsolete foreign keys
+* Drop obsolete tables
+
+This greatly reduces deployment risk.
+
+Before touching production, run read-only verification queries to inspect:
+
+* Existing table names
+* Existing column names
+* Foreign key names
+* Sequence names
+* Index names
+* Trigger names
+* Row counts
+
+The current migration assumes production matches development exactly, including internal PostgreSQL object names. That assumption is risky for a live business database.
+
+Please make the migration defensive by using IF EXISTS / IF NOT EXISTS where appropriate, or dynamically discovering object names before dropping or renaming them.
+
+The goal is a migration that is safe, idempotent, and resilient instead of relying on production matching development perfectly. That will greatly reduce the risk of another failed deployment.

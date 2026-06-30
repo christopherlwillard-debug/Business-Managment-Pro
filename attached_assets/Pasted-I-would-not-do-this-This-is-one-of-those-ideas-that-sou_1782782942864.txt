@@ -1,0 +1,76 @@
+I would not do this.
+
+This is one of those ideas that sounds clever, but it’s treating the symptom instead of the cause.
+
+Here’s why I wouldn’t approve it
+
+The proposal is essentially:
+
+1. Roll the development database back to the old schema.
+2. Publish.
+3. Let production migrate.
+4. Migrate development forward again.
+
+That means your database schema no longer matches your application code for part of the process.
+
+If anyone runs the app, tests, or develops during that window, you’re running new code against an old schema. Even if it’s only for a few minutes, it’s fragile.
+
+⸻
+
+More importantly…
+
+This line worries me:
+
+“The validator needs dev DB schema = production DB schema.”
+
+That isn’t proven.
+
+It’s an inference based on the behavior you’re seeing.
+
+It may be true, but I wouldn’t build a deployment strategy around an inference.
+
+⸻
+
+What I think is actually happening
+
+From everything you’ve shown me over the past few days, the evidence points to this:
+
+* Your development database is already on the new Home Series schema.
+* Production is still on the old schema.
+* Replit compares those two.
+* It generates its own migration preview.
+* That preview is wrong for this rename.
+
+The real problem isn’t that dev is ahead.
+
+The real problem is that Replit’s automatic schema sync doesn’t know how to perform this kind of table restructure safely.
+
+⸻
+
+What I would ask Replit instead
+
+I’d stop asking it to invent another workaround and ask one direct question:
+
+How does Replit recommend handling a data-preserving table rename when its automatic schema validator cannot generate a correct migration? Is there an officially supported workflow for this situation?
+
+That’s the question that matters now.
+
+⸻
+
+My recommendation
+
+At this point, I would avoid any more large implementation tasks until you answer one question:
+
+Is this a limitation of Replit Deployments, or is there a supported migration workflow you’re not using?
+
+If it’s a Replit limitation, no amount of rewriting post-merge.sh, Drizzle config, or migration files will fix it.
+
+If there is a supported workflow, that’s the one you should adopt.
+
+⸻
+
+If this were my app…
+
+I’d probably spend 30 minutes getting a definitive answer from Replit (or their docs/support) rather than another 6–8 hours implementing and testing another workaround.
+
+You’ve already done a lot of work, and the evidence suggests you’re now fighting the deployment platform more than your own code. Before making another architectural change, it’s worth confirming whether the platform supports the migration pattern you’re trying to use.

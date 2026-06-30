@@ -1,0 +1,38 @@
+This is a much stronger plan than the earlier versions. There is just one thing I would push back on, because it affects whether the app can actually run between Migration A and Migration B.
+
+I would send this to Replit:
+
+⸻
+
+This is a much safer migration plan, and I agree with the copy-not-rename approach. I have one concern that I’d like us to address before implementing it.
+
+By keeping the old mfh_models table in place during Migration A, the application code cannot immediately switch to using the new model hierarchy if it expects a new mfh_models table. That means there is an intermediate state where the database and application are only partially migrated.
+
+Rather than treating that as an acceptable temporary limitation, I’d like the application to explicitly support both schemas during the transition.
+
+Specifically:
+
+* During Migration A, create and populate mfh_home_series.
+* Leave the legacy mfh_models table intact.
+* Update the application so that it detects whether mfh_home_series exists.
+    * If it exists, use mfh_home_series for Home Series.
+    * If it does not exist, continue using the legacy mfh_models.
+* Delay enabling the new “Model beneath Home Series” feature until Migration B is complete.
+
+This keeps the application functional throughout the migration instead of relying on a short deployment window.
+
+Migration B can then:
+
+* Drop the legacy mfh_models.
+* Create the new mfh_models table for actual home models.
+* Recreate the appropriate foreign keys.
+* Remove the obsolete manufacturer structures.
+* Remove the temporary compatibility code from the application once everything has been verified.
+
+This avoids exposing an application state where some features are expected to work but cannot because the table name is temporarily occupied.
+
+The goal should be that the application is fully functional at every stage of the deployment, not just before and after it.
+
+⸻
+
+I think this approach is even safer because it removes the assumption that Migration B will happen “within a few minutes.” If something interrupts the deployment or verification, the application still works correctly until you’re ready to complete the second phase.
