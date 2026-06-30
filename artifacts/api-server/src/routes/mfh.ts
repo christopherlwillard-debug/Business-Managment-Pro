@@ -138,20 +138,8 @@ mfhLibraryRouter.patch("/manufacturers/:id", async (req, res) => {
     res.json(row);
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
-mfhLibraryRouter.delete("/manufacturers/:id", async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const modelIds = await db.select({ id: mfhModelsTable.id }).from(mfhModelsTable).where(eq(mfhModelsTable.manufacturerId, id));
-    const jobCheck = await db.select({ id: jobsTable.id }).from(jobsTable).where(
-      or(
-        eq(jobsTable.mfhManufacturerId, id),
-        modelIds.length > 0 ? inArray(jobsTable.mfhModelId, modelIds.map(m => m.id)) : sql`false`
-      )
-    ).limit(1);
-    if (jobCheck.length > 0) return res.status(409).json({ error: "This builder is used on jobs and cannot be deleted. Deactivate it instead to hide it from new jobs." });
-    await db.delete(mfhManufacturersTable).where(eq(mfhManufacturersTable.id, id));
-    res.json({ ok: true });
-  } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
+mfhLibraryRouter.delete("/manufacturers/:id", (_req, res) => {
+  res.status(405).json({ error: "Builders are permanent records and cannot be deleted. Mark it Inactive if it is no longer in use." });
 });
 
 // Models
@@ -242,14 +230,8 @@ mfhLibraryRouter.patch("/models/:id", async (req, res) => {
     res.json(row);
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
-mfhLibraryRouter.delete("/models/:id", async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const jobRef = await db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.mfhModelId, id)).limit(1);
-    if (jobRef.length > 0) return res.status(409).json({ error: "This model is used on jobs and cannot be deleted. Deactivate it instead to hide it from new jobs." });
-    await db.delete(mfhModelsTable).where(eq(mfhModelsTable.id, id));
-    res.json({ ok: true });
-  } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
+mfhLibraryRouter.delete("/models/:id", (_req, res) => {
+  res.status(405).json({ error: "Models are permanent records and cannot be deleted. Mark it Inactive if it is no longer in use." });
 });
 
 // Guides

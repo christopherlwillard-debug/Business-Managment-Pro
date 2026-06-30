@@ -16,11 +16,9 @@ import {
   useMfhLibraryData,
   useCreateMfhManufacturer,
   useUpdateMfhManufacturer,
-  useDeleteMfhManufacturer,
   useCreateMfhConstructionType,
   useCreateMfhModel,
   useUpdateMfhModel,
-  useDeleteMfhModel,
   useCreateMfhGuide,
   useDeleteMfhGuide,
   useUpsertMfhGuideItem,
@@ -55,11 +53,9 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
 
   const createMfg = useCreateMfhManufacturer();
   const updateMfg = useUpdateMfhManufacturer();
-  const deleteMfg = useDeleteMfhManufacturer();
   const createConstructionType = useCreateMfhConstructionType();
   const createModel = useCreateMfhModel();
   const updateModel = useUpdateMfhModel();
-  const deleteModel = useDeleteMfhModel();
   const createGuide = useCreateMfhGuide();
   const deleteGuide = useDeleteMfhGuide();
   const upsertItem = useUpsertMfhGuideItem();
@@ -234,8 +230,6 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                               className={`p-1.5 rounded transition-colors ${mfg.active ? "text-emerald-600 hover:bg-muted/50 hover:text-muted-foreground" : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"}`}>
                               {mfg.active ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                             </button>
-                            <button onClick={() => setConfirmDelete({ type: "manufacturer", id: mfg.id, label: mfg.name })}
-                              className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
                           </>
                         )}
                       </div>
@@ -334,7 +328,6 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                                 </div>
                                 <div className="flex gap-0.5">
                                   <button onClick={() => { setEditingModel(model); setActiveMfgId(mfg.id); }} className="p-1.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-amber-600 transition-colors"><Pencil className="w-3 h-3" /></button>
-                                  <button onClick={() => setConfirmDelete({ type: "model", id: model.id, label: model.name })} className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"><Trash2 className="w-3 h-3" /></button>
                                 </div>
                               </div>
                             )}
@@ -609,8 +602,6 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                   const target = confirmDelete;
                   setConfirmDelete(null);
                   try {
-                    if (target.type === "manufacturer") await deleteMfg.mutateAsync(target.id);
-                    if (target.type === "model") await deleteModel.mutateAsync(target.id);
                     if (target.type === "guide") await deleteGuide.mutateAsync(target.id);
                     if (target.type === "addon") await deleteAddon.mutateAsync(target.id);
                   } catch (err) {
