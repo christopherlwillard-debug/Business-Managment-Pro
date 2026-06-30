@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Home, ChevronRight, BarChart2, Briefcase,
   Plus, Trash2, ArrowLeft, TrendingUp, Users, Pencil,
-  BookOpen, ChevronDown, ChevronUp,
+  BookOpen, ChevronDown, ChevronUp, ArrowUpDown,
 } from "lucide-react";
 import {
   useMfhKnowledgeBase,
@@ -377,10 +377,24 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
+type SortKey = "name" | "manufacturerName" | "constructionTypeName" | "basePrice" | "jobCount" | "avgInvoice";
+
+function SortHeader({ label, sortKey, current, dir, onSort }: { label: string; sortKey: SortKey; current: SortKey; dir: "asc" | "desc"; onSort: (k: SortKey) => void }) {
+  const active = current === sortKey;
+  return (
+    <button onClick={() => onSort(sortKey)} className={`flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap transition-colors ${active ? "text-amber-600" : "text-muted-foreground hover:text-foreground"}`}>
+      {label}
+      {active ? (dir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-40" />}
+    </button>
+  );
+}
+
 export default function MfhKnowledgeBase() {
   const { data: models = [], isLoading } = useMfhKnowledgeBase();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [filter, setFilter] = useState<"all" | "active" | string>("active");
+  const [sortKey, setSortKey] = useState<SortKey>("jobCount");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const manufacturers = [...new Set(models.map(m => m.manufacturerName).filter(Boolean))] as string[];
 
@@ -389,6 +403,28 @@ export default function MfhKnowledgeBase() {
     if (filter === "active") return m.active;
     return m.manufacturerName === filter;
   });
+
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      let av: string | number | null = null;
+      let bv: string | number | null = null;
+      if (sortKey === "name") { av = a.name; bv = b.name; }
+      else if (sortKey === "manufacturerName") { av = a.manufacturerName ?? ""; bv = b.manufacturerName ?? ""; }
+      else if (sortKey === "constructionTypeName") { av = a.constructionTypeName ?? ""; bv = b.constructionTypeName ?? ""; }
+      else if (sortKey === "basePrice") { av = a.basePrice ? parseFloat(a.basePrice) : -1; bv = b.basePrice ? parseFloat(b.basePrice) : -1; }
+      else if (sortKey === "jobCount") { av = a.jobCount; bv = b.jobCount; }
+      else if (sortKey === "avgInvoice") { av = a.avgInvoice ?? a.avgQuotedPrice ?? -1; bv = b.avgInvoice ?? b.avgQuotedPrice ?? -1; }
+      if (av == null) av = -1;
+      if (bv == null) bv = -1;
+      const cmp = typeof av === "string" ? av.localeCompare(bv as string) : (av as number) - (bv as number);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [filtered, sortKey, sortDir]);
+
+  function handleSort(k: SortKey) {
+    if (k === sortKey) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(k); setSortDir(k === "name" || k === "manufacturerName" || k === "constructionTypeName" ? "asc" : "desc"); }
+  }
 
   const totalJobs = filtered.reduce((s, m) => s + m.jobCount, 0);
   const modelsWithJobs = filtered.filter(m => m.jobCount > 0);
@@ -443,8 +479,8 @@ export default function MfhKnowledgeBase() {
             ))}
           </div>
 
-          {/* List */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {/* Sortable list */}
+          <div className="flex-1 overflow-auto">
             {isLoading ? (
               <div className="flex justify-center py-12">
                 <div className="w-7 h-7 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
@@ -456,11 +492,58 @@ export default function MfhKnowledgeBase() {
                 <p className="text-xs text-muted-foreground">Add models in the Home Library on the Jobs page.</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {filtered.map(m => (
-                  <ModelCard key={m.id} model={m} onClick={() => setSelectedId(m.id)} />
-                ))}
-              </div>
+              <table className="w-full text-sm border-separate border-spacing-0">
+                <thead className="sticky top-0 bg-card border-b border-border z-10">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left">
+                      <SortHeader label="Model" sortKey="name" current={sortKey} dir={sortDir} onSort={handleSort} />
+                    </th>
+                    <th className="px-3 py-2.5 text-left hidden sm:table-cell">
+                      <SortHeader label="Builder" sortKey="manufacturerName" current={sortKey} dir={sortDir} onSort={handleSort} />
+                    </th>
+                    <th className="px-3 py-2.5 text-left hidden sm:table-cell">
+                      <SortHeader label="Type" sortKey="constructionTypeName" current={sortKey} dir={sortDir} onSort={handleSort} />
+                    </th>
+                    <th className="px-3 py-2.5 text-right">
+                      <SortHeader label="Baseline" sortKey="basePrice" current={sortKey} dir={sortDir} onSort={handleSort} />
+                    </th>
+                    <th className="px-3 py-2.5 text-right">
+                      <SortHeader label="Jobs" sortKey="jobCount" current={sortKey} dir={sortDir} onSort={handleSort} />
+                    </th>
+                    <th className="px-3 py-2.5 text-right hidden md:table-cell">
+                      <SortHeader label="Avg Invoice" sortKey="avgInvoice" current={sortKey} dir={sortDir} onSort={handleSort} />
+                    </th>
+                    <th className="w-8 px-3 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map(m => (
+                    <tr key={m.id} onClick={() => setSelectedId(m.id)}
+                      className="border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors group">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-foreground text-sm">{m.name}</span>
+                          {!m.active && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">Inactive</span>}
+                          <span className="sm:hidden">{ctBadge(m.constructionTypeName)}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground sm:hidden mt-0.5">{m.manufacturerName}</p>
+                      </td>
+                      <td className="px-3 py-3 text-xs text-muted-foreground hidden sm:table-cell">{m.manufacturerName ?? "—"}</td>
+                      <td className="px-3 py-3 hidden sm:table-cell">{ctBadge(m.constructionTypeName)}</td>
+                      <td className="px-3 py-3 text-right font-mono font-semibold text-amber-700 text-sm">
+                        {m.basePrice ? fmt(m.basePrice) : <span className="text-muted-foreground/50 font-normal text-xs">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-right font-bold text-foreground text-sm">{m.jobCount}</td>
+                      <td className="px-3 py-3 text-right text-muted-foreground text-sm hidden md:table-cell">
+                        {fmt(m.avgInvoice ?? m.avgQuotedPrice)}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-amber-500 transition-colors ml-auto" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </>

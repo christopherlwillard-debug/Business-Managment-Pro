@@ -278,6 +278,14 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                                 </div>
                               </div>
                               <div>
+                                <label className="text-[10px] text-muted-foreground font-medium">Baseline Price (Clayton, optional)</label>
+                                <div className="relative">
+                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                                  <input type="number" className="w-full pl-6 pr-2 py-1.5 text-xs rounded-lg border border-border bg-background" value={editingModel.basePrice ?? ""}
+                                    onChange={e => setEditingModel({ ...editingModel, basePrice: e.target.value || null })} placeholder="e.g. 1500" />
+                                </div>
+                              </div>
+                              <div>
                                 <label className="text-[10px] text-muted-foreground font-medium">Notes</label>
                                 <textarea className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background resize-none" rows={2} value={editingModel.notes ?? ""}
                                   onChange={e => setEditingModel({ ...editingModel, notes: e.target.value })} placeholder="e.g. Use 2x4 marriage trim · Needs 8' porch flashing" />
@@ -322,6 +330,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                                       active: editingModel.active !== false,
                                       introducedYear: editingModel.introducedYear ?? null,
                                       discontinuedYear: editingModel.discontinuedYear ?? null,
+                                      basePrice: editingModel.basePrice ? editingModel.basePrice : null,
                                     });
                                     setEditingModel(null);
                                   }}
@@ -672,17 +681,14 @@ export function MfhPanel({
     }
   }, [mfhSnapshot]);
 
-  // Auto-select first guide
+  // Restore saved guide when hydrating — but do NOT auto-select when no guide was previously used.
+  // Baseline pricing (no guide) is the default; guides are optional.
   useEffect(() => {
-    if (guideId == null && guides.length > 0) {
-      // If job has a saved guide name, try to match it
-      if (j.mfhGuideName) {
-        const match = guides.find(g => g.name === j.mfhGuideName);
-        if (match) { setGuideId(match.id); return; }
-      }
-      setGuideId(guides[0].id);
+    if (guideId == null && guides.length > 0 && j.mfhGuideName) {
+      const match = guides.find(g => g.name === j.mfhGuideName);
+      if (match) setGuideId(match.id);
     }
-  }, [guides, guideId, j.mfhGuideName]);
+  }, [guides, j.mfhGuideName]);
 
   // Auto-pre-check default add-ons when model changes
   const selectedModel = models.find(m => m.id === modelId);
