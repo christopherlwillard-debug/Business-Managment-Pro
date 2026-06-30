@@ -123,6 +123,7 @@ export const jobKnowledgeRecordVersionsTable = pgTable("job_knowledge_record_ver
 
 export const productionServiceTypesTable = pgTable("production_service_types", {
   id: serial("id").primaryKey(),
+  businessId: integer("business_id"),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),

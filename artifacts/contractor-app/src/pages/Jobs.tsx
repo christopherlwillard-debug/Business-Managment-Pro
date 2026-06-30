@@ -2762,7 +2762,7 @@ function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
-  checklistSummary,
+  checklistSummary, productionServiceTypes = [],
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -2784,6 +2784,7 @@ function JobCard({
   onArchiveJob?: (job: Job) => void;
   subsSettled?: boolean;
   checklistSummary?: ChecklistSummary | null;
+  productionServiceTypes?: import("@workspace/api-client-react").ProductionServiceType[];
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -2893,7 +2894,7 @@ function JobCard({
               )}
               {jobWorkflow === "mh_production" && Array.isArray((job as Record<string, unknown>).mhProductionServices) &&
                 ((job as Record<string, unknown>).mhProductionServices as number[]).map(svcId => {
-                  const svc = allProductionServiceTypes.find(t => t.id === svcId);
+                  const svc = productionServiceTypes.find(t => t.id === svcId);
                   if (!svc) return null;
                   return (
                     <span key={svcId} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
@@ -3471,7 +3472,7 @@ function JobFormDialog({
   const { data: mfhPanelData } = useMfhPanelData(mfhMfgId);
   const mfhModels = mfhPanelData?.models ?? [];
   const { data: constructionTypes = [] } = useListMfhConstructionTypes();
-  const { data: productionServiceTypes = [] } = useListProductionServiceTypes();
+  const { data: productionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id);
   const createMfhManufacturer = useCreateMfhManufacturer();
   const createMfhModel = useCreateMfhModel();
   const createProductionServiceType = useCreateProductionServiceType();
@@ -3527,7 +3528,7 @@ function JobFormDialog({
 
   async function handleAddService() {
     if (!newServiceName.trim()) return;
-    const created = await createProductionServiceType.mutateAsync({ name: newServiceName.trim() });
+    const created = await createProductionServiceType.mutateAsync({ name: newServiceName.trim(), businessId: activeBusiness?.id ?? null });
     setMhProductionServices(prev => [...prev, created.id]);
     setNewServiceName("");
     setShowAddService(false);
@@ -4318,7 +4319,7 @@ export default function Jobs() {
   const updateJob                         = useUpdateJob();
   const { data: allLogs = [] }            = useListDailyLogs();
   const { data: allMaterialLists = [] }   = useListMaterialLists();
-  const { data: allProductionServiceTypes = [] } = useListProductionServiceTypes();
+  const { data: allProductionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id);
 
   // Fetch subcontractor-category expenses to know which jobs have sub expenses
   const { data: subExpenseData = [] } = useQuery({
@@ -5126,7 +5127,8 @@ export default function Jobs() {
                       onGoToInvoices={() => navigate("/invoices")}
                       generatingLinkId={generatingLinkId}
                       onSmartEstimate={j => setGcWizardJob(j)}
-                      checklistSummary={checklistSummaries[job.id] ?? null} />
+                      checklistSummary={checklistSummaries[job.id] ?? null}
+                      productionServiceTypes={allProductionServiceTypes} />
                   );
                 })}
               </div>
@@ -5166,7 +5168,8 @@ export default function Jobs() {
                         onGoToInvoices={() => navigate("/invoices")}
                         generatingLinkId={generatingLinkId}
                         onSmartEstimate={j => setGcWizardJob(j)}
-                        checklistSummary={checklistSummaries[job.id] ?? null} />
+                        checklistSummary={checklistSummaries[job.id] ?? null}
+                        productionServiceTypes={allProductionServiceTypes} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
@@ -5213,7 +5216,8 @@ export default function Jobs() {
                         onSmartEstimate={j => setGcWizardJob(j)}
                         onArchiveJob={handleArchiveJob}
                         subsSettled={!jobsWithSubExpenses.has(job.id) || outstandingBalanceMap.get(job.id) === false}
-                        checklistSummary={checklistSummaries[job.id] ?? null} />
+                        checklistSummary={checklistSummaries[job.id] ?? null}
+                        productionServiceTypes={allProductionServiceTypes} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">

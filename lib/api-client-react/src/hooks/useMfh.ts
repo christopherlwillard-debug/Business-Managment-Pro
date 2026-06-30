@@ -553,23 +553,27 @@ export function usePatchKnowledgeRecord() {
 
 export interface ProductionServiceType {
   id: number;
+  businessId?: number | null;
   name: string;
   sortOrder: number;
   active: boolean;
   createdAt: string;
 }
 
-export function useListProductionServiceTypes() {
+export function useListProductionServiceTypes(businessId?: number | null) {
   return useQuery({
-    queryKey: ["/api/production-service-types"],
-    queryFn: () => customFetch<ProductionServiceType[]>("/api/production-service-types", { method: "GET" }),
+    queryKey: ["/api/production-service-types", businessId ?? null],
+    queryFn: () => customFetch<ProductionServiceType[]>(
+      `/api/production-service-types${businessId ? `?businessId=${businessId}` : ""}`,
+      { method: "GET" }
+    ),
   });
 }
 
 export function useCreateProductionServiceType() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; sortOrder?: number }) =>
+    mutationFn: (data: { name: string; sortOrder?: number; businessId?: number | null }) =>
       customFetch<ProductionServiceType>("/api/production-service-types", {
         method: "POST",
         body: JSON.stringify(data),
