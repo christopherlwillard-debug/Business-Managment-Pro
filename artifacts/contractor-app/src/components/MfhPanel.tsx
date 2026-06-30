@@ -387,12 +387,16 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
                                 className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold disabled:opacity-40">Add Model</button>
                             </div>
                           </div>
-                        ) : (
+                        ) : mfg.active ? (
                           <button
                             onClick={() => { setNewModelForm({ manufacturerId: mfg.id, active: true, defaultAddonKeys: [] }); setActiveMfgId(mfg.id); }}
                             className="w-full flex items-center gap-1.5 px-4 py-2 pl-10 text-xs text-muted-foreground hover:text-amber-600 hover:bg-amber-50/30 transition-colors border-t border-dashed border-border">
                             <Plus className="w-3 h-3" /> Add model
                           </button>
+                        ) : (
+                          <p className="w-full px-4 py-2 pl-10 text-xs text-muted-foreground/50 italic border-t border-dashed border-border">
+                            Reactivate this builder to add new models.
+                          </p>
                         )}
                       </div>
                     )}

@@ -185,6 +185,9 @@ mfhLibraryRouter.post("/models", async (req, res) => {
     const { manufacturerId, name, constructionTypeId, benchmarkId, checklistTemplateId, defaultAddonKeys, basePrice, notes, active, introducedYear, discontinuedYear } = req.body;
     if (!manufacturerId || !name?.trim() || !constructionTypeId) return res.status(400).json({ error: "manufacturerId, name, constructionTypeId required" });
     const mfgId = parseInt(manufacturerId);
+    const [mfg] = await db.select({ active: mfhManufacturersTable.active }).from(mfhManufacturersTable).where(eq(mfhManufacturersTable.id, mfgId)).limit(1);
+    if (!mfg) return res.status(404).json({ error: "Builder not found" });
+    if (!mfg.active) return res.status(409).json({ error: "Cannot add models to an inactive builder. Reactivate the builder first." });
     const dup = await db.select({ id: mfhModelsTable.id }).from(mfhModelsTable)
       .where(and(eq(mfhModelsTable.manufacturerId, mfgId), ilike(mfhModelsTable.name, name.trim()))).limit(1);
     if (dup.length > 0) return res.status(409).json({ error: `Model "${name.trim()}" already exists under this builder` });
