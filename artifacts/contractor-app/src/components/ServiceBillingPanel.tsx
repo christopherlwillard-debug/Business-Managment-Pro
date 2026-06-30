@@ -68,6 +68,8 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
   const [internalLaborRate, setInternalLaborRate] = useState<string>(existing?.internalLaborRate != null ? String(existing.internalLaborRate) : "");
   const [fuelEstimate, setFuelEstimate] = useState<string>(existing?.fuelEstimate != null ? String(existing.fuelEstimate) : "");
   const [showInternal, setShowInternal] = useState(false);
+  // Default reimbursable flag for newly added parts, seeded from the client's profile rule.
+  const [partsDefaultReimbursable, setPartsDefaultReimbursable] = useState(true);
 
   // Auto-load the client's default/active billing profile into a fresh worksheet.
   const autoApplied = useRef(false);
@@ -91,6 +93,7 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
     setProfileId(p.id);
     setProfileName(p.name);
     setTechCount(p.defaultTechCount);
+    setPartsDefaultReimbursable(p.partsReimbursable);
     setSnapshot({
       repairRate1Tech: p.repairRate1Tech ?? null,
       repairRate2Tech: p.repairRate2Tech ?? null,
@@ -140,7 +143,7 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
   const marginPct = grandTotal > 0 ? (estGrossProfit / grandTotal) * 100 : 0;
 
   function addPart() {
-    setParts(prev => [...prev, { description: "", quantity: 1, unitCost: 0, reimbursable: true }]);
+    setParts(prev => [...prev, { description: "", quantity: 1, unitCost: 0, reimbursable: partsDefaultReimbursable }]);
   }
   function updatePart(i: number, patch: Partial<ServiceBillingPart>) {
     setParts(prev => prev.map((p, idx) => idx === i ? { ...p, ...patch } : p));
@@ -149,26 +152,47 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
     setParts(prev => prev.filter((_, idx) => idx !== i));
   }
 
+  const payload: ServiceBilling = useMemo(() => ({
+    profileId,
+    profileName,
+    techCount,
+    repairHours: toNum(repairHours),
+    driveHours: toNum(driveHours),
+    mileage: toNum(mileage),
+    parts: parts.map(p => ({
+      description: p.description,
+      quantity: toNum(p.quantity),
+      unitCost: toNum(p.unitCost),
+      reimbursable: p.reimbursable,
+    })),
+    rateSnapshot: snapshot,
+    internalLaborRate: internalLaborRate === "" ? null : toNum(internalLaborRate),
+    fuelEstimate: fuelEstimate === "" ? null : toNum(fuelEstimate),
+  }), [profileId, profileName, techCount, repairHours, driveHours, mileage, parts, snapshot, internalLaborRate, fuelEstimate]);
+
+  // ── Debounced autosave: persist worksheet state to the job on change ──
+  const lastSaved = useRef<string>(JSON.stringify(existing ?? null));
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  useEffect(() => {
+    const serialized = JSON.stringify(payload);
+    if (serialized === lastSaved.current) return;
+    const t = setTimeout(async () => {
+      setSaveState("saving");
+      try {
+        await updateJob.mutateAsync({ id: job.id, data: { serviceBilling: payload } });
+        lastSaved.current = serialized;
+        setSaveState("saved");
+      } catch {
+        setSaveState("idle");
+      }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [payload, job.id, updateJob]);
+
   async function handleSave() {
-    const payload: ServiceBilling = {
-      profileId,
-      profileName,
-      techCount,
-      repairHours: toNum(repairHours),
-      driveHours: toNum(driveHours),
-      mileage: toNum(mileage),
-      parts: parts.map(p => ({
-        description: p.description,
-        quantity: toNum(p.quantity),
-        unitCost: toNum(p.unitCost),
-        reimbursable: p.reimbursable,
-      })),
-      rateSnapshot: snapshot,
-      internalLaborRate: internalLaborRate === "" ? null : toNum(internalLaborRate),
-      fuelEstimate: fuelEstimate === "" ? null : toNum(fuelEstimate),
-    };
     try {
       await updateJob.mutateAsync({ id: job.id, data: { serviceBilling: payload } });
+      lastSaved.current = JSON.stringify(payload);
       qc.invalidateQueries({ queryKey: ["/api/jobs"] });
       toast({ title: "Billing worksheet saved" });
       onClose();
@@ -375,13 +399,16 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-border p-4 flex-shrink-0">
+        <div className="border-t border-border p-4 flex-shrink-0 space-y-2">
+          <p className="text-[10px] text-center text-muted-foreground h-3">
+            {saveState === "saving" ? "Saving changes…" : saveState === "saved" ? "All changes saved automatically" : "\u00A0"}
+          </p>
           <button
             onClick={handleSave}
             disabled={updateJob.isPending}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-500 text-white text-sm font-semibold hover:bg-blue-600 disabled:opacity-50 transition-colors"
           >
-            <Save className="w-4 h-4" /> {updateJob.isPending ? "Saving…" : "Save Worksheet"}
+            <Save className="w-4 h-4" /> {updateJob.isPending ? "Saving…" : "Save & Close"}
           </button>
         </div>
       </div>
