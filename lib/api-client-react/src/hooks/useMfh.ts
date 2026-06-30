@@ -82,6 +82,7 @@ export interface MfhPanelData {
   constructionTypes: MfhConstructionType[];
   benchmarks: Array<{ id: number; jobType: string; estimatedHours?: string | null }>;
   templates: Array<{ id: number; name: string }>;
+  clientOverrides: Record<number, string>;
 }
 
 export interface MfhLibraryData {
@@ -156,10 +157,13 @@ export function useCreateMfhConstructionType() {
   });
 }
 
-export function useMfhPanelData(manufacturerId: number | null) {
+export function useMfhPanelData(manufacturerId: number | null, clientId?: number | null) {
   return useQuery({
-    queryKey: ["/api/mfh/panel-data", manufacturerId],
-    queryFn: () => customFetch<MfhPanelData>(`/api/mfh/panel-data?manufacturerId=${manufacturerId}`, { method: "GET" }),
+    queryKey: ["/api/mfh/panel-data", manufacturerId, clientId],
+    queryFn: () => {
+      const url = `/api/mfh/panel-data?manufacturerId=${manufacturerId}${clientId ? `&clientId=${clientId}` : ""}`;
+      return customFetch<MfhPanelData>(url, { method: "GET" });
+    },
     enabled: manufacturerId != null,
   });
 }
@@ -268,7 +272,7 @@ export function useDeleteMfhGuideAddon() {
 export function useApplyMfhPricing() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { jobId: number; manufacturerId: number; modelId: number; modelYear?: number | null; guideId: number; selectedAddonKeys: string[]; travelDays?: number }) =>
+    mutationFn: (data: { jobId: number; manufacturerId: number; modelId: number; modelYear?: number | null; guideId?: number | null; selectedAddonKeys?: string[]; travelDays?: number }) =>
       customFetch<{ ok: boolean; estimateId: number | null; mfhTotal: number }>(
         `/api/mfh/jobs/${data.jobId}/apply`,
         { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }
@@ -285,7 +289,7 @@ export function useApplyMfhPricing() {
 export function useUpdateMfhPricing() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { jobId: number; guideId: number; modelId: number; selectedAddonKeys: string[]; travelDays?: number }) =>
+    mutationFn: (data: { jobId: number; guideId?: number | null; modelId: number; selectedAddonKeys?: string[]; travelDays?: number }) =>
       customFetch<{ ok: boolean }>(
         `/api/mfh/jobs/${data.jobId}/update-pricing`,
         { method: "PATCH", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }
@@ -300,7 +304,7 @@ export function useUpdateMfhPricing() {
 export function useResetMfhPricing() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { jobId: number; guideId: number; modelId: number; selectedAddonKeys: string[]; travelDays?: number }) =>
+    mutationFn: (data: { jobId: number; guideId?: number | null; modelId: number; selectedAddonKeys?: string[]; travelDays?: number }) =>
       customFetch<{ ok: boolean }>(
         `/api/mfh/jobs/${data.jobId}/reset`,
         { method: "PATCH", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }

@@ -606,6 +606,7 @@ function HomeLibraryModal({ onClose }: { onClose: () => void }) {
 // ─── MFH Panel (on job card) ──────────────────────────────────────────────────
 export interface MfhJobData {
   id: number;
+  clientId?: number | null;
   jobType?: string | null;
   mfhManufacturerId?: number | null;
   mfhModelId?: number | null;
@@ -646,7 +647,7 @@ export function MfhPanel({
   const [confirmReset, setConfirmReset] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  const { data: panelData, isLoading } = useMfhPanelData(manufacturerId);
+  const { data: panelData, isLoading } = useMfhPanelData(manufacturerId, job.clientId);
   const applyMfh = useApplyMfhPricing();
   const updatePricing = useUpdateMfhPricing();
   const resetMfh = useResetMfhPricing();
@@ -695,8 +696,15 @@ export function MfhPanel({
   const activeAddons = guideAddons.filter(a => a.guideId === guideId);
   const dealerGuide = guides.find(g => g.isDealerGuide);
 
+  const clientOverrides = panelData?.clientOverrides ?? {};
   const quotedPrice = modelId && guideId ? parseFloat(guideItems.find(i => i.guideId === guideId && i.modelId === modelId)?.basePrice ?? "0") : null;
   const dealerPrice = modelId && dealerGuide ? parseFloat(guideItems.find(i => i.guideId === dealerGuide.id && i.modelId === modelId)?.basePrice ?? "0") : null;
+
+  // Baseline effective price: client override → model base_price
+  const baselinePrice = modelId
+    ? (clientOverrides[modelId] ? parseFloat(clientOverrides[modelId]) : (selectedModel?.basePrice ? parseFloat(selectedModel.basePrice) : null))
+    : null;
+  const hasClientOverride = modelId != null && clientOverrides[modelId] != null;
 
   function addonTotal() {
     return activeAddons.filter(a => selectedAddonKeys.includes(a.addonKey))
@@ -709,6 +717,9 @@ export function MfhPanel({
   const profit = totalQuoted != null && totalDealer != null ? totalQuoted - totalDealer : null;
   const hasTravelAddon = activeAddons.some(a => selectedAddonKeys.includes(a.addonKey) && a.isPerDay);
 
+  // Apply is enabled with guide OR with baseline price
+  const canApply = manufacturerId != null && modelId != null && (guideId != null ? quotedPrice != null : baselinePrice != null);
+
   // Spec-sheet values (from job snapshot when in spec mode)
   const snapDealerPrice = j.mfhDealerPrice ? parseFloat(j.mfhDealerPrice) : null;
   const snapQuotedPrice = j.mfhQuotedPrice ? parseFloat(j.mfhQuotedPrice) : null;
@@ -720,37 +731,40 @@ export function MfhPanel({
   }
 
   async function handleApply() {
-    if (!manufacturerId || !modelId || !guideId) return;
+    if (!canApply || !manufacturerId || !modelId) return;
     await applyMfh.mutateAsync({
       jobId: job.id, manufacturerId, modelId,
       modelYear: modelYear ? parseInt(modelYear) : null,
-      guideId, selectedAddonKeys,
-      travelDays: hasTravelAddon ? parseInt(travelDays) || 1 : undefined,
+      guideId: guideId ?? undefined,
+      selectedAddonKeys: guideId ? selectedAddonKeys : [],
+      travelDays: guideId && hasTravelAddon ? parseInt(travelDays) || 1 : undefined,
     });
     qc.invalidateQueries({ queryKey: ["/api/jobs"] });
     setMode("spec");
-    showFeedback("✓ Applied — estimate & checklist updated!");
+    showFeedback(guideId ? "✓ Applied — estimate & checklist updated!" : "✓ Applied baseline pricing — estimate updated!");
   }
 
   async function handleUpdatePricing() {
-    if (!guideId || !modelId) return;
+    if (!modelId) return;
     await updatePricing.mutateAsync({
-      jobId: job.id, guideId, modelId, selectedAddonKeys,
-      travelDays: hasTravelAddon ? parseInt(travelDays) || 1 : undefined,
+      jobId: job.id, guideId: guideId ?? undefined, modelId,
+      selectedAddonKeys: guideId ? selectedAddonKeys : [],
+      travelDays: guideId && hasTravelAddon ? parseInt(travelDays) || 1 : undefined,
     });
     qc.invalidateQueries({ queryKey: ["/api/jobs"] });
-    showFeedback("✓ MFH line items updated!");
+    showFeedback(guideId ? "✓ MFH line items updated!" : "✓ Baseline price refreshed!");
   }
 
   async function handleReset() {
-    if (!guideId || !modelId) return;
+    if (!modelId) return;
     await resetMfh.mutateAsync({
-      jobId: job.id, guideId, modelId, selectedAddonKeys,
-      travelDays: hasTravelAddon ? parseInt(travelDays) || 1 : undefined,
+      jobId: job.id, guideId: guideId ?? undefined, modelId,
+      selectedAddonKeys: guideId ? selectedAddonKeys : [],
+      travelDays: guideId && hasTravelAddon ? parseInt(travelDays) || 1 : undefined,
     });
     qc.invalidateQueries({ queryKey: ["/api/jobs"] });
     setConfirmReset(false);
-    showFeedback("✓ Reset to guide pricing!");
+    showFeedback(guideId ? "✓ Reset to guide pricing!" : "✓ Reset to baseline pricing!");
   }
 
   return (
@@ -940,7 +954,7 @@ export function MfhPanel({
                 </div>
               )}
 
-              {/* Pricing side-by-side */}
+              {/* Pricing side-by-side (guide path) */}
               {modelId && guideId && quotedPrice != null && (
                 <div className="rounded-xl border border-border bg-muted/20 p-3 grid grid-cols-3 gap-2 text-center">
                   <div>
@@ -955,6 +969,21 @@ export function MfhPanel({
                     <p className="text-[10px] text-muted-foreground flex items-center justify-center gap-0.5"><TrendingUp className="w-2.5 h-2.5" />Profit</p>
                     <p className={`font-mono font-bold text-sm ${profit != null && profit >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmt(profit, true)}</p>
                   </div>
+                </div>
+              )}
+
+              {/* Baseline price (no guide) */}
+              {modelId && !guideId && baselinePrice != null && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-amber-700">
+                      {hasClientOverride ? "Client Price" : "Base Price"}
+                    </p>
+                    {hasClientOverride && (
+                      <p className="text-[10px] text-amber-500 mt-0.5">Client-specific rate applied</p>
+                    )}
+                  </div>
+                  <span className="font-mono text-lg font-bold text-amber-700">{fmt(baselinePrice)}</span>
                 </div>
               )}
 
@@ -1005,13 +1034,13 @@ export function MfhPanel({
           <div className="px-4 py-3 border-t border-border space-y-2 flex-shrink-0">
             {mode === "spec" && (
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={handleUpdatePricing} disabled={!guideId || !modelId || updatePricing.isPending}
+                <button onClick={handleUpdatePricing} disabled={!modelId || updatePricing.isPending}
                   className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">
                   <RefreshCw className="w-3.5 h-3.5" />{updatePricing.isPending ? "Updating…" : "Update Pricing"}
                 </button>
-                <button onClick={() => setConfirmReset(true)} disabled={!guideId || !modelId}
+                <button onClick={() => setConfirmReset(true)} disabled={!modelId}
                   className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold border border-orange-300 text-orange-600 hover:bg-orange-50 disabled:opacity-50 transition-colors">
-                  <RotateCcw className="w-3.5 h-3.5" /> Reset to Guide
+                  <RotateCcw className="w-3.5 h-3.5" /> {j.mfhGuideName ? "Reset to Guide" : "Refresh Baseline"}
                 </button>
                 {onViewEstimates && (
                   <button onClick={() => { onClose(); onViewEstimates(); }}
@@ -1026,10 +1055,10 @@ export function MfhPanel({
               </div>
             )}
             {mode === "select" && (
-              <button onClick={handleApply} disabled={!manufacturerId || !modelId || !guideId || applyMfh.isPending}
+              <button onClick={handleApply} disabled={!canApply || applyMfh.isPending}
                 className="w-full py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
                 <Home className="w-4 h-4" />
-                {applyMfh.isPending ? "Applying…" : "Apply"}
+                {applyMfh.isPending ? "Applying…" : guideId ? "Apply" : "Apply Baseline Pricing"}
               </button>
             )}
           </div>

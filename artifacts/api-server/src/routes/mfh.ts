@@ -69,14 +69,21 @@ async function ensureSeeded() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+type MfhLine = { category: string; description: string; quantity: number; unit: string | null; unitCost: number; generatedBy: string };
+
+// Baseline path — single estimate line, no guide/addons dependency
+function buildMfhLinesSync(modelName: string, ctName: string, effectivePrice: number): MfhLine[] {
+  return [{ category: "Labor", description: `${modelName} (${ctName}) Installation`, quantity: 1, unit: "LOT", unitCost: effectivePrice, generatedBy: "MFH" }];
+}
+
 async function buildMfhLines(
   guideId: number, modelId: number,
   selectedKeys: string[], travelDays: number,
   modelName: string, ctName: string,
   addons: { addonKey: string; label: string; price: string; isPerDay: boolean }[],
   basePrice: number,
-) {
-  const lines: Array<{ category: string; description: string; quantity: number; unit: string | null; unitCost: number; generatedBy: string }> = [
+): Promise<MfhLine[]> {
+  const lines: MfhLine[] = [
     { category: "Labor", description: `${modelName} (${ctName}) Trim-Out`, quantity: 1, unit: "LOT", unitCost: basePrice, generatedBy: "MFH" },
   ];
   for (const addon of addons) {
@@ -352,7 +359,24 @@ mfhLibraryRouter.get("/panel-data", async (req, res) => {
         db.select().from(mfhGuideAddonsTable).where(inArray(mfhGuideAddonsTable.guideId, guideIds)).orderBy(asc(mfhGuideAddonsTable.createdAt)) as Promise<typeof guideAddons>,
       ]);
     }
-    res.json({ models, guides, guideItems, guideAddons, constructionTypes, benchmarks, templates });
+    // If a clientId is provided, fetch client pricing overrides for all models (modelId → price)
+    let clientOverrides: Record<number, string> = {};
+    const clientIdParam = req.query.clientId;
+    if (clientIdParam) {
+      const cid = parseInt(clientIdParam as string);
+      if (!isNaN(cid)) {
+        const modelIds = models.map(m => m.id);
+        if (modelIds.length > 0) {
+          const overrideRows = await db.select({
+            modelId: mfhClientPricingTable.modelId,
+            price: mfhClientPricingTable.price,
+          }).from(mfhClientPricingTable)
+            .where(and(inArray(mfhClientPricingTable.modelId, modelIds), eq(mfhClientPricingTable.clientId, cid)));
+          clientOverrides = Object.fromEntries(overrideRows.map(r => [r.modelId, r.price]));
+        }
+      }
+    }
+    res.json({ models, guides, guideItems, guideAddons, constructionTypes, benchmarks, templates, clientOverrides });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 
@@ -393,61 +417,73 @@ mfhJobRouter.get("/jobs/:id", async (req, res) => {
 });
 
 // POST /api/mfh/jobs/:id/apply — apply MFH (benchmark + checklist + estimate + job update)
+// guideId is optional: if omitted, uses model base_price → mfh_client_pricing override (baseline path)
 mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
     const { manufacturerId, modelId, modelYear, guideId, selectedAddonKeys, travelDays } = req.body;
-    if (!manufacturerId || !modelId || !guideId) return res.status(400).json({ error: "manufacturerId, modelId, guideId required" });
+    if (!manufacturerId || !modelId) return res.status(400).json({ error: "manufacturerId, modelId required" });
 
-    // Fetch model + guide data (outside tx — read only)
+    // Fetch model data (always needed)
     const [modelRow] = await db.select({
       id: mfhModelsTable.id, name: mfhModelsTable.name,
       constructionTypeId: mfhModelsTable.constructionTypeId, constructionTypeName: mfhConstructionTypesTable.name,
       benchmarkId: mfhModelsTable.benchmarkId, checklistTemplateId: mfhModelsTable.checklistTemplateId,
+      basePrice: mfhModelsTable.basePrice, manufacturerId: mfhModelsTable.manufacturerId,
     }).from(mfhModelsTable)
       .leftJoin(mfhConstructionTypesTable, eq(mfhModelsTable.constructionTypeId, mfhConstructionTypesTable.id))
       .where(eq(mfhModelsTable.id, parseInt(modelId)));
+    if (!modelRow) return res.status(404).json({ error: "Model not found" });
 
-    const [guideRow] = await db.select().from(mfhPricingGuidesTable).where(eq(mfhPricingGuidesTable.id, parseInt(guideId)));
-    if (!modelRow || !guideRow) return res.status(404).json({ error: "Model or guide not found" });
-
-    const [guideItem] = await db.select().from(mfhGuideItemsTable)
-      .where(and(eq(mfhGuideItemsTable.guideId, parseInt(guideId)), eq(mfhGuideItemsTable.modelId, parseInt(modelId))));
-    const basePrice = parseFloat(guideItem?.basePrice ?? "0");
-
-    // Get dealer price snapshot
-    const dealerPrice = await getDealerPrice(parseInt(manufacturerId), parseInt(modelId), parseInt(guideId), basePrice);
-
-    const addons = await db.select().from(mfhGuideAddonsTable).where(eq(mfhGuideAddonsTable.guideId, parseInt(guideId)));
-    const selectedKeys: string[] = Array.isArray(selectedAddonKeys) ? selectedAddonKeys : [];
-    const days = parseInt(travelDays ?? "1") || 1;
     const ctName = modelRow.constructionTypeName ?? "Trim-Out";
-    const mfhLines = await buildMfhLines(parseInt(guideId), parseInt(modelId), selectedKeys, days, modelRow.name, ctName, addons, basePrice);
+    let mfhLines: MfhLine[];
+    let quotedPrice: number;
+    let dealerPrice: number;
+    let guideName: string | null = null;
+
+    if (guideId) {
+      // ── Guide-based path (existing behavior) ──
+      const [guideRow] = await db.select().from(mfhPricingGuidesTable).where(eq(mfhPricingGuidesTable.id, parseInt(guideId)));
+      if (!guideRow) return res.status(404).json({ error: "Guide not found" });
+      const [guideItem] = await db.select().from(mfhGuideItemsTable)
+        .where(and(eq(mfhGuideItemsTable.guideId, parseInt(guideId)), eq(mfhGuideItemsTable.modelId, parseInt(modelId))));
+      quotedPrice = parseFloat(guideItem?.basePrice ?? "0");
+      dealerPrice = await getDealerPrice(parseInt(manufacturerId), parseInt(modelId), parseInt(guideId), quotedPrice);
+      const addons = await db.select().from(mfhGuideAddonsTable).where(eq(mfhGuideAddonsTable.guideId, parseInt(guideId)));
+      const selectedKeys: string[] = Array.isArray(selectedAddonKeys) ? selectedAddonKeys : [];
+      const days = parseInt(travelDays ?? "1") || 1;
+      mfhLines = await buildMfhLines(parseInt(guideId), parseInt(modelId), selectedKeys, days, modelRow.name, ctName, addons, quotedPrice);
+      guideName = guideRow.name;
+    } else {
+      // ── Baseline path: model.base_price → client pricing override ──
+      const [jobRow] = await db.select({ clientId: jobsTable.clientId }).from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+      let effectivePrice = parseFloat(modelRow.basePrice ?? "0");
+      if (jobRow?.clientId) {
+        const [override] = await db.select().from(mfhClientPricingTable)
+          .where(and(eq(mfhClientPricingTable.modelId, modelRow.id), eq(mfhClientPricingTable.clientId, jobRow.clientId))).limit(1);
+        if (override) effectivePrice = parseFloat(override.price);
+      }
+      quotedPrice = effectivePrice;
+      dealerPrice = effectivePrice;
+      mfhLines = buildMfhLinesSync(modelRow.name, ctName, effectivePrice);
+    }
+
     const mfhTotal = mfhLines.reduce((s, l) => s + l.quantity * l.unitCost, 0);
 
     const result = await db.transaction(async (tx) => {
       // Update job — spec requires Job Type to always be "Manufactured Home".
-      // The model's linked benchmark is surfaced in the panel (panel-data); it does
-      // not override the job type.
       await tx.update(jobsTable).set({
         mfhManufacturerId: parseInt(manufacturerId),
         mfhModelId: parseInt(modelId),
         mfhModelYear: modelYear ? parseInt(modelYear) : null,
         mfhDealerPrice: String(dealerPrice),
-        mfhQuotedPrice: String(basePrice),
-        mfhGuideName: guideRow.name,
-        mfhSelectedAddons: selectedKeys,
-        mfhTravelDays: days,
+        mfhQuotedPrice: String(quotedPrice),
+        mfhGuideName: guideName,
+        mfhSelectedAddons: Array.isArray(selectedAddonKeys) ? selectedAddonKeys : [],
+        mfhTravelDays: guideId ? (parseInt(travelDays ?? "1") || 1) : null,
         jobType: "Manufactured Home",
       } as Record<string, unknown>).where(eq(jobsTable.id, jobId));
-
-      // Note: applying a model intentionally does NOT mutate job_type_benchmarks.
-      // Benchmarks are generic, business-level expectations for a job type (used
-      // for reporting/planning) and are owner-managed. The model's defaults
-      // (pricing, checklist, construction type, notes, add-ons) are what get
-      // applied to the job here. The model's linked benchmark is surfaced in the
-      // panel for reference only.
 
       // Find or create estimate
       const existingEstimates = await tx.select().from(estimatesTable).where(eq(estimatesTable.jobId, jobId)).limit(1);
@@ -464,8 +500,8 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
           subtotal: String(newTotal),
           total: String(newTotal),
           mfhDealerPrice: String(dealerPrice),
-          mfhQuotedPrice: String(basePrice),
-          mfhGuideName: guideRow.name,
+          mfhQuotedPrice: String(quotedPrice),
+          mfhGuideName: guideName,
           jobType: "Manufactured Home",
         } as Record<string, unknown>).where(eq(estimatesTable.id, existing.id));
         estimateId = existing.id;
@@ -482,8 +518,8 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
           total: String(mfhTotal),
           status: "draft",
           mfhDealerPrice: String(dealerPrice),
-          mfhQuotedPrice: String(basePrice),
-          mfhGuideName: guideRow.name,
+          mfhQuotedPrice: String(quotedPrice),
+          mfhGuideName: guideName,
         } as Record<string, unknown>).returning();
         estimateId = newEst.id;
       }
@@ -583,24 +619,73 @@ async function regenerateMfhPricing(jobId: number, body: { guideId: string | num
   });
 }
 
+// Baseline refresh: re-derive price from model.base_price → client override and rebuild estimate lines
+async function regenerateBaselinePricing(jobId: number, modelId: number) {
+  const [modelRow] = await db.select({
+    id: mfhModelsTable.id, name: mfhModelsTable.name,
+    constructionTypeName: mfhConstructionTypesTable.name,
+    basePrice: mfhModelsTable.basePrice,
+  }).from(mfhModelsTable)
+    .leftJoin(mfhConstructionTypesTable, eq(mfhModelsTable.constructionTypeId, mfhConstructionTypesTable.id))
+    .where(eq(mfhModelsTable.id, modelId));
+  if (!modelRow) return;
+
+  const [jobRow] = await db.select({ clientId: jobsTable.clientId }).from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+  let effectivePrice = parseFloat(modelRow.basePrice ?? "0");
+  if (jobRow?.clientId) {
+    const [override] = await db.select().from(mfhClientPricingTable)
+      .where(and(eq(mfhClientPricingTable.modelId, modelId), eq(mfhClientPricingTable.clientId, jobRow.clientId))).limit(1);
+    if (override) effectivePrice = parseFloat(override.price);
+  }
+
+  const ctName = modelRow.constructionTypeName ?? "Trim-Out";
+  const newMfhLines = buildMfhLinesSync(modelRow.name, ctName, effectivePrice);
+
+  await db.transaction(async (tx) => {
+    const [estimate] = await tx.select().from(estimatesTable).where(eq(estimatesTable.jobId, jobId)).limit(1);
+    if (estimate) {
+      const existing: unknown[] = Array.isArray(estimate.lineItems) ? (estimate.lineItems as unknown[]) : [];
+      const nonMfhLines = existing.filter((l: unknown) => (l as Record<string, unknown>).generatedBy !== "MFH");
+      const merged = [...newMfhLines, ...nonMfhLines];
+      const newTotal = merged.reduce((s: number, l) => s + (parseFloat(String((l as Record<string, unknown>).quantity ?? 1)) * parseFloat(String((l as Record<string, unknown>).unitCost ?? 0))), 0);
+      await tx.update(estimatesTable).set({
+        lineItems: merged, subtotal: String(newTotal), total: String(newTotal),
+        mfhDealerPrice: String(effectivePrice), mfhQuotedPrice: String(effectivePrice), mfhGuideName: null,
+      } as Record<string, unknown>).where(eq(estimatesTable.id, estimate.id));
+    }
+    await tx.update(jobsTable).set({
+      mfhDealerPrice: String(effectivePrice), mfhQuotedPrice: String(effectivePrice), mfhGuideName: null,
+    } as Record<string, unknown>).where(eq(jobsTable.id, jobId));
+  });
+}
+
 // PATCH /api/mfh/jobs/:id/update-pricing — refresh only MFH-tagged lines (no confirmation needed)
+// If guideId is omitted, uses baseline path (model.base_price → client override)
 mfhJobRouter.patch("/jobs/:id/update-pricing", async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
     const { guideId, modelId } = req.body;
-    if (!guideId || !modelId) return res.status(400).json({ error: "guideId and modelId required" });
-    await regenerateMfhPricing(jobId, req.body);
+    if (!modelId) return res.status(400).json({ error: "modelId required" });
+    if (guideId) {
+      await regenerateMfhPricing(jobId, req.body);
+    } else {
+      await regenerateBaselinePricing(jobId, parseInt(String(modelId)));
+    }
     res.json({ ok: true });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed to update pricing" }); }
 });
 
-// PATCH /api/mfh/jobs/:id/reset — same as update-pricing; used by "Reset to Guide" (confirmation shown by frontend)
+// PATCH /api/mfh/jobs/:id/reset — same as update-pricing; used by "Reset to Guide/Baseline" (confirmation shown by frontend)
 mfhJobRouter.patch("/jobs/:id/reset", async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
     const { guideId, modelId } = req.body;
-    if (!guideId || !modelId) return res.status(400).json({ error: "guideId and modelId required" });
-    await regenerateMfhPricing(jobId, req.body);
+    if (!modelId) return res.status(400).json({ error: "modelId required" });
+    if (guideId) {
+      await regenerateMfhPricing(jobId, req.body);
+    } else {
+      await regenerateBaselinePricing(jobId, parseInt(String(modelId)));
+    }
     res.json({ ok: true });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed to reset" }); }
 });
@@ -628,24 +713,42 @@ mfhLibraryRouter.get("/knowledge-base", async (_req, res) => {
       .leftJoin(mfhConstructionTypesTable, eq(mfhModelsTable.constructionTypeId, mfhConstructionTypesTable.id))
       .orderBy(asc(mfhManufacturersTable.name), asc(mfhModelsTable.name));
 
-    // Stats per model from completed jobs
-    const statsRows = await db.select({
-      modelId: jobsTable.mfhModelId,
-      jobCount: sql<number>`COUNT(DISTINCT ${jobsTable.id})`,
-      avgQuotedPrice: sql<string>`AVG(${jobsTable.mfhQuotedPrice}::numeric)`,
-      avgDealerPrice: sql<string>`AVG(${jobsTable.mfhDealerPrice}::numeric)`,
-      avgHours: sql<string>`SUM(${jobSubHoursTable.hours}::numeric) / NULLIF(COUNT(DISTINCT ${jobsTable.id}), 0)`,
-      avgInvoice: sql<string>`AVG(${invoicesTable.total}::numeric)`,
-    }).from(jobsTable)
-      .leftJoin(jobSubHoursTable, eq(jobSubHoursTable.jobId, jobsTable.id))
-      .leftJoin(invoicesTable, and(eq(invoicesTable.jobId, jobsTable.id), sql`${invoicesTable.status} NOT IN ('draft', 'void')`))
-      .where(and(
-        sql`${jobsTable.mfhModelId} IS NOT NULL`,
-        sql`${jobsTable.status} IN ('completed', 'invoiced')`,
-      ))
-      .groupBy(jobsTable.mfhModelId);
-
-    const statsMap = new Map(statsRows.map(s => [s.modelId, s]));
+    // Stats per model — 3 separate queries to avoid row multiplication from simultaneous joins
+    const completedWhere = and(
+      sql`${jobsTable.mfhModelId} IS NOT NULL`,
+      sql`${jobsTable.status} IN ('completed', 'invoiced')`,
+    );
+    const [baseRows, hoursRows, invoiceRows] = await Promise.all([
+      // Q1: job count + avg quoted/dealer price (no join needed)
+      db.select({
+        modelId: jobsTable.mfhModelId,
+        jobCount: sql<number>`COUNT(*)`,
+        avgQuotedPrice: sql<string>`AVG(${jobsTable.mfhQuotedPrice}::numeric)`,
+        avgDealerPrice: sql<string>`AVG(${jobsTable.mfhDealerPrice}::numeric)`,
+      }).from(jobsTable).where(completedWhere).groupBy(jobsTable.mfhModelId),
+      // Q2: avg hours (join only job_sub_hours)
+      db.select({
+        modelId: jobsTable.mfhModelId,
+        avgHours: sql<string>`SUM(${jobSubHoursTable.hours}::numeric) / NULLIF(COUNT(DISTINCT ${jobsTable.id}), 0)`,
+      }).from(jobsTable)
+        .innerJoin(jobSubHoursTable, eq(jobSubHoursTable.jobId, jobsTable.id))
+        .where(completedWhere).groupBy(jobsTable.mfhModelId),
+      // Q3: avg invoice (sum per job first to avoid multiplication, then avg across jobs)
+      db.execute(sql`
+        SELECT j.mfh_model_id AS "modelId", AVG(inv.total) AS "avgInvoice"
+        FROM jobs j
+        JOIN (
+          SELECT job_id, SUM(total::numeric) AS total
+          FROM invoices WHERE status NOT IN ('draft','void')
+          GROUP BY job_id
+        ) inv ON inv.job_id = j.id
+        WHERE j.mfh_model_id IS NOT NULL AND j.status IN ('completed','invoiced')
+        GROUP BY j.mfh_model_id
+      `),
+    ]);
+    const hoursMap = new Map(hoursRows.map(r => [r.modelId, r.avgHours]));
+    const invoiceMap = new Map((invoiceRows.rows as Array<{ modelId: number; avgInvoice: string }>).map(r => [r.modelId, r.avgInvoice]));
+    const statsMap = new Map(baseRows.map(r => [r.modelId, r]));
 
     const result = models.map(m => {
       const s = statsMap.get(m.id);
@@ -654,8 +757,8 @@ mfhLibraryRouter.get("/knowledge-base", async (_req, res) => {
         jobCount: s ? Number(s.jobCount) : 0,
         avgQuotedPrice: s?.avgQuotedPrice ? parseFloat(s.avgQuotedPrice) : null,
         avgDealerPrice: s?.avgDealerPrice ? parseFloat(s.avgDealerPrice) : null,
-        avgHours: s?.avgHours ? parseFloat(s.avgHours) : null,
-        avgInvoice: s?.avgInvoice ? parseFloat(s.avgInvoice) : null,
+        avgHours: hoursMap.has(m.id) ? parseFloat(hoursMap.get(m.id)!) : null,
+        avgInvoice: invoiceMap.has(m.id) ? parseFloat(invoiceMap.get(m.id)!) : null,
       };
     });
 
@@ -688,20 +791,37 @@ mfhLibraryRouter.get("/knowledge-base/:modelId", async (req, res) => {
 
     if (!model) return res.status(404).json({ error: "Model not found" });
 
-    // Aggregate stats
-    const [stats] = await db.select({
-      jobCount: sql<number>`COUNT(DISTINCT ${jobsTable.id})`,
-      avgQuotedPrice: sql<string>`AVG(${jobsTable.mfhQuotedPrice}::numeric)`,
-      avgDealerPrice: sql<string>`AVG(${jobsTable.mfhDealerPrice}::numeric)`,
-      avgHours: sql<string>`SUM(${jobSubHoursTable.hours}::numeric) / NULLIF(COUNT(DISTINCT ${jobsTable.id}), 0)`,
-      avgInvoice: sql<string>`AVG(${invoicesTable.total}::numeric)`,
-    }).from(jobsTable)
-      .leftJoin(jobSubHoursTable, eq(jobSubHoursTable.jobId, jobsTable.id))
-      .leftJoin(invoicesTable, and(eq(invoicesTable.jobId, jobsTable.id), sql`${invoicesTable.status} NOT IN ('draft', 'void')`))
-      .where(and(
-        eq(jobsTable.mfhModelId, modelId),
-        sql`${jobsTable.status} IN ('completed', 'invoiced')`,
-      ));
+    // Aggregate stats — 3 separate queries to avoid row multiplication
+    const detailWhere = and(eq(jobsTable.mfhModelId, modelId), sql`${jobsTable.status} IN ('completed','invoiced')`);
+    const [[baseStats], detailHoursRows, detailInvoiceRows] = await Promise.all([
+      db.select({
+        jobCount: sql<number>`COUNT(*)`,
+        avgQuotedPrice: sql<string>`AVG(${jobsTable.mfhQuotedPrice}::numeric)`,
+        avgDealerPrice: sql<string>`AVG(${jobsTable.mfhDealerPrice}::numeric)`,
+      }).from(jobsTable).where(detailWhere),
+      db.select({
+        avgHours: sql<string>`SUM(${jobSubHoursTable.hours}::numeric) / NULLIF(COUNT(DISTINCT ${jobsTable.id}), 0)`,
+      }).from(jobsTable)
+        .innerJoin(jobSubHoursTable, eq(jobSubHoursTable.jobId, jobsTable.id))
+        .where(detailWhere),
+      db.execute(sql`
+        SELECT AVG(inv.total) AS "avgInvoice"
+        FROM jobs j
+        JOIN (
+          SELECT job_id, SUM(total::numeric) AS total
+          FROM invoices WHERE status NOT IN ('draft','void')
+          GROUP BY job_id
+        ) inv ON inv.job_id = j.id
+        WHERE j.mfh_model_id = ${modelId} AND j.status IN ('completed','invoiced')
+      `),
+    ]);
+    const stats = {
+      jobCount: baseStats?.jobCount ?? 0,
+      avgQuotedPrice: baseStats?.avgQuotedPrice ?? null,
+      avgDealerPrice: baseStats?.avgDealerPrice ?? null,
+      avgHours: detailHoursRows[0]?.avgHours ?? null,
+      avgInvoice: (detailInvoiceRows.rows[0] as { avgInvoice: string } | undefined)?.avgInvoice ?? null,
+    };
 
     // Related completed jobs
     const jobs = await db.select({
@@ -742,11 +862,11 @@ mfhLibraryRouter.get("/knowledge-base/:modelId", async (req, res) => {
     res.json({
       model: {
         ...model,
-        jobCount: Number(stats?.jobCount ?? 0),
-        avgQuotedPrice: stats?.avgQuotedPrice ? parseFloat(stats.avgQuotedPrice) : null,
-        avgDealerPrice: stats?.avgDealerPrice ? parseFloat(stats.avgDealerPrice) : null,
-        avgHours: stats?.avgHours ? parseFloat(stats.avgHours) : null,
-        avgInvoice: stats?.avgInvoice ? parseFloat(stats.avgInvoice) : null,
+        jobCount: Number(stats.jobCount ?? 0),
+        avgQuotedPrice: stats.avgQuotedPrice ? parseFloat(String(stats.avgQuotedPrice)) : null,
+        avgDealerPrice: stats.avgDealerPrice ? parseFloat(String(stats.avgDealerPrice)) : null,
+        avgHours: stats.avgHours ? parseFloat(String(stats.avgHours)) : null,
+        avgInvoice: stats.avgInvoice ? parseFloat(String(stats.avgInvoice)) : null,
       },
       jobs,
       clientPricing,
