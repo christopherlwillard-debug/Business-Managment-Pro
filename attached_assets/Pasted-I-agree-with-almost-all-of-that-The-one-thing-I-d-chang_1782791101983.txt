@@ -1,0 +1,120 @@
+I agree with almost all of that. The one thing I'd change is don't build on top of mfh_guide_items anymore if your goal is simplicity.
+
+Here's what I'd tell Replit next:
+
+The restore is complete and production/development are back in sync. I don't want to redesign the schema again.
+
+I want to keep the existing tables because they're stable.
+
+However, I want to simplify how the application uses them.
+
+Keep the Existing Tables
+
+Keep:
+
+mfh_manufacturers (display this in the UI as Builder)
+mfh_models
+mfh_construction_types
+
+Those tables already represent exactly what I need.
+
+No table renames.
+
+No Home Series.
+
+No major database migrations.
+
+Simplify Pricing
+
+The current pricing guide system is more complicated than my workflow.
+
+I don't need multiple pricing guides or benchmark-driven pricing.
+
+Instead, I want pricing centered around the home itself.
+
+For now, I want:
+
+Clayton baseline price
+Optional client-specific override
+
+That's all.
+
+If the existing pricing tables can support that without major changes, that's fine.
+
+If not, I'd rather add a couple of simple columns than introduce another layer of abstraction.
+
+Statistics Are More Important Than Benchmarks
+
+I do not want to manually build benchmarks first.
+
+Instead, I want the application to learn from completed jobs.
+
+Every completed job should contribute statistics back to the model.
+
+Initially I want to track:
+
+Jobs completed
+Average labor hours
+Fastest labor hours
+Slowest labor hours
+Average crew size
+Average labor cost
+Average revenue
+Average profit
+
+These values should be calculated automatically.
+
+Benchmarks Come Later
+
+Once enough jobs have been completed for a model, I can choose to create a benchmark based on actual historical performance.
+
+In other words:
+
+Statistics first.
+
+Benchmarks second.
+
+The benchmark should eventually represent expected performance based on real historical averages rather than something entered manually.
+
+Keep Job Card Simple
+
+The Job Card should remain extremely simple.
+
+Select:
+
+Client
+Builder
+Model
+
+The application automatically fills:
+
+Construction Type
+Price
+
+That's the workflow I want.
+
+Long-Term Vision
+
+I am building a business intelligence database for manufactured homes.
+
+I already store:
+
+Photos
+Notes
+Warranty documentation
+Completion reports
+
+inside my checklist system.
+
+I do not want to duplicate those.
+
+The manufactured home database should focus on:
+
+Home information
+Pricing
+Historical job statistics
+Future benchmarking
+
+Those are the things that will help me estimate jobs faster and understand my business better.
+
+I think this keeps everything you've already built, avoids another risky migration, and shifts the focus toward the data that will actually make your business stronger over time. The database becomes something that learns from every completed job, instead of just being a place to store prices.

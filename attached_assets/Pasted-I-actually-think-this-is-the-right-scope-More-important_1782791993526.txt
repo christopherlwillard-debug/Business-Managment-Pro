@@ -1,0 +1,107 @@
+I actually think this is the right scope.
+
+More importantly, I think it avoids the mistake that happened before—trying to solve five future problems before solving today's problem.
+
+There are only three small changes I'd make.
+
+1. Remove "gets smarter every time a job is completed"
+
+I'd simplify the opening.
+
+Instead of:
+
+Build a simple knowledge base for manufactured homes that gets smarter every time a job is completed.
+
+I'd say:
+
+Build a simple Manufactured Home Knowledge Base that stores one permanent record for each manufactured home model and uses completed jobs to provide historical information for estimating future work.
+
+It's less marketing language and more of a product requirement.
+
+2. Don't mention "analytics engine"
+
+This sentence:
+
+The goal is a tool that makes the next MFH job easier to estimate, with no analytics engine or complex features yet.
+
+I'd replace with:
+
+The goal of Phase 1 is to establish a clean data model and a practical knowledge base. Advanced analytics, benchmarking, forecasting, and other intelligence features are intentionally out of scope for this phase.
+
+That keeps the focus on what is being built instead of what isn't.
+
+3. Make the "derived statistics" requirement more general
+
+Instead of:
+
+Statistics are derived from completed jobs at query time; no duplicate data is stored.
+
+I'd write:
+
+Statistics must be derived from completed jobs rather than maintained as duplicate data. The implementation should prioritize correctness and maintainability.
+
+That gives Replit flexibility. If they later decide to use a cached view or another optimization, they're still meeting the requirement.
+
+Everything else?
+
+I honestly wouldn't touch it.
+
+The deliverables are clear.
+
+The scope is small.
+
+Nothing is over-engineered.
+
+No benchmarks.
+
+No AI.
+
+No forecasting.
+
+No confidence scores.
+
+No business intelligence platform.
+
+Just:
+
+Home records
+Client pricing
+Home details
+Related jobs
+Simple historical statistics
+
+That's exactly what Phase 1 should be.
+
+One thing I especially like
+
+This sentence:
+
+Pricing guides, guide items, or guide addons (existing tables remain untouched; UI simply stops using them for new pricing)
+
+That's a smart migration strategy.
+
+You're not deleting anything.
+
+You're simply changing what the UI uses going forward.
+
+If you later discover you need something from the old pricing guide system, it's still there. That's much safer than ripping it out immediately.
+
+My recommendation
+
+I would stop here.
+
+Seriously.
+
+Don't add another feature.
+
+Don't add benchmark suggestions.
+
+Don't add more statistics.
+
+Don't add forecasting.
+
+Don't add reports.
+
+Build this, use it for a month or two, and let real usage tell you what's missing.
+
+I think this is the first manufactured home specification you've written that feels intentionally boring—and in software architecture, boring is usually a compliment. It means the scope is well-defined, the data model is simple, and you're building a solid foundation instead of trying to solve every future problem at once.
