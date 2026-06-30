@@ -1,0 +1,318 @@
+After everything we’ve talked about over the last month, I think I’d build the service job almost like a mini case file, not just a job.
+
+This is how I would structure it.
+
+⸻
+
+Service Job
+
+1. Service Information
+
+This identifies the work order.
+
+* Client
+* Work Order #
+* Service Type
+* Priority
+* Warranty / Customer Pay
+* Date Assigned
+* Due Date
+
+Once you select the client (Clayton, Champion, Southern, etc.), the app automatically loads that client’s billing profile and service rules.
+
+⸻
+
+2. Home Information
+
+Since every service call is tied to one specific home, I’d capture:
+
+* Homeowner Name
+* Address
+* Phone Number
+* Builder
+* Model
+* Model Year
+* Serial/VIN (optional)
+* Dealer
+
+If this home already exists in your system, the app simply links to it.
+
+⸻
+
+3. Complaint / Reported Issue
+
+This is why you’re there.
+
+Examples:
+
+* Front door won’t latch.
+* Kitchen faucet leaking.
+* Marriage line crack.
+* Vinyl siding loose.
+* Floor squeak.
+* Electrical outlet not working.
+
+This should be searchable later.
+
+⸻
+
+4. Diagnosis
+
+Once you arrive:
+
+Actual Problem
+
+For example:
+
+* Door frame shifted.
+* Loose striker plate.
+* Defective faucet cartridge.
+
+This becomes valuable historical information.
+
+⸻
+
+5. Repair Performed
+
+Instead of a long paragraph, I’d use repair entries.
+
+For example:
+
+✔ Adjusted door hinges
+
+✔ Shimmed jamb
+
+✔ Replaced striker plate
+
+✔ Tested operation
+
+Much easier to search later.
+
+⸻
+
+6. Labor
+
+Simple.
+
+* Productive Time
+* Drive Time
+* Number of Technicians
+
+No payroll here.
+
+Just labor.
+
+⸻
+
+7. Parts
+
+Every part used.
+
+* Description
+* Quantity
+* Cost
+* Reimbursable?
+
+⸻
+
+8. Photos
+
+This is huge.
+
+Before
+
+During
+
+After
+
+Completed
+
+If the client requires photos, the app reminds you before closing.
+
+⸻
+
+9. Notes
+
+Anything unusual.
+
+Example:
+
+Customer requested adjustment to rear door also.
+
+⸻
+
+10. Billing
+
+This is where your calculator comes in.
+
+Since the client is already selected…
+
+The app automatically knows:
+
+Repair Labor
+
+Drive Time
+
+Mileage
+
+Parts
+
+Any flat rates
+
+Then calculates the bill.
+
+You shouldn’t have to remember rates.
+
+⸻
+
+11. Knowledge
+
+This is my favorite part.
+
+Every completed service call quietly teaches the Service Knowledge Base.
+
+Not labor estimates…
+
+Repair history.
+
+Example:
+
+Builder
+
+Southern
+
+Model
+
+Farmhouse
+
+Service History
+
+38 service calls
+
+Most Common Repairs
+
+Door Adjustment
+
+Marriage Line Crack
+
+Loose Trim
+
+Kitchen Faucet
+
+Average Repair Time
+
+1.4 hours
+
+Average Drive Time
+
+38 minutes
+
+Average Parts Cost
+
+$24
+
+Average Warranty Cost
+
+$132
+
+⸻
+
+12. Home History
+
+This might be the most valuable feature.
+
+Every home gets its own timeline.
+
+Imagine opening a home five years later.
+
+You see:
+
+May 2026
+
+Initial Trim Out
+
+August 2026
+
+Warranty
+
+Adjusted Front Door
+
+October 2026
+
+Replaced Kitchen Faucet
+
+January 2027
+
+Marriage Line Crack
+
+June 2028
+
+Vinyl Siding Repair
+
+Every picture.
+
+Every invoice.
+
+Every technician.
+
+Every repair.
+
+⸻
+
+Service Dashboard
+
+Eventually, I’d have a dashboard like this:
+
+Open Service Calls
+
+Waiting on Parts
+
+Waiting on Factory Approval
+
+Ready to Bill
+
+Billed
+
+Paid
+
+You’d know exactly where every work order stands.
+
+⸻
+
+The thing I would not do
+
+I wouldn’t build the service workflow around Clayton.
+
+I’d build it around service operations.
+
+Clayton is simply one client.
+
+Champion is another.
+
+A homeowner is another.
+
+The workflow stays the same.
+
+Only the client’s billing profile changes.
+
+⸻
+
+My dream design
+
+I actually think the service workflow should answer four questions:
+
+1. What problem was reported?
+2. What did we find?
+3. What did we do to fix it?
+4. How did we bill it?
+
+Then, behind the scenes, it teaches the Service Knowledge Base:
+
+* Which builders have the most warranty issues?
+* Which models have the most recurring repairs?
+* Which repairs are the most common?
+* How long do those repairs usually take?
+* How much do they typically cost?
+* Which homes have been serviced multiple times?
+
+That gives you something much more valuable than a collection of service tickets. It gives you a searchable history of every home you’ve touched and a growing database of repair trends that can help you make better decisions in the future. I think that fits perfectly alongside the Production Knowledge Base you’ve been designing.

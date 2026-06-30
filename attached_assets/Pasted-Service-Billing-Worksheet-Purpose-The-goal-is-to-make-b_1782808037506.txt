@@ -1,0 +1,177 @@
+Service Billing Worksheet
+
+Purpose
+
+The goal is to make billing service work as simple as possible while ensuring invoices are always calculated according to the client’s billing rules.
+
+The Service Billing Worksheet should not require manual calculations. As labor, travel, mileage, and parts are entered, the worksheet should calculate the invoice automatically.
+
+The worksheet should also provide internal profitability information that is never shown to the customer.
+
+⸻
+
+Workflow
+
+When creating a Manufactured Home Service job, the user selects the client (for example, Clayton Homes of Evansville).
+
+The selected client automatically loads its Billing Profile. The Billing Profile contains the labor rates, drive time rates, mileage reimbursement, parts reimbursement rules, and any other billing rules specific to that client.
+
+The user should never have to manually enter hourly rates for a client that already has a Billing Profile.
+
+⸻
+
+Billing Profile Example (Clayton Factory Warranty)
+
+Repair Labor:
+
+* 2 Service Technicians
+* $50.00 per repair hour
+
+Drive Time:
+
+* 2 Service Technicians
+* $30.00 per drive hour
+
+Mileage:
+
+* $0.35 per mile
+
+Parts:
+
+* Reimbursable
+
+Because our service department always sends two technicians, there is no need for the user to choose between one technician or two technicians. The application should always use the two-technician rates unless the Billing Profile is changed.
+
+⸻
+
+Service Billing Worksheet Fields
+
+Labor
+
+Repair Hours
+
+The user enters the total repair hours.
+
+Example:
+
+3.5 Hours
+
+Automatically calculates:
+
+3.5 × $50.00 = $175.00
+
+⸻
+
+Drive Time
+
+Drive Hours
+
+The user enters the total drive time.
+
+Example:
+
+2.0 Hours
+
+Automatically calculates:
+
+2.0 × $30.00 = $60.00
+
+⸻
+
+Mileage
+
+The user enters the total mileage.
+
+Example:
+
+86 Miles
+
+Automatically calculates:
+
+86 × $0.35 = $30.10
+
+Mileage should follow the Billing Profile rules.
+
+⸻
+
+Parts
+
+The user can add one or more parts.
+
+Each part should include:
+
+* Description
+* Quantity
+* Unit Cost
+* Total Cost
+
+The worksheet automatically totals all reimbursable parts.
+
+⸻
+
+Billing Summary
+
+The worksheet should automatically display:
+
+Repair Labor
+
+Drive Time
+
+Mileage
+
+Parts
+
+Grand Total
+
+The user should never need a calculator.
+
+The totals should update instantly as values are entered.
+
+⸻
+
+Company Cost (Internal Only)
+
+Below the billing summary, display an internal profitability section that is never shown on the customer invoice.
+
+Suggested fields:
+
+Crew Productive Hours
+
+Crew Travel Hours
+
+Labor Cost
+
+Parts Cost
+
+Fuel Estimate
+
+Estimated Company Cost
+
+Estimated Gross Profit
+
+This section is for internal reporting only and should not appear on printed invoices.
+
+⸻
+
+Generate Invoice
+
+Once the worksheet is complete, the user can click:
+
+* Generate Invoice
+* Email Invoice
+
+The invoice should use the calculated totals from the worksheet.
+
+No duplicate data entry should be required.
+
+⸻
+
+Future Flexibility
+
+The Service Billing Worksheet should always calculate from the selected client’s Billing Profile.
+
+If Clayton changes its labor rates in the future, only the Billing Profile should need to be updated.
+
+Every future service job for Clayton should automatically use the new rates without requiring changes to the Service Billing Worksheet itself.
+
+The worksheet should be designed so it can support different billing profiles for other manufacturers, dealers, property managers, or homeowners without changing the workflow. The user always follows the same process—only the billing rules change based on the selected client.

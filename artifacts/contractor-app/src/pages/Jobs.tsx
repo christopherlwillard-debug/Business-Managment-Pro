@@ -41,6 +41,20 @@ import { LaborSummaryPanel } from "@/components/LaborSummaryPanel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+const JOB_WORKFLOWS = {
+  mh_production:       { label: "Production",  emoji: "🏠", color: "bg-amber-100 text-amber-800" },
+  mh_service:          { label: "Service",      emoji: "🔧", color: "bg-blue-100 text-blue-800" },
+  general_contracting: { label: "GC",           emoji: "🏡", color: "bg-green-100 text-green-800" },
+} as const;
+type WorkflowKey = keyof typeof JOB_WORKFLOWS;
+
+function getJobWorkflow(job: Job): WorkflowKey | null {
+  const w = (job as Record<string, unknown>).workflow as string | null;
+  if (w && w in JOB_WORKFLOWS) return w as WorkflowKey;
+  if (job.businessLine === "general_contracting") return "general_contracting";
+  if ((job as Record<string, unknown>).mfhManufacturerId != null) return "mh_production";
+  return null;
+}
 
 function displayStatus(status: string): "scheduled" | "completed" {
   if (status === "completed" || status === "invoiced") return "completed";
@@ -2778,6 +2792,7 @@ function JobCard({
   const [checklistPanelOpen, setChecklistPanelOpen] = useState(false);
   const [mfhPanelOpen, setMfhPanelOpen] = useState(false);
   const [localSubPaid, setLocalSubPaid] = useState(job.subPaid);
+  const jobWorkflow = getJobWorkflow(job);
   const isCompleted = displayStatus(job.status) === "completed";
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
@@ -2865,9 +2880,9 @@ function JobCard({
                   Asphalt
                 </span>
               )}
-              {job.businessLine === "general_contracting" && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary">
-                  GC
+              {jobWorkflow && job.businessLine !== "asphalt_sealing" && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${JOB_WORKFLOWS[jobWorkflow].color}`}>
+                  {JOB_WORKFLOWS[jobWorkflow].emoji} {JOB_WORKFLOWS[jobWorkflow].label}
                 </span>
               )}
               {hasSubExpenses && localSubPaid && (
@@ -3053,8 +3068,8 @@ function JobCard({
           <span className="text-[10px] text-muted-foreground">View / Build</span>
         </button>
 
-        {/* Smart Estimate Wizard — GC only, hidden behind a toggle */}
-        {job.businessLine === "general_contracting" && onSmartEstimate && canEdit("estimates") && (
+        {/* Smart Estimate Wizard — MH Production only, hidden behind a toggle */}
+        {jobWorkflow === "mh_production" && onSmartEstimate && canEdit("estimates") && (
           showSmartEstimate ? (
             <button
               onClick={() => onSmartEstimate(job)}
@@ -3074,8 +3089,8 @@ function JobCard({
           )
         )}
 
-        {/* Phases — GC only, hidden when a checklist is active */}
-        {job.businessLine === "general_contracting" && !checklistSummary && (
+        {/* Phases — MH Production only, hidden when a checklist is active */}
+        {jobWorkflow === "mh_production" && !checklistSummary && (
           <button
             onClick={() => setPhasesPanelOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
@@ -3091,30 +3106,31 @@ function JobCard({
           </button>
         )}
 
-        {/* Manufactured Home */}
-        {(job.jobType === "Manufactured Home" || (job as Record<string, unknown>).mfhManufacturerId != null) && (
-          <button
-            onClick={() => setMfhPanelOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/80 transition-colors text-xs font-medium text-amber-700 w-full">
-            <Home className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-            <span className="flex-1 text-left">Manufactured Home</span>
-            {(job as Record<string, unknown>).mfhQuotedPrice ? (
-              <span className="text-[10px] font-bold text-amber-600 font-mono">
-                {`$${parseFloat(String((job as Record<string, unknown>).mfhQuotedPrice)).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-              </span>
-            ) : (
-              <span className="text-[10px] text-amber-400">Set pricing</span>
-            )}
-          </button>
-        )}
-        {job.jobType !== "Manufactured Home" && (job as Record<string, unknown>).mfhManufacturerId == null && (
-          <button
-            onClick={() => setMfhPanelOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
-            <Home className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-            <span className="flex-1 text-left">Manufactured Home</span>
-            <span className="text-[10px] text-muted-foreground">Apply pricing</span>
-          </button>
+        {/* Manufactured Home panel — MH Production and MH Service only */}
+        {(jobWorkflow === "mh_production" || jobWorkflow === "mh_service" || (!jobWorkflow && job.businessLine !== "general_contracting" && job.businessLine !== "asphalt_sealing")) && (
+          (job.jobType === "Manufactured Home" || (job as Record<string, unknown>).mfhManufacturerId != null) ? (
+            <button
+              onClick={() => setMfhPanelOpen(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/80 transition-colors text-xs font-medium text-amber-700 w-full">
+              <Home className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span className="flex-1 text-left">Manufactured Home</span>
+              {(job as Record<string, unknown>).mfhQuotedPrice ? (
+                <span className="text-[10px] font-bold text-amber-600 font-mono">
+                  {`$${parseFloat(String((job as Record<string, unknown>).mfhQuotedPrice)).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                </span>
+              ) : (
+                <span className="text-[10px] text-amber-400">Set pricing</span>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={() => setMfhPanelOpen(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
+              <Home className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+              <span className="flex-1 text-left">Manufactured Home</span>
+              <span className="text-[10px] text-muted-foreground">Apply pricing</span>
+            </button>
+          )
         )}
 
         {/* Labor Summary for MFH jobs */}
@@ -3124,7 +3140,8 @@ function JobCard({
           </div>
         )}
 
-        {/* Checklist */}
+        {/* Checklist — MH Production only */}
+        {(jobWorkflow === "mh_production" || !jobWorkflow) && (
         <button
           onClick={() => setChecklistPanelOpen(true)}
           className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
@@ -3148,6 +3165,7 @@ function JobCard({
             <span className="text-[10px] text-muted-foreground">Track progress</span>
           )}
         </button>
+        )}
 
         {/* Job Financials — consolidated P&L, Pay Breakdown, Sub Hours */}
         <button
@@ -3425,6 +3443,9 @@ function JobFormDialog({
   const [subCompDefaults, setSubCompDefaults] = useState<Record<number, { compensationType: string; rate: string }>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(
+    editJob?.workflow ?? null
+  );
 
   // MFH structured fields (separate from form string state)
   const [mfhMfgId, setMfhMfgId] = useState<number | null>((editJob as Record<string, unknown>)?.mfhManufacturerId as number | null ?? null);
@@ -3439,6 +3460,7 @@ function JobFormDialog({
   useEffect(() => {
     setClearHoursForSubIds([]);
     setRemoveSubPrompt(null);
+    setSelectedWorkflow(editJob?.workflow ?? null);
   }, [open, editJob?.id]);
 
   // Pre-populate compensation types/rates when opening an existing job for edit
@@ -3494,6 +3516,7 @@ function JobFormDialog({
         endDate: form.endDate || undefined,
         notes: form.notes || undefined,
         businessLine: form.businessLine || undefined,
+        workflow: selectedWorkflow || undefined,
         sqFt: form.businessLine === "asphalt_sealing" && form.sqFt !== "" ? parseInt(form.sqFt) : undefined,
         coats: form.businessLine === "asphalt_sealing" && form.coats !== "" ? parseInt(form.coats) : undefined,
       };
@@ -3554,6 +3577,47 @@ function JobFormDialog({
   if (!open) return null;
 
   const isCreate = !editJob;
+  const isAsphalt = form.businessLine === "asphalt_sealing" || activeBusiness?.slug === "asphalt_sealing";
+  const showWorkflowPicker = isCreate && !isAsphalt && !selectedWorkflow;
+
+  if (showWorkflowPicker) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:p-4">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => onOpenChange(false)} />
+        <div className="relative w-full bg-card border border-border shadow-2xl flex flex-col rounded-t-2xl sm:rounded-2xl sm:max-w-sm mx-auto">
+          <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400 flex-shrink-0 rounded-t-2xl" />
+          <div className="flex items-center justify-between px-6 pt-5 pb-3 flex-shrink-0">
+            <div>
+              <h2 className="text-lg font-bold text-foreground">New Job</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Choose the type of work</p>
+            </div>
+            <button type="button" onClick={() => onOpenChange(false)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="px-6 pb-6 space-y-2">
+            {[
+              { key: "mh_production",      emoji: "🏠", label: "MH Production",      desc: "Trim out, plumbing hookup, flooring, underpinning" },
+              { key: "mh_service",          emoji: "🔧", label: "MH Service",          desc: "Warranty repair, service call, callback, inspection" },
+              { key: "general_contracting", emoji: "🏡", label: "General Contracting", desc: "Kitchen, deck, siding, roofing, remodel, addition" },
+            ].map(w => (
+              <button key={w.key} type="button"
+                onClick={() => setSelectedWorkflow(w.key)}
+                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-border hover:border-amber-400 hover:bg-amber-50/60 transition-all text-left group">
+                <span className="text-2xl leading-none">{w.emoji}</span>
+                <div className="flex-1">
+                  <p className="font-semibold text-sm text-foreground group-hover:text-amber-700">{w.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{w.desc}</p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-amber-500 flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -3567,7 +3631,20 @@ function JobFormDialog({
         <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400 flex-shrink-0 rounded-t-2xl" />
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
           <div className="flex items-center justify-between px-6 pt-5 pb-4 flex-shrink-0">
-            <h2 className="text-lg font-bold text-foreground">{editJob ? "Edit Job" : "New Job"}</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-bold text-foreground">{editJob ? "Edit Job" : "New Job"}</h2>
+              {selectedWorkflow && (selectedWorkflow in JOB_WORKFLOWS) && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${JOB_WORKFLOWS[selectedWorkflow as WorkflowKey].color}`}>
+                  {JOB_WORKFLOWS[selectedWorkflow as WorkflowKey].emoji} {JOB_WORKFLOWS[selectedWorkflow as WorkflowKey].label}
+                  {!editJob && (
+                    <button type="button" onClick={() => setSelectedWorkflow(null)}
+                      className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity">
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </span>
+              )}
+            </div>
             <button type="button" onClick={() => onOpenChange(false)}
               className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 transition-colors">
               <X className="w-4 h-4" />
@@ -3654,7 +3731,7 @@ function JobFormDialog({
             </div>
           )}
 
-          {editJob && form.businessLine !== "asphalt_sealing" && (
+          {(editJob || selectedWorkflow) && form.businessLine !== "asphalt_sealing" && (
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">
               <Briefcase className="w-3 h-3 inline mr-1 text-amber-500" />Job Type
@@ -3663,21 +3740,39 @@ function JobFormDialog({
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
               value={form.jobType} onChange={e => setField("jobType", e.target.value)}>
               <option value="">Select type…</option>
-              <option value="full_remodel">Full Remodel</option>
-              <option value="kitchen">Kitchen Remodel</option>
-              <option value="bathroom">Bathroom Remodel</option>
-              <option value="siding">Siding</option>
-              <option value="ceiling_repair">Ceiling Repair</option>
-              <option value="plumbing">Plumbing Hookup</option>
-              <option value="deck">Deck / Porch</option>
-              <option value="windows_doors">Window/Door Replacement</option>
-              <option value="addition">Addition</option>
-              <option value="other">Other</option>
+              {(selectedWorkflow === "mh_production" || (!selectedWorkflow && form.businessLine !== "general_contracting")) && (<>
+                <option value="Trim Out">Trim Out</option>
+                <option value="Plumbing Hookup">Plumbing Hookup</option>
+                <option value="Marriage Line">Marriage Line</option>
+                <option value="Flooring">Flooring</option>
+                <option value="Underpinning">Underpinning</option>
+                <option value="Complete Finish">Complete Finish</option>
+                <option value="Warranty Completion">Warranty Completion</option>
+              </>)}
+              {selectedWorkflow === "mh_service" && (<>
+                <option value="Warranty Repair">Warranty Repair</option>
+                <option value="Service Call">Service Call</option>
+                <option value="Callback">Callback</option>
+                <option value="Inspection">Inspection</option>
+                <option value="Dealer Punch List">Dealer Punch List</option>
+              </>)}
+              {(selectedWorkflow === "general_contracting" || form.businessLine === "general_contracting") && (<>
+                <option value="Kitchen Remodel">Kitchen Remodel</option>
+                <option value="Bathroom Remodel">Bathroom Remodel</option>
+                <option value="Deck">Deck</option>
+                <option value="Siding">Siding</option>
+                <option value="Roofing">Roofing</option>
+                <option value="Window/Door">Window/Door</option>
+                <option value="Addition">Addition</option>
+                <option value="Repair">Repair</option>
+                <option value="Other">Other</option>
+              </>)}
             </select>
           </div>
           )}
 
-          {/* Manufactured Home structured fields (replaces free-text homeModel) */}
+          {/* Manufactured Home structured fields — MH Production and MH Service only */}
+          {(selectedWorkflow === "mh_production" || selectedWorkflow === "mh_service" || (!selectedWorkflow && form.businessLine !== "general_contracting" && form.businessLine !== "asphalt_sealing")) && (
           <div className="space-y-2">
             <label className="block text-sm font-medium text-foreground">
               <span className="text-amber-500 font-bold text-xs mr-1">🏠</span>Manufactured Home
@@ -3735,6 +3830,7 @@ function JobFormDialog({
               <p className="text-xs text-muted-foreground">Pricing &amp; checklists are applied from the <strong>Manufactured Home</strong> panel on the job card.</p>
             )}
           </div>
+          )}
 
           {editJob && (
           <div>

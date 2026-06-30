@@ -111,6 +111,7 @@ export interface Job {
   endDate?: string | null;
   notes?: string | null;
   businessLine?: string | null;
+  workflow?: string | null;
   subPaid?: boolean;
   sqFt?: number | null;
   coats?: number | null;
@@ -149,6 +150,7 @@ export interface CreateJobRequest {
   endDate?: string | null;
   notes?: string | null;
   businessLine?: string | null;
+  workflow?: string | null;
   subPaid?: boolean;
   sqFt?: number | null;
   coats?: number | null;
