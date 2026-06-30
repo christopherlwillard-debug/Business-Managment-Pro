@@ -8,6 +8,7 @@ import {
   useMfhKnowledgeBase,
   useMfhModelDetail,
   useSetMfhClientPrice,
+  useUpdateMfhClientPrice,
   useDeleteMfhClientPrice,
   useUpdateMfhModel,
   useListClients,
@@ -107,12 +108,14 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
   const { data, isLoading } = useMfhModelDetail(modelId);
   const { data: clients = [] } = useListClients();
   const setPrice = useSetMfhClientPrice();
+  const updatePrice = useUpdateMfhClientPrice();
   const deletePrice = useDeleteMfhClientPrice();
   const updateModel = useUpdateMfhModel();
 
   const [addingClient, setAddingClient] = useState(false);
   const [clientForm, setClientForm] = useState({ clientId: "", price: "", notes: "" });
   const [expandedJobs, setExpandedJobs] = useState(false);
+  const [editingCp, setEditingCp] = useState<{ id: number; price: string; notes: string } | null>(null);
 
   const [editingBaseline, setEditingBaseline] = useState(false);
   const [baselineVal, setBaselineVal] = useState("");
@@ -147,6 +150,17 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
       toast({ title: "Client price saved" });
     } catch {
       toast({ title: "Failed to save price", variant: "destructive" });
+    }
+  }
+
+  async function handleUpdateClientPrice() {
+    if (!editingCp || !editingCp.price) return;
+    try {
+      await updatePrice.mutateAsync({ id: editingCp.id, modelId, price: parseFloat(editingCp.price), notes: editingCp.notes || undefined });
+      setEditingCp(null);
+      toast({ title: "Client price updated" });
+    } catch {
+      toast({ title: "Failed to update price", variant: "destructive" });
     }
   }
 
@@ -315,17 +329,47 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
           <table className="w-full text-xs">
             <tbody className="divide-y divide-border/50">
               {clientPricing.map(cp => (
-                <tr key={cp.id} className="hover:bg-muted/10">
-                  <td className="px-4 py-2.5 font-medium text-foreground">{cp.clientName ?? "Unknown Client"}</td>
-                  <td className="px-4 py-2.5 text-amber-600 font-semibold">{fmt(cp.price)}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground italic">{cp.notes ?? ""}</td>
-                  <td className="px-4 py-2.5 text-right">
-                    <button onClick={() => handleDeleteClientPrice(cp.id)}
-                      className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors">
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </td>
-                </tr>
+                editingCp?.id === cp.id ? (
+                  <tr key={cp.id} className="bg-amber-50/30">
+                    <td className="px-4 py-2.5 font-medium text-foreground">{cp.clientName ?? "Unknown Client"}</td>
+                    <td className="px-3 py-2">
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                        <input autoFocus type="number" className="w-24 pl-5 pr-2 py-1 rounded-lg border border-amber-300 bg-background text-xs"
+                          value={editingCp.price} onChange={e => setEditingCp(prev => prev ? { ...prev, price: e.target.value } : null)} />
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <input className="w-full px-2 py-1 rounded-lg border border-border bg-background text-xs" placeholder="Notes…"
+                        value={editingCp.notes} onChange={e => setEditingCp(prev => prev ? { ...prev, notes: e.target.value } : null)} />
+                    </td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      <button onClick={handleUpdateClientPrice} disabled={updatePrice.isPending}
+                        className="px-2 py-1 rounded bg-amber-500 text-white text-[10px] font-semibold hover:bg-amber-600 mr-1 disabled:opacity-50">
+                        {updatePrice.isPending ? "…" : "Save"}
+                      </button>
+                      <button onClick={() => setEditingCp(null)} className="px-2 py-1 rounded border border-border text-[10px] text-muted-foreground hover:bg-muted/50">Cancel</button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={cp.id} className="hover:bg-muted/10">
+                    <td className="px-4 py-2.5 font-medium text-foreground">{cp.clientName ?? "Unknown Client"}</td>
+                    <td className="px-4 py-2.5 text-amber-600 font-semibold">{fmt(cp.price)}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground italic">{cp.notes ?? ""}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <div className="flex gap-1 justify-end">
+                        <button onClick={() => setEditingCp({ id: cp.id, price: cp.price, notes: cp.notes ?? "" })}
+                          className="p-1 rounded hover:bg-amber-50 text-muted-foreground hover:text-amber-600 transition-colors">
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                        <button onClick={() => handleDeleteClientPrice(cp.id)}
+                          className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
               ))}
             </tbody>
           </table>

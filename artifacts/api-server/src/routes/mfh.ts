@@ -422,7 +422,7 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
-    const { manufacturerId, modelId, modelYear, guideId, selectedAddonKeys, travelDays } = req.body;
+    const { manufacturerId, modelId, modelYear, guideId, selectedAddonKeys, travelDays, manualPrice } = req.body;
     if (!manufacturerId || !modelId) return res.status(400).json({ error: "manufacturerId, modelId required" });
 
     // Fetch model data (always needed)
@@ -456,13 +456,17 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
       mfhLines = await buildMfhLines(parseInt(guideId), parseInt(modelId), selectedKeys, days, modelRow.name, ctName, addons, quotedPrice);
       guideName = guideRow.name;
     } else {
-      // ── Baseline path: model.base_price → client pricing override ──
+      // ── Baseline path: model.base_price → client pricing override → optional manualPrice ──
       const [jobRow] = await db.select({ clientId: jobsTable.clientId }).from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
       let effectivePrice = parseFloat(modelRow.basePrice ?? "0");
       if (jobRow?.clientId) {
         const [override] = await db.select().from(mfhClientPricingTable)
           .where(and(eq(mfhClientPricingTable.modelId, modelRow.id), eq(mfhClientPricingTable.clientId, jobRow.clientId))).limit(1);
         if (override) effectivePrice = parseFloat(override.price);
+      }
+      // User manual override takes priority over computed baseline
+      if (manualPrice != null && !isNaN(parseFloat(String(manualPrice)))) {
+        effectivePrice = parseFloat(String(manualPrice));
       }
       quotedPrice = effectivePrice;
       dealerPrice = effectivePrice;
@@ -912,6 +916,20 @@ mfhLibraryRouter.put("/client-pricing", async (req, res) => {
     const [row] = await db.insert(mfhClientPricingTable)
       .values({ modelId: parseInt(modelId), clientId: parseInt(clientId), price: String(price), notes: notes || null }).returning();
     res.status(201).json(row);
+  } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
+});
+
+// PATCH /api/mfh/client-pricing/:id
+mfhLibraryRouter.patch("/client-pricing/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { price, notes } = req.body;
+    if (price == null) return res.status(400).json({ error: "price required" });
+    const [row] = await db.update(mfhClientPricingTable)
+      .set({ price: String(price), notes: notes ?? null })
+      .where(eq(mfhClientPricingTable.id, id)).returning();
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json(row);
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 

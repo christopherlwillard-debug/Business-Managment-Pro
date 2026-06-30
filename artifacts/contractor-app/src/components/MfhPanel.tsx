@@ -652,6 +652,7 @@ export function MfhPanel({
   const [guideId, setGuideId] = useState<number | null>(null);
   const [selectedAddonKeys, setSelectedAddonKeys] = useState<string[]>([]);
   const [travelDays, setTravelDays] = useState<string>("1");
+  const [manualPrice, setManualPrice] = useState<string>("");
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -690,8 +691,20 @@ export function MfhPanel({
     }
   }, [guides, j.mfhGuideName]);
 
-  // Auto-pre-check default add-ons when model changes
+  // Sync manualPrice from baselinePrice when model or overrides change
+  useEffect(() => {
+    if (baselinePrice != null && !manualPrice) {
+      setManualPrice(String(Math.round(baselinePrice)));
+    }
+  }, [baselinePrice]);
+
+  // Clear manual price when model changes so it gets re-filled from baseline
   const selectedModel = models.find(m => m.id === modelId);
+  useEffect(() => {
+    setManualPrice("");
+  }, [modelId]);
+
+  // Auto-pre-check default add-ons when model changes
   useEffect(() => {
     if (selectedModel && selectedAddonKeys.length === 0 && !hydrated.current) {
       setSelectedAddonKeys(selectedModel.defaultAddonKeys ?? []);
@@ -723,8 +736,11 @@ export function MfhPanel({
   const profit = totalQuoted != null && totalDealer != null ? totalQuoted - totalDealer : null;
   const hasTravelAddon = activeAddons.some(a => selectedAddonKeys.includes(a.addonKey) && a.isPerDay);
 
-  // Apply is enabled with guide OR with baseline price
-  const canApply = manufacturerId != null && modelId != null && (guideId != null ? quotedPrice != null : baselinePrice != null);
+  // Apply is enabled when a model is selected and there's a price (manual or baseline)
+  const effectiveManualPrice = manualPrice ? parseFloat(manualPrice) : null;
+  const canApply = manufacturerId != null && modelId != null && (
+    guideId != null ? quotedPrice != null : (effectiveManualPrice != null && !isNaN(effectiveManualPrice) && effectiveManualPrice > 0)
+  );
 
   // Spec-sheet values (from job snapshot when in spec mode)
   const snapDealerPrice = j.mfhDealerPrice ? parseFloat(j.mfhDealerPrice) : null;
@@ -744,10 +760,11 @@ export function MfhPanel({
       guideId: guideId ?? undefined,
       selectedAddonKeys: guideId ? selectedAddonKeys : [],
       travelDays: guideId && hasTravelAddon ? parseInt(travelDays) || 1 : undefined,
+      manualPrice: !guideId && effectiveManualPrice != null ? effectiveManualPrice : undefined,
     });
     qc.invalidateQueries({ queryKey: ["/api/jobs"] });
     setMode("spec");
-    showFeedback(guideId ? "✓ Applied — estimate & checklist updated!" : "✓ Applied baseline pricing — estimate updated!");
+    showFeedback(guideId ? "✓ Applied — estimate & checklist updated!" : "✓ Applied pricing — estimate updated!");
   }
 
   async function handleUpdatePricing() {
@@ -945,90 +962,37 @@ export function MfhPanel({
                 </div>
               )}
 
-              {/* Guide selector */}
-              {manufacturerId && modelId && guides.length > 0 && (
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Pricing Guide</label>
-                  <div className="flex gap-2">
-                    {guides.map(g => (
-                      <button key={g.id} onClick={() => setGuideId(g.id)}
-                        className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors ${guideId === g.id ? "bg-amber-500 border-amber-500 text-white" : "bg-background border-border text-muted-foreground hover:border-amber-300"}`}>
-                        {g.name}{g.isDealerGuide ? " ★" : ""}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* Effective price + manual override */}
+              {modelId && (
+                <div className="space-y-3">
+                  {/* Source label */}
+                  {baselinePrice != null && (
+                    <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                      <span>{hasClientOverride ? "Client-specific rate:" : "Clayton baseline:"}</span>
+                      <span className="font-semibold text-foreground">{fmt(baselinePrice)}</span>
+                    </div>
+                  )}
 
-              {/* Pricing side-by-side (guide path) */}
-              {modelId && guideId && quotedPrice != null && (
-                <div className="rounded-xl border border-border bg-muted/20 p-3 grid grid-cols-3 gap-2 text-center">
+                  {/* Editable quoted price */}
                   <div>
-                    <p className="text-[10px] text-muted-foreground">Dealer Cost</p>
-                    <p className="font-mono font-bold text-sm text-foreground">{fmt(dealerGuide && guideId !== dealerGuide.id ? dealerPrice : quotedPrice)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">My Price</p>
-                    <p className="font-mono font-bold text-sm text-amber-700">{fmt(quotedPrice)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground flex items-center justify-center gap-0.5"><TrendingUp className="w-2.5 h-2.5" />Profit</p>
-                    <p className={`font-mono font-bold text-sm ${profit != null && profit >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmt(profit, true)}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Baseline price (no guide) */}
-              {modelId && !guideId && baselinePrice != null && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-amber-700">
-                      {hasClientOverride ? "Client Price" : "Base Price"}
-                    </p>
-                    {hasClientOverride && (
-                      <p className="text-[10px] text-amber-500 mt-0.5">Client-specific rate applied</p>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Quoted Price</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                      <input
+                        type="number"
+                        className="w-full pl-7 pr-3 py-2.5 rounded-xl border border-amber-300 bg-background text-sm text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                        placeholder={baselinePrice != null ? String(Math.round(baselinePrice)) : "Enter price…"}
+                        value={manualPrice}
+                        onChange={e => setManualPrice(e.target.value)}
+                      />
+                    </div>
+                    {baselinePrice != null && manualPrice && parseFloat(manualPrice) !== baselinePrice && (
+                      <p className="text-[10px] text-amber-600 mt-1 px-1">
+                        {parseFloat(manualPrice) > baselinePrice ? "▲ Above" : "▼ Below"} baseline by {fmt(Math.abs(parseFloat(manualPrice) - baselinePrice))}
+                        <button onClick={() => setManualPrice(String(Math.round(baselinePrice)))} className="ml-2 underline">Reset</button>
+                      </p>
                     )}
                   </div>
-                  <span className="font-mono text-lg font-bold text-amber-700">{fmt(baselinePrice)}</span>
-                </div>
-              )}
-
-              {/* Add-ons */}
-              {modelId && activeAddons.length > 0 && (
-                <div>
-                  <label className="block text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Add-ons</label>
-                  <div className="space-y-2">
-                    {activeAddons.map(addon => {
-                      const checked = selectedAddonKeys.includes(addon.addonKey);
-                      return (
-                        <div key={addon.id} className="space-y-1">
-                          <label className="flex items-center gap-2.5 cursor-pointer">
-                            <input type="checkbox" checked={checked} onChange={e => { if (e.target.checked) setSelectedAddonKeys(k => [...k, addon.addonKey]); else setSelectedAddonKeys(k => k.filter(x => x !== addon.addonKey)); }} className="w-4 h-4 accent-amber-500" />
-                            <span className="flex-1 text-sm text-foreground">{addon.label}</span>
-                            <span className="font-mono text-sm text-muted-foreground">{fmt(addon.price)}{addon.isPerDay ? "/day" : ""}</span>
-                          </label>
-                          {checked && addon.isPerDay && (
-                            <div className="ml-6 flex items-center gap-2">
-                              <label className="text-xs text-muted-foreground">Days:</label>
-                              <input type="number" min={1} max={30} value={travelDays} onChange={e => setTravelDays(e.target.value)} className="w-16 px-2 py-1 text-xs rounded-lg border border-border bg-background" />
-                              <span className="text-xs text-muted-foreground">= {fmt(parseFloat(addon.price) * (parseInt(travelDays) || 1))}</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Total */}
-              {totalQuoted != null && (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-emerald-600" />
-                    <span className="text-sm font-semibold text-emerald-700">Total ({activeGuide?.name})</span>
-                  </div>
-                  <span className="font-mono text-lg font-bold text-emerald-700">{fmt(totalQuoted)}</span>
                 </div>
               )}
 
@@ -1064,7 +1028,7 @@ export function MfhPanel({
               <button onClick={handleApply} disabled={!canApply || applyMfh.isPending}
                 className="w-full py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
                 <Home className="w-4 h-4" />
-                {applyMfh.isPending ? "Applying…" : guideId ? "Apply" : "Apply Baseline Pricing"}
+                {applyMfh.isPending ? "Applying…" : "Apply Pricing"}
               </button>
             )}
           </div>

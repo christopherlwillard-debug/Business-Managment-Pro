@@ -272,7 +272,7 @@ export function useDeleteMfhGuideAddon() {
 export function useApplyMfhPricing() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { jobId: number; manufacturerId: number; modelId: number; modelYear?: number | null; guideId?: number | null; selectedAddonKeys?: string[]; travelDays?: number }) =>
+    mutationFn: (data: { jobId: number; manufacturerId: number; modelId: number; modelYear?: number | null; guideId?: number | null; selectedAddonKeys?: string[]; travelDays?: number; manualPrice?: number | null }) =>
       customFetch<{ ok: boolean; estimateId: number | null; mfhTotal: number }>(
         `/api/mfh/jobs/${data.jobId}/apply`,
         { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }
@@ -338,6 +338,20 @@ export function useSetMfhClientPrice() {
       customFetch<{ id: number; modelId: number; clientId: number; price: string; notes?: string | null }>(
         "/api/mfh/client-pricing",
         { method: "PUT", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } }
+      ),
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId] });
+    },
+  });
+}
+
+export function useUpdateMfhClientPrice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, modelId, price, notes }: { id: number; modelId: number; price: number; notes?: string }) =>
+      customFetch<{ id: number; modelId: number; clientId: number; price: string; notes?: string | null }>(
+        `/api/mfh/client-pricing/${id}`,
+        { method: "PATCH", body: JSON.stringify({ price, notes }), headers: { "Content-Type": "application/json" } }
       ),
     onSuccess: (_r, vars) => {
       qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId] });
