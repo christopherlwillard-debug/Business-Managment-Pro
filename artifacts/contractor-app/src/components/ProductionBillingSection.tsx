@@ -1,0 +1,510 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  Plus, Pencil, Trash2, X, Loader2, Check, Save, RotateCcw, Package, Users2,
+} from "lucide-react";
+import {
+  useListProductionServiceTypes,
+  useProductionBillingTypes,
+  useCreateProductionServiceType,
+  useUpdateProductionServiceType,
+  useDeleteProductionServiceType,
+  useProductionPriceOverrides,
+  useUpsertProductionPriceOverride,
+  useDeleteProductionPriceOverride,
+  useListClients,
+  type ProductionServiceType,
+  type ProductionServiceTypeInput,
+} from "@workspace/api-client-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useBusiness } from "@/contexts/BusinessContext";
+import { useToast } from "@/hooks/use-toast";
+import { formatCurrency } from "@/lib/utils";
+
+const inp =
+  "w-full px-3 py-2 rounded-xl border border-border bg-background focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none text-sm transition-colors";
+
+function priceOrNull(v: string): string | null {
+  const t = v.trim();
+  return t === "" ? null : t;
+}
+
+function fmtPrice(v?: string | null): string {
+  if (v == null || v === "") return "—";
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? formatCurrency(n) : "—";
+}
+
+// ── Master catalog editor modal ──────────────────────────────────────────────
+function ServiceTypeEditorModal({
+  open,
+  onClose,
+  editing,
+  billingTypeOptions,
+  businessId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  editing: ProductionServiceType | null;
+  billingTypeOptions: string[];
+  businessId?: number | null;
+}) {
+  const { toast } = useToast();
+  const createMut = useCreateProductionServiceType();
+  const updateMut = useUpdateProductionServiceType();
+
+  const [name, setName] = useState("");
+  const [invoiceDescription, setInvoiceDescription] = useState("");
+  const [category, setCategory] = useState("");
+  const [billingType, setBillingType] = useState("");
+  const [taxable, setTaxable] = useState(false);
+  const [sortOrder, setSortOrder] = useState("0");
+  const [price, setPrice] = useState("");
+  const [priceVog, setPriceVog] = useState("");
+  const [priceHybrid, setPriceHybrid] = useState("");
+  const [priceDrywall, setPriceDrywall] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setName(editing?.name ?? "");
+    setInvoiceDescription(editing?.invoiceDescription ?? "");
+    setCategory(editing?.category ?? "");
+    setBillingType(editing?.billingType ?? billingTypeOptions[0] ?? "");
+    setTaxable(editing?.taxable ?? false);
+    setSortOrder(String(editing?.sortOrder ?? 0));
+    setPrice(editing?.price ?? "");
+    setPriceVog(editing?.priceVog ?? "");
+    setPriceHybrid(editing?.priceHybrid ?? "");
+    setPriceDrywall(editing?.priceDrywall ?? "");
+  }, [open, editing, billingTypeOptions]);
+
+  if (!open) return null;
+
+  const busy = createMut.isPending || updateMut.isPending;
+
+  async function handleSave() {
+    if (!name.trim()) {
+      toast({ title: "Name required", description: "Give this billing item a name.", variant: "destructive" });
+      return;
+    }
+    const payload: ProductionServiceTypeInput = {
+      name: name.trim(),
+      invoiceDescription: priceOrNull(invoiceDescription),
+      billingType,
+      taxable,
+      category: priceOrNull(category),
+      price: priceOrNull(price),
+      priceVog: priceOrNull(priceVog),
+      priceHybrid: priceOrNull(priceHybrid),
+      priceDrywall: priceOrNull(priceDrywall),
+      sortOrder: parseInt(sortOrder) || 0,
+      businessId: businessId ?? null,
+    };
+    try {
+      if (editing) {
+        await updateMut.mutateAsync({ id: editing.id, ...payload });
+        toast({ title: "Billing item updated" });
+      } else {
+        await createMut.mutateAsync(payload);
+        toast({ title: "Billing item created" });
+      }
+      onClose();
+    } catch (e) {
+      toast({
+        title: "Could not save",
+        description: e instanceof Error ? e.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="relative w-full max-w-lg bg-card rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="px-6 py-4 border-b border-border flex items-center gap-3 flex-shrink-0">
+          <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center">
+            <Package className="w-4.5 h-4.5 text-amber-600" />
+          </div>
+          <h3 className="font-bold text-foreground">{editing ? "Edit Billing Item" : "New Billing Item"}</h3>
+          <button onClick={onClose} disabled={busy} className="ml-auto p-1.5 rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-50">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto flex-1 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-foreground mb-1">Name</label>
+            <input className={inp} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Set & Trim" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-foreground mb-1">Invoice description</label>
+            <textarea
+              className={`${inp} min-h-[64px] resize-y`}
+              value={invoiceDescription}
+              onChange={e => setInvoiceDescription(e.target.value)}
+              placeholder="How this line reads on the invoice (defaults to the name)"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">Category</label>
+              <input className={inp} value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g. Labor" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">Billing type</label>
+              <select className={inp} value={billingType} onChange={e => setBillingType(e.target.value)}>
+                {billingTypeOptions.map(bt => (
+                  <option key={bt} value={bt}>{bt}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">Display order</label>
+              <input type="number" className={inp} value={sortOrder} onChange={e => setSortOrder(e.target.value)} />
+            </div>
+            <label className="flex items-center gap-2 mt-6 cursor-pointer select-none">
+              <input type="checkbox" checked={taxable} onChange={e => setTaxable(e.target.checked)} className="w-4 h-4 rounded border-border text-amber-600 focus:ring-amber-400" />
+              <span className="text-sm text-foreground">Taxable</span>
+            </label>
+          </div>
+
+          <div className="border-t border-border pt-4">
+            <p className="text-xs font-semibold text-foreground mb-2">Master pricing</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] text-muted-foreground mb-1">Base price</label>
+                <input className={inp} value={price} onChange={e => setPrice(e.target.value)} placeholder="0.00" inputMode="decimal" />
+              </div>
+              <div>
+                <label className="block text-[11px] text-muted-foreground mb-1">VOG price</label>
+                <input className={inp} value={priceVog} onChange={e => setPriceVog(e.target.value)} placeholder="(uses base)" inputMode="decimal" />
+              </div>
+              <div>
+                <label className="block text-[11px] text-muted-foreground mb-1">Hybrid price</label>
+                <input className={inp} value={priceHybrid} onChange={e => setPriceHybrid(e.target.value)} placeholder="(uses base)" inputMode="decimal" />
+              </div>
+              <div>
+                <label className="block text-[11px] text-muted-foreground mb-1">Drywall price</label>
+                <input className={inp} value={priceDrywall} onChange={e => setPriceDrywall(e.target.value)} placeholder="(uses base)" inputMode="decimal" />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-2">
+              Leave a home-type price blank to fall back to the base price.
+            </p>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-border flex gap-2 flex-shrink-0">
+          <button onClick={onClose} disabled={busy} className="flex-1 px-4 py-2.5 rounded-xl border border-border text-foreground font-medium text-sm hover:bg-muted disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={busy} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 text-white font-semibold text-sm hover:bg-amber-700 disabled:opacity-50">
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Master catalog card ───────────────────────────────────────────────────────
+function CatalogCard({ businessId }: { businessId?: number | null }) {
+  const { toast } = useToast();
+  const { data: serviceTypes = [], isLoading } = useListProductionServiceTypes(businessId, true);
+  const { data: billingTypes = [] } = useProductionBillingTypes();
+  const updateMut = useUpdateProductionServiceType();
+  const deleteMut = useDeleteProductionServiceType();
+
+  const billingTypeOptions = useMemo(() => billingTypes.map(bt => bt.value), [billingTypes]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<ProductionServiceType | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ProductionServiceType | null>(null);
+
+  const sorted = useMemo(
+    () => [...serviceTypes].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)),
+    [serviceTypes],
+  );
+
+  async function toggleActive(st: ProductionServiceType) {
+    try {
+      await updateMut.mutateAsync({ id: st.id, active: !st.active });
+    } catch (e) {
+      toast({ title: "Could not update", description: e instanceof Error ? e.message : "Try again.", variant: "destructive" });
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) return;
+    try {
+      await deleteMut.mutateAsync(confirmDelete.id);
+      toast({ title: "Billing item removed" });
+      setConfirmDelete(null);
+    } catch (e) {
+      toast({ title: "Could not remove", description: e instanceof Error ? e.message : "Try again.", variant: "destructive" });
+    }
+  }
+
+  return (
+    <Card className="border-border/50 shadow-md bg-card">
+      <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Package className="w-5 h-5 text-amber-500" />
+              Production Billing Catalog
+            </CardTitle>
+            <CardDescription>Master production billing items and pricing used to build MH Production invoices.</CardDescription>
+          </div>
+          <button
+            onClick={() => { setEditing(null); setModalOpen(true); }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition-colors flex-shrink-0">
+            <Plus className="w-3.5 h-3.5" /> Add
+          </button>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-5">
+        {isLoading ? (
+          <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-14 rounded-xl bg-muted animate-pulse" />)}</div>
+        ) : sorted.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">No billing items yet. Add your first billable production item.</p>
+        ) : (
+          <ul className="space-y-2">
+            {sorted.map(st => (
+              <li key={st.id} className={`flex items-center gap-3 rounded-xl border border-border px-3 py-2.5 ${st.active ? "bg-background" : "bg-muted/40 opacity-70"}`}>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-foreground truncate">{st.name}</p>
+                    {st.category && <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground flex-shrink-0">{st.category}</span>}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {st.billingType} · base {fmtPrice(st.price)}{st.taxable ? " · taxable" : ""}
+                  </p>
+                </div>
+                <button
+                  onClick={() => toggleActive(st)}
+                  title={st.active ? "Active — click to deactivate" : "Inactive — click to activate"}
+                  className={`text-[10px] font-semibold px-2 py-1 rounded-lg flex-shrink-0 ${st.active ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
+                  {st.active ? "Active" : "Inactive"}
+                </button>
+                <button onClick={() => { setEditing(st); setModalOpen(true); }} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted flex-shrink-0">
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button onClick={() => setConfirmDelete(st)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 flex-shrink-0">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+
+      <ServiceTypeEditorModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        editing={editing}
+        billingTypeOptions={billingTypeOptions}
+        businessId={businessId}
+      />
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm bg-card rounded-2xl shadow-2xl p-6">
+            <h3 className="font-bold text-foreground">Remove "{confirmDelete.name}"?</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              This billing item will no longer be available for new invoices. Existing invoices are not affected.
+            </p>
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setConfirmDelete(null)} disabled={deleteMut.isPending} className="flex-1 px-4 py-2.5 rounded-xl border border-border text-foreground font-medium text-sm hover:bg-muted disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={handleDelete} disabled={deleteMut.isPending} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 text-white font-semibold text-sm hover:bg-red-700 disabled:opacity-50">
+                {deleteMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── Per-client Pricing Profiles card ──────────────────────────────────────────
+type Draft = { price: string; priceVog: string; priceHybrid: string; priceDrywall: string };
+
+function emptyDraft(): Draft {
+  return { price: "", priceVog: "", priceHybrid: "", priceDrywall: "" };
+}
+
+function PricingProfilesCard({ businessId }: { businessId?: number | null }) {
+  const { toast } = useToast();
+  const { data: clients = [] } = useListClients();
+  const { data: serviceTypes = [] } = useListProductionServiceTypes(businessId);
+  const [clientId, setClientId] = useState<number | null>(null);
+  const { data: overrides = [], isLoading: overridesLoading } = useProductionPriceOverrides(clientId);
+  const upsertMut = useUpsertProductionPriceOverride();
+  const deleteMut = useDeleteProductionPriceOverride();
+
+  const clientList = clients as Array<{ id: number; name: string }>;
+  const sorted = useMemo(
+    () => [...serviceTypes].filter(s => s.active).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)),
+    [serviceTypes],
+  );
+
+  const overrideByService = useMemo(() => {
+    const m = new Map<number, (typeof overrides)[number]>();
+    for (const o of overrides) m.set(o.serviceTypeId, o);
+    return m;
+  }, [overrides]);
+
+  const [drafts, setDrafts] = useState<Record<number, Draft>>({});
+  const [savingId, setSavingId] = useState<number | null>(null);
+
+  // Re-seed local drafts whenever the selected client's overrides load/change.
+  useEffect(() => {
+    const next: Record<number, Draft> = {};
+    for (const st of sorted) {
+      const o = overrideByService.get(st.id);
+      next[st.id] = {
+        price: o?.price ?? "",
+        priceVog: o?.priceVog ?? "",
+        priceHybrid: o?.priceHybrid ?? "",
+        priceDrywall: o?.priceDrywall ?? "",
+      };
+    }
+    setDrafts(next);
+  }, [overrideByService, sorted]);
+
+  function setField(stId: number, field: keyof Draft, value: string) {
+    setDrafts(prev => ({ ...prev, [stId]: { ...(prev[stId] ?? emptyDraft()), [field]: value } }));
+  }
+
+  async function saveRow(stId: number) {
+    if (clientId == null) return;
+    const d = drafts[stId] ?? emptyDraft();
+    setSavingId(stId);
+    try {
+      await upsertMut.mutateAsync({
+        clientId,
+        serviceTypeId: stId,
+        price: priceOrNull(d.price),
+        priceVog: priceOrNull(d.priceVog),
+        priceHybrid: priceOrNull(d.priceHybrid),
+        priceDrywall: priceOrNull(d.priceDrywall),
+      });
+      toast({ title: "Override saved" });
+    } catch (e) {
+      toast({ title: "Could not save", description: e instanceof Error ? e.message : "Try again.", variant: "destructive" });
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function clearRow(stId: number) {
+    if (clientId == null) return;
+    const o = overrideByService.get(stId);
+    setSavingId(stId);
+    try {
+      if (o) await deleteMut.mutateAsync({ id: o.id, clientId });
+      setDrafts(prev => ({ ...prev, [stId]: emptyDraft() }));
+      toast({ title: "Override cleared", description: "This item now uses the master price." });
+    } catch (e) {
+      toast({ title: "Could not clear", description: e instanceof Error ? e.message : "Try again.", variant: "destructive" });
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  return (
+    <Card className="border-border/50 shadow-md bg-card">
+      <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Users2 className="w-5 h-5 text-amber-500" />
+          Client Pricing Profiles
+        </CardTitle>
+        <CardDescription>Per-client price overrides. Blank fields fall back to the master catalog price.</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-5 space-y-4">
+        <div>
+          <label className="block text-xs font-semibold text-foreground mb-1">Client</label>
+          <select
+            className={inp}
+            value={clientId ?? ""}
+            onChange={e => setClientId(e.target.value ? parseInt(e.target.value) : null)}>
+            <option value="">Select a client…</option>
+            {clientList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+
+        {clientId == null ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">Select a client to view and edit their Production pricing profile.</p>
+        ) : sorted.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">No active billing items in the catalog yet.</p>
+        ) : overridesLoading ? (
+          <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />)}</div>
+        ) : (
+          <ul className="space-y-2">
+            {sorted.map(st => {
+              const d = drafts[st.id] ?? emptyDraft();
+              const hasOverride = overrideByService.has(st.id);
+              const saving = savingId === st.id;
+              return (
+                <li key={st.id} className="rounded-xl border border-border p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <p className="text-sm font-semibold text-foreground truncate flex-1">{st.name}</p>
+                    {hasOverride
+                      ? <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 flex-shrink-0">Override</span>
+                      : <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground flex-shrink-0">Master {fmtPrice(st.price)}</span>}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-muted-foreground mb-0.5">Base</label>
+                      <input className={inp} value={d.price} onChange={e => setField(st.id, "price", e.target.value)} placeholder={fmtPrice(st.price)} inputMode="decimal" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-muted-foreground mb-0.5">VOG</label>
+                      <input className={inp} value={d.priceVog} onChange={e => setField(st.id, "priceVog", e.target.value)} placeholder={fmtPrice(st.priceVog)} inputMode="decimal" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-muted-foreground mb-0.5">Hybrid</label>
+                      <input className={inp} value={d.priceHybrid} onChange={e => setField(st.id, "priceHybrid", e.target.value)} placeholder={fmtPrice(st.priceHybrid)} inputMode="decimal" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-muted-foreground mb-0.5">Drywall</label>
+                      <input className={inp} value={d.priceDrywall} onChange={e => setField(st.id, "priceDrywall", e.target.value)} placeholder={fmtPrice(st.priceDrywall)} inputMode="decimal" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-2 justify-end">
+                    <button
+                      onClick={() => clearRow(st.id)}
+                      disabled={saving || (!hasOverride && !d.price && !d.priceVog && !d.priceHybrid && !d.priceDrywall)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-muted-foreground text-xs font-medium hover:bg-muted disabled:opacity-40">
+                      <RotateCcw className="w-3.5 h-3.5" /> Clear
+                    </button>
+                    <button
+                      onClick={() => saveRow(st.id)}
+                      disabled={saving}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-50">
+                      {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Save
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function ProductionBillingSection() {
+  const { activeBusiness } = useBusiness();
+  const businessId = activeBusiness?.id ?? null;
+  return (
+    <div className="space-y-5 pb-8">
+      <CatalogCard businessId={businessId} />
+      <PricingProfilesCard businessId={businessId} />
+    </div>
+  );
+}

@@ -9,14 +9,14 @@ import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 
 const router = Router();
 
-function calcInvoice(lineItems: any[], taxRate: number | null) {
+export function calcInvoice(lineItems: any[], taxRate: number | null) {
   const subtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
   const taxAmount = taxRate ? subtotal * (taxRate / 100) : 0;
   const total = subtotal + taxAmount;
   return { subtotal, taxAmount, total };
 }
 
-async function getNextInvoiceNumber() {
+export async function getNextInvoiceNumber() {
   const [settings] = await db.select().from(settingsTable).limit(1);
   const prefix = settings?.invoicePrefix ?? "INV-2026-";
   const num = settings?.invoiceNextNumber ?? 1001;
@@ -72,14 +72,14 @@ const invoiceSelect = {
   jobState: jobsTable.state,
 };
 
-function buildInvoiceQuery() {
+export function buildInvoiceQuery() {
   return db.select(invoiceSelect)
     .from(invoicesTable)
     .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
     .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id));
 }
 
-function fmt(inv: any) {
+export function fmt(inv: any) {
   return formatInvoice(inv, inv.clientName, inv.clientEmail, inv.clientAddress, inv.clientPhone, inv.clientCity, inv.clientState, inv.clientZip, inv.clientNotes, inv.jobTitle, inv.jobCity, inv.jobState);
 }
 

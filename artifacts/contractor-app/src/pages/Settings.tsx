@@ -11,7 +11,7 @@ import {
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
   Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2,
-  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy, ClipboardList, BookOpen,
+  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy, ClipboardList, BookOpen, Package,
 } from "lucide-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { FEATURE_OPTIONS } from "@/lib/featureOptions";
 import { HomeLibraryModal } from "@/components/MfhPanel";
 import { SignaturePad } from "@/components/SignaturePad";
+import { ProductionBillingSection } from "@/components/ProductionBillingSection";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -58,6 +59,7 @@ const TABS = [
   { key: "profile", label: "Business", icon: Building2 },
   { key: "invoice", label: "Invoice Defaults", icon: FileText },
   { key: "financial", label: "Financial", icon: DollarSign },
+  { key: "production", label: "Production Billing", icon: Package },
   { key: "mileage", label: "Mileage", icon: Navigation },
   { key: "modules", label: "Modules", icon: Settings2 },
   { key: "notifications", label: "Notifications", icon: Bell },
@@ -1635,6 +1637,9 @@ export default function Settings() {
       {/* ── Wix Integration (outside form) ── */}
       {activeTab === "integrations" && <WixIntegrationSection />}
 
+      {/* ── Production Billing (outside form) ── */}
+      {activeTab === "production" && <ProductionBillingSection />}
+
       {/* ── Square Payments (outside form) ── */}
       {activeTab === "payments" && (
         <div className="space-y-5 pb-8">
@@ -1709,7 +1714,7 @@ export default function Settings() {
         </div>
       )}
 
-      <form onSubmit={handleSave} className={`space-y-5 ${(activeTab === "team" || activeTab === "google" || activeTab === "payments" || activeTab === "integrations") ? "hidden" : ""}`}>
+      <form onSubmit={handleSave} className={`space-y-5 ${(activeTab === "team" || activeTab === "google" || activeTab === "payments" || activeTab === "integrations" || activeTab === "production") ? "hidden" : ""}`}>
 
         {/* ── Profile ── */}
         {activeTab === "profile" && (

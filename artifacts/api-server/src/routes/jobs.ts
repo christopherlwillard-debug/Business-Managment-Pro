@@ -4,6 +4,8 @@ import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, d
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { computeAllocationSplitPool, computeSubOwed } from "../lib/allocation.js";
+import { calcInvoice, getNextInvoiceNumber, buildInvoiceQuery, fmt } from "./invoices";
+import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/productionBilling.js";
 import { z } from "zod/v4";
 
 const router = Router();
@@ -496,6 +498,121 @@ router.get("/:id/sub-expenses", async (req, res) => {
   }
 });
 
+// ── MH Production Billing Engine (Task #1062) ───────────────────────────────────
+// POST /api/jobs/:id/apply-production-pricing  { quantities?: Record<svcId, number>, overwrite?: boolean }
+// Builds invoice line items from the production items checked on this job, priced
+// from the client's Production pricing profile, then creates/updates a DRAFT
+// invoice. Never overwrites a sent/paid/overdue invoice. When a draft already
+// exists and overwrite was not confirmed, returns { conflict: "draft", ... }.
+router.post("/:id/apply-production-pricing", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+    const body = (req.body ?? {}) as { quantities?: Record<string, unknown>; overwrite?: boolean };
+    const overwrite = body.overwrite === true;
+
+    await ensureProductionBillingSeed();
+
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id));
+    if (!job) return res.status(404).json({ error: "Job not found" });
+
+    const serviceIds = Array.isArray(job.mhProductionServices)
+      ? job.mhProductionServices.map(Number).filter((n) => Number.isFinite(n))
+      : [];
+    if (serviceIds.length === 0) {
+      return res.status(400).json({ error: "No production items are checked on this job." });
+    }
+
+    const quantities: Record<number, number> = {};
+    for (const [k, v] of Object.entries(body.quantities ?? {})) {
+      const key = Number(k);
+      const val = Number(v);
+      if (Number.isFinite(key) && Number.isFinite(val)) quantities[key] = val;
+    }
+
+    const resolved = await buildProductionLineItems({
+      clientId: job.clientId ?? null,
+      homeType: job.mfhConstructionType ?? null,
+      serviceTypeIds: serviceIds,
+      quantities,
+    });
+    if (resolved.length === 0) {
+      return res.status(400).json({ error: "No billable production items found for this job." });
+    }
+
+    const lineItems = resolved.map((li, i) => ({
+      id: i + 1,
+      description: li.description,
+      quantity: li.quantity,
+      unitPrice: li.unitPrice,
+    }));
+
+    // Existing-invoice handling. Only a draft may be overwritten (with confirmation);
+    // sent/paid/overdue invoices are never touched — a fresh draft is created instead.
+    const existing = await db
+      .select()
+      .from(invoicesTable)
+      .where(eq(invoicesTable.jobId, id))
+      .orderBy(desc(invoicesTable.createdAt));
+    const LOCKED = new Set(["sent", "paid", "overdue"]);
+    const draft = existing.find((inv) => inv.status === "draft");
+    const locked = existing.find((inv) => LOCKED.has(inv.status)) ?? null;
+
+    if (draft) {
+      if (!overwrite) {
+        return res.json({ conflict: "draft", invoiceId: draft.id, invoiceNumber: draft.invoiceNumber });
+      }
+      const taxRate = draft.taxRate ? parseFloat(draft.taxRate) : null;
+      const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
+      await db
+        .update(invoicesTable)
+        .set({
+          lineItems,
+          subtotal: subtotal.toString(),
+          taxAmount: taxAmount.toString(),
+          total: total.toString(),
+          clientId: job.clientId ?? draft.clientId ?? null,
+        })
+        .where(eq(invoicesTable.id, draft.id));
+      const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, draft.id));
+      return res.json({ invoice: fmt(withJoins), updated: true });
+    }
+
+    const invoiceNumber = await getNextInvoiceNumber();
+    const { subtotal, taxAmount, total } = calcInvoice(lineItems, null);
+    const issueDate = new Date().toISOString().slice(0, 10);
+    const [invoice] = await db
+      .insert(invoicesTable)
+      .values({
+        invoiceNumber,
+        clientId: job.clientId ?? null,
+        jobId: id,
+        status: "draft",
+        issueDate,
+        subtotal: subtotal.toString(),
+        taxAmount: taxAmount.toString(),
+        total: total.toString(),
+        city: job.city ?? null,
+        state: job.state ?? null,
+        locationName: job.locationName ?? null,
+        lineItems,
+        businessLine: job.businessLine ?? null,
+      })
+      .returning();
+    const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, invoice.id));
+    return res.json({
+      invoice: fmt(withJoins),
+      created: true,
+      lockedExisting: locked
+        ? { invoiceId: locked.id, invoiceNumber: locked.invoiceNumber, status: locked.status }
+        : null,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to apply production pricing" });
+  }
+});
+
 router.get("/:id/invoice-draft", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -507,8 +624,14 @@ router.get("/:id/invoice-draft", async (req, res) => {
       ? (await db.select().from(clientsTable).where(eq(clientsTable.id, job.clientId)))[0] ?? null
       : null;
 
-    // Fetch estimates linked to this job and expand their line items
-    const estimates = await db.select().from(estimatesTable).where(eq(estimatesTable.jobId, id));
+    // Fetch estimates linked to this job and expand their line items.
+    // MH Production jobs are priced exclusively by the Production Billing engine
+    // (Apply Production Pricing), so model-based estimate lines must never flow
+    // into their invoices. Skip estimate expansion for those jobs.
+    const isMhProduction = job.workflow === "mh_production";
+    const estimates = isMhProduction
+      ? []
+      : await db.select().from(estimatesTable).where(eq(estimatesTable.jobId, id));
 
     type InvoiceLine = { description: string; quantity: number; unitPrice: number };
     // Shape of each line item stored in the estimates.line_items jsonb column

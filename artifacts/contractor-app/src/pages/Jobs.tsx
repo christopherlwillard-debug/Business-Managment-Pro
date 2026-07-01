@@ -40,6 +40,7 @@ import {
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 import { JobChecklistPanel } from "@/components/JobChecklistPanel";
 import { MfhPanel } from "@/components/MfhPanel";
+import { ApplyProductionPricingDialog } from "@/components/ApplyProductionPricingDialog";
 import { KbTrainingModal } from "@/components/KbTrainingModal";
 import { LaborSummaryPanel } from "@/components/LaborSummaryPanel";
 import { ServiceBillingPanel } from "@/components/ServiceBillingPanel";
@@ -2762,7 +2763,7 @@ function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
-  checklistSummary, productionServiceTypes = [],
+  checklistSummary, productionServiceTypes = [], onApplyProductionPricing,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -2785,6 +2786,7 @@ function JobCard({
   subsSettled?: boolean;
   checklistSummary?: ChecklistSummary | null;
   productionServiceTypes?: import("@workspace/api-client-react").ProductionServiceType[];
+  onApplyProductionPricing?: () => void;
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -3144,7 +3146,7 @@ function JobCard({
                   {`$${parseFloat(String((job as Record<string, unknown>).mfhQuotedPrice)).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                 </span>
               ) : (
-                <span className="text-[10px] text-amber-400">Set pricing</span>
+                <span className="text-[10px] text-amber-400">{jobWorkflow === "mh_production" ? "Builder & model" : "Set pricing"}</span>
               )}
             </button>
           ) : (
@@ -3153,7 +3155,7 @@ function JobCard({
               className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
               <Home className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
               <span className="flex-1 text-left">Manufactured Home</span>
-              <span className="text-[10px] text-muted-foreground">Apply pricing</span>
+              <span className="text-[10px] text-muted-foreground">{jobWorkflow === "mh_production" ? "Builder & model" : "Apply pricing"}</span>
             </button>
           )
         )}
@@ -3235,13 +3237,21 @@ function JobCard({
           )}
         </button>
 
-        {/* Create Invoice — no invoice exists yet */}
-        {!invoiceSummary && canEdit("invoices") && onCreateInvoice && (
-          <button
-            onClick={onCreateInvoice}
-            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-bold hover:bg-primary/20 transition-colors">
-            <Receipt className="w-3.5 h-3.5" /> Create Invoice
-          </button>
+        {/* Create Invoice — no invoice exists yet. MH Production uses the Production Pricing engine. */}
+        {!invoiceSummary && canEdit("invoices") && (
+          jobWorkflow === "mh_production" && onApplyProductionPricing ? (
+            <button
+              onClick={onApplyProductionPricing}
+              className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors shadow-sm">
+              <Receipt className="w-3.5 h-3.5" /> Apply Production Pricing
+            </button>
+          ) : onCreateInvoice ? (
+            <button
+              onClick={onCreateInvoice}
+              className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-bold hover:bg-primary/20 transition-colors">
+              <Receipt className="w-3.5 h-3.5" /> Create Invoice
+            </button>
+          ) : null
         )}
 
         {/* Draft invoice — open invoice panel to edit/send */}
@@ -3250,6 +3260,15 @@ function JobCard({
             onClick={() => onReviewInvoice(job)}
             className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors shadow-sm">
             <FileText className="w-3.5 h-3.5" /> Edit Invoice
+          </button>
+        )}
+
+        {/* Re-apply Production Pricing — rebuild the draft from checked items (MH Production) */}
+        {invoiceSummary && invoiceSummary.status === "draft" && canEdit("invoices") && jobWorkflow === "mh_production" && onApplyProductionPricing && (
+          <button
+            onClick={onApplyProductionPricing}
+            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition-colors">
+            <Wand2 className="w-3.5 h-3.5" /> Re-apply Production Pricing
           </button>
         )}
 
@@ -4449,6 +4468,7 @@ export default function Jobs() {
   const [invoiceDraftData, setInvoiceDraftData]         = useState<InvoiceDraft | null>(null);
   const [selectedExistingInvoice, setSelectedExistingInvoice] = useState<Invoice | null>(null);
   const [invoiceFetching, setInvoiceFetching]           = useState(false);
+  const [productionPricingJob, setProductionPricingJob] = useState<Job | null>(null);
 
   const [gcWizardJob, setGcWizardJob] = useState<Job | null>(null);
 
@@ -5176,7 +5196,8 @@ export default function Jobs() {
                       generatingLinkId={generatingLinkId}
                       onSmartEstimate={j => setGcWizardJob(j)}
                       checklistSummary={checklistSummaries[job.id] ?? null}
-                      productionServiceTypes={allProductionServiceTypes} />
+                      productionServiceTypes={allProductionServiceTypes}
+                      onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined} />
                   );
                 })}
               </div>
@@ -5217,7 +5238,8 @@ export default function Jobs() {
                         generatingLinkId={generatingLinkId}
                         onSmartEstimate={j => setGcWizardJob(j)}
                         checklistSummary={checklistSummaries[job.id] ?? null}
-                        productionServiceTypes={allProductionServiceTypes} />
+                        productionServiceTypes={allProductionServiceTypes}
+                      onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
@@ -5265,7 +5287,8 @@ export default function Jobs() {
                         onArchiveJob={handleArchiveJob}
                         subsSettled={!jobsWithSubExpenses.has(job.id) || outstandingBalanceMap.get(job.id) === false}
                         checklistSummary={checklistSummaries[job.id] ?? null}
-                        productionServiceTypes={allProductionServiceTypes} />
+                        productionServiceTypes={allProductionServiceTypes}
+                      onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined} />
                     );
                   }) : (
                     <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
@@ -5548,6 +5571,31 @@ export default function Jobs() {
         existingInvoice={selectedExistingInvoice ?? undefined}
         onSaved={() => { queryClient.invalidateQueries(); }}
       />
+
+      {productionPricingJob && (
+        <ApplyProductionPricingDialog
+          open={!!productionPricingJob}
+          onOpenChange={open => { if (!open) setProductionPricingJob(null); }}
+          jobId={productionPricingJob.id}
+          checkedServiceIds={((productionPricingJob as Record<string, unknown>).mhProductionServices as number[] | null) ?? []}
+          homeType={((productionPricingJob as Record<string, unknown>).mfhConstructionType as string | null) ?? null}
+          clientName={((productionPricingJob as Record<string, unknown>).clientName as string | null) ?? null}
+          catalog={allProductionServiceTypes}
+          onApplied={(invoice, meta) => {
+            setInvoiceDraftData(null);
+            setSelectedExistingInvoice(invoice as Invoice);
+            setInvoiceEditorOpen(true);
+            queryClient.invalidateQueries();
+            if (meta.lockedExisting) {
+              toast({
+                title: "New draft created",
+                description: `Invoice ${meta.lockedExisting.invoiceNumber} is ${meta.lockedExisting.status} and was left unchanged — a new draft was created for review.`,
+              });
+            }
+          }}
+          onKeepExisting={() => handleReviewInvoice(productionPricingJob)}
+        />
+      )}
 
       {invoiceFetching && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">

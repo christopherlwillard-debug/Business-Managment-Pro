@@ -551,34 +551,193 @@ export function usePatchKnowledgeRecord() {
   });
 }
 
+// ── MH Production Billing (Task #1062) ────────────────────────────────────────
+// Master catalog item ("Production Billing Item"). Prices/descriptions/rules are
+// all data-driven and editable in Settings.
 export interface ProductionServiceType {
   id: number;
   businessId?: number | null;
   name: string;
+  itemKey?: string | null;
+  invoiceDescription?: string | null;
+  billingType: string;
+  taxable: boolean;
+  category?: string | null;
+  price?: string | null;
+  priceVog?: string | null;
+  priceHybrid?: string | null;
+  priceDrywall?: string | null;
   sortOrder: number;
   active: boolean;
   createdAt: string;
 }
 
-export function useListProductionServiceTypes(businessId?: number | null) {
+// A client's Production pricing profile row. Any null price* falls back to master.
+export interface ProductionPriceOverride {
+  id: number;
+  clientId: number;
+  serviceTypeId: number;
+  profileKind: string;
+  price?: string | null;
+  priceVog?: string | null;
+  priceHybrid?: string | null;
+  priceDrywall?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProductionBillingTypeOption {
+  value: string;
+  quantityBased: boolean;
+}
+
+export interface ProductionServiceTypeInput {
+  name: string;
+  invoiceDescription?: string | null;
+  billingType?: string;
+  taxable?: boolean;
+  category?: string | null;
+  price?: number | string | null;
+  priceVog?: number | string | null;
+  priceHybrid?: number | string | null;
+  priceDrywall?: number | string | null;
+  sortOrder?: number;
+  businessId?: number | null;
+}
+
+export function useListProductionServiceTypes(businessId?: number | null, includeInactive?: boolean) {
   return useQuery({
-    queryKey: ["/api/production-service-types", businessId ?? null],
-    queryFn: () => customFetch<ProductionServiceType[]>(
-      `/api/production-service-types${businessId ? `?businessId=${businessId}` : ""}`,
+    queryKey: ["/api/production-service-types", businessId ?? null, includeInactive ?? false],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (businessId) params.set("businessId", String(businessId));
+      if (includeInactive) params.set("includeInactive", "true");
+      const qs = params.toString();
+      return customFetch<ProductionServiceType[]>(
+        `/api/production-service-types${qs ? `?${qs}` : ""}`,
+        { method: "GET" }
+      );
+    },
+  });
+}
+
+export function useProductionBillingTypes() {
+  return useQuery({
+    queryKey: ["/api/production-service-types/billing-types"],
+    queryFn: () => customFetch<ProductionBillingTypeOption[]>(
+      "/api/production-service-types/billing-types",
       { method: "GET" }
     ),
+    staleTime: Infinity,
   });
 }
 
 export function useCreateProductionServiceType() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; sortOrder?: number; businessId?: number | null }) =>
+    mutationFn: (data: ProductionServiceTypeInput) =>
       customFetch<ProductionServiceType>("/api/production-service-types", {
         method: "POST",
         body: JSON.stringify(data),
         headers: { "Content-Type": "application/json" },
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/production-service-types"] }),
+  });
+}
+
+export function useUpdateProductionServiceType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: Partial<ProductionServiceTypeInput> & { id: number; active?: boolean }) =>
+      customFetch<ProductionServiceType>(`/api/production-service-types/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/production-service-types"] }),
+  });
+}
+
+export function useDeleteProductionServiceType() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      customFetch<ProductionServiceType>(`/api/production-service-types/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/production-service-types"] }),
+  });
+}
+
+// ── Client Production pricing profile (overrides) ─────────────────────────────
+export function useProductionPriceOverrides(clientId?: number | null) {
+  return useQuery({
+    queryKey: ["/api/production-service-types/overrides", clientId ?? null],
+    queryFn: () => customFetch<ProductionPriceOverride[]>(
+      `/api/production-service-types/overrides?clientId=${clientId}`,
+      { method: "GET" }
+    ),
+    enabled: clientId != null,
+  });
+}
+
+export function useUpsertProductionPriceOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      clientId: number;
+      serviceTypeId: number;
+      price?: number | string | null;
+      priceVog?: number | string | null;
+      priceHybrid?: number | string | null;
+      priceDrywall?: number | string | null;
+    }) =>
+      customFetch<ProductionPriceOverride>("/api/production-service-types/overrides", {
+        method: "PUT",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: (_r, vars) =>
+      qc.invalidateQueries({ queryKey: ["/api/production-service-types/overrides", vars.clientId] }),
+  });
+}
+
+export function useDeleteProductionPriceOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: number; clientId: number }) =>
+      customFetch<ProductionPriceOverride>(`/api/production-service-types/overrides/${id}`, { method: "DELETE" }),
+    onSuccess: (_r, vars) =>
+      qc.invalidateQueries({ queryKey: ["/api/production-service-types/overrides", vars.clientId] }),
+  });
+}
+
+// ── Apply Production Pricing (build DRAFT invoice from checked items) ──────────
+export interface ApplyProductionPricingResult {
+  invoice?: unknown;
+  created?: boolean;
+  updated?: boolean;
+  conflict?: "draft";
+  invoiceId?: number;
+  invoiceNumber?: string;
+  lockedExisting?: { invoiceId: number; invoiceNumber: string; status: string } | null;
+  error?: string;
+}
+
+export function useApplyProductionPricing() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { jobId: number; quantities?: Record<number, number>; overwrite?: boolean }) =>
+      customFetch<ApplyProductionPricingResult>(
+        `/api/jobs/${data.jobId}/apply-production-pricing`,
+        {
+          method: "POST",
+          body: JSON.stringify({ quantities: data.quantities ?? {}, overwrite: data.overwrite === true }),
+          headers: { "Content-Type": "application/json" },
+        }
+      ),
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/invoices"] });
+      qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/jobs", vars.jobId] });
+    },
   });
 }

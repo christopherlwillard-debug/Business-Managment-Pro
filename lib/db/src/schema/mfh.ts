@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, unique } from "drizzle-orm/pg-core";
 import { jobTypeBenchmarksTable } from "./job-type-benchmarks";
 import { checklistTemplatesTable } from "./job-checklists";
 import { clientsTable } from "./clients";
@@ -121,14 +121,49 @@ export const jobKnowledgeRecordVersionsTable = pgTable("job_knowledge_record_ver
   afterValues: jsonb("after_values").$type<Record<string, unknown>>().notNull(),
 });
 
+// Master Production Billing Catalog. Each row is one Production Billing Item.
+// itemKey is a stable identifier used for idempotent seeding/upserts (names are
+// user-editable and rows are referenced by jobs.mhProductionServices IDs, so we
+// never match on name for seeds). price* columns are the master prices:
+//   price            = flat/all-home-types price
+//   priceVog/Hybrid/Drywall = optional per-home-type variants (one row, three prices)
+// billingType is an application-defined value (see BILLING_TYPES in api-server).
 export const productionServiceTypesTable = pgTable("production_service_types", {
   id: serial("id").primaryKey(),
   businessId: integer("business_id"),
+  itemKey: text("item_key"),
   name: text("name").notNull(),
+  invoiceDescription: text("invoice_description"),
+  billingType: text("billing_type").notNull().default("Fixed"),
+  taxable: boolean("taxable").notNull().default(false),
+  category: text("category"),
+  price: numeric("price", { precision: 12, scale: 2 }),
+  priceVog: numeric("price_vog", { precision: 12, scale: 2 }),
+  priceHybrid: numeric("price_hybrid", { precision: 12, scale: 2 }),
+  priceDrywall: numeric("price_drywall", { precision: 12, scale: 2 }),
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Per-client Production pricing profile: stores ONLY prices that differ from the
+// master catalog. profileKind allows future Service/Contracting profiles on the
+// same client without new client records or engine changes. A null price* column
+// means "fall back to the master value" at resolution time.
+export const productionPriceOverridesTable = pgTable("production_price_overrides", {
+  id: serial("id").primaryKey(),
+  clientId: integer("client_id").notNull().references(() => clientsTable.id, { onDelete: "cascade" }),
+  serviceTypeId: integer("service_type_id").notNull().references(() => productionServiceTypesTable.id, { onDelete: "cascade" }),
+  profileKind: text("profile_kind").notNull().default("production"),
+  price: numeric("price", { precision: 12, scale: 2 }),
+  priceVog: numeric("price_vog", { precision: 12, scale: 2 }),
+  priceHybrid: numeric("price_hybrid", { precision: 12, scale: 2 }),
+  priceDrywall: numeric("price_drywall", { precision: 12, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqClientProfileService: unique().on(t.clientId, t.profileKind, t.serviceTypeId),
+}));
 
 export type MfhConstructionType = typeof mfhConstructionTypesTable.$inferSelect;
 export type MfhManufacturer = typeof mfhManufacturersTable.$inferSelect;
@@ -141,3 +176,4 @@ export type JobLaborEntry = typeof jobLaborEntriesTable.$inferSelect;
 export type JobKnowledgeRecord = typeof jobKnowledgeRecordsTable.$inferSelect;
 export type JobKnowledgeRecordVersion = typeof jobKnowledgeRecordVersionsTable.$inferSelect;
 export type ProductionServiceType = typeof productionServiceTypesTable.$inferSelect;
+export type ProductionPriceOverride = typeof productionPriceOverridesTable.$inferSelect;
