@@ -1,0 +1,467 @@
+Manufactured Home Pricing Engine & Automatic Invoice Population
+Purpose
+The current job card workflow works well and should not be changed. It is already being used for production tracking, labor analytics, reporting, knowledge base learning, and historical job data. The goal is not to redesign the job card, but to make the pricing and invoicing system intelligent behind the scenes.
+The objective is simple:
+When the user selects the home type (VOG, Hybrid, or Drywall) and checks the work being performed (Interior Trim, Plumbing, Exterior Trim, Deck, etc.), the system should automatically build the invoice using the correct pricing for the selected client.
+The user should still be able to edit the invoice after it is created without affecting future pricing.
+
+Current Workflow (No Changes)
+The existing job card remains exactly as it is today.
+Example:
+✓ VOG / Hybrid / Drywall
+
+✓ Interior Trim Out
+
+✓ Exterior Trim Out
+
+✓ Plumbing Hookup
+
+✓ Vinyl Ends
+
+✓ 4x4 Deck
+
+✓ Steps
+
+✓ Etc.
+Nothing changes for office staff or field crews.
+No additional buttons.
+No complicated pricing screens.
+No changes to production logging.
+The job card continues serving one purpose:
+Record what work is being performed.
+
+Pricing Happens Behind the Scenes
+Instead of entering prices manually every time, the system should automatically calculate pricing based on three things:
+Selected Client
+Home Type
+Selected Services
+The invoice is generated automatically when the user clicks:
+Apply Pricing
+
+Three-Layer Pricing Architecture
+Instead of hardcoding prices into jobs or invoices, pricing should be separated into three independent layers.
+
+Layer 1 – Master Service Catalog
+This is the company's master pricing list.
+Think of this as the default price book.
+Every service exists here only once.
+Example:
+Service
+Billing Type
+Default Price
+Interior Trim Out - VOG
+Per Home
+$1,500
+Interior Trim Out - Hybrid
+Per Home
+$2,500
+Interior Trim Out - Drywall
+Per Home
+$3,500
+Exterior Trim
+Per Home
+$1000
+Plumbing Hookup
+Per Home
+$1,000
+
+
+
+
+
+
+
+
+
+
+
+
+Vinyl Side
+Per Side
+$500
+
+
+
+
+
+
+4x4 Deck
+Each
+$1400
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Travel Surcharge Charge
+Fixed Daily over 60 miles
+
+
+$150 
+
+
+
+
+
+
+
+These prices act as company defaults.
+If a client does not have a custom price, these values are used automatically.
+
+Layer 2 – Client Pricing Overrides
+Every client can have their own pricing schedule.
+Only prices that differ from the master catalog need to be stored.
+Clayton Homes
+Service
+Price
+Plumbing Hookup
+$1,000
+Vinyl Side
+$500 / Side
+Interior Trim - Drywall
+$3,500
+
+
+Cavco
+Service
+Price
+Plumbing Hookup
+$1,500
+Vinyl Side
+$600 / Side
+Interior Trim - Drywall
+$3,700
+
+
+
+This wouldnt be on because champion isnt a client its going to be a builder Our clients are the local dealers which is cavco, clayton (owensboro and evansville), 
+Champion                                 *Do not use*
+Service
+Price
+Plumbing Hookup
+$1,200
+Vinyl Side
+$550 / Side
+
+Everything else continues using the company default pricing.
+
+Pricing Lookup Logic
+Whenever pricing is needed, the application follows one simple rule:
+Does this client have a custom price?
+
+       YES
+        │
+Use Client Price
+        │
+        NO
+        │
+Use Master Service Price
+This allows every dealer to have different pricing without duplicating the entire price list.
+
+Layer 3 – Job Pricing Snapshot
+This is the most important part of the system.
+When the user clicks:
+Apply Pricing
+the application copies the calculated prices into the job's invoice.
+Example:
+Job #542
+Interior Trim Out
+$3,500
+
+Plumbing Hookup
+$1,500
+
+Vinyl Siding
+2 Sides × $600
+$1,200
+
+4x4 Deck
+$1400
+
+--------------------------------
+
+Total
+$5,350
+(Example total based on the listed line items.)
+Once these prices are copied into the invoice, they become permanent.
+If Cavco changes their plumbing rate from $1,500 to $1,600 next month, previously completed jobs remain unchanged because the invoice is a snapshot of pricing at the time the work was performed.
+Historical invoices should never change.
+
+The Job Card Does NOT Change
+The current job card should remain exactly as it is today.
+It already collects the information needed for:
+Labor tracking
+Knowledge Base learning
+Historical reporting
+Crew analytics
+Production statistics
+Job completion reporting
+Changing it would only make data collection more complicated.
+
+How Apply Pricing Works
+When the user clicks Apply Pricing, the system already knows:
+Client
+Clayton Homes
+Home Type
+Drywall
+Checked Services
+✓ Interior Trim
+
+✓ Exterior Trim
+
+✓ Plumbing Hookup
+
+✓ 4x4 Deck
+The pricing engine processes each selected service and creates invoice line items automatically.
+No manual price entry is required.
+
+Example – Clayton Homes
+The job card remains unchanged.
+The generated invoice becomes:
+Interior Trim (Drywall)
+$3,500
+
+
+Plumbing Hookup
+$1,000
+
+4x4 Deck
+$1400
+
+----------------------
+
+Total
+$5,150
+
+Example – Cavco
+The exact same job.
+Nothing changes on the job card.
+Only the client changes.
+Client = Cavco
+The invoice becomes:
+Interior Trim (Drywall)
+$3,500
+
+Plumbing Hookup
+$1,500
+
+4x4 Deck
+$1400
+
+----------------------
+
+Total
+$5,650
+The office never has to remember different dealer pricing.
+
+Quantity-Based Services
+Some services require quantities instead of a fixed price.
+For example:
+Vinyl Siding
+Instead of a fixed charge:
+Vinyl Side
+the system should allow:
+Quantity
+
+○ 1 Side
+
+● 2 Sides
+
+
+The pricing engine calculates automatically.
+Clayton
+2 Sides
+
+$500 each
+
+Total
+
+$1,000
+Cavco
+2 Sides
+
+$600 each
+
+Total
+
+$1,200
+The office only enters the quantity.
+The application calculates everything else.
+This same billing method could also be used for:
+Vinyl Sides
+Windows
+Doors
+Decks
+Steps
+Concrete Pads
+Tie Downs
+Skirting (per foot)
+Heat Tape
+Travel Miles
+Hourly Labor
+Service Calls
+
+Service Catalog Structure
+Each service should contain:
+Service Name
+
+Category
+
+Billing Type
+
+Default Price
+
+Taxable
+
+Active
+
+Example Billing Types
+Fixed Price
+
+Per Home
+
+Per Side
+
+Per Foot
+
+Per Window
+
+Per Door
+
+Per Hour
+
+Per Item
+
+Per Mile
+This allows nearly every manufactured-home service to use the same pricing engine.
+
+Suggested Service Catalog
+Interior Trim Out – VOG
+Interior Trim Out – Hybrid
+Interior Trim Out – Drywall
+Exterior Trim
+Plumbing Hookup
+Vinyl Side
+4x4 Deck
+Skirting
+Service Call
+Travel Charge
+Mileage
+Materials
+Warranty Repair
+
+Automatic Pricing Algorithm
+When Apply Pricing is pressed:
+For every checked service
+
+↓
+
+Determine Billing Type
+
+↓
+
+Determine Client
+
+↓
+
+Determine Home Type
+
+↓
+
+Look for Client Override
+
+↓
+
+If Override Exists
+
+Use Client Price
+
+Else
+
+Use Master Price
+
+↓
+
+Calculate Quantity
+
+↓
+
+Create Invoice Line Item
+
+↓
+
+Repeat Until Finished
+
+Invoice Independence
+After the invoice is generated, it should become completely independent from the pricing database.
+The office can then:
+Adjust prices
+Add discounts
+Remove items
+Add materials
+Add notes
+Add additional charges
+Change quantities
+None of these edits should modify:
+Master Pricing
+Client Pricing
+Future Jobs
+Historical Analytics
+Only that invoice changes.
+
+Benefits of This Design
+This architecture provides a scalable and maintainable pricing system without disrupting your existing workflow.
+Benefits include:
+No changes to the existing job card.
+Preserves production data collection and labor analytics.
+Automatically builds invoices from the services selected on the job.
+Supports unlimited dealers with different pricing schedules.
+Supports unlimited service types and billing methods.
+Allows quantity-based pricing for services such as siding, skirting, and decking.
+Stores invoices as permanent pricing snapshots so historical jobs never change.
+Lets office staff make invoice adjustments after job completion without affecting the master price list or client-specific pricing.
+Eliminates repetitive manual data entry while keeping the process simple for crews and office staff.
+This design keeps the job card focused on production and data logging, while the pricing engine handles all billing logic in the background. It gives you automation without adding complexity to the screens your team uses every day, and it creates a foundation that can easily scale as you add more builders, clients, services, and pricing rules.

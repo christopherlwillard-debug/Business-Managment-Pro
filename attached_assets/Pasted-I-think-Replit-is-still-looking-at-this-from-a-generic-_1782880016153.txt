@@ -1,0 +1,177 @@
+I think Replit is still looking at this from a generic contractor app perspective instead of your production workflow.
+
+The biggest misunderstanding is this:
+
+The purpose of checking "Plumbing", "Interior Trim", or "Deck" is NOT to document the work. It's to tell the invoice what to bill.
+
+Right now, the app is treating those checkboxes as informational only. For your business, they should be billable production items.
+
+I would send Replit something like this
+Clarification – Manufactured Home Production Pricing
+
+I think there is a misunderstanding about the purpose of this feature.
+
+The current Manufactured Home job card already records the work being performed. I do not want to redesign that workflow.
+
+The services selected on the job card (Interior Trim, Plumbing Hookup, Exterior Trim, Deck, etc.) are not simply informational. They represent the billable production work completed on that home.
+
+Today, if I create a production job and check:
+
+Interior Trim
+Plumbing Hookup
+Exterior Trim (2 Sides)
+4x4 Deck
+
+those selections are only stored as job data. They do not help me build an invoice.
+
+That is the problem I am trying to solve.
+
+What I Want
+
+When I click Apply Pricing, I do not want it to price the home model.
+
+I want it to read the production work that was actually completed and automatically build the invoice.
+
+For example:
+
+Job
+
+Client:
+Clayton Homes – Owensboro
+
+Home Type:
+Drywall
+
+Completed Work:
+
+✓ Interior Trim
+✓ Plumbing Hookup
+✓ Exterior Trim
+Quantity: 2 Sides
+✓ 4x4 Deck
+
+When I click Apply Pricing, the invoice should automatically become:
+
+Interior Trim (Drywall)     $3,500
+
+Plumbing Hookup             $1,000
+
+Exterior Trim
+2 Sides @ $500              $1,000
+
+4x4 Deck                    $1,400
+
+----------------------------
+
+Total                       $6,900
+
+If the client is Cavco, using the exact same job:
+
+Interior Trim (Drywall)     $3,500
+
+Plumbing Hookup             $1,500
+
+Exterior Trim
+2 Sides @ $600              $1,200
+
+4x4 Deck                    $1,400
+
+----------------------------
+
+Total                       $7,600
+
+The office should not manually build these invoices every time.
+
+The Existing "Apply Pricing"
+
+The current Apply Pricing appears to use model-based pricing from the Manufactured Home Library.
+
+That is not what I want for production jobs.
+
+Knowing that a home is a Champion Foundation Limited 3276H43LM76 is useful for:
+
+Builder
+Model
+Home Type
+Knowledge Base
+Labor Analytics
+Historical Data
+
+It should not determine the invoice amount.
+
+The invoice should be built from the production work completed on that home.
+
+Builders and Clients Are Different
+
+Builder:
+
+Champion
+Southern
+Giles
+Norris
+
+These identify the home.
+
+Clients:
+
+Clayton Homes – Owensboro
+Clayton Homes – Evansville
+Cavco
+
+These determine pricing.
+
+Pricing should always come from the client, not the builder.
+
+The Workflow Should Be
+Create Job
+
+↓
+
+Select Client
+
+↓
+
+Select Builder / Model
+
+↓
+
+Complete Job Card
+
+↓
+
+Check Completed Production Items
+
+↓
+
+Click Apply Pricing
+
+↓
+
+Read Client Pricing
+
+↓
+
+Build Invoice
+
+↓
+
+Office Reviews Invoice
+
+↓
+
+Make Any Necessary Adjustments
+
+↓
+
+Send Invoice
+The Goal
+
+The goal is not to calculate the value of the home.
+
+The goal is to eliminate manually creating production invoices.
+
+The job card already tells the system exactly what was completed.
+
+The pricing engine should simply translate those completed production items into invoice line items using the selected client's pricing schedule.
+
+I think this is the missing piece. Once they understand that the job card is effectively your production worksheet and the invoice should be generated from those completed production items, the rest of your design falls into place. That aligns with the workflow you've been describing throughout this project and keeps your production data, pricing, and invoicing connected without changing how your crews work.

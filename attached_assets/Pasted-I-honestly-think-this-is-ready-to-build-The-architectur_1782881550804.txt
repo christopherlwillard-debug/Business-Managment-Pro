@@ -1,0 +1,161 @@
+I honestly think this is ready to build.
+
+The architecture is solid now. There is only one thing I would change because I think it'll save you headaches later.
+
+Don't call it "Client Production Pricing Profile"
+
+I'd simply call it:
+
+Pricing Profiles
+
+Every client has a Pricing Profiles section.
+
+For example:
+
+Clayton Homes – Owensboro
+Pricing Profiles
+
+Production
+✓ Enabled
+
+Service
+✓ Enabled
+
+Contracting
+Not Configured
+
+When you click Production, you see:
+
+Interior Trim
+Plumbing
+Exterior Trim
+Deck
+Travel
+
+When you click Service, you see:
+
+Labor (1 Tech)
+Labor (2 Tech)
+Mileage
+Drive Time
+Parts
+
+That way, if Cavco starts sending you service work next year, you don't redesign anything—you just enable their Service profile.
+
+The pricing engine logic then becomes very simple
+Open Job
+
+↓
+
+What type of job is this?
+
+↓
+
+Production
+
+↓
+
+Load Production Pricing Profile
+
+↓
+
+Which Client?
+
+↓
+
+Clayton Homes – Owensboro
+
+↓
+
+Use Clayton's Production Profile
+
+↓
+
+Build Invoice
+
+Or:
+
+Open Job
+
+↓
+
+Service
+
+↓
+
+Load Service Pricing Profile
+
+↓
+
+Client = Cavco
+
+↓
+
+Use Cavco's Service Profile
+
+↓
+
+Build Invoice
+
+Notice that the client never changes. The profile changes.
+
+That matches how your business actually works.
+
+I would also tweak one sentence
+
+This:
+
+Client Production Pricing Profile — new table + API...
+
+I'd rewrite as:
+
+Pricing Profiles — Each client may have one or more pricing profiles (Production, Service, and future Contracting). This task implements only the Production profile. The design should allow additional pricing profiles to be added to the same client without creating duplicate client records or changing the pricing engine.
+
+I think that's a little clearer because it explains why you're designing it that way.
+
+One last thing I really like
+
+I think you've finally separated the four things that were getting mixed together:
+
+Builder
+
+Used for:
+
+Home Library
+Model
+Analytics
+Knowledge Base
+
+Never pricing.
+
+Client
+
+Used for:
+
+Who hires you
+Who pays you
+Which pricing profile to use
+Job Type
+
+Used for:
+
+Which pricing engine runs
+Production
+Service
+Contracting
+Pricing Profile
+
+Used for:
+
+The actual prices for that client and job type.
+
+That's a very clean separation of responsibilities. It means you can have:
+
+Clayton Production pricing
+Clayton Service pricing
+Cavco Production pricing
+Cavco Service pricing (later)
+
+without duplicating clients or mixing builders into billing.
+
+At this point, I wouldn't keep iterating on the architecture. I'd let Replit build it. The only refinement I'd suggest is renaming "Client Production Pricing Profile" to the broader "Pricing Profiles" concept, since that naturally accommodates Production now and Service/Contracting later without changing the underlying design.

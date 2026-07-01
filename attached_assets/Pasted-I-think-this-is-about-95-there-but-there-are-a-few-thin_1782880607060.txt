@@ -1,0 +1,421 @@
+I think this is about 95% there, but there are a few things I would change before you let Replit build it. Otherwise, you'll end up having to redesign it later.
+
+1. Don't Call It a "Service Catalog"
+
+This is probably my biggest suggestion.
+
+For you, these aren't really "services."
+
+They're Production Billing Items.
+
+When your office is building a production invoice, they're not thinking:
+
+"What service did we perform?"
+
+They're thinking:
+
+"What did Clayton pay us for on this home?"
+
+I'd rename everything.
+
+Instead of:
+
+Master Service Catalog
+Client Service Pricing
+
+I'd use:
+
+Production Billing Catalog
+Dealer Production Pricing
+
+It matches your workflow much better.
+
+2. Clients Should Be Dealers
+
+I'd remove the word "client" almost everywhere.
+
+Because eventually you'll have:
+
+Production
+
+Dealer
+
+Service
+
+Residential Customer
+
+Commercial Customer
+
+Rental Customer
+
+All of those are technically clients.
+
+For Production they're really:
+
+Dealer Pricing
+
+Example
+
+Production Billing
+
+Master Catalog
+
+Dealer Pricing
+
+Clayton Owensboro
+
+Clayton Evansville
+
+Cavco
+
+That terminology will make much more sense six months from now.
+
+3. Exterior Trim vs Vinyl Side
+
+This is the one thing I would fix before they write code.
+
+Your spec says:
+
+Exterior Trim
+
+per home
+
+$1,000
+
+Then later says
+
+Vinyl Side
+
+per side
+
+$500
+
+Earlier you told me:
+
+Exterior Trim and Vinyl Side are the same thing for my business.
+
+If that's true...
+
+Remove Vinyl Side completely.
+
+Just use:
+
+Exterior Trim
+
+Billing Type
+
+Per Side
+
+Default
+
+$500
+
+Then
+
+Clayton
+
+Exterior Trim
+
+$500/side
+
+Cavco
+
+Exterior Trim
+
+$600/side
+
+That removes duplicate services.
+
+4. Home Type Pricing
+
+Instead of
+
+Interior Trim
+
+VOG
+
+Hybrid
+
+Drywall
+
+I'd actually store it like this.
+
+Interior Trim
+
+Billing Type
+
+Per Home
+
+Pricing
+
+VOG
+1500
+
+Hybrid
+2500
+
+Drywall
+3500
+
+One production item.
+
+Three prices.
+
+Not three different production items.
+
+That's going to make reports MUCH easier.
+
+5. Don't Hardcode Billing Types
+
+Right now it says
+
+Per Home
+
+Per Side
+
+Per Foot
+
+Per Window
+
+Per Door
+
+I'd add
+
+Fixed
+
+Per Home
+
+Per Item
+
+Per Side
+
+Per End
+
+Per Foot
+
+Per Linear Foot
+
+Per Window
+
+Per Door
+
+Per Mile
+
+Per Day
+
+Per Hour
+
+You'll use those later.
+
+6. Dealer Pricing Should Look Exactly Like This
+
+Instead of
+
+Dealer
+
+Plumbing
+
+1000
+
+Exterior
+
+500
+
+I'd rather see
+
+Dealer
+
+Clayton Owensboro
+
+--------------------------------
+
+Interior Trim
+
+VOG
+1500
+
+Hybrid
+2500
+
+Drywall
+3500
+
+Plumbing
+
+1000
+
+Exterior Trim
+
+500/side
+
+Deck
+
+1400
+
+Very easy to edit.
+
+7. Biggest Suggestion
+
+This is the one I would absolutely tell Replit.
+
+Don't create invoice line descriptions manually.
+
+Instead of
+
+Interior Trim (Drywall)
+
+have every Production Billing Item contain:
+
+Invoice Description
+
+Interior Trim
+
+Then the pricing engine simply appends
+
+(Drywall)
+
+when necessary.
+
+That keeps invoice wording consistent.
+
+8. Future-Proof the Pricing Engine
+
+Right now it only says
+
+Apply Pricing
+
+I'd have them make it generic.
+
+Something like
+
+Billing Source
+
+Production Pricing
+
+Because eventually you'll have
+
+Production Pricing
+
+Service Pricing
+
+Contracting Pricing
+
+All using the exact same invoice system.
+
+The invoice shouldn't care where pricing came from.
+
+9. Seed Data
+
+I would not hardcode prices into the code.
+
+Instead seed them into the database.
+
+That way later you'll simply edit prices in Settings.
+
+No code changes.
+
+Overall
+
+I'd tell Replit one additional requirement:
+
+The pricing engine should be data-driven, not hardcoded.
+
+It should never contain "if Plumbing then $1000" or "if Cavco then $1500" in the code. Every price, billing type, invoice description, home-type variation, and dealer override should come from the database. The Apply Pricing engine should simply read the job, look up the correct Production Billing Item, apply any dealer override, calculate quantities, and create invoice line items. Adding a new production item or changing a price should never require a code change.
+
+I think that's the difference between something that works today and something that you'll still be happy with after you've added 20 dealers and 50+ production billing items. Right now, your spec is very close—the biggest improvements are mostly about naming, eliminating duplicate concepts (Exterior Trim vs. Vinyl Side), and making the pricing engine entirely data-driven.
+
+I wouldnt do this because i still have to bill my client which will always be clayton and cavco and whatever other dealer that contract us later on but clients will dealer and should stay my clients             2. Clients Should Be Dealers
+
+I'd remove the word "client" almost everywhere.
+
+Because eventually you'll have:
+
+Production
+
+Dealer
+
+Service
+
+Residential Customer
+
+Commercial Customer
+
+Rental Customer
+
+All of those are technically clients.
+
+For Production they're really:
+
+Dealer Pricing
+
+Example
+
+I actually agree with you. After thinking through how your entire app is structured, I would keep the word "Client."
+
+The important distinction isn't changing the terminology—it's understanding that different client types use different pricing systems.
+
+For example:
+
+Clients
+
+├── Clayton Homes - Owensboro
+│      Type: MH Production Dealer
+│
+├── Clayton Homes - Evansville
+│      Type: MH Production Dealer
+│
+├── Cavco Home Center
+│      Type: MH Production Dealer
+│
+├── John Smith
+│      Type: Residential Customer
+│
+├── ABC Property Management
+│      Type: Commercial Customer
+│
+└── Future Dealer
+       Type: MH Production Dealer
+
+Every one of those is still a client.
+
+The difference is that each client belongs to a client type, and that determines how pricing works.
+
+MH Production Dealer → Uses the Production Pricing Engine.
+Residential Customer → Uses your Contracting estimate.
+Service Customer → Uses your Service pricing calculator.
+
+So instead of renaming everything to "Dealer Pricing," I'd simply describe it as:
+
+Client Production Pricing
+
+or
+
+Production Pricing by Client
+
+That way, the pricing engine still asks:
+
+Who is the client?
+
+If the client is Clayton Homes – Owensboro, it uses Clayton's production pricing.
+
+If the client is Cavco, it uses Cavco's production pricing.
+
+If you add ABC Manufactured Housing next year, you simply create a new client and assign its production pricing.
+
+I would update the spec like this:
+Layer 2 – Client Production Pricing
+
+Each client can have its own production pricing schedule.
+
+For Manufactured Home Production jobs, these clients are typically manufactured home dealers, such as:
+
+Clayton Homes – Owensboro
+Clayton Homes – Evansville
+Cavco Home Center
+Future production dealers
+
+Only prices that differ from the Master Production Billing Catalog need to be stored. Any production item without a client-specific override automatically falls back to the master price.
+
+This keeps the terminology consistent throughout the entire application, where everyone you invoice is a client, while still allowing Production, Service, and Contracting to use different pricing methods based on the type of work being performed.
+
+I think that's the cleanest approach because it aligns with how you've already designed the rest of the app. The Clients table remains the single source of truth for everyone you do business with, and each module (Production, Service, or Contracting) simply uses the pricing logic appropriate for that type of job.
