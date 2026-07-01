@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Plus, Pencil, Trash2, X, Loader2, Check, Save, RotateCcw, Package, Users2,
+  Plus, Pencil, Trash2, X, Loader2, Check, Save, RotateCcw, Package, Users2, AlertTriangle,
 } from "lucide-react";
 import {
   useListProductionServiceTypes,
   useProductionBillingTypes,
+  useProductionCatalogStatus,
   useCreateProductionServiceType,
   useUpdateProductionServiceType,
   useDeleteProductionServiceType,
@@ -213,8 +214,12 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
   const { toast } = useToast();
   const { data: serviceTypes = [], isLoading } = useListProductionServiceTypes(businessId, true);
   const { data: billingTypes = [] } = useProductionBillingTypes();
+  const { data: catalogStatus } = useProductionCatalogStatus();
   const updateMut = useUpdateProductionServiceType();
   const deleteMut = useDeleteProductionServiceType();
+
+  const seedFailed = catalogStatus != null && catalogStatus.ok === false;
+  const seedErrorMessage = catalogStatus?.seedError ?? catalogStatus?.readError ?? null;
 
   const billingTypeOptions = useMemo(() => billingTypes.map(bt => bt.value), [billingTypes]);
   const [modalOpen, setModalOpen] = useState(false);
@@ -264,10 +269,30 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
         </div>
       </CardHeader>
       <CardContent className="pt-5">
+        {seedFailed && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 flex gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-red-800">Catalog may be showing the wrong prices</p>
+              <p className="text-sm text-red-700 mt-0.5">
+                The production billing catalog couldn't finish loading its standard items, so the
+                list below may be incomplete or out of date. Do not build invoices from it until
+                this is resolved — re-publish the app to apply the latest changes, then reload.
+              </p>
+              {seedErrorMessage && (
+                <p className="text-[11px] text-red-600/80 mt-1.5 font-mono break-words">{seedErrorMessage}</p>
+              )}
+            </div>
+          </div>
+        )}
         {isLoading ? (
           <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-14 rounded-xl bg-muted animate-pulse" />)}</div>
         ) : sorted.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">No billing items yet. Add your first billable production item.</p>
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            {seedFailed
+              ? "The catalog couldn't be loaded — see the warning above."
+              : "No billing items yet. Add your first billable production item."}
+          </p>
         ) : (
           <ul className="space-y-2">
             {sorted.map(st => (

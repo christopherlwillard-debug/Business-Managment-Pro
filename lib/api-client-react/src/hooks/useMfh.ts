@@ -621,6 +621,27 @@ export function useListProductionServiceTypes(businessId?: number | null, includ
   });
 }
 
+// Catalog health — lets Settings surface a clear warning when the seed failed
+// (e.g. schema drift because a change hasn't been Published yet) instead of the
+// catalog silently degrading. `ok:true` with `itemCount:0` = genuinely empty;
+// `ok:false` = seed/schema failure, re-publish needed.
+export interface ProductionCatalogStatus {
+  ok: boolean;
+  seedError: string | null;
+  readError: string | null;
+  itemCount: number | null;
+}
+
+export function useProductionCatalogStatus() {
+  return useQuery({
+    queryKey: ["/api/production-service-types/status"],
+    queryFn: () => customFetch<ProductionCatalogStatus>(
+      "/api/production-service-types/status",
+      { method: "GET" }
+    ),
+  });
+}
+
 export function useProductionBillingTypes() {
   return useQuery({
     queryKey: ["/api/production-service-types/billing-types"],

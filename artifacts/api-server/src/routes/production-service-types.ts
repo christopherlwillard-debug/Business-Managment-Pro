@@ -4,6 +4,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import {
   ensureProductionBillingSeed,
+  getProductionBillingSeedStatus,
   billingTypeOptions,
   isValidBillingType,
 } from "../lib/productionBilling.js";
@@ -28,6 +29,32 @@ async function fetchServiceTypes(includeInactive: boolean) {
 // ── Billing types (application-defined; drives the catalog dropdown + qty prompt) ─
 router.get("/billing-types", wrapAsync(async (_req, res) => {
   res.json(billingTypeOptions());
+}));
+
+// ── Catalog health ───────────────────────────────────────────────────────────
+// Lets Settings → Production Billing show a clear warning when the seed failed
+// (e.g. a schema column is missing because a change hasn't been Published yet)
+// instead of silently rendering an "empty but fine" catalog. Distinguishes a
+// genuinely empty catalog (ok:true, itemCount:0) from schema drift / seed failure
+// (ok:false with a seedError or readError).
+router.get("/status", wrapAsync(async (_req, res) => {
+  const seed = await ensureProductionBillingSeed();
+  let itemCount: number | null = null;
+  let readError: string | null = null;
+  try {
+    const rows = await db
+      .select({ id: productionServiceTypesTable.id })
+      .from(productionServiceTypesTable);
+    itemCount = rows.length;
+  } catch (e) {
+    readError = e instanceof Error ? e.message : String(e);
+  }
+  res.json({
+    ok: seed.ok && readError == null,
+    seedError: seed.error,
+    readError,
+    itemCount,
+  });
 }));
 
 // ── Per-client Production pricing profile (overrides) ────────────────────────────

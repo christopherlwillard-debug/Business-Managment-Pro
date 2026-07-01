@@ -247,10 +247,23 @@ function numOrNull(n: number | null | undefined): string | null {
   return n == null ? null : n.toFixed(2);
 }
 
-let seedRan = false;
+// Seed health, surfaced to the office so a schema drift / seed failure is VISIBLE
+// (Settings → Production Billing shows a warning) instead of silently degrading to
+// incomplete/legacy rows. `ok: true` with no error is the healthy steady state.
+export interface ProductionBillingSeedStatus {
+  ok: boolean;
+  error: string | null;
+}
 
-export async function ensureProductionBillingSeed(): Promise<void> {
-  if (seedRan) return;
+let seedRan = false;
+let lastSeedStatus: ProductionBillingSeedStatus = { ok: true, error: null };
+
+export function getProductionBillingSeedStatus(): ProductionBillingSeedStatus {
+  return lastSeedStatus;
+}
+
+export async function ensureProductionBillingSeed(): Promise<ProductionBillingSeedStatus> {
+  if (seedRan) return lastSeedStatus;
   try {
     const existing = await db.select().from(productionServiceTypesTable);
     const byKey = new Set<string>();
@@ -327,7 +340,12 @@ export async function ensureProductionBillingSeed(): Promise<void> {
     }
 
     seedRan = true;
+    lastSeedStatus = { ok: true, error: null };
+    return lastSeedStatus;
   } catch (err) {
     console.error("[productionBilling] ensureProductionBillingSeed failed:", err);
+    // Leave seedRan false so the next request retries once the schema is published.
+    lastSeedStatus = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return lastSeedStatus;
   }
 }
