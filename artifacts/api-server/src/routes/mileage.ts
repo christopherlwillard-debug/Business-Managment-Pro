@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { mileageLogsTable, mileageImportsTable, jobsTable, settingsTable, expensesTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, isNull, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, isNull, inArray, getTableColumns } from "drizzle-orm";
 import { getRequestUserId } from "./guards";
 
 const router = Router();
@@ -33,6 +33,85 @@ function getIrsRateForDate(dateStr: string): number {
   ];
   const match = rates.find(e => dateStr >= e.effectiveDate);
   return match?.rate ?? 0.585;
+}
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function monthLabel(ym: string): string {
+  // ym is "YYYY-MM"
+  const [year, month] = ym.split("-");
+  const idx = parseInt(month, 10) - 1;
+  return `${MONTH_NAMES[idx] ?? month} ${year}`;
+}
+
+// Recalculate the monthly aggregate expenses for an import.
+// Groups the import's business logs by month and upserts one expense per month
+// (description "<Month> <Year> IRS Mileage", linked via expenses.mileage_import_id).
+// Months with no remaining business logs get their aggregate expense deleted.
+export async function recalcImportExpenses(importId: number) {
+  const [importRecord] = await db
+    .select()
+    .from(mileageImportsTable)
+    .where(eq(mileageImportsTable.id, importId));
+  if (!importRecord) return;
+
+  const logs = await db
+    .select()
+    .from(mileageLogsTable)
+    .where(and(
+      eq(mileageLogsTable.importId, importId),
+      eq(mileageLogsTable.classification, "business"),
+    ));
+
+  // Group by "YYYY-MM"
+  const byMonth = new Map<string, { miles: number; deduction: number; trips: number; lastDate: string }>();
+  for (const log of logs) {
+    const ym = (log.date ?? "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) continue;
+    const entry = byMonth.get(ym) ?? { miles: 0, deduction: 0, trips: 0, lastDate: log.date };
+    entry.miles += parseFloat(log.miles ?? "0");
+    entry.deduction += parseFloat(log.deductionAmount ?? "0");
+    entry.trips += 1;
+    if (log.date > entry.lastDate) entry.lastDate = log.date;
+    byMonth.set(ym, entry);
+  }
+
+  const existingExpenses = await db
+    .select()
+    .from(expensesTable)
+    .where(eq(expensesTable.mileageImportId, importId));
+
+  const existingByMonth = new Map(existingExpenses.map(e => [(e.date ?? "").slice(0, 7), e]));
+
+  for (const [ym, agg] of byMonth) {
+    const rate = getIrsRateForDate(`${ym}-15`);
+    const values = {
+      date: agg.lastDate,
+      description: `${monthLabel(ym)} IRS Mileage`,
+      vendor: "IRS Mileage",
+      category: "mileage",
+      amount: agg.deduction.toFixed(2),
+      businessId: importRecord.businessId,
+      mileageImportId: importId,
+      notes: `Auto-created from ${importRecord.source} import. ${agg.trips} trip${agg.trips === 1 ? "" : "s"}, ${agg.miles.toFixed(2)} mi × $${rate}/mi`,
+    };
+    const existing = existingByMonth.get(ym);
+    if (existing) {
+      await db.update(expensesTable).set(values).where(eq(expensesTable.id, existing.id));
+      existingByMonth.delete(ym);
+    } else {
+      await db.insert(expensesTable).values(values);
+    }
+  }
+
+  // Delete aggregates for months that no longer have any business logs
+  const staleIds = [...existingByMonth.values()].map(e => e.id);
+  if (staleIds.length > 0) {
+    await db.delete(expensesTable).where(inArray(expensesTable.id, staleIds));
+  }
 }
 
 router.get("/summary", async (req, res) => {
@@ -73,7 +152,7 @@ router.get("/summary", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const { startDate, endDate, businessId } = req.query;
+    const { startDate, endDate, businessId, importId } = req.query;
     if (!businessId) return res.status(400).json({ error: "businessId is required" });
     const bizId = parseInt(businessId as string);
 
@@ -83,9 +162,10 @@ router.get("/", async (req, res) => {
     ];
     if (startDate) conditions.push(gte(mileageLogsTable.date, startDate as string));
     if (endDate) conditions.push(lte(mileageLogsTable.date, endDate as string));
+    if (importId) conditions.push(eq(mileageLogsTable.importId, parseInt(importId as string)));
 
     const logs = await db
-      .select({ ...mileageLogsTable, jobTitle: jobsTable.title })
+      .select({ ...getTableColumns(mileageLogsTable), jobTitle: jobsTable.title })
       .from(mileageLogsTable)
       .leftJoin(jobsTable, eq(mileageLogsTable.jobId, jobsTable.id))
       .where(and(...conditions))
@@ -184,6 +264,11 @@ router.put("/:id", async (req, res) => {
     }).where(eq(mileageLogsTable.id, id)).returning();
     if (!log) return res.status(404).json({ error: "Mileage log not found" });
 
+    // Imported logs (no per-log expense): recalculate the monthly aggregate expense
+    if (!existing?.expenseId && existing?.importId) {
+      await recalcImportExpenses(existing.importId);
+    }
+
     let jobTitle = null;
     if (log.jobId) {
       const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, log.jobId));
@@ -203,11 +288,15 @@ router.delete("/:id", async (req, res) => {
     const [log] = await db.select().from(mileageLogsTable).where(eq(mileageLogsTable.id, id));
     if (log?.expenseId) {
       await db.delete(expensesTable).where(eq(expensesTable.id, log.expenseId));
-    } else if (log) {
-      console.warn(`Mileage log ${id} has no expenseId — skipping expense cleanup to avoid affecting other entries.`);
     }
 
     await db.delete(mileageLogsTable).where(eq(mileageLogsTable.id, id));
+
+    // Imported logs (no per-log expense): recalculate the monthly aggregate expense
+    if (log && !log.expenseId && log.importId) {
+      await recalcImportExpenses(log.importId);
+    }
+
     res.status(204).send();
   } catch (err) {
     console.error(err);
@@ -345,43 +434,15 @@ router.post("/bulk", async (req, res) => {
 
     importId = importRecord.id;
 
+    let expensesCreated = 0;
+    const expenseMonths: string[] = [];
+
     if (toInsert.length > 0) {
-      const rate = await getRate();
-
-      const expenseValues = toInsert
-        .filter(t => t.classification === "business")
-        .map(t => {
-          const tripRate = getIrsRateForDate(t.date);
-          const deduction = t.miles * tripRate;
-          return {
-            date: t.date,
-            description: t.notes
-              ? `Mileage: ${t.notes.slice(0, 60)} (${t.miles.toFixed(2)} mi)`
-              : `Mileage: Business trip (${t.miles.toFixed(2)} mi)`,
-            vendor: "IRS Mileage",
-            category: "mileage",
-            amount: deduction.toFixed(2),
-            businessId: bizId,
-            notes: `Imported from ${importSource}. ${t.miles.toFixed(2)} mi × $${tripRate}/mi`,
-          };
-        });
-
-      const insertedExpenses = expenseValues.length > 0
-        ? await db.insert(expensesTable).values(expenseValues).returning({ id: expensesTable.id, date: expensesTable.date, amount: expensesTable.amount })
-        : [];
-
-      let expenseIdx = 0;
       const logValues = toInsert.map(t => {
         const tripRate = getIrsRateForDate(t.date);
         const deductionAmt = t.classification === "business" ? t.miles * tripRate : 0;
         totalMiles += t.miles;
         if (t.classification === "business") estimatedDeduction += deductionAmt;
-
-        let expenseId: number | null = null;
-        if (t.classification === "business") {
-          expenseId = insertedExpenses[expenseIdx]?.id ?? null;
-          expenseIdx++;
-        }
 
         return {
           date: t.date,
@@ -395,12 +456,22 @@ router.post("/bulk", async (req, res) => {
           source: importSource,
           businessId: bizId,
           importId,
-          expenseId,
+          expenseId: null,
         };
       });
 
       await db.insert(mileageLogsTable).values(logValues);
       importedCount = logValues.length;
+
+      // One aggregate expense per month (not one per trip)
+      await recalcImportExpenses(importId!);
+
+      const created = await db
+        .select({ id: expensesTable.id, description: expensesTable.description })
+        .from(expensesTable)
+        .where(eq(expensesTable.mileageImportId, importId!));
+      expensesCreated = created.length;
+      expenseMonths.push(...created.map(e => (e.description ?? "").replace(" IRS Mileage", "")));
     }
 
     await db
@@ -421,6 +492,8 @@ router.post("/bulk", async (req, res) => {
       totalMiles,
       estimatedDeduction,
       fileAlreadyImported,
+      expensesCreated,
+      expenseMonths,
     });
   } catch (err) {
     console.error(err);
@@ -464,9 +537,12 @@ router.delete("/imports/:id/rollback", async (req, res) => {
     if (linkedLogs.length > 0) {
       await db.delete(mileageLogsTable).where(eq(mileageLogsTable.importId, id));
     }
+    // Legacy per-trip expenses (pre-consolidation imports)
     if (expenseIds.length > 0) {
       await db.delete(expensesTable).where(inArray(expensesTable.id, expenseIds));
     }
+    // Monthly aggregate expenses linked to this import
+    await db.delete(expensesTable).where(eq(expensesTable.mileageImportId, id));
 
     const [updated] = await db
       .update(mileageImportsTable)

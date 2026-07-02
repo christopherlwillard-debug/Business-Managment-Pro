@@ -13,4 +13,6 @@
 - [contractor-app build skips type-check](contractor-app-build-no-typecheck.md) — `vite build` doesn't run tsc; TS errors (e.g. TDZ use-before-declaration) ship & crash at runtime; run the `typecheck` script manually
 - [Prod schema via Publish](prod-schema-via-publish.md) — never add a migration endpoint/hook for prod DDL; fix "column does not exist" by applying to dev + re-publish; push-force prompts to truncate invoices, use targeted ALTER instead
 - [Prod data migrations](prod-data-migrations.md) — a MERGED data-migration only fixes dev; production data needs the migration run against the live URL (x-migration-key) or publish data-overwrite; MFH Clayton stayed broken in prod for this reason
+- [Mileage import monthly expense](mileage-monthly-expense.md) — imported trips get ONE expense per month via expenses.mileage_import_id + recalcImportExpenses; manual logs keep per-trip expenses
+- [Stale lib/db dist types](stale-db-dist-types.md) — phantom TS2339 on new schema columns comes from stale lib/db/dist declarations; fix with `pnpm exec tsc -b lib/db`
 - [Production billing seed is lazy](production-billing-seed.md) — MH Production catalog/overrides seed only fires on first authed GET /production-service-types; dev DB shows stale legacy rows until triggered; verify via tsx script, don't trust raw snapshot

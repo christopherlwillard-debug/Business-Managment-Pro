@@ -495,9 +495,12 @@ export default function Mileage() {
 
   const handleDelete = async (id: number, classification: string, log?: any) => {
     const isMonthly = log?.purpose?.startsWith("MileIQ monthly total");
+    const isImported = !!log?.importId && !log?.expenseId;
     const hasLinkedExpense = classification === "business";
     const msg = isMonthly
       ? `Delete this monthly mileage entry? The linked IRS mileage expense will also be removed.`
+      : isImported && classification === "business"
+      ? `Delete this imported trip? The monthly IRS mileage expense will be recalculated to reflect the change.`
       : hasLinkedExpense
       ? `Delete this business trip? The linked IRS mileage expense will also be removed.`
       : `Delete this personal trip?`;
@@ -843,6 +846,20 @@ export default function Mileage() {
                       <p className="text-xs text-muted-foreground mt-1">Duplicates skipped</p>
                     </div>
                   </div>
+
+                  {((importResult as any).expensesCreated ?? 0) > 0 && (
+                    <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
+                      <p className="font-semibold">
+                        {(importResult as any).expensesCreated === 1
+                          ? "1 monthly expense created"
+                          : `${(importResult as any).expensesCreated} monthly expenses created`}
+                      </p>
+                      <p className="text-xs text-blue-700 mt-0.5">
+                        {((importResult as any).expenseMonths ?? []).map((m: string) => `${m} IRS Mileage`).join(", ")}
+                        {" "}— one expense per month covers all imported trips. Individual trips stay in your Mileage log below.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-center justify-between gap-3">
                     <div>

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, expensesTable, subPaymentRecordsTable } from "@workspace/db";
 import { isNull, isNotNull, and, inArray, or, like, asc, sql, ilike, eq } from "drizzle-orm";
+import { recalcImportExpenses } from "./mileage";
 
 const router = Router();
 
@@ -41,6 +42,121 @@ router.delete("/delete-payworker-expenses", async (_req: Request, res: Response)
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed" });
+  }
+});
+
+// Consolidate per-trip mileage import expenses into one monthly aggregate per import.
+//
+// Background: CSV imports used to create one expense per drive (~70+ for June 2026).
+// The new model creates ONE expense per month per import ("<Month> <Year> IRS Mileage",
+// linked via expenses.mileage_import_id). This migration converts existing imports:
+//   1. Finds imported logs that still carry a per-trip expense (import_id AND expense_id set)
+//   2. Nulls the logs' expense_id and deletes those per-trip expenses (in a transaction)
+//   3. Recalculates the monthly aggregate expense(s) for each affected import
+//
+// dryRun=true (default) returns the plan without changing data. Idempotent: once
+// converted, no logs match the criteria and the endpoint reports nothing to do.
+router.post("/consolidate-mileage-expenses", async (req: Request, res: Response) => {
+  try {
+    const { dryRun = true } = (req.body ?? {}) as { dryRun?: boolean };
+
+    const logs = await db
+      .select({
+        id: mileageLogsTable.id,
+        date: mileageLogsTable.date,
+        miles: mileageLogsTable.miles,
+        importId: mileageLogsTable.importId,
+        expenseId: mileageLogsTable.expenseId,
+        classification: mileageLogsTable.classification,
+      })
+      .from(mileageLogsTable)
+      .where(and(
+        isNotNull(mileageLogsTable.importId),
+        isNotNull(mileageLogsTable.expenseId),
+      ));
+
+    if (logs.length === 0) {
+      return res.json({ ok: true, dryRun, already_clean: true, message: "No per-trip import expenses found — nothing to consolidate.", plan: [] });
+    }
+
+    // Group by import, then by month, for the plan report
+    const byImport = new Map<number, Map<string, { trips: number; miles: number; expenseIds: number[] }>>();
+    for (const log of logs) {
+      const importId = log.importId!;
+      const ym = (log.date ?? "").slice(0, 7);
+      const months = byImport.get(importId) ?? new Map();
+      const entry = months.get(ym) ?? { trips: 0, miles: 0, expenseIds: [] };
+      entry.trips += 1;
+      entry.miles += parseFloat(log.miles ?? "0");
+      entry.expenseIds.push(log.expenseId!);
+      months.set(ym, entry);
+      byImport.set(importId, months);
+    }
+
+    // Sum the amounts of the per-trip expenses being replaced (for verification)
+    const allExpenseIds = logs.map(l => l.expenseId!) ;
+    const linkedExpenses = allExpenseIds.length > 0
+      ? await db.select({ id: expensesTable.id, amount: expensesTable.amount })
+          .from(expensesTable)
+          .where(inArray(expensesTable.id, allExpenseIds))
+      : [];
+    const amountById = new Map(linkedExpenses.map(e => [e.id, parseFloat(e.amount ?? "0")]));
+
+    const plan = [...byImport.entries()].map(([importId, months]) => ({
+      importId,
+      months: [...months.entries()].map(([ym, m]) => ({
+        month: ym,
+        trips: m.trips,
+        totalMiles: Number(m.miles.toFixed(2)),
+        perTripExpensesToDelete: m.expenseIds.length,
+        sumOfPerTripAmounts: Number(m.expenseIds.reduce((s, id) => s + (amountById.get(id) ?? 0), 0).toFixed(2)),
+      })),
+    }));
+
+    if (dryRun) {
+      return res.json({
+        ok: true,
+        dryRun: true,
+        message: "Dry-run — no data changed. Pass { dryRun: false } to consolidate. Each import will get one aggregate expense per month; per-trip expenses are deleted.",
+        totalLogsAffected: logs.length,
+        plan,
+      });
+    }
+
+    const affectedLogIds = logs.map(l => l.id);
+    const deletableExpenseIds = [...new Set(allExpenseIds)].filter(id => amountById.has(id));
+
+    await db.transaction(async (tx) => {
+      await tx.update(mileageLogsTable)
+        .set({ expenseId: null })
+        .where(inArray(mileageLogsTable.id, affectedLogIds));
+      if (deletableExpenseIds.length > 0) {
+        await tx.delete(expensesTable).where(inArray(expensesTable.id, deletableExpenseIds));
+      }
+    });
+
+    // Rebuild monthly aggregates for each affected import (shared logic with the live routes)
+    const recalcErrors: Array<{ importId: number; error: string }> = [];
+    for (const importId of byImport.keys()) {
+      try {
+        await recalcImportExpenses(importId);
+      } catch (err) {
+        recalcErrors.push({ importId, error: String(err) });
+      }
+    }
+
+    const result = {
+      logsUnlinked: affectedLogIds.length,
+      perTripExpensesDeleted: deletableExpenseIds.length,
+      importsRecalculated: byImport.size - recalcErrors.length,
+      recalcErrors,
+      plan,
+    };
+    console.log(`[admin/migrations] consolidate-mileage-expenses executed:`, JSON.stringify(result));
+    res.json({ ok: true, dryRun: false, result });
+  } catch (err) {
+    console.error("[admin/migrations] consolidate-mileage-expenses failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
   }
 });
 

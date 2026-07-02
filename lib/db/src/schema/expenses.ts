@@ -20,6 +20,7 @@ export const expensesTable = pgTable("expenses", {
   businessLine: text("business_line"),
   businessId: integer("business_id"),
   jobSubHoursId: integer("job_sub_hours_id"),
+  mileageImportId: integer("mileage_import_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

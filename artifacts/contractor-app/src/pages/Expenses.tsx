@@ -564,6 +564,94 @@ const CATEGORY_COLORS: Record<string, string> = {
   "Other":                 "bg-orange-100 text-orange-700",
 };
 
+// ─── Mileage import summary (shown for monthly aggregate mileage expenses) ────
+function MileageImportSummary({ expense }: { expense: any }) {
+  const [showTrips, setShowTrips] = useState(false);
+  const month = (expense.date ?? "").slice(0, 7);
+
+  const { data: trips = [], isLoading } = useQuery<any[]>({
+    queryKey: ["mileage-import-trips", expense.mileageImportId, expense.businessId],
+    queryFn: async () => {
+      const res = await fetch(`${API}/mileage?businessId=${expense.businessId}&importId=${expense.mileageImportId}`);
+      if (!res.ok) throw new Error("Failed to load trips");
+      return res.json();
+    },
+    enabled: !!expense.businessId && !!expense.mileageImportId,
+    staleTime: 30_000,
+  });
+
+  const monthTrips = trips.filter(
+    (t: any) => t.classification === "business" && (t.date ?? "").slice(0, 7) === month
+  );
+  const totalMiles = monthTrips.reduce((s: number, t: any) => s + (t.miles ?? 0), 0);
+  const rate = monthTrips[0]?.ratePerMile ?? 0;
+
+  return (
+    <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100 space-y-3">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-emerald-500">
+        <Calendar className="w-3 h-3" /> IRS Mileage Summary
+      </div>
+
+      {isLoading ? (
+        <p className="text-xs text-emerald-600">Loading trips…</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="bg-white/70 rounded-lg px-2 py-2">
+              <p className="text-lg font-bold text-emerald-700">{totalMiles.toFixed(1)}</p>
+              <p className="text-[10px] text-emerald-600">Business miles</p>
+            </div>
+            <div className="bg-white/70 rounded-lg px-2 py-2">
+              <p className="text-lg font-bold text-emerald-700">{rate ? `$${Number(rate).toFixed(3)}` : "—"}</p>
+              <p className="text-[10px] text-emerald-600">IRS rate/mi</p>
+            </div>
+            <div className="bg-white/70 rounded-lg px-2 py-2">
+              <p className="text-lg font-bold text-emerald-700">{monthTrips.length}</p>
+              <p className="text-[10px] text-emerald-600">Trips</p>
+            </div>
+          </div>
+
+          {monthTrips.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowTrips(v => !v)}
+              className="w-full flex items-center justify-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900 transition-colors"
+            >
+              {showTrips ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              {showTrips ? "Hide individual trips" : `View ${monthTrips.length} individual trips`}
+            </button>
+          )}
+
+          {showTrips && (
+            <div className="max-h-48 overflow-y-auto rounded-lg border border-emerald-100 bg-white divide-y divide-gray-50">
+              {monthTrips.map((t: any) => (
+                <div key={t.id} className="px-3 py-2 flex items-center justify-between gap-2 text-xs">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-800">{formatDate(t.date)}</p>
+                    {(t.startLocation || t.endLocation) && (
+                      <p className="text-gray-500 truncate">
+                        {t.startLocation ?? "?"} → {t.endLocation ?? "?"}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-gray-800">{Number(t.miles ?? 0).toFixed(1)} mi</p>
+                    <p className="text-emerald-600">{formatCurrency(t.deductionAmount ?? 0)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="text-[11px] text-emerald-600">
+            Trips are managed on the Mileage page. Editing or deleting a trip automatically recalculates this expense.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ExpenseViewModal({
   expense, onClose, onDelete, onJumpToTemplate,
 }: {
@@ -684,6 +772,11 @@ function ExpenseViewModal({
               <p className="text-sm font-semibold text-gray-800">{(expense as any).subcontractorName}</p>
               <p className="text-xs text-amber-600 mt-0.5">Visible in subcontractor portal</p>
             </div>
+          )}
+
+          {/* Monthly mileage import expense: summary + trip drill-down */}
+          {expense.mileageImportId && (
+            <MileageImportSummary expense={expense} />
           )}
 
           {expense.notes && (
