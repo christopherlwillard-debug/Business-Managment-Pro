@@ -933,7 +933,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 }
 
 // ─── Job Profit Panel ──────────────────────────────────────────────────────────
-type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; subLaborCost?: number; totalSubHours?: number; netProfit: number };
+type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; subLaborCost?: number; allocPaid?: number; totalSubHours?: number; netProfit: number };
 
 // ─── Pay Breakdown Panel ───────────────────────────────────────────────────────
 function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
@@ -1240,6 +1240,7 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const net = data?.netProfit ?? 0;
   const isProfit = net > 0;
   const subLaborCost = data?.subLaborCost ?? 0;
+  const allocPaid = data?.allocPaid ?? 0;
   const totalSubHours = data?.totalSubHours ?? 0;
 
   return (
@@ -1311,6 +1312,17 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                 </div>
               )}
 
+              {allocPaid > 0 && (
+                <div className="rounded-xl border border-border/50 bg-muted/20 p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Split Payouts</p>
+                    <p className="text-xl font-bold text-violet-500 mt-0.5">{formatCurrency(allocPaid)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Paid to %-split subs</p>
+                  </div>
+                  <Users className="w-7 h-7 text-violet-200" />
+                </div>
+              )}
+
               <div className={`rounded-xl border p-4 flex items-center justify-between ${
                 isProfit ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"
               }`}>
@@ -1319,9 +1331,9 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                   <p className={`text-2xl font-bold mt-0.5 ${isProfit ? "text-emerald-700" : "text-red-600"}`}>
                     {isProfit ? "+" : ""}{formatCurrency(net)}
                   </p>
-                  {subLaborCost > 0 && (
+                  {(subLaborCost > 0 || allocPaid > 0) && (
                     <p className={`text-[10px] mt-0.5 ${isProfit ? "text-emerald-600" : "text-red-500"}`}>
-                      After expenses + sub labor
+                      After expenses + sub labor{allocPaid > 0 ? " + split payouts" : ""}
                     </p>
                   )}
                 </div>
@@ -1432,6 +1444,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const net = profit?.netProfit ?? 0;
   const isProfit = net > 0;
   const subLaborCost = profit?.subLaborCost ?? 0;
+  const allocPaid = profit?.allocPaid ?? 0;
   const totalSubHours = profit?.totalSubHours ?? 0;
 
   function fmt(n: number) {
@@ -1499,11 +1512,21 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                     {totalSubHours > 0 && <p className="text-xs text-muted-foreground mt-1">{totalSubHours.toFixed(1)} tracked sub hours</p>}
                   </div>
                 )}
+                {allocPaid > 0 && (
+                  <div className="rounded-xl border border-border/50 bg-muted/20 p-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Split Payouts</p>
+                      <p className="text-xl font-bold text-violet-500 mt-0.5">{formatCurrency(allocPaid)}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Paid to %-split subs</p>
+                    </div>
+                    <Users className="w-7 h-7 text-violet-200" />
+                  </div>
+                )}
                 <div className={`rounded-xl border p-4 flex items-center justify-between ${isProfit ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
                   <div>
                     <p className={`text-xs font-bold uppercase tracking-wide ${isProfit ? "text-emerald-700" : "text-red-700"}`}>Net Profit</p>
                     <p className={`text-2xl font-bold mt-0.5 ${isProfit ? "text-emerald-700" : "text-red-600"}`}>{isProfit ? "+" : ""}{formatCurrency(net)}</p>
-                    {subLaborCost > 0 && <p className={`text-[10px] mt-0.5 ${isProfit ? "text-emerald-600" : "text-red-500"}`}>After expenses + sub labor</p>}
+                    {(subLaborCost > 0 || allocPaid > 0) && <p className={`text-[10px] mt-0.5 ${isProfit ? "text-emerald-600" : "text-red-500"}`}>After expenses + sub labor{allocPaid > 0 ? " + split payouts" : ""}</p>}
                   </div>
                   <TrendingUp className={`w-8 h-8 ${isProfit ? "text-emerald-300" : "text-red-300"}`} />
                 </div>

@@ -1,5 +1,5 @@
 - [Sub-hours auto-expense pattern](sub-hours-auto-expense.md) — hours logged on job card auto-create a linked expense; jobSubHoursId column is the link; edit/delete are locked in UI
-- [P&L double-count root cause](pl-double-count.md) — P&L uses expensesTable + job_subcontractors.amount_paid; sub hours alone don't set amount_paid; double-count came from manual expense entry on top of hours
+- [P&L double-count root cause](pl-double-count.md) — dual expense paths; also job profit routes: subLaborCost = hourly+fixed only, allocation payouts live in separate allocPaid field
 - [Workflow aliases](workflow-aliases.md) — "Contractor App" workflow always fails (legacy); use "artifacts/contractor-app: web" and "artifacts/api-server: API Server"
 - [Business isolation architecture](business-isolation.md) — recurring_expenses and expenses have businessId FK; reports route still uses businessLine text slug; Business type includes parentBusinessId for shell/DBA structure
 - [Card editor panel architecture](card-editor-panel.md) — specialContent injection into InspectorPanel was unreliable; replaced with selectedCardData state captured at click-time + standalone panel that returns early before InspectorPanel renders
