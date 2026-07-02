@@ -12,3 +12,4 @@ Imported mileage trips (MileIQ CSV) do NOT get per-trip expenses. Instead one ex
 - Manual logs (no importId) still use the old per-trip expense behavior — do not change that.
 - Legacy per-trip import data is consolidated by the admin migration `consolidate-mileage-expenses` (dryRun default true, idempotent). Recalc runs outside the delete transaction: after a prod run, verify `recalcErrors` is empty.
 - Frontend: expense detail modal shows a trip summary when `expense.mileageImportId` is set (fetches `/mileage?businessId=&importId=`).
+- Monthly aggregate amount = exact sum of logs' `deduction_amount`, so it can differ by a few cents from the old per-trip expense sum (per-row rounding). Cents-level drift after consolidation is expected, not a bug. Prod was consolidated 2026-07-02.
