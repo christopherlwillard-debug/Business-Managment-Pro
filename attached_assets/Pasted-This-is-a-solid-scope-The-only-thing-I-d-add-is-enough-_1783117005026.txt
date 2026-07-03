@@ -1,0 +1,445 @@
+This is a solid scope. The only thing I'd add is enough implementation detail to prevent Replit from taking shortcuts or introducing a breaking change.
+
+#1084 - Website Editor: Docked Inspector Panel & Contractor Section Library
+
+Purpose
+
+Improve the website editor usability by eliminating the inspector panel overlay and expanding the section library with contractor-specific templates.
+
+Currently, editing is frustrating because the inspector hides the page being edited, and the available sections are generic instead of being useful for contractors.
+
+This task should improve the editor without changing the existing editing workflow.
+
+Requirements
+1. Dock the Inspector Panel
+
+The inspector should behave like professional page builders (Webflow, Framer, Shopify, etc.).
+
+Current behavior:
+
+Selecting a section opens a floating inspector over the page.
+The panel obscures the section being edited.
+
+Required behavior:
+
+The inspector docks to the right side.
+The editor canvas shrinks horizontally to make room.
+Nothing underneath the panel should be hidden.
+Canvas width updates smoothly while resizing the panel.
+Closing the panel restores the canvas to full width.
+
+The resize handle must continue working exactly as it does today.
+
+The docked layout should use flex/grid instead of absolute positioning.
+
+Example layout:
+
+--------------------------------------------------------------
+| Toolbar                                                   |
+--------------------------------------------------------------
+|                                                          |
+|                Website Canvas            | Inspector      |
+|                                          |                |
+|                                          |                |
+|                                          |                |
+|                                          |                |
+--------------------------------------------------------------
+
+NOT
+
+-----------------------------
+| Canvas                  |
+|                     #### |
+|                     #### |
+| Inspector overlays #### |
+-----------------------------
+2. Responsive Canvas
+
+When the inspector width changes:
+
+canvas width updates immediately
+preview remains centered
+no horizontal jump
+no clipping
+scrolling continues to work normally
+3. Auto Collapse
+
+When:
+
+selectedSection == null
+
+Automatically:
+
+hide inspector
+reclaim full width
+remove resize gutter
+
+No blank sidebar should remain.
+
+Contractor Section Library
+
+Create a new category:
+
+Contractor
+
+inside the Add Section dialog.
+
+The category should appear alongside existing groups like:
+
+Layout
+Business
+Contact
+Contractor
+
+Do not move or rename existing sections.
+
+New Section Templates
+
+Each template must include:
+
+default data
+inspector editing support
+renderer
+preview thumbnail
+drag/drop support
+duplication support
+deletion support
+
+Exactly like existing sections.
+
+Featured Clients
+
+Purpose:
+
+Display companies the contractor works with.
+
+Default:
+
+Trusted By
+
+Clayton Homes
+Champion Homes
+Cavco
+Skyline Homes
+Independent Dealers
+
+Support:
+
+logo grid
+text list
+optional links
+Manufacturer / Dealer Logos
+
+Grid of logos.
+
+Each item:
+
+{
+name
+logo
+website
+}
+
+Should gracefully support missing logos by displaying the name only.
+
+Service Area
+
+Display:
+
+service radius
+counties
+cities
+optional embedded map
+optional call-to-action
+
+Example:
+
+Serving:
+
+Owensboro
+Henderson
+Evansville
+Bowling Green
+Western Kentucky
+Southern Indiana
+Certifications & Badges
+
+Grid of icon cards.
+
+Examples:
+
+Veteran Owned
+Licensed & Insured
+BBB Accredited
+OSHA Certified
+Factory Certified
+Service Disabled Veteran Owned
+
+Each card:
+
+icon
+title
+description
+Before & After Gallery
+
+Cards containing:
+
+Before Image
+
+↓
+
+After Image
+
+Caption
+
+Supports:
+
+multiple comparisons
+captions
+responsive layout
+
+Reuse existing image gallery components if possible.
+
+Financing Available Banner
+
+Large CTA banner.
+
+Fields:
+
+Heading
+
+Body Text
+
+Button Text
+
+Button Link
+
+Example:
+
+Need Financing?
+
+Flexible financing options available.
+
+[Learn More]
+Add Section Dialog Improvements
+
+Instead of one long list:
+
+Layout
+
+Business
+
+Contractor
+
+Marketing
+
+Contact
+
+Legal
+
+Each category:
+
+collapsible (optional)
+clearly labeled
+searchable (if search already exists)
+
+Ordering:
+
+Layout
+
+Business
+
+Contractor
+
+Marketing
+
+Social Proof
+
+Contact
+
+Legal
+Data Model
+
+Extend:
+
+website-types.ts
+
+with the new section types.
+
+Update:
+
+sectionTemplates.ts
+
+with:
+
+default payload
+display name
+icon
+category
+preview description
+
+No existing template IDs should change.
+
+Rendering
+
+Add renderer components under:
+
+sections/
+
+Reuse shared components whenever possible.
+
+Avoid duplicate styling.
+
+Backwards Compatibility
+
+Existing websites must continue to render correctly.
+
+No migrations should be required.
+
+Unknown section types should continue to fail gracefully.
+
+Files Likely Affected
+artifacts/contractor-app/src/pages/website/WebsiteEditor.tsx
+
+artifacts/contractor-app/src/pages/website/InspectorPanel.tsx
+
+artifacts/contractor-app/src/pages/website/AddSectionDialog.tsx
+
+artifacts/contractor-app/src/pages/website/sectionTemplates.ts
+
+artifacts/contractor-app/src/pages/website/website-types.ts
+
+artifacts/contractor-app/src/pages/website/sections/*
+Acceptance Criteria
+Inspector docks beside the canvas instead of overlaying it.
+Canvas automatically resizes when the inspector opens, closes, or is resized.
+Inspector fully collapses when no section is selected.
+Existing editor behavior (selection, editing, drag/drop, duplication, deletion) remains unchanged.
+Add Section dialog is organized into categories.
+New Contractor category is present.
+Six new contractor templates are available:
+Featured Clients
+Manufacturer / Dealer Logos
+Service Area
+Certifications & Badges
+Before & After Gallery
+Financing Available Banner
+Every new section includes default content, inspector editing, rendering, preview, and full editor support.
+Existing websites remain fully compatible without data migration.
+i dont need this: Financing Available Banner
+
+Large CTA banner.
+
+Fields:
+
+Heading
+
+Body Text
+
+Button Text
+
+Button Link
+
+Example:
+
+Need Financing?
+
+Flexible financing options available.
+
+[Learn More]                        
+
+I agree. For a general contractor website builder, a financing banner is much less universally useful than other sections. I'd replace it with something contractors are far more likely to use.
+
+Some better options are:
+
+Project Timeline ⭐ (my top recommendation)
+
+Show customers how a typical job progresses.
+
+Default content:
+
+Step 1 — Free Estimate
+Step 2 — Schedule Project
+Step 3 — Material Delivery
+Step 4 — Installation
+Step 5 — Final Walkthrough
+
+Fields:
+
+Step number
+Title
+Description
+Icon (optional)
+Why Choose Us
+
+A grid of selling points.
+
+Example:
+
+Veteran Owned & Operated
+Licensed & Insured
+Free Estimates
+Quality Workmanship
+Locally Owned
+Satisfaction Guaranteed
+
+Each card:
+
+Icon
+Title
+Description
+Our Process
+
+Similar to a timeline but more visual.
+
+Example:
+
+Contact Us
+Receive Quote
+Schedule Work
+We Complete the Job
+Final Inspection
+Featured Projects
+
+Highlight completed jobs with:
+
+Photo
+Title
+Short description
+Location (optional)
+
+This works well alongside a Before & After section.
+
+Warranty Information
+
+Especially useful for manufactured home work.
+
+Fields:
+
+Warranty title
+Coverage description
+Warranty length
+CTA button
+Service Highlights
+
+A card layout showing specialties like:
+
+Manufactured Home Finishing
+Plumbing
+Siding
+Trim
+Flooring
+General Repairs
+
+Given everything you've built so far, I'd replace the financing banner with "Why Choose Us." It fits almost every contractor website and is something nearly every customer expects to see.
+
+Your contractor section library would then be:
+
+Featured Clients
+Manufacturer / Dealer Logos
+Service Area
+Certifications & Badges
+Before & After Gallery
+Why Choose Us (replaces Financing Available)
+
+I think that's a stronger default set for a contractor-focused website builder.

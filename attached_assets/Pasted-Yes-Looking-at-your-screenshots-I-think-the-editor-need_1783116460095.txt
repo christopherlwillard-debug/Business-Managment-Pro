@@ -1,0 +1,176 @@
+Yes. Looking at your screenshots, I think the editor needs some architectural changes rather than just bug fixes. Right now it feels like the editor was built around the settings panel instead of around the person editing the page.
+
+Here are the biggest pain points I see.
+
+1. The properties panel blocks what you're trying to edit (highest priority)
+
+In your third screenshot, the right-side panel covers almost the entire hero text while you're editing it. You can't see the result of the changes you're making.
+
+Instead:
+
+Clicking a section should select it.
+Double-clicking text should edit it directly.
+The properties panel should stay collapsed until you need advanced settings.
+While typing, nothing should cover the content.
+2. Inline editing should be the primary workflow
+
+Right now the panel says:
+
+"Edit on canvas"
+
+That's actually the right idea.
+
+I would take it further.
+
+When you click:
+
+Headline → cursor appears immediately.
+Paragraph → cursor appears.
+Button → edit button text.
+Image → image picker opens.
+
+No side panel required for basic editing.
+
+The right panel should only contain things like:
+
+Background image
+Padding
+Animation
+Colors
+Mobile behavior
+3. The hero toolbar is too large
+
+When editing the heading you have:
+
+Font
+Size
+Weight
+Color
+Alignment
+etc.
+
+all floating directly over the heading.
+
+I'd replace that with something like Notion or Canva.
+
+Click text:
+
+Small floating toolbar
+
+B  I  Color  Link
+
+Everything else belongs in the side panel.
+
+4. Missing business sections
+
+This is the biggest functional issue.
+
+For a contractor website there should be drag-and-drop sections like:
+
+Featured Clients
+Manufacturers
+Dealer Logos
+Before & After Gallery
+Reviews
+Certifications
+Veteran Owned badge
+Financing
+Service Area Map
+Process
+FAQ
+Brands We Service
+CTA banner
+Google Reviews
+Team
+Recent Projects
+
+Those should be available under Add Section instead of making you build them yourself.
+
+5. Better Add Section experience
+
+Instead of
+
++ Add Section
+
+Open something like this:
+
+Business
+
+□ Hero
+□ Services
+□ About
+□ Team
+□ Testimonials
+□ FAQ
+
+Contractor
+
+□ Featured Clients
+□ Dealer Logos
+□ Home Manufacturers
+□ Service Areas
+□ Warranty Service
+□ Before & After
+□ Financing
+□ Certifications
+□ Veteran Owned
+
+Contact
+
+□ Quote Form
+□ Contact
+□ Map
+□ Hours
+
+That would make the builder feel much more complete.
+
+6. Better navigation
+
+The left panel is nice, but I'd also let people click directly on sections.
+
+Hover:
+
+────────────
+ Hero Banner
+ Edit | Move
+────────────
+
+Very similar to Webflow.
+
+7. Mobile editing
+
+I'd also add:
+
+Desktop
+Tablet
+Phone
+
+with editable spacing for each.
+
+Specifically for your business
+
+I'd honestly add these templates because they're perfect for manufactured home contractors:
+
+Dealer logos ("Trusted by")
+Manufactured home brands
+Service areas map
+Warranty work
+Veteran-owned section
+Before/after repairs
+Crew photos
+Certifications
+Financing
+Contact CTA
+Google Reviews
+Recent completed homes
+If I were writing the next Replit task
+
+I'd call it something like:
+
+Website Builder UX Overhaul
+
+Purpose: Make editing happen directly on the page instead of through floating panels, reduce editor obstruction, and add contractor-focused website sections.
+
+That one task would probably improve the website builder more than dozens of small bug fixes because it addresses the overall editing experience rather than isolated issues.
+
+From the screenshots, I'd say the editor is about 70% of the way there. The foundation is good, but it still feels like a generic page builder. With the improvements above—especially unobstructed inline editing and contractor-specific sections—it would become much more intuitive and useful for the kinds of businesses your app is targeting.
