@@ -500,32 +500,60 @@ function CustomDomainPanel({
         className="w-full text-xs border border-border rounded px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
       />
       {customDomain ? (
-        <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-2 space-y-1.5">
+        <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-2.5 space-y-2.5">
           <p className="text-[10px] font-semibold text-blue-800 dark:text-blue-300 flex items-center gap-1">
             <Info className="w-3 h-3 flex-shrink-0" />
-            DNS Setup Instructions
+            3-Step Setup
           </p>
-          <p className="text-[10px] text-blue-700 dark:text-blue-400 leading-relaxed">
-            Add a <strong>CNAME</strong> record at your domain registrar:
-          </p>
-          <div className="rounded bg-blue-100 dark:bg-blue-900/40 px-2 py-1 flex items-center justify-between gap-1">
-            <span className="text-[10px] font-mono text-blue-900 dark:text-blue-200 break-all">{appHost}</span>
-            <button
-              type="button"
-              onClick={() => onCopy(appHost)}
-              className="flex-shrink-0 text-blue-600 hover:text-blue-800 dark:text-blue-400"
-              title="Copy"
-            >
-              <Copy className="w-3 h-3" />
-            </button>
+
+          {/* Step 1 */}
+          <div className="flex gap-2">
+            <span className="flex-shrink-0 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[9px] font-bold mt-0.5">1</span>
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-semibold text-blue-800 dark:text-blue-300">Add domain to your Replit deployment</p>
+              <p className="text-[10px] text-blue-700 dark:text-blue-400 leading-relaxed">
+                In Replit, go to your published app → <strong>Deployments</strong> → <strong>Custom Domains</strong> → add <strong>{customDomain}</strong>. Do this once per domain.
+              </p>
+            </div>
           </div>
-          <p className="text-[10px] text-blue-600 dark:text-blue-400 leading-relaxed">
-            DNS changes can take up to 48 hours to propagate. Save and publish your site first.
-          </p>
+
+          {/* Step 2 */}
+          <div className="flex gap-2">
+            <span className="flex-shrink-0 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[9px] font-bold mt-0.5">2</span>
+            <div className="space-y-1 w-full">
+              <p className="text-[10px] font-semibold text-blue-800 dark:text-blue-300">Add a CNAME record at your registrar</p>
+              <p className="text-[10px] text-blue-700 dark:text-blue-400 leading-relaxed">
+                At GoDaddy, Cloudflare, etc. — add a <strong>CNAME</strong> pointing to:
+              </p>
+              <div className="rounded bg-blue-100 dark:bg-blue-900/40 px-2 py-1 flex items-center justify-between gap-1">
+                <span className="text-[10px] font-mono text-blue-900 dark:text-blue-200 break-all">{appHost}</span>
+                <button
+                  type="button"
+                  onClick={() => onCopy(appHost)}
+                  className="flex-shrink-0 text-blue-600 hover:text-blue-800 dark:text-blue-400"
+                  title="Copy CNAME target"
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+              </div>
+              <p className="text-[10px] text-blue-500 dark:text-blue-400 leading-relaxed">DNS changes can take up to 48 hours to propagate.</p>
+            </div>
+          </div>
+
+          {/* Step 3 */}
+          <div className="flex gap-2">
+            <span className="flex-shrink-0 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[9px] font-bold mt-0.5">3</span>
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-semibold text-blue-800 dark:text-blue-300">Publish this site</p>
+              <p className="text-[10px] text-blue-700 dark:text-blue-400 leading-relaxed">
+                The domain you entered above is saved with this business. Hit <strong>Publish</strong> and your site will be live at <strong>{customDomain}</strong>.
+              </p>
+            </div>
+          </div>
         </div>
       ) : (
         <p className="text-[10px] text-muted-foreground leading-relaxed">
-          Enter a domain to get CNAME setup instructions.
+          Enter your domain above to see setup instructions.
         </p>
       )}
     </div>
