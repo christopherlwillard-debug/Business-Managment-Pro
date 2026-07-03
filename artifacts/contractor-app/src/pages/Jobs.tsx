@@ -19,6 +19,7 @@ import {
   useListMfhManufacturers, useMfhPanelData, useListMfhConstructionTypes,
   useCreateMfhManufacturer, useCreateMfhModel,
   useListProductionServiceTypes, useCreateProductionServiceType,
+  useUpdateProductionServiceType, useDeleteProductionServiceType,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -3508,6 +3509,7 @@ function JobFormDialog({
   const createJob = useCreateJob();
   const updateJob = useUpdateJob();
   const { activeBusiness, businesses } = useBusiness();
+  const { toast } = useToast();
 
   function makeForm() {
     if (editJob) {
@@ -3545,6 +3547,10 @@ function JobFormDialog({
   const [subCompDefaults, setSubCompDefaults] = useState<Record<number, { compensationType: string; rate: string }>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  // Scroll the validation error / offending field into view on failed submit
+  // (on mobile the keyboard can push them off-screen).
+  const formScrollRef = useRef<HTMLDivElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(
     editJob?.workflow ?? null
   );
@@ -3557,10 +3563,14 @@ function JobFormDialog({
   const { data: mfhPanelData } = useMfhPanelData(mfhMfgId);
   const mfhModels = mfhPanelData?.models ?? [];
   const { data: constructionTypes = [] } = useListMfhConstructionTypes();
-  const { data: productionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id);
+  // Fetch all (incl. inactive) so archived/service items already checked on an
+  // existing job still resolve; display filtering happens below.
+  const { data: productionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id, true);
   const createMfhManufacturer = useCreateMfhManufacturer();
   const createMfhModel = useCreateMfhModel();
   const createProductionServiceType = useCreateProductionServiceType();
+  const updateProductionServiceType = useUpdateProductionServiceType();
+  const deleteProductionServiceType = useDeleteProductionServiceType();
 
   // MH Production: job-level construction type + services included
   const [mfhConstructionType, setMfhConstructionType] = useState<string>(
@@ -3571,6 +3581,17 @@ function JobFormDialog({
   );
   const [showAddService, setShowAddService] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
+  // Inline service-type management (rename / re-categorize / archive)
+  const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
+  const [editServiceName, setEditServiceName] = useState("");
+  const [editServiceAppliesTo, setEditServiceAppliesTo] = useState<"production" | "service">("production");
+  const [serviceEditBusy, setServiceEditBusy] = useState(false);
+
+  // Production jobs only list production services; keep archived/service items
+  // visible when the job already has them checked so old data stays intact.
+  const visibleServiceTypes = productionServiceTypes.filter(svc =>
+    (svc.active && svc.appliesTo !== "service") || mhProductionServices.includes(svc.id)
+  );
 
   // Combobox state for builder/model
   const [builderQuery, setBuilderQuery] = useState<string>("");
@@ -3613,10 +3634,50 @@ function JobFormDialog({
 
   async function handleAddService() {
     if (!newServiceName.trim()) return;
-    const created = await createProductionServiceType.mutateAsync({ name: newServiceName.trim(), businessId: activeBusiness?.id ?? null });
+    const created = await createProductionServiceType.mutateAsync({ name: newServiceName.trim(), appliesTo: "production", businessId: activeBusiness?.id ?? null });
     setMhProductionServices(prev => [...prev, created.id]);
     setNewServiceName("");
     setShowAddService(false);
+  }
+
+  function startEditService(svc: { id: number; name: string; appliesTo: string }) {
+    setEditingServiceId(svc.id);
+    setEditServiceName(svc.name);
+    setEditServiceAppliesTo(svc.appliesTo === "service" ? "service" : "production");
+  }
+
+  async function saveServiceEdit() {
+    if (editingServiceId == null || !editServiceName.trim()) return;
+    setServiceEditBusy(true);
+    try {
+      await updateProductionServiceType.mutateAsync({
+        id: editingServiceId,
+        name: editServiceName.trim(),
+        appliesTo: editServiceAppliesTo,
+      });
+      // Re-categorized to service → it no longer belongs on this production job
+      if (editServiceAppliesTo === "service") {
+        setMhProductionServices(prev => prev.filter(id => id !== editingServiceId));
+      }
+      setEditingServiceId(null);
+    } catch {
+      toast({ title: "Could not save service", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setServiceEditBusy(false);
+    }
+  }
+
+  async function archiveService(id: number) {
+    setServiceEditBusy(true);
+    try {
+      await deleteProductionServiceType.mutateAsync(id);
+      setMhProductionServices(prev => prev.filter(sid => sid !== id));
+      setEditingServiceId(null);
+    } catch {
+      toast({ title: "Could not archive service", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setServiceEditBusy(false);
+    }
   }
 
   const [clearHoursForSubIds, setClearHoursForSubIds] = useState<number[]>([]);
@@ -3663,9 +3724,18 @@ function JobFormDialog({
     setFormState(f => ({ ...f, [k]: v }));
   }
 
+  function showFormError(msg: string) {
+    setError(msg);
+    formScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.title.trim()) { setError("Title is required"); return; }
+    if (!form.title.trim()) {
+      showFormError("Title is required");
+      titleInputRef.current?.focus();
+      return;
+    }
     setSubmitting(true);
     setError("");
     try {
@@ -3741,7 +3811,7 @@ function JobFormDialog({
       onSaved();
       onOpenChange(false);
     } catch {
-      setError("Failed to save job. Please try again.");
+      showFormError("Failed to save job. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -3796,10 +3866,10 @@ function JobFormDialog({
     <>
     <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => onOpenChange(false)} />
-      <div className={`relative w-full bg-card border border-border shadow-2xl flex flex-col ${
+      <div className={`relative w-full bg-card border border-border shadow-2xl flex flex-col max-h-[90dvh] sm:max-h-[90vh] ${
         isCreate
           ? "rounded-t-2xl sm:rounded-2xl sm:max-w-sm"
-          : "rounded-t-2xl sm:rounded-2xl sm:max-w-lg max-h-[90dvh] sm:max-h-[90vh]"
+          : "rounded-t-2xl sm:rounded-2xl sm:max-w-lg"
       }`}>
         <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400 flex-shrink-0 rounded-t-2xl" />
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
@@ -3824,7 +3894,7 @@ function JobFormDialog({
             </button>
           </div>
 
-          <div className={`${isCreate ? "" : "flex-1 overflow-y-auto"} px-6 space-y-4 pb-2`}>
+          <div ref={formScrollRef} className="flex-1 min-h-0 overflow-y-auto px-6 space-y-4 pb-2">
 
           {error && (
             <div className="px-4 py-2.5 bg-destructive/10 border border-destructive/20 rounded-xl text-sm text-destructive flex items-center gap-2">
@@ -3834,7 +3904,7 @@ function JobFormDialog({
 
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Job Title *</label>
-            <input type="text" required autoFocus={isCreate}
+            <input type="text" autoFocus={isCreate} ref={titleInputRef}
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
               placeholder="e.g. Farm House Renovation"
               value={form.title} onChange={e => setField("title", e.target.value)} />
@@ -3910,24 +3980,76 @@ function JobFormDialog({
               <ListChecks className="w-3.5 h-3.5 inline mr-1 text-amber-500" />Services Included
             </label>
             <div className="rounded-xl border border-border p-3 space-y-2">
-              {productionServiceTypes.length === 0 && !showAddService && (
+              {visibleServiceTypes.length === 0 && !showAddService && (
                 <p className="text-xs text-muted-foreground">
                   No service types yet — click <span className="font-semibold text-amber-600">+ Add Service</span> to create your first one.
                 </p>
               )}
-              {productionServiceTypes.map(svc => {
+              {visibleServiceTypes.map(svc => {
                 const isChecked = mhProductionServices.includes(svc.id);
+                if (editingServiceId === svc.id) {
+                  return (
+                    <div key={svc.id} className="rounded-lg border border-amber-300 bg-amber-50/50 p-2 space-y-2">
+                      <input
+                        type="text" autoFocus
+                        className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        value={editServiceName}
+                        onChange={e => setEditServiceName(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); saveServiceEdit(); } if (e.key === "Escape") setEditingServiceId(null); }}
+                      />
+                      <div className="flex gap-1.5">
+                        {(["production", "service"] as const).map(opt => (
+                          <button key={opt} type="button" onClick={() => setEditServiceAppliesTo(opt)}
+                            className={`flex-1 px-2 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+                              editServiceAppliesTo === opt
+                                ? "bg-amber-500 border-amber-500 text-white"
+                                : "bg-background border-border text-muted-foreground hover:border-amber-300"
+                            }`}>
+                            {opt === "production" ? "Production" : "Service only"}
+                          </button>
+                        ))}
+                      </div>
+                      {editServiceAppliesTo === "service" && (
+                        <p className="text-[11px] text-amber-700">Service-only items are hidden from production job lists.</p>
+                      )}
+                      <div className="flex gap-1.5">
+                        <button type="button" onClick={saveServiceEdit} disabled={serviceEditBusy || !editServiceName.trim()}
+                          className="flex-1 px-2 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold disabled:opacity-50 hover:bg-amber-600 transition-colors">Save</button>
+                        <button type="button" onClick={() => setEditingServiceId(null)} disabled={serviceEditBusy}
+                          className="px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:bg-muted/50">Cancel</button>
+                        {svc.active && (
+                          <button type="button" onClick={() => archiveService(svc.id)} disabled={serviceEditBusy}
+                            title="Archive — hides this service from lists; existing jobs keep their history"
+                            className="px-2.5 py-1.5 rounded-lg border border-red-200 text-xs text-red-600 hover:bg-red-50 flex items-center gap-1">
+                            <Archive className="w-3 h-3" /> Archive
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
                 return (
-                  <label key={svc.id} className="flex items-center gap-2.5 cursor-pointer group">
-                    <input type="checkbox" className="rounded accent-amber-500"
-                      checked={isChecked}
-                      onChange={() => {
-                        if (isChecked) setMhProductionServices(prev => prev.filter(id => id !== svc.id));
-                        else setMhProductionServices(prev => [...prev, svc.id]);
-                      }}
-                    />
-                    <span className="text-sm text-foreground group-hover:text-amber-700 transition-colors">{svc.name}</span>
-                  </label>
+                  <div key={svc.id} className="flex items-center gap-2.5 group">
+                    <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
+                      <input type="checkbox" className="rounded accent-amber-500"
+                        checked={isChecked}
+                        onChange={() => {
+                          if (isChecked) setMhProductionServices(prev => prev.filter(id => id !== svc.id));
+                          else setMhProductionServices(prev => [...prev, svc.id]);
+                        }}
+                      />
+                      <span className={`text-sm transition-colors truncate ${!svc.active ? "text-muted-foreground line-through" : "text-foreground group-hover:text-amber-700"}`}>
+                        {svc.name}
+                      </span>
+                      {!svc.active && <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground flex-shrink-0">archived</span>}
+                      {svc.active && svc.appliesTo === "service" && <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground flex-shrink-0">service</span>}
+                    </label>
+                    <button type="button" onClick={() => startEditService(svc)}
+                      title="Edit service"
+                      className="p-1 rounded-md text-muted-foreground/50 hover:text-amber-600 hover:bg-amber-50 transition-colors flex-shrink-0">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 );
               })}
               {showAddService ? (
@@ -4464,7 +4586,8 @@ export default function Jobs() {
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
 
   const { activeBusiness, businesses } = useBusiness();
-  const { data: allProductionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id);
+  // Include inactive so archived service names still resolve on existing job cards
+  const { data: allProductionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id, true);
   const [jobSearch, setJobSearch]       = useState("");
   const [localBLFilter, setLocalBLFilter] = useState<string>("");
   const jobBLFilter = activeBusiness ? activeBusiness.slug : localBLFilter;

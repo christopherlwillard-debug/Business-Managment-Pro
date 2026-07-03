@@ -563,6 +563,7 @@ export interface ProductionServiceType {
   billingType: string;
   taxable: boolean;
   category?: string | null;
+  appliesTo: string;
   price?: string | null;
   priceVog?: string | null;
   priceHybrid?: string | null;
@@ -597,6 +598,7 @@ export interface ProductionServiceTypeInput {
   billingType?: string;
   taxable?: boolean;
   category?: string | null;
+  appliesTo?: "production" | "service";
   price?: number | string | null;
   priceVog?: number | string | null;
   priceHybrid?: number | string | null;
@@ -605,13 +607,14 @@ export interface ProductionServiceTypeInput {
   businessId?: number | null;
 }
 
-export function useListProductionServiceTypes(businessId?: number | null, includeInactive?: boolean) {
+export function useListProductionServiceTypes(businessId?: number | null, includeInactive?: boolean, appliesTo?: "production" | "service") {
   return useQuery({
-    queryKey: ["/api/production-service-types", businessId ?? null, includeInactive ?? false],
+    queryKey: ["/api/production-service-types", businessId ?? null, includeInactive ?? false, appliesTo ?? null],
     queryFn: () => {
       const params = new URLSearchParams();
       if (businessId) params.set("businessId", String(businessId));
       if (includeInactive) params.set("includeInactive", "true");
+      if (appliesTo) params.set("appliesTo", appliesTo);
       const qs = params.toString();
       return customFetch<ProductionServiceType[]>(
         `/api/production-service-types${qs ? `?${qs}` : ""}`,

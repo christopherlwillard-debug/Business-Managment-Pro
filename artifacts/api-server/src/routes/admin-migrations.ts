@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, expensesTable, subPaymentRecordsTable } from "@workspace/db";
+import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, expensesTable, subPaymentRecordsTable, productionServiceTypesTable } from "@workspace/db";
 import { isNull, isNotNull, and, inArray, or, like, asc, sql, ilike, eq } from "drizzle-orm";
 import { recalcImportExpenses } from "./mileage";
 
@@ -156,6 +156,64 @@ router.post("/consolidate-mileage-expenses", async (req: Request, res: Response)
     res.json({ ok: true, dryRun: false, result });
   } catch (err) {
     console.error("[admin/migrations] consolidate-mileage-expenses failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
+// Categorize production service types by applicability (production vs service).
+//
+// Background: the "Services Included" list on MH Production jobs used to show
+// every catalog item, including service/warranty-only items. The applies_to
+// column (default 'production') now scopes each item. This migration flips the
+// known service-only items (Service Call, Mileage, Materials, Warranty Repair)
+// to applies_to='service', matched by itemKey first, then by normalized name
+// for legacy rows without an itemKey.
+//
+// dryRun=true (default) returns the plan without changing data. Idempotent:
+// rows already set to 'service' are skipped.
+router.post("/categorize-service-types", async (req: Request, res: Response) => {
+  try {
+    const { dryRun = true } = (req.body ?? {}) as { dryRun?: boolean };
+
+    const SERVICE_ITEM_KEYS = new Set(["service_call", "mileage", "materials", "warranty_repair"]);
+    const SERVICE_NAMES = new Set(["service call", "mileage", "materials", "warranty repair"]);
+    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+    const rows = await db.select({
+      id: productionServiceTypesTable.id,
+      itemKey: productionServiceTypesTable.itemKey,
+      name: productionServiceTypesTable.name,
+      appliesTo: productionServiceTypesTable.appliesTo,
+    }).from(productionServiceTypesTable);
+
+    const toService = rows.filter(r =>
+      r.appliesTo !== "service" &&
+      ((r.itemKey && SERVICE_ITEM_KEYS.has(r.itemKey)) || (!r.itemKey && SERVICE_NAMES.has(norm(r.name))))
+    );
+
+    const plan = toService.map(r => ({ id: r.id, itemKey: r.itemKey, name: r.name, from: r.appliesTo, to: "service" }));
+
+    if (toService.length === 0) {
+      return res.json({ ok: true, dryRun, already_clean: true, message: "All service-only items are already categorized.", plan: [] });
+    }
+
+    if (dryRun) {
+      return res.json({
+        ok: true,
+        dryRun: true,
+        message: "Dry-run — no data changed. Pass { dryRun: false } to set applies_to='service' on the listed rows.",
+        plan,
+      });
+    }
+
+    await db.update(productionServiceTypesTable)
+      .set({ appliesTo: "service" })
+      .where(inArray(productionServiceTypesTable.id, toService.map(r => r.id)));
+
+    console.log(`[admin/migrations] categorize-service-types executed:`, JSON.stringify(plan));
+    res.json({ ok: true, dryRun: false, updated: toService.length, plan });
+  } catch (err) {
+    console.error("[admin/migrations] categorize-service-types failed:", err);
     res.status(500).json({ error: "Migration failed", detail: String(err) });
   }
 });

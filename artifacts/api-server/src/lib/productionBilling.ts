@@ -200,6 +200,7 @@ interface SeedItem {
   billingType: BillingType;
   sortOrder: number;
   category?: string | null;
+  appliesTo?: "production" | "service";
   taxable?: boolean;
   price?: number | null;
   priceVog?: number | null;
@@ -216,10 +217,10 @@ const SEED_ITEMS: SeedItem[] = [
   { itemKey: "travel_surcharge", name: "Travel Surcharge", invoiceDescription: "Travel Surcharge", billingType: "Per Day", sortOrder: 50, category: "Travel", price: 150 },
   { itemKey: "skirting", name: "Skirting", invoiceDescription: "Skirting", billingType: "Per Linear Foot", sortOrder: 60, category: "Production" },
   { itemKey: "steps", name: "Steps", invoiceDescription: "Steps", billingType: "Per Item", sortOrder: 70, category: "Production" },
-  { itemKey: "service_call", name: "Service Call", invoiceDescription: "Service Call", billingType: "Fixed", sortOrder: 80, category: "Service" },
-  { itemKey: "mileage", name: "Mileage", invoiceDescription: "Mileage", billingType: "Per Mile", sortOrder: 90, category: "Travel" },
-  { itemKey: "materials", name: "Materials", invoiceDescription: "Materials", billingType: "Fixed", sortOrder: 100, category: "Materials" },
-  { itemKey: "warranty_repair", name: "Warranty Repair", invoiceDescription: "Warranty Repair", billingType: "Fixed", sortOrder: 110, category: "Service" },
+  { itemKey: "service_call", name: "Service Call", invoiceDescription: "Service Call", billingType: "Fixed", sortOrder: 80, category: "Service", appliesTo: "service" },
+  { itemKey: "mileage", name: "Mileage", invoiceDescription: "Mileage", billingType: "Per Mile", sortOrder: 90, category: "Travel", appliesTo: "service" },
+  { itemKey: "materials", name: "Materials", invoiceDescription: "Materials", billingType: "Fixed", sortOrder: 100, category: "Materials", appliesTo: "service" },
+  { itemKey: "warranty_repair", name: "Warranty Repair", invoiceDescription: "Warranty Repair", billingType: "Fixed", sortOrder: 110, category: "Service", appliesTo: "service" },
 ];
 
 interface SeedOverride {
@@ -293,6 +294,7 @@ export async function ensureProductionBillingSeed(): Promise<ProductionBillingSe
         invoiceDescription: seed.invoiceDescription,
         billingType: seed.billingType,
         category: seed.category ?? null,
+        appliesTo: seed.appliesTo ?? "production",
         taxable: seed.taxable ?? false,
         sortOrder: seed.sortOrder,
         price: numOrNull(seed.price),

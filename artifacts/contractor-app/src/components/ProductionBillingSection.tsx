@@ -56,6 +56,7 @@ function ServiceTypeEditorModal({
   const [name, setName] = useState("");
   const [invoiceDescription, setInvoiceDescription] = useState("");
   const [category, setCategory] = useState("");
+  const [appliesTo, setAppliesTo] = useState<"production" | "service">("production");
   const [billingType, setBillingType] = useState("");
   const [taxable, setTaxable] = useState(false);
   const [sortOrder, setSortOrder] = useState("0");
@@ -69,6 +70,7 @@ function ServiceTypeEditorModal({
     setName(editing?.name ?? "");
     setInvoiceDescription(editing?.invoiceDescription ?? "");
     setCategory(editing?.category ?? "");
+    setAppliesTo(editing?.appliesTo === "service" ? "service" : "production");
     setBillingType(editing?.billingType ?? billingTypeOptions[0] ?? "");
     setTaxable(editing?.taxable ?? false);
     setSortOrder(String(editing?.sortOrder ?? 0));
@@ -93,6 +95,7 @@ function ServiceTypeEditorModal({
       billingType,
       taxable,
       category: priceOrNull(category),
+      appliesTo,
       price: priceOrNull(price),
       priceVog: priceOrNull(priceVog),
       priceHybrid: priceOrNull(priceHybrid),
@@ -158,6 +161,24 @@ function ServiceTypeEditorModal({
                 ))}
               </select>
             </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-foreground mb-1">Applies to</label>
+            <div className="flex gap-2">
+              {(["production", "service"] as const).map(opt => (
+                <button key={opt} type="button" onClick={() => setAppliesTo(opt)}
+                  className={`flex-1 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors ${
+                    appliesTo === opt
+                      ? "bg-amber-600 border-amber-600 text-white"
+                      : "bg-background border-border text-muted-foreground hover:border-amber-300"
+                  }`}>
+                  {opt === "production" ? "Production jobs" : "Service jobs only"}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Production items appear in the "Services Included" list on MH Production jobs. Service-only items (e.g. Service Call, Warranty Repair) are kept out of that list.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -301,6 +322,7 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold text-foreground truncate">{st.name}</p>
                     {st.category && <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground flex-shrink-0">{st.category}</span>}
+                    {st.appliesTo === "service" && <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-700 flex-shrink-0">Service only</span>}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
                     {st.billingType} · base {fmtPrice(st.price)}{st.taxable ? " · taxable" : ""}

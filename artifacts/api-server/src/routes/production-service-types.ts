@@ -123,12 +123,17 @@ router.get("/", wrapAsync(async (req, res) => {
   await ensureProductionBillingSeed();
   const businessId = req.query.businessId ? parseInt(req.query.businessId as string) : null;
   const includeInactive = req.query.includeInactive === "true";
-  const rows = await fetchServiceTypes(includeInactive);
+  const appliesTo = req.query.appliesTo === "production" || req.query.appliesTo === "service"
+    ? (req.query.appliesTo as string)
+    : null;
+  let rows = await fetchServiceTypes(includeInactive);
   if (businessId && !isNaN(businessId)) {
-    res.json(rows.filter(r => r.businessId === null || r.businessId === businessId));
-  } else {
-    res.json(rows);
+    rows = rows.filter(r => r.businessId === null || r.businessId === businessId);
   }
+  if (appliesTo) {
+    rows = rows.filter(r => r.appliesTo === appliesTo);
+  }
+  res.json(rows);
 }));
 
 router.post("/", wrapAsync(async (req, res) => {
@@ -136,6 +141,9 @@ router.post("/", wrapAsync(async (req, res) => {
   const name = typeof b.name === "string" ? b.name.trim() : "";
   if (!name) return res.status(400).json({ error: "name is required" });
   const billingType = typeof b.billingType === "string" && isValidBillingType(b.billingType) ? b.billingType : "Fixed";
+  if ("appliesTo" in b && b.appliesTo !== undefined && b.appliesTo !== "production" && b.appliesTo !== "service") {
+    return res.status(400).json({ error: "appliesTo must be 'production' or 'service'" });
+  }
   const [row] = await db
     .insert(productionServiceTypesTable)
     .values({
@@ -144,6 +152,7 @@ router.post("/", wrapAsync(async (req, res) => {
       billingType,
       taxable: b.taxable === true,
       category: typeof b.category === "string" && b.category ? b.category : null,
+      appliesTo: b.appliesTo === "service" ? "service" : "production",
       price: priceOrNull(b.price),
       priceVog: priceOrNull(b.priceVog),
       priceHybrid: priceOrNull(b.priceHybrid),
@@ -165,6 +174,12 @@ router.put("/:id", wrapAsync(async (req, res) => {
   if (typeof b.billingType === "string" && isValidBillingType(b.billingType)) set.billingType = b.billingType;
   if ("taxable" in b) set.taxable = b.taxable === true;
   if ("category" in b) set.category = typeof b.category === "string" && b.category ? b.category : null;
+  if ("appliesTo" in b) {
+    if (b.appliesTo !== "production" && b.appliesTo !== "service") {
+      return res.status(400).json({ error: "appliesTo must be 'production' or 'service'" });
+    }
+    set.appliesTo = b.appliesTo;
+  }
   if ("price" in b) set.price = priceOrNull(b.price);
   if ("priceVog" in b) set.priceVog = priceOrNull(b.priceVog);
   if ("priceHybrid" in b) set.priceHybrid = priceOrNull(b.priceHybrid);

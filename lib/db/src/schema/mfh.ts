@@ -137,6 +137,9 @@ export const productionServiceTypesTable = pgTable("production_service_types", {
   billingType: text("billing_type").notNull().default("Fixed"),
   taxable: boolean("taxable").notNull().default(false),
   category: text("category"),
+  // Which job workflow this item belongs to: 'production' (MH Production jobs'
+  // "Services Included" list) or 'service' (service/warranty work only).
+  appliesTo: text("applies_to").notNull().default("production"),
   price: numeric("price", { precision: 12, scale: 2 }),
   priceVog: numeric("price_vog", { precision: 12, scale: 2 }),
   priceHybrid: numeric("price_hybrid", { precision: 12, scale: 2 }),
