@@ -489,6 +489,41 @@ router.get("/profit-summary", async (req, res) => {
   }
 });
 
+// Trip documentation packet: GET /:id/trip-packet
+// Compiles job + customer details, crew, travel expenses (with business
+// purpose + receipts), daily logs, photos, checklist status, and invoices
+// into a single audit-ready evidence package.
+router.get("/:id/trip-packet", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+    const { buildTripPacketData } = await import("../lib/tripPacket.js");
+    const packet = await buildTripPacketData(id);
+    if (!packet) return res.status(404).json({ error: "Job not found" });
+    res.json(packet);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to build trip packet" });
+  }
+});
+
+// Trip documentation packet PDF: GET /:id/trip-packet/pdf
+router.get("/:id/trip-packet/pdf", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+    const { generateTripPacketPdfBuffer } = await import("../lib/generateTripPacketPdf.js");
+    const result = await generateTripPacketPdfBuffer(id);
+    if (!result) return res.status(404).json({ error: "Job not found" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+    res.send(result.buffer);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to generate trip packet PDF" });
+  }
+});
+
 // Payment-category expenses for a job (not auto-linked to hours).
 // Covers both "Subcontractor" (allocation pay-worker, manual entries) and
 // "Labor" (hourly/fixed pay-worker). Used by the Sub Payments tab to determine

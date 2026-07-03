@@ -16,6 +16,7 @@ import {
   RotateCcw, Pause, Play, ChevronUp, Pencil, Maximize2, Download, EyeOff, Search,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Link } from "wouter";
 import { ExpenseImportDialog } from "@/components/ExpenseImportDialog";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { openDrivePicker } from "@/lib/googleDrivePicker";
@@ -51,6 +52,14 @@ const CATEGORY_LABELS: Record<string, string> = {
   "Other":                 "Other — Line 27 (Other Expenses)",
   "Owner Draw":            "Owner Draw — Personal distribution (not tax-deductible)",
 };
+// Travel-related categories — kept in sync with the API's trip packet logic.
+// "Travel/Lodging", "Meals", and "Parking/Tolls" plug in automatically once added.
+const TRAVEL_CATEGORIES_LC = ["fuel/travel", "travel/lodging", "meals", "parking/tolls"];
+function isTravelCategory(category: string | null | undefined): boolean {
+  if (!category) return false;
+  return TRAVEL_CATEGORIES_LC.includes(category.trim().toLowerCase());
+}
+
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const API = `${BASE}/api`;
 
@@ -761,6 +770,24 @@ function ExpenseViewModal({
                 <Briefcase className="w-3 h-3" /> Job
               </div>
               <p className="text-sm font-semibold text-gray-800">{expense.jobTitle}</p>
+            </div>
+          )}
+
+          {/* Trip documentation link — the "why" behind this expense */}
+          {expense.jobId && (
+            <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold text-blue-400 mb-1">
+                <FileText className="w-3 h-3" /> Trip Documentation
+              </div>
+              <p className="text-xs text-blue-700 mb-2">
+                {isTravelCategory(expense.category)
+                  ? "See the full story behind this travel expense — customer, job site, work performed, and payment received."
+                  : "See the full documentation packet for this job — expenses, daily logs, photos, and invoices."}
+              </p>
+              <Link href={`/trip-packet/${expense.jobId}`} onClick={onClose}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors">
+                <FileText className="w-3.5 h-3.5" /> View Trip Packet
+              </Link>
             </div>
           )}
 

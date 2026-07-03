@@ -27,10 +27,18 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X, Link2, ExternalLink, Trash2 } from "lucide-react";
+import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X, Link2, ExternalLink, Trash2, FileText } from "lucide-react";
+import { Link } from "wouter";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+// Travel-related categories — kept in sync with the API's trip packet logic.
+const TRAVEL_CATEGORIES_LC = ["fuel/travel", "travel/lodging", "meals", "parking/tolls"];
+function isTravelCategory(category: string | null | undefined): boolean {
+  if (!category) return false;
+  return TRAVEL_CATEGORIES_LC.includes(category.trim().toLowerCase());
+}
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -827,6 +835,15 @@ export default function Banking() {
                                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                                     Filed ✓
                                   </span>
+                                )}
+                                {txn.matchedExpenseJobId != null && isTravelCategory(txn.matchedExpenseCategory) && (
+                                  <Link
+                                    href={`/trip-packet/${txn.matchedExpenseJobId}`}
+                                    title="View trip documentation for this travel expense"
+                                    className="inline-flex items-center gap-1 text-[11px] text-blue-600 font-semibold hover:underline whitespace-nowrap"
+                                  >
+                                    <FileText className="w-3 h-3" /> Trip docs
+                                  </Link>
                                 )}
                                 <Button
                                   variant="ghost"

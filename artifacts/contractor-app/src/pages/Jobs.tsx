@@ -1,5 +1,5 @@
 import { useState, useRef, ReactNode, useEffect, useMemo, Fragment } from "react";
-import { useSearchParams, useLocation } from "wouter";
+import { useSearchParams, useLocation, Link } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import {
@@ -1535,6 +1535,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <p className="text-xs text-muted-foreground text-center pt-1">{formatCurrency(profit.grossInvoiced - profit.collected)} outstanding (not yet collected)</p>
                 )}
               </>)}
+              <Link href={`/trip-packet/${job.id}`}
+                className="flex items-center justify-center gap-2 w-full rounded-xl border border-blue-200 bg-blue-50/50 px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-100/60 transition-colors">
+                <FileText className="w-4 h-4" /> Trip Documentation Packet
+              </Link>
             </div>
           ) : tab === "breakdown" ? (
             /* ── Pay Breakdown tab ── */

@@ -14,3 +14,5 @@ The e2e testing subagent is permanently blocked by a stale bogus "CLERK_SECRET_K
 4. **Clean up**: delete the minted session row afterward.
 
 **Why:** browser-use CLI is NOT installed despite the skill existing; runTest cannot be unblocked from the agent side. This is the only proven path for authenticated interactive verification.
+
+**Gotchas:** synthetic `el.click()` in `page.evaluate` does NOT expand the app's collapsible month-group headers (e.g. Expenses page) — use a real `page.mouse.click(x, y)` at the element's bounding rect instead. Also `tsx -e` eval is CJS (no top-level await); write a temp `.mts` file for direct lib-function testing.

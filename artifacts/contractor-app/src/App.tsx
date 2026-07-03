@@ -42,6 +42,7 @@ const AdminErrorLog = lazy(() => import("./pages/AdminErrorLog"));
 const ChecklistTemplates = lazy(() => import("./pages/ChecklistTemplates"));
 const JobStatusPage = lazy(() => import("./pages/JobStatusPage"));
 const MfhKnowledgeBase = lazy(() => import("./pages/MfhKnowledgeBase"));
+const TripPacket = lazy(() => import("./pages/TripPacket"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -321,6 +322,9 @@ function AdminApp() {
           </Route>
           <Route path="/mfh-homes">
             <PermissionGuard ownerOnly><MfhKnowledgeBase /></PermissionGuard>
+          </Route>
+          <Route path="/trip-packet/:jobId">
+            <PermissionGuard section="jobs"><TripPacket /></PermissionGuard>
           </Route>
           <Route component={NotFound} />
         </Switch>
