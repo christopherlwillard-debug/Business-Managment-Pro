@@ -25,6 +25,7 @@ const CATEGORIES = [
   "Materials",             // Sch C Line 4
   "Advertising",           // Sch C Line 8
   "Fuel/Travel",           // Sch C Line 9
+  "Parking/Tolls",         // Sch C Line 9
   "Subcontractor",         // Sch C Line 11
   "Insurance",             // Sch C Line 15
   "Professional Services", // Sch C Line 17
@@ -32,6 +33,8 @@ const CATEGORIES = [
   "Rent/Lease",            // Sch C Line 20
   "Repairs/Maintenance",   // Sch C Line 21
   "Tools/Equipment",       // Sch C Line 22
+  "Travel/Lodging",        // Sch C Line 24a
+  "Meals",                 // Sch C Line 24b (50% deductible)
   "Utilities",             // Sch C Line 25
   "Other",                 // Sch C Line 27
   "Owner Draw",            // Non-deductible — personal distribution
@@ -41,6 +44,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   "Materials":             "Materials — Line 4 (Cost of Goods)",
   "Advertising":           "Advertising — Line 8 (Advertising)",
   "Fuel/Travel":           "Fuel/Travel — Line 9 (Car & Truck)",
+  "Parking/Tolls":         "Parking/Tolls — Line 9 (Car & Truck)",
   "Subcontractor":         "Subcontractor — Line 11 (Contract Labor)",
   "Insurance":             "Insurance — Line 15 (Insurance)",
   "Professional Services": "Professional Services — Line 17 (Legal & Prof.)",
@@ -48,6 +52,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   "Rent/Lease":            "Rent/Lease — Line 20 (Rent or Lease)",
   "Repairs/Maintenance":   "Repairs/Maintenance — Line 21 (Repairs)",
   "Tools/Equipment":       "Tools/Equipment — Line 22 (Supplies)",
+  "Travel/Lodging":        "Travel/Lodging — Line 24a (Travel, 100% deductible)",
+  "Meals":                 "Meals — Line 24b (50% deductible)",
   "Utilities":             "Utilities — Line 25 (Utilities)",
   "Other":                 "Other — Line 27 (Other Expenses)",
   "Owner Draw":            "Owner Draw — Personal distribution (not tax-deductible)",
@@ -1518,6 +1524,8 @@ export default function Expenses() {
   const [category, setCategory]                       = useState(CATEGORIES[0]);
   const [subcontractorId, setSubcontractorId]         = useState("");
   const [excludeFromNetProfit, setExcludeFromNetProfit] = useState(false);
+  const [countsTowardJobProfit, setCountsTowardJobProfit] = useState(true);
+  const [formJobId, setFormJobId] = useState("");
   const [businessLine, setBusinessLine]               = useState<string | undefined>(
     activeBusiness?.slug ?? undefined
   );
@@ -1525,7 +1533,7 @@ export default function Expenses() {
     setBusinessLine(activeBusiness?.slug ?? undefined);
   }, [activeBusiness?.slug]);
   const [viewExpense,   setViewExpense]                = useState<any | null>(null);
-  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; businessLine: string; businessId: number | null} | null>(null);
+  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; countsTowardJobProfit: boolean; businessLine: string; businessId: number | null} | null>(null);
   const [editReceiptFile, setEditReceiptFile]         = useState<File | null>(null);
   const [editLightboxUrl, setEditLightboxUrl]         = useState<string | null>(null);
   const [editLightboxImgError, setEditLightboxImgError] = useState(false);
@@ -1681,6 +1689,8 @@ export default function Expenses() {
     setCategory(CATEGORIES[0]);
     setSubcontractorId("");
     setExcludeFromNetProfit(false);
+    setCountsTowardJobProfit(true);
+    setFormJobId("");
     setBusinessLine(activeBusiness?.slug ?? undefined);
   }
 
@@ -1701,6 +1711,7 @@ export default function Expenses() {
           jobId:          fd.get("jobId") ? parseInt(fd.get("jobId") as string) : undefined,
           subcontractorId: subcontractorId ? parseInt(subcontractorId) : undefined,
           excludeFromNetProfit,
+          countsTowardJobProfit,
           businessLine: businessLine || null,
           businessId: activeBusiness?.id ?? (businessLine ? businesses.find(b => b.slug === businessLine)?.id ?? null : null),
         },
@@ -2124,6 +2135,7 @@ export default function Expenses() {
                                               notes: editingRow.notes || undefined,
                                               receiptUrl: exp.receiptUrl,
                                               excludeFromNetProfit: editingRow.excludeFromNetProfit,
+                                              countsTowardJobProfit: editingRow.countsTowardJobProfit,
                                               businessLine: editingRow.businessLine || null,
                                               businessId: editingRow.businessId,
                                             },
@@ -2163,6 +2175,11 @@ export default function Expenses() {
                                     {exp.excludeFromNetProfit && (
                                       <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-amber-200 flex-shrink-0">
                                         <EyeOff className="w-2.5 h-2.5" /> Write-off
+                                      </span>
+                                    )}
+                                    {exp.countsTowardJobProfit === false && (
+                                      <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-blue-200 flex-shrink-0">
+                                        <FileText className="w-2.5 h-2.5" /> Audit Trail
                                       </span>
                                     )}
                                     {exp.recurringExpenseId && (
@@ -2261,6 +2278,7 @@ export default function Expenses() {
                                             jobId: exp.jobId ? String(exp.jobId) : "",
                                             notes: exp.notes ?? "",
                                             excludeFromNetProfit: exp.excludeFromNetProfit ?? false,
+                                            countsTowardJobProfit: exp.countsTowardJobProfit ?? true,
                                             businessId: (exp as any).businessId ?? null,
                                             businessLine: exp.businessLine ?? "",
                                           }); }}
@@ -2364,6 +2382,8 @@ export default function Expenses() {
                     const val = e.target.value;
                     setCategory(val);
                     if (val === "Owner Draw") setExcludeFromNetProfit(true);
+                    if (formJobId && isTravelCategory(val)) setCountsTowardJobProfit(false);
+                    else if (!isTravelCategory(val)) setCountsTowardJobProfit(true);
                   }}
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none"
                 >
@@ -2374,7 +2394,12 @@ export default function Expenses() {
 
             <div>
               <label className="block text-sm font-medium mb-1">Allocate to Job <span className="font-normal text-muted-foreground">(Optional)</span></label>
-              <select name="jobId" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none">
+              <select name="jobId" value={formJobId} onChange={e => {
+                const newJobId = e.target.value;
+                setFormJobId(newJobId);
+                if (newJobId && isTravelCategory(category)) setCountsTowardJobProfit(false);
+                else if (!newJobId) setCountsTowardJobProfit(true);
+              }} className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none">
                 <option value="">— None (Overhead) —</option>
                 {jobs?.map(j => <option key={j.id} value={j.id}>{formatJobLabel(j)}</option>)}
               </select>
@@ -2403,11 +2428,13 @@ export default function Expenses() {
             )}
 
             <div>
-              <label className="block text-sm font-medium mb-1">Notes</label>
+              <label className="block text-sm font-medium mb-1">
+                {isTravelCategory(category) ? "Business purpose" : "Notes"}
+              </label>
               <input
                 name="notes"
                 className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
-                placeholder="Optional notes"
+                placeholder={isTravelCategory(category) ? "Business purpose (required for IRS — e.g. client meeting, site inspection)" : "Optional notes"}
               />
             </div>
 
@@ -2475,6 +2502,28 @@ export default function Expenses() {
                 </div>
               </div>
             )}
+            {(() => {
+              const hasJob = !!formJobId;
+              if (!hasJob || category === "Owner Draw") return null;
+              return (
+                <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-blue-200 bg-blue-50/60">
+                  <button
+                    type="button"
+                    onClick={() => setCountsTowardJobProfit(v => !v)}
+                    className={`mt-0.5 flex-shrink-0 w-10 h-6 rounded-full transition-colors relative ${!countsTowardJobProfit ? "bg-blue-500" : "bg-muted-foreground/30"}`}
+                    aria-pressed={!countsTowardJobProfit}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${!countsTowardJobProfit ? "translate-x-4" : "translate-x-0"}`} />
+                  </button>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-blue-900 flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-blue-600" /> Tax audit trail only
+                    </p>
+                    <p className="text-xs text-blue-700/80 mt-0.5">Links to job for tax records but <strong>does not reduce job profit</strong></p>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="pt-2 border-t border-dashed border-border">
               <label className="block text-sm font-medium mb-2 flex items-center gap-2 text-primary">
@@ -2640,6 +2689,17 @@ export default function Expenses() {
                   <p className="text-xs text-muted-foreground">Exclude this expense from net profit calculation</p>
                 </div>
               </label>
+              {editingRow.jobId && editingRow.category !== "Owner Draw" && (
+                <label className="flex items-center gap-3 cursor-pointer py-1">
+                  <input type="checkbox" checked={!editingRow.countsTowardJobProfit}
+                    onChange={e => setEditingRow(r => r && ({ ...r, countsTowardJobProfit: !e.target.checked }))}
+                    className="w-4 h-4 accent-blue-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-blue-600" /> Tax audit trail only</p>
+                    <p className="text-xs text-muted-foreground">Links expense to job for tax records without reducing job profit</p>
+                  </div>
+                </label>
+              )}
               <div>
                 <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Receipt</label>
                 {editReceiptFile ? (
@@ -2685,6 +2745,7 @@ export default function Expenses() {
                       notes: editingRow.notes || undefined,
                       receiptUrl: undefined,
                       excludeFromNetProfit: editingRow.excludeFromNetProfit,
+                      countsTowardJobProfit: editingRow.countsTowardJobProfit,
                       businessLine: editingRow.businessLine || null,
                       businessId: editingRow.businessId,
                     },

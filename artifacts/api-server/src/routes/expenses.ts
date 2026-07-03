@@ -165,7 +165,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit, businessLine, businessId } = req.body;
+    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit, countsTowardJobProfit, businessLine, businessId } = req.body;
     if (!description || !amount || !category || !date) return res.status(400).json({ error: "Missing required fields" });
 
     const validBusinessLines = ["general_contracting", "asphalt_sealing"];
@@ -173,6 +173,7 @@ router.post("/", async (req, res) => {
       description, amount: amount.toString(), category, date,
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes,
       excludeFromNetProfit: excludeFromNetProfit === true,
+      countsTowardJobProfit: countsTowardJobProfit === false ? false : true,
       businessLine: validBusinessLines.includes(businessLine) ? businessLine : null,
       businessId: businessId ? parseInt(businessId) : null,
     }).returning();
@@ -204,7 +205,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit, businessLine, businessId } = req.body;
+    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit, countsTowardJobProfit, businessLine, businessId } = req.body;
 
     // Capture old values before updating so we can recompute the old pair if it changed
     const [before] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));
@@ -215,6 +216,7 @@ router.put("/:id", async (req, res) => {
       description, amount: amount?.toString(), category, date,
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes,
       ...(excludeFromNetProfit !== undefined && { excludeFromNetProfit: excludeFromNetProfit === true }),
+      ...(countsTowardJobProfit !== undefined && { countsTowardJobProfit: countsTowardJobProfit === false ? false : true }),
       ...(businessLine !== undefined && { businessLine: validBusinessLines.includes(businessLine) ? businessLine : null }),
       ...(businessId !== undefined && { businessId: businessId ? parseInt(String(businessId)) : null }),
     }).where(eq(expensesTable.id, id)).returning();

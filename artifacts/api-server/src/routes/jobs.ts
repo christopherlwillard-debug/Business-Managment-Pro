@@ -329,7 +329,7 @@ router.get("/:id/profit", async (req, res) => {
       // Fetch all expenses not auto-linked to a sub-hours row.
       // Subcontractor-category expenses are moved into the sub labor bucket below
       // so they never double-count with hours-based sub labor cost.
-      db.select({ amount: expensesTable.amount, category: expensesTable.category })
+      db.select({ amount: expensesTable.amount, category: expensesTable.category, countsTowardJobProfit: expensesTable.countsTowardJobProfit })
         .from(expensesTable).where(and(eq(expensesTable.jobId, id), isNull(expensesTable.jobSubHoursId))),
       // sub_payment_records is the authoritative ledger for fixed/allocation sub payments
       // (pay-worker stopped writing to expenses in Task #892).
@@ -366,11 +366,14 @@ router.get("/:id/profit", async (req, res) => {
       if (inv.status === "paid") collected += t;
     }
     let jobExpenses = 0;
+    let auditTrailTotal = 0; // Travel/audit expenses — excluded from job profit but tracked separately
     let flatSubCost = 0; // Subcontractor-category expenses not linked to hours (legacy fallback)
     for (const exp of expRows) {
       if (exp.category === "Owner Draw") continue;
       if (exp.category === "Subcontractor") {
         flatSubCost += parseFloat(exp.amount ?? "0");
+      } else if (exp.countsTowardJobProfit === false) {
+        auditTrailTotal += parseFloat(exp.amount ?? "0");
       } else {
         jobExpenses += parseFloat(exp.amount ?? "0");
       }
@@ -388,7 +391,7 @@ router.get("/:id/profit", async (req, res) => {
     // Sub labor: hourly (hours × rate) + fixed (cash paid)
     const subLaborCost = hoursLaborCost + nonHoursCost;
 
-    res.json({ grossInvoiced, collected, jobExpenses, subLaborCost, allocPaid, totalSubHours, netProfit: collected - jobExpenses - subLaborCost - allocPaid });
+    res.json({ grossInvoiced, collected, jobExpenses, auditTrailTotal, subLaborCost, allocPaid, totalSubHours, netProfit: collected - jobExpenses - subLaborCost - allocPaid });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch job profit" });
@@ -407,7 +410,7 @@ router.get("/profit-summary", async (req, res) => {
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
       // Exclude auto-linked sub-hour expenses; Subcontractor category goes into sub labor bucket
-      db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category })
+      db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category, countsTowardJobProfit: expensesTable.countsTowardJobProfit })
         .from(expensesTable).where(and(inArray(expensesTable.jobId, jobIds), isNull(expensesTable.jobSubHoursId))),
       db.select({
         jobId: jobSubHoursTable.jobId,
@@ -468,6 +471,7 @@ router.get("/profit-summary", async (req, res) => {
         flatSubCostMap[exp.jobId] = (flatSubCostMap[exp.jobId] ?? 0) + parseFloat(exp.amount ?? "0");
         continue;
       }
+      if (exp.countsTowardJobProfit === false) continue; // audit-trail only — not a job cost
       r.jobExpenses += parseFloat(exp.amount ?? "0");
     }
     for (const id of jobIds) {

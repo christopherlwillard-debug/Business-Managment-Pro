@@ -414,19 +414,20 @@ router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) =
     return;
   }
 
-  const { description, vendor, category, jobId, businessLine, notes } = req.body as {
+  const { description, vendor, category, jobId, businessLine, notes, countsTowardJobProfit } = req.body as {
     description?: string;
     vendor?: string;
     category: string;
     jobId?: number | null;
     businessLine?: string | null;
     notes?: string | null;
+    countsTowardJobProfit?: boolean;
   };
 
   const VALID_CATEGORIES = [
-    "Materials", "Advertising", "Fuel/Travel", "Subcontractor", "Insurance",
-    "Professional Services", "Office/Admin", "Rent/Lease", "Repairs/Maintenance",
-    "Tools/Equipment", "Utilities", "Other", "Owner Draw",
+    "Materials", "Advertising", "Fuel/Travel", "Travel/Lodging", "Meals", "Parking/Tolls",
+    "Subcontractor", "Insurance", "Professional Services", "Office/Admin", "Rent/Lease",
+    "Repairs/Maintenance", "Tools/Equipment", "Utilities", "Other", "Owner Draw",
   ];
   const VALID_BUSINESS_LINES = ["", "general_contracting", "asphalt_sealing"];
 
@@ -476,6 +477,7 @@ router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) =
         jobId: jobId || null,
         businessLine: businessLine || null,
         notes: notes?.trim() || null,
+        countsTowardJobProfit: countsTowardJobProfit === false ? false : true,
       })
       .returning();
 

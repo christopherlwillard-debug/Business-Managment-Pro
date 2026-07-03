@@ -21,6 +21,7 @@ export const expensesTable = pgTable("expenses", {
   businessId: integer("business_id"),
   jobSubHoursId: integer("job_sub_hours_id"),
   mileageImportId: integer("mileage_import_id"),
+  countsTowardJobProfit: boolean("counts_toward_job_profit").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

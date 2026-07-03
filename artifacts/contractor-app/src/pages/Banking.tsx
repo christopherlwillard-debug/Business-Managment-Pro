@@ -57,6 +57,9 @@ const CATEGORIES = [
   "Materials",
   "Advertising",
   "Fuel/Travel",
+  "Parking/Tolls",
+  "Travel/Lodging",
+  "Meals",
   "Subcontractor",
   "Insurance",
   "Professional Services",
@@ -221,6 +224,7 @@ export default function Banking() {
 
   // Expense filing
   const [filingTxn, setFilingTxn] = useState<PlaidTransaction | null>(null);
+  const [fileExpenseCountsTowardJobProfit, setFileExpenseCountsTowardJobProfit] = useState(true);
   const [form, setForm] = useState<FileExpenseForm>({
     description: "",
     vendor: "",
@@ -490,6 +494,7 @@ export default function Banking() {
         jobId: form.jobId ? parseInt(form.jobId, 10) : null,
         businessLine: form.businessLine || null,
         notes: form.notes || undefined,
+        countsTowardJobProfit: fileExpenseCountsTowardJobProfit,
       },
     });
   }
@@ -988,7 +993,12 @@ export default function Banking() {
                 id="fe-category"
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setForm((f) => ({ ...f, category: val }));
+                  if (form.jobId && isTravelCategory(val)) setFileExpenseCountsTowardJobProfit(false);
+                  else if (!isTravelCategory(val)) setFileExpenseCountsTowardJobProfit(true);
+                }}
                 required
               >
                 {CATEGORIES.map((c) => (
@@ -1032,7 +1042,12 @@ export default function Banking() {
                 id="fe-job"
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 value={form.jobId}
-                onChange={(e) => setForm((f) => ({ ...f, jobId: e.target.value }))}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setForm((f) => ({ ...f, jobId: val }));
+                  if (val && isTravelCategory(form.category)) setFileExpenseCountsTowardJobProfit(false);
+                  else if (!val) setFileExpenseCountsTowardJobProfit(true);
+                }}
               >
                 <option value="">— None —</option>
                 {jobs
@@ -1055,15 +1070,32 @@ export default function Banking() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="fe-notes">Notes (optional)</Label>
+              <Label htmlFor="fe-notes">{isTravelCategory(form.category) ? "Business purpose" : "Notes (optional)"}</Label>
               <Textarea
                 id="fe-notes"
                 rows={2}
-                placeholder="Any additional details…"
+                placeholder={isTravelCategory(form.category) ? "Business purpose (required for IRS — e.g. client meeting, site inspection)" : "Any additional details…"}
                 value={form.notes}
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
               />
             </div>
+
+            {form.jobId && form.category !== "Owner Draw" && (
+              <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-blue-200 bg-blue-50/60">
+                <button
+                  type="button"
+                  onClick={() => setFileExpenseCountsTowardJobProfit(v => !v)}
+                  className={`mt-0.5 flex-shrink-0 w-10 h-6 rounded-full transition-colors relative ${!fileExpenseCountsTowardJobProfit ? "bg-blue-500" : "bg-muted-foreground/30"}`}
+                  aria-pressed={!fileExpenseCountsTowardJobProfit}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${!fileExpenseCountsTowardJobProfit ? "translate-x-4" : "translate-x-0"}`} />
+                </button>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-blue-900">Tax audit trail only</p>
+                  <p className="text-xs text-blue-700/80 mt-0.5">Links to job for tax records but <strong>does not reduce job profit</strong></p>
+                </div>
+              </div>
+            )}
 
             <SheetFooter className="pt-2">
               <Button

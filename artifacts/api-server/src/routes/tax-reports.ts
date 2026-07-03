@@ -22,6 +22,8 @@ const SCHEDULE_C_LINES = {
   rent:            { line: 20, description: "Rent or lease" },
   repairs:         { line: 21, description: "Repairs and maintenance" },
   supplies:        { line: 22, description: "Supplies" },
+  travelLodging:   { line: 24, description: "Travel — lodging & transportation (Line 24a)" },
+  mealsDeductible: { line: 24, description: "Meals — 50% deductible (Line 24b)" },
   utilities:       { line: 25, description: "Utilities" },
   other:           { line: 27, description: "Other expenses" },
 };
@@ -40,8 +42,14 @@ const SCHEDULE_C_CATEGORY_MAP: Record<string, keyof typeof SCHEDULE_C_LINES> = {
   "Repairs/Maintenance":   "repairs",
   "Tools/Equipment":       "supplies",
   "Utilities":             "utilities",
+  "Travel/Lodging":        "travelLodging",
+  "Meals":                 "mealsDeductible",
+  "Parking/Tolls":         "carTruck",
   "Other":                 "other",
   // ── Legacy lowercase aliases (keep for any older records) ──
+  "travel/lodging":        "travelLodging",
+  "meals":                 "mealsDeductible",
+  "parking/tolls":         "carTruck",
   "cogs":               "cogs",
   "materials":          "cogs",
   "advertising":        "advertising",
@@ -188,7 +196,9 @@ router.get("/schedule-c", async (req, res) => {
       };
 
       const scheduleCategory = SCHEDULE_C_CATEGORY_MAP[category] || "other";
-      expenses[scheduleCategory] = (expenses[scheduleCategory] || 0) + amount;
+      // Meals are only 50% deductible on Schedule C line 24b — store the deductible portion
+      const taxAmount = scheduleCategory === "mealsDeductible" ? amount * 0.5 : amount;
+      expenses[scheduleCategory] = (expenses[scheduleCategory] || 0) + taxAmount;
 
       if (!SCHEDULE_C_CATEGORY_MAP[category]) {
         uncategorizedCount++;
@@ -227,9 +237,14 @@ router.get("/schedule-c", async (req, res) => {
     const mileageDeduction = mileageData[0]?.totalDeduction ? parseFloat(mileageData[0].totalDeduction as any) : 0;
     const irsMileageRate = getIrsMileageRate(year);
 
-    // Separate Fuel/Travel expenses (carTruck) from mileage so Line 9 is handled explicitly
+    // Separate Fuel/Travel + Parking/Tolls expenses (carTruck) from mileage so Line 9 is handled explicitly
     const fuelTravelExpenses = expenses["carTruck"] || 0;
     delete expenses["carTruck"];
+    // Travel/Lodging (24a) and Meals (24b) get their own explicit lines below
+    const travelLodgingAmount = expenses["travelLodging"] || 0;
+    const mealsDeductibleAmount = expenses["mealsDeductible"] || 0;
+    delete expenses["travelLodging"];
+    delete expenses["mealsDeductible"];
 
     // 4. Subcontractor payments (Line 11) - from payments table
     const paymentData = await db
@@ -300,6 +315,17 @@ router.get("/schedule-c", async (req, res) => {
     const line9Description = `Car and truck expenses (${totalBusinessMiles.toFixed(0)} mi \u00d7 $${irsMileageRate.toFixed(2)}/mi)`;
     scheduleLines.push({ line: 9, description: line9Description, amount: totalCarTruck });
     totalExpenses += totalCarTruck;
+
+    // Line 24a — Travel (lodging, airfare, etc. — 100% deductible)
+    if (travelLodgingAmount > 0) {
+      scheduleLines.push({ line: 24, description: "Travel — lodging & transportation (Line 24a)", amount: travelLodgingAmount });
+      totalExpenses += travelLodgingAmount;
+    }
+    // Line 24b — Meals (50% deductible; stored amount already reflects the 50% portion)
+    if (mealsDeductibleAmount > 0) {
+      scheduleLines.push({ line: 24, description: "Meals — 50% deductible (Line 24b)", amount: mealsDeductibleAmount });
+      totalExpenses += mealsDeductibleAmount;
+    }
 
     // Line 28 - Total Expenses
     scheduleLines.push({

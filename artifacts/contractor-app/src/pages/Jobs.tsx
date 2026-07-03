@@ -934,7 +934,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 }
 
 // ─── Job Profit Panel ──────────────────────────────────────────────────────────
-type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; subLaborCost?: number; allocPaid?: number; totalSubHours?: number; netProfit: number };
+type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; auditTrailTotal?: number; subLaborCost?: number; allocPaid?: number; totalSubHours?: number; netProfit: number };
 
 // ─── Pay Breakdown Panel ───────────────────────────────────────────────────────
 function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
@@ -1298,6 +1298,17 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                 <Briefcase className="w-7 h-7 text-red-100" />
               </div>
 
+              {(data.auditTrailTotal ?? 0) > 0 && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-blue-700 font-bold uppercase tracking-wide">Travel & Audit Docs</p>
+                    <p className="text-xl font-bold text-blue-600 mt-0.5">{formatCurrency(data.auditTrailTotal ?? 0)}</p>
+                    <p className="text-xs text-blue-600/70 mt-0.5">Linked for tax records — not deducted from profit</p>
+                  </div>
+                  <FileText className="w-7 h-7 text-blue-200" />
+                </div>
+              )}
+
               {subLaborCost > 0 && (
                 <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
                   <div className="flex items-center justify-between">
@@ -1504,6 +1515,16 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <div><p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Job Expenses</p><p className="text-xl font-bold text-red-500 mt-0.5">{formatCurrency(profit.jobExpenses)}</p></div>
                   <Briefcase className="w-7 h-7 text-red-100" />
                 </div>
+                {(profit.auditTrailTotal ?? 0) > 0 && (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-blue-700 font-bold uppercase tracking-wide">Travel & Audit Docs</p>
+                      <p className="text-xl font-bold text-blue-600 mt-0.5">{formatCurrency(profit.auditTrailTotal ?? 0)}</p>
+                      <p className="text-xs text-blue-600/70 mt-0.5">Linked for tax records — not deducted from profit</p>
+                    </div>
+                    <FileText className="w-7 h-7 text-blue-200" />
+                  </div>
+                )}
                 {subLaborCost > 0 && (
                   <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
                     <div className="flex items-center justify-between">
