@@ -16,6 +16,8 @@ A data-migration task that is MERGED only means its *code* merged and the migrat
 ## How to call a prod admin endpoint
 - Get the live URL via `getDeploymentInfo().primaryUrl` (do NOT guess; `$REPLIT_DOMAINS` is the dev domain).
 - API is mounted at `/api` (see api-server artifact.toml). Admin migrations: `POST {primaryUrl}/api/admin/migrations/<name>` with header `x-migration-key: $MIGRATION_KEY`.
+- Right after a publish, `Unauthorized` can be transient: the autoscale instance may still be serving the OLD build (which lacks the new endpoint/intercept). Confirm the new build is up via `fetch_deployment_logs` (look for a fresh server start), then retry — don't assume a key mismatch on the first 401.
+- To tell whether a publish actually applied a new column before curling anything: `executeSql({ environment: "production" })` against `information_schema.columns` (read-only, always works).
 
 ## MFH "Clayton" specifics
 - Production manufacturers had only "Clayton" (the dealer; client is "Clayton Homes Evansville"), with the real builders stored as MODELS under it. Dev has the 10 real builders as top-level manufacturers, no models.
