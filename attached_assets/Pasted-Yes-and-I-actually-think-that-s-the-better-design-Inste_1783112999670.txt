@@ -1,0 +1,343 @@
+Yes, and I actually think that's the better design.
+
+Instead of making someone dig through the Jobs page, let the expense itself tell the story.
+
+For example, if you click on the Hampton Inn expense from the Banking page or Expenses page, it could show something like:
+
+Expense Details
+
+Vendor
+Hampton Inn
+
+Category
+Travel / Lodging
+
+Amount
+$189.00
+
+Business Purpose
+Overnight stay for manufactured home finishing project.
+
+Related Job
+
+Job: Clayton – Quincy, IN – Lot 42
+Customer: Clayton Homes
+Job Address: 123 Main St., Quincy, IN
+Job Dates: July 10–12, 2026
+Invoice: $3,250
+Status: Completed
+
+View Job →
+
+Attached Documentation
+✅ Hotel receipt
+✅ Job photos
+✅ Daily logs
+✅ Signed completion
+✅ Customer invoice
+
+Now imagine you're sitting with your CPA or an IRS auditor.
+
+They open the Hampton Inn transaction, and without asking you a single question, they can immediately see:
+
+Why you were there.
+What job you were working.
+Where it was.
+When it occurred.
+That you actually completed work.
+That you invoiced a customer for that work.
+That you have receipts and supporting documentation.
+
+That's an excellent audit trail.
+
+I would even add a "Trip Documentation" button
+
+If an expense is linked to a job and is a travel-related category, add a button:
+
+📄 View Trip Documentation
+
+That page could automatically compile:
+
+Job information
+Customer
+Address
+Job dates
+Crew members
+Lodging expenses
+Meal expenses
+Parking and tolls
+Photos
+Daily logs
+Invoice
+Payments
+Receipts
+
+Essentially, it becomes a complete trip packet. If your CPA or an auditor wants support for a $189 hotel charge, you don't have to explain anything—they can open the packet and see the entire business purpose from start to finish. That's about as strong a documentation trail as you can realistically create.
+
+#1080 - Job travel expenses as documentation only
+What & Why
+The owner travels for jobs (e.g. Owensboro → Quincy, IN) and needs lodging/meals/travel costs tied to the job as supporting documentation — an audit trail proving why the expense occurred (receipt + dates + job address + business purpose in one place) — WITHOUT those costs reducing the job's profit figure. Today any job-linked expense is subtracted from job profit, and the existing "exclude from net profit" toggle removes the deduction entirely (wrong for travel — it IS deductible). The design separates two questions: "how profitable was this job?" (job costing) vs "what did the business spend that's deductible?" (tax records). Travel costs should hit the business P&L (fully deductible) but be separable from job costing.
+
+Done looks like
+The expense form (add + edit) offers "Travel/Lodging" and "Meals" categories; the P&L report shows them on the proper Schedule C lines (Travel 24a full; Meals 24b at 50%)
+When an expense is linked to a job, a new toggle appears: "Count toward job profit?" — on by default (job cost), off = the expense is linked as supporting documentation only (with a short helper line explaining doc-only still counts as a business write-off)
+Choosing "Travel/Lodging" or "Meals" with a job selected defaults the toggle to documentation-only (user can override)
+The existing notes field is surfaced as "Business purpose" on the expense forms (placeholder examples like "Hotel for Clayton service work in Quincy, IN"), giving each expense audit-trail context; shown on doc-only rows and in the job travel summary
+The Banking page's create-expense flow (from a bank transaction) offers the same new categories, the same toggle, and the business-purpose field, so a Hampton Inn or restaurant transaction can be linked to a job as documentation in one step
+Doc-only expenses no longer reduce the job's profit; the job financials panel shows two groups: "Job Costs" (counted) and a Travel Summary block — line items with category, vendor, business purpose, and amount, a total, and two check notes: "Not included in job profit" and "Included in business P&L"
+The expense list shows a small badge on doc-only rows
+Business-wide P&L / dashboard totals still include these expenses exactly as before (fully deductible; meals at 50% on the P&L report)
+A simple travel summary is visible in reports: travel + meals totals for the year, with a per-job breakdown of documentation-only expenses (answers "this out-of-town job required $300 of travel")
+Existing job-linked expenses are unaffected (flag defaults to counted)
+Out of scope
+Changing the existing "exclude from net profit" (Owner Draw style) behavior
+Mileage handling (already has its own IRS-rate deduction flow)
+Auto-categorization of bank transactions by vendor name (future idea)
+A dedicated business-purpose column (reuse the existing notes column; relabel in the UI)
+Applying the flag or new categories to production data (dev only; prod column arrives via the next Publish per project convention — never add a DDL migration endpoint)
+Steps
+Schema + API — Add a boolean countsTowardJobProfit (default true — positive flag per review, avoid a negative name) to the expenses table; accept it in the expense create/update routes and return it in expense payloads. Apply the column to the dev database.
+Job profit calculation — Only sum expenses where the flag is true into job expenses in the job profit endpoint; return doc-only expenses as a separate documentation list/total so the UI can display both groups.
+Expense form UI — Add the "Travel/Lodging" and "Meals" categories; show the "Count toward job profit?" toggle when a job is selected (add and edit flows) with smart defaults by category; relabel notes as "Business purpose" with audit-trail placeholder examples; add a badge on doc-only rows in the expense list.
+Banking page flow — Add the same categories, toggle, and business-purpose labeling to the create-expense form used when converting a bank transaction, including the category-based default.
+Job financials panel — Show "Job Costs" and a "Travel Summary" block as separate groups on the job card financials; the summary lists each doc-only expense (category, vendor, purpose, amount) with a total and "Not included in job profit / Included in business P&L" notes.
+Reports — Verify the P&L maps the two new categories to Travel (24a, 100%) and Meals (24b, 50%) and that doc-only expenses still flow into business P&L totals; add a travel summary with per-job documentation-expense totals to the reports page.
+Verify — API tests for the profit calc (doc-only excluded from job profit, included in P&L) and a manual pass on the expense form, Banking flow, and job card.
+Relevant files
+lib/db/src/schema/expenses.ts
+artifacts/api-server/src/routes/jobs.ts
+artifacts/api-server/src/routes/expenses.ts
+artifacts/api-server/src/routes/reports.ts:1137-1138
+artifacts/contractor-app/src/pages/Expenses.tsx:1493-1501,2430-2450
+artifacts/contractor-app/src/pages/Banking.tsx:219,453-490,968-1030
+artifacts/contractor-app/src/pages/Jobs.tsx
+
+I think this is much stronger than the original version. It now clearly explains why the feature exists instead of just how it works.
+
+There are only a couple of refinements I'd make.
+
+1. Change "supporting documentation only"
+
+I'd avoid the phrase "supporting documentation only." Someone could misread that as "this expense doesn't matter" or "isn't deductible."
+
+Instead, I'd use:
+
+Linked for audit documentation
+
+or
+
+Linked to job for audit trail
+
+That makes the intent crystal clear.
+
+2. Add one sentence to the "Done looks like"
+
+Right after the Travel Summary section, I'd add:
+
+Opening any documentation-only expense from the Expenses or Banking pages shows its linked job (customer, address, dates, invoice status, and business purpose), allowing an accountant or auditor to understand the business reason for the expense without needing additional explanation.
+
+That's really the feature you're trying to build.
+
+3. Rename "Travel Summary"
+
+I think "Travel Summary" is a little too narrow because you may eventually attach:
+
+Hotel
+Meals
+Parking
+Tolls
+Airfare
+Rental cars
+Conference fees
+
+I'd call it:
+
+Travel & Audit Documentation
+
+or
+
+Business Travel Documentation
+
+It makes it obvious this section exists to document the trip, not calculate profitability.
+
+4. Future-proof the reports
+
+Instead of:
+
+answers "this out-of-town job required $300 of travel"
+
+I'd make it:
+
+answers "What business travel expenses supported this job?" with totals by category and links back to the underlying expenses.
+
+That leaves room to expand the feature later without changing the wording.
+
+Overall
+
+I'd rate this as 10/10 for your business.
+
+You're no longer just building expense tracking—you're building an audit trail.
+
+Imagine an IRS auditor or your CPA opening a Hampton Inn transaction. Instead of asking, "Why were you in Indiana?", they click the linked job and immediately see:
+
+Customer
+Job address
+Job dates
+Business purpose
+Invoice
+Photos
+Daily logs
+Receipt
+Travel expense
+
+The expense explains itself. That's exactly what good bookkeeping software should do, and it's a feature that many small contractor apps don't provide.
+
+i am also going to suggest this as well Yes, and I actually think that's the better design.
+
+Instead of making someone dig through the Jobs page, let the expense itself tell the story.
+
+For example, if you click on the Hampton Inn expense from the Banking page or Expenses page, it could show something like:
+
+Expense Details
+
+Vendor
+Hampton Inn
+
+Category
+Travel / Lodging
+
+Amount
+$189.00
+
+Business Purpose
+Overnight stay for manufactured home finishing project.
+
+Related Job
+
+Job: Clayton – Quincy, IN – Lot 42
+Customer: Clayton Homes
+Job Address: 123 Main St., Quincy, IN
+Job Dates: July 10–12, 2026
+Invoice: $3,250
+Status: Completed
+
+View Job →
+
+Attached Documentation
+✅ Hotel receipt
+✅ Job photos
+✅ Daily logs
+✅ Signed completion
+✅ Customer invoice
+
+Now imagine you're sitting with your CPA or an IRS auditor.
+
+They open the Hampton Inn transaction, and without asking you a single question, they can immediately see:
+
+Why you were there.
+What job you were working.
+Where it was.
+When it occurred.
+That you actually completed work.
+That you invoiced a customer for that work.
+That you have receipts and supporting documentation.
+
+That's an excellent audit trail.
+
+I would even add a "Trip Documentation" button
+
+If an expense is linked to a job and is a travel-related category, add a button:
+
+📄 View Trip Documentation
+
+That page could automatically compile:
+
+Job information
+Customer
+Address
+Job dates
+Crew members
+Lodging expenses
+Meal expenses
+Parking and tolls
+Photos
+Daily logs
+Invoice
+Payments
+Receipts
+
+Essentially, it becomes a complete trip packet. If your CPA or an auditor wants support for a $189 hotel charge, you don't have to explain anything—they can open the packet and see the entire business purpose from start to finish. That's about as strong a documentation trail as you can realistically create.
+
+I think this is an excellent follow-on feature, but I'd position it as a future enhancement rather than part of #1080.
+
+The core of #1080 is:
+
+Link travel expenses to jobs.
+Keep them out of job profitability.
+Keep them in the business P&L.
+Create the audit trail.
+
+Then this becomes something like #1081 – Expense Audit Trail & Trip Documentation.
+
+I'd suggest wording it like this:
+
+Future Enhancement – Expense Audit Trail & Trip Documentation
+
+Once travel expenses can be linked to jobs, make each expense self-documenting so an accountant or auditor can understand the business purpose without navigating through multiple screens.
+
+Done looks like
+Opening a travel or meal expense from the Banking or Expenses pages displays a Related Job section showing:
+Customer
+Job name
+Job address
+Job dates
+Invoice amount/status
+Business purpose
+Link to open the job
+The expense detail page displays attached documentation already associated with the job when available:
+Receipt
+Photos
+Daily logs
+Signed completion documents
+Invoice
+Add a 📄 Trip Documentation action for travel-related expenses.
+
+Selecting it generates a complete trip packet containing:
+
+Trip summary
+Customer information
+Job address
+Job dates
+Crew members
+Lodging expenses
+Meal expenses
+Parking and tolls
+Receipts
+Photos
+Daily logs
+Invoice
+Payments received
+Purpose
+
+The objective is to make every travel expense self-explanatory. Rather than requiring the owner to explain why a hotel or meal was deducted, the expense itself provides a complete audit trail demonstrating:
+
+What job required the travel
+Where the work occurred
+When it occurred
+The business purpose of the trip
+The work completed
+The supporting receipts and documentation
+
+This creates a complete evidence package for accountants, tax preparation, or an IRS audit while requiring no additional record keeping beyond normal job documentation.
+
+I actually like this because it fits the philosophy of the app you've been building all along: one source of truth.
+
+Instead of having:
+
+Bank transaction in one place,
+Receipt in another,
+Job somewhere else,
+Photos elsewhere,
+Invoice in another screen,
+
+everything is connected. You click one expense, and it tells the entire story from payment to completed job. That's the kind of feature that differentiates your app from generic accounting software because it's built around how contractors actually work.

@@ -1,0 +1,128 @@
+I think this is a solid feature request overall. The only thing I'd change is the naming of the database field.
+
+excludeFromJobProfit works, but it's a negative flag, and those tend to become confusing over time.
+
+I'd instead use:
+
+countsTowardJobProfit (boolean, default true)
+
+Then your code becomes much easier to read:
+
+if (expense.countsTowardJobProfit) {
+    jobExpenseTotal += expense.amount;
+}
+
+instead of
+
+if (!expense.excludeFromJobProfit) {
+    jobExpenseTotal += expense.amount;
+}
+
+The UI can still say "Count toward job profit?" exactly as you've written it.
+
+I'd also make one small enhancement while you're already touching this area.
+
+Add a third section to the expense model
+Business Expense
+├── Category
+│   ├── Materials
+│   ├── Subcontractor
+│   ├── Lodging
+│   ├── Meals
+│   ├── Fuel
+│   ├── Office
+│   └── ...
+│
+├── Linked Job (optional)
+│
+├── Counts Toward Job Profit (default true)
+│
+└── Business Purpose
+
+The Business Purpose field may seem minor now, but it's valuable if the IRS ever questions an expense. For example:
+
+"Hotel for Clayton service work in Quincy, IN"
+"Crew dinner during overnight service trip"
+"Lodging due to two-day manufactured home finish"
+
+That gives you a much stronger audit trail than just seeing "Hampton Inn – $189."
+
+One more thing I'd add
+
+Since you're already tracking jobs, I'd have the app automatically generate a travel summary on the job.
+
+For example:
+
+Travel Summary
+
+📍 Owensboro, KY → Quincy, IN
+
+2 nights lodging
+$189.00
+
+Meals
+$41.87
+
+Parking
+$18.00
+
+Total Travel & Documentation
+$248.87
+
+✓ Not included in Job Profit
+✓ Included in Business P&L
+
+That would make audits, reimbursements, and year-end taxes much easier.
+
+Overall
+
+I'd rate this task 9.8/10.
+
+The only change I'd make is:
+
+Rename excludeFromJobProfit → countsTowardJobProfit (default true).
+Keep the UI label as "Count toward job profit?".
+Add an optional Business Purpose field if one doesn't already exist.
+
+Everything else aligns well with your goal of separating job costing from tax documentation while still tying travel expenses to the job they supported.
+
+all i want is to show at tax time if anyone has questions about expenses that when they see hotel and meals they can see i was doing that job and it all can tie into showing the whole picture of those trips
+
+I think you're looking at this exactly the right way.
+
+This feature isn't really about job costing—it's about creating an audit trail.
+
+If the IRS or your CPA ever asks, "Why did you stay at a Hampton Inn in Indiana?" you can open the job and immediately show:
+
+Job: Quincy, IN – Clayton Warranty Work
+Job Dates: July 10–12
+Job Address: 123 Main St., Quincy, IN
+Customer: Clayton Homes
+Photos: Before/after
+Daily Logs: Crew worked July 10–12
+Invoice: $3,200
+Hotel: Hampton Inn – $189
+Meals: Texas Roadhouse – $42
+Parking: $15
+
+Everything tells one complete story.
+
+That's much stronger documentation than having hotel receipts sitting in QuickBooks with no context.
+
+I'd even simplify the feature request.
+
+Instead of thinking of it as "documentation-only expenses," think of it as:
+
+Link this expense to a job as supporting documentation.
+
+The link exists so you can prove why the expense occurred, not because it's part of the job's profitability.
+
+The expense still:
+
+✅ Shows on your business P&L.
+✅ Is deductible (subject to the applicable tax rules).
+✅ Appears in banking and expense reports.
+
+It simply doesn't affect the job's operational profit.
+
+For your business, especially since you're traveling to manufactured home jobs in different states, this is exactly the kind of documentation that makes tax time much easier. Every hotel, meal, and travel expense has a corresponding job, invoice, address, photos, and work history to support it. That's a very clean record if anyone ever asks why those travel expenses were incurred.

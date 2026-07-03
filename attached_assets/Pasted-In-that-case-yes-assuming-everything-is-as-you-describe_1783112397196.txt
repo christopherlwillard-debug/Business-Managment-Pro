@@ -1,0 +1,228 @@
+In that case, yes—assuming everything is as you described, your lodging should generally be 100% deductible as a business expense.
+
+For a trip that's solely to travel from Owensboro to Quincy, Indiana to perform work for your business, you can generally deduct:
+
+✅ Hotel or Airbnb
+✅ Hotel taxes and required fees
+✅ Mileage (or actual vehicle expenses, depending on the method you use)
+✅ Tolls and parking
+✅ Business-related internet or other necessary travel expenses
+✅ Meals while traveling (subject to the IRS rules for meal deductions)
+
+Keep:
+
+The hotel receipt.
+The dates you stayed.
+The job address or work order.
+Any invoice or documentation showing the business purpose.
+
+Since your business is an LLC, you would record the hotel cost as a travel expense in your bookkeeping.
+
+If this is going to become a regular route for manufactured home work in Indiana, we can also set up your app so these travel expenses are categorized automatically and tied directly to each job for easier tax reporting and job costing.
+
+so i have where i can tie expenses to a job but it goes into deducting revenue for that job but what about tieing expenses for documentational purposes like lodging and meals?
+
+I actually think this is an opportunity to make your app better for both operations and taxes.
+
+Right now, it sounds like your "Job Expenses" are really job costing. Those expenses reduce the job's profitability.
+
+But not every deductible business expense should reduce the profit of a specific job.
+
+I'd separate them into two concepts:
+
+Type	Affects Job Profit?	Tax Deductible?	Examples
+Job Cost	✅ Yes	✅ Yes	Materials, subcontractors, permits, dumpster, equipment rental
+Travel & Business Expense	Optional	✅ Yes	Hotel, meals, mileage, parking, tolls
+What I'd build
+
+On the expense form, add a checkbox or dropdown:
+
+Expense Type
+
+Job Cost
+Travel
+Meals
+Lodging
+Vehicle
+Office
+Tools
+Marketing
+Insurance
+Utilities
+Other
+
+Then add another option:
+
+Apply to Job Profitability?
+
+✅ Yes (default for materials, labor, etc.)
+⬜ No (default for lodging, meals, owner travel, etc.)
+
+Example:
+
+Job
+
+Revenue: $6,000
+Materials: -$1,200
+Labor: -$1,800
+Job Profit: $3,000
+
+Now you stay in a hotel for $180.
+
+Instead of reducing the job profit to $2,820, it would:
+
+Be linked to that job for documentation.
+Show under a Travel tab on the job.
+Count toward your business tax deductions.
+Still appear in reports like "Travel Expenses by Job" or "Travel Expenses by Client."
+Not distort the operational profitability of the job.
+Why this matters
+
+You're trying to answer two different questions:
+
+How profitable was this job?
+How much did my business spend that is tax deductible?
+
+Those answers aren't always the same.
+
+For example, if you spend:
+
+$220 on a hotel,
+$45 on meals,
+$35 on fuel,
+
+those are legitimate business expenses, but you may not want them making it look like the crew did a less profitable job. Instead, you want to know, "This out-of-town job required $300 of travel expenses."
+
+I think this fits your app well
+
+Since you're building a contractor management system, I'd actually have two expense sections on every job:
+
+Job Costs (used to calculate job profitability)
+Linked Business Expenses (for documentation, tax reporting, and expense tracking)
+
+This gives you the best of both worlds:
+
+Accurate job costing and labor analytics.
+Complete tax documentation.
+The ability to report things like, "We spent $8,450 on lodging this year," or "Clayton jobs required $2,100 in travel expenses."
+
+I think this approach is much more scalable as your company grows and starts taking more out-of-town manufactured home projects.
+
+well i have a bank page in my app that pulls up bank transations and i can link it as an existing expense or create a new one
+
+I actually think your existing design makes this even easier.
+
+Here's the flow I'd use:
+
+Bank Transaction
+
+Every transaction comes in from Plaid (or whatever banking integration you're using).
+
+Example:
+
+Hampton Inn — $189.42
+Texas Roadhouse — $41.87
+Lowe's — $327.15
+
+When you click Create Expense, have these fields:
+
+General
+
+Category
+Materials
+Labor
+Lodging
+Meals
+Fuel
+Equipment Rental
+Office
+Insurance
+Marketing
+etc.
+Business Purpose
+Vendor
+Receipt
+Tax Deductible (default Yes)
+
+Job Association
+
+Linked Job (optional)
+Affect Job Cost? ✅ Yes / ⬜ No
+
+That last option is the important one.
+
+For example:
+
+Lowe's
+
+Category: Materials
+Linked Job: Smith Residence
+Affect Job Cost: ✅ Yes
+
+Result:
+
+Reduces job profit.
+Appears in job costing.
+Counts as a tax deduction.
+
+Hampton Inn
+
+Category: Lodging
+Linked Job: Quincy, IN – Clayton Model
+Affect Job Cost: ⬜ No
+
+Result:
+
+Shows on the job as a documented travel expense.
+Counts toward tax deductions.
+Does not reduce the operational job profit.
+
+Texas Roadhouse
+
+Category: Meals
+Linked Job: Quincy, IN – Clayton Model
+Affect Job Cost: ⬜ No
+
+Result:
+
+Tied to the trip and job for documentation.
+Included in tax reports (subject to applicable tax rules).
+Doesn't skew your labor or job profitability metrics.
+Reporting
+
+Then you can have reports like:
+
+Job Profitability
+
+Revenue
+Materials
+Labor
+Subcontractors
+Equipment
+Net Job Profit
+
+Separate report:
+
+Business Travel
+
+Lodging
+Meals
+Fuel
+Parking
+Tolls
+
+Or on a job page:
+
+Job Costs
+
+Materials: $1,250
+Labor: $1,800
+Equipment: $200
+
+Linked Business Expenses
+
+Lodging: $189
+Meals: $42
+Fuel: $56
+
+I actually prefer this over trying to force every expense into job costing. It keeps your operational metrics (how profitable and efficient a job was) separate from your tax and bookkeeping records (everything you spent to run the business), while still letting every bank transaction be linked to the job if you want that documentation. That's a cleaner architecture and will scale much better as your business grows.
