@@ -12,6 +12,7 @@ import {
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
   Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette, Briefcase,
   ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText, X, Search,
+  Users, Handshake, MapPin, Award, ArrowLeftRight, ThumbsUp,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -49,6 +50,12 @@ import { RowEditorPanel } from "./RowEditorPanel";
 import { TextSection, defaultTextContent } from "./sections/TextSection";
 import { ImageGallerySection, defaultImageGalleryContent } from "./sections/ImageGallerySection";
 import { ImageSection, defaultImageContent } from "./sections/ImageSection";
+import { FeaturedClientsSection, defaultFeaturedClientsContent } from "./sections/FeaturedClientsSection";
+import { PartnersSection, defaultPartnersContent } from "./sections/PartnersSection";
+import { ServiceAreaSection, defaultServiceAreaContent } from "./sections/ServiceAreaSection";
+import { CertificationsSection, defaultCertificationsContent } from "./sections/CertificationsSection";
+import { BeforeAfterSection, defaultBeforeAfterContent } from "./sections/BeforeAfterSection";
+import { WhyChooseUsSection, defaultWhyChooseUsContent } from "./sections/WhyChooseUsSection";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { InspectorPanel } from "./InspectorPanel";
@@ -104,7 +111,7 @@ class WebsiteEditorErrorBoundary extends Component<{ children: ReactNode }, { er
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -275,6 +282,55 @@ function renderSection(
         onColumnContextMenu={extras?.onColumnContextMenu}
       />
     );
+    case "featured-clients": return (
+      <FeaturedClientsSection
+        {...props}
+        sectionId={extras?.sectionId}
+        selectedCardId={extras?.selectedCardId}
+        onSelectCard={extras?.onSelectCard}
+        onOpenMediaLibrary={extras?.onOpenMediaLibrary}
+      />
+    );
+    case "partners": return (
+      <PartnersSection
+        {...props}
+        sectionId={extras?.sectionId}
+        selectedCardId={extras?.selectedCardId}
+        onSelectCard={extras?.onSelectCard}
+        onOpenMediaLibrary={extras?.onOpenMediaLibrary}
+      />
+    );
+    case "service-area": return (
+      <ServiceAreaSection
+        {...props}
+        sectionId={extras?.sectionId}
+      />
+    );
+    case "certifications": return (
+      <CertificationsSection
+        {...props}
+        sectionId={extras?.sectionId}
+        selectedCardId={extras?.selectedCardId}
+        onSelectCard={extras?.onSelectCard}
+        onOpenMediaLibrary={extras?.onOpenMediaLibrary}
+      />
+    );
+    case "before-after": return (
+      <BeforeAfterSection
+        {...props}
+        sectionId={extras?.sectionId}
+        onOpenMediaLibrary={extras?.onOpenMediaLibrary}
+      />
+    );
+    case "why-choose-us": return (
+      <WhyChooseUsSection
+        {...props}
+        sectionId={extras?.sectionId}
+        selectedCardId={extras?.selectedCardId}
+        onSelectCard={extras?.onSelectCard}
+        onOpenMediaLibrary={extras?.onOpenMediaLibrary}
+      />
+    );
     default: return null;
   }
 }
@@ -298,6 +354,12 @@ const SECTION_LABELS: Record<string, string> = {
   text: "Text Block",
   gallery: "Image Gallery",
   image: "Image",
+  "featured-clients": "Featured Clients",
+  partners: "Partners & Brands",
+  "service-area": "Service Area",
+  certifications: "Certifications & Badges",
+  "before-after": "Before & After Gallery",
+  "why-choose-us": "Why Choose Us",
 };
 
 let _sectionTypeIcons: Record<string, React.ReactNode> | null = null;
@@ -322,6 +384,12 @@ function getSectionTypeIcons(): Record<string, React.ReactNode> {
       text:         <AlignLeft className="w-3 h-3 flex-shrink-0" />,
       gallery:      <Images    className="w-3 h-3 flex-shrink-0" />,
       image:        <Images    className="w-3 h-3 flex-shrink-0" />,
+      "featured-clients": <Users     className="w-3 h-3 flex-shrink-0" />,
+      partners:           <Handshake className="w-3 h-3 flex-shrink-0" />,
+      "service-area":     <MapPin    className="w-3 h-3 flex-shrink-0" />,
+      certifications:     <Award     className="w-3 h-3 flex-shrink-0" />,
+      "before-after":     <ArrowLeftRight className="w-3 h-3 flex-shrink-0" />,
+      "why-choose-us":    <ThumbsUp  className="w-3 h-3 flex-shrink-0" />,
     };
   }
   return _sectionTypeIcons;
@@ -333,24 +401,31 @@ type AddableSectionEntry = {
   description: string;
   icon: React.ReactNode;
   allowMultiple?: boolean;
+  category: string;
 };
 
 let _addableSectionTypes: AddableSectionEntry[] | null = null;
 function getAddableSectionTypes(): AddableSectionEntry[] {
   if (!_addableSectionTypes) {
     _addableSectionTypes = [
-      { type: "services",     label: "Services",       description: "Showcase what you offer with a grid of service cards",       icon: <Briefcase  className="w-4 h-4" />, allowMultiple: true },
-      { type: "hero",         label: "Hero Banner",    description: "Full-width headline, subtext, and a call-to-action button",  icon: <ImagePlus  className="w-4 h-4" />, allowMultiple: true },
-      { type: "text",         label: "Text Block",     description: "Simple heading and paragraph for announcements or copy",     icon: <AlignLeft  className="w-4 h-4" />, allowMultiple: true },
-      { type: "gallery",      label: "Image Gallery",  description: "A responsive photo grid — great for portfolio or projects",  icon: <Images     className="w-4 h-4" />, allowMultiple: true },
-      { type: "image",        label: "Image",          description: "A single full-width or constrained image with caption",      icon: <Images     className="w-4 h-4" />, allowMultiple: true },
-      { type: "testimonials", label: "Testimonials",   description: "Customer reviews in a card or carousel layout",              icon: <Star       className="w-4 h-4" />, allowMultiple: true },
-      { type: "faq",          label: "FAQ",            description: "Accordion-style Q&A to answer common questions",             icon: <HelpCircle className="w-4 h-4" />, allowMultiple: true },
-      { type: "cta",          label: "CTA Banner",     description: "Bold call-to-action strip with headline and buttons",        icon: <Megaphone  className="w-4 h-4" />, allowMultiple: true },
-      { type: "stats",        label: "Stats / Numbers",description: "Highlight key numbers like years in business or jobs done",  icon: <BarChart2  className="w-4 h-4" />, allowMultiple: true },
-      { type: "columns",      label: "Columns",        description: "Two or three side-by-side columns of mixed content",         icon: <Columns    className="w-4 h-4" />, allowMultiple: true },
-      { type: "content",      label: "Content Block",  description: "Rich content area with text, images, and components",        icon: <Layers     className="w-4 h-4" />, allowMultiple: true },
-      { type: "row",          label: "Row",            description: "Flexible row for custom component layouts",                  icon: <LayoutGrid className="w-4 h-4" />, allowMultiple: true },
+      { category: "Contractor", type: "why-choose-us",    label: "Why Choose Us",           description: "Selling points that explain why customers should hire you",  icon: <ThumbsUp   className="w-4 h-4" />, allowMultiple: true },
+      { category: "Contractor", type: "certifications",   label: "Certifications & Badges", description: "Show licenses, awards, and industry credentials",            icon: <Award      className="w-4 h-4" />, allowMultiple: true },
+      { category: "Contractor", type: "service-area",     label: "Service Area",            description: "List the cities, counties, or regions you serve",            icon: <MapPin     className="w-4 h-4" />, allowMultiple: true },
+      { category: "Contractor", type: "before-after",     label: "Before & After Gallery",  description: "Side-by-side before/after photo pairs from real jobs",        icon: <ArrowLeftRight className="w-4 h-4" />, allowMultiple: true },
+      { category: "Contractor", type: "featured-clients", label: "Featured Clients",        description: "Highlight companies and organizations you've worked with",    icon: <Users      className="w-4 h-4" />, allowMultiple: true },
+      { category: "Contractor", type: "partners",         label: "Partners & Brands",       description: "Manufacturers, suppliers, and brands you install or service", icon: <Handshake  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Business",   type: "services",         label: "Services",                description: "Showcase what you offer with a grid of service cards",       icon: <Briefcase  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Business",   type: "testimonials",     label: "Testimonials",            description: "Customer reviews in a card or carousel layout",              icon: <Star       className="w-4 h-4" />, allowMultiple: true },
+      { category: "Business",   type: "stats",            label: "Stats / Numbers",         description: "Highlight key numbers like years in business or jobs done",  icon: <BarChart2  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Business",   type: "faq",              label: "FAQ",                     description: "Accordion-style Q&A to answer common questions",             icon: <HelpCircle className="w-4 h-4" />, allowMultiple: true },
+      { category: "Business",   type: "cta",              label: "CTA Banner",              description: "Bold call-to-action strip with headline and buttons",        icon: <Megaphone  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Business",   type: "hero",             label: "Hero Banner",             description: "Full-width headline, subtext, and a call-to-action button",  icon: <ImagePlus  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Layout",     type: "columns",          label: "Columns",                 description: "Two or three side-by-side columns of mixed content",         icon: <Columns    className="w-4 h-4" />, allowMultiple: true },
+      { category: "Layout",     type: "content",          label: "Content Block",           description: "Rich content area with text, images, and components",        icon: <Layers     className="w-4 h-4" />, allowMultiple: true },
+      { category: "Layout",     type: "row",              label: "Row",                     description: "Flexible row for custom component layouts",                  icon: <LayoutGrid className="w-4 h-4" />, allowMultiple: true },
+      { category: "Layout",     type: "text",             label: "Text Block",              description: "Simple heading and paragraph for announcements or copy",     icon: <AlignLeft  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Media",      type: "gallery",          label: "Image Gallery",           description: "A responsive photo grid — great for portfolio or projects",  icon: <Images     className="w-4 h-4" />, allowMultiple: true },
+      { category: "Media",      type: "image",            label: "Image",                   description: "A single full-width or constrained image with caption",      icon: <Images     className="w-4 h-4" />, allowMultiple: true },
     ];
   }
   return _addableSectionTypes;
@@ -630,17 +705,26 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
                     </button>
                   </div>
                   {addSectionTab === "sections" ? (
-                    <div className="py-1 max-h-72 overflow-y-auto">
-                      {getAddableSectionTypes().map(opt => (
-                        <button key={opt.type} type="button" onClick={() => addSection(opt.type)}
-                          className="flex items-start gap-2 w-full px-3 py-2 text-left hover:bg-muted transition-colors group">
-                          <span className="mt-0.5 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0">{opt.icon}</span>
-                          <span className="min-w-0">
-                            <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{opt.label}</span>
-                            <span className="block text-[10px] text-muted-foreground leading-snug">{opt.description}</span>
-                          </span>
-                        </button>
-                      ))}
+                    <div className="py-1 max-h-96 overflow-y-auto">
+                      {(() => {
+                        const entries = getAddableSectionTypes();
+                        const categories = [...new Set(entries.map(e => e.category))];
+                        return categories.map(cat => (
+                          <div key={cat}>
+                            <div className="px-3 pt-3 pb-1 text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">{cat}</div>
+                            {entries.filter(e => e.category === cat).map(opt => (
+                              <button key={opt.type} type="button" onClick={() => addSection(opt.type)}
+                                className="flex items-start gap-2 w-full px-3 py-2 text-left hover:bg-muted transition-colors group">
+                                <span className="mt-0.5 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0">{opt.icon}</span>
+                                <span className="min-w-0">
+                                  <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{opt.label}</span>
+                                  <span className="block text-[10px] text-muted-foreground leading-snug">{opt.description}</span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ));
+                      })()}
                     </div>
                   ) : (
                     <div className="py-1 max-h-96 overflow-y-auto">
@@ -2360,6 +2444,18 @@ function WebsiteEditor() {
       content = defaultImageGalleryContent() as unknown as Record<string, unknown>;
     } else if (type === "image") {
       content = defaultImageContent() as unknown as Record<string, unknown>;
+    } else if (type === "featured-clients") {
+      content = defaultFeaturedClientsContent() as unknown as Record<string, unknown>;
+    } else if (type === "partners") {
+      content = defaultPartnersContent() as unknown as Record<string, unknown>;
+    } else if (type === "service-area") {
+      content = defaultServiceAreaContent() as unknown as Record<string, unknown>;
+    } else if (type === "certifications") {
+      content = defaultCertificationsContent() as unknown as Record<string, unknown>;
+    } else if (type === "before-after") {
+      content = defaultBeforeAfterContent() as unknown as Record<string, unknown>;
+    } else if (type === "why-choose-us") {
+      content = defaultWhyChooseUsContent() as unknown as Record<string, unknown>;
     } else if (type === "hero") {
       content = {
         headline: "Your Page Title",
@@ -4681,12 +4777,12 @@ function WebsiteEditor() {
         </div>
         )}
 
-        {/* Canvas + floating inspector — relative wrapper fills remaining space */}
-        <div className="flex-1 relative overflow-hidden">
-          {/* Canvas — live preview, scrolls inside the wrapper */}
+        {/* Canvas + docked inspector — flex row fills remaining space */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Canvas — live preview, scrolls */}
           <div
             data-editor-canvas="true"
-            className={`absolute inset-0 overflow-y-auto bg-muted/30 ${!focusMode ? "cursor-zoom-in" : ""}`}
+            className={`flex-1 overflow-y-auto bg-muted/30 ${!focusMode ? "cursor-zoom-in" : ""}`}
             onClick={() => setActiveSection(null)}
             onDoubleClick={e => {
               if (focusMode) return;
@@ -4695,203 +4791,6 @@ function WebsiteEditor() {
               setFocusMode(true);
             }}
           >
-            {/* Desktop floating inspector — sticky inside canvas scroll area so it scrolls with the editor body */}
-            {!editorNarrow && activeSection && activeTab === "editor" && !focusMode && (() => {
-              const sec = sections.find(s => s.id === activeSection);
-              if (!sec || sec.type === "header") return null;
-
-              let selectedComponent: SiteComponent | undefined;
-              let rowData: RowSectionData | undefined;
-              let selectedRowColumnId: string | undefined;
-              let onChangeComponent: ((comp: SiteComponent) => void) | undefined;
-              let onChangeRowData: ((data: RowSectionData) => void) | undefined;
-              let specialContent: React.ReactNode | undefined;
-
-              if (sec.type === "content" && selectedComponentState?.sectionId === sec.id) {
-                const contentData = sec.content as { components?: SiteComponent[] };
-                const comp = contentData.components?.find(c => c.id === selectedComponentState.componentId);
-                if (comp) {
-                  selectedComponent = comp as SiteComponent;
-                  onChangeComponent = (updatedComp: SiteComponent) => {
-                    const newComponents = (contentData.components ?? []).map(c =>
-                      c.id === updatedComp.id ? updatedComp : c
-                    );
-                    updateContent(sec.id, { ...contentData, components: newComponents });
-                  };
-                }
-              } else if (sec.type === "row") {
-                rowData = sec.content as RowSectionData;
-                onChangeRowData = (newData: RowSectionData) =>
-                  updateContent(sec.id, newData as unknown as Record<string, unknown>);
-                if (selectedRowState?.sectionId === sec.id && selectedRowState.componentId) {
-                  const selCol = rowData.columns?.find(c => c.id === selectedRowState.columnId);
-                  const selComp = selCol?.components?.find(c => c.id === selectedRowState.componentId);
-                  if (selComp) {
-                    selectedComponent = selComp as SiteComponent;
-                    selectedRowColumnId = selectedRowState.columnId;
-                    onChangeComponent = (updatedComp: SiteComponent) => {
-                      const newCols = (rowData!.columns ?? []).map(col =>
-                        col.id === selectedRowState.columnId
-                          ? { ...col, components: col.components.map(cp => cp.id === updatedComp.id ? updatedComp : cp) }
-                          : col
-                      );
-                      updateContent(sec.id, { ...rowData!, columns: newCols } as unknown as Record<string, unknown>);
-                    };
-                  }
-                }
-              } else if (sec.type === "deposit") {
-                specialContent = <DepositSubmissionsPanel businessId={bizId} />;
-              }
-
-              const stickyContainer = (children: React.ReactNode) => (
-                <div className="sticky top-4 z-30 pointer-events-none" style={{ height: 0, overflow: "visible" }}>
-                  <div className="absolute right-4 top-0 pointer-events-auto w-[260px] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
-                    style={{ maxHeight: "calc(100vh - 5rem)" }}
-                    onClick={e => e.stopPropagation()}>
-                    {children}
-                  </div>
-                </div>
-              );
-
-              if (selectedCardData && selectedCardState?.sectionId === sec.id) {
-                let handleCardChange: (u: CardComponent) => void = () => {};
-                let handleCardDuplicate: () => void = () => {};
-                let handleCardDelete: () => void = () => {};
-
-                if (sec.type === "services") {
-                  const d = sec.content as { heading?: string; items?: CardComponent[] };
-                  handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...d, items: (d.items ?? []).map(i => i.id === u.id ? u : i) }); };
-                  handleCardDuplicate = () => {
-                    const items = d.items ?? [];
-                    const idx = items.findIndex(i => i.id === selectedCardState.cardId);
-                    if (idx >= 0) {
-                      const duped = { ...items[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
-                      updateContent(sec.id, { ...d, items: [...items.slice(0, idx + 1), duped, ...items.slice(idx + 1)] });
-                      setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
-                    }
-                  };
-                  handleCardDelete = () => { updateContent(sec.id, { ...d, items: (d.items ?? []).filter(i => i.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
-                } else if (sec.type === "testimonials") {
-                  const raw = sec.content as { heading?: string; items?: CardComponent[]; testimonials?: any[] };
-                  let tItems: CardComponent[] = raw.items ?? [];
-                  if (tItems.length === 0 && raw.testimonials?.length) {
-                    tItems = (raw.testimonials as any[]).map((t: any) => ({
-                      id: t.id, title: t.name,
-                      description: `"${t.quote}"${t.location ? `\n\n— ${t.location}` : ""}`,
-                      mediaType: "none" as const, layout: "horizontal" as const,
-                      textAlign: "left" as const, hoverEffect: "none" as const, clickAction: "none" as const,
-                      templateType: "testimonial" as const,
-                      badgeEnabled: t.rating > 0, badgeText: "★".repeat(Math.min(t.rating, 5)),
-                      badgeColor: "#f59e0b", badgeTextColor: "#ffffff", badgePosition: "top-right" as const,
-                    }));
-                  }
-                  handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: tItems.map(i => i.id === u.id ? u : i), testimonials: undefined }); };
-                  handleCardDuplicate = () => {
-                    const idx = tItems.findIndex(i => i.id === selectedCardState.cardId);
-                    if (idx >= 0) {
-                      const duped = { ...tItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
-                      updateContent(sec.id, { ...raw, items: [...tItems.slice(0, idx + 1), duped, ...tItems.slice(idx + 1)], testimonials: undefined });
-                      setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
-                    }
-                  };
-                  handleCardDelete = () => { updateContent(sec.id, { ...raw, items: tItems.filter(i => i.id !== selectedCardState.cardId), testimonials: undefined }); setSelectedCardState(null); setSelectedCardData(null); };
-                } else if (sec.type === "stats") {
-                  const raw = sec.content as { heading?: string; items?: CardComponent[]; stats?: any[] };
-                  const STAT_ICONS_FB = ["Star", "CheckCircle2", "Award", "Clock", "Users", "Briefcase"];
-                  let sItems: CardComponent[] = raw.items ?? [];
-                  if (sItems.length === 0 && raw.stats?.length) {
-                    sItems = (raw.stats as any[]).map((st: any, idx: number) => ({
-                      id: st.id, title: st.value, description: st.label,
-                      mediaType: "icon" as const, iconName: STAT_ICONS_FB[idx % STAT_ICONS_FB.length],
-                      layout: "icon-top" as const, textAlign: "center" as const,
-                      hoverEffect: "none" as const, clickAction: "none" as const,
-                    }));
-                  }
-                  handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: sItems.map(i => i.id === u.id ? u : i), stats: undefined }); };
-                  handleCardDuplicate = () => {
-                    const idx = sItems.findIndex(i => i.id === selectedCardState.cardId);
-                    if (idx >= 0) {
-                      const duped = { ...sItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
-                      updateContent(sec.id, { ...raw, items: [...sItems.slice(0, idx + 1), duped, ...sItems.slice(idx + 1)], stats: undefined });
-                      setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
-                    }
-                  };
-                  handleCardDelete = () => { updateContent(sec.id, { ...raw, items: sItems.filter(i => i.id !== selectedCardState.cardId), stats: undefined }); setSelectedCardState(null); setSelectedCardData(null); };
-                } else if (sec.type === "faq") {
-                  const raw = sec.content as { heading?: string; items?: unknown[]; displayMode?: string; cards?: CardComponent[] };
-                  const faqCards = raw.cards ?? [];
-                  handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, cards: faqCards.map(c => c.id === u.id ? u : c) }); };
-                  handleCardDuplicate = () => {
-                    const idx = faqCards.findIndex(c => c.id === selectedCardState.cardId);
-                    if (idx >= 0) {
-                      const duped = { ...faqCards[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
-                      updateContent(sec.id, { ...raw, cards: [...faqCards.slice(0, idx + 1), duped, ...faqCards.slice(idx + 1)] });
-                      setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
-                    }
-                  };
-                  handleCardDelete = () => { updateContent(sec.id, { ...raw, cards: faqCards.filter(c => c.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
-                }
-
-                return stickyContainer(
-                  <CardItemEditorPanel
-                    card={selectedCardData}
-                    onChange={handleCardChange}
-                    onDuplicate={handleCardDuplicate}
-                    onDelete={handleCardDelete}
-                    onClose={() => { setSelectedCardState(null); setSelectedCardData(null); setActiveSection(null); }}
-                    onOpenMediaLibrary={openMediaLibrary}
-                    businessId={bizId}
-                  />
-                );
-              }
-
-              return stickyContainer(
-                <>
-                  <div className="flex items-center justify-end px-2 py-1.5 flex-shrink-0 border-b border-border/50 bg-muted/20">
-                    <button type="button" onClick={() => setActiveSection(null)}
-                      className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                      title="Close inspector">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-hidden min-h-0">
-                    <InspectorPanel
-                      pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
-                      section={sec}
-                      selectedComponent={selectedComponent}
-                      rowData={rowData}
-                      selectedRowColumnId={selectedRowColumnId}
-                      onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
-                      onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
-                      isBgUploading={!!bgUploading[sec.id]}
-                      onOpenMediaLibrary={openMediaLibrary}
-                      copiedStyle={copiedBlockStyle}
-                      onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
-                      onPasteStyle={() => {
-                        if (copiedBlockStyle) {
-                          updateBlockStyle(sec.id, copiedBlockStyle);
-                          toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
-                        }
-                      }}
-                      onApplyStyleTo={applyStyleTo}
-                      onToggleSection={() => toggleSection(sec.id)}
-                      onDuplicateSection={() => duplicateSection(sec.id)}
-                      onDeleteSection={() => handleDeleteSectionClick(sec.id)}
-                      onChangeComponent={onChangeComponent}
-                      onComponentImageUpload={handleContentComponentImageUpload}
-                      onChangeRowData={onChangeRowData}
-                      collapsed={false}
-                      onCollapse={() => setActiveSection(null)}
-                      onExpand={() => {}}
-                      autoCollapsed={false}
-                      onClearAutoCollapse={() => {}}
-                      specialContent={specialContent}
-                      initialTab={contextInspectorTab}
-                    />
-                  </div>
-                </>
-              );
-            })()}
             <div className={`mx-auto my-6 transition-all duration-300 ${
               viewport === "desktop" ? "w-full px-6 min-w-[400px]" :
               viewport === "tablet" ? "max-w-[800px] px-4" :
@@ -4933,6 +4832,201 @@ function WebsiteEditor() {
               )}
             </div>
           </div>
+          {/* Docked inspector panel — desktop only, auto-sizes beside canvas as flex sibling */}
+          {!editorNarrow && activeSection && activeTab === "editor" && !focusMode && (() => {
+            const sec = sections.find(s => s.id === activeSection);
+            if (!sec || sec.type === "header") return null;
+
+            let selectedComponent: SiteComponent | undefined;
+            let rowData: RowSectionData | undefined;
+            let selectedRowColumnId: string | undefined;
+            let onChangeComponent: ((comp: SiteComponent) => void) | undefined;
+            let onChangeRowData: ((data: RowSectionData) => void) | undefined;
+            let specialContent: React.ReactNode | undefined;
+
+            if (sec.type === "content" && selectedComponentState?.sectionId === sec.id) {
+              const contentData = sec.content as { components?: SiteComponent[] };
+              const comp = contentData.components?.find(c => c.id === selectedComponentState.componentId);
+              if (comp) {
+                selectedComponent = comp as SiteComponent;
+                onChangeComponent = (updatedComp: SiteComponent) => {
+                  const newComponents = (contentData.components ?? []).map(c =>
+                    c.id === updatedComp.id ? updatedComp : c
+                  );
+                  updateContent(sec.id, { ...contentData, components: newComponents });
+                };
+              }
+            } else if (sec.type === "row") {
+              rowData = sec.content as RowSectionData;
+              onChangeRowData = (newData: RowSectionData) =>
+                updateContent(sec.id, newData as unknown as Record<string, unknown>);
+              if (selectedRowState?.sectionId === sec.id && selectedRowState.componentId) {
+                const selCol = rowData.columns?.find(c => c.id === selectedRowState.columnId);
+                const selComp = selCol?.components?.find(c => c.id === selectedRowState.componentId);
+                if (selComp) {
+                  selectedComponent = selComp as SiteComponent;
+                  selectedRowColumnId = selectedRowState.columnId;
+                  onChangeComponent = (updatedComp: SiteComponent) => {
+                    const newCols = (rowData!.columns ?? []).map(col =>
+                      col.id === selectedRowState.columnId
+                        ? { ...col, components: col.components.map(cp => cp.id === updatedComp.id ? updatedComp : cp) }
+                        : col
+                    );
+                    updateContent(sec.id, { ...rowData!, columns: newCols } as unknown as Record<string, unknown>);
+                  };
+                }
+              }
+            } else if (sec.type === "deposit") {
+              specialContent = <DepositSubmissionsPanel businessId={bizId} />;
+            }
+
+            if (selectedCardData && selectedCardState?.sectionId === sec.id) {
+              let handleCardChange: (u: CardComponent) => void = () => {};
+              let handleCardDuplicate: () => void = () => {};
+              let handleCardDelete: () => void = () => {};
+
+              if (sec.type === "services") {
+                const d = sec.content as { heading?: string; items?: CardComponent[] };
+                handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...d, items: (d.items ?? []).map(i => i.id === u.id ? u : i) }); };
+                handleCardDuplicate = () => {
+                  const items = d.items ?? [];
+                  const idx = items.findIndex(i => i.id === selectedCardState.cardId);
+                  if (idx >= 0) {
+                    const duped = { ...items[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                    updateContent(sec.id, { ...d, items: [...items.slice(0, idx + 1), duped, ...items.slice(idx + 1)] });
+                    setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                  }
+                };
+                handleCardDelete = () => { updateContent(sec.id, { ...d, items: (d.items ?? []).filter(i => i.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
+              } else if (sec.type === "testimonials") {
+                const raw = sec.content as { heading?: string; items?: CardComponent[]; testimonials?: any[] };
+                let tItems: CardComponent[] = raw.items ?? [];
+                if (tItems.length === 0 && raw.testimonials?.length) {
+                  tItems = (raw.testimonials as any[]).map((t: any) => ({
+                    id: t.id, title: t.name,
+                    description: `"${t.quote}"${t.location ? `\n\n— ${t.location}` : ""}`,
+                    mediaType: "none" as const, layout: "horizontal" as const,
+                    textAlign: "left" as const, hoverEffect: "none" as const, clickAction: "none" as const,
+                    templateType: "testimonial" as const,
+                    badgeEnabled: t.rating > 0, badgeText: "★".repeat(Math.min(t.rating, 5)),
+                    badgeColor: "#f59e0b", badgeTextColor: "#ffffff", badgePosition: "top-right" as const,
+                  }));
+                }
+                handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: tItems.map(i => i.id === u.id ? u : i), testimonials: undefined }); };
+                handleCardDuplicate = () => {
+                  const idx = tItems.findIndex(i => i.id === selectedCardState.cardId);
+                  if (idx >= 0) {
+                    const duped = { ...tItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                    updateContent(sec.id, { ...raw, items: [...tItems.slice(0, idx + 1), duped, ...tItems.slice(idx + 1)], testimonials: undefined });
+                    setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                  }
+                };
+                handleCardDelete = () => { updateContent(sec.id, { ...raw, items: tItems.filter(i => i.id !== selectedCardState.cardId), testimonials: undefined }); setSelectedCardState(null); setSelectedCardData(null); };
+              } else if (sec.type === "stats") {
+                const raw = sec.content as { heading?: string; items?: CardComponent[]; stats?: any[] };
+                const STAT_ICONS_FB = ["Star", "CheckCircle2", "Award", "Clock", "Users", "Briefcase"];
+                let sItems: CardComponent[] = raw.items ?? [];
+                if (sItems.length === 0 && raw.stats?.length) {
+                  sItems = (raw.stats as any[]).map((st: any, idx: number) => ({
+                    id: st.id, title: st.value, description: st.label,
+                    mediaType: "icon" as const, iconName: STAT_ICONS_FB[idx % STAT_ICONS_FB.length],
+                    layout: "icon-top" as const, textAlign: "center" as const,
+                    hoverEffect: "none" as const, clickAction: "none" as const,
+                  }));
+                }
+                handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: sItems.map(i => i.id === u.id ? u : i), stats: undefined }); };
+                handleCardDuplicate = () => {
+                  const idx = sItems.findIndex(i => i.id === selectedCardState.cardId);
+                  if (idx >= 0) {
+                    const duped = { ...sItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                    updateContent(sec.id, { ...raw, items: [...sItems.slice(0, idx + 1), duped, ...sItems.slice(idx + 1)], stats: undefined });
+                    setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                  }
+                };
+                handleCardDelete = () => { updateContent(sec.id, { ...raw, items: sItems.filter(i => i.id !== selectedCardState.cardId), stats: undefined }); setSelectedCardState(null); setSelectedCardData(null); };
+              } else if (sec.type === "faq") {
+                const raw = sec.content as { heading?: string; items?: unknown[]; displayMode?: string; cards?: CardComponent[] };
+                const faqCards = raw.cards ?? [];
+                handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, cards: faqCards.map(c => c.id === u.id ? u : c) }); };
+                handleCardDuplicate = () => {
+                  const idx = faqCards.findIndex(c => c.id === selectedCardState.cardId);
+                  if (idx >= 0) {
+                    const duped = { ...faqCards[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                    updateContent(sec.id, { ...raw, cards: [...faqCards.slice(0, idx + 1), duped, ...faqCards.slice(idx + 1)] });
+                    setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                  }
+                };
+                handleCardDelete = () => { updateContent(sec.id, { ...raw, cards: faqCards.filter(c => c.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
+              } else if (
+                sec.type === "featured-clients" || sec.type === "partners" ||
+                sec.type === "certifications" || sec.type === "why-choose-us"
+              ) {
+                const raw = sec.content as { heading?: string; items?: CardComponent[] };
+                const rItems = raw.items ?? [];
+                handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: rItems.map(i => i.id === u.id ? u : i) }); };
+                handleCardDuplicate = () => {
+                  const idx = rItems.findIndex(i => i.id === selectedCardState.cardId);
+                  if (idx >= 0) {
+                    const duped = { ...rItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                    updateContent(sec.id, { ...raw, items: [...rItems.slice(0, idx + 1), duped, ...rItems.slice(idx + 1)] });
+                    setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                  }
+                };
+                handleCardDelete = () => { updateContent(sec.id, { ...raw, items: rItems.filter(i => i.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
+              }
+
+              return (
+                <div className="flex-shrink-0 border-l border-border bg-card flex flex-col overflow-hidden"
+                  style={{ width: 280 }} onClick={e => e.stopPropagation()}>
+                  <CardItemEditorPanel
+                    card={selectedCardData}
+                    onChange={handleCardChange}
+                    onDuplicate={handleCardDuplicate}
+                    onDelete={handleCardDelete}
+                    onClose={() => { setSelectedCardState(null); setSelectedCardData(null); setActiveSection(null); }}
+                    onOpenMediaLibrary={openMediaLibrary}
+                    businessId={bizId}
+                  />
+                </div>
+              );
+            }
+
+            return (
+              <InspectorPanel
+                pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
+                section={sec}
+                selectedComponent={selectedComponent}
+                rowData={rowData}
+                selectedRowColumnId={selectedRowColumnId}
+                onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
+                onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
+                isBgUploading={!!bgUploading[sec.id]}
+                onOpenMediaLibrary={openMediaLibrary}
+                copiedStyle={copiedBlockStyle}
+                onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
+                onPasteStyle={() => {
+                  if (copiedBlockStyle) {
+                    updateBlockStyle(sec.id, copiedBlockStyle);
+                    toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
+                  }
+                }}
+                onApplyStyleTo={applyStyleTo}
+                onToggleSection={() => toggleSection(sec.id)}
+                onDuplicateSection={() => duplicateSection(sec.id)}
+                onDeleteSection={() => handleDeleteSectionClick(sec.id)}
+                onChangeComponent={onChangeComponent}
+                onComponentImageUpload={handleContentComponentImageUpload}
+                onChangeRowData={onChangeRowData}
+                collapsed={false}
+                onCollapse={() => setActiveSection(null)}
+                onExpand={() => {}}
+                autoCollapsed={false}
+                onClearAutoCollapse={() => {}}
+                specialContent={specialContent}
+                initialTab={contextInspectorTab}
+              />
+            );
+          })()}
           {/* Narrow screen: fixed bottom drawer (position:fixed escapes any overflow clipping) */}
           {editorNarrow && activeSection && activeTab === "editor" && !focusMode && (() => {
             const sec = sections.find(s => s.id === activeSection);
@@ -5060,6 +5154,22 @@ function WebsiteEditor() {
                   }
                 };
                 handleCardDelete = () => { updateContent(sec.id, { ...raw, cards: faqCards.filter(c => c.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
+              } else if (
+                sec.type === "featured-clients" || sec.type === "partners" ||
+                sec.type === "certifications" || sec.type === "why-choose-us"
+              ) {
+                const raw = sec.content as { heading?: string; items?: CardComponent[] };
+                const rItems = raw.items ?? [];
+                handleCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: rItems.map(i => i.id === u.id ? u : i) }); };
+                handleCardDuplicate = () => {
+                  const idx = rItems.findIndex(i => i.id === selectedCardState.cardId);
+                  if (idx >= 0) {
+                    const duped = { ...rItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+                    updateContent(sec.id, { ...raw, items: [...rItems.slice(0, idx + 1), duped, ...rItems.slice(idx + 1)] });
+                    setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped);
+                  }
+                };
+                handleCardDelete = () => { updateContent(sec.id, { ...raw, items: rItems.filter(i => i.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
               }
 
               return (
