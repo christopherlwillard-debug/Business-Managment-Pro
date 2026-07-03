@@ -1,4 +1,5 @@
 import { useState, useRef, ReactNode, useEffect, useMemo, Fragment } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams, useLocation, Link } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
@@ -77,17 +78,27 @@ function SubcontractorPicker({
   onChange: (ids: number[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [dropRect, setDropRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
   const selectedSubs = subcontractors.filter(s => selected.includes(s.id));
 
   function toggle(id: number) {
     onChange(selected.includes(id) ? selected.filter(i => i !== id) : [...selected, id]);
   }
 
+  function handleOpen() {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setDropRect({ top: r.bottom + 4, left: r.left, width: r.width });
+    }
+    setOpen(o => !o);
+  }
+
   return (
     <div className="relative">
-      <button type="button"
+      <button ref={btnRef} type="button"
         className="w-full min-h-[40px] px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground flex flex-wrap gap-1.5 items-center focus:outline-none focus:ring-2 focus:ring-primary/20"
-        onClick={() => setOpen(o => !o)}>
+        onClick={handleOpen}>
         {selectedSubs.length === 0
           ? <span className="text-muted-foreground">Select subcontractors…</span>
           : selectedSubs.map(s => (
@@ -99,10 +110,13 @@ function SubcontractorPicker({
         }
         <ChevronDown className="w-3 h-3 text-muted-foreground ml-auto flex-shrink-0" />
       </button>
-      {open && (
+      {open && dropRect && createPortal(
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 top-full mt-1 left-0 right-0 bg-background border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto">
+          <div className="fixed inset-0 z-[200]" onClick={() => setOpen(false)} />
+          <div
+            className="fixed z-[201] bg-background border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto"
+            style={{ top: dropRect.top, left: dropRect.left, width: dropRect.width }}
+          >
             {subcontractors.length === 0
               ? <p className="px-3 py-2 text-xs text-muted-foreground">No subcontractors yet</p>
               : subcontractors.map(s => (
@@ -117,7 +131,8 @@ function SubcontractorPicker({
               ))
             }
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );
