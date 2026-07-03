@@ -414,12 +414,12 @@ function getAddableSectionTypes(): AddableSectionEntry[] {
       { category: "Contractor", type: "before-after",     label: "Before & After Gallery",  description: "Side-by-side before/after photo pairs from real jobs",        icon: <ArrowLeftRight className="w-4 h-4" />, allowMultiple: true },
       { category: "Contractor", type: "featured-clients", label: "Featured Clients",        description: "Highlight companies and organizations you've worked with",    icon: <Users      className="w-4 h-4" />, allowMultiple: true },
       { category: "Contractor", type: "partners",         label: "Partners & Brands",       description: "Manufacturers, suppliers, and brands you install or service", icon: <Handshake  className="w-4 h-4" />, allowMultiple: true },
-      { category: "Business",   type: "services",         label: "Services",                description: "Showcase what you offer with a grid of service cards",       icon: <Briefcase  className="w-4 h-4" />, allowMultiple: true },
-      { category: "Business",   type: "testimonials",     label: "Testimonials",            description: "Customer reviews in a card or carousel layout",              icon: <Star       className="w-4 h-4" />, allowMultiple: true },
-      { category: "Business",   type: "stats",            label: "Stats / Numbers",         description: "Highlight key numbers like years in business or jobs done",  icon: <BarChart2  className="w-4 h-4" />, allowMultiple: true },
-      { category: "Business",   type: "faq",              label: "FAQ",                     description: "Accordion-style Q&A to answer common questions",             icon: <HelpCircle className="w-4 h-4" />, allowMultiple: true },
-      { category: "Business",   type: "cta",              label: "CTA Banner",              description: "Bold call-to-action strip with headline and buttons",        icon: <Megaphone  className="w-4 h-4" />, allowMultiple: true },
-      { category: "Business",   type: "hero",             label: "Hero Banner",             description: "Full-width headline, subtext, and a call-to-action button",  icon: <ImagePlus  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Business",     type: "services",         label: "Services",                description: "Showcase what you offer with a grid of service cards",       icon: <Briefcase  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Business",     type: "stats",            label: "Stats / Numbers",         description: "Highlight key numbers like years in business or jobs done",  icon: <BarChart2  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Business",     type: "faq",              label: "FAQ",                     description: "Accordion-style Q&A to answer common questions",             icon: <HelpCircle className="w-4 h-4" />, allowMultiple: true },
+      { category: "Social Proof", type: "testimonials",     label: "Testimonials",            description: "Customer reviews in a card or carousel layout",              icon: <Star       className="w-4 h-4" />, allowMultiple: true },
+      { category: "Marketing",    type: "cta",              label: "CTA Banner",              description: "Bold call-to-action strip with headline and buttons",        icon: <Megaphone  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Marketing",    type: "hero",             label: "Hero Banner",             description: "Full-width headline, subtext, and a call-to-action button",  icon: <ImagePlus  className="w-4 h-4" />, allowMultiple: true },
       { category: "Layout",     type: "columns",          label: "Columns",                 description: "Two or three side-by-side columns of mixed content",         icon: <Columns    className="w-4 h-4" />, allowMultiple: true },
       { category: "Layout",     type: "content",          label: "Content Block",           description: "Rich content area with text, images, and components",        icon: <Layers     className="w-4 h-4" />, allowMultiple: true },
       { category: "Layout",     type: "row",              label: "Row",                     description: "Flexible row for custom component layouts",                  icon: <LayoutGrid className="w-4 h-4" />, allowMultiple: true },
@@ -4878,6 +4878,78 @@ function WebsiteEditor() {
               }
             } else if (sec.type === "deposit") {
               specialContent = <DepositSubmissionsPanel businessId={bizId} />;
+            } else if (sec.type === "service-area") {
+              const sa = sec.content as { heading?: string; subheading?: string; areas?: string[] };
+              const saAreas = sa.areas ?? [];
+              specialContent = (
+                <div className="p-3 space-y-2.5 overflow-y-auto">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Service Areas</p>
+                  <div className="space-y-1.5">
+                    {saAreas.map((area, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <input
+                          className="flex-1 text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          value={area}
+                          onChange={e => { const next = [...saAreas]; next[idx] = e.target.value; updateContent(sec.id, { ...sa, areas: next }); }}
+                        />
+                        <button type="button" onClick={() => updateContent(sec.id, { ...sa, areas: saAreas.filter((_, i) => i !== idx) })}
+                          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive flex-shrink-0">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button"
+                    onClick={() => updateContent(sec.id, { ...sa, areas: [...saAreas, "New Location"] })}
+                    className="text-xs w-full border border-dashed border-border rounded px-2 py-1.5 hover:bg-muted text-muted-foreground transition-colors">
+                    + Add Area
+                  </button>
+                </div>
+              );
+            } else if (sec.type === "before-after") {
+              const ba = sec.content as { heading?: string; pairs?: Array<{ id: string; caption?: string; beforeUrl?: string; afterUrl?: string; beforeLabel?: string; afterLabel?: string }> };
+              const baPairs = ba.pairs ?? [];
+              specialContent = (
+                <div className="p-3 space-y-2.5 overflow-y-auto">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Before & After Pairs</p>
+                  <div className="space-y-2">
+                    {baPairs.map((pair, idx) => (
+                      <div key={pair.id} className="border border-border rounded-lg p-2 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-foreground">Pair {idx + 1}</span>
+                          <button type="button" onClick={() => updateContent(sec.id, { ...ba, pairs: baPairs.filter(p => p.id !== pair.id) })}
+                            className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <input
+                          className="w-full text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          placeholder="Caption (optional)"
+                          value={pair.caption ?? ""}
+                          onChange={e => updateContent(sec.id, { ...ba, pairs: baPairs.map(p => p.id === pair.id ? { ...p, caption: e.target.value } : p) })}
+                        />
+                        <div className="flex gap-1">
+                          <button type="button"
+                            onClick={() => openMediaLibrary(url => updateContent(sec.id, { ...ba, pairs: baPairs.map(p => p.id === pair.id ? { ...p, beforeUrl: url } : p) }))}
+                            className={`flex-1 text-xs border rounded px-1.5 py-1 hover:bg-muted truncate transition-colors ${pair.beforeUrl ? "border-green-500 text-green-700" : "border-border text-muted-foreground"}`}>
+                            {pair.beforeUrl ? "✓ Before" : "Before img"}
+                          </button>
+                          <button type="button"
+                            onClick={() => openMediaLibrary(url => updateContent(sec.id, { ...ba, pairs: baPairs.map(p => p.id === pair.id ? { ...p, afterUrl: url } : p) }))}
+                            className={`flex-1 text-xs border rounded px-1.5 py-1 hover:bg-muted truncate transition-colors ${pair.afterUrl ? "border-green-500 text-green-700" : "border-border text-muted-foreground"}`}>
+                            {pair.afterUrl ? "✓ After" : "After img"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button"
+                    onClick={() => { const id = `pair-${Date.now()}`; updateContent(sec.id, { ...ba, pairs: [...baPairs, { id, beforeLabel: "Before", afterLabel: "After", caption: "" }] }); }}
+                    className="text-xs w-full border border-dashed border-border rounded px-2 py-1.5 hover:bg-muted text-muted-foreground transition-colors">
+                    + Add Pair
+                  </button>
+                </div>
+              );
             }
 
             if (selectedCardData && selectedCardState?.sectionId === sec.id) {
@@ -5073,6 +5145,78 @@ function WebsiteEditor() {
               }
             } else if (sec.type === "deposit") {
               specialContent = <DepositSubmissionsPanel businessId={bizId} />;
+            } else if (sec.type === "service-area") {
+              const sa = sec.content as { heading?: string; subheading?: string; areas?: string[] };
+              const saAreas = sa.areas ?? [];
+              specialContent = (
+                <div className="p-3 space-y-2.5 overflow-y-auto">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Service Areas</p>
+                  <div className="space-y-1.5">
+                    {saAreas.map((area, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <input
+                          className="flex-1 text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          value={area}
+                          onChange={e => { const next = [...saAreas]; next[idx] = e.target.value; updateContent(sec.id, { ...sa, areas: next }); }}
+                        />
+                        <button type="button" onClick={() => updateContent(sec.id, { ...sa, areas: saAreas.filter((_, i) => i !== idx) })}
+                          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive flex-shrink-0">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button"
+                    onClick={() => updateContent(sec.id, { ...sa, areas: [...saAreas, "New Location"] })}
+                    className="text-xs w-full border border-dashed border-border rounded px-2 py-1.5 hover:bg-muted text-muted-foreground transition-colors">
+                    + Add Area
+                  </button>
+                </div>
+              );
+            } else if (sec.type === "before-after") {
+              const ba = sec.content as { heading?: string; pairs?: Array<{ id: string; caption?: string; beforeUrl?: string; afterUrl?: string; beforeLabel?: string; afterLabel?: string }> };
+              const baPairs = ba.pairs ?? [];
+              specialContent = (
+                <div className="p-3 space-y-2.5 overflow-y-auto">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Before & After Pairs</p>
+                  <div className="space-y-2">
+                    {baPairs.map((pair, idx) => (
+                      <div key={pair.id} className="border border-border rounded-lg p-2 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-foreground">Pair {idx + 1}</span>
+                          <button type="button" onClick={() => updateContent(sec.id, { ...ba, pairs: baPairs.filter(p => p.id !== pair.id) })}
+                            className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <input
+                          className="w-full text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          placeholder="Caption (optional)"
+                          value={pair.caption ?? ""}
+                          onChange={e => updateContent(sec.id, { ...ba, pairs: baPairs.map(p => p.id === pair.id ? { ...p, caption: e.target.value } : p) })}
+                        />
+                        <div className="flex gap-1">
+                          <button type="button"
+                            onClick={() => openMediaLibrary(url => updateContent(sec.id, { ...ba, pairs: baPairs.map(p => p.id === pair.id ? { ...p, beforeUrl: url } : p) }))}
+                            className={`flex-1 text-xs border rounded px-1.5 py-1 hover:bg-muted truncate transition-colors ${pair.beforeUrl ? "border-green-500 text-green-700" : "border-border text-muted-foreground"}`}>
+                            {pair.beforeUrl ? "✓ Before" : "Before img"}
+                          </button>
+                          <button type="button"
+                            onClick={() => openMediaLibrary(url => updateContent(sec.id, { ...ba, pairs: baPairs.map(p => p.id === pair.id ? { ...p, afterUrl: url } : p) }))}
+                            className={`flex-1 text-xs border rounded px-1.5 py-1 hover:bg-muted truncate transition-colors ${pair.afterUrl ? "border-green-500 text-green-700" : "border-border text-muted-foreground"}`}>
+                            {pair.afterUrl ? "✓ After" : "After img"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button"
+                    onClick={() => { const id = `pair-${Date.now()}`; updateContent(sec.id, { ...ba, pairs: [...baPairs, { id, beforeLabel: "Before", afterLabel: "After", caption: "" }] }); }}
+                    className="text-xs w-full border border-dashed border-border rounded px-2 py-1.5 hover:bg-muted text-muted-foreground transition-colors">
+                    + Add Pair
+                  </button>
+                </div>
+              );
             }
 
             const drawerClass = "fixed bottom-0 left-0 right-0 z-50 rounded-t-xl shadow-2xl border-t border-border bg-card flex flex-col overflow-hidden max-h-[50vh]";
