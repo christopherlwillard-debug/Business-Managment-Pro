@@ -32,7 +32,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us" | "legal";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -117,6 +117,7 @@ function renderBodySection(
     case "certifications":   return <CertificationsSection key={section.id} {...props} />;
     case "before-after":     return <BeforeAfterSection key={section.id} {...props} />;
     case "why-choose-us":    return <WhyChooseUsSection key={section.id} {...props} />;
+    case "legal":            return <TextSection key={section.id} {...props} />;
     default:                 return null;
   }
 }

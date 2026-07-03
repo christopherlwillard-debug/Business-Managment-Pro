@@ -111,7 +111,7 @@ class WebsiteEditorErrorBoundary extends Component<{ children: ReactNode }, { er
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us" | "legal";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -243,6 +243,7 @@ function renderSection(
       />
     );
     case "text": return <TextSection {...props} />;
+    case "legal": return <TextSection {...props} />;
     case "gallery": return (
       <ImageGallerySection
         {...props}
@@ -360,6 +361,7 @@ const SECTION_LABELS: Record<string, string> = {
   certifications: "Certifications & Badges",
   "before-after": "Before & After Gallery",
   "why-choose-us": "Why Choose Us",
+  legal: "Legal / Disclaimer",
 };
 
 let _sectionTypeIcons: Record<string, React.ReactNode> | null = null;
@@ -390,6 +392,7 @@ function getSectionTypeIcons(): Record<string, React.ReactNode> {
       certifications:     <Award     className="w-3 h-3 flex-shrink-0" />,
       "before-after":     <ArrowLeftRight className="w-3 h-3 flex-shrink-0" />,
       "why-choose-us":    <ThumbsUp  className="w-3 h-3 flex-shrink-0" />,
+      legal:              <FileText  className="w-3 h-3 flex-shrink-0" />,
     };
   }
   return _sectionTypeIcons;
@@ -426,6 +429,8 @@ function getAddableSectionTypes(): AddableSectionEntry[] {
       { category: "Layout",     type: "text",             label: "Text Block",              description: "Simple heading and paragraph for announcements or copy",     icon: <AlignLeft  className="w-4 h-4" />, allowMultiple: true },
       { category: "Media",      type: "gallery",          label: "Image Gallery",           description: "A responsive photo grid — great for portfolio or projects",  icon: <Images     className="w-4 h-4" />, allowMultiple: true },
       { category: "Media",      type: "image",            label: "Image",                   description: "A single full-width or constrained image with caption",      icon: <Images     className="w-4 h-4" />, allowMultiple: true },
+      { category: "Contact",    type: "contact",          label: "Contact / Quote Form",    description: "A form visitors can use to request a quote or reach out",     icon: <AlignLeft  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Legal",      type: "legal",            label: "Legal / Disclaimer",      description: "Privacy policy, terms of service, or a legal disclosure block", icon: <FileText   className="w-4 h-4" />, allowMultiple: true },
     ];
   }
   return _addableSectionTypes;
@@ -2456,6 +2461,10 @@ function WebsiteEditor() {
       content = defaultBeforeAfterContent() as unknown as Record<string, unknown>;
     } else if (type === "why-choose-us") {
       content = defaultWhyChooseUsContent() as unknown as Record<string, unknown>;
+    } else if (type === "legal") {
+      content = { heading: "Legal Notices", body: "Privacy Policy | Terms of Service\n\nBy using our services, you agree to our terms and conditions. We respect your privacy and handle your personal information in accordance with applicable laws.\n\n© " + new Date().getFullYear() + " All rights reserved." } as unknown as Record<string, unknown>;
+    } else if (type === "contact") {
+      content = {} as Record<string, unknown>;
     } else if (type === "hero") {
       content = {
         headline: "Your Page Title",
