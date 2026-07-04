@@ -4763,6 +4763,15 @@ function WebsiteEditor() {
                   Apply Template…
                 </button>
               </div>
+
+              {/* Custom domain — belongs with site-wide settings */}
+              <CustomDomainPanel
+                customDomain={settings.customDomain ?? ""}
+                appHost={window.location.host}
+                siteUrl={publicUrl}
+                onChange={domain => patchSettings({ customDomain: domain })}
+                onCopy={text => { navigator.clipboard.writeText(text).then(() => toast({ title: "Copied!" })); }}
+              />
             </div>
           </div>
         ) : (<>
@@ -4961,15 +4970,6 @@ function WebsiteEditor() {
             })()}
           </div>
 
-
-          {/* Custom domain settings */}
-          <CustomDomainPanel
-            customDomain={settings.customDomain ?? ""}
-            appHost={window.location.host}
-            siteUrl={publicUrl}
-            onChange={domain => patchSettings({ customDomain: domain })}
-            onCopy={text => { navigator.clipboard.writeText(text).then(() => toast({ title: "Copied!" })); }}
-          />
 
           </div>{/* end scrollable body */}
         </>
