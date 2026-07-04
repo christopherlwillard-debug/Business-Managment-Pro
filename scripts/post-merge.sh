@@ -768,12 +768,14 @@ pool.query(\`
 
 # Task #940: seed Manufactured Home Trim-Out checklist template via API endpoint.
 # The endpoint is idempotent — no-op if templates already exist.
-# Requires MIGRATION_KEY secret and API_BASE_URL env var (or falls back to localhost:8080).
+# Use --max-time and --connect-timeout so curl never hangs when the API server isn't up.
+# The whole block is || true — a missing server is not fatal for post-merge setup.
 SEED_API_BASE="${API_BASE_URL:-http://localhost:8080}"
 echo "Seeding checklist templates via ${SEED_API_BASE}/api/admin/migrations/seed-checklist-templates ..."
-SEED_RESPONSE=$(curl -s -X POST "${SEED_API_BASE}/api/admin/migrations/seed-checklist-templates" \
+SEED_RESPONSE=$(curl -s --max-time 10 --connect-timeout 5 \
+  -X POST "${SEED_API_BASE}/api/admin/migrations/seed-checklist-templates" \
   -H "x-migration-key: ${MIGRATION_KEY}" \
-  -H "Content-Type: application/json")
+  -H "Content-Type: application/json") || SEED_RESPONSE=""
 echo "Seed response: ${SEED_RESPONSE}"
 if echo "${SEED_RESPONSE}" | grep -q '"error"'; then
   echo "Warning: checklist template seed returned an error — check logs. Continuing." >&2
