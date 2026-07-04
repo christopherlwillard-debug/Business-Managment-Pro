@@ -1,7 +1,8 @@
 import { Router } from "express";
 import multer from "multer";
 import OpenAI from "openai";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
+import { Readable } from "stream";
 import { db } from "@workspace/db";
 import { expensesTable, jobsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -45,10 +46,41 @@ function guessCategory(text: string): string {
   return "Other";
 }
 
-function normalizeDate(raw: string | number | undefined): string {
+function excelSerialToYMD(n: number): { y: number; m: number; d: number } | null {
+  const ms = (n - 25569) * 86400 * 1000;
+  const date = new Date(ms);
+  if (isNaN(date.getTime())) return null;
+  return { y: date.getUTCFullYear(), m: date.getUTCMonth() + 1, d: date.getUTCDate() };
+}
+
+async function readWorksheetRows(buffer: Buffer): Promise<unknown[][]> {
+  const workbook = new ExcelJS.Workbook();
+  const isOoxmlZip = buffer[0] === 0x50 && buffer[1] === 0x4b;
+  const isLegacyXls = buffer[0] === 0xd0 && buffer[1] === 0xcf;
+  if (isLegacyXls) {
+    throw new Error("Legacy .xls format is not supported. Please save your file as .xlsx or .csv and try again.");
+  }
+  const buf = Buffer.from(buffer) as unknown as Parameters<typeof workbook.xlsx.load>[0];
+  if (isOoxmlZip) {
+    await workbook.xlsx.load(buf);
+  } else {
+    const stream = Readable.from([buffer]);
+    await workbook.csv.read(stream);
+  }
+  const sheet = workbook.worksheets[0];
+  if (!sheet) return [];
+  const rows: unknown[][] = [];
+  sheet.eachRow({ includeEmpty: false }, (row) => {
+    rows.push((row.values as unknown[]).slice(1));
+  });
+  return rows;
+}
+
+function normalizeDate(raw: string | number | Date | undefined): string {
   if (!raw) return new Date().toISOString().slice(0, 10);
+  if (raw instanceof Date) return raw.toISOString().slice(0, 10);
   if (typeof raw === "number") {
-    const d = XLSX.SSF.parse_date_code(raw);
+    const d = excelSerialToYMD(raw);
     if (d) return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
   }
   const s = String(raw).trim();
@@ -170,10 +202,7 @@ router.post("/parse-spreadsheet", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-    const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+    const rows: any[][] = await readWorksheetRows(req.file.buffer) as any[][];
 
     if (rows.length < 2) return res.json({ rows: [], headers: [] });
 

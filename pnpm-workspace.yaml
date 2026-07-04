@@ -18,7 +18,7 @@ catalog:
   '@vitejs/plugin-react': ^5.0.4
   class-variance-authority: ^0.7.1
   clsx: 2.1.1
-  drizzle-orm: ^0.45.1
+  drizzle-orm: ^0.45.2
   framer-motion: 12.35.1
   lucide-react: ^0.545.0
   react: 19.1.0
@@ -26,7 +26,7 @@ catalog:
   tailwind-merge: 3.5.0
   tailwindcss: ^4.1.14
   tsx: ^4.21.0
-  vite: ^7.3.0
+  vite: ^7.3.5
   zod: ^3.25.76
 
 minimumReleaseAge: 1440
@@ -41,6 +41,31 @@ onlyBuiltDependencies:
 
 overrides:
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
+  axios: ">=1.16.0"
+  yaml: ">=2.8.3"
+  path-to-regexp: ">=8.4.0"
+  undici: ">=7.28.0"
+  ws: ">=8.21.0"
+  postcss: ">=8.5.10"
+  '@babel/core': ">=7.29.6"
+  basic-ftp: ">=5.3.1"
+  brace-expansion: ">=2.0.3"
+  fast-uri: ">=3.1.2"
+  fast-xml-builder: ">=1.1.7"
+  fast-xml-parser: ">=5.7.0"
+  ip-address: ">=10.1.1"
+  js-yaml: ">=4.2.0"
+  linkify-it: ">=5.0.1"
+  lodash: ">=4.18.0"
+  markdown-it: ">=14.2.0"
+  qs: ">=6.15.2"
+  '@tootallnate/once': ">=2.0.1"
+  uuid: ">=11.1.1"
+  form-data: ">=4.0.6"
+  micromatch>picomatch: ">=2.3.2"
+  vitest>picomatch: ">=4.0.4"
+  vite>picomatch: ">=4.0.4"
+  vitest>vite: ">=7.3.5"
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-freebsd-ia32': '-'
@@ -61,7 +86,7 @@ overrides:
   '@tailwindcss/oxide>@tailwindcss/oxide-linux-x64-musl': '-'
   '@tailwindcss/oxide>@tailwindcss/oxide-win32-arm64-msvc': '-'
   '@tailwindcss/oxide>@tailwindcss/oxide-win32-x64-msvc': '-'
-  esbuild: 0.27.3
+  esbuild: ">=0.28.1"
   esbuild>@esbuild/aix-ppc64: '-'
   esbuild>@esbuild/android-arm: '-'
   esbuild>@esbuild/android-arm64: '-'

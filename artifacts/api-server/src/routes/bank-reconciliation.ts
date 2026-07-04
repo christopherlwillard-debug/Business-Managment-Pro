@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
+import { Readable } from "stream";
 import { db, bankImportBatchesTable, bankTransactionsTable, expensesTable, invoicesTable, otherIncomeTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, notLike } from "drizzle-orm";
 import { wrapAsync } from "./guards";
@@ -8,10 +9,41 @@ import { wrapAsync } from "./guards";
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-function normalizeDate(raw: string | number | undefined): string | null {
+function excelSerialToYMD(n: number): { y: number; m: number; d: number } | null {
+  const ms = (n - 25569) * 86400 * 1000;
+  const date = new Date(ms);
+  if (isNaN(date.getTime())) return null;
+  return { y: date.getUTCFullYear(), m: date.getUTCMonth() + 1, d: date.getUTCDate() };
+}
+
+async function readWorksheetRows(buffer: Buffer): Promise<unknown[][]> {
+  const workbook = new ExcelJS.Workbook();
+  const isOoxmlZip = buffer[0] === 0x50 && buffer[1] === 0x4b;
+  const isLegacyXls = buffer[0] === 0xd0 && buffer[1] === 0xcf;
+  if (isLegacyXls) {
+    throw new Error("Legacy .xls format is not supported. Please save your file as .xlsx or .csv and try again.");
+  }
+  const buf = Buffer.from(buffer) as unknown as Parameters<typeof workbook.xlsx.load>[0];
+  if (isOoxmlZip) {
+    await workbook.xlsx.load(buf);
+  } else {
+    const stream = Readable.from([buffer]);
+    await workbook.csv.read(stream);
+  }
+  const sheet = workbook.worksheets[0];
+  if (!sheet) return [];
+  const rows: unknown[][] = [];
+  sheet.eachRow({ includeEmpty: false }, (row) => {
+    rows.push((row.values as unknown[]).slice(1));
+  });
+  return rows;
+}
+
+function normalizeDate(raw: string | number | Date | undefined): string | null {
   if (!raw && raw !== 0) return null;
+  if (raw instanceof Date) return raw.toISOString().slice(0, 10);
   if (typeof raw === "number") {
-    const d = XLSX.SSF.parse_date_code(raw);
+    const d = excelSerialToYMD(raw);
     if (d) return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
     return null;
   }
@@ -47,11 +79,8 @@ interface ParsedTransaction {
   transactionType: "debit" | "credit";
 }
 
-function parseCSVTransactions(buffer: Buffer): ParsedTransaction[] {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+async function parseCSVTransactions(buffer: Buffer): Promise<ParsedTransaction[]> {
+  const rows: unknown[][] = await readWorksheetRows(buffer);
 
   if (rows.length < 2) return [];
 
@@ -176,7 +205,7 @@ async function autoMatch(transactions: ParsedTransaction[]): Promise<{ suggested
 router.post("/parse", upload.single("file"), wrapAsync(async (req, res) => {
   if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
   try {
-    const transactions = parseCSVTransactions(req.file.buffer);
+    const transactions = await parseCSVTransactions(req.file.buffer);
     const suggestions = await autoMatch(transactions);
     const rows = transactions.map((t, i) => ({ ...t, ...suggestions[i] }));
     res.json({ rows, fileName: req.file.originalname, rowCount: rows.length });

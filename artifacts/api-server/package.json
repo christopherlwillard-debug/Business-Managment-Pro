@@ -21,11 +21,12 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2",
     "drizzle-orm": "catalog:",
+    "exceljs": "^4.4.0",
     "express": "^5",
     "google-auth-library": "^10.6.2",
-    "multer": "^2.1.1",
+    "multer": "^2.2.0",
     "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.3",
+    "nodemailer": "^9.0.1",
     "openai": "^6.32.0",
     "openid-client": "^6.8.2",
     "pdf-parse": "^2.4.5",
@@ -35,7 +36,6 @@
     "qrcode": "^1.5.4",
     "sharp": "^0.34.5",
     "square": "^44.0.1",
-    "xlsx": "^0.18.5",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -49,7 +49,7 @@
     "@types/nodemailer": "^7.0.11",
     "@types/pdfkit": "^0.17.6",
     "@types/qrcode": "^1.5.6",
-    "esbuild": "^0.27.3",
+    "esbuild": "^0.28.1",
     "tsx": "catalog:",
     "vitest": "^4.1.9"
   }
