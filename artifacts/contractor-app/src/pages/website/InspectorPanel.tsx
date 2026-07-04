@@ -110,7 +110,7 @@ const FONT_OPTIONS = [
 const STYLE_SECTION_ORDER = ["Typography","Colors","Backgrounds","Borders","Shadows"];
 const LAYOUT_SECTION_ORDER = ["","Spacing","Sizing"];
 
-type AccordionId = "content" | "style" | "layout" | "advanced";
+type AccordionId = "content" | "style" | "layout" | "advanced"; // layout/advanced fold into Style
 
 // ── localStorage helpers ───────────────────────────────────────────────────────
 
@@ -435,11 +435,12 @@ function renderField(f: FieldDescriptor, ctx: FieldCtx): React.ReactNode {
 
   if (k.type === "shadow-preset") {
     const val = (f.getValue(bs) as string | undefined) ?? "none";
-    const presets = [
+    const presets: { label: string; value: BlockStyle["shadow"] }[] = [
       { label: "None",   value: "none" },
-      { label: "Soft",   value: "0 2px 8px rgba(0,0,0,0.08)" },
-      { label: "Med",    value: "0 4px 16px rgba(0,0,0,0.14)" },
-      { label: "Strong", value: "0 8px 32px rgba(0,0,0,0.22)" },
+      { label: "Sm",     value: "sm" },
+      { label: "Md",     value: "md" },
+      { label: "Lg",     value: "lg" },
+      { label: "XL",     value: "xl" },
     ];
     return (
       <div className="flex gap-1">
@@ -455,13 +456,11 @@ function renderField(f: FieldDescriptor, ctx: FieldCtx): React.ReactNode {
 
   if (k.type === "animation-preset") {
     const val = (f.getValue(bs) as string | undefined) ?? "none";
-    const presets = [
-      { label: "None",     value: "none" },
-      { label: "Fade",     value: "fade-in" },
-      { label: "Slide ↑",  value: "slide-up" },
-      { label: "Slide ←",  value: "slide-left" },
-      { label: "Zoom",     value: "zoom-in" },
-      { label: "Bounce",   value: "bounce" },
+    const presets: { label: string; value: BlockStyle["animation"] }[] = [
+      { label: "None",    value: "none" },
+      { label: "Fade",    value: "fadeIn" },
+      { label: "Slide ↑", value: "slideUp" },
+      { label: "Slide ←", value: "slideLeft" },
     ];
     return (
       <div className="grid grid-cols-3 gap-1">
@@ -570,25 +569,21 @@ export function InspectorPanel({
     window.addEventListener("mouseup", onUp);
   }
 
-  // ── Accordion open states (top-level: Content / Style / Layout / Advanced) ─
+  // ── Accordion open states (top-level: Content / Style only) ─────────────────
+  // Layout and Advanced are nested inside the Style accordion as a collapsed sub-section.
   const [contentOpen, setContentOpen] = useState(() => readAccordion(ACC_KEYS.content, true));
   const [styleOpen,   setStyleOpen]   = useState(() => readAccordion(ACC_KEYS.style, false));
-  const [layoutOpen,  setLayoutOpen]  = useState(() => readAccordion(ACC_KEYS.layout, false));
-  const [advancedOpen,setAdvancedOpen]= useState(() => readAccordion(ACC_KEYS.advanced, false));
 
   function toggleAcc(id: AccordionId) {
-    if (id === "content")  { const n = !contentOpen;  setContentOpen(n);  writeAccordion(ACC_KEYS.content, n); }
-    if (id === "style")    { const n = !styleOpen;    setStyleOpen(n);    writeAccordion(ACC_KEYS.style, n); }
-    if (id === "layout")   { const n = !layoutOpen;   setLayoutOpen(n);   writeAccordion(ACC_KEYS.layout, n); }
-    if (id === "advanced") { const n = !advancedOpen; setAdvancedOpen(n); writeAccordion(ACC_KEYS.advanced, n); }
+    if (id === "content") { const n = !contentOpen; setContentOpen(n); writeAccordion(ACC_KEYS.content, n); }
+    if (id === "style" || id === "layout" || id === "advanced") {
+      const n = !styleOpen; setStyleOpen(n); writeAccordion(ACC_KEYS.style, n);
+    }
   }
 
   function switchToAccordion(id: AccordionId) {
-    if (id === "content")  { setContentOpen(true);  writeAccordion(ACC_KEYS.content, true); }
-    if (id === "style")    { setStyleOpen(true);    writeAccordion(ACC_KEYS.style, true); }
-    if (id === "layout")   { setLayoutOpen(true);   writeAccordion(ACC_KEYS.layout, true); }
-    if (id === "advanced") { setAdvancedOpen(true); writeAccordion(ACC_KEYS.advanced, true); }
-    // scroll to top so user sees the expanded section
+    if (id === "content") { setContentOpen(true); writeAccordion(ACC_KEYS.content, true); }
+    else { setStyleOpen(true); writeAccordion(ACC_KEYS.style, true); }
     panelScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -735,13 +730,55 @@ export function InspectorPanel({
           return (
             <AccordionBlock key={secName} title={secName}
               storageKey={STYLE_SUB_KEYS[secName as keyof typeof STYLE_SUB_KEYS]}
-              defaultOpen={secName === "Backgrounds"}>
+              defaultOpen={false}>
               <div className="px-3 pb-2">
                 {secFields.map(f => <RenderedField key={f.id} f={f} ctx={fieldCtx} />)}
               </div>
             </AccordionBlock>
           );
         })}
+
+        {/* Layout + Advanced folded in as a collapsed disclosure */}
+        <AccordionBlock title="Layout & Advanced"
+          storageKey="insp-acc-style-layout-adv"
+          defaultOpen={false}>
+          <div>
+            {LAYOUT_SECTION_ORDER.map(secName => {
+              const layoutFields = ALL_FIELDS.filter(f => f.tab === "layout" && (f.section ?? "") === secName);
+              if (!layoutFields.length) return null;
+              const title = secName === "" ? "Alignment" : secName;
+              return (
+                <AccordionBlock key={secName || "align"} title={title}
+                  storageKey={LAYOUT_SUB_KEYS[secName as keyof typeof LAYOUT_SUB_KEYS]}
+                  defaultOpen={false}>
+                  <div className="px-3 pb-2">
+                    {layoutFields.map(f => <RenderedField key={f.id} f={f} ctx={fieldCtx} />)}
+                  </div>
+                </AccordionBlock>
+              );
+            })}
+            {section.type === "row" && rowData && onChangeRowData && (
+              <AccordionBlock title="Row Layout"
+                storageKey="insp-acc-row-layout"
+                defaultOpen={true}>
+                <div className="px-3 pb-2">
+                  <RowEditorPanel data={rowData} onChange={onChangeRowData} />
+                </div>
+              </AccordionBlock>
+            )}
+            <div className="p-3 border-t border-border">
+              {ALL_FIELDS.filter(f => f.tab === "advanced").map(f => (
+                <RenderedField key={f.id} f={f} ctx={fieldCtx} />
+              ))}
+              <div className="pt-3 mt-2 border-t border-border">
+                <button type="button" onClick={onDeleteSection}
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border border-red-200 dark:border-red-900">
+                  <Trash2 className="w-3.5 h-3.5" /> Delete Section
+                </button>
+              </div>
+            </div>
+          </div>
+        </AccordionBlock>
 
         <div className="pt-3 mt-2 border-t border-border">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Apply Style To</p>
@@ -756,67 +793,6 @@ export function InspectorPanel({
           <button type="button" onClick={() => onApplyStyleTo(applyScope, bs)}
             className="w-full py-1.5 text-xs font-medium rounded bg-muted hover:bg-muted/80 text-foreground transition-colors">
             Apply styles to {applyScope === "section" ? "this section" : applyScope === "page" ? "all sections on this page" : "all sections on all pages"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── LAYOUT accordion body ──────────────────────────────────────────────────
-  function renderLayoutBody() {
-    const layoutFields = ALL_FIELDS.filter(f => f.tab === "layout");
-    const grouped = new Map<string, FieldDescriptor[]>();
-    for (const f of layoutFields) {
-      const sec = f.section ?? "";
-      if (!grouped.has(sec)) grouped.set(sec, []);
-      grouped.get(sec)!.push(f);
-    }
-
-    const SECTION_TITLES: Record<string, string> = {
-      "": "Alignment",
-      "Spacing": "Spacing",
-      "Sizing": "Sizing",
-    };
-
-    return (
-      <div>
-        {LAYOUT_SECTION_ORDER.map(secName => {
-          const secFields = grouped.get(secName);
-          if (!secFields?.length) return null;
-          const title = SECTION_TITLES[secName] ?? secName;
-          return (
-            <AccordionBlock key={secName || "root"} title={title}
-              storageKey={LAYOUT_SUB_KEYS[secName as keyof typeof LAYOUT_SUB_KEYS]}
-              defaultOpen={false}>
-              <div className="px-3 pb-2">
-                {secFields.map(f => <RenderedField key={f.id} f={f} ctx={fieldCtx} />)}
-              </div>
-            </AccordionBlock>
-          );
-        })}
-        {section.type === "row" && rowData && onChangeRowData && (
-          <AccordionBlock title="Row Layout"
-            storageKey="insp-acc-row-layout"
-            defaultOpen={true}>
-            <div className="px-3 pb-2">
-              <RowEditorPanel data={rowData} onChange={onChangeRowData} />
-            </div>
-          </AccordionBlock>
-        )}
-      </div>
-    );
-  }
-
-  // ── ADVANCED accordion body ────────────────────────────────────────────────
-  function renderAdvancedBody() {
-    const advancedFields = ALL_FIELDS.filter(f => f.tab === "advanced");
-    return (
-      <div className="p-3">
-        {advancedFields.map(f => <RenderedField key={f.id} f={f} ctx={fieldCtx} />)}
-        <div className="pt-3 mt-2 border-t border-border">
-          <button type="button" onClick={onDeleteSection}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border border-red-200 dark:border-red-900">
-            <Trash2 className="w-3.5 h-3.5" /> Delete Section
           </button>
         </div>
       </div>
@@ -937,17 +913,7 @@ export function InspectorPanel({
                 {renderStyleBody()}
               </AccordionBlock>
 
-              {/* LAYOUT */}
-              <AccordionBlock title="Layout"
-                open={layoutOpen} onToggle={() => toggleAcc("layout")}>
-                {renderLayoutBody()}
-              </AccordionBlock>
-
-              {/* ADVANCED */}
-              <AccordionBlock title="Advanced"
-                open={advancedOpen} onToggle={() => toggleAcc("advanced")}>
-                {renderAdvancedBody()}
-              </AccordionBlock>
+              {/* Layout & Advanced are nested inside Style accordion */}
             </>
           )}
         </div>

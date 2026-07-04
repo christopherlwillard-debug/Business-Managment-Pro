@@ -762,17 +762,169 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
                   {addSectionTab === "sections" ? (
                     <div className="p-2 max-h-96 overflow-y-auto">
                       {(() => {
+                        // Wireframe thumbnail SVGs keyed by section type
+                        const THUMBS: Record<string, React.ReactNode> = {
+                          "hero": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              <rect width="80" height="44" fill="currentColor" fillOpacity=".07" rx="3" />
+                              <rect x="18" y="9" width="44" height="5" rx="1.5" fill="currentColor" fillOpacity=".35" />
+                              <rect x="24" y="17" width="32" height="3" rx="1" fill="currentColor" fillOpacity=".2" />
+                              <rect x="28" y="24" width="24" height="3" rx="1" fill="currentColor" fillOpacity=".15" />
+                              <rect x="28" y="31" width="10" height="6" rx="2" fill="currentColor" fillOpacity=".3" />
+                              <rect x="42" y="31" width="10" height="6" rx="2" fill="currentColor" fillOpacity=".15" />
+                            </svg>
+                          ),
+                          "services": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              <rect x="4" y="8" width="22" height="28" rx="2" fill="currentColor" fillOpacity=".12" />
+                              <rect x="29" y="8" width="22" height="28" rx="2" fill="currentColor" fillOpacity=".12" />
+                              <rect x="54" y="8" width="22" height="28" rx="2" fill="currentColor" fillOpacity=".12" />
+                              <rect x="9" y="13" width="12" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
+                              <rect x="9" y="19" width="12" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
+                              <rect x="34" y="13" width="12" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
+                              <rect x="34" y="19" width="12" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
+                              <rect x="59" y="13" width="12" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
+                              <rect x="59" y="19" width="12" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
+                            </svg>
+                          ),
+                          "stats": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              {[4,22,40,58].map((x, i) => (
+                                <g key={i}>
+                                  <rect x={x} y="10" width="18" height="24" rx="2" fill="currentColor" fillOpacity=".1" />
+                                  <rect x={x+3} y="16" width="12" height="5" rx="1" fill="currentColor" fillOpacity=".35" />
+                                  <rect x={x+3} y="24" width="9" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
+                                </g>
+                              ))}
+                            </svg>
+                          ),
+                          "faq": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              {[6,17,28,39].map((y, i) => (
+                                <g key={i}>
+                                  <rect x="4" y={y} width="72" height="8" rx="2" fill="currentColor" fillOpacity=".1" />
+                                  <rect x="8" y={y+2.5} width="40" height="2.5" rx="1" fill="currentColor" fillOpacity=".3" />
+                                  <rect x="68" y={y+2.5} width="4" height="2.5" rx="1" fill="currentColor" fillOpacity=".2" />
+                                </g>
+                              ))}
+                            </svg>
+                          ),
+                          "testimonials": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              <rect x="4" y="6" width="33" height="32" rx="3" fill="currentColor" fillOpacity=".1" />
+                              <rect x="43" y="6" width="33" height="32" rx="3" fill="currentColor" fillOpacity=".1" />
+                              <rect x="9" y="12" width="23" height="2" rx="1" fill="currentColor" fillOpacity=".25" />
+                              <rect x="9" y="17" width="20" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
+                              <circle cx="13" cy="30" r="4" fill="currentColor" fillOpacity=".2" />
+                              <rect x="20" y="28" width="12" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
+                              <rect x="48" y="12" width="23" height="2" rx="1" fill="currentColor" fillOpacity=".25" />
+                              <rect x="48" y="17" width="20" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
+                              <circle cx="52" cy="30" r="4" fill="currentColor" fillOpacity=".2" />
+                              <rect x="59" y="28" width="12" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
+                            </svg>
+                          ),
+                          "cta": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              <rect x="4" y="6" width="72" height="32" rx="3" fill="currentColor" fillOpacity=".12" />
+                              <rect x="20" y="13" width="40" height="5" rx="1.5" fill="currentColor" fillOpacity=".3" />
+                              <rect x="25" y="21" width="30" height="3" rx="1" fill="currentColor" fillOpacity=".18" />
+                              <rect x="28" y="28" width="24" height="6" rx="2" fill="currentColor" fillOpacity=".3" />
+                            </svg>
+                          ),
+                          "columns": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              <rect x="4" y="6" width="34" height="32" rx="2" fill="currentColor" fillOpacity=".1" />
+                              <rect x="42" y="6" width="34" height="32" rx="2" fill="currentColor" fillOpacity=".1" />
+                              <rect x="8" y="10" width="26" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
+                              <rect x="8" y="16" width="22" height="2" rx="1" fill="currentColor" fillOpacity=".18" />
+                              <rect x="8" y="20" width="24" height="2" rx="1" fill="currentColor" fillOpacity=".15" />
+                              <rect x="46" y="10" width="26" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
+                              <rect x="46" y="16" width="22" height="2" rx="1" fill="currentColor" fillOpacity=".18" />
+                              <rect x="46" y="20" width="24" height="2" rx="1" fill="currentColor" fillOpacity=".15" />
+                            </svg>
+                          ),
+                          "gallery": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              {[[4,6],[30,6],[56,6],[4,26],[30,26],[56,26]].map(([x, y], i) => (
+                                <rect key={i} x={x} y={y} width="22" height="16" rx="2" fill="currentColor" fillOpacity=".15" />
+                              ))}
+                            </svg>
+                          ),
+                          "contact": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              <rect x="4" y="6" width="72" height="6" rx="2" fill="currentColor" fillOpacity=".12" />
+                              <rect x="4" y="15" width="72" height="6" rx="2" fill="currentColor" fillOpacity=".12" />
+                              <rect x="4" y="24" width="72" height="8" rx="2" fill="currentColor" fillOpacity=".1" />
+                              <rect x="22" y="35" width="36" height="6" rx="2" fill="currentColor" fillOpacity=".3" />
+                            </svg>
+                          ),
+                          "before-after": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              <rect x="4" y="6" width="33" height="32" rx="2" fill="currentColor" fillOpacity=".15" />
+                              <rect x="43" y="6" width="33" height="32" rx="2" fill="currentColor" fillOpacity=".25" />
+                              <line x1="40" y1="6" x2="40" y2="38" stroke="currentColor" strokeWidth="1.5" strokeOpacity=".3" strokeDasharray="2 2" />
+                              <rect x="8" y="32" width="18" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
+                              <rect x="48" y="32" width="18" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
+                            </svg>
+                          ),
+                          "default-cards": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              <rect x="4" y="6" width="22" height="28" rx="2" fill="currentColor" fillOpacity=".12" />
+                              <rect x="29" y="6" width="22" height="28" rx="2" fill="currentColor" fillOpacity=".12" />
+                              <rect x="54" y="6" width="22" height="28" rx="2" fill="currentColor" fillOpacity=".12" />
+                            </svg>
+                          ),
+                          "default-text": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              <rect x="12" y="10" width="56" height="4" rx="1.5" fill="currentColor" fillOpacity=".3" />
+                              <rect x="18" y="18" width="44" height="2.5" rx="1" fill="currentColor" fillOpacity=".18" />
+                              <rect x="14" y="23" width="52" height="2.5" rx="1" fill="currentColor" fillOpacity=".15" />
+                              <rect x="20" y="28" width="40" height="2.5" rx="1" fill="currentColor" fillOpacity=".12" />
+                            </svg>
+                          ),
+                          "default-row": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              <rect x="4" y="12" width="16" height="20" rx="2" fill="currentColor" fillOpacity=".15" />
+                              <rect x="23" y="12" width="16" height="20" rx="2" fill="currentColor" fillOpacity=".12" />
+                              <rect x="42" y="12" width="16" height="20" rx="2" fill="currentColor" fillOpacity=".12" />
+                              <rect x="61" y="12" width="15" height="20" rx="2" fill="currentColor" fillOpacity=".1" />
+                            </svg>
+                          ),
+                          "default-image": (
+                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
+                              <rect x="8" y="6" width="64" height="32" rx="2" fill="currentColor" fillOpacity=".15" />
+                              <path d="M20 30 L32 16 L44 24 L54 14 L68 30Z" fill="currentColor" fillOpacity=".18" />
+                              <circle cx="26" cy="17" r="4" fill="currentColor" fillOpacity=".2" />
+                            </svg>
+                          ),
+                        };
+
+                        const TYPE_THUMB: Record<string, string> = {
+                          "hero": "hero", "cta": "cta",
+                          "services": "services", "stats": "stats", "faq": "faq",
+                          "testimonials": "testimonials", "columns": "columns",
+                          "gallery": "gallery", "contact": "contact",
+                          "before-after": "before-after",
+                          "why-choose-us": "services", "certifications": "default-cards",
+                          "service-area": "default-text", "featured-clients": "default-cards",
+                          "partners": "default-cards",
+                          "content": "default-text", "row": "default-row",
+                          "text": "default-text", "image": "default-image",
+                          "deposit": "contact", "footer": "default-text",
+                          "about": "columns", "portfolio": "gallery",
+                        };
+
                         const entries = getAddableSectionTypes();
                         const categories = [...new Set(entries.map(e => e.category))];
                         const catColors: Record<string, string> = {
-                          "Contractor": "bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400",
-                          "Business":   "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400",
-                          "Social Proof": "bg-yellow-50 text-yellow-600 dark:bg-yellow-900/20 dark:text-yellow-400",
-                          "Marketing":  "bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400",
-                          "Layout":     "bg-gray-50 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
-                          "Media":      "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400",
-                          "Contact":    "bg-teal-50 text-teal-600 dark:bg-teal-900/20 dark:text-teal-400",
-                          "Legal":      "bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+                          "Contractor": "text-orange-500",
+                          "Business":   "text-blue-500",
+                          "Social Proof": "text-yellow-500",
+                          "Marketing":  "text-purple-500",
+                          "Layout":     "text-gray-500",
+                          "Media":      "text-green-500",
+                          "Contact":    "text-teal-500",
+                          "Legal":      "text-slate-500",
                         };
                         return categories.map(cat => (
                           <div key={cat}>
@@ -780,11 +932,16 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
                             <div className="grid grid-cols-2 gap-1.5">
                               {entries.filter(e => e.category === cat).map(opt => (
                                 <button key={opt.type} type="button" onClick={() => addSection(opt.type)}
-                                  className="flex flex-col items-center gap-2 p-3 rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-all group text-center">
-                                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${catColors[cat] ?? "bg-muted text-muted-foreground"} group-hover:bg-primary group-hover:text-primary-foreground`}>
-                                    {opt.icon}
+                                  className="flex flex-col rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-all group overflow-hidden text-left">
+                                  {/* Thumbnail preview */}
+                                  <div className={`w-full h-14 bg-muted/40 flex items-center justify-center p-2 group-hover:bg-primary/8 transition-colors ${catColors[cat] ?? "text-muted-foreground"}`}>
+                                    {THUMBS[TYPE_THUMB[opt.type] ?? "default-text"]}
                                   </div>
-                                  <span className="text-xs font-medium text-foreground group-hover:text-primary transition-colors leading-tight">{opt.label}</span>
+                                  {/* Label row */}
+                                  <div className="px-2 py-1.5 flex items-center gap-1.5">
+                                    <span className={`flex-shrink-0 ${catColors[cat] ?? "text-muted-foreground"}`}>{opt.icon}</span>
+                                    <span className="text-xs font-medium text-foreground group-hover:text-primary transition-colors leading-tight truncate">{opt.label}</span>
+                                  </div>
                                 </button>
                               ))}
                             </div>
@@ -4804,28 +4961,6 @@ function WebsiteEditor() {
             })()}
           </div>
 
-          {/* Theme moved to Theme tab */}
-          <div className="border-t border-border px-3 py-2.5">
-            <button
-              onClick={() => setActiveTab("theme")}
-              className="flex items-center gap-1.5 w-full text-xs text-muted-foreground hover:text-primary transition-colors"
-            >
-              <Palette className="w-3 h-3" />
-              Theme settings →
-            </button>
-          </div>
-
-
-          {/* Apply template */}
-          <div className="border-t border-border p-3">
-            <button
-              onClick={openResetPicker}
-              className="flex items-center justify-center gap-1.5 w-full text-xs border border-border rounded px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted text-muted-foreground hover:text-foreground"
-            >
-              <LayoutTemplate className="w-3 h-3" />
-              Apply Template…
-            </button>
-          </div>
 
           {/* Custom domain settings */}
           <CustomDomainPanel
