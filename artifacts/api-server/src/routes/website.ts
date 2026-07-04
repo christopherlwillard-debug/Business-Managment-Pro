@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import { Readable } from "stream";
 import { createHmac, createHash } from "crypto";
 import OpenAI from "openai";
@@ -11,6 +12,8 @@ import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 
 const objectStorageService = new ObjectStorageService();
+
+const mediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -1063,11 +1066,20 @@ router.get("/media", wrapAsync(async (req, res) => {
   res.json(items);
 }));
 
-router.post("/media/upload-url", wrapAsync(async (req, res) => {
+router.post("/media/upload", mediaUpload.single("file"), wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
-  const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-media");
-  res.json({ uploadURL, objectPath });
+  if (!req.file) return res.status(400).json({ error: "No file provided" });
+  const { originalname, mimetype, buffer, size } = req.file;
+  const objectPath = await objectStorageService.uploadBufferWithFilename(buffer, mimetype, "uploads/website-media", originalname);
+  const uuid = objectPath.split("/").pop()!;
+  const url = `${BASE_URL}/api/public/site/media-image/${uuid}`;
+  const folderId = req.body.folderId ? parseInt(req.body.folderId) : null;
+  const [item] = await db
+    .insert(websiteMediaTable)
+    .values({ businessId, filename: originalname, objectPath, url, size: size ?? 0, folderId: folderId ?? null })
+    .returning();
+  res.json(item);
 }));
 
 router.post("/media", wrapAsync(async (req, res) => {
@@ -1156,6 +1168,47 @@ router.post("/media/:id/replace", wrapAsync(async (req, res) => {
 
   const [updated] = await db.update(websiteMediaTable)
     .set({ url: newUrl, objectPath: newObjectPath, filename: newFilename ?? item.filename })
+    .where(eq(websiteMediaTable.id, id))
+    .returning();
+
+  res.json({ ok: true, replacedInConfigs, item: updated });
+}));
+
+router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  const id = parseInt(req.params.id);
+  if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
+  if (!req.file) return res.status(400).json({ error: "No file provided" });
+
+  const [item] = await db.select().from(websiteMediaTable)
+    .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
+  if (!item) return res.status(404).json({ error: "Not found" });
+
+  const { originalname, mimetype, buffer, size } = req.file;
+  const newObjectPath = await objectStorageService.uploadBufferWithFilename(buffer, mimetype, "uploads/website-media", originalname);
+  const uuid = newObjectPath.split("/").pop()!;
+  const newUrl = `${BASE_URL}/api/public/site/media-image/${uuid}`;
+  const oldUrl = item.url;
+
+  const configs = await db.select().from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+
+  let replacedInConfigs = 0;
+  for (const config of configs) {
+    const sectionsJson = JSON.stringify(config.sections);
+    const settingsJson = JSON.stringify(config.settings);
+    const newSectionsJson = sectionsJson.split(oldUrl).join(newUrl);
+    const newSettingsJson = settingsJson.split(oldUrl).join(newUrl);
+    if (newSectionsJson !== sectionsJson || newSettingsJson !== settingsJson) {
+      await db.update(websiteConfigsTable)
+        .set({ sections: JSON.parse(newSectionsJson) as any, settings: JSON.parse(newSettingsJson) as any, updatedAt: new Date() })
+        .where(eq(websiteConfigsTable.id, config.id));
+      replacedInConfigs++;
+    }
+  }
+
+  const [updated] = await db.update(websiteMediaTable)
+    .set({ url: newUrl, objectPath: newObjectPath, filename: originalname, size: size ?? item.size })
     .where(eq(websiteMediaTable.id, id))
     .returning();
 

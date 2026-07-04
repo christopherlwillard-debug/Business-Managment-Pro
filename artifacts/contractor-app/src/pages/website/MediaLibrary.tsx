@@ -184,22 +184,16 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     setUploading(true);
     try {
       for (const file of fileArr) {
-        const urlRes = await fetch(`${BASE}/api/website/media/upload-url?businessId=${businessId}`, {
-          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+        const formData = new FormData();
+        formData.append("file", file);
+        if (folderFilter !== "all") formData.append("folderId", String(folderFilter));
+        const res = await fetch(`${BASE}/api/website/media/upload?businessId=${businessId}`, {
+          method: "POST", credentials: "include", body: formData,
         });
-        if (!urlRes.ok) continue;
-        const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
-        await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-        const uuid = objectPath.split("/").pop()!;
-        const url = `${BASE}/api/public/site/media-image/${uuid}`;
-        await fetch(`${BASE}/api/website/media?businessId=${businessId}`, {
-          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-          body: JSON.stringify({
-            filename: file.name, objectPath, url, size: file.size,
-            folderId: folderFilter !== "all" ? folderFilter : null,
-          }),
-        });
+        if (!res.ok) {
+          console.error("Upload failed", await res.text());
+          continue;
+        }
       }
       invalidateAll();
     } finally {
@@ -210,19 +204,15 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
   async function handleReplace(file: File, target: MediaItem) {
     setReplacing(true);
     try {
-      const urlRes = await fetch(`${BASE}/api/website/media/upload-url?businessId=${businessId}`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${BASE}/api/website/media/${target.id}/replace-upload?businessId=${businessId}`, {
+        method: "POST", credentials: "include", body: formData,
       });
-      if (!urlRes.ok) return;
-      const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
-      await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-      const uuid = objectPath.split("/").pop()!;
-      const newUrl = `${BASE}/api/public/site/media-image/${uuid}`;
-      await fetch(`${BASE}/api/website/media/${target.id}/replace?businessId=${businessId}`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ newUrl, newObjectPath: objectPath, newFilename: file.name }),
-      });
+      if (!res.ok) {
+        console.error("Replace failed", await res.text());
+        return;
+      }
       invalidateAll();
       qc.invalidateQueries({ queryKey: ["website-media-usage-details", businessId, target.id] });
       setDetailItem(null);
