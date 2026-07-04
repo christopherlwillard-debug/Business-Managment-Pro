@@ -478,16 +478,37 @@ function SortableRow({
 function CustomDomainPanel({
   customDomain,
   appHost,
+  siteUrl,
   onChange,
   onCopy,
 }: {
   customDomain: string;
   appHost: string;
+  siteUrl: string;
   onChange: (v: string) => void;
   onCopy: (v: string) => void;
 }) {
   return (
-    <div className="border-t border-border p-3 space-y-2">
+    <div className="border-t border-border p-3 space-y-3">
+
+      {/* Live site URL — always available */}
+      {siteUrl && (
+        <div className="space-y-1">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+            <Link2 className="w-3 h-3" />
+            Your Website
+          </p>
+          <div className="rounded-md bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-2 py-1.5 flex items-center gap-1.5">
+            <span className="flex-1 text-[10px] font-mono text-emerald-800 dark:text-emerald-300 break-all">{siteUrl}</span>
+            <button type="button" onClick={() => onCopy(siteUrl)} className="flex-shrink-0 text-emerald-600 hover:text-emerald-800" title="Copy link"><Copy className="w-3 h-3" /></button>
+            <a href={siteUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 text-emerald-600 hover:text-emerald-800" title="Open site"><ExternalLink className="w-3 h-3" /></a>
+          </div>
+          <p className="text-[10px] text-muted-foreground">Share this link right now — no domain setup needed.</p>
+        </div>
+      )}
+
+      {/* Custom domain */}
+      <div className="space-y-2">
       <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
         <Link2 className="w-3 h-3" />
         Custom Domain
@@ -556,6 +577,7 @@ function CustomDomainPanel({
           Enter your domain above to see setup instructions.
         </p>
       )}
+      </div>{/* end custom domain */}
     </div>
   );
 }
@@ -4804,6 +4826,7 @@ function WebsiteEditor() {
           <CustomDomainPanel
             customDomain={settings.customDomain ?? ""}
             appHost={window.location.host}
+            siteUrl={publicUrl}
             onChange={domain => patchSettings({ customDomain: domain })}
             onCopy={text => { navigator.clipboard.writeText(text).then(() => toast({ title: "Copied!" })); }}
           />
