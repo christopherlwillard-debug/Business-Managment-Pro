@@ -1,0 +1,108 @@
+I'd go one step further. I wouldn't keep the current tabs at all for most editing.
+
+I'd tell Replit something like this:
+
+Replace the current inspector with a content-first workflow.
+
+When a section is selected, the inspector should immediately display the editable content for that section. The user should never have to hunt through tabs just to change text or an image.
+
+For example, clicking the Hero Banner should immediately show:
+
+Hero Image
+Headline
+Subheadline
+Button Text
+Button Link
+Show/Hide toggles
+
+Only after the content fields should there be collapsible sections for:
+
+Style
+Layout
+Advanced
+
+The default experience should always be Content → Style → Advanced, with only Content expanded.
+
+Every section should follow the same pattern:
+
+Section Name
+
+CONTENT
+-------------------
+(editable fields)
+
+STYLE
+▼ collapsed
+
+LAYOUT
+▼ collapsed
+
+ADVANCED
+▼ collapsed
+
+The user shouldn't have to think about which tab contains the setting—they click the section and immediately edit it.
+
+I'd also add these requirements because they'll make the editor feel much more polished:
+
+Make image editing one click
+
+Anywhere an image exists, show:
+
+Current Image
+
+[ Replace Image ]
+
+Not:
+
+Upload
+Choose Library
+URL
+
+Hide those implementation details behind one button.
+
+Make buttons feel like forms
+
+Instead of tiny property fields:
+
+Button Text
+[ Get Quote ]
+
+Button Link
+[ /contact ]
+
+Button Style
+[ Primary ▼ ]
+
+Much easier to scan.
+
+Remember which inspector groups were open
+
+If I expand Style, it should stay expanded until I collapse it again. Small detail, but it makes the editor feel much less frustrating.
+
+Add section-specific helpers
+
+For example:
+
+Services
+
++ Add Service
+
+Service 1
+
+Title
+
+Description
+
+Image
+
+Delete
+
+instead of generic array editors.
+
+One more thing I'd add to the task
+
+I would add this acceptance criterion:
+
+A first-time user should be able to edit the headline, replace an image, and change a button in under 30 seconds without documentation.
+
+That sounds simple, but it's a great design benchmark. It keeps the implementation focused on making the editor genuinely easy to use rather than just reorganizing the existing controls.
