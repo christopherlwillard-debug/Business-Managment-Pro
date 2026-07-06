@@ -9,6 +9,7 @@ import {
   jobChecklistItemPhotosTable,
   jobsTable,
   clientsTable,
+  settingsTable,
 } from "@workspace/db/schema";
 import { eq, asc, inArray } from "drizzle-orm";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
@@ -55,11 +56,18 @@ router.get("/status/:token/summary", async (req, res) => {
       ? 0
       : Math.round((completedCount / activeItems.length) * 100);
 
+    const [settings] = await db
+      .select({ companyName: settingsTable.companyName, logoUrl: settingsTable.logoUrl })
+      .from(settingsTable)
+      .limit(1);
+
     res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
     res.json({
       jobTitle: row.jobTitle,
       statusOverride: row.checklist.statusOverride || null,
       overallPercent,
+      companyName: settings?.companyName ?? null,
+      logoUrl: settings?.logoUrl ?? null,
     });
   } catch (err) {
     console.error(err);
@@ -159,6 +167,11 @@ router.get("/status/:token", async (req, res) => {
 
     const locationParts = [row.jobAddress, row.jobCity, row.jobState].filter(Boolean);
 
+    const [detailSettings] = await db
+      .select({ companyName: settingsTable.companyName, logoUrl: settingsTable.logoUrl })
+      .from(settingsTable)
+      .limit(1);
+
     res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
     res.json({
       jobTitle: row.jobTitle,
@@ -169,6 +182,8 @@ router.get("/status/:token", async (req, res) => {
       statusOverride: row.checklist.statusOverride || null,
       publicNotes: row.checklist.publicNotes || null,
       updatedAt: row.checklist.updatedAt,
+      companyName: detailSettings?.companyName ?? null,
+      logoUrl: detailSettings?.logoUrl ?? null,
       overallPercent,
       totalItems: activeItems.length,
       completedItems: completedCount,

@@ -9,6 +9,8 @@ type StatusSummary = {
   jobTitle: string;
   statusOverride: string | null;
   overallPercent: number;
+  companyName: string | null;
+  logoUrl: string | null;
 };
 
 type StatusItem = {
@@ -46,6 +48,8 @@ type StatusData = {
   overallPercent: number;
   totalItems: number;
   completedItems: number;
+  companyName: string | null;
+  logoUrl: string | null;
   sections: StatusSection[];
 };
 
@@ -302,7 +306,6 @@ export default function JobStatusPage() {
               : "This link doesn't exist or may have expired. Check the URL and try again."}
           </p>
         </div>
-        <p className="text-xs text-slate-400">Willard's General Contracting</p>
       </div>
     );
   }
@@ -318,10 +321,20 @@ export default function JobStatusPage() {
       <div className="bg-white border-b border-slate-200 px-4 pt-6 pb-5">
         <div className="max-w-lg mx-auto">
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
-              <HardHat className="w-4 h-4 text-amber-600" />
-            </div>
-            <span className="text-sm font-semibold text-slate-600">Willard's General Contracting</span>
+            {summary.logoUrl ? (
+              <img
+                src={summary.logoUrl}
+                alt={summary.companyName ?? "Company logo"}
+                className="w-8 h-8 rounded-lg object-contain"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                <HardHat className="w-4 h-4 text-amber-600" />
+              </div>
+            )}
+            <span className="text-sm font-semibold text-slate-600">
+              {summary.companyName ?? "Your Contractor"}
+            </span>
           </div>
 
           <h1 className="text-xl font-bold text-slate-900 leading-tight mb-1">{summary.jobTitle}</h1>
@@ -404,7 +417,9 @@ export default function JobStatusPage() {
           <p className="text-xs text-slate-400">
             Last updated {formatDateTime(data.updatedAt)}
           </p>
-          <p className="text-xs text-slate-300 mt-1">Willard's General Contracting</p>
+          {(data.companyName || summary.companyName) && (
+            <p className="text-xs text-slate-300 mt-1">{data.companyName ?? summary.companyName}</p>
+          )}
         </div>
       )}
     </div>
