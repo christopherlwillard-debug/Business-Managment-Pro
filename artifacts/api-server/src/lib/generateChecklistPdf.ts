@@ -96,7 +96,7 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     .where(eq(checklistTemplatesTable.id, checklistRow.templateId));
 
   const [settings] = await db
-    .select({ companyName: settingsTable.companyName, signatureImage: settingsTable.signatureImage })
+    .select({ companyName: settingsTable.companyName, signatureImage: settingsTable.signatureImage, logoUrl: settingsTable.logoUrl })
     .from(settingsTable)
     .limit(1);
 
@@ -151,6 +151,26 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   for (const p of rawParts) {
     if (!partsByItemId.has(p.jobChecklistItemId)) partsByItemId.set(p.jobChecklistItemId, []);
     partsByItemId.get(p.jobChecklistItemId)!.push({ label: p.label, completed: p.completed, completedByName: p.completedByName ?? null });
+  }
+
+  // ── Logo image ────────────────────────────────────────────────────────────
+  let logoBuf: Buffer | null = null;
+  if (settings?.logoUrl) {
+    try {
+      const rawPath = settings.logoUrl;
+      if (rawPath.startsWith("/objects/")) {
+        const file = await objStorage.getObjectEntityFile(rawPath);
+        const [buf] = await file.download();
+        logoBuf = buf as Buffer;
+      } else if (rawPath.startsWith("/uploads/") || rawPath.startsWith("/api/uploads/")) {
+        const rel = rawPath.startsWith("/api/uploads/") ? rawPath.slice("/api/uploads/".length) : rawPath.slice("/uploads/".length);
+        const uploadsRoot = path.resolve("uploads");
+        const filePath   = path.resolve(uploadsRoot, rel);
+        if (filePath.startsWith(uploadsRoot + path.sep) && fs.existsSync(filePath)) {
+          logoBuf = fs.readFileSync(filePath);
+        }
+      }
+    } catch { /* skip invalid logo */ }
   }
 
   // ── Signature image ───────────────────────────────────────────────────────
@@ -251,14 +271,20 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   const templateName = template?.name ?? "Checklist";
 
   // ── Header ────────────────────────────────────────────────────────────────
+  const LOGO_W = 110;
+  const LOGO_H = 48;
+  const LOGO_GAP = 12;
+  const textW = logoBuf ? W - LOGO_W - LOGO_GAP : W;
+  const headerStartY = doc.y;
+
   if (companyName) {
     doc.font("Helvetica").fontSize(7.5).fillColor(LGRAY)
-       .text(companyName.toUpperCase(), L, doc.y, { width: W });
+       .text(companyName.toUpperCase(), L, doc.y, { width: textW });
     doc.y += 2;
   }
 
   doc.font("Helvetica-Bold").fontSize(18).fillColor(DARK)
-     .text(jobTitle, L, doc.y, { width: W });
+     .text(jobTitle, L, doc.y, { width: textW });
   doc.y += 3;
 
   const metaParts: string[] = [];
@@ -267,8 +293,18 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   if (loc) metaParts.push(loc);
   if (metaParts.length) {
     doc.font("Helvetica").fontSize(9).fillColor(GRAY)
-       .text(metaParts.join("  ·  "), L, doc.y, { width: W });
+       .text(metaParts.join("  ·  "), L, doc.y, { width: textW });
     doc.y += 3;
+  }
+
+  if (logoBuf) {
+    try {
+      const logoX = R - LOGO_W;
+      doc.image(logoBuf, logoX, headerStartY, { fit: [LOGO_W, LOGO_H], align: "right", valign: "top" });
+      // Ensure doc.y is at least below the logo before drawing the rule
+      const logoBottom = headerStartY + LOGO_H + 4;
+      if (doc.y < logoBottom) doc.y = logoBottom;
+    } catch { /* skip invalid logo */ }
   }
 
   doc.y += 8;
