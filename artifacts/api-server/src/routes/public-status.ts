@@ -16,15 +16,34 @@ import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage"
 
 const objStorage = new ObjectStorageService();
 
-/** Convert a raw DB path to a browser-servable URL (mirrors settings.ts pattern). */
-function toServingUrl(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  if (raw.startsWith("/objects/")) return `/api/storage/objects/${raw.slice("/objects/".length)}`;
-  if (raw.startsWith("/uploads/")) return `/api${raw}`;
-  return raw; // already /api/uploads/... or http://...
-}
-
 const router = Router();
+
+router.get("/business-logo", async (req, res) => {
+  try {
+    const [settings] = await db
+      .select({ logoUrl: settingsTable.logoUrl })
+      .from(settingsTable)
+      .limit(1);
+    if (!settings?.logoUrl) return res.status(404).end();
+    const objectFile = await objStorage.getObjectEntityFile(settings.logoUrl);
+    const response = await objStorage.downloadObject(objectFile, 3600);
+    res.status(response.status);
+    response.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== "cache-control") res.setHeader(key, value);
+    });
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) return res.status(404).end();
+    console.error("business-logo error", err);
+    res.status(500).end();
+  }
+});
 
 router.get("/status/:token/summary", async (req, res) => {
   try {
@@ -75,7 +94,7 @@ router.get("/status/:token/summary", async (req, res) => {
       statusOverride: row.checklist.statusOverride || null,
       overallPercent,
       companyName: settings?.companyName ?? null,
-      logoUrl: toServingUrl(settings?.logoUrl),
+      logoUrl: settings?.logoUrl ? "/api/public/business-logo" : null,
     });
   } catch (err) {
     console.error(err);
@@ -191,7 +210,7 @@ router.get("/status/:token", async (req, res) => {
       publicNotes: row.checklist.publicNotes || null,
       updatedAt: row.checklist.updatedAt,
       companyName: detailSettings?.companyName ?? null,
-      logoUrl: toServingUrl(detailSettings?.logoUrl),
+      logoUrl: detailSettings?.logoUrl ? "/api/public/business-logo" : null,
       overallPercent,
       totalItems: activeItems.length,
       completedItems: completedCount,
