@@ -23,17 +23,33 @@ type StatusItem = {
   sortOrder: number;
   partsTotal: number;
   partsDone: number;
-  photos: { id: number }[];
+  photos: { id: number; createdAt: string | null }[];
+};
+
+type SectionNoteEntry = {
+  id: number;
+  note: string;
+  authorName: string;
+  createdAt: string;
 };
 
 type StatusSection = {
   id: number;
   name: string;
   notes: string | null;
+  noteEntries: SectionNoteEntry[];
   totalItems: number;
   completedItems: number;
   percentComplete: number;
   items: StatusItem[];
+};
+
+type DelayLogEntry = {
+  id: number;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMin: number | null;
 };
 
 type StatusData = {
@@ -50,6 +66,9 @@ type StatusData = {
   completedItems: number;
   companyName: string | null;
   logoUrl: string | null;
+  startPhotos: { id: number; createdAt: string | null }[];
+  startNotes: string | null;
+  delayLog: DelayLogEntry[];
   sections: StatusSection[];
 };
 
@@ -150,7 +169,19 @@ function SectionCard({ section }: { section: StatusSection }) {
 
         {expanded && (
           <div className="border-t border-slate-100 px-4 py-3 space-y-3">
-            {section.notes && (
+            {(section.noteEntries?.length > 0) && (
+              <div className="space-y-2">
+                {section.noteEntries.map(entry => (
+                  <div key={entry.id} className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                    <p className="text-xs text-amber-900 leading-snug">{entry.note}</p>
+                    <p className="text-[10px] text-amber-600 mt-1">
+                      {entry.authorName ? `${entry.authorName} · ` : ""}{formatDateTime(entry.createdAt)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!section.noteEntries?.length && section.notes && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
                 {section.notes}
               </p>
@@ -177,7 +208,7 @@ function SectionCard({ section }: { section: StatusSection }) {
                   </div>
                   {item.completed && item.completedAt && (
                     <p className="text-[11px] text-emerald-600 font-medium mt-0.5">
-                      {formatDate(item.completedAt)}
+                      {formatDateTime(item.completedAt)}
                     </p>
                   )}
                   {item.skipped && (
@@ -189,17 +220,23 @@ function SectionCard({ section }: { section: StatusSection }) {
                   {item.photos.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-1.5">
                       {item.photos.map(photo => (
-                        <button
-                          key={photo.id}
-                          onClick={() => setLightbox(`${BASE}/api/public/checklist-photos/${photo.id}`)}
-                          className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0"
-                        >
-                          <img
-                            src={`${BASE}/api/public/checklist-photos/${photo.id}`}
-                            alt=""
-                            className="w-full h-full object-cover"
-                          />
-                        </button>
+                        <div key={photo.id} className="flex flex-col items-center gap-0.5">
+                          <button
+                            onClick={() => setLightbox(`${BASE}/api/public/checklist-photos/${photo.id}`)}
+                            className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0"
+                          >
+                            <img
+                              src={`${BASE}/api/public/checklist-photos/${photo.id}`}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                          </button>
+                          {photo.createdAt && (
+                            <span className="text-[9px] text-slate-400 text-center leading-tight w-16">
+                              {formatDateTime(photo.createdAt)}
+                            </span>
+                          )}
+                        </div>
                       ))}
                     </div>
                   )}
@@ -408,6 +445,67 @@ export default function JobStatusPage() {
               <SectionCard key={section.id} section={section} />
             ))
           )}
+        </div>
+      )}
+
+      {/* Start-of-job photos */}
+      {data && (data.startPhotos?.length > 0 || data.startNotes) && (
+        <div className="px-4 pt-4">
+          <div className="max-w-lg mx-auto">
+            <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Start-of-Job Photos</p>
+              {data.startNotes && (
+                <p className="text-sm text-slate-700 leading-relaxed mb-3">{data.startNotes}</p>
+              )}
+              {data.startPhotos?.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {data.startPhotos.map(photo => (
+                    <div key={photo.id} className="flex flex-col items-center gap-0.5">
+                      <button
+                        onClick={() => setLightbox(`${BASE}/api/public/start-photos/${photo.id}`)}
+                        className="w-20 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0"
+                      >
+                        <img
+                          src={`${BASE}/api/public/start-photos/${photo.id}`}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                      {photo.createdAt && (
+                        <span className="text-[9px] text-slate-400 text-center w-20">{formatDateTime(photo.createdAt)}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pauses & delays */}
+      {data && data.delayLog?.length > 0 && (
+        <div className="px-4 pt-4">
+          <div className="max-w-lg mx-auto">
+            <details className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+              <summary className="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide cursor-pointer list-none flex items-center justify-between">
+                <span>Pauses &amp; Delays ({data.delayLog.length})</span>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              </summary>
+              <div className="px-4 pb-3 space-y-2">
+                {data.delayLog.map(entry => (
+                  <div key={entry.id} className="bg-slate-50 rounded-xl px-3 py-2">
+                    <p className="text-xs font-semibold text-slate-800">{entry.status}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {formatDateTime(entry.startedAt)}
+                      {entry.endedAt && ` → ${formatDateTime(entry.endedAt)}`}
+                      {entry.durationMin != null && ` · ${entry.durationMin} min`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </details>
+          </div>
         </div>
       )}
 

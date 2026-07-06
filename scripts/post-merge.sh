@@ -780,3 +780,39 @@ echo "Seed response: ${SEED_RESPONSE}"
 if echo "${SEED_RESPONSE}" | grep -q '"error"'; then
   echo "Warning: checklist template seed returned an error — check logs. Continuing." >&2
 fi
+
+# Tasks #1101-#1104: checklist upgrades — start_notes column, new tables
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE job_checklists ADD COLUMN IF NOT EXISTS start_notes text')
+  .then(() => pool.query(\`
+    CREATE TABLE IF NOT EXISTS job_start_photos (
+      id serial PRIMARY KEY NOT NULL,
+      job_checklist_id integer NOT NULL REFERENCES job_checklists(id) ON DELETE CASCADE,
+      object_path text NOT NULL,
+      created_at timestamp DEFAULT now() NOT NULL
+    )
+  \`))
+  .then(() => pool.query(\`
+    CREATE TABLE IF NOT EXISTS job_checklist_status_log (
+      id serial PRIMARY KEY NOT NULL,
+      job_checklist_id integer NOT NULL REFERENCES job_checklists(id) ON DELETE CASCADE,
+      status text NOT NULL,
+      started_at timestamp DEFAULT now() NOT NULL,
+      ended_at timestamp,
+      duration_min integer
+    )
+  \`))
+  .then(() => pool.query(\`
+    CREATE TABLE IF NOT EXISTS job_checklist_section_notes (
+      id serial PRIMARY KEY NOT NULL,
+      job_checklist_section_id integer NOT NULL REFERENCES job_checklist_sections(id) ON DELETE CASCADE,
+      author_name text NOT NULL DEFAULT '',
+      note text NOT NULL,
+      created_at timestamp DEFAULT now() NOT NULL
+    )
+  \`))
+  .then(() => { console.log('checklist upgrade tables/columns ensured'); pool.end(); })
+  .catch(e => { console.error('checklist upgrade migration error:', e.message); pool.end(); process.exit(1); });
+")

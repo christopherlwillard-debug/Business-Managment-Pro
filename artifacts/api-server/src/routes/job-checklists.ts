@@ -11,11 +11,14 @@ import {
   jobChecklistItemPhotosTable,
   jobChecklistItemPartsTable,
   jobFinishedPhotosTable,
+  jobStartPhotosTable,
+  jobChecklistStatusLogTable,
+  jobChecklistSectionNotesTable,
   jobsTable,
   clientsTable,
   settingsTable,
 } from "@workspace/db/schema";
-import { eq, asc, and, inArray } from "drizzle-orm";
+import { eq, asc, desc, and, inArray, isNull } from "drizzle-orm";
 import { getRequestUser } from "./guards";
 import crypto from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -134,7 +137,8 @@ export async function buildChecklistResponse(checklistId: number) {
     .orderBy(asc(jobChecklistItemsTable.sortOrder));
 
   const itemIds = items.map(i => i.id);
-  const [photos, parts, finishedPhotos] = await Promise.all([
+  const sectionIds = sections.map(s => s.id);
+  const [photos, parts, finishedPhotos, startPhotos, statusLog, sectionNoteRows] = await Promise.all([
     itemIds.length > 0
       ? db.select().from(jobChecklistItemPhotosTable).where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, itemIds))
       : Promise.resolve([]),
@@ -142,6 +146,11 @@ export async function buildChecklistResponse(checklistId: number) {
       ? db.select().from(jobChecklistItemPartsTable).where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, itemIds)).orderBy(asc(jobChecklistItemPartsTable.sortOrder))
       : Promise.resolve([]),
     db.select().from(jobFinishedPhotosTable).where(eq(jobFinishedPhotosTable.jobChecklistId, checklistId)).orderBy(asc(jobFinishedPhotosTable.createdAt)),
+    db.select().from(jobStartPhotosTable).where(eq(jobStartPhotosTable.jobChecklistId, checklistId)).orderBy(asc(jobStartPhotosTable.createdAt)),
+    db.select().from(jobChecklistStatusLogTable).where(eq(jobChecklistStatusLogTable.jobChecklistId, checklistId)).orderBy(desc(jobChecklistStatusLogTable.startedAt)).limit(30),
+    sectionIds.length > 0
+      ? db.select().from(jobChecklistSectionNotesTable).where(inArray(jobChecklistSectionNotesTable.jobChecklistSectionId, sectionIds)).orderBy(asc(jobChecklistSectionNotesTable.createdAt))
+      : Promise.resolve([]),
   ]);
 
   const photosByItemId = new Map<number, Array<{ id: number; url: string; createdAt: Date }>>();
@@ -180,8 +189,11 @@ export async function buildChecklistResponse(checklistId: number) {
     totalItems: activeItems.length,
     completedItems: fullyCompletedItems,
     finishedPhotos: finishedPhotos.map(p => ({ id: p.id, url: toServingUrl(p.objectPath), createdAt: p.createdAt })),
+    startPhotos: startPhotos.map(p => ({ id: p.id, url: toServingUrl(p.objectPath), createdAt: p.createdAt })),
+    statusLog,
     sections: sections.map(s => ({
       ...s,
+      noteEntries: sectionNoteRows.filter(n => n.jobChecklistSectionId === s.id),
       items: items.filter(i => i.jobChecklistSectionId === s.id).map(i => ({
         ...i,
         photos: photosByItemId.get(i.id) ?? [],
@@ -341,12 +353,13 @@ router.patch("/:jobId/checklist", async (req, res) => {
       .where(eq(jobChecklistsTable.jobId, jobId));
     if (!checklist) return res.status(404).json({ error: "Checklist not found" });
 
-    const { publicNotes, statusOverride, shareEnabled, finishedNotes } = req.body;
+    const { publicNotes, statusOverride, shareEnabled, finishedNotes, startNotes } = req.body;
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (publicNotes !== undefined) updates.publicNotes = publicNotes;
     if (statusOverride !== undefined) updates.statusOverride = statusOverride;
     if (shareEnabled !== undefined) updates.shareEnabled = shareEnabled;
     if (finishedNotes !== undefined) updates.finishedNotes = finishedNotes;
+    if (startNotes !== undefined) updates.startNotes = startNotes;
 
     await db
       .update(jobChecklistsTable)
@@ -803,6 +816,146 @@ router.delete("/:jobId/checklist/items/:itemId/photos/:photoId", async (req, res
   }
 });
 
+// ── POST /:jobId/checklist/status — Set status + log the change ───────────────
+router.post("/:jobId/checklist/status", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    const [checklist] = await db.select().from(jobChecklistsTable).where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "Checklist not found" });
+
+    const { status } = req.body; // null or string
+    const now = new Date();
+
+    // Close any open log entry
+    const [openEntry] = await db
+      .select()
+      .from(jobChecklistStatusLogTable)
+      .where(and(eq(jobChecklistStatusLogTable.jobChecklistId, checklist.id), isNull(jobChecklistStatusLogTable.endedAt)));
+
+    if (openEntry) {
+      const durationMin = Math.max(0, Math.round((now.getTime() - openEntry.startedAt.getTime()) / 60000));
+      await db.update(jobChecklistStatusLogTable)
+        .set({ endedAt: now, durationMin })
+        .where(eq(jobChecklistStatusLogTable.id, openEntry.id));
+    }
+
+    // Create new entry if not null / "In Progress"
+    if (status && status !== "In Progress") {
+      await db.insert(jobChecklistStatusLogTable).values({
+        jobChecklistId: checklist.id,
+        status,
+        startedAt: now,
+      });
+    }
+
+    await db.update(jobChecklistsTable)
+      .set({ statusOverride: status || null, updatedAt: now })
+      .where(eq(jobChecklistsTable.id, checklist.id));
+
+    const data = await buildChecklistResponse(checklist.id);
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to set status" });
+  }
+});
+
+// ── PATCH /:jobId/checklist/status-log/:logId — Edit timestamps ───────────────
+router.patch("/:jobId/checklist/status-log/:logId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    const logId = parseInt(req.params.logId);
+    if (isNaN(jobId) || isNaN(logId)) return res.status(400).json({ error: "Invalid parameters" });
+
+    const [checklist] = await db.select({ id: jobChecklistsTable.id }).from(jobChecklistsTable).where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "Checklist not found" });
+
+    const [entry] = await db.select().from(jobChecklistStatusLogTable)
+      .where(and(eq(jobChecklistStatusLogTable.id, logId), eq(jobChecklistStatusLogTable.jobChecklistId, checklist.id)));
+    if (!entry) return res.status(404).json({ error: "Log entry not found" });
+
+    const { startedAt, endedAt } = req.body;
+    const updates: Record<string, unknown> = {};
+
+    const newStart = startedAt ? new Date(startedAt) : entry.startedAt;
+    const newEnd = endedAt !== undefined ? (endedAt ? new Date(endedAt) : null) : entry.endedAt;
+
+    updates.startedAt = newStart;
+    updates.endedAt = newEnd;
+
+    if (newStart && newEnd) {
+      updates.durationMin = Math.max(0, Math.round((new Date(newEnd as Date).getTime() - new Date(newStart).getTime()) / 60000));
+    } else {
+      updates.durationMin = null;
+    }
+
+    await db.update(jobChecklistStatusLogTable).set(updates).where(eq(jobChecklistStatusLogTable.id, logId));
+
+    const data = await buildChecklistResponse(checklist.id);
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update log entry" });
+  }
+});
+
+// ── POST /:jobId/checklist/sections/:sectionId/notes ─────────────────────────
+router.post("/:jobId/checklist/sections/:sectionId/notes", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    const sectionId = parseInt(req.params.sectionId);
+    if (isNaN(jobId) || isNaN(sectionId)) return res.status(400).json({ error: "Invalid parameters" });
+
+    const [checklist] = await db.select().from(jobChecklistsTable).where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "Checklist not found" });
+
+    const [section] = await db.select().from(jobChecklistSectionsTable)
+      .where(and(eq(jobChecklistSectionsTable.id, sectionId), eq(jobChecklistSectionsTable.jobChecklistId, checklist.id)));
+    if (!section) return res.status(404).json({ error: "Section not found" });
+
+    const { note, authorName } = req.body;
+    if (!note?.trim()) return res.status(400).json({ error: "Note text is required" });
+
+    await db.insert(jobChecklistSectionNotesTable).values({
+      jobChecklistSectionId: sectionId,
+      note: note.trim(),
+      authorName: (authorName ?? "").trim(),
+    });
+
+    await db.update(jobChecklistsTable).set({ updatedAt: new Date() }).where(eq(jobChecklistsTable.id, checklist.id));
+
+    const data = await buildChecklistResponse(checklist.id);
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to add note" });
+  }
+});
+
+// ── DELETE /:jobId/checklist/sections/:sectionId/notes/:noteId ────────────────
+router.delete("/:jobId/checklist/sections/:sectionId/notes/:noteId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    const sectionId = parseInt(req.params.sectionId);
+    const noteId = parseInt(req.params.noteId);
+    if (isNaN(jobId) || isNaN(sectionId) || isNaN(noteId)) return res.status(400).json({ error: "Invalid parameters" });
+
+    const [checklist] = await db.select({ id: jobChecklistsTable.id }).from(jobChecklistsTable).where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "Checklist not found" });
+
+    await db.delete(jobChecklistSectionNotesTable)
+      .where(and(eq(jobChecklistSectionNotesTable.id, noteId), eq(jobChecklistSectionNotesTable.jobChecklistSectionId, sectionId)));
+
+    await db.update(jobChecklistsTable).set({ updatedAt: new Date() }).where(eq(jobChecklistsTable.id, checklist.id));
+
+    const data = await buildChecklistResponse(checklist.id);
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete note" });
+  }
+});
+
 // ── POST /:jobId/checklist/finished-photos ────────────────────────────────────
 router.post("/:jobId/checklist/finished-photos", photoUpload.array("photos", 20), async (req, res) => {
   try {
@@ -863,6 +1016,69 @@ router.delete("/:jobId/checklist/finished-photos/:photoId", async (req, res) => 
     }
 
     await db.delete(jobFinishedPhotosTable).where(eq(jobFinishedPhotosTable.id, photoId));
+
+    const data = await buildChecklistResponse(checklist.id);
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete photo" });
+  }
+});
+
+// ── POST /:jobId/checklist/start-photos ───────────────────────────────────────
+router.post("/:jobId/checklist/start-photos", photoUpload.array("photos", 20), async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId, 10);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) return res.status(400).json({ error: "No files uploaded" });
+
+    const [checklist] = await db.select({ id: jobChecklistsTable.id }).from(jobChecklistsTable).where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "Checklist not found" });
+
+    const objStorage = new ObjectStorageService();
+    await Promise.all(files.map(async (file) => {
+      const objectPath = await objStorage.uploadBufferWithFilename(
+        file.buffer,
+        file.mimetype,
+        "uploads/start-photos",
+        file.originalname || `photo-${Date.now()}.jpg`,
+      );
+      await db.insert(jobStartPhotosTable).values({ jobChecklistId: checklist.id, objectPath });
+    }));
+
+    const data = await buildChecklistResponse(checklist.id);
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to upload photo" });
+  }
+});
+
+// ── DELETE /:jobId/checklist/start-photos/:photoId ────────────────────────────
+router.delete("/:jobId/checklist/start-photos/:photoId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId, 10);
+    const photoId = parseInt(req.params.photoId, 10);
+    if (isNaN(jobId) || isNaN(photoId)) return res.status(400).json({ error: "Invalid parameters" });
+
+    const [photo] = await db.select().from(jobStartPhotosTable).where(eq(jobStartPhotosTable.id, photoId));
+    if (!photo) return res.status(404).json({ error: "Photo not found" });
+
+    const [checklist] = await db
+      .select({ id: jobChecklistsTable.id, jobId: jobChecklistsTable.jobId })
+      .from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.id, photo.jobChecklistId));
+    if (!checklist || checklist.jobId !== jobId) return res.status(403).json({ error: "Photo does not belong to this job" });
+
+    if (photo.objectPath.startsWith("/objects/")) {
+      try {
+        const objStorage = new ObjectStorageService();
+        await objStorage.deleteObject(photo.objectPath);
+      } catch { /* best-effort */ }
+    }
+
+    await db.delete(jobStartPhotosTable).where(eq(jobStartPhotosTable.id, photoId));
 
     const data = await buildChecklistResponse(checklist.id);
     res.json(data);

@@ -1,0 +1,252 @@
+Feature Request: Transform the Checklist into a Complete Job Timeline
+
+Overview
+
+The current checklist works well for marking tasks complete, but it does not tell the complete story of the work performed. Once a comment is edited, previous information is mixed together or lost. Photos are attached to checklist items but do not show the progression of the work throughout the day.
+
+I want to evolve the checklist into a living project timeline that automatically documents everything from the moment the crew arrives until the job is complete. The checklist should become a project history, not just a list of completed items.
+
+Running Comment History
+
+Currently each checklist item only supports one comment. If I need to update the comment later, I have to edit the original note. This causes multiple updates to become one long paragraph, making it difficult to understand what happened and when.
+
+Instead, every new comment should create a new entry in a running history. Previous comments should never be overwritten.
+
+Example:
+
+9:12 AM - Chris Willard
+Waiting on water crew to finish running water lines.
+
+11:47 AM - Chris Willard
+Water crew finished.
+
+12:05 PM - Chris Willard
+Started pressure testing.
+
+2:18 PM - Chris Willard
+Pressure test passed with no leaks.
+
+3:40 PM - Chris Willard
+Crew complete.
+
+This preserves the entire history of the job and makes communication much clearer.
+
+Automatic Timestamps
+
+Every action should automatically record the date, time, and user who performed it.
+
+Instead of only showing “July 6, 2026,” the checklist should show exactly when each event occurred.
+
+For example:
+
+July 6, 2026
+
+9:14 AM - Drain connected
+
+11:36 AM - Sewer connected
+
+1:02 PM - Proper drain slope verified
+
+2:18 PM - Pressure test completed
+
+3:47 PM - Final inspection completed
+
+This would provide much better documentation for warranty work, customer questions, and internal records.
+
+Photo Progress Timeline
+
+Photos should not simply appear underneath a completed checklist item. Every photo upload should become its own event in the timeline.
+
+Example:
+
+10:15 AM
+Drain line installed
+3 photos
+
+11:42 AM
+Final 90 installed
+2 photos
+
+2:20 PM
+Pressure test completed
+4 photos
+
+This creates a visual history of the project instead of just a collection of finished photos.
+
+Unified Activity Feed
+
+Every action inside a checklist should automatically create an activity entry.
+
+Examples include:
+
+Checklist completed
+
+Comment added
+
+Photo uploaded
+
+Split assigned
+
+Marked N/A
+
+Checklist reopened
+
+Checklist completed again
+
+The activity feed should provide a complete audit trail without requiring additional work from the crew.
+
+Progress Photo Categories
+
+Instead of only having “Finished Work Photos,” allow separate categories such as:
+
+Before Work
+
+During Work
+
+Finished Work
+
+Warranty or Service Photos
+
+This keeps project documentation organized and makes it easier to review later.
+
+Daily Work Log
+
+For jobs lasting multiple days, automatically organize activity by day.
+
+For example:
+
+Monday
+
+8 photos
+
+14 comments
+
+12 checklist items completed
+
+Tuesday
+
+6 photos
+
+10 comments
+
+8 checklist items completed
+
+Wednesday
+
+Final cleanup
+
+Inspection
+
+Customer walkthrough
+
+This makes longer jobs much easier to review.
+
+Photo Captions
+
+Allow comments to be attached directly to each uploaded photo.
+
+Examples:
+
+Installed final 90 into existing sewer.
+
+Customer requested pipe moved six inches.
+
+Pressure test passed with no leaks.
+
+This turns photos into searchable documentation instead of just images.
+
+Status Updates
+
+Sometimes work pauses even though no checklist items have been completed.
+
+Allow crews to add status updates such as:
+
+Waiting on water crew
+
+Waiting on electrician
+
+Waiting on inspection
+
+Rain delay
+
+Homeowner not available
+
+Material delivery delayed
+
+These updates should appear within the project timeline.
+
+Task Duration Tracking
+
+Automatically record when work begins and when it is completed.
+
+Example:
+
+Drain Connection
+
+Started at 9:05 AM
+
+Completed at 10:42 AM
+
+Duration: 1 hour 37 minutes
+
+This information can later be used for labor analytics and estimating future jobs.
+
+Crew Activity
+
+Instead of simply showing who completed a checklist item, record every action performed by every crew member.
+
+For example:
+
+Chris completed checklist.
+
+Dewayne uploaded six photos.
+
+Mike added a comment.
+
+Chris completed final inspection.
+
+This provides accountability and a complete history of crew activity.
+
+Comment Types
+
+Allow comments to be categorized.
+
+Suggested categories include:
+
+Progress
+
+Waiting
+
+Issue
+
+Information
+
+Examples:
+
+Waiting on water crew.
+
+Broken cleanout discovered.
+
+Pressure test passed.
+
+This helps important updates stand out from normal comments.
+
+Better Progress Display
+
+Instead of simply displaying “6 of 8 completed,” provide a more detailed progress summary.
+
+For example:
+
+75% Complete
+
+6 of 8 checklist items finished
+
+2 checklist items remaining
+
+Estimated time remaining: 20 minutes
+
+This gives crews and office staff a better understanding of job progress.
+
+Continue Work Without Losing History
+
+If work needs to continue after a checklist item has already been completed, users should not edit the original

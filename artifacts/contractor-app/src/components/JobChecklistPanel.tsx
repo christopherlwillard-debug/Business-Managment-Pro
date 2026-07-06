@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft, X, ClipboardCheck, Plus, Check, Minus, ChevronDown, ChevronUp,
   Share2, ExternalLink, AlertCircle, Loader2, Copy, ToggleLeft, ToggleRight, Trash2,
-  MessageSquare, FileDown, Mail, Camera,
+  MessageSquare, FileDown, Mail, Camera, Pencil, Clock, PauseCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -43,11 +43,27 @@ interface ChecklistItem {
   parts: ChecklistItemPart[];
 }
 
+interface SectionNoteEntry {
+  id: number;
+  note: string;
+  authorName: string;
+  createdAt: string;
+}
+
+interface StatusLogEntry {
+  id: number;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMin: number | null;
+}
+
 interface ChecklistSection {
   id: number;
   name: string;
   active: boolean;
   notes: string | null;
+  noteEntries: SectionNoteEntry[];
   percentComplete: string;
   sortOrder: number;
   items: ChecklistItem[];
@@ -61,11 +77,14 @@ interface JobChecklist {
   shareEnabled: boolean;
   statusOverride: string | null;
   publicNotes: string | null;
+  startNotes: string | null;
   overallPercent: number;
   totalItems: number;
   completedItems: number;
   finishedNotes: string | null;
   finishedPhotos: ChecklistFinishedPhoto[];
+  startPhotos: ChecklistFinishedPhoto[];
+  statusLog: StatusLogEntry[];
   sections: ChecklistSection[];
 }
 
@@ -90,6 +109,27 @@ function formatDate(iso: string | null) {
   const d = new Date(iso);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
+
+function formatDateTime(iso: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function toLocalDatetimeInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const STATUS_BUTTONS = [
+  "Weather Delay",
+  "Waiting on Parts",
+  "Waiting on Inspection",
+  "Waiting on Other Crew",
+  "Homeowner Not Available",
+];
 
 const MAX_RAW_FILE_MB = 20;
 const MAX_WIDTH_PX = 1200;
@@ -167,6 +207,18 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const [addingPartTo, setAddingPartTo] = useState<number | null>(null);
   const [flashedSectionId, setFlashedSectionId] = useState<number | null>(null);
   const [flashOverall, setFlashOverall] = useState(false);
+  const [startNotesDraft, setStartNotesDraft] = useState("");
+  const [savingStartNotes, setSavingStartNotes] = useState(false);
+  const [uploadingStartPhotos, setUploadingStartPhotos] = useState(false);
+  const [deletingStartPhoto, setDeletingStartPhoto] = useState<number | null>(null);
+  const [settingStatus, setSettingStatus] = useState(false);
+  const [editingLogEntry, setEditingLogEntry] = useState<number | null>(null);
+  const [logEditDraft, setLogEditDraft] = useState<Record<number, { startedAt: string; endedAt: string }>>({});
+  const [savingLogEdit, setSavingLogEdit] = useState<number | null>(null);
+  const [addingNoteFor, setAddingNoteFor] = useState<number | null>(null);
+  const [noteDraftForSection, setNoteDraftForSection] = useState<Record<number, string>>({});
+  const [savingNoteFor, setSavingNoteFor] = useState<number | null>(null);
+  const [deletingNote, setDeletingNote] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -179,6 +231,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
           setPublicNotes(data.publicNotes ?? "");
           setStatusOverride(data.statusOverride ?? "");
           setFinishedNotesDraft(data.finishedNotes ?? "");
+          setStartNotesDraft(data.startNotes ?? "");
           const notes: Record<number, string> = {};
           for (const s of data.sections) notes[s.id] = s.notes ?? "";
           setSectionNotes(notes);
@@ -227,6 +280,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
       setPublicNotes(data.publicNotes ?? "");
       setStatusOverride(data.statusOverride ?? "");
       setFinishedNotesDraft(data.finishedNotes ?? "");
+      setStartNotesDraft(data.startNotes ?? "");
       const notes: Record<number, string> = {};
       for (const s of data.sections) notes[s.id] = s.notes ?? "";
       setSectionNotes(notes);
@@ -356,6 +410,165 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
       toast({ title: "Failed to save", variant: "destructive" });
     } finally {
       setSavingMeta(false);
+    }
+  }
+
+  async function saveStartNotes() {
+    setSavingStartNotes(true);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startNotes: startNotesDraft }),
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+    } catch {
+      toast({ title: "Failed to save start notes", variant: "destructive" });
+    } finally {
+      setSavingStartNotes(false);
+    }
+  }
+
+  async function handleStartPhotoUpload(files: FileList | File[]) {
+    const fileArr = Array.from(files);
+    if (fileArr.length === 0) return;
+    const oversized = fileArr.filter(f => f.size > MAX_RAW_FILE_MB * 1024 * 1024);
+    if (oversized.length > 0) {
+      toast({ title: "Photo too large", description: `Each photo must be under ${MAX_RAW_FILE_MB} MB.`, variant: "destructive" });
+      return;
+    }
+    setUploadingStartPhotos(true);
+    try {
+      const compressed = await Promise.all(fileArr.map(f => compressImage(f)));
+      const form = new FormData();
+      for (const file of compressed) form.append("photos", file);
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/start-photos`, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+    } catch {
+      toast({ title: "Failed to upload photo", variant: "destructive" });
+    } finally {
+      setUploadingStartPhotos(false);
+    }
+  }
+
+  async function handleStartPhotoDelete(photoId: number) {
+    setDeletingStartPhoto(photoId);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/start-photos/${photoId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+    } catch {
+      toast({ title: "Failed to delete photo", variant: "destructive" });
+    } finally {
+      setDeletingStartPhoto(null);
+    }
+  }
+
+  async function setChecklistStatus(status: string | null) {
+    setSettingStatus(true);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/status`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+      setStatusOverride(status ?? "");
+    } catch {
+      toast({ title: "Failed to set status", variant: "destructive" });
+    } finally {
+      setSettingStatus(false);
+    }
+  }
+
+  function beginLogEdit(entry: StatusLogEntry) {
+    setLogEditDraft(prev => ({
+      ...prev,
+      [entry.id]: {
+        startedAt: toLocalDatetimeInput(entry.startedAt),
+        endedAt: toLocalDatetimeInput(entry.endedAt),
+      },
+    }));
+    setEditingLogEntry(entry.id);
+  }
+
+  async function saveLogEntryEdit(logId: number) {
+    setSavingLogEdit(logId);
+    try {
+      const draft = logEditDraft[logId];
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/status-log/${logId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startedAt: draft.startedAt ? new Date(draft.startedAt).toISOString() : undefined,
+          endedAt: draft.endedAt ? new Date(draft.endedAt).toISOString() : null,
+        }),
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+      setEditingLogEntry(null);
+    } catch {
+      toast({ title: "Failed to save edit", variant: "destructive" });
+    } finally {
+      setSavingLogEdit(null);
+    }
+  }
+
+  async function addSectionNote(sectionId: number) {
+    const note = (noteDraftForSection[sectionId] ?? "").trim();
+    if (!note) return;
+    setSavingNoteFor(sectionId);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/sections/${sectionId}/notes`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note }),
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+      setNoteDraftForSection(prev => ({ ...prev, [sectionId]: "" }));
+      setAddingNoteFor(null);
+    } catch {
+      toast({ title: "Failed to add note", variant: "destructive" });
+    } finally {
+      setSavingNoteFor(null);
+    }
+  }
+
+  async function deleteSectionNote(sectionId: number, noteId: number) {
+    setDeletingNote(noteId);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/sections/${sectionId}/notes/${noteId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+    } catch {
+      toast({ title: "Failed to delete note", variant: "destructive" });
+    } finally {
+      setDeletingNote(null);
     }
   }
 
@@ -1140,27 +1353,141 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                             </div>
                           ))}
 
-                          {/* Section notes */}
-                          {canEdit("jobs") && section.active && (
-                            <div className="pt-1 pb-2">
-                              <textarea
-                                value={sectionNotes[section.id] ?? ""}
-                                onChange={e => setSectionNotes(prev => ({ ...prev, [section.id]: e.target.value }))}
-                                onBlur={() => saveSectionNotes(section.id)}
-                                placeholder="Section notes (delays, context)…"
-                                rows={2}
-                                className="w-full text-xs px-3 py-2 rounded-xl border border-border bg-muted/20 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/30 resize-none"
-                              />
+                          {/* Section update thread */}
+                          {section.active && (
+                            <div className="pt-2 pb-1 space-y-1.5">
+                              {(section.noteEntries ?? []).map(entry => (
+                                <div key={entry.id} className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-start gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs text-amber-900 leading-snug">{entry.note}</p>
+                                    <p className="text-[10px] text-amber-600 mt-0.5">{formatDateTime(entry.createdAt)}</p>
+                                  </div>
+                                  {canEdit("jobs") && (
+                                    <button
+                                      onClick={() => deleteSectionNote(section.id, entry.id)}
+                                      disabled={deletingNote === entry.id}
+                                      className="text-amber-400 hover:text-red-500 transition-colors flex-shrink-0 mt-0.5"
+                                    >
+                                      {deletingNote === entry.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              {canEdit("jobs") && addingNoteFor === section.id ? (
+                                <div className="space-y-1">
+                                  <textarea
+                                    value={noteDraftForSection[section.id] ?? ""}
+                                    onChange={e => setNoteDraftForSection(prev => ({ ...prev, [section.id]: e.target.value }))}
+                                    placeholder="Update (delay, context, issue)…"
+                                    rows={2}
+                                    autoFocus
+                                    className="w-full text-xs px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-amber-300/40 resize-none"
+                                  />
+                                  <div className="flex gap-1.5">
+                                    <button
+                                      onClick={() => addSectionNote(section.id)}
+                                      disabled={savingNoteFor === section.id || !(noteDraftForSection[section.id] ?? "").trim()}
+                                      className="text-[11px] px-3 py-1 rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                                    >
+                                      {savingNoteFor === section.id ? "Saving…" : "Add"}
+                                    </button>
+                                    <button
+                                      onClick={() => setAddingNoteFor(null)}
+                                      className="text-[11px] px-3 py-1 rounded-lg border border-border text-muted-foreground hover:bg-muted/30 transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : canEdit("jobs") ? (
+                                <button
+                                  onClick={() => setAddingNoteFor(section.id)}
+                                  className="text-[11px] text-amber-600 hover:text-amber-700 flex items-center gap-1 transition-colors"
+                                >
+                                  <Plus className="w-3 h-3" /> Add update
+                                </button>
+                              ) : null}
                             </div>
-                          )}
-                          {!canEdit("jobs") && section.notes && (
-                            <p className="text-xs text-muted-foreground italic pb-2 px-1">{section.notes}</p>
                           )}
                         </div>
                       )}
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Start-of-Job Photos */}
+              <div className="px-5 py-4 border-t border-border/50">
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-3">
+                  <Camera className="w-3 h-3" /> Start-of-Job Photos
+                </p>
+                {(checklist.startPhotos ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {(checklist.startPhotos ?? []).map(photo => (
+                      <div key={photo.id} className="relative group flex flex-col items-center gap-0.5">
+                        <img
+                          src={`${BASE}${photo.url}`}
+                          alt="Start photo"
+                          className="w-20 h-16 object-cover rounded-lg border border-border cursor-pointer"
+                          onClick={() => setLightboxPhoto(`${BASE}${photo.url}`)}
+                        />
+                        {photo.createdAt && (
+                          <span className="text-[9px] text-muted-foreground text-center w-20">{formatDateTime(photo.createdAt)}</span>
+                        )}
+                        {canEdit("jobs") && (
+                          <button
+                            onClick={() => handleStartPhotoDelete(photo.id)}
+                            disabled={deletingStartPhoto === photo.id}
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center transition-opacity [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100"
+                          >
+                            {deletingStartPhoto === photo.id
+                              ? <Loader2 className="w-2 h-2 animate-spin" />
+                              : <X className="w-2 h-2" />}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {canEdit("jobs") && (
+                  <div className="space-y-2">
+                    <textarea
+                      value={startNotesDraft}
+                      onChange={e => setStartNotesDraft(e.target.value)}
+                      onBlur={saveStartNotes}
+                      placeholder="Start-of-job notes (site conditions, access, context)…"
+                      rows={2}
+                      className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-border bg-muted/20 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/30 resize-none"
+                    />
+                    {savingStartNotes && (
+                      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin" /> Saving…
+                      </p>
+                    )}
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={e => {
+                          const files = e.target.files;
+                          if (files && files.length > 0) handleStartPhotoUpload(files);
+                          e.target.value = "";
+                        }}
+                      />
+                      {uploadingStartPhotos
+                        ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading…</>
+                        : <><Camera className="w-3.5 h-3.5" /> Add start-of-job photos</>}
+                    </label>
+                  </div>
+                )}
+                {!canEdit("jobs") && checklist.startNotes && (
+                  <p className="text-xs text-muted-foreground italic">{checklist.startNotes}</p>
+                )}
+                {(checklist.startPhotos ?? []).length === 0 && !canEdit("jobs") && !checklist.startNotes && (
+                  <p className="text-xs text-muted-foreground italic">No start-of-job photos yet.</p>
+                )}
               </div>
 
               {/* Finished Work Photos */}
@@ -1237,24 +1564,121 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                 )}
               </div>
 
-              {/* Meta: publicNotes + statusOverride */}
+              {/* Status / delay log */}
+              {canEdit("jobs") && (
+                <div className="px-5 py-4 border-t border-border/50 space-y-3">
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <PauseCircle className="w-3 h-3" /> Job Status
+                  </p>
+                  {/* Current status badge */}
+                  {checklist.statusOverride && (
+                    <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                      <span className="text-xs font-semibold text-amber-800">{checklist.statusOverride}</span>
+                      <button
+                        onClick={() => setChecklistStatus(null)}
+                        disabled={settingStatus}
+                        className="text-amber-400 hover:text-red-500 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                  {/* Quick-tap delay buttons */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {STATUS_BUTTONS.map(s => (
+                      <button
+                        key={s}
+                        onClick={() => setChecklistStatus(checklist.statusOverride === s ? null : s)}
+                        disabled={settingStatus}
+                        className={`text-[11px] px-2.5 py-1 rounded-full border font-medium transition-colors disabled:opacity-60 ${
+                          checklist.statusOverride === s
+                            ? "bg-amber-500 border-amber-500 text-white"
+                            : "border-border text-muted-foreground hover:bg-muted/40"
+                        }`}
+                      >
+                        {settingStatus && checklist.statusOverride === s ? <Loader2 className="w-3 h-3 animate-spin inline" /> : s}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Status log history */}
+                  {(checklist.statusLog ?? []).length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Pauses &amp; Delays</p>
+                      {(checklist.statusLog ?? []).map(entry => (
+                        <div key={entry.id} className="bg-muted/20 rounded-xl px-3 py-2">
+                          {editingLogEntry === entry.id ? (
+                            <div className="space-y-1.5">
+                              <p className="text-[10px] font-semibold text-muted-foreground">{entry.status}</p>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                <div>
+                                  <label className="text-[10px] text-muted-foreground">Started</label>
+                                  <input
+                                    type="datetime-local"
+                                    value={logEditDraft[entry.id]?.startedAt ?? ""}
+                                    onChange={e => setLogEditDraft(prev => ({ ...prev, [entry.id]: { ...prev[entry.id], startedAt: e.target.value } }))}
+                                    className="w-full text-[11px] px-2 py-1 rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] text-muted-foreground">Ended</label>
+                                  <input
+                                    type="datetime-local"
+                                    value={logEditDraft[entry.id]?.endedAt ?? ""}
+                                    onChange={e => setLogEditDraft(prev => ({ ...prev, [entry.id]: { ...prev[entry.id], endedAt: e.target.value } }))}
+                                    className="w-full text-[11px] px-2 py-1 rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex gap-1.5">
+                                <button
+                                  onClick={() => saveLogEntryEdit(entry.id)}
+                                  disabled={savingLogEdit === entry.id}
+                                  className="text-[11px] px-3 py-1 rounded-lg bg-emerald-500 text-white font-semibold hover:bg-emerald-600 disabled:opacity-50"
+                                >
+                                  {savingLogEdit === entry.id ? "Saving…" : "Save"}
+                                </button>
+                                <button
+                                  onClick={() => setEditingLogEntry(null)}
+                                  className="text-[11px] px-3 py-1 rounded-lg border border-border text-muted-foreground hover:bg-muted/30"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="text-[11px] font-semibold text-foreground">{entry.status}</p>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">
+                                  <Clock className="w-2.5 h-2.5 inline mr-0.5" />
+                                  {formatDateTime(entry.startedAt)}
+                                  {entry.endedAt && ` → ${formatDateTime(entry.endedAt)}`}
+                                  {entry.durationMin != null && ` (${entry.durationMin} min)`}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => beginLogEdit(entry)}
+                                className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                                title="Edit timestamps"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Meta: publicNotes + save */}
               {canEdit("jobs") && (
                 <div className="px-5 py-4 border-t border-border/50 space-y-3">
                   <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                     <Share2 className="w-3 h-3" /> Public Status Page
                   </p>
                   <div className="space-y-2">
-                    <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Status Override</label>
-                      <input
-                        type="text"
-                        value={statusOverride}
-                        onChange={e => setStatusOverride(e.target.value)}
-                        placeholder="e.g. Waiting on Factory Parts, Weather Delay…"
-                        className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
-                      />
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Leave blank to show auto-calculated progress</p>
-                    </div>
                     <div>
                       <label className="block text-xs font-semibold text-muted-foreground mb-1">Public Note</label>
                       <textarea
