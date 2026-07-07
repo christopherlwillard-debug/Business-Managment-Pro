@@ -201,7 +201,7 @@ function useReserveSummary(year: number) {
 }
 
 // ─── Growth Fund Deployments Hooks ────────────────────────────────────────────
-type GrowthFundDeployment = { id: number; date: string; description: string; amount: number; createdAt: string };
+type GrowthFundDeployment = { id: number; date: string; description: string; notes?: string | null; amount: number; createdAt: string };
 
 function useGrowthFundDeployments(year: number) {
   return useQuery<GrowthFundDeployment[]>({
@@ -217,7 +217,7 @@ function useGrowthFundDeployments(year: number) {
 function useCreateGrowthFundDeployment(year: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { date: string; description: string; amount: string }) => {
+    mutationFn: async (data: { date: string; description: string; amount: string; notes?: string }) => {
       const res = await fetch(`${BASE}/api/reports/growth-fund-deployments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -254,6 +254,7 @@ function ReserveCard({ year }: { year: number }) {
   const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [formDesc, setFormDesc] = useState("");
   const [formAmount, setFormAmount] = useState("");
+  const [formNotes, setFormNotes] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
   const ytd = data?.ytd ?? { taxReserve: 0, growthFund: 0, ownerShare: 0, takeHome: 0, revenue: 0, subLaborCost: 0 };
@@ -281,10 +282,11 @@ function ReserveCard({ year }: { year: number }) {
       return;
     }
     try {
-      await createDeployment.mutateAsync({ date: formDate, description: formDesc.trim(), amount: formAmount });
+      await createDeployment.mutateAsync({ date: formDate, description: formDesc.trim(), amount: formAmount, notes: formNotes.trim() || undefined });
       setShowForm(false);
       setFormDesc("");
       setFormAmount("");
+      setFormNotes("");
       setFormError(null);
       toast({ title: "Investment logged" });
     } catch (err: any) {
@@ -381,6 +383,16 @@ function ReserveCard({ year }: { year: number }) {
                   className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background"
                 />
               </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-0.5">Notes <span className="text-muted-foreground/60">(optional)</span></label>
+                <textarea
+                  placeholder="e.g. Invoice #1042, partial payment"
+                  value={formNotes}
+                  onChange={e => setFormNotes(e.target.value)}
+                  rows={2}
+                  className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background resize-none"
+                />
+              </div>
               {formError && (
                 <p className="text-[10px] text-red-600 font-medium">{formError}</p>
               )}
@@ -393,7 +405,7 @@ function ReserveCard({ year }: { year: number }) {
                   {createDeployment.isPending ? "Saving…" : "Save"}
                 </button>
                 <button
-                  onClick={() => { setShowForm(false); setFormError(null); setFormDesc(""); setFormAmount(""); }}
+                  onClick={() => { setShowForm(false); setFormError(null); setFormDesc(""); setFormAmount(""); setFormNotes(""); }}
                   className="flex-1 text-xs font-semibold border border-border rounded-md py-1.5 text-muted-foreground hover:bg-muted/40"
                 >
                   Cancel
@@ -417,6 +429,7 @@ function ReserveCard({ year }: { year: number }) {
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-foreground truncate">{d.description}</p>
                       <p className="text-[10px] text-muted-foreground">{label}</p>
+                      {d.notes && <p className="text-[10px] text-muted-foreground/80 italic truncate">{d.notes}</p>}
                     </div>
                     <span className="text-xs font-semibold text-blue-800 shrink-0">{formatCurrency(d.amount)}</span>
                     <button
