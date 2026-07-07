@@ -899,6 +899,27 @@ router.patch("/:jobId/checklist/status-log/:logId", async (req, res) => {
   }
 });
 
+// ── DELETE /:jobId/checklist/status-log/:logId ────────────────────────────────
+router.delete("/:jobId/checklist/status-log/:logId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    const logId = parseInt(req.params.logId);
+    if (isNaN(jobId) || isNaN(logId)) return res.status(400).json({ error: "Invalid parameters" });
+
+    const [checklist] = await db.select({ id: jobChecklistsTable.id }).from(jobChecklistsTable).where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "Checklist not found" });
+
+    await db.delete(jobChecklistStatusLogTable)
+      .where(and(eq(jobChecklistStatusLogTable.id, logId), eq(jobChecklistStatusLogTable.jobChecklistId, checklist.id)));
+
+    const data = await buildChecklistResponse(checklist.id);
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete log entry" });
+  }
+});
+
 // ── POST /:jobId/checklist/sections/:sectionId/notes ─────────────────────────
 router.post("/:jobId/checklist/sections/:sectionId/notes", async (req, res) => {
   try {

@@ -215,6 +215,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const [editingLogEntry, setEditingLogEntry] = useState<number | null>(null);
   const [logEditDraft, setLogEditDraft] = useState<Record<number, { startedAt: string; endedAt: string }>>({});
   const [savingLogEdit, setSavingLogEdit] = useState<number | null>(null);
+  const [deletingLogEntry, setDeletingLogEntry] = useState<number | null>(null);
   const [addingNoteFor, setAddingNoteFor] = useState<number | null>(null);
   const [noteDraftForSection, setNoteDraftForSection] = useState<Record<number, string>>({});
   const [savingNoteFor, setSavingNoteFor] = useState<number | null>(null);
@@ -529,6 +530,23 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
       toast({ title: "Failed to save edit", variant: "destructive" });
     } finally {
       setSavingLogEdit(null);
+    }
+  }
+
+  async function deleteLogEntry(logId: number) {
+    setDeletingLogEntry(logId);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/status-log/${logId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+    } catch {
+      toast({ title: "Failed to delete entry", variant: "destructive" });
+    } finally {
+      setDeletingLogEntry(null);
     }
   }
 
@@ -1656,13 +1674,25 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                                   {entry.durationMin != null && ` (${entry.durationMin} min)`}
                                 </p>
                               </div>
-                              <button
-                                onClick={() => beginLogEdit(entry)}
-                                className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-                                title="Edit timestamps"
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </button>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <button
+                                  onClick={() => beginLogEdit(entry)}
+                                  className="text-muted-foreground hover:text-foreground transition-colors"
+                                  title="Edit timestamps"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => deleteLogEntry(entry.id)}
+                                  disabled={deletingLogEntry === entry.id}
+                                  className="text-muted-foreground hover:text-destructive transition-colors"
+                                  title="Delete entry"
+                                >
+                                  {deletingLogEntry === entry.id
+                                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                                    : <Trash2 className="w-3 h-3" />}
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
