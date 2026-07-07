@@ -816,3 +816,22 @@ pool.query('ALTER TABLE job_checklists ADD COLUMN IF NOT EXISTS start_notes text
   .then(() => { console.log('checklist upgrade tables/columns ensured'); pool.end(); })
   .catch(e => { console.error('checklist upgrade migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #1107: create growth_fund_deployments table (idempotent)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS growth_fund_deployments (
+    id serial PRIMARY KEY NOT NULL,
+    business_id integer,
+    created_by text,
+    date text NOT NULL,
+    description text NOT NULL,
+    amount numeric(12, 2) NOT NULL,
+    notes text,
+    created_at timestamp DEFAULT now() NOT NULL
+  )
+\`).then(() => { console.log('growth_fund_deployments table ensured'); pool.end(); })
+  .catch(e => { console.error('growth_fund_deployments migration error:', e.message); pool.end(); process.exit(1); });
+")

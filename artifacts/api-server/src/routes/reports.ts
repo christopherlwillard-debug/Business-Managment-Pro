@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable } from "@workspace/db/schema";
+import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable, growthFundDeploymentsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, sum, ne, inArray, sql, count, isNull } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
@@ -1470,6 +1470,105 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
   } catch (err) {
     console.error("[owner-pay-summary]", err);
     res.status(500).json({ error: "Failed to compute owner pay summary" });
+  }
+});
+
+// ─── Growth Fund Deployments ──────────────────────────────────────────────────
+router.get("/growth-fund-deployments", sectionGuard("jobs"), async (req, res) => {
+  try {
+    const year = parseInt(req.query.year as string) || new Date().getFullYear();
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+    const rows = await db.select().from(growthFundDeploymentsTable)
+      .where(and(gte(growthFundDeploymentsTable.date, startDate), lte(growthFundDeploymentsTable.date, endDate)))
+      .orderBy(growthFundDeploymentsTable.date);
+    res.json(rows.map(r => ({ ...r, amount: parseFloat(r.amount ?? "0") })));
+  } catch (err) {
+    console.error("[growth-fund-deployments GET]", err);
+    res.status(500).json({ error: "Failed to load growth fund deployments" });
+  }
+});
+
+router.post("/growth-fund-deployments", sectionGuard("jobs"), async (req, res) => {
+  try {
+    const { date, description, amount, notes } = req.body;
+    if (!date || !description || !amount) {
+      return res.status(400).json({ error: "date, description, and amount are required" });
+    }
+    const newAmount = parseFloat(String(amount));
+    if (isNaN(newAmount) || newAmount <= 0) {
+      return res.status(400).json({ error: "amount must be a positive number" });
+    }
+
+    const year = parseInt((date as string).substring(0, 4));
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    const GROWTH_PCT = 0.05;
+    const OWNER_PCT = 0.50;
+    const TAX_PCT = 0.25;
+
+    const invoices = await db.select({
+      jobId: invoicesTable.jobId,
+      total: invoicesTable.total,
+      status: invoicesTable.status,
+      issueDate: invoicesTable.issueDate,
+    }).from(invoicesTable)
+      .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), ne(invoicesTable.status, "draft")));
+
+    const jobIds = [...new Set(invoices.map(i => i.jobId).filter((id): id is number => id != null))];
+    let accumulated = 0;
+    if (jobIds.length > 0) {
+      const subHoursRows = await db.select({
+        jobId: jobSubHoursTable.jobId,
+        cost: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
+      }).from(jobSubHoursTable).where(inArray(jobSubHoursTable.jobId, jobIds)).groupBy(jobSubHoursTable.jobId);
+      const hoursCostByJob = new Map(subHoursRows.map(r => [r.jobId, parseFloat(r.cost ?? "0")]));
+      for (const inv of invoices) {
+        if (!inv.jobId) continue;
+        const revenue = inv.status === "paid" ? parseFloat(inv.total ?? "0") : 0;
+        const subLaborCost = hoursCostByJob.get(inv.jobId) ?? 0;
+        const afterSubs = Math.max(0, revenue - subLaborCost);
+        accumulated += afterSubs * GROWTH_PCT;
+      }
+    }
+
+    const existingRows = await db.select({ amount: growthFundDeploymentsTable.amount })
+      .from(growthFundDeploymentsTable)
+      .where(and(gte(growthFundDeploymentsTable.date, startDate), lte(growthFundDeploymentsTable.date, endDate)));
+    const totalInvested = existingRows.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
+    const available = accumulated - totalInvested;
+
+    if (newAmount > available + 0.005) {
+      const fmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(available);
+      return res.status(422).json({ error: `Investment would exceed available growth fund balance of ${fmt}` });
+    }
+
+    const user = (req as any).user;
+    const [inserted] = await db.insert(growthFundDeploymentsTable).values({
+      date: date as string,
+      description: description as string,
+      amount: String(newAmount),
+      notes: notes ?? null,
+      createdBy: user?.username ?? user?.email ?? null,
+    }).returning();
+
+    res.status(201).json({ ...inserted, amount: parseFloat(inserted.amount ?? "0") });
+  } catch (err) {
+    console.error("[growth-fund-deployments POST]", err);
+    res.status(500).json({ error: "Failed to save growth fund deployment" });
+  }
+});
+
+router.delete("/growth-fund-deployments/:id", sectionGuard("jobs"), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    await db.delete(growthFundDeploymentsTable).where(eq(growthFundDeploymentsTable.id, id));
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[growth-fund-deployments DELETE]", err);
+    res.status(500).json({ error: "Failed to delete growth fund deployment" });
   }
 });
 

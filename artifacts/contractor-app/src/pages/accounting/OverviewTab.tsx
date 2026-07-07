@@ -200,15 +200,96 @@ function useReserveSummary(year: number) {
   });
 }
 
+// ─── Growth Fund Deployments Hooks ────────────────────────────────────────────
+type GrowthFundDeployment = { id: number; date: string; description: string; amount: number; createdAt: string };
+
+function useGrowthFundDeployments(year: number) {
+  return useQuery<GrowthFundDeployment[]>({
+    queryKey: ["growth-fund-deployments", year],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/reports/growth-fund-deployments?year=${year}`);
+      if (!res.ok) throw new Error("Failed to load growth fund investments");
+      return res.json();
+    },
+  });
+}
+
+function useCreateGrowthFundDeployment(year: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { date: string; description: string; amount: string }) => {
+      const res = await fetch(`${BASE}/api/reports/growth-fund-deployments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to save investment");
+      return json;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["growth-fund-deployments", year] }); },
+  });
+}
+
+function useDeleteGrowthFundDeployment(year: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${BASE}/api/reports/growth-fund-deployments/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete investment");
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["growth-fund-deployments", year] }); },
+  });
+}
+
 // ─── Tax & Growth Reserve Card ────────────────────────────────────────────────
 function ReserveCard({ year }: { year: number }) {
-  const { data, isLoading } = useReserveSummary(year);
+  const { data, isLoading: reserveLoading } = useReserveSummary(year);
+  const { data: deployments = [], isLoading: deploymentsLoading } = useGrowthFundDeployments(year);
+  const createDeployment = useCreateGrowthFundDeployment(year);
+  const deleteDeployment = useDeleteGrowthFundDeployment(year);
+  const { toast } = useToast();
+
+  const [showForm, setShowForm] = useState(false);
+  const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [formDesc, setFormDesc] = useState("");
+  const [formAmount, setFormAmount] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
   const ytd = data?.ytd ?? { taxReserve: 0, growthFund: 0, ownerShare: 0, takeHome: 0, revenue: 0, subLaborCost: 0 };
   const dontTouch = ytd.taxReserve + ytd.growthFund;
   const months = data?.months ?? [];
 
+  const totalInvested = deployments.reduce((s, d) => s + d.amount, 0);
+  const available = ytd.growthFund - totalInvested;
+
+  const isLoading = reserveLoading || deploymentsLoading;
+
   if (isLoading) {
     return <div className="h-32 rounded-2xl bg-muted/40 animate-pulse" />;
+  }
+
+  async function handleSaveInvestment() {
+    setFormError(null);
+    if (!formDate || !formDesc.trim() || !formAmount) {
+      setFormError("All fields are required.");
+      return;
+    }
+    const amt = parseFloat(formAmount);
+    if (isNaN(amt) || amt <= 0) {
+      setFormError("Enter a valid amount greater than $0.");
+      return;
+    }
+    try {
+      await createDeployment.mutateAsync({ date: formDate, description: formDesc.trim(), amount: formAmount });
+      setShowForm(false);
+      setFormDesc("");
+      setFormAmount("");
+      setFormError(null);
+      toast({ title: "Investment logged" });
+    } catch (err: any) {
+      setFormError(err.message ?? "Failed to save investment");
+    }
   }
 
   return (
@@ -232,12 +313,127 @@ function ReserveCard({ year }: { year: number }) {
             <p className="text-xl font-bold text-amber-800">{formatCurrency(ytd.taxReserve)}</p>
             <p className="text-[10px] text-amber-600 mt-0.5">of your owner share</p>
           </div>
-          <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-center">
-            <p className="text-[10px] uppercase font-semibold text-blue-700 mb-1">Growth Fund (5%)</p>
-            <p className="text-xl font-bold text-blue-800">{formatCurrency(ytd.growthFund)}</p>
-            <p className="text-[10px] text-blue-600 mt-0.5">reinvest in business</p>
+          <div className="rounded-xl bg-blue-50 border border-blue-200 p-3">
+            <p className="text-[10px] uppercase font-semibold text-blue-700 mb-2">Growth Fund (5%)</p>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-blue-600">Accumulated</span>
+                <span className="text-xs font-semibold text-blue-800">{formatCurrency(ytd.growthFund)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-blue-600">Invested</span>
+                <span className="text-xs font-semibold text-blue-700">− {formatCurrency(totalInvested)}</span>
+              </div>
+              <div className="border-t border-blue-200 pt-1 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-blue-700">Available</span>
+                <span className="text-sm font-black text-blue-900">{formatCurrency(Math.max(0, available))}</span>
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* Growth Fund Investment Log */}
+        <div className="rounded-xl border border-blue-200 bg-blue-50/40 overflow-hidden">
+          <div className="px-3 py-2 bg-blue-100/60 border-b border-blue-200 flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Investments Made</span>
+            {!showForm && (
+              <button
+                onClick={() => setShowForm(true)}
+                className="flex items-center gap-1 text-[10px] font-semibold text-blue-700 hover:text-blue-900"
+              >
+                <Plus className="w-3 h-3" /> Log Investment
+              </button>
+            )}
+          </div>
+
+          {showForm && (
+            <div className="p-3 border-b border-blue-200 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-0.5">Date</label>
+                  <input
+                    type="date"
+                    value={formDate}
+                    onChange={e => setFormDate(e.target.value)}
+                    className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-0.5">Amount ($)</label>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={formAmount}
+                    onChange={e => setFormAmount(e.target.value)}
+                    className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-0.5">Description</label>
+                <input
+                  type="text"
+                  placeholder="e.g. New pressure washer"
+                  value={formDesc}
+                  onChange={e => setFormDesc(e.target.value)}
+                  className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background"
+                />
+              </div>
+              {formError && (
+                <p className="text-[10px] text-red-600 font-medium">{formError}</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveInvestment}
+                  disabled={createDeployment.isPending}
+                  className="flex-1 text-xs font-semibold bg-blue-600 text-white rounded-md py-1.5 hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {createDeployment.isPending ? "Saving…" : "Save"}
+                </button>
+                <button
+                  onClick={() => { setShowForm(false); setFormError(null); setFormDesc(""); setFormAmount(""); }}
+                  className="flex-1 text-xs font-semibold border border-border rounded-md py-1.5 text-muted-foreground hover:bg-muted/40"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {deployments.length === 0 && !showForm && (
+            <p className="text-[10px] text-muted-foreground text-center py-3 px-3">
+              No investments logged yet. Tap "Log Investment" when you deploy growth fund money.
+            </p>
+          )}
+
+          {deployments.length > 0 && (
+            <div className="divide-y divide-blue-100">
+              {deployments.map(d => {
+                const label = new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
+                return (
+                  <div key={d.id} className="px-3 py-2 flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{d.description}</p>
+                      <p className="text-[10px] text-muted-foreground">{label}</p>
+                    </div>
+                    <span className="text-xs font-semibold text-blue-800 shrink-0">{formatCurrency(d.amount)}</span>
+                    <button
+                      onClick={() => deleteDeployment.mutate(d.id)}
+                      disabled={deleteDeployment.isPending}
+                      className="shrink-0 text-muted-foreground hover:text-red-600 disabled:opacity-40"
+                      title="Remove investment"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-emerald-700">Your Take-Home YTD</p>
