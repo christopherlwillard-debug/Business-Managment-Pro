@@ -833,12 +833,10 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const otherIncome   = otherRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const grossRevenue  = grossReceipts + otherIncome;
 
-    const normalExpenses = expRows.filter(e => !e.excludeFromNetProfit);
-    const writtenOffExpenses = expRows.filter(e => e.excludeFromNetProfit);
-    const writeoffsTotal = writtenOffExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-
+    // All expenses count toward P&L categories — the excludeFromNetProfit flag is only
+    // used by the per-job profit panel and does not affect the P&L statement.
     const buckets: Record<string, number> = {};
-    for (const e of normalExpenses) {
+    for (const e of expRows) {
       const cat = e.category || "Other";
       const key = PL_CATEGORY_MAP[cat] ?? "other";
       buckets[key] = (buckets[key] ?? 0) + parseFloat(e.amount ?? "0");
@@ -868,7 +866,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       operatingExpenses,
       totalOperatingExpenses,
       netOperatingIncome,
-      deductions: { mileageDeduction, totalMiles, mileageRate, writeoffsTotal },
+      deductions: { mileageDeduction, totalMiles, mileageRate },
       netProfit,
       outstandingSubLiability,
       closedJobCount,
