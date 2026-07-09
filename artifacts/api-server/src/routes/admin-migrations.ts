@@ -659,4 +659,21 @@ router.post("/fix-mfh-hierarchy", async (req: Request, res: Response) => {
   }
 });
 
+// Add invoice progression columns: accepted_at, sent_at, sent_method
+// Safe to run multiple times — uses IF NOT EXISTS DDL.
+router.post("/add-invoice-progression-columns", async (_req: Request, res: Response) => {
+  try {
+    await db.execute(sql`
+      ALTER TABLE invoices
+        ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS sent_method TEXT;
+    `);
+    res.json({ ok: true, message: "Invoice progression columns ensured (accepted_at, sent_at, sent_method)" });
+  } catch (err) {
+    console.error("[admin/migrations] add-invoice-progression-columns failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;

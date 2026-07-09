@@ -600,6 +600,13 @@ export function InvoicePanel({
           ? `Delivered to ${gmailTo.trim()} with PDF attached`
           : `Delivered to ${gmailTo.trim()} (HTML format — PDF unavailable)`,
       });
+      // Advance invoice status to "sent"
+      if (effectiveExistingInvoice?.id) {
+        fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/mark-sent`, {
+          method: "POST",
+          credentials: "include",
+        }).catch(() => {});
+      }
       setTimeout(() => { setShowGmailCompose(false); setGmailSent(false); setGmailPreview(false); }, 2000);
     } catch (err: any) {
       toast({ title: "Gmail send failed", description: err?.message ?? "An error occurred.", variant: "destructive" });
@@ -620,11 +627,13 @@ export function InvoicePanel({
   if (!open) return null;
 
   const STATUS_COLORS: Record<string, string> = {
-    paid: "bg-emerald-100 text-emerald-700",
-    sent: "bg-blue-100 text-blue-700",
-    overdue: "bg-red-100 text-red-700",
-    draft: "bg-gray-100 text-gray-600",
-    cancelled: "bg-orange-100 text-orange-700",
+    paid:          "bg-emerald-100 text-emerald-700",
+    partiallyPaid: "bg-emerald-50 text-emerald-600",
+    sent:          "bg-blue-100 text-blue-700",
+    approved:      "bg-indigo-100 text-indigo-700",
+    overdue:       "bg-red-100 text-red-700",
+    draft:         "bg-gray-100 text-gray-600",
+    cancelled:     "bg-orange-100 text-orange-700",
   };
 
   const isPayable = !effectiveExistingInvoice || (effectiveExistingInvoice.status !== "paid" && effectiveExistingInvoice.status !== "cancelled");
@@ -705,6 +714,29 @@ export function InvoicePanel({
                   <span className="hidden sm:inline">{generatingLink ? "Generating…" : "Payment Link"}</span>
                 </button>
               )
+            )}
+
+            {/* Mark as Sent — for approved invoices not yet sent via Gmail */}
+            {isEdit && !isVoided && effectiveExistingInvoice?.status === "approved" && (
+              <button type="button"
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/mark-sent`, {
+                      method: "POST",
+                      credentials: "include",
+                    });
+                    if (!res.ok) throw new Error("Failed to mark as sent");
+                    toast({ title: "Invoice marked as sent" });
+                    onSaved?.();
+                  } catch {
+                    toast({ title: "Failed to mark as sent", variant: "destructive" });
+                  }
+                }}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-blue-600 hover:bg-blue-50 transition-colors"
+                title="Mark as sent (if delivered outside Gmail)">
+                <Send className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Mark Sent</span>
+              </button>
             )}
 
             {isEdit && !isVoided && isNumbered && onVoid && (
@@ -1033,20 +1065,14 @@ export function InvoicePanel({
                       </div>
                       <div className="flex items-center justify-end gap-2">
                         <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Status</span>
-                        <select value={form.status} onChange={e => setField("status", e.target.value)}
-                          disabled={isVoided}
-                          className={`text-[10px] font-bold uppercase tracking-wide border border-gray-200 rounded-full px-2 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-amber-300 cursor-pointer ${isVoided ? "opacity-60 cursor-not-allowed" : ""} ${STATUS_COLORS[form.status] ?? "bg-gray-100 text-gray-600"}`}>
-                          {isVoided ? (
-                            <option value="cancelled">Voided</option>
-                          ) : (
-                            <>
-                              <option value="draft">Draft</option>
-                              <option value="sent">Sent</option>
-                              <option value="paid">Paid</option>
-                              <option value="overdue">Overdue</option>
-                            </>
-                          )}
-                        </select>
+                        {/* Status is read-only — transitions happen via dedicated actions
+                            (Accept Invoice, Mark Sent, Mark Paid, Void). */}
+                        <span className={`text-[10px] font-bold uppercase tracking-wide border border-gray-200 rounded-full px-2 py-0.5 ${STATUS_COLORS[effectiveExistingInvoice?.status ?? form.status] ?? "bg-gray-100 text-gray-600"}`}>
+                          {effectiveExistingInvoice?.status === "cancelled" ? "Voided"
+                            : effectiveExistingInvoice?.status === "partiallyPaid" ? "Partial"
+                            : effectiveExistingInvoice?.status === "approved" ? "Approved"
+                            : effectiveExistingInvoice?.status ?? form.status}
+                        </span>
                       </div>
                     </div>
                   </div>

@@ -2881,7 +2881,7 @@ function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
-  checklistSummary, productionServiceTypes = [], onApplyProductionPricing,
+  checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -2905,6 +2905,7 @@ function JobCard({
   checklistSummary?: ChecklistSummary | null;
   productionServiceTypes?: import("@workspace/api-client-react").ProductionServiceType[];
   onApplyProductionPricing?: () => void;
+  onAcceptInvoice?: (job: Job, invoice: Invoice) => void;
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -3139,11 +3140,19 @@ function JobCard({
               <span className={`inline-flex items-center gap-1 font-medium ${
                 invoiceSummary.status === "paid"
                   ? "text-emerald-600"
+                  : invoiceSummary.status === "partiallyPaid"
+                  ? "text-emerald-500"
                   : invoiceSummary.status === "sent"
                   ? "text-amber-600"
+                  : invoiceSummary.status === "approved"
+                  ? "text-blue-600"
                   : "text-muted-foreground"
               }`}>
-                {invoiceSummary.status === "paid" ? "Paid" : invoiceSummary.status === "sent" ? "Invoice Sent" : "Draft"}
+                {invoiceSummary.status === "paid" ? "Paid"
+                  : invoiceSummary.status === "partiallyPaid" ? "Partially Paid"
+                  : invoiceSummary.status === "sent" ? "Invoice Sent"
+                  : invoiceSummary.status === "approved" ? "Approved"
+                  : "Draft"}
                 {invoiceSummary.total != null && ` · ${formatCurrency(invoiceSummary.total)}`}
                 {squarePaid && (
                   <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700">
@@ -3372,13 +3381,31 @@ function JobCard({
           ) : null
         )}
 
-        {/* Draft invoice — open invoice panel to edit/send */}
+        {/* Draft invoice panel — Edit + Accept Invoice actions */}
         {invoiceSummary && invoiceSummary.status === "draft" && canEdit("invoices") && (
-          <button
-            onClick={() => onReviewInvoice(job)}
-            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors shadow-sm">
-            <FileText className="w-3.5 h-3.5" /> Edit Invoice
-          </button>
+          <div className="mt-1 rounded-xl border border-amber-200 bg-amber-50/60 overflow-hidden">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-amber-200/60">
+              <FileText className="w-3 h-3 text-amber-600 flex-shrink-0" />
+              <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Draft Invoice</span>
+              {invoiceSummary.total != null && (
+                <span className="ml-auto text-[11px] font-semibold text-amber-700">{formatCurrency(invoiceSummary.total)}</span>
+              )}
+            </div>
+            <div className="flex gap-1.5 p-2">
+              <button
+                onClick={() => onReviewInvoice(job)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border border-amber-300 bg-white text-amber-700 text-[11px] font-semibold hover:bg-amber-50 transition-colors">
+                <FileText className="w-3 h-3" /> Edit
+              </button>
+              {onAcceptInvoice && (
+                <button
+                  onClick={() => onAcceptInvoice(job, invoiceSummary)}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700 transition-colors shadow-sm">
+                  <Check className="w-3 h-3" /> Accept Invoice
+                </button>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Re-apply Production Pricing — rebuild the draft from checked items (MH Production) */}
@@ -3390,14 +3417,44 @@ function JobCard({
           </button>
         )}
 
-        {/* Sent/overdue invoice — open panel to view/manage */}
-        {invoiceSummary && (invoiceSummary.status === "sent" || invoiceSummary.status === "overdue") && (
-          <button
-            onClick={() => onReviewInvoice(job)}
-            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold hover:bg-blue-100 transition-colors">
-            <FileText className="w-3.5 h-3.5" /> View Invoice
-          </button>
+        {/* Approved / Sent / Partially Paid / Paid — compact read-only summary */}
+        {invoiceSummary && invoiceSummary.status !== "draft" && invoiceSummary.status !== "cancelled" && (
+          <div className="mt-1 rounded-xl border border-border/60 bg-muted/20 overflow-hidden">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border/40">
+              <FileText className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+              <span className="text-[11px] font-semibold text-foreground">
+                {invoiceSummary.invoiceNumber ?? "—"}
+              </span>
+              <span className={`ml-1 inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${
+                invoiceSummary.status === "paid" ? "bg-emerald-100 text-emerald-700"
+                : invoiceSummary.status === "partiallyPaid" ? "bg-emerald-50 text-emerald-600"
+                : invoiceSummary.status === "sent" ? "bg-blue-100 text-blue-700"
+                : invoiceSummary.status === "approved" ? "bg-indigo-100 text-indigo-700"
+                : invoiceSummary.status === "overdue" ? "bg-red-100 text-red-700"
+                : "bg-gray-100 text-gray-600"
+              }`}>
+                {invoiceSummary.status === "partiallyPaid" ? "Partial" : invoiceSummary.status}
+              </span>
+              {invoiceSummary.total != null && (
+                <span className="ml-auto text-[11px] font-semibold text-foreground">{formatCurrency(invoiceSummary.total)}</span>
+              )}
+            </div>
+            {(invoiceSummary as any).acceptedAt && (
+              <div className="px-3 py-1 text-[10px] text-muted-foreground">
+                Accepted {formatDate((invoiceSummary as any).acceptedAt)}
+              </div>
+            )}
+            {onGoToInvoices && (
+              <button
+                onClick={onGoToInvoices}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-primary hover:bg-primary/5 transition-colors border-t border-border/40">
+                <Eye className="w-3 h-3" /> View Invoice
+              </button>
+            )}
+          </div>
         )}
+
+        {/* Sent/overdue invoice — legacy view button removed; handled by summary panel above */}
 
         {/* Worker Pay Due banner — fixed/allocation subs not yet paid */}
         {unpaidSubs && unpaidSubs.length > 0 && (
@@ -5196,19 +5253,41 @@ export default function Jobs() {
     }
   }
 
+  async function handleAcceptInvoice(job: Job, invoice: Invoice) {
+    try {
+      const res = await fetch(`${BASE}/api/invoices/${invoice.id}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to accept invoice");
+      }
+      const accepted = await res.json();
+      toast({
+        title: `Invoice ${accepted.invoiceNumber} accepted`,
+        description: "The invoice is now official and ready to send.",
+      });
+      queryClient.invalidateQueries();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to accept invoice";
+      toast({ title: "Accept failed", description: msg, variant: "destructive" });
+    }
+  }
+
   async function handleReviewInvoice(job: Job) {
     setInvoiceFetching(true);
     try {
-      // Fetch all drafts and job invoice draft data in parallel
-      const [invRes, jobDraft] = await Promise.all([
-        fetch(`${BASE}/api/invoices?status=draft`),
+      // Fetch the job-specific draft and the job invoice draft data in parallel
+      const [draftRes, jobDraft] = await Promise.all([
+        fetch(`${BASE}/api/invoices/job/${job.id}/draft`, { credentials: "include" }),
         getJobInvoiceDraft(job.id).catch(() => null),
       ]);
 
       let existingDraft: Invoice | undefined;
-      if (invRes.ok) {
-        const allDrafts: Invoice[] = await invRes.json();
-        existingDraft = allDrafts.find(inv => inv.jobId === job.id);
+      if (draftRes.ok) {
+        existingDraft = await draftRes.json();
       }
 
       if (existingDraft) {
@@ -5437,7 +5516,8 @@ export default function Jobs() {
                       hasSubExpenses={jobsWithSubExpenses.has(job.id)}
                       profitData={profitMap.get(job.id) ?? null}
                       onSendPaymentLink={handleGetPaymentLink}
-                      onGoToInvoices={() => navigate("/invoices")}
+                      onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
+                      onAcceptInvoice={handleAcceptInvoice}
                       generatingLinkId={generatingLinkId}
                       onSmartEstimate={j => setGcWizardJob(j)}
                       checklistSummary={checklistSummaries[job.id] ?? null}
@@ -5479,7 +5559,8 @@ export default function Jobs() {
                         hasSubExpenses={jobsWithSubExpenses.has(job.id)}
                         profitData={profitMap.get(job.id) ?? null}
                         onSendPaymentLink={handleGetPaymentLink}
-                        onGoToInvoices={() => navigate("/invoices")}
+                        onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
+                        onAcceptInvoice={handleAcceptInvoice}
                         generatingLinkId={generatingLinkId}
                         onSmartEstimate={j => setGcWizardJob(j)}
                         checklistSummary={checklistSummaries[job.id] ?? null}
@@ -5526,7 +5607,8 @@ export default function Jobs() {
                         hasSubExpenses={jobsWithSubExpenses.has(job.id)}
                         profitData={profitMap.get(job.id) ?? null}
                         onSendPaymentLink={handleGetPaymentLink}
-                        onGoToInvoices={() => navigate("/invoices")}
+                        onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
+                        onAcceptInvoice={handleAcceptInvoice}
                         generatingLinkId={generatingLinkId}
                         onSmartEstimate={j => setGcWizardJob(j)}
                         onArchiveJob={handleArchiveJob}

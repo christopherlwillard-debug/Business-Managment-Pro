@@ -24,11 +24,13 @@ import {
 import { InvoicePanel } from "@/components/InvoicePanel";
 
 const STATUS_COLORS: Record<string, string> = {
-  paid:      "bg-emerald-100 text-emerald-700",
-  sent:      "bg-blue-100 text-blue-700",
-  overdue:   "bg-red-100 text-red-700",
-  draft:     "bg-gray-100 text-gray-600",
-  cancelled: "bg-orange-100 text-orange-700",
+  paid:          "bg-emerald-100 text-emerald-700",
+  partiallyPaid: "bg-emerald-50 text-emerald-600",
+  sent:          "bg-blue-100 text-blue-700",
+  approved:      "bg-indigo-100 text-indigo-700",
+  overdue:       "bg-red-100 text-red-700",
+  draft:         "bg-gray-100 text-gray-600",
+  cancelled:     "bg-orange-100 text-orange-700",
 };
 
 
@@ -117,7 +119,7 @@ export default function Invoices() {
   const queryClient = useQueryClient();
   const { activeBusiness, businesses } = useBusiness();
   const [activeTab, setActiveTab] = useState<"all" | "tax">("all");
-  const [filterStatus, setFilterStatus] = useState<"active" | "all" | "draft" | "sent" | "overdue" | "paid">("active");
+  const [filterStatus, setFilterStatus] = useState<"active" | "all" | "approved" | "sent" | "partiallyPaid" | "overdue" | "paid">("active");
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -239,24 +241,26 @@ export default function Invoices() {
 
   const allInvoices = (invoices as any[]) ?? [];
 
-  const ACTIVE_STATUSES = new Set(["sent", "overdue", "paid"]);
+  // Drafts live only on the job card — never on the Invoices page
+  const ACTIVE_STATUSES = new Set(["approved", "sent", "partiallyPaid", "overdue", "paid"]);
 
   const nonVoidedInvoices = useMemo(() =>
-    allInvoices.filter((i: any) => i.status !== "cancelled"),
+    allInvoices.filter((i: any) => i.status !== "cancelled" && i.status !== "draft"),
   [allInvoices]);
 
   const statusCounts = useMemo(() => ({
-    active:  nonVoidedInvoices.filter((i: any) => ACTIVE_STATUSES.has(i.status)).length,
-    all:     nonVoidedInvoices.length,
-    draft:   nonVoidedInvoices.filter((i: any) => i.status === "draft").length,
-    sent:    nonVoidedInvoices.filter((i: any) => i.status === "sent").length,
-    overdue: nonVoidedInvoices.filter((i: any) => i.status === "overdue").length,
-    paid:    nonVoidedInvoices.filter((i: any) => i.status === "paid").length,
-    voided:  allInvoices.filter((i: any) => i.status === "cancelled").length,
+    active:       nonVoidedInvoices.filter((i: any) => ACTIVE_STATUSES.has(i.status)).length,
+    all:          nonVoidedInvoices.length,
+    approved:     nonVoidedInvoices.filter((i: any) => i.status === "approved").length,
+    sent:         nonVoidedInvoices.filter((i: any) => i.status === "sent").length,
+    partiallyPaid:nonVoidedInvoices.filter((i: any) => i.status === "partiallyPaid").length,
+    overdue:      nonVoidedInvoices.filter((i: any) => i.status === "overdue").length,
+    paid:         nonVoidedInvoices.filter((i: any) => i.status === "paid").length,
+    voided:       allInvoices.filter((i: any) => i.status === "cancelled").length,
   }), [allInvoices, nonVoidedInvoices]);
 
   const filteredInvoices = useMemo(() => {
-    let list = showVoided ? allInvoices : nonVoidedInvoices;
+    let list = showVoided ? allInvoices.filter((i: any) => i.status !== "draft") : nonVoidedInvoices;
     if (activeBusiness) {
       list = list.filter((inv: any) => inv.businessLine === activeBusiness.slug);
     }
@@ -269,7 +273,7 @@ export default function Invoices() {
       const q = searchQuery.trim().toLowerCase();
       list = list.filter((inv: any) =>
         (inv.clientName ?? "").toLowerCase().includes(q) ||
-        (inv.invoiceNumber ?? "Draft").toLowerCase().includes(q)
+        (inv.invoiceNumber ?? "").toLowerCase().includes(q)
       );
     }
     return list;
@@ -408,21 +412,26 @@ export default function Invoices() {
             />
           </div>
           <div className="flex gap-2 flex-wrap items-center">
-            {(["active", "all", "draft", "sent", "overdue", "paid"] as const).map(s => (
+            {(["active", "all", "approved", "sent", "partiallyPaid", "overdue", "paid"] as const).map(s => (
               <button
                 key={s}
                 onClick={() => setFilterStatus(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                   filterStatus === s
-                    ? s === "overdue" ? "bg-red-600 text-white"
-                    : s === "paid"    ? "bg-emerald-600 text-white"
-                    : s === "sent"    ? "bg-blue-600 text-white"
-                    : s === "draft"   ? "bg-gray-500 text-white"
+                    ? s === "overdue"       ? "bg-red-600 text-white"
+                    : s === "paid"          ? "bg-emerald-600 text-white"
+                    : s === "partiallyPaid" ? "bg-emerald-500 text-white"
+                    : s === "sent"          ? "bg-blue-600 text-white"
+                    : s === "approved"      ? "bg-indigo-600 text-white"
                     : "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:bg-muted/70"
                 }`}
               >
-                {s === "active" ? "Sent & Paid" : s === "all" ? "All (incl. Drafts)" : s}
+                {s === "active" ? "All Active"
+                  : s === "all" ? "All"
+                  : s === "partiallyPaid" ? "Partial"
+                  : s === "approved" ? "Approved"
+                  : s.charAt(0).toUpperCase() + s.slice(1)}
                 <span className="ml-1.5 opacity-80">{statusCounts[s]}</span>
               </button>
             ))}

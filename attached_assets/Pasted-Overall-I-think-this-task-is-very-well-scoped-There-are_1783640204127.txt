@@ -1,0 +1,41 @@
+Overall, I think this task is very well scoped. There are just a few changes I’d make to keep the implementation cleaner and avoid future rework.
+
+First, I would avoid using approvedAt. Since the action is called Accept Invoice, I’d instead use acceptedAt (and optionally acceptedBy). Keeping the terminology consistent throughout the system makes it easier to understand and maintain.
+
+I also wouldn’t say the invoice is “locked from further edits.” There will inevitably be cases where a typo or small mistake needs to be corrected after acceptance. Instead, I’d treat the invoice as finalized, with edits either restricted or tracked by an audit trail in a future task. That gives you flexibility without boxing yourself into a completely immutable invoice.
+
+For the Job Card, after acceptance I’d keep the invoice summary simple but include a little more information. Instead of only showing the invoice number and status, I’d show:
+
+* Invoice Number
+* Current Status
+* Invoice Total
+* Accepted Date
+* View Invoice button
+
+That gives users the important information without requiring them to leave the Job Card.
+
+I also think the API should enforce the progression so invoices can’t accidentally skip states. The valid transitions should be:
+
+* Draft → Approved
+* Approved → Sent
+* Sent → Partially Paid
+* Partially Paid → Paid
+* Approved → Void
+* Sent → Void
+
+The backend should reject any invalid status transitions.
+
+For the Invoices page, I’d default the list to show active invoices in this order:
+
+* Approved
+* Sent
+* Partially Paid
+* Overdue
+* Paid
+* Void
+
+I would also consider automatically calculating an Overdue status based on the due date rather than storing it as a separate status. That keeps the database simpler while still giving users a useful view of invoices that need attention.
+
+Finally, I’d make one small wording change in the “Void flow update” section. Instead of saying “status → cancelled,” I would change it to “status → void” so it matches the terminology used everywhere else in the task and better reflects accounting language.
+
+Other than those refinements, I think this is one of the stronger architectural changes you’ve planned. It clearly separates operational workflow from accounting, protects sequential invoice numbering, keeps the Job Card focused on production, and ensures the Invoices page only contains official accounting documents. It should make the entire invoicing process much cleaner and more audit-compliant.

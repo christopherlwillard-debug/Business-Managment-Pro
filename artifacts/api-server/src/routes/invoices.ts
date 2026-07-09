@@ -5,7 +5,7 @@ import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
 import { generateMaterialsPdfBuffer } from "../lib/generateMaterialsPdf.js";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable, businessesTable, type Business } from "@workspace/db/schema";
-import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, desc, inArray, ne } from "drizzle-orm";
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 
 const router = Router();
@@ -128,11 +128,28 @@ router.get("/tax-report", async (req, res) => {
   }
 });
 
+// Valid status transitions — enforced by the PATCH /status endpoint.
+// The accept endpoint (draft → approved) is separate.
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  approved:     ["sent", "cancelled"],
+  sent:         ["partiallyPaid", "paid", "overdue", "cancelled"],
+  overdue:      ["sent", "paid", "cancelled"],  // overdue invoices can still be paid or re-sent
+  partiallyPaid:["paid", "overdue", "cancelled"],
+  paid:         [],  // terminal
+  cancelled:    [],  // terminal (voided)
+  // NOTE: draft is intentionally absent — drafts are hard-deleted, never transitioned via PATCH.
+};
+
 router.get("/", async (req, res) => {
   try {
-    const { status, clientId, jobId, startDate, endDate } = req.query;
+    const { status, clientId, jobId, startDate, endDate, includeDrafts } = req.query;
     const conditions: any[] = [];
-    if (status) conditions.push(eq(invoicesTable.status, status as string));
+    if (status) {
+      conditions.push(eq(invoicesTable.status, status as string));
+    } else if (includeDrafts !== "true") {
+      // Invoices page never shows drafts — they live only on the job card
+      conditions.push(ne(invoicesTable.status, "draft"));
+    }
     if (clientId) conditions.push(eq(invoicesTable.clientId, parseInt(clientId as string)));
     if (jobId) conditions.push(eq(invoicesTable.jobId, parseInt(jobId as string)));
     if (startDate) conditions.push(gte(invoicesTable.issueDate, startDate as string));
@@ -146,6 +163,21 @@ router.get("/", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch invoices" });
+  }
+});
+
+// ── Draft for a specific job (job card use only) ───────────────────────────────
+router.get("/job/:jobId/draft", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
+    const [inv] = await buildInvoiceQuery()
+      .where(and(eq(invoicesTable.jobId, jobId), eq(invoicesTable.status, "draft")));
+    if (!inv) return res.status(404).json({ error: "No draft found" });
+    res.json(fmt(inv));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch draft" });
   }
 });
 
@@ -163,19 +195,16 @@ async function assignInvoiceNumberIfNeeded(invoiceId: number): Promise<void> {
 
 router.post("/", async (req, res) => {
   try {
-    const { clientId, jobId, status, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName, attachments = [], businessLine } = req.body;
-    const initialStatus = status || "draft";
+    const { clientId, jobId, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName, attachments = [], businessLine } = req.body;
+    // All new invoices start as drafts — invoice numbers are assigned only at the /accept endpoint.
+    // The `status` field in the request body is intentionally ignored to enforce the lifecycle.
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
 
-    // Draft invoices do not consume an invoice number — numbers are assigned
-    // only when an invoice transitions out of Draft status.
-    const invoiceNumber = initialStatus !== "draft" ? await getNextInvoiceNumber() : null;
-
     const [invoice] = await db.insert(invoicesTable).values({
-      invoiceNumber,
+      invoiceNumber: null,
       clientId: clientId || null,
       jobId: jobId || null,
-      status: initialStatus,
+      status: "draft",
       issueDate,
       dueDate,
       subtotal: subtotal.toString(),
@@ -223,14 +252,17 @@ router.get("/summaries", async (req, res) => {
     const result: Record<number, ReturnType<typeof fmt> | null> = {};
     for (const jobId of uniqueJobIds) result[jobId] = null;
 
+    // Priority: paid > partiallyPaid > sent > approved > draft (for job card awareness)
+    const statusRank: Record<string, number> = {
+      paid: 5, partiallyPaid: 4, sent: 3, approved: 2, overdue: 1, draft: 0, cancelled: -1,
+    };
+
     for (const inv of formatted) {
       if (inv.jobId == null) continue;
       const current = result[inv.jobId];
-      if (current === null) {
-        result[inv.jobId] = inv;
-      } else if (inv.status === "paid" && current.status !== "paid") {
-        result[inv.jobId] = inv;
-      } else if (inv.status === "sent" && current.status !== "paid" && current.status !== "sent") {
+      const invRank = statusRank[inv.status] ?? -1;
+      const curRank = current ? (statusRank[current.status] ?? -1) : -999;
+      if (invRank > curRank) {
         result[inv.jobId] = inv;
       }
     }
@@ -268,19 +300,18 @@ router.put("/:id", async (req, res) => {
       return res.status(400).json({ error: "Voided invoices cannot be edited." });
     }
 
-    const { clientId, jobId, status, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName, attachments, businessLine } = req.body;
-
-    // Assign an invoice number the first time the invoice leaves Draft status
-    if (status && status !== "draft" && currentInv.status === "draft" && !currentInv.invoiceNumber) {
-      await assignInvoiceNumberIfNeeded(id);
-    }
+    const { clientId, jobId, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName, attachments, businessLine } = req.body;
+    // NOTE: `status` is intentionally NOT destructured from req.body.
+    // All status transitions must go through the dedicated lifecycle endpoints:
+    //   POST /accept, POST /mark-sent, PATCH /status, POST /void
+    // This prevents bypassing the Draft → Approved → Sent progression.
 
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
 
     await db.update(invoicesTable).set({
       clientId: clientId || null,
       jobId: jobId || null,
-      status, issueDate, dueDate,
+      issueDate, dueDate,
       subtotal: subtotal.toString(),
       taxRate: taxRate?.toString() ?? null,
       taxAmount: taxAmount.toString(),
@@ -303,12 +334,59 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+// ── Accept invoice: draft → approved (assigns invoice number) ─────────────────
+router.post("/:id/accept", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [current] = await db
+      .select({ status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, id));
+    if (!current) return res.status(404).json({ error: "Invoice not found" });
+    if (current.status !== "draft") {
+      return res.status(400).json({ error: `Only draft invoices can be accepted. This invoice is ${current.status}.` });
+    }
+    await assignInvoiceNumberIfNeeded(id);
+    await db.update(invoicesTable)
+      .set({ status: "approved", acceptedAt: new Date() })
+      .where(eq(invoicesTable.id, id));
+    const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
+    if (!withJoins) return res.status(404).json({ error: "Invoice not found" });
+    res.json(fmt(withJoins));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to accept invoice" });
+  }
+});
+
+// ── Mark invoice as sent (manual) ─────────────────────────────────────────────
+router.post("/:id/mark-sent", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [current] = await db
+      .select({ status: invoicesTable.status })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, id));
+    if (!current) return res.status(404).json({ error: "Invoice not found" });
+    if (current.status !== "approved" && current.status !== "sent") {
+      return res.status(400).json({ error: `Invoice must be in Approved or Sent status to mark as sent.` });
+    }
+    await db.update(invoicesTable)
+      .set({ status: "sent", sentAt: new Date(), sentMethod: "manual" })
+      .where(eq(invoicesTable.id, id));
+    const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
+    res.json(fmt(withJoins));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to mark invoice as sent" });
+  }
+});
+
 router.patch("/:id/status", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { status } = req.body;
 
-    // Guard: cancelled invoices are frozen — their status cannot be changed
     const [current] = await db
       .select({ status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber })
       .from(invoicesTable)
@@ -318,9 +396,12 @@ router.patch("/:id/status", async (req, res) => {
       return res.status(400).json({ error: "Voided invoices cannot be modified." });
     }
 
-    // Assign an invoice number the first time the invoice leaves Draft status
-    if (status && status !== "draft" && current.status === "draft" && !current.invoiceNumber) {
-      await assignInvoiceNumberIfNeeded(id);
+    // Enforce valid state transitions
+    const allowed = VALID_TRANSITIONS[current.status] ?? [];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        error: `Invalid transition: ${current.status} → ${status}. Use the accept or send endpoints for status changes that require additional processing.`,
+      });
     }
 
     await db.update(invoicesTable).set({ status }).where(eq(invoicesTable.id, id));
@@ -349,6 +430,9 @@ router.post("/:id/void", async (req, res) => {
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
     if (inv.status === "cancelled") {
       return res.status(400).json({ error: "Invoice is already voided." });
+    }
+    if (inv.status === "draft") {
+      return res.status(400).json({ error: "Draft invoices should be deleted, not voided. Use the delete endpoint instead." });
     }
 
     // Best-effort Square cleanup before voiding
@@ -416,10 +500,16 @@ router.post("/:id/send", async (req, res) => {
       db.select().from(settingsTable).limit(1),
     ]);
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
+    if (inv.status === "draft") {
+      return res.status(400).json({ error: "Draft invoices must be accepted (approved) before they can be sent. Use the Accept Invoice button on the job card." });
+    }
     if (inv.status === "cancelled") return res.status(400).json({ error: "A voided invoice cannot be sent." });
+    // Only approved or sent invoices can be emailed
+    if (inv.status !== "approved" && inv.status !== "sent") {
+      return res.status(400).json({ error: `Invoice cannot be emailed in its current state (${inv.status}).` });
+    }
 
-    // Sending is how a draft becomes an official record — assign number now if needed.
-    // Re-fetch afterwards so the email subject reflects the newly assigned number.
+    // Assign number if missing (should always have one by this point, but guard just in case)
     await assignInvoiceNumberIfNeeded(id);
     const [freshInv] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     const invForEmail = freshInv ?? inv;
@@ -472,7 +562,10 @@ router.post("/:id/send", async (req, res) => {
 
     await sendInvoiceEmail(fmt(invForEmail), mergedSettings, to, subjectLine, message, extraAttachments.length ? extraAttachments : undefined);
 
-    await db.update(invoicesTable).set({ status: "sent" }).where(eq(invoicesTable.id, id));
+    const now = new Date();
+    await db.update(invoicesTable)
+      .set({ status: "sent", sentAt: now, sentMethod: "email" })
+      .where(eq(invoicesTable.id, id));
 
     const [updated] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     res.json({ success: true, invoice: fmt(updated) });
