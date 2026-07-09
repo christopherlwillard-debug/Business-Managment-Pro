@@ -1,7 +1,9 @@
 import { Router, Request, Response } from "express";
 import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, expensesTable, subPaymentRecordsTable, productionServiceTypesTable } from "@workspace/db";
+import { invoicesTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, or, like, asc, sql, ilike, eq } from "drizzle-orm";
 import { recalcImportExpenses } from "./mileage";
+import { syncMaterialsToJobInvoice } from "./material-lists";
 
 const router = Router();
 
@@ -214,6 +216,76 @@ router.post("/categorize-service-types", async (req: Request, res: Response) => 
     res.json({ ok: true, dryRun: false, updated: toService.length, plan });
   } catch (err) {
     console.error("[admin/migrations] categorize-service-types failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
+// Consolidate per-item material invoice lines into one aggregate "Materials" line
+// and strip the auto-attached materials PDF from existing draft invoice records.
+//
+// Background: before Task #1118, each material item got its own invoice line and
+// the materials PDF was stored as an invoice attachment. Task #1118 changed this
+// so new syncs produce a single "Materials" line and the PDF goes out via email.
+// This migration retrofits existing draft invoices to match the new behavior.
+//
+// Idempotent: invoices already consolidated (single "Materials" line, no attachment)
+// are processed harmlessly — syncMaterialsToJobInvoice will leave them as-is.
+router.post("/consolidate-material-invoice-lines", async (_req: Request, res: Response) => {
+  try {
+    // Fetch all draft invoices that have a jobId (materials are job-scoped)
+    const draftInvoices = await db
+      .select({
+        id: invoicesTable.id,
+        jobId: invoicesTable.jobId,
+        lineItems: invoicesTable.lineItems,
+        attachments: invoicesTable.attachments,
+      })
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.status, "draft"), isNotNull(invoicesTable.jobId)));
+
+    // Filter to invoices that have per-item material lines OR a Materials PDF attachment
+    const MATERIALS_PREFIX = "Materials — ";
+    const needsWork = draftInvoices.filter(inv => {
+      const lines = Array.isArray(inv.lineItems) ? (inv.lineItems as any[]) : [];
+      const hasPerItemLines = lines.some(
+        li => li.source === "material" || li.description === "Materials"
+      );
+      const attachments = Array.isArray(inv.attachments) ? (inv.attachments as any[]) : [];
+      const hasAttachment = attachments.some(a => a.name?.startsWith(MATERIALS_PREFIX));
+      return hasPerItemLines || hasAttachment;
+    });
+
+    if (needsWork.length === 0) {
+      return res.json({ ok: true, invoicesFixed: 0, message: "Already clean — nothing to do." });
+    }
+
+    // For each affected invoice: re-sync lines (consolidates per-item → single aggregate)
+    // then strip the Materials PDF attachment in a separate targeted update
+    const errors: Array<{ invoiceId: number; error: string }> = [];
+    let fixed = 0;
+
+    for (const inv of needsWork) {
+      try {
+        // 1. Re-sync line items (syncMaterialsToJobInvoice only touches lineItems/subtotal/tax/total)
+        await syncMaterialsToJobInvoice(inv.jobId as number);
+
+        // 2. Strip the Materials — attachment from this invoice record
+        const attachments = Array.isArray(inv.attachments) ? (inv.attachments as any[]) : [];
+        const stripped = attachments.filter(a => !a.name?.startsWith(MATERIALS_PREFIX));
+        await db.update(invoicesTable)
+          .set({ attachments: stripped })
+          .where(eq(invoicesTable.id, inv.id));
+
+        fixed++;
+      } catch (err) {
+        errors.push({ invoiceId: inv.id, error: String(err) });
+      }
+    }
+
+    console.log(`[admin/migrations] consolidate-material-invoice-lines: fixed=${fixed}, errors=${errors.length}`);
+    res.json({ ok: true, invoicesFixed: fixed, errors: errors.length ? errors : undefined });
+  } catch (err) {
+    console.error("[admin/migrations] consolidate-material-invoice-lines failed:", err);
     res.status(500).json({ error: "Migration failed", detail: String(err) });
   }
 });
