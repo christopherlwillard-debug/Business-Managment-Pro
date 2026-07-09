@@ -9,7 +9,7 @@ import {
   useListDailyLogs, useCreateDailyLog, useDeleteDailyLog,
   useGetSettings,
   useListMaterials, useListMaterialLists, useCreateMaterialList,
-  useDeleteMaterialList,
+  useUpdateMaterialList, useDeleteMaterialList,
   useListEstimates, useCreateEstimate, useUpdateEstimate, useDeleteEstimate,
   useCreateInvoicePaymentLink,
   Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest, DailyLog,
@@ -145,10 +145,12 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
   const { data: allMaterials = [] } = useListMaterials({ includeInactive: false });
   const { data: settings } = useGetSettings();
   const createList = useCreateMaterialList();
+  const updateList = useUpdateMaterialList();
   const deleteList = useDeleteMaterialList();
   const { canEdit } = useUserPermissions();
 
   const [showForm, setShowForm] = useState(false);
+  const [editingList, setEditingList] = useState<MaterialList | null>(null);
   const [newMarkup, setNewMarkup] = useState(40);
   const [newItems, setNewItems] = useState<MaterialListItemInput[]>([]);
   const [search, setSearch] = useState("");
@@ -189,6 +191,22 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
     setNewItems([]);
     setSearch("");
     setFormError("");
+    setEditingList(null);
+  }
+
+  function handleStartEdit(list: MaterialList) {
+    setEditingList(list);
+    setNewMarkup(list.markup);
+    setNewItems(list.items.map(it => ({
+      materialId: it.materialId ?? undefined,
+      nameSnapshot: it.nameSnapshot,
+      unitSnapshot: it.unitSnapshot ?? "ea",
+      unitCostSnapshot: it.unitCostSnapshot,
+      qty: it.qty,
+    })));
+    setSearch("");
+    setFormError("");
+    setShowForm(true);
   }
 
   async function handleCreate() {
@@ -206,6 +224,30 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
       resetForm();
       setShowForm(false);
       // Auto-generate & attach the itemized materials PDF to the draft invoice
+      autoAttachMaterialsPdf(job.id, job.title, settings?.companyName ?? undefined).catch(console.error);
+    } catch {
+      setFormError("Failed to save. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleUpdate() {
+    if (!editingList) return;
+    if (newItems.length === 0) { setFormError("Add at least one material."); return; }
+    setFormError("");
+    setSaving(true);
+    try {
+      await updateList.mutateAsync({
+        id: editingList.id,
+        name: editingList.name,
+        jobId: job.id,
+        markup: newMarkup,
+        items: newItems,
+      });
+      qc.invalidateQueries({ queryKey: ["/api/material-lists"] });
+      resetForm();
+      setShowForm(false);
       autoAttachMaterialsPdf(job.id, job.title, settings?.companyName ?? undefined).catch(console.error);
     } catch {
       setFormError("Failed to save. Please try again.");
@@ -255,7 +297,10 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
             <div className="p-5 border-b border-border/50 bg-muted/20 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-foreground text-sm flex items-center gap-1.5">
-                  <Plus className="w-3.5 h-3.5 text-amber-500" /> New Material List
+                  {editingList
+                    ? <><Pencil className="w-3.5 h-3.5 text-amber-500" /> Edit Material List</>
+                    : <><Plus className="w-3.5 h-3.5 text-amber-500" /> New Material List</>
+                  }
                 </h3>
                 <button onClick={() => { setShowForm(false); resetForm(); }} className="text-muted-foreground hover:text-foreground">
                   <X className="w-4 h-4" />
@@ -357,11 +402,11 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
               )}
 
               <button
-                onClick={handleCreate}
+                onClick={editingList ? handleUpdate : handleCreate}
                 disabled={saving}
                 className="w-full py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition-colors shadow-sm disabled:opacity-60"
               >
-                {saving ? "Saving…" : "Save List"}
+                {saving ? "Saving…" : editingList ? "Update List" : "Save List"}
               </button>
             </div>
           ) : canEdit("jobs") ? (
@@ -414,6 +459,15 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
                         >
                           {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         </button>
+                        {canEdit("jobs") && (
+                          <button
+                            onClick={() => handleStartEdit(list)}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                            title="Edit list"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {canEdit("jobs") && (
                           <button
                             onClick={() => handleDelete(list.id)}
