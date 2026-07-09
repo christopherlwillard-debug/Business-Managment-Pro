@@ -125,8 +125,8 @@ async function processInvoiceReminders() {
         // For non-Square invoices, null out any Stripe link so the email template
         // does not render a "Pay Now" button — plain reminder only.
         const invForEmail = hasSquareLink
-          ? inv
-          : { ...inv, squarePaymentLinkUrl: null, stripePaymentLinkUrl: null };
+          ? { ...inv, invoiceNumber: inv.invoiceNumber ?? "" }
+          : { ...inv, invoiceNumber: inv.invoiceNumber ?? "", squarePaymentLinkUrl: null, stripePaymentLinkUrl: null };
 
         await sendInvoiceEmail(invForEmail, settings, inv.clientEmail, subject, message);
 

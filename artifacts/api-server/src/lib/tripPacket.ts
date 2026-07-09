@@ -263,7 +263,7 @@ export async function buildTripPacketData(jobId: number): Promise<TripPacketData
     const paidAtDate = inv.squarePaidAt ?? inv.stripePaidAt ?? null;
     return {
       id: inv.id,
-      invoiceNumber: inv.invoiceNumber,
+      invoiceNumber: inv.invoiceNumber ?? "",
       status: inv.status,
       issueDate: inv.issueDate,
       total: parseFloat(inv.total ?? "0"),

@@ -6,6 +6,7 @@ import {
   useGetInvoiceTaxReport,
   useUpdateInvoiceStatus,
   useDeleteInvoice,
+  useVoidInvoice,
   useGetSettings,
   useCreateInvoicePaymentLink,
   Invoice,
@@ -17,7 +18,7 @@ import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import {
   FileText, Download, Plus, Trash2, X,
-  Check, Eye, AlertTriangle,
+  Check, Eye, AlertTriangle, Ban,
   Paperclip, CreditCard, Copy, ExternalLink, Bell, Search,
 } from "lucide-react";
 import { InvoicePanel } from "@/components/InvoicePanel";
@@ -32,7 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 
 
-// ─── Delete Confirmation Modal ────────────────────────────────────────────────
+// ─── Delete Confirmation Modal (draft invoices only) ─────────────────────────
 function DeleteConfirmModal({
   invoice, onConfirm, onCancel, deleting,
 }: {
@@ -44,14 +45,13 @@ function DeleteConfirmModal({
       <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-red-100 p-6 space-y-4">
         <div className="flex items-start gap-4">
           <div className="w-11 h-11 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
+            <Trash2 className="w-5 h-5 text-red-600" />
           </div>
           <div>
-            <h3 className="font-bold text-gray-900 text-base">Permanently delete invoice?</h3>
+            <h3 className="font-bold text-gray-900 text-base">Delete draft invoice?</h3>
             <p className="text-sm text-gray-500 mt-1">
-              <span className="font-semibold text-gray-700">{invoice.invoiceNumber}</span>
-              {invoice.clientName ? ` · ${invoice.clientName}` : ""} will be{" "}
-              <span className="font-semibold text-red-600">permanently deleted</span> and cannot be recovered.
+              This draft{invoice.clientName ? ` for ${invoice.clientName}` : ""} has never been issued and will be{" "}
+              <span className="font-semibold text-red-600">permanently deleted</span>. No invoice number was consumed.
             </p>
           </div>
         </div>
@@ -63,7 +63,45 @@ function DeleteConfirmModal({
           <button onClick={onConfirm} disabled={deleting}
             className="px-5 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 transition-colors shadow disabled:opacity-60 flex items-center gap-2">
             <Trash2 className="w-3.5 h-3.5" />
-            {deleting ? "Deleting…" : "Yes, Delete Permanently"}
+            {deleting ? "Deleting…" : "Delete Draft"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Void Confirmation Modal (issued invoices) ────────────────────────────────
+function VoidConfirmModal({
+  invoice, onConfirm, onCancel, voiding,
+}: {
+  invoice: any; onConfirm: () => void; onCancel: () => void; voiding: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-orange-100 p-6 space-y-4">
+        <div className="flex items-start gap-4">
+          <div className="w-11 h-11 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+            <Ban className="w-5 h-5 text-orange-600" />
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-900 text-base">Void invoice {invoice.invoiceNumber}?</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              This invoice will be <span className="font-semibold text-orange-700">permanently voided</span> and kept in your records for audit purposes.{" "}
+              The invoice number is preserved in sequence. <span className="font-semibold">This cannot be undone.</span>
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onCancel} disabled={voiding}
+            className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={voiding}
+            className="px-5 py-2 rounded-xl text-sm font-bold bg-orange-600 text-white hover:bg-orange-700 transition-colors shadow disabled:opacity-60 flex items-center gap-2">
+            <Ban className="w-3.5 h-3.5" />
+            {voiding ? "Voiding…" : "Void Invoice"}
           </button>
         </div>
       </div>
@@ -113,6 +151,7 @@ export default function Invoices() {
   const { data: settings }   = useGetSettings();
   const updateStatus         = useUpdateInvoiceStatus();
   const deleteInvoice        = useDeleteInvoice();
+  const voidInvoiceMutation  = useVoidInvoice();
   const createPaymentLink    = useCreateInvoicePaymentLink();
 
   const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string; invoiceId: number; remindersSentAt?: string[] } | null>(null);
@@ -162,6 +201,9 @@ export default function Invoices() {
   const [viewInvoice,  setViewInvoice]  = useState<Invoice | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [deleting,     setDeleting]     = useState(false);
+  const [voidTarget,   setVoidTarget]   = useState<any | null>(null);
+  const [voiding,      setVoiding]      = useState(false);
+  const [showVoided,   setShowVoided]   = useState(false);
 
   useEffect(() => {
     const openId = searchParams.get("openInvoice");
@@ -199,17 +241,22 @@ export default function Invoices() {
 
   const ACTIVE_STATUSES = new Set(["sent", "overdue", "paid"]);
 
+  const nonVoidedInvoices = useMemo(() =>
+    allInvoices.filter((i: any) => i.status !== "cancelled"),
+  [allInvoices]);
+
   const statusCounts = useMemo(() => ({
-    active:  allInvoices.filter((i: any) => ACTIVE_STATUSES.has(i.status)).length,
-    all:     allInvoices.length,
-    draft:   allInvoices.filter((i: any) => i.status === "draft").length,
-    sent:    allInvoices.filter((i: any) => i.status === "sent").length,
-    overdue: allInvoices.filter((i: any) => i.status === "overdue").length,
-    paid:    allInvoices.filter((i: any) => i.status === "paid").length,
-  }), [allInvoices]);
+    active:  nonVoidedInvoices.filter((i: any) => ACTIVE_STATUSES.has(i.status)).length,
+    all:     nonVoidedInvoices.length,
+    draft:   nonVoidedInvoices.filter((i: any) => i.status === "draft").length,
+    sent:    nonVoidedInvoices.filter((i: any) => i.status === "sent").length,
+    overdue: nonVoidedInvoices.filter((i: any) => i.status === "overdue").length,
+    paid:    nonVoidedInvoices.filter((i: any) => i.status === "paid").length,
+    voided:  allInvoices.filter((i: any) => i.status === "cancelled").length,
+  }), [allInvoices, nonVoidedInvoices]);
 
   const filteredInvoices = useMemo(() => {
-    let list = allInvoices;
+    let list = showVoided ? allInvoices : nonVoidedInvoices;
     if (activeBusiness) {
       list = list.filter((inv: any) => inv.businessLine === activeBusiness.slug);
     }
@@ -222,11 +269,11 @@ export default function Invoices() {
       const q = searchQuery.trim().toLowerCase();
       list = list.filter((inv: any) =>
         (inv.clientName ?? "").toLowerCase().includes(q) ||
-        (inv.invoiceNumber ?? "").toLowerCase().includes(q)
+        (inv.invoiceNumber ?? "Draft").toLowerCase().includes(q)
       );
     }
     return list;
-  }, [allInvoices, filterStatus, searchQuery, activeBusiness]);
+  }, [allInvoices, nonVoidedInvoices, filterStatus, searchQuery, activeBusiness, showVoided]);
 
   const pendingOpenId = useRef<number | null>(null);
 
@@ -268,6 +315,22 @@ export default function Invoices() {
     } finally {
       setDeleting(false);
       setDeleteTarget(null);
+    }
+  }
+
+  async function handleVoidConfirmed() {
+    if (!voidTarget) return;
+    setVoiding(true);
+    try {
+      await voidInvoiceMutation.mutateAsync({ id: voidTarget.id });
+      queryClient.invalidateQueries();
+      if (viewInvoice?.id === voidTarget.id) setViewInvoice(null);
+      toast({ title: `Invoice ${voidTarget.invoiceNumber} voided`, description: "Kept in your audit records." });
+    } catch (err: any) {
+      toast({ title: "Failed to void invoice", description: err?.message ?? "An error occurred.", variant: "destructive" });
+    } finally {
+      setVoiding(false);
+      setVoidTarget(null);
     }
   }
 
@@ -344,7 +407,7 @@ export default function Invoices() {
               className="w-full pl-9 pr-4 py-2 rounded-xl border border-border/60 bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
             {(["active", "all", "draft", "sent", "overdue", "paid"] as const).map(s => (
               <button
                 key={s}
@@ -363,6 +426,17 @@ export default function Invoices() {
                 <span className="ml-1.5 opacity-80">{statusCounts[s]}</span>
               </button>
             ))}
+            {statusCounts.voided > 0 && (
+              <button
+                onClick={() => setShowVoided(v => !v)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  showVoided ? "bg-orange-500 text-white" : "bg-muted text-muted-foreground hover:bg-muted/70"
+                }`}
+              >
+                {showVoided ? "Hide Voided" : "Show Voided"}
+                <span className="ml-1.5 opacity-80">{statusCounts.voided}</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -406,13 +480,20 @@ export default function Invoices() {
                     No invoices match your search or filter
                   </td></tr>
                 ) : (
-                  filteredInvoices.map((inv: any) => (
+                  filteredInvoices.map((inv: any) => {
+                    const isVoided = inv.status === "cancelled";
+                    const isDraft = !inv.invoiceNumber;
+                    return (
                     <tr key={inv.id}
                       onClick={() => setViewInvoice(inv)}
-                      className="hover:bg-muted/30 transition-colors cursor-pointer group">
+                      className={`hover:bg-muted/30 transition-colors cursor-pointer group ${isVoided ? "opacity-50" : ""}`}>
                       <td className="px-6 py-4 font-medium text-foreground group-hover:text-primary transition-colors">
                         <div className="flex items-center gap-2">
-                          {inv.invoiceNumber}
+                          <span className={isVoided ? "line-through text-muted-foreground" : ""}>
+                            {inv.invoiceNumber ?? (
+                              <span className="italic text-muted-foreground font-normal">Draft</span>
+                            )}
+                          </span>
                           {Array.isArray(inv.attachments) && inv.attachments.length > 0 && (
                             <span className="flex items-center gap-0.5 text-[10px] text-gray-400" title={`${inv.attachments.length} attachment${inv.attachments.length > 1 ? "s" : ""}`}>
                               <Paperclip className="w-3 h-3" />{inv.attachments.length}
@@ -425,9 +506,13 @@ export default function Invoices() {
                         <div className="font-medium text-foreground">{inv.clientName || "—"}</div>
                         <div className="text-xs text-muted-foreground">{inv.jobTitle || "—"}</div>
                       </td>
-                      <td className="px-6 py-4 text-right font-display font-semibold text-foreground">{formatCurrency(inv.total)}</td>
+                      <td className={`px-6 py-4 text-right font-display font-semibold ${isVoided ? "text-muted-foreground line-through" : "text-foreground"}`}>{formatCurrency(inv.total)}</td>
                       <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
-                        {inv.status === "paid" ? (
+                        {isVoided ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-700 border border-orange-200">
+                            <Ban className="w-3 h-3" /> Voided
+                          </span>
+                        ) : inv.status === "paid" ? (
                           <div className="flex flex-col items-center gap-0.5">
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
                               <Check className="w-3 h-3" /> Paid
@@ -444,7 +529,7 @@ export default function Invoices() {
                             onChange={e => handleStatusChange(inv.id, e.target.value)}
                             className={`inline-flex px-2 py-1 rounded-md text-xs font-semibold tracking-wide uppercase border-0 cursor-pointer ${STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600"}`}
                           >
-                            {["draft","sent","paid","overdue","cancelled"].map(st => (
+                            {["draft","sent","paid","overdue"].map(st => (
                               <option key={st} value={st}>{st}</option>
                             ))}
                           </select>
@@ -456,7 +541,7 @@ export default function Invoices() {
                             className="text-muted-foreground hover:text-primary transition-colors" title="View invoice">
                             <Eye className="w-4 h-4" />
                           </button>
-                          {inv.status !== "paid" && inv.status !== "cancelled" && (() => {
+                          {!isVoided && inv.status !== "paid" && (() => {
                             const payUrl = inv.squarePaymentLinkUrl ?? inv.stripePaymentLinkUrl ?? null;
                             const squareUrl = inv.squarePaymentLinkUrl;
                             return (<>
@@ -499,14 +584,24 @@ export default function Invoices() {
                               )}
                             </>);
                           })()}
-                          <button onClick={() => setDeleteTarget(inv)}
-                            className="text-muted-foreground hover:text-destructive transition-colors" title="Delete invoice">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {!isVoided && (
+                            isDraft ? (
+                              <button onClick={() => setDeleteTarget(inv)}
+                                className="text-muted-foreground hover:text-destructive transition-colors" title="Delete draft">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <button onClick={() => setVoidTarget(inv)}
+                                className="text-muted-foreground hover:text-orange-600 transition-colors" title="Void invoice">
+                                <Ban className="w-4 h-4" />
+                              </button>
+                            )
+                          )}
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )
               ) : loadingTax ? (
                 <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground animate-pulse">Loading…</td></tr>
@@ -548,15 +643,26 @@ export default function Invoices() {
         existingInvoice={viewInvoice ?? undefined}
         onSaved={() => { setViewInvoice(null); queryClient.invalidateQueries(); }}
         onDelete={() => { setDeleteTarget(viewInvoice); setViewInvoice(null); }}
+        onVoid={() => { setVoidTarget(viewInvoice); setViewInvoice(null); }}
       />
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal (drafts only) */}
       {deleteTarget && (
         <DeleteConfirmModal
           invoice={deleteTarget}
           deleting={deleting}
           onConfirm={handleDeleteConfirmed}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {/* Void Confirmation Modal (issued invoices) */}
+      {voidTarget && (
+        <VoidConfirmModal
+          invoice={voidTarget}
+          voiding={voiding}
+          onConfirm={handleVoidConfirmed}
+          onCancel={() => setVoidTarget(null)}
         />
       )}
 

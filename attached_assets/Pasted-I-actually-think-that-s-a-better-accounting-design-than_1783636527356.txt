@@ -1,0 +1,62 @@
+I actually think that’s a better accounting design than permanently assigning numbers on creation.
+
+Most accounting systems don’t consume an invoice number until the invoice becomes an official business document (sent, finalized, or posted). Drafts are just working copies and don’t belong in the permanent numbering sequence.
+
+I’d rewrite the feature like this:
+
+⸻
+
+1120 - Assign invoice numbers only when finalized (Audit compliant)
+
+What & Why
+
+Invoice numbers should only be assigned when an invoice becomes an official business record. Draft invoices are works in progress and should not consume permanent invoice numbers.
+
+Currently, invoice numbers are assigned when an invoice is created. If the draft is deleted or abandoned, that number is permanently lost, creating gaps in the numbering sequence (for example, invoice #1031 is deleted and #1032 becomes the next invoice). During an audit, every issued invoice number should be accounted for.
+
+Instead, drafts should remain unnumbered until they are finalized and ready to send. At that moment, the next sequential invoice number is permanently assigned. Once an invoice has been numbered, it can never be deleted—only voided.
+
+Done looks like
+
+* Draft invoices display “Draft” instead of an invoice number.
+* Draft invoices do not reserve or consume invoice numbers.
+* The next sequential invoice number is assigned only when:
+    * the invoice is marked Ready to Send,
+    * Send Invoice is clicked,
+    * or the invoice otherwise leaves Draft status.
+* Once an invoice number has been assigned, it can never change.
+* Numbered invoices cannot be deleted.
+* Numbered invoices can only be voided.
+* Voiding preserves the invoice permanently for audit purposes.
+* Voided invoices display a “Voided” badge and remain in sequence.
+* Draft invoices may be freely edited or deleted since they have never been issued.
+* Invoice numbers remain perfectly sequential with no gaps except legitimate voided invoices.
+
+Out of scope
+
+* Renumbering historical invoices.
+* Changing the invoice numbering format.
+* Recovering or un-voiding invoices.
+
+Steps
+
+1. Database: Make invoiceNumber nullable while an invoice is in Draft status.
+2. Backend: Update invoice creation so Draft invoices are created without a number.
+3. Backend: When an invoice transitions from Draft to Ready to Send (or is sent), atomically assign the next sequential invoice number.
+4. Backend: Prevent deletion of any invoice that already has an assigned invoice number.
+5. Backend: Replace delete with a Void action for numbered invoices. Voiding preserves the record and any associated payment cleanup.
+6. Frontend: Show “Draft” wherever the invoice number would normally appear until the invoice is finalized.
+7. Frontend: Allow deleting Draft invoices only.
+8. Frontend: Replace Delete with Void for numbered invoices.
+9. Frontend: Display voided invoices with muted styling and a “Voided” badge.
+10. Frontend: Make voided invoices read-only.
+
+Relevant files
+
+* artifacts/api-server/src/routes/invoices.ts
+* artifacts/contractor-app/src/pages/Invoices.tsx
+* lib/db/src/schema/invoices.ts
+
+⸻
+
+I prefer this approach because it follows how many accounting systems work. Drafts are disposable working documents. Once an invoice becomes an official record, it receives its permanent number and enters the audit trail. That keeps your numbering clean while avoiding hundreds of skipped numbers from invoices that were never actually issued.

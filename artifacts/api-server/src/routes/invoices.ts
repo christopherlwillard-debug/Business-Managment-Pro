@@ -149,17 +149,33 @@ router.get("/", async (req, res) => {
   }
 });
 
+// Assign the next sequential invoice number to an invoice that is transitioning
+// out of Draft status. No-op if the invoice already has a number.
+async function assignInvoiceNumberIfNeeded(invoiceId: number): Promise<void> {
+  const [inv] = await db
+    .select({ invoiceNumber: invoicesTable.invoiceNumber })
+    .from(invoicesTable)
+    .where(eq(invoicesTable.id, invoiceId));
+  if (inv?.invoiceNumber) return; // already assigned
+  const number = await getNextInvoiceNumber();
+  await db.update(invoicesTable).set({ invoiceNumber: number }).where(eq(invoicesTable.id, invoiceId));
+}
+
 router.post("/", async (req, res) => {
   try {
     const { clientId, jobId, status, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName, attachments = [], businessLine } = req.body;
-    const invoiceNumber = await getNextInvoiceNumber();
+    const initialStatus = status || "draft";
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
+
+    // Draft invoices do not consume an invoice number — numbers are assigned
+    // only when an invoice transitions out of Draft status.
+    const invoiceNumber = initialStatus !== "draft" ? await getNextInvoiceNumber() : null;
 
     const [invoice] = await db.insert(invoicesTable).values({
       invoiceNumber,
       clientId: clientId || null,
       jobId: jobId || null,
-      status: status || "draft",
+      status: initialStatus,
       issueDate,
       dueDate,
       subtotal: subtotal.toString(),
@@ -241,7 +257,24 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+
+    // Guard: cancelled (voided) invoices are read-only
+    const [currentInv] = await db
+      .select({ status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, id));
+    if (!currentInv) return res.status(404).json({ error: "Invoice not found" });
+    if (currentInv.status === "cancelled") {
+      return res.status(400).json({ error: "Voided invoices cannot be edited." });
+    }
+
     const { clientId, jobId, status, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName, attachments, businessLine } = req.body;
+
+    // Assign an invoice number the first time the invoice leaves Draft status
+    if (status && status !== "draft" && currentInv.status === "draft" && !currentInv.invoiceNumber) {
+      await assignInvoiceNumberIfNeeded(id);
+    }
+
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
 
     await db.update(invoicesTable).set({
@@ -274,6 +307,22 @@ router.patch("/:id/status", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { status } = req.body;
+
+    // Guard: cancelled invoices are frozen — their status cannot be changed
+    const [current] = await db
+      .select({ status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, id));
+    if (!current) return res.status(404).json({ error: "Invoice not found" });
+    if (current.status === "cancelled") {
+      return res.status(400).json({ error: "Voided invoices cannot be modified." });
+    }
+
+    // Assign an invoice number the first time the invoice leaves Draft status
+    if (status && status !== "draft" && current.status === "draft" && !current.invoiceNumber) {
+      await assignInvoiceNumberIfNeeded(id);
+    }
+
     await db.update(invoicesTable).set({ status }).where(eq(invoicesTable.id, id));
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     if (!withJoins) return res.status(404).json({ error: "Invoice not found" });
@@ -284,23 +333,66 @@ router.patch("/:id/status", async (req, res) => {
   }
 });
 
+// ── Void an invoice (audit-safe — keeps the record, sets status to cancelled) ──
+router.post("/:id/void", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    const [inv] = await db
+      .select({
+        status: invoicesTable.status,
+        squarePaymentLinkId: invoicesTable.squarePaymentLinkId,
+      })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, id));
+
+    if (!inv) return res.status(404).json({ error: "Invoice not found" });
+    if (inv.status === "cancelled") {
+      return res.status(400).json({ error: "Invoice is already voided." });
+    }
+
+    // Best-effort Square cleanup before voiding
+    if (inv.squarePaymentLinkId && isSquareConfigured()) {
+      try {
+        await deleteSquarePaymentLink(inv.squarePaymentLinkId);
+      } catch (squareErr) {
+        console.warn("Square payment link deletion failed during void (continuing):", squareErr);
+      }
+    }
+
+    await db.update(invoicesTable)
+      .set({ status: "cancelled", squarePaymentLinkId: null, squarePaymentLinkUrl: null })
+      .where(eq(invoicesTable.id, id));
+
+    const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
+    res.json(fmt(withJoins));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to void invoice" });
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
 
-    // Fetch the invoice first so we can clean up its Square payment link
+    // Only allow hard-delete of unnumbered drafts
     const [inv] = await db
-      .select({ squarePaymentLinkId: invoicesTable.squarePaymentLinkId })
+      .select({
+        invoiceNumber: invoicesTable.invoiceNumber,
+        status: invoicesTable.status,
+      })
       .from(invoicesTable)
       .where(eq(invoicesTable.id, id));
 
-    // Best-effort Square cleanup — never block deletion if Square fails
-    if (inv?.squarePaymentLinkId && isSquareConfigured()) {
-      try {
-        await deleteSquarePaymentLink(inv.squarePaymentLinkId);
-      } catch (squareErr) {
-        console.warn("Square payment link deletion failed (continuing anyway):", squareErr);
-      }
+    if (!inv) return res.status(404).json({ error: "Invoice not found" });
+
+    // Only unnumbered drafts may be hard-deleted. Once an invoice number has
+    // been assigned the record belongs to the permanent audit trail — use void.
+    if (inv.invoiceNumber || inv.status !== "draft") {
+      return res.status(400).json({
+        error: "This invoice has already been issued. Use void to permanently cancel it while preserving the audit record.",
+      });
     }
 
     await db.delete(invoicesTable).where(eq(invoicesTable.id, id));
@@ -324,10 +416,17 @@ router.post("/:id/send", async (req, res) => {
       db.select().from(settingsTable).limit(1),
     ]);
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
+    if (inv.status === "cancelled") return res.status(400).json({ error: "A voided invoice cannot be sent." });
+
+    // Sending is how a draft becomes an official record — assign number now if needed.
+    // Re-fetch afterwards so the email subject reflects the newly assigned number.
+    await assignInvoiceNumberIfNeeded(id);
+    const [freshInv] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
+    const invForEmail = freshInv ?? inv;
 
     // Resolve business profile by the invoice's businessLine slug (if any)
-    const bizRows: Business[] = inv.businessLine
-      ? await db.select().from(businessesTable).where(eq(businessesTable.slug, inv.businessLine as string)).limit(1)
+    const bizRows: Business[] = invForEmail.businessLine
+      ? await db.select().from(businessesTable).where(eq(businessesTable.slug, invForEmail.businessLine as string)).limit(1)
       : [];
     const biz = bizRows[0];
     const mergedSettings: InvoiceEmailSettings = {
@@ -344,13 +443,13 @@ router.post("/:id/send", async (req, res) => {
     };
 
     const companyName = mergedSettings.companyName ?? "BuildPro";
-    const subjectLine = subject || `Invoice ${inv.invoiceNumber} from ${companyName}`;
+    const subjectLine = subject || `Invoice ${invForEmail.invoiceNumber} from ${companyName}`;
 
     // If this invoice is linked to a job that has a checklist, optionally attach it
     const extraAttachments = [];
-    if (attachChecklist && inv.jobId) {
+    if (attachChecklist && invForEmail.jobId) {
       try {
-        const checklistPdf = await generateChecklistPdfBuffer(inv.jobId as number);
+        const checklistPdf = await generateChecklistPdfBuffer(invForEmail.jobId as number);
         if (checklistPdf) {
           extraAttachments.push({ filename: checklistPdf.filename, mimeType: "application/pdf", buffer: checklistPdf.buffer });
         }
@@ -360,9 +459,9 @@ router.post("/:id/send", async (req, res) => {
     }
 
     // If this invoice is linked to a job that has material lists, attach the breakdown PDF
-    if (inv.jobId) {
+    if (invForEmail.jobId) {
       try {
-        const materialsPdf = await generateMaterialsPdfBuffer(inv.jobId as number);
+        const materialsPdf = await generateMaterialsPdfBuffer(invForEmail.jobId as number);
         if (materialsPdf) {
           extraAttachments.push({ filename: materialsPdf.filename, mimeType: "application/pdf", buffer: materialsPdf.buffer });
         }
@@ -371,7 +470,7 @@ router.post("/:id/send", async (req, res) => {
       }
     }
 
-    await sendInvoiceEmail(fmt(inv), mergedSettings, to, subjectLine, message, extraAttachments.length ? extraAttachments : undefined);
+    await sendInvoiceEmail(fmt(invForEmail), mergedSettings, to, subjectLine, message, extraAttachments.length ? extraAttachments : undefined);
 
     await db.update(invoicesTable).set({ status: "sent" }).where(eq(invoicesTable.id, id));
 

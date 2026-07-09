@@ -34,7 +34,7 @@ async function handleSquarePayment(opts: {
     if (!isNaN(invoiceId)) {
       await db.update(invoicesTable)
         .set({ status: "paid", squarePaidAt: paidAt })
-        .where(eq(invoicesTable.id, invoiceId));
+        .where(and(eq(invoicesTable.id, invoiceId), ne(invoicesTable.status, "cancelled")));
       console.log(`Invoice ${invoiceId} marked paid via Square (payment ${squarePaymentId})`);
     }
   }
@@ -194,6 +194,7 @@ async function handleSquarePayment(opts: {
           eq(invoicesTable.clientId, clientId),
           ne(invoicesTable.status, "paid"),
           ne(invoicesTable.status, "draft"),
+          ne(invoicesTable.status, "cancelled"),
         ))
         .orderBy(asc(invoicesTable.issueDate))
         .limit(1);
@@ -201,7 +202,7 @@ async function handleSquarePayment(opts: {
       if (openInvoice) {
         await db.update(invoicesTable)
           .set({ status: "paid", squarePaidAt: paidAt })
-          .where(eq(invoicesTable.id, openInvoice.id));
+          .where(and(eq(invoicesTable.id, openInvoice.id), ne(invoicesTable.status, "cancelled")));
         console.log(
           `Square Wix/Tap payment ${squarePaymentId} — matched to invoice #${openInvoice.invoiceNumber} for client ${client?.name ?? clientId} ($${amountDollars})`
         );

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { invoicesTable, settingsTable, squarePaymentsTable } from "@workspace/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, ne } from "drizzle-orm";
 import { sendEmail, escapeHtml } from "../lib/sendEmail";
 
 const router = Router();
@@ -68,7 +68,7 @@ router.post("/square/record-payment", async (req, res) => {
     if (invoiceId) {
       const [updatedInvoice] = await db.update(invoicesTable)
         .set({ status: "paid", squarePaidAt: new Date() })
-        .where(eq(invoicesTable.id, invoiceId))
+        .where(and(eq(invoicesTable.id, invoiceId), ne(invoicesTable.status, "cancelled")))
         .returning({ invoiceNumber: invoicesTable.invoiceNumber });
       resolvedInvoiceNumber = updatedInvoice?.invoiceNumber ?? null;
     }

@@ -6,7 +6,7 @@ import { jobsTable } from "./jobs";
 
 export const invoicesTable = pgTable("invoices", {
   id: serial("id").primaryKey(),
-  invoiceNumber: text("invoice_number").notNull().unique(),
+  invoiceNumber: text("invoice_number").unique(),
   clientId: integer("client_id").references(() => clientsTable.id),
   jobId: integer("job_id").references(() => jobsTable.id),
   status: text("status").notNull().default("draft"),

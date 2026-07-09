@@ -4,6 +4,7 @@ import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspac
 import { eq } from "drizzle-orm";
 import { createSquarePaymentLink, deleteSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendInvoiceEmail } from "../lib/invoiceEmail";
+import { getNextInvoiceNumber } from "./invoices";
 
 const router = Router();
 
@@ -66,14 +67,25 @@ router.post("/:id/payment-link", async (req, res) => {
     ]);
 
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
+    if (inv.status === "cancelled") return res.status(400).json({ error: "A voided invoice cannot have a payment link created." });
 
     const total = parseFloat(inv.total ?? "0");
     if (total <= 0) return res.status(400).json({ error: "Invoice total must be greater than zero" });
 
+    // Creating a payment link for a draft transitions it out of draft —
+    // assign an invoice number now if it doesn't already have one.
+    let invoiceNumber: string | null = (inv.invoiceNumber as string | null) ?? null;
+    if (!invoiceNumber) {
+      invoiceNumber = await getNextInvoiceNumber();
+      await db.update(invoicesTable)
+        .set({ invoiceNumber: invoiceNumber as string })
+        .where(eq(invoicesTable.id, id));
+    }
+
     const amountCents = Math.round(total * 100);
     const currency = settings?.currency ?? "USD";
     const companyName = settings?.companyName ?? "BuildPro";
-    const productName = `${companyName}: Invoice ${inv.invoiceNumber}${inv.clientName ? ` — ${inv.clientName}` : ""}`;
+    const productName = `${companyName}: Invoice ${invoiceNumber}${inv.clientName ? ` — ${inv.clientName}` : ""}`;
 
     const { url, id: linkId } = await createSquarePaymentLink({
       amountCents,
@@ -106,8 +118,8 @@ router.post("/:id/payment-link", async (req, res) => {
           invWithLink,
           settings ?? {},
           inv.clientEmail,
-          `Your Invoice ${inv.invoiceNumber} from ${companyName} — Payment Link`,
-          `Hi ${inv.clientName || "there"},\n\nYour invoice ${inv.invoiceNumber} is ready. Please use the button below to pay securely online.\n\nThank you for your business!`,
+          `Your Invoice ${invoiceNumber} from ${companyName} — Payment Link`,
+          `Hi ${inv.clientName || "there"},\n\nYour invoice ${invoiceNumber} is ready. Please use the button below to pay securely online.\n\nThank you for your business!`,
         );
         emailSent = true;
       } catch (emailErr: unknown) {

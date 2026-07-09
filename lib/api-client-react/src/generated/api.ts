@@ -2055,6 +2055,86 @@ export const useDeleteInvoice = <
 };
 
 /**
+ * @summary Void an invoice (audit-safe cancel — keeps the record)
+ */
+export const getVoidInvoiceUrl = (id: number) => {
+  return `/api/invoices/${id}/void`;
+};
+
+export const voidInvoice = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Invoice> => {
+  return customFetch<Invoice>(getVoidInvoiceUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getVoidInvoiceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof voidInvoice>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof voidInvoice>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["voidInvoice"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof voidInvoice>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+    return voidInvoice(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VoidInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof voidInvoice>>>;
+export type VoidInvoiceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Void an invoice (audit-safe cancel — keeps the record)
+ */
+export const useVoidInvoice = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof voidInvoice>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof voidInvoice>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getVoidInvoiceMutationOptions(options));
+};
+
+/**
  * @summary Update invoice status
  */
 export const getUpdateInvoiceStatusUrl = (id: number) => {
