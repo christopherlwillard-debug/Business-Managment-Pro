@@ -1,0 +1,97 @@
+Invoice Workflow Redesign
+
+The goal is to separate job completion from accounting while keeping invoice numbers perfectly sequential for audit compliance.
+
+Invoices should not receive an invoice number when they are created. They should remain editable drafts attached only to the Job Card until they have been reviewed and approved.
+
+Draft Stage
+
+When a job is completed, the user can generate an invoice from the Job Card.
+
+While the invoice is in Draft status:
+
+* It exists only on the Job Card.
+* It does not have an invoice number.
+* It can be edited, regenerated, or deleted without affecting invoice numbering.
+* It does not appear on the main Invoices page.
+* It is considered a work-in-progress, not an official accounting document.
+
+The Job Card should display the draft invoice with options to:
+
+* Review Invoice
+* Edit Invoice
+* Print Preview
+* PDF Preview
+* Accept Invoice
+
+Approve Invoice
+
+The “Accept Invoice” button is the point where the invoice becomes official.
+
+When the user clicks Accept Invoice, the system should:
+
+* Assign the next sequential invoice number.
+* Record the approval date and user.
+* Lock the invoice snapshot for audit purposes (or create an audit trail for future edits).
+* Move the invoice from the Job Card into the Invoices module.
+* Remove the editable draft from the Job Card.
+* Change the invoice status to Approved.
+
+This is the first point where the invoice officially exists for accounting purposes.
+
+Approved Status
+
+Approved means the invoice has been reviewed, finalized, and is ready to be sent to the customer.
+
+Approved invoices should appear on the Invoices page and be available for:
+
+* Viewing
+* Printing
+* Downloading as PDF
+* Emailing
+* Texting
+* Sharing
+* Marking as Sent
+
+If the user opens the send dialog but closes it without sending, the invoice should remain in Approved status. Simply opening the send window should never change the status.
+
+Sent Status
+
+An invoice should only move to Sent when delivery is actually confirmed.
+
+This can happen when:
+
+* An email is successfully sent.
+* A text message is successfully sent.
+* A share link is confirmed.
+* The user manually clicks “Mark as Sent.”
+
+Once sent, the system should record:
+
+* Sent date and time.
+* Delivery method.
+* User who sent it.
+
+Payment Progression
+
+After being sent, invoices move through the normal payment workflow:
+
+Approved → Sent → Partially Paid → Paid
+
+If necessary, an Approved or Sent invoice can be marked Void, but it should never be permanently deleted once it has been assigned an invoice number.
+
+Job Card Behavior
+
+Before approval, the Job Card should show the editable draft invoice.
+
+After approval, the draft should no longer appear. Instead, the Job Card should display a simple invoice summary with the assigned invoice number, current status, and a “View Invoice” button.
+
+The Job Card should remain linked to the invoice for reference but should no longer allow editing after approval.
+
+Benefits
+
+This workflow separates production from accounting.
+
+The Job Card remains the workspace for completing the job and building the invoice, while the Invoices page contains only finalized invoices that are part of the accounting system.
+
+Invoice numbers are assigned only after approval, ensuring there are no gaps caused by abandoned or deleted drafts. Once an invoice receives a number, it becomes a permanent accounting record and can only progress through Approved, Sent, Partially Paid, Paid, or Void, maintaining complete audit compliance.
