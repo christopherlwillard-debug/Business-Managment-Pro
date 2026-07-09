@@ -2,6 +2,7 @@ import { Router } from "express";
 import { launchBrowser } from "../lib/launchBrowser.js";
 import { sendInvoiceEmail, type InvoiceEmailSettings } from "../lib/invoiceEmail";
 import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
+import { generateMaterialsPdfBuffer } from "../lib/generateMaterialsPdf.js";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable, businessesTable, type Business } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
@@ -355,6 +356,18 @@ router.post("/:id/send", async (req, res) => {
         }
       } catch (checklistErr) {
         console.warn("[invoices/send] Could not generate checklist PDF — sending without it:", checklistErr);
+      }
+    }
+
+    // If this invoice is linked to a job that has material lists, attach the breakdown PDF
+    if (inv.jobId) {
+      try {
+        const materialsPdf = await generateMaterialsPdfBuffer(inv.jobId as number);
+        if (materialsPdf) {
+          extraAttachments.push({ filename: materialsPdf.filename, mimeType: "application/pdf", buffer: materialsPdf.buffer });
+        }
+      } catch (materialsErr) {
+        console.warn("[invoices/send] Could not generate materials PDF — sending without it:", materialsErr);
       }
     }
 

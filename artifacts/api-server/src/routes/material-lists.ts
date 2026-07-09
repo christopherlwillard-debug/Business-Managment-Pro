@@ -152,25 +152,31 @@ export async function syncMaterialsToJobInvoice(jobId: number) {
     itemsByList[item.listId].push(item);
   }
 
-  // Build individual material line items — one per item, priced at cost × (1 + markup%)
-  const newMaterialLines: LineItem[] = [];
+  // Compute ONE aggregate "Materials" total across all lists (each list has its own markup)
+  let materialsGrandTotal = 0;
   for (const list of lists) {
     const markup = parseFloat(list.markup ?? "40");
     const markupMult = 1 + markup / 100;
     const listItems = itemsByList[list.id] ?? [];
     for (const item of listItems) {
-      const unitPrice = parseFloat((parseFloat(item.unitCostSnapshot ?? "0") * markupMult).toFixed(2));
+      const unitCost = parseFloat(item.unitCostSnapshot ?? "0");
       const qty = parseFloat(item.qty ?? "1");
-      newMaterialLines.push({
-        id: 0, // placeholder — reassigned below after merging with labor lines
-        description: item.nameSnapshot,
-        quantity: qty,
-        unitPrice,
-        total: parseFloat((qty * unitPrice).toFixed(2)),
-        source: "material",
-      });
+      materialsGrandTotal += qty * unitCost * markupMult;
     }
   }
+  materialsGrandTotal = parseFloat(materialsGrandTotal.toFixed(2));
+
+  // One aggregate "Materials" line — source: "material" so cleanup logic still works
+  const newMaterialLines: LineItem[] = materialsGrandTotal > 0
+    ? [{
+        id: 0, // reassigned below
+        description: "Materials",
+        quantity: 1,
+        unitPrice: materialsGrandTotal,
+        total: materialsGrandTotal,
+        source: "material",
+      }]
+    : [];
 
   const hasMaterialItems = newMaterialLines.length > 0;
 
