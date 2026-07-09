@@ -5074,7 +5074,9 @@ export default function Jobs() {
           const inv: Invoice = await invRes.json();
           const currentLines: Array<{ id: number; description: string; quantity: number; unitPrice: number; total: number }> =
             Array.isArray(inv.lineItems) ? inv.lineItems : [];
-          const estimateLines = jobDraft.lineItems.filter(li => li.description !== "Materials");
+          const isMaterialLine = (li: { description: string; [k: string]: unknown }) =>
+            (li as { source?: string }).source === "material" || li.description === "Materials";
+          const estimateLines = jobDraft.lineItems.filter(li => !isMaterialLine(li));
 
           // Update existing $0 lines that match an estimate line, and add any missing ones
           let nextId = currentLines.length > 0 ? Math.max(...currentLines.map(l => l.id)) + 1 : 1;
@@ -5088,7 +5090,7 @@ export default function Jobs() {
           const missingLines = estimateLines
             .filter(li => !existingDescriptions.has(li.description))
             .map(li => ({ id: nextId++, description: li.description, quantity: li.quantity, unitPrice: li.unitPrice, total: parseFloat((li.quantity * li.unitPrice).toFixed(2)) }));
-          const updatedLines = [...mergedLines.filter(l => l.description === "Materials" || l.unitPrice !== 0), ...missingLines.length ? missingLines : []];
+          const updatedLines = [...mergedLines.filter(l => isMaterialLine(l) || l.unitPrice !== 0), ...missingLines.length ? missingLines : []];
           // Only PUT if something actually changed
           const newSubtotal = updatedLines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
           if (newSubtotal > 0) {
@@ -5157,30 +5159,33 @@ export default function Jobs() {
 
       if (existingDraft) {
         // Merge estimate lines from the job draft into the existing draft invoice.
-        // "Materials" is already managed by auto-sync; we handle all other lines here.
+        // Material lines are already managed by auto-sync; we handle all other lines here.
+        const isMaterialLine = (li: { description: string; [k: string]: unknown }) =>
+          (li as { source?: string }).source === "material" || li.description === "Materials";
+
         const currentLineItems: Array<{ id: number; description: string; quantity: number; unitPrice: number; total: number }> =
           Array.isArray(existingDraft.lineItems) ? existingDraft.lineItems : [];
 
-        // All lines from the job draft except "Materials" are estimate-sourced
-        const estimateLines = (jobDraft?.lineItems ?? []).filter(li => li.description !== "Materials");
+        // All lines from the job draft except material-sourced lines are estimate-sourced
+        const estimateLines = (jobDraft?.lineItems ?? []).filter(li => !isMaterialLine(li));
 
         // Which estimate lines are not yet represented in the existing invoice?
         const missingLines = estimateLines.filter(
           li => !currentLineItems.some(cur => cur.description === li.description)
         );
 
-        // Skip the merge if the invoice already has real (non-zero, non-Materials) line items.
+        // Skip the merge if the invoice already has real (non-zero, non-material) line items.
         // Once the user has customised their invoice lines, their edits take precedence and
         // we must not re-add estimate lines that no longer match by description.
         const hasRealContent = currentLineItems.some(
-          li => li.unitPrice !== 0 && li.description !== "Materials"
+          li => li.unitPrice !== 0 && !isMaterialLine(li)
         );
 
         if (!hasRealContent && missingLines.length > 0) {
           // Remove $0 placeholder lines (inserted by auto-sync before estimates were linked)
-          // but keep anything manually edited (non-zero price) and the Materials line.
+          // but keep anything manually edited (non-zero price) and material-sourced lines.
           const keepLines = currentLineItems.filter(
-            li => li.description === "Materials" || li.unitPrice !== 0
+            li => isMaterialLine(li) || li.unitPrice !== 0
           );
           let nextId = keepLines.length > 0
             ? Math.max(...keepLines.map(li => li.id)) + 1

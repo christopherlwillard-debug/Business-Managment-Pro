@@ -25,6 +25,12 @@ interface LineItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  source?: string;
+}
+
+/** True for both the new per-item material lines and the legacy aggregate "Materials" line */
+function isMaterialLine(li: LineItem): boolean {
+  return li.source === "material" || li.description === "Materials";
 }
 
 interface InvoiceAttachment {
@@ -90,11 +96,12 @@ async function getNextInvoiceNumber() {
  * Exported so other route handlers (e.g. jobs.ts) can trigger a sync
  * when job-level events occur (e.g. status → completed).
  *
- * Recalculates the total materials cost for all material lists linked to a job,
- * then upserts a single "Materials" line item on that job's draft invoice.
- * If no draft invoice exists yet, one is created automatically.
- * If the total is zero (e.g., all lists deleted or items removed), the
- * Materials line item is removed from the invoice (or no invoice is created).
+ * Expands all material list items for a job into individual invoice line items,
+ * each priced at unitCostSnapshot × qty × (1 + markup%). Each line carries
+ * source: "material" so subsequent syncs can cleanly replace them without
+ * touching labor/service lines. If no draft invoice exists yet, one is created
+ * automatically. If there are no material items, all material-sourced lines are
+ * removed from the invoice (or no invoice is created).
  */
 export async function syncMaterialsToJobInvoice(jobId: number) {
   // Fetch all material lists for this job
@@ -104,7 +111,7 @@ export async function syncMaterialsToJobInvoice(jobId: number) {
     .where(eq(materialListsTable.jobId, jobId));
 
   if (lists.length === 0) {
-    // No lists — remove any Materials line item from the draft invoice if it exists
+    // No lists — remove all material-sourced lines from the draft invoice if it exists
     const [existing] = await db
       .select()
       .from(invoicesTable)
@@ -115,7 +122,7 @@ export async function syncMaterialsToJobInvoice(jobId: number) {
     if (existing) {
       const rawItems = Array.isArray(existing.lineItems) ? existing.lineItems : [];
       const lineItems = rawItems as LineItem[];
-      const filtered = lineItems.filter(li => li.description !== "Materials");
+      const filtered = lineItems.filter(li => !isMaterialLine(li));
       if (filtered.length !== lineItems.length) {
         const subtotal = filtered.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
         const taxRate = existing.taxRate ? parseFloat(existing.taxRate) : 0;
@@ -131,7 +138,7 @@ export async function syncMaterialsToJobInvoice(jobId: number) {
     return;
   }
 
-  // Gather item totals across all lists for this job
+  // Gather all items across all lists for this job
   const listIds = lists.map(l => l.id);
   const allItems = await db
     .select()
@@ -145,17 +152,27 @@ export async function syncMaterialsToJobInvoice(jobId: number) {
     itemsByList[item.listId].push(item);
   }
 
-  let totalMaterialsCost = 0;
+  // Build individual material line items — one per item, priced at cost × (1 + markup%)
+  const newMaterialLines: LineItem[] = [];
   for (const list of lists) {
     const markup = parseFloat(list.markup ?? "40");
-    const markupMult = markup / 100 + 1;
+    const markupMult = 1 + markup / 100;
     const listItems = itemsByList[list.id] ?? [];
     for (const item of listItems) {
-      totalMaterialsCost += parseFloat(item.unitCostSnapshot ?? "0") * parseFloat(item.qty ?? "1") * markupMult;
+      const unitPrice = parseFloat((parseFloat(item.unitCostSnapshot ?? "0") * markupMult).toFixed(2));
+      const qty = parseFloat(item.qty ?? "1");
+      newMaterialLines.push({
+        id: 0, // placeholder — reassigned below after merging with labor lines
+        description: item.nameSnapshot,
+        quantity: qty,
+        unitPrice,
+        total: parseFloat((qty * unitPrice).toFixed(2)),
+        source: "material",
+      });
     }
   }
 
-  const materialsTotal = parseFloat(totalMaterialsCost.toFixed(2));
+  const hasMaterialItems = newMaterialLines.length > 0;
 
   // Find or create a draft invoice for this job
   let [existingInvoice] = await db
@@ -166,7 +183,7 @@ export async function syncMaterialsToJobInvoice(jobId: number) {
     .limit(1);
 
   if (!existingInvoice) {
-    if (materialsTotal <= 0) return; // nothing to do — don't create an empty invoice
+    if (!hasMaterialItems) return; // nothing to do — don't create an empty invoice
 
     // Get full job info to build the labor/service line alongside materials
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
@@ -184,21 +201,14 @@ export async function syncMaterialsToJobInvoice(jobId: number) {
       unitPrice: 0,
       total: 0,
     };
-    const materialsLineItem: LineItem = {
-      id: 2,
-      description: "Materials",
-      quantity: 1,
-      unitPrice: materialsTotal,
-      total: materialsTotal,
-    };
 
-    // Always include both lines — labor at $0 if no estimate set yet,
-    // so the invoice is never materials-only.
-    const lineItems = [laborLineItem, materialsLineItem];
+    // Assign sequential IDs to material lines starting after the labor line
+    const materialLines = newMaterialLines.map((li, i) => ({ ...li, id: i + 2 }));
+    const lineItems = [laborLineItem, ...materialLines];
 
     const today = new Date().toISOString().split("T")[0];
     const invoiceNumber = await getNextInvoiceNumber();
-    const subtotal = lineItems.reduce((s, li) => s + li.unitPrice, 0);
+    const subtotal = lineItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
 
     await db.insert(invoicesTable).values({
       invoiceNumber,
@@ -219,51 +229,33 @@ export async function syncMaterialsToJobInvoice(jobId: number) {
     return;
   }
 
-  // Upsert the Materials line item in the existing draft invoice
+  // Strip all existing material-sourced lines (handles both old aggregate line and new per-item lines)
   const rawItems = Array.isArray(existingInvoice.lineItems) ? existingInvoice.lineItems : [];
-  let lineItems = rawItems as LineItem[];
+  let laborLines = (rawItems as LineItem[]).filter(li => !isMaterialLine(li));
 
-  // Safety net: if the existing draft has no non-Materials line item at all
-  // (including the case where lineItems is empty), inject the labor/service line
-  // to enforce the invariant that job invoices always contain both.
-  const hasLaborLine = lineItems.some(li => li.description !== "Materials");
-  if (!hasLaborLine) {
+  // Safety net: if there are no labor/service lines at all, inject a placeholder
+  if (laborLines.length === 0) {
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
     if (job) {
       const locationParts = [job.locationName, job.address, job.city, job.state].filter(Boolean);
       const locationSuffix = locationParts.length ? ` — ${locationParts.join(", ")}` : "";
       const laborDesc = `${job.title}${locationSuffix}`;
-      const laborLineItem: LineItem = {
+      laborLines = [{
         id: 1,
         description: laborDesc,
         quantity: 1,
         unitPrice: 0,
         total: 0,
-      };
-      // Renumber existing items to avoid id collisions
-      const reNumbered = lineItems.map((li, i) => ({ ...li, id: i + 2 }));
-      lineItems = [laborLineItem, ...reNumbered];
+      }];
     }
   }
 
-  const matIdx = lineItems.findIndex(li => li.description === "Materials");
+  // Assign fresh sequential IDs to the new material lines
+  const maxLaborId = laborLines.length > 0 ? Math.max(...laborLines.map(li => li.id)) : 0;
+  const materialLines = newMaterialLines.map((li, i) => ({ ...li, id: maxLaborId + i + 1 }));
 
-  let newItems: LineItem[];
-  if (materialsTotal <= 0) {
-    // Remove the Materials line item if total is zero
-    newItems = lineItems.filter(li => li.description !== "Materials");
-  } else if (matIdx >= 0) {
-    // Update existing Materials line item
-    newItems = lineItems.map((li, i) =>
-      i === matIdx
-        ? { ...li, unitPrice: materialsTotal, total: materialsTotal }
-        : li
-    );
-  } else {
-    // Add new Materials line item
-    const nextId = lineItems.length > 0 ? Math.max(...lineItems.map(li => li.id)) + 1 : 1;
-    newItems = [...lineItems, { id: nextId, description: "Materials", quantity: 1, unitPrice: materialsTotal, total: materialsTotal }];
-  }
+  // Labor/service lines first, then individual material lines
+  const newItems: LineItem[] = [...laborLines, ...materialLines];
 
   const subtotal = newItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
   const taxRate = existingInvoice.taxRate ? parseFloat(existingInvoice.taxRate) : 0;
