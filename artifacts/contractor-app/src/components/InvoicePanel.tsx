@@ -183,6 +183,8 @@ export function InvoicePanel({
   const [gmailPreview, setGmailPreview] = useState(false);
   const [attachChecklist, setAttachChecklist] = useState(true);
   const [jobHasChecklist, setJobHasChecklist] = useState(false);
+  const [attachMaterials, setAttachMaterials] = useState(true);
+  const [jobHasMaterials, setJobHasMaterials] = useState(false);
   const [extraEmailFiles, setExtraEmailFiles] = useState<{ filename: string; base64: string }[]>([]);
 
   const clientRef = useRef<HTMLInputElement>(null);
@@ -257,6 +259,18 @@ export function InvoicePanel({
         setAttachChecklist(true);
       })
       .catch(() => { setJobHasChecklist(false); setAttachChecklist(true); });
+  }, [open, form.jobId]);
+
+  useEffect(() => {
+    const jobId = form.jobId ? parseInt(form.jobId) : NaN;
+    if (!open || isNaN(jobId)) { setJobHasMaterials(false); setAttachMaterials(true); return; }
+    fetch(`${base}/api/material-lists?jobId=${jobId}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((lists: unknown[]) => {
+        setJobHasMaterials(Array.isArray(lists) && lists.length > 0);
+        setAttachMaterials(true);
+      })
+      .catch(() => { setJobHasMaterials(false); setAttachMaterials(true); });
   }, [open, form.jobId]);
 
   function setField(k: string, v: string) {
@@ -546,6 +560,24 @@ export function InvoicePanel({
         } catch { /* non-fatal — send without checklist if fetch fails */ }
       }
 
+      let materialsBase64: string | undefined;
+      let materialsFilename: string | undefined;
+      if (attachMaterials && jobHasMaterials && effectiveExistingInvoice.jobId) {
+        try {
+          const matResp = await fetch(`${base}/api/material-lists/jobs/${effectiveExistingInvoice.jobId}/materials-pdf`, { credentials: "include" });
+          if (matResp.ok) {
+            const matBuffer = await matResp.arrayBuffer();
+            let binary = "";
+            const bytes = new Uint8Array(matBuffer);
+            bytes.forEach(b => { binary += String.fromCharCode(b); });
+            materialsBase64 = btoa(binary);
+            const disp = matResp.headers.get("content-disposition") ?? "";
+            const match = disp.match(/filename="?([^"]+)"?/);
+            materialsFilename = match?.[1] ?? "Materials.pdf";
+          }
+        } catch { /* non-fatal — send without materials PDF if fetch fails */ }
+      }
+
       await sendViaGmail({
         token,
         to: gmailTo.trim(),
@@ -556,6 +588,7 @@ export function InvoicePanel({
         pdfFilename,
         extraAttachments: [
           ...(checklistBase64 && checklistFilename ? [{ base64: checklistBase64, filename: checklistFilename }] : []),
+          ...(materialsBase64 && materialsFilename ? [{ base64: materialsBase64, filename: materialsFilename }] : []),
           ...extraEmailFiles,
         ],
       });
@@ -835,6 +868,29 @@ export function InvoicePanel({
                         )}
                       </div>
                     )}
+                    {jobHasMaterials && (
+                      <div className="flex items-center justify-between gap-2 pt-0.5">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={attachMaterials}
+                            onChange={e => setAttachMaterials(e.target.checked)}
+                            className="w-3.5 h-3.5 accent-blue-600 cursor-pointer"
+                          />
+                          <span className="text-[10px] text-blue-700 font-medium">Attach materials PDF</span>
+                        </label>
+                        {effectiveExistingInvoice?.jobId && (
+                          <a
+                            href={`${base}/api/material-lists/jobs/${effectiveExistingInvoice.jobId}/materials-pdf`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-blue-500 underline hover:text-blue-700"
+                          >
+                            Preview PDF
+                          </a>
+                        )}
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 pt-0.5">
                       <button onClick={handleGmailSend} disabled={gmailSending || !gmailTo.trim()}
                         className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50">
@@ -886,7 +942,7 @@ export function InvoicePanel({
                       />
                     </div>
                     <p className="text-[10px] text-blue-400">
-                      📎 {["Invoice PDF", ...(jobHasChecklist && attachChecklist ? ["Checklist PDF"] : []), ...extraEmailFiles.map(f => f.filename)].join(" · ")}
+                      📎 {["Invoice PDF", ...(jobHasChecklist && attachChecklist ? ["Checklist PDF"] : []), ...(jobHasMaterials && attachMaterials ? ["Materials PDF"] : []), ...extraEmailFiles.map(f => f.filename)].join(" · ")}
                     </p>
                   </div>
                 )}

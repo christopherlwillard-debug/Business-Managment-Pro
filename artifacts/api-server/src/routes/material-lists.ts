@@ -490,6 +490,23 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+// ── GET /jobs/:jobId/materials-pdf — download itemized materials as PDF ────────
+router.get("/jobs/:jobId/materials-pdf", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
+    const { generateMaterialsPdfBuffer } = await import("../lib/generateMaterialsPdf.js");
+    const result = await generateMaterialsPdfBuffer(jobId);
+    if (!result) return res.status(404).json({ error: "No material lists found for this job" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+    res.send(result.buffer);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to generate materials PDF" });
+  }
+});
+
 // Keep attach-to-invoice as a no-op for backward compatibility (returns existing invoice id if any)
 router.post("/:id/attach-to-invoice", async (req, res) => {
   try {
