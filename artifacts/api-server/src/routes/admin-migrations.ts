@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, expensesTable, subPaymentRecordsTable, productionServiceTypesTable } from "@workspace/db";
-import { invoicesTable } from "@workspace/db/schema";
+import { invoicesTable, materialListsTable, materialListItemsTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, or, like, asc, sql, ilike, eq } from "drizzle-orm";
 import { recalcImportExpenses } from "./mileage";
 import { syncMaterialsToJobInvoice } from "./material-lists";
@@ -286,6 +286,104 @@ router.post("/consolidate-material-invoice-lines", async (_req: Request, res: Re
     res.json({ ok: true, invoicesFixed: fixed, errors: errors.length ? errors : undefined });
   } catch (err) {
     console.error("[admin/migrations] consolidate-material-invoice-lines failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
+// Strip old-style per-item material lines that lack source:"material" tagging.
+//
+// Background: before Task #1118, syncMaterialsToJobInvoice wrote individual
+// line items per material-list entry (no source field). Task #1118 changed it
+// to a single aggregate "Materials" line (source:"material"). The previous
+// migration (consolidate-material-invoice-lines) correctly creates the aggregate
+// line but cannot detect the old per-item lines because they have no source tag.
+// This migration cross-references material list item names (nameSnapshot) against
+// invoice line descriptions to identify and remove those orphaned old lines.
+//
+// Idempotent: invoices with no matching old-style lines are untouched.
+router.post("/strip-legacy-material-lines", async (_req: Request, res: Response) => {
+  try {
+    // Get all draft invoices with a jobId
+    const draftInvoices = await db
+      .select({
+        id: invoicesTable.id,
+        jobId: invoicesTable.jobId,
+        lineItems: invoicesTable.lineItems,
+      })
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.status, "draft"), isNotNull(invoicesTable.jobId)));
+
+    let fixed = 0;
+    const errors: Array<{ invoiceId: number; error: string }> = [];
+
+    for (const inv of draftInvoices) {
+      try {
+        const jobId = inv.jobId as number;
+        const lines = Array.isArray(inv.lineItems) ? (inv.lineItems as any[]) : [];
+
+        // Only process invoices that have at least one sourced "Materials" aggregate line —
+        // meaning consolidation already ran; we just need to strip the legacy per-item lines.
+        const hasAggregateLine = lines.some(
+          li => li.source === "material" && li.description === "Materials"
+        );
+        if (!hasAggregateLine) continue;
+
+        // Fetch all material list item nameSnapshots for this job
+        const lists = await db
+          .select({ id: materialListsTable.id })
+          .from(materialListsTable)
+          .where(eq(materialListsTable.jobId, jobId));
+
+        if (lists.length === 0) continue;
+
+        const listIds = lists.map(l => l.id);
+        const items = await db
+          .select({ nameSnapshot: materialListItemsTable.nameSnapshot })
+          .from(materialListItemsTable)
+          .where(inArray(materialListItemsTable.listId, listIds));
+
+        if (items.length === 0) continue;
+
+        const materialNames = new Set(items.map(i => i.nameSnapshot));
+
+        // Find lines that match a material item name AND have no source tag
+        // (these are the old per-item lines written before the source field existed)
+        const oldStyleLines = lines.filter(
+          li => !li.source && materialNames.has(li.description)
+        );
+
+        if (oldStyleLines.length === 0) continue;
+
+        // Remove old-style lines, keep everything else
+        const stripped = lines.filter(
+          li => li.source || !materialNames.has(li.description)
+        );
+
+        // Recompute totals
+        const subtotal = stripped.reduce((s: number, li: any) => s + (li.quantity ?? 1) * (li.unitPrice ?? 0), 0);
+        const [existing] = await db.select({ taxRate: invoicesTable.taxRate }).from(invoicesTable).where(eq(invoicesTable.id, inv.id));
+        const taxRate = existing?.taxRate ? parseFloat(existing.taxRate) : 0;
+        const taxAmount = taxRate ? subtotal * (taxRate / 100) : 0;
+
+        await db.update(invoicesTable)
+          .set({
+            lineItems: stripped,
+            subtotal: subtotal.toFixed(2),
+            taxAmount: taxAmount.toFixed(2),
+            total: (subtotal + taxAmount).toFixed(2),
+          })
+          .where(eq(invoicesTable.id, inv.id));
+
+        fixed++;
+      } catch (err) {
+        errors.push({ invoiceId: inv.id, error: String(err) });
+      }
+    }
+
+    console.log(`[admin/migrations] strip-legacy-material-lines: fixed=${fixed}, errors=${errors.length}`);
+    res.json({ ok: true, invoicesFixed: fixed, errors: errors.length ? errors : undefined });
+  } catch (err) {
+    console.error("[admin/migrations] strip-legacy-material-lines failed:", err);
     res.status(500).json({ error: "Migration failed", detail: String(err) });
   }
 });
