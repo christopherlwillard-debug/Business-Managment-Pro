@@ -3133,6 +3133,13 @@ function JobCard({
             </div>
           )}
 
+          {(job as Record<string, unknown>).manHours != null && (
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Timer className="w-3 h-3 flex-shrink-0" />
+              <span className="font-medium">{parseFloat(String((job as Record<string, unknown>).manHours)).toLocaleString(undefined, { maximumFractionDigits: 1 })} man-hrs</span>
+            </div>
+          )}
+
           {/* Invoice status indicator */}
           <div className="flex items-center gap-1.5 pt-0.5">
             <Receipt className="w-3 h-3 flex-shrink-0" />
@@ -3836,10 +3843,38 @@ function JobFormDialog({
   const [clearHoursForSubIds, setClearHoursForSubIds] = useState<number[]>([]);
   const [removeSubPrompt, setRemoveSubPrompt] = useState<{ subId: number; subName: string; pendingIds: number[] } | null>(null);
 
+  // Man-hours calculator state
+  const [manHoursExpanded, setManHoursExpanded] = useState(
+    (editJob as Record<string, unknown>)?.manHours != null
+  );
+  const [manHoursWorkers, setManHoursWorkers] = useState("0");
+  const [manHoursDays, setManHoursDays] = useState("0");
+  const [manHoursHrsPerDay, setManHoursHrsPerDay] = useState("0");
+  const [manHoursTotal, setManHoursTotal] = useState(
+    (editJob as Record<string, unknown>)?.manHours != null
+      ? String(parseFloat(String((editJob as Record<string, unknown>).manHours)))
+      : ""
+  );
+
+  function recalcManHours(workers: string, days: string, hrs: string) {
+    const w = parseFloat(workers);
+    const d = parseFloat(days);
+    const h = parseFloat(hrs);
+    if (!isNaN(w) && !isNaN(d) && !isNaN(h) && w > 0 && d > 0 && h > 0) {
+      setManHoursTotal(String(Math.round(w * d * h * 100) / 100));
+    }
+  }
+
   useEffect(() => {
     setClearHoursForSubIds([]);
     setRemoveSubPrompt(null);
     setSelectedWorkflow(editJob?.workflow ?? null);
+    const existing = (editJob as Record<string, unknown>)?.manHours;
+    setManHoursTotal(existing != null ? String(parseFloat(String(existing))) : "");
+    setManHoursExpanded(existing != null);
+    setManHoursWorkers("0");
+    setManHoursDays("0");
+    setManHoursHrsPerDay("0");
     setMfhMfgId((editJob as Record<string, unknown>)?.mfhManufacturerId as number | null ?? null);
     setMfhModelId((editJob as Record<string, unknown>)?.mfhModelId as number | null ?? null);
     setMfhYear((editJob as Record<string, unknown>)?.mfhModelYear ? String((editJob as Record<string, unknown>).mfhModelYear) : "");
@@ -3918,6 +3953,7 @@ function JobFormDialog({
         workflow: selectedWorkflow || undefined,
         sqFt: form.businessLine === "asphalt_sealing" && form.sqFt !== "" ? parseInt(form.sqFt) : undefined,
         coats: form.businessLine === "asphalt_sealing" && form.coats !== "" ? parseInt(form.coats) : undefined,
+        manHours: manHoursTotal !== "" ? parseFloat(manHoursTotal) : null,
       };
       if (editJob) {
         await updateJob.mutateAsync({ id: editJob.id, data: payload });
@@ -4578,6 +4614,71 @@ function JobFormDialog({
             </div>
           </div>
           )}
+
+          {/* Man Hours Calculator — collapsible */}
+          <div className="rounded-xl border border-border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setManHoursExpanded(e => !e)}
+              className="w-full flex items-center gap-2 px-3.5 py-3 hover:bg-muted/30 transition-colors text-left"
+            >
+              <Timer className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+              <span className="text-sm font-medium text-foreground flex-1">Man Hours</span>
+              {manHoursTotal !== "" && (
+                <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                  {parseFloat(manHoursTotal).toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs
+                </span>
+              )}
+              {!manHoursExpanded && manHoursTotal === "" && (
+                <span className="text-xs text-muted-foreground">optional</span>
+              )}
+              {manHoursExpanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
+            </button>
+            {manHoursExpanded && (
+              <div className="px-3.5 pb-3.5 space-y-3 border-t border-border/50 pt-3">
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "Workers", value: manHoursWorkers, setter: setManHoursWorkers, otherA: manHoursDays, otherB: manHoursHrsPerDay },
+                    { label: "Days", value: manHoursDays, setter: setManHoursDays, otherA: manHoursWorkers, otherB: manHoursHrsPerDay },
+                    { label: "Hrs/Day", value: manHoursHrsPerDay, setter: setManHoursHrsPerDay, otherA: manHoursWorkers, otherB: manHoursDays },
+                  ].map(({ label, value, setter, otherA, otherB }) => (
+                    <div key={label}>
+                      <label className="block text-[10px] font-semibold text-muted-foreground mb-1 uppercase tracking-wide">{label}</label>
+                      <input
+                        type="number" min="0" step="0.5"
+                        className="w-full px-2 py-2 rounded-xl border border-border bg-background text-sm text-foreground text-center focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        value={value}
+                        onChange={e => {
+                          setter(e.target.value);
+                          recalcManHours(
+                            label === "Workers" ? e.target.value : otherA,
+                            label === "Days" ? e.target.value : (label === "Workers" ? otherA : otherB),
+                            label === "Hrs/Day" ? e.target.value : otherB,
+                          );
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground flex-shrink-0">Total hrs</span>
+                  <input
+                    type="number" min="0" step="0.5"
+                    className="flex-1 px-3 py-2 rounded-xl border-2 border-amber-300 bg-amber-50 text-sm font-bold text-amber-900 text-center focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    placeholder="— or type a total directly"
+                    value={manHoursTotal}
+                    onChange={e => setManHoursTotal(e.target.value)}
+                  />
+                  {manHoursTotal !== "" && (
+                    <button type="button" onClick={() => { setManHoursTotal(""); setManHoursWorkers("0"); setManHoursDays("0"); setManHoursHrsPerDay("0"); }}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex-shrink-0 transition-colors">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
           {editJob && (
           <div>

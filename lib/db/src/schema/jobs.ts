@@ -81,6 +81,7 @@ export const jobsTable = pgTable("jobs", {
   serviceBilling: jsonb("service_billing").$type<ServiceBilling>(),
   mfhConstructionType: text("mfh_construction_type"),
   mhProductionServices: jsonb("mh_production_services").$type<number[]>(),
+  manHours: numeric("man_hours", { precision: 8, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

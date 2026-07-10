@@ -184,6 +184,7 @@ export interface CreateJobRequest {
   serviceBilling?: ServiceBilling | null;
   mfhConstructionType?: string | null;
   mhProductionServices?: number[] | null;
+  manHours?: number | null;
 }
 
 export interface DraftLineItem {
