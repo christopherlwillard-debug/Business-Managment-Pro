@@ -10,7 +10,7 @@ import { startBidSyncJob } from "./jobs/bidSync.js";
 import { startComplianceReminderJob } from "./jobs/complianceReminders.js";
 import { db } from "@workspace/db";
 import { businessesTable, mileageLogsTable, expensesTable } from "@workspace/db/schema";
-import { isNull, and, inArray, asc } from "drizzle-orm";
+import { isNull, and, inArray, asc, sql } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
 
@@ -108,7 +108,22 @@ async function seedDefaultBusinesses(): Promise<void> {
   }
 }
 
+async function ensureInvoiceLifecycleColumns(): Promise<void> {
+  try {
+    await db.execute(sql`
+      ALTER TABLE invoices
+        ADD COLUMN IF NOT EXISTS accepted_at  TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS sent_at      TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS sent_method  TEXT;
+    `);
+    console.log("[startup] Invoice lifecycle columns ensured.");
+  } catch (err) {
+    console.error("[startup] ensureInvoiceLifecycleColumns failed (non-fatal):", err);
+  }
+}
+
 async function start() {
+  await ensureInvoiceLifecycleColumns();
   await seedDefaultBusinesses();
   await backfillMileageBusiness();
   app.listen(port, () => {
