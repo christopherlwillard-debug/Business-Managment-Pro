@@ -414,7 +414,7 @@ router.get("/profit-summary", async (req, res) => {
     const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
 
-    const [invRows, expRows, hoursRows, sprNonHoursRows] = await Promise.all([
+    const [invRows, expRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows] = await Promise.all([
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
       // Exclude auto-linked sub-hour expenses; Subcontractor category goes into sub labor bucket
@@ -427,6 +427,18 @@ router.get("/profit-summary", async (req, res) => {
         .from(jobSubHoursTable)
         .where(inArray(jobSubHoursTable.jobId, jobIds))
         .groupBy(jobSubHoursTable.jobId),
+      // Raw hour count (not cost) — used for man-hours display in the archive table
+      db.select({
+        jobId: jobSubHoursTable.jobId,
+        totalHours: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)`,
+      })
+        .from(jobSubHoursTable)
+        .where(inArray(jobSubHoursTable.jobId, jobIds))
+        .groupBy(jobSubHoursTable.jobId),
+      // Manually-entered man-hours from the job form (fallback when no sub hours tracked)
+      db.select({ id: jobsTable.id, manHours: jobsTable.manHours })
+        .from(jobsTable)
+        .where(inArray(jobsTable.id, jobIds)),
       // sub_payment_records for non-hourly (fixed/allocation) subs — new ledger since Task #892.
       // Grouped by comp type: 'fixed' feeds subLaborCost, 'allocation' → allocPaid.
       db.select({
@@ -448,6 +460,8 @@ router.get("/profit-summary", async (req, res) => {
     ]);
 
     const hoursMap = new Map(hoursRows.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
+    const hoursCountMap = new Map(hoursCountRows.map(r => [r.jobId, parseFloat(r.totalHours ?? "0")]));
+    const manHoursMap = new Map(manHoursRows.map(r => [r.id, r.manHours != null ? parseFloat(r.manHours) : null]));
     const sprFixedMap = new Map<number, number>();
     const sprAllocMap = new Map<number, number>();
     for (const r of sprNonHoursRows) {
@@ -459,8 +473,8 @@ router.get("/profit-summary", async (req, res) => {
     const flatSubCostMap: Record<number, number> = {};
     for (const id of jobIds) flatSubCostMap[id] = 0;
 
-    const result: Record<number, { grossInvoiced: number; collected: number; jobExpenses: number; subLaborCost: number; allocPaid: number; netProfit: number }> = {};
-    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, jobExpenses: 0, subLaborCost: 0, allocPaid: 0, netProfit: 0 };
+    const result: Record<number, { grossInvoiced: number; collected: number; jobExpenses: number; subLaborCost: number; allocPaid: number; totalSubHours: number; manHours: number | null; netProfit: number }> = {};
+    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, jobExpenses: 0, subLaborCost: 0, allocPaid: 0, totalSubHours: 0, manHours: null, netProfit: 0 };
 
     for (const inv of invRows) {
       if (inv.jobId == null) continue;
@@ -492,6 +506,10 @@ router.get("/profit-summary", async (req, res) => {
       // but kept out of subLaborCost so Pay Breakdown math stays unchanged.
       result[id].allocPaid = sprAllocMap.get(id) ?? 0;
       result[id].netProfit = result[id].collected - result[id].jobExpenses - result[id].subLaborCost - result[id].allocPaid;
+      // Man-hours: tracked sub hours take priority; fall back to manually entered job field
+      const trackedHours = hoursCountMap.get(id) ?? 0;
+      result[id].totalSubHours = trackedHours;
+      result[id].manHours = manHoursMap.get(id) ?? null;
     }
 
     res.json(result);

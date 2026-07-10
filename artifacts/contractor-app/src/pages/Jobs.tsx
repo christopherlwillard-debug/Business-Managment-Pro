@@ -1003,7 +1003,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 }
 
 // ─── Job Profit Panel ──────────────────────────────────────────────────────────
-type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; auditTrailTotal?: number; subLaborCost?: number; allocPaid?: number; totalSubHours?: number; netProfit: number };
+type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; auditTrailTotal?: number; subLaborCost?: number; allocPaid?: number; totalSubHours?: number; manHours?: number | null; netProfit: number };
 
 // ─── Pay Breakdown Panel ───────────────────────────────────────────────────────
 function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
@@ -4853,7 +4853,7 @@ export default function Jobs() {
   const [paidExpanded, setPaidExpanded] = useState(false);
   const [closedExpanded, setClosedExpanded] = useState(false);
   const [archiveSearch, setArchiveSearch] = useState("");
-  const [archiveSort, setArchiveSort] = useState<"newest" | "oldest" | "revenue" | "profit">("newest");
+  const [archiveSort, setArchiveSort] = useState<"newest" | "oldest" | "revenue" | "profit" | "hours">("newest");
   const [archiveExpandedId, setArchiveExpandedId] = useState<number | null>(null);
   const [csvPopoverOpen, setCsvPopoverOpen] = useState(false);
   const [csvExporting, setCsvExporting] = useState(false);
@@ -5179,6 +5179,15 @@ export default function Jobs() {
         case "oldest":  return (a.closedAt ?? a.endDate ?? "").localeCompare(b.closedAt ?? b.endDate ?? "");
         case "revenue": return (profitMap.get(b.id)?.grossInvoiced ?? 0) - (profitMap.get(a.id)?.grossInvoiced ?? 0);
         case "profit":  return (profitMap.get(b.id)?.netProfit ?? 0) - (profitMap.get(a.id)?.netProfit ?? 0);
+        case "hours": {
+          const getHrs = (j: typeof a) => {
+            const p = profitMap.get(j.id);
+            const tracked = p?.totalSubHours ?? 0;
+            const manual = p?.manHours ?? ((j as Record<string, unknown>).manHours != null ? parseFloat(String((j as Record<string, unknown>).manHours)) : 0);
+            return tracked > 0 ? tracked : manual;
+          };
+          return getHrs(b) - getHrs(a);
+        }
         default:        return (b.closedAt ?? b.endDate ?? "").localeCompare(a.closedAt ?? a.endDate ?? "");
       }
     });
@@ -5830,6 +5839,12 @@ export default function Jobs() {
               {(() => {
                 const totalRev = allClosedBase.reduce((s, j) => s + (profitMap.get(j.id)?.grossInvoiced ?? 0), 0);
                 const totalProfit = allClosedBase.reduce((s, j) => s + (profitMap.get(j.id)?.netProfit ?? 0), 0);
+                const totalHrs = allClosedBase.reduce((s, j) => {
+                  const p = profitMap.get(j.id);
+                  const tracked = p?.totalSubHours ?? 0;
+                  const manual = p?.manHours ?? ((j as Record<string, unknown>).manHours != null ? parseFloat(String((j as Record<string, unknown>).manHours)) : 0);
+                  return s + (tracked > 0 ? tracked : manual);
+                }, 0);
                 return (
                   <div className="flex flex-wrap gap-4 mb-3 px-4 py-2.5 rounded-xl bg-slate-50 border border-border/50 text-sm">
                     <span className="text-muted-foreground">
@@ -5841,6 +5856,16 @@ export default function Jobs() {
                     <span className={totalProfit >= 0 ? "text-emerald-700" : "text-red-600"}>
                       Total Net Profit: <span className="font-semibold">{formatCurrency(totalProfit)}</span>
                     </span>
+                    {totalHrs > 0 && (
+                      <span className="text-orange-700">
+                        Total Man-hrs: <span className="font-semibold">{totalHrs.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span>
+                      </span>
+                    )}
+                    {totalHrs > 0 && totalRev > 0 && (
+                      <span className="text-blue-700">
+                        Avg $/hr: <span className="font-semibold">{formatCurrency(totalRev / totalHrs)}</span>
+                      </span>
+                    )}
                   </div>
                 );
               })()}
@@ -5868,6 +5893,7 @@ export default function Jobs() {
                       <option value="oldest">Oldest Closed</option>
                       <option value="revenue">Highest Revenue</option>
                       <option value="profit">Highest Profit</option>
+                      <option value="hours">Most Man-Hours</option>
                     </select>
                   </div>
 
@@ -5887,6 +5913,7 @@ export default function Jobs() {
                             <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground hidden lg:table-cell">Location</th>
                             <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Revenue</th>
                             <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Profit</th>
+                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground hidden md:table-cell">Man-hrs</th>
                             <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground hidden sm:table-cell">Photos</th>
                             <th className="w-8"></th>
                           </tr>
@@ -5902,6 +5929,11 @@ export default function Jobs() {
                             const closedDateStr = job.closedAt
                               ? formatDate(job.closedAt)
                               : job.endDate ? formatDate(job.endDate) : "—";
+                            // Man-hours: prefer tracked sub hours, fall back to manually entered field
+                            const trackedHrs = profit?.totalSubHours ?? 0;
+                            const manualHrs = profit?.manHours ?? ((job as Record<string, unknown>).manHours != null ? parseFloat(String((job as Record<string, unknown>).manHours)) : 0);
+                            const displayHrs = trackedHrs > 0 ? trackedHrs : manualHrs;
+                            const revenuePerHr = displayHrs > 0 && grossInvoiced > 0 ? grossInvoiced / displayHrs : null;
                             return (
                               <Fragment key={job.id}>
                                 <tr
@@ -5917,6 +5949,16 @@ export default function Jobs() {
                                   <td className={`px-3 py-2.5 text-right font-semibold ${netProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
                                     {formatCurrency(netProfit)}
                                   </td>
+                                  <td className="px-3 py-2.5 text-right hidden md:table-cell">
+                                    {displayHrs > 0 ? (
+                                      <div className="flex flex-col items-end">
+                                        <span className="font-semibold text-orange-700 text-xs">{displayHrs.toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs</span>
+                                        {revenuePerHr != null && (
+                                          <span className="text-[10px] text-blue-600">{formatCurrency(revenuePerHr)}/hr</span>
+                                        )}
+                                      </div>
+                                    ) : <span className="text-muted-foreground text-xs">—</span>}
+                                  </td>
                                   <td className="px-3 py-2.5 text-right hidden sm:table-cell">
                                     {photoCount > 0 ? (
                                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
@@ -5930,7 +5972,7 @@ export default function Jobs() {
                                 </tr>
                                 {isExpanded && (
                                   <tr className="border-t border-border/40 bg-muted/20">
-                                    <td colSpan={9} className="px-4 py-3">
+                                    <td colSpan={10} className="px-4 py-3">
                                       <div className="flex flex-wrap items-center gap-3 mb-3">
                                         {[
                                           { icon: <ImageIcon className="w-3 h-3" />, label: "Photos", value: photoCount },
@@ -5939,6 +5981,7 @@ export default function Jobs() {
                                           { icon: <Calculator className="w-3 h-3" />, label: "Est.", value: estimateTotalByJob[job.id] != null ? formatCurrency(estimateTotalByJob[job.id]) : "—" },
                                           { icon: <DollarSign className="w-3 h-3" />, label: "Invoice", value: invoiceSummaryMap.get(job.id)?.status === "paid" ? "Paid ✓" : invoiceSummaryMap.get(job.id)?.status ?? "—" },
                                           { icon: <HardHat className="w-3 h-3" />, label: "Subs", value: job.subPaid ? "Settled ✓" : "Outstanding" },
+                                          ...(displayHrs > 0 ? [{ icon: <Clock className="w-3 h-3" />, label: "Man-hrs", value: `${displayHrs.toLocaleString(undefined, { maximumFractionDigits: 1 })}${revenuePerHr != null ? ` · ${formatCurrency(revenuePerHr)}/hr` : ""}` }] : []),
                                         ].map(({ icon, label, value }) => (
                                           <span key={label} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-background border border-border/60 text-xs text-muted-foreground">
                                             {icon}
