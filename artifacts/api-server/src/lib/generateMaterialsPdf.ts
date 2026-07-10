@@ -149,7 +149,7 @@ export async function generateMaterialsPdfBuffer(
     doc.text("DESCRIPTION",   COL.desc.x + 4,  y + 4, { width: COL.desc.w,  lineBreak: false });
     doc.text("QTY",           COL.qty.x,        y + 4, { width: COL.qty.w,   align: "right", lineBreak: false });
     doc.text("UNIT",          COL.unit.x,       y + 4, { width: COL.unit.w,  align: "right", lineBreak: false });
-    doc.text("UNIT COST",     COL.cost.x,       y + 4, { width: COL.cost.w,  align: "right", lineBreak: false });
+    doc.text("UNIT PRICE",    COL.cost.x,       y + 4, { width: COL.cost.w,  align: "right", lineBreak: false });
     doc.text("TOTAL",         COL.total.x,      y + 4, { width: COL.total.w, align: "right", lineBreak: false });
     doc.y = y + 16;
     hRule();
@@ -173,8 +173,6 @@ export async function generateMaterialsPdfBuffer(
     doc.save().rect(L, shY, W, 15).fillColor("#fffbeb").fill().restore();
     doc.font("Helvetica-Bold").fontSize(8.5).fillColor(AMBER)
        .text(list.name ?? "Materials", L + 4, shY + 3, { width: W * 0.6, lineBreak: false });
-    doc.font("Helvetica").fontSize(7.5).fillColor(GRAY)
-       .text(`${markup}% markup`, R - 80, shY + 4, { width: 80, align: "right", lineBreak: false });
     doc.y = shY + 15;
 
     let listTotal = 0;
@@ -194,7 +192,7 @@ export async function generateMaterialsPdfBuffer(
       doc.font("Helvetica").fontSize(8.5).fillColor(GRAY)
          .text(qty % 1 === 0 ? qty.toString() : qty.toFixed(2), COL.qty.x, rowY, { width: COL.qty.w, align: "right", lineBreak: false });
       doc.text(item.unitSnapshot ?? "ea", COL.unit.x, rowY, { width: COL.unit.w, align: "right", lineBreak: false });
-      doc.text(fmtUSD(unitCost), COL.cost.x, rowY, { width: COL.cost.w, align: "right", lineBreak: false });
+      doc.text(fmtUSD(unitWith), COL.cost.x, rowY, { width: COL.cost.w, align: "right", lineBreak: false });
       doc.font("Helvetica").fontSize(8.5).fillColor(DARK)
          .text(fmtUSD(rowTotal), COL.total.x, rowY, { width: COL.total.w, align: "right", lineBreak: false });
       doc.y = rowY + 14;
