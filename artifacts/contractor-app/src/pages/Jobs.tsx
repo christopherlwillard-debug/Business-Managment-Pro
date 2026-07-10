@@ -5350,7 +5350,17 @@ export default function Jobs() {
         return;
       }
 
-      // No existing draft — open the editor using job draft data (creates new invoice on save)
+      // No existing draft — but check if the job already has an approved/sent/paid invoice.
+      // If so, open it in view/edit mode to prevent accidentally creating a duplicate.
+      const existingInvoiceSummary = invoiceSummaryMap.get(job.id);
+      if (existingInvoiceSummary && existingInvoiceSummary.status !== "draft") {
+        setInvoiceDraftData(null);
+        setSelectedExistingInvoice(existingInvoiceSummary);
+        setInvoiceEditorOpen(true);
+        return;
+      }
+
+      // Truly no invoice yet — open the editor using job draft data (creates new invoice on save)
       if (jobDraft) {
         setInvoiceDraftData(jobDraft);
         setSelectedExistingInvoice(null);
