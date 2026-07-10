@@ -1,0 +1,503 @@
+// Integration tests for invoice state-transition endpoints (Task #1127).
+//
+// These pin the lifecycle rules that guard the contractor billing workflow:
+//   draft → approved (POST /accept)   — assigns invoice number
+//   approved → sent  (POST /mark-sent)
+//   sent → paid etc  (PATCH /status)  — VALID_TRANSITIONS enforced
+//   sent → partiallyPaid → paid       (POST /record-payment) — amountPaid accumulates
+//
+// The DB layer is fully mocked so no database connection is required.
+// Each test pushes expected results onto a shared queue that the mock drains
+// in the order the route handler issues selects/limits.
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import request from "supertest";
+import express from "express";
+
+// ── Hoisted mutable state — must be declared before vi.mock calls ─────────────
+const h = vi.hoisted(() => ({
+  // Queue of result arrays. Each .where() / .limit() call shifts one off.
+  selectQueue: [] as any[][],
+  // Record of every .set(data) call (for asserting what was written to DB).
+  updates: [] as any[],
+}));
+
+// ── Mock @workspace/db ────────────────────────────────────────────────────────
+// Returns a fluent chain; .where() and .limit() pop the next result off the queue.
+vi.mock("@workspace/db", () => {
+  const chain: any = {
+    from:      () => chain,
+    leftJoin:  () => chain,
+    orderBy:   () => chain,
+    inArray:   () => chain,
+    where:     () => Promise.resolve(h.selectQueue.shift() ?? []),
+    limit:     () => Promise.resolve(h.selectQueue.shift() ?? []),
+  };
+  return {
+    db: {
+      select:  () => chain,
+      update:  () => ({
+        set: (data: any) => {
+          h.updates.push(data);
+          return { where: () => Promise.resolve() };
+        },
+      }),
+      insert:  () => ({
+        values: () => ({
+          returning: () => Promise.resolve([{ id: 42 }]),
+        }),
+      }),
+      execute: () => Promise.resolve(),
+      delete:  () => ({ where: () => Promise.resolve() }),
+    },
+  };
+});
+
+// ── Mock external dependencies so routes load without real infra ──────────────
+vi.mock("../lib/square.js", () => ({
+  isSquareConfigured:      () => false,
+  deleteSquarePaymentLink: vi.fn(),
+}));
+vi.mock("../lib/invoiceEmail", () => ({
+  sendInvoiceEmail: vi.fn(),
+}));
+vi.mock("../lib/launchBrowser.js",          () => ({ launchBrowser:              vi.fn() }));
+vi.mock("../lib/generateChecklistPdf.js",   () => ({ generateChecklistPdfBuffer: vi.fn() }));
+vi.mock("../lib/generateMaterialsPdf.js",   () => ({ generateMaterialsPdfBuffer: vi.fn() }));
+
+// ── Import router + helpers AFTER mocks are hoisted ───────────────────────────
+const mod = await import("./invoices");
+const invoiceRouter = mod.default;
+const { calcInvoice } = mod;
+
+// ── Mount in a minimal Express app ───────────────────────────────────────────
+const app = express();
+app.use(express.json());
+app.use("/", invoiceRouter);
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fakeInvoice(overrides: Record<string, any> = {}): Record<string, any> {
+  return {
+    id: 42,
+    invoiceNumber: "INV-1001",
+    clientId: null,
+    jobId: null,
+    status: "approved",
+    issueDate: "2026-07-10",
+    dueDate: null,
+    subtotal: "1000.00",
+    taxRate: null,
+    taxAmount: "0.00",
+    total: "1000.00",
+    amountPaid: null,
+    lastManualPaidAt: null,
+    lineItems: [],
+    attachments: [],
+    notes: null,
+    terms: null,
+    locationName: null,
+    city: null,
+    state: null,
+    businessLine: null,
+    stripePaymentLinkId: null,
+    stripePaymentLinkUrl: null,
+    stripePaymentIntentId: null,
+    stripePaidAt: null,
+    squarePaymentLinkId: null,
+    squarePaymentLinkUrl: null,
+    squarePaidAt: null,
+    payToken: null,
+    remindersSentAt: [],
+    acceptedAt: null,
+    sentAt: null,
+    sentMethod: null,
+    createdAt: new Date(),
+    clientName: null,
+    clientEmail: null,
+    clientAddress: null,
+    clientPhone: null,
+    clientCity: null,
+    clientState: null,
+    clientZip: null,
+    clientNotes: null,
+    jobTitle: null,
+    jobCity: null,
+    jobState: null,
+    ...overrides,
+  };
+}
+
+// ── Reset mock state between tests ────────────────────────────────────────────
+beforeEach(() => {
+  h.selectQueue.length = 0;
+  h.updates.length = 0;
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// calcInvoice — pure function unit tests
+// ─────────────────────────────────────────────────────────────────────────────
+describe("calcInvoice", () => {
+  it("sums line items with no tax", () => {
+    const r = calcInvoice([
+      { quantity: 2, unitPrice: 150 },
+      { quantity: 1, unitPrice: 200 },
+    ], null);
+    expect(r.subtotal).toBe(500);
+    expect(r.taxAmount).toBe(0);
+    expect(r.total).toBe(500);
+  });
+
+  it("applies tax rate correctly", () => {
+    const r = calcInvoice([{ quantity: 1, unitPrice: 1000 }], 10);
+    expect(r.subtotal).toBe(1000);
+    expect(r.taxAmount).toBeCloseTo(100);
+    expect(r.total).toBeCloseTo(1100);
+  });
+
+  it("returns zeros for empty line items", () => {
+    const r = calcInvoice([], null);
+    expect(r.subtotal).toBe(0);
+    expect(r.total).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /:id/accept — draft → approved
+// ─────────────────────────────────────────────────────────────────────────────
+describe("POST /:id/accept", () => {
+  it("transitions a draft invoice to approved and assigns an invoice number", async () => {
+    // 1) get current invoice (status check)
+    // 2) get current invoice (assignInvoiceNumberIfNeeded check)
+    // 3) get settings (getNextInvoiceNumber)
+    // 4) get final invoice after update (buildInvoiceQuery)
+    h.selectQueue.push(
+      [{ status: "draft", invoiceNumber: null }],
+      [{ invoiceNumber: null }],
+      [{ id: 1, invoicePrefix: "INV-", invoiceNextNumber: 1001 }],
+      [fakeInvoice({ status: "approved", invoiceNumber: "INV-1001" })],
+    );
+
+    const res = await request(app).post("/42/accept").send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("approved");
+    expect(res.body.invoiceNumber).toBe("INV-1001");
+
+    // verify status update was written
+    const statusUpdate = h.updates.find((u: any) => u.status === "approved");
+    expect(statusUpdate).toBeTruthy();
+    expect(statusUpdate.acceptedAt).toBeInstanceOf(Date);
+  });
+
+  it("returns 400 when invoice is already approved (not a draft)", async () => {
+    h.selectQueue.push([{ status: "approved", invoiceNumber: "INV-1001" }]);
+
+    const res = await request(app).post("/42/accept").send();
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/draft/i);
+  });
+
+  it("returns 400 when invoice is sent", async () => {
+    h.selectQueue.push([{ status: "sent", invoiceNumber: "INV-1001" }]);
+
+    const res = await request(app).post("/42/accept").send();
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/draft/i);
+  });
+
+  it("returns 404 when invoice does not exist", async () => {
+    h.selectQueue.push([]); // empty result = not found
+
+    const res = await request(app).post("/99/accept").send();
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /:id/mark-sent — approved → sent
+// ─────────────────────────────────────────────────────────────────────────────
+describe("POST /:id/mark-sent", () => {
+  it("transitions an approved invoice to sent", async () => {
+    h.selectQueue.push(
+      [{ status: "approved" }],
+      [fakeInvoice({ status: "sent", invoiceNumber: "INV-1001" })],
+    );
+
+    const res = await request(app).post("/42/mark-sent").send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("sent");
+
+    const update = h.updates.find((u: any) => u.status === "sent");
+    expect(update).toBeTruthy();
+    expect(update.sentMethod).toBe("manual");
+    expect(update.sentAt).toBeInstanceOf(Date);
+  });
+
+  it("allows re-marking an already-sent invoice as sent (idempotent)", async () => {
+    h.selectQueue.push(
+      [{ status: "sent" }],
+      [fakeInvoice({ status: "sent" })],
+    );
+
+    const res = await request(app).post("/42/mark-sent").send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("sent");
+  });
+
+  it("returns 400 when invoice is still a draft", async () => {
+    h.selectQueue.push([{ status: "draft" }]);
+
+    const res = await request(app).post("/42/mark-sent").send();
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/approved or sent/i);
+  });
+
+  it("returns 400 when invoice is paid", async () => {
+    h.selectQueue.push([{ status: "paid" }]);
+
+    const res = await request(app).post("/42/mark-sent").send();
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 when invoice does not exist", async () => {
+    h.selectQueue.push([]);
+
+    const res = await request(app).post("/99/mark-sent").send();
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /:id/status — VALID_TRANSITIONS enforcement
+// ─────────────────────────────────────────────────────────────────────────────
+describe("PATCH /:id/status", () => {
+  it("allows sent → paid", async () => {
+    h.selectQueue.push(
+      [{ status: "sent", invoiceNumber: "INV-1001" }],
+      [fakeInvoice({ status: "paid" })],
+    );
+
+    const res = await request(app).patch("/42/status").send({ status: "paid" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("paid");
+    const update = h.updates.find((u: any) => u.status === "paid");
+    expect(update).toBeTruthy();
+  });
+
+  it("allows sent → overdue", async () => {
+    h.selectQueue.push(
+      [{ status: "sent", invoiceNumber: "INV-1001" }],
+      [fakeInvoice({ status: "overdue" })],
+    );
+
+    const res = await request(app).patch("/42/status").send({ status: "overdue" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("overdue");
+  });
+
+  it("allows sent → partiallyPaid", async () => {
+    h.selectQueue.push(
+      [{ status: "sent", invoiceNumber: "INV-1001" }],
+      [fakeInvoice({ status: "partiallyPaid", amountPaid: "500.00" })],
+    );
+
+    const res = await request(app).patch("/42/status").send({ status: "partiallyPaid" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("partiallyPaid");
+  });
+
+  it("allows approved → cancelled", async () => {
+    h.selectQueue.push(
+      [{ status: "approved", invoiceNumber: "INV-1001" }],
+      [fakeInvoice({ status: "cancelled" })],
+    );
+
+    const res = await request(app).patch("/42/status").send({ status: "cancelled" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("cancelled");
+  });
+
+  it("blocks approved → paid (invalid transition)", async () => {
+    h.selectQueue.push([{ status: "approved", invoiceNumber: "INV-1001" }]);
+
+    const res = await request(app).patch("/42/status").send({ status: "paid" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid transition/i);
+  });
+
+  it("blocks paid → sent (terminal status — no transitions allowed)", async () => {
+    h.selectQueue.push([{ status: "paid", invoiceNumber: "INV-1001" }]);
+
+    const res = await request(app).patch("/42/status").send({ status: "sent" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid transition/i);
+  });
+
+  it("blocks modification of a cancelled (voided) invoice", async () => {
+    h.selectQueue.push([{ status: "cancelled", invoiceNumber: "INV-1001" }]);
+
+    const res = await request(app).patch("/42/status").send({ status: "sent" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/voided/i);
+  });
+
+  it("returns 404 when invoice does not exist", async () => {
+    h.selectQueue.push([]);
+
+    const res = await request(app).patch("/99/status").send({ status: "paid" });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /:id/record-payment — partial payment tracking
+// ─────────────────────────────────────────────────────────────────────────────
+describe("POST /:id/record-payment", () => {
+  it("records a partial payment and advances status to partiallyPaid", async () => {
+    h.selectQueue.push(
+      [{ status: "sent", total: "1000.00", amountPaid: null }],
+      [fakeInvoice({ status: "partiallyPaid", amountPaid: "300.00" })],
+    );
+
+    const res = await request(app)
+      .post("/42/record-payment")
+      .send({ amount: 300, paidAt: "2026-07-10" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("partiallyPaid");
+
+    const update = h.updates.find((u: any) => u.status === "partiallyPaid");
+    expect(update).toBeTruthy();
+    expect(parseFloat(update.amountPaid)).toBeCloseTo(300);
+    expect(update.lastManualPaidAt).toBeInstanceOf(Date);
+  });
+
+  it("accumulates amountPaid on top of an existing partial payment", async () => {
+    h.selectQueue.push(
+      [{ status: "partiallyPaid", total: "1000.00", amountPaid: "300.00" }],
+      [fakeInvoice({ status: "partiallyPaid", amountPaid: "600.00" })],
+    );
+
+    const res = await request(app)
+      .post("/42/record-payment")
+      .send({ amount: 300, paidAt: "2026-07-11" });
+
+    expect(res.status).toBe(200);
+    const update = h.updates.find((u: any) => u.status === "partiallyPaid");
+    expect(parseFloat(update.amountPaid)).toBeCloseTo(600);
+  });
+
+  it("auto-advances to paid when cumulative amount covers the total", async () => {
+    h.selectQueue.push(
+      [{ status: "partiallyPaid", total: "1000.00", amountPaid: "700.00" }],
+      [fakeInvoice({ status: "paid", amountPaid: "1000.00" })],
+    );
+
+    const res = await request(app)
+      .post("/42/record-payment")
+      .send({ amount: 300, paidAt: "2026-07-12" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("paid");
+
+    const update = h.updates.find((u: any) => u.status === "paid");
+    expect(parseFloat(update.amountPaid)).toBeCloseTo(1000); // capped at total
+  });
+
+  it("caps amountPaid at the invoice total (no overpayment)", async () => {
+    h.selectQueue.push(
+      [{ status: "sent", total: "500.00", amountPaid: null }],
+      [fakeInvoice({ status: "paid", amountPaid: "500.00" })],
+    );
+
+    await request(app)
+      .post("/42/record-payment")
+      .send({ amount: 9999, paidAt: "2026-07-10" });
+
+    const update = h.updates.find((u: any) => u.status === "paid");
+    expect(parseFloat(update.amountPaid)).toBe(500); // capped at total
+  });
+
+  it("persists the payment date from the request body", async () => {
+    h.selectQueue.push(
+      [{ status: "sent", total: "1000.00", amountPaid: null }],
+      [fakeInvoice({ status: "partiallyPaid" })],
+    );
+
+    await request(app)
+      .post("/42/record-payment")
+      .send({ amount: 100, paidAt: "2026-06-15" });
+
+    const update = h.updates.find((u: any) => u.lastManualPaidAt);
+    expect(update).toBeTruthy();
+    // Date should be on or around 2026-06-15
+    const d = update.lastManualPaidAt as Date;
+    expect(d.getUTCFullYear()).toBe(2026);
+    expect(d.getUTCMonth()).toBe(5); // June (0-indexed)
+    expect(d.getUTCDate()).toBe(15);
+  });
+
+  it("returns 400 for a zero or negative amount", async () => {
+    const res = await request(app)
+      .post("/42/record-payment")
+      .send({ amount: 0 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/positive/i);
+  });
+
+  it("returns 400 for a missing amount", async () => {
+    const res = await request(app)
+      .post("/42/record-payment")
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when recording payment on a draft invoice", async () => {
+    h.selectQueue.push([{ status: "draft", total: "1000.00", amountPaid: null }]);
+
+    const res = await request(app)
+      .post("/42/record-payment")
+      .send({ amount: 100 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/draft/i);
+  });
+
+  it("returns 400 when recording payment on a cancelled invoice", async () => {
+    h.selectQueue.push([{ status: "cancelled", total: "1000.00", amountPaid: null }]);
+
+    const res = await request(app)
+      .post("/42/record-payment")
+      .send({ amount: 100 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/cancelled/i);
+  });
+
+  it("returns 404 when invoice does not exist", async () => {
+    h.selectQueue.push([]);
+
+    const res = await request(app)
+      .post("/99/record-payment")
+      .send({ amount: 100 });
+
+    expect(res.status).toBe(404);
+  });
+});
