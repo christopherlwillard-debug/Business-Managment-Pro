@@ -691,4 +691,20 @@ router.post("/add-invoice-manual-paid-at", async (_req: Request, res: Response) 
   }
 });
 
+// Add accepted_at, sent_at, sent_method columns to invoices (missing from production)
+router.post("/add-invoice-lifecycle-columns", async (_req: Request, res: Response) => {
+  try {
+    await db.execute(sql`
+      ALTER TABLE invoices
+        ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS sent_method TEXT;
+    `);
+    res.json({ ok: true, message: "accepted_at, sent_at, sent_method columns ensured on invoices" });
+  } catch (err) {
+    console.error("[admin/migrations] add-invoice-lifecycle-columns failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;
