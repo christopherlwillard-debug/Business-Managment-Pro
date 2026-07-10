@@ -19,6 +19,8 @@ const h = vi.hoisted(() => ({
   selectQueue: [] as any[][],
   // Record of every .set(data) call (for asserting what was written to DB).
   updates: [] as any[],
+  // Controls whether isSquareConfigured() returns true in a given test.
+  squareConfigured: false,
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -54,7 +56,7 @@ vi.mock("@workspace/db", () => {
 
 // ── Mock external dependencies so routes load without real infra ──────────────
 vi.mock("../lib/square.js", () => ({
-  isSquareConfigured:      () => false,
+  isSquareConfigured:      () => h.squareConfigured,
   deleteSquarePaymentLink: vi.fn(),
 }));
 vi.mock("../lib/invoiceEmail", () => ({
@@ -68,6 +70,10 @@ vi.mock("../lib/generateMaterialsPdf.js",   () => ({ generateMaterialsPdfBuffer:
 const mod = await import("./invoices");
 const invoiceRouter = mod.default;
 const { calcInvoice } = mod;
+
+// Grab the spy handle for deleteSquarePaymentLink from the module mock.
+const squareMod = await import("../lib/square.js");
+const deleteSquarePaymentLink = vi.mocked(squareMod.deleteSquarePaymentLink);
 
 // ── Mount in a minimal Express app ───────────────────────────────────────────
 const app = express();
@@ -130,6 +136,8 @@ function fakeInvoice(overrides: Record<string, any> = {}): Record<string, any> {
 beforeEach(() => {
   h.selectQueue.length = 0;
   h.updates.length = 0;
+  h.squareConfigured = false;
+  deleteSquarePaymentLink.mockClear();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -653,6 +661,91 @@ describe("POST /:id/record-payment", () => {
     const res = await request(app)
       .post("/99/record-payment")
       .send({ amount: 100 });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /:id/void — irreversible audit-safe cancellation
+// ─────────────────────────────────────────────────────────────────────────────
+describe("POST /:id/void", () => {
+  it("transitions an approved invoice to cancelled", async () => {
+    // 1) status check fetch
+    // 2) buildInvoiceQuery fetch after update
+    h.selectQueue.push(
+      [{ status: "approved", squarePaymentLinkId: null }],
+      [fakeInvoice({ status: "cancelled" })],
+    );
+
+    const res = await request(app).post("/42/void").send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("cancelled");
+
+    const update = h.updates.find((u: any) => u.status === "cancelled");
+    expect(update).toBeTruthy();
+    expect(update.squarePaymentLinkId).toBeNull();
+    expect(update.squarePaymentLinkUrl).toBeNull();
+  });
+
+  it("returns 400 when voiding a draft (use delete instead)", async () => {
+    h.selectQueue.push([{ status: "draft", squarePaymentLinkId: null }]);
+
+    const res = await request(app).post("/42/void").send();
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/draft/i);
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it("returns 400 when voiding an already-cancelled invoice", async () => {
+    h.selectQueue.push([{ status: "cancelled", squarePaymentLinkId: null }]);
+
+    const res = await request(app).post("/42/void").send();
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/already voided/i);
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it("attempts Square payment link cleanup on void when configured", async () => {
+    h.squareConfigured = true;
+
+    h.selectQueue.push(
+      [{ status: "approved", squarePaymentLinkId: "sq-link-abc123" }],
+      [fakeInvoice({ status: "cancelled" })],
+    );
+
+    const res = await request(app).post("/42/void").send();
+
+    expect(res.status).toBe(200);
+    expect(deleteSquarePaymentLink).toHaveBeenCalledOnce();
+    expect(deleteSquarePaymentLink).toHaveBeenCalledWith("sq-link-abc123");
+  });
+
+  it("still voids even if Square link deletion throws (best-effort)", async () => {
+    h.squareConfigured = true;
+    deleteSquarePaymentLink.mockRejectedValueOnce(new Error("Square API down"));
+
+    h.selectQueue.push(
+      [{ status: "sent", squarePaymentLinkId: "sq-link-xyz" }],
+      [fakeInvoice({ status: "cancelled" })],
+    );
+
+    const res = await request(app).post("/42/void").send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("cancelled");
+
+    const update = h.updates.find((u: any) => u.status === "cancelled");
+    expect(update).toBeTruthy();
+  });
+
+  it("returns 404 when invoice does not exist", async () => {
+    h.selectQueue.push([]);
+
+    const res = await request(app).post("/99/void").send();
 
     expect(res.status).toBe(404);
   });
