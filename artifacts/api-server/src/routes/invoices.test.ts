@@ -133,6 +133,162 @@ beforeEach(() => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// validateLineItems — exported helper unit tests
+// ─────────────────────────────────────────────────────────────────────────────
+const { validateLineItems } = mod;
+
+describe("validateLineItems", () => {
+  it("returns null for a valid array of line items", () => {
+    expect(validateLineItems([
+      { description: "Labor", quantity: 2, unitPrice: 75 },
+    ])).toBeNull();
+  });
+
+  it("returns null for an empty array (no line items)", () => {
+    expect(validateLineItems([])).toBeNull();
+  });
+
+  it("returns null when unitPrice is 0 (free line item)", () => {
+    expect(validateLineItems([
+      { description: "Free service", quantity: 1, unitPrice: 0 },
+    ])).toBeNull();
+  });
+
+  it("returns an error string when description is missing", () => {
+    const err = validateLineItems([{ description: "", quantity: 1, unitPrice: 50 }]);
+    expect(err).toMatch(/description/i);
+  });
+
+  it("returns an error string when quantity is 0", () => {
+    const err = validateLineItems([{ description: "Labor", quantity: 0, unitPrice: 50 }]);
+    expect(err).toMatch(/quantity/i);
+  });
+
+  it("returns an error string when quantity is negative", () => {
+    const err = validateLineItems([{ description: "Labor", quantity: -1, unitPrice: 50 }]);
+    expect(err).toMatch(/quantity/i);
+  });
+
+  it("returns an error string when unitPrice is negative", () => {
+    const err = validateLineItems([{ description: "Labor", quantity: 1, unitPrice: -5 }]);
+    expect(err).toMatch(/unit price/i);
+  });
+
+  it("returns an error string when quantity is not a number", () => {
+    const err = validateLineItems([{ description: "Labor", quantity: "two", unitPrice: 50 }]);
+    expect(err).toMatch(/number/i);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST / — line item validation on create
+// ─────────────────────────────────────────────────────────────────────────────
+describe("POST / — line item validation", () => {
+  it("creates a draft invoice when line items are valid", async () => {
+    // buildInvoiceQuery().where() after insert
+    h.selectQueue.push([fakeInvoice({ status: "draft", invoiceNumber: null })]);
+
+    const res = await request(app).post("/").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "Sealing", quantity: 1, unitPrice: 500 }],
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe("draft");
+  });
+
+  it("creates a draft invoice when lineItems is omitted (defaults to empty)", async () => {
+    h.selectQueue.push([fakeInvoice({ status: "draft", invoiceNumber: null })]);
+
+    const res = await request(app).post("/").send({ issueDate: "2026-07-10" });
+
+    expect(res.status).toBe(201);
+  });
+
+  it("returns 400 when a line item has no description", async () => {
+    const res = await request(app).post("/").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "", quantity: 1, unitPrice: 100 }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/description/i);
+  });
+
+  it("returns 400 when a line item has quantity = 0", async () => {
+    const res = await request(app).post("/").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "Labor", quantity: 0, unitPrice: 100 }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/quantity/i);
+  });
+
+  it("returns 400 when a line item has a negative unit price", async () => {
+    const res = await request(app).post("/").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "Labor", quantity: 1, unitPrice: -10 }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/unit price/i);
+  });
+
+  it("returns 400 when quantity is a string instead of a number", async () => {
+    const res = await request(app).post("/").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "Labor", quantity: "lots", unitPrice: 50 }],
+    });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT /:id — line item validation on update
+// ─────────────────────────────────────────────────────────────────────────────
+describe("PUT /:id — line item validation", () => {
+  it("updates the invoice when line items are valid", async () => {
+    h.selectQueue.push(
+      [{ status: "draft", invoiceNumber: null }],   // voided guard check
+      [fakeInvoice({ status: "draft" })],            // buildInvoiceQuery after update
+    );
+
+    const res = await request(app).put("/42").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "Materials", quantity: 3, unitPrice: 200 }],
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 400 when a line item has no description", async () => {
+    h.selectQueue.push([{ status: "draft", invoiceNumber: null }]);
+
+    const res = await request(app).put("/42").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "", quantity: 2, unitPrice: 100 }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/description/i);
+  });
+
+  it("returns 400 when a line item quantity is negative", async () => {
+    h.selectQueue.push([{ status: "draft", invoiceNumber: null }]);
+
+    const res = await request(app).put("/42").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "Labor", quantity: -5, unitPrice: 100 }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/quantity/i);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // calcInvoice — pure function unit tests
 // ─────────────────────────────────────────────────────────────────────────────
 describe("calcInvoice", () => {

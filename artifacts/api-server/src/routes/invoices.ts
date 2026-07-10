@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { launchBrowser } from "../lib/launchBrowser.js";
 import { sendInvoiceEmail, type InvoiceEmailSettings } from "../lib/invoiceEmail";
 import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
@@ -9,6 +10,23 @@ import { eq, and, gte, lte, desc, inArray, ne } from "drizzle-orm";
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 
 const router = Router();
+
+// Zod schema for a single invoice line item — applied on create and update.
+const lineItemSchema = z.object({
+  description: z.string().min(1, "Each line item must have a description."),
+  quantity: z.number({ invalid_type_error: "Quantity must be a number." }).positive("Quantity must be greater than 0."),
+  unitPrice: z.number({ invalid_type_error: "Unit price must be a number." }).min(0, "Unit price must be 0 or greater."),
+});
+const lineItemsSchema = z.array(lineItemSchema);
+
+export function validateLineItems(lineItems: unknown): string | null {
+  const result = lineItemsSchema.safeParse(lineItems);
+  if (!result.success) {
+    const messages = result.error.issues.map(i => i.message);
+    return messages.join(" ");
+  }
+  return null;
+}
 
 export function calcInvoice(lineItems: any[], taxRate: number | null) {
   const subtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
@@ -197,6 +215,9 @@ async function assignInvoiceNumberIfNeeded(invoiceId: number): Promise<void> {
 router.post("/", async (req, res) => {
   try {
     const { clientId, jobId, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName, attachments = [], businessLine } = req.body;
+    // Validate line items before any DB work
+    const lineItemError = validateLineItems(lineItems);
+    if (lineItemError) return res.status(400).json({ error: lineItemError });
     // All new invoices start as drafts — invoice numbers are assigned only at the /accept endpoint.
     // The `status` field in the request body is intentionally ignored to enforce the lifecycle.
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
@@ -306,6 +327,10 @@ router.put("/:id", async (req, res) => {
     // All status transitions must go through the dedicated lifecycle endpoints:
     //   POST /accept, POST /mark-sent, PATCH /status, POST /void
     // This prevents bypassing the Draft → Approved → Sent progression.
+
+    // Validate line items before any DB work
+    const lineItemError = validateLineItems(lineItems);
+    if (lineItemError) return res.status(400).json({ error: lineItemError });
 
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
 
