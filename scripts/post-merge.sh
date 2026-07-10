@@ -347,6 +347,17 @@ pool.query(\`
   .catch(e => { console.error('prospect_service_visits migration error:', e.message); pool.end(); process.exit(1); });
 ")
 
+# Invoice lifecycle columns: accepted_at, sent_at, sent_method
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ')
+  .then(() => pool.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ'))
+  .then(() => pool.query('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sent_method TEXT'))
+  .then(() => { console.log('invoice lifecycle columns ensured'); pool.end(); })
+  .catch(e => { console.error('invoice lifecycle columns migration error:', e.message); pool.end(); process.exit(1); });
+")
+
 # Task #190: add pay_token columns to invoices and quick_charges
 (cd lib/db && node -e "
 const { Pool } = require('pg');
