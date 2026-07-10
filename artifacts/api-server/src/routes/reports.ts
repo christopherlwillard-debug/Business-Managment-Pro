@@ -183,12 +183,14 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const blRevenue = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const blOwnerDrawTotal = blExpenses.filter(e => e.category === "Owner Draw").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       const blExcluded = blExpenses.filter(e => e.excludeFromNetProfit).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       return {
         businessLine: bl,
         label: biz.name,
         totalRevenue: blRevenue,
         totalExpenses: blExpenseTotal,
+        businessExpenses: blExpenseTotal - blOwnerDrawTotal,
         operationalNetProfit: blRevenue - (blExpenseTotal - blExcluded),
         activeJobs: blActiveJobs.length,
       };
@@ -239,6 +241,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       pendingInvoices,
       activeJobs: kpiActiveJobs.length,
       totalExpenses,
+      businessExpenses: totalExpenses - ownerDrawTotal,
       mileageDeduction,
       periodMileageDeduction,
       ytdMiles,

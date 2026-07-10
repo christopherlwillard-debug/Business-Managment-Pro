@@ -34,7 +34,7 @@ function BusinessStatsCard({ business, period }: { business: Business; period: "
       </div>
       <div className="p-4 grid grid-cols-2 gap-3">
         <div><p className="text-xs text-muted-foreground mb-0.5">Revenue</p><p className="font-bold text-foreground text-sm">{formatCurrency(stats.totalRevenue)}</p></div>
-        <div><p className="text-xs text-muted-foreground mb-0.5">Expenses</p><p className="font-bold text-foreground text-sm">{formatCurrency(stats.totalExpenses)}</p></div>
+        <div><p className="text-xs text-muted-foreground mb-0.5">Expenses</p><p className="font-bold text-foreground text-sm">{formatCurrency((stats as any).businessExpenses ?? stats.totalExpenses)}</p></div>
         <div><p className="text-xs text-muted-foreground mb-0.5">Active Jobs</p><p className="font-bold text-foreground text-sm">{stats.activeJobs}</p></div>
         <div><p className="text-xs text-muted-foreground mb-0.5">Net Profit</p><p className={`font-bold text-sm ${net >= 0 ? "text-emerald-600" : "text-red-600"}`}>{formatCurrency(net)}</p></div>
       </div>
@@ -499,7 +499,7 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard title={`Collected (${periodLabel})`} value={formatCurrency(stats.totalRevenue)} icon={DollarSign} href="/accounting" />
-          <MetricCard title={`Total Expenses (${periodLabel})`} value={formatCurrency(stats.totalExpenses)} icon={Receipt} href="/expenses" />
+          <MetricCard title={`Total Expenses (${periodLabel})`} value={formatCurrency((stats as any).businessExpenses ?? stats.totalExpenses)} icon={Receipt} href="/expenses" />
           <MetricCard title="Active Jobs" value={stats.activeJobs.toString()} icon={Briefcase} href="/jobs" />
           <MetricCard title="Overdue Invoices" value={stats.overdueInvoices.toString()} icon={AlertTriangle} isAlert={stats.overdueInvoices > 0} href="/accounting" />
         </div>
@@ -654,7 +654,7 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Expenses</p>
-                      <p className="text-sm font-bold text-foreground mt-0.5">{formatCurrency(bl.totalExpenses)}</p>
+                      <p className="text-sm font-bold text-foreground mt-0.5">{formatCurrency((bl as any).businessExpenses ?? bl.totalExpenses)}</p>
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Net Profit</p>
