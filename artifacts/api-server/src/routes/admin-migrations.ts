@@ -676,4 +676,19 @@ router.post("/add-invoice-progression-columns", async (_req: Request, res: Respo
   }
 });
 
+// Add last_manual_paid_at column for manual payment date tracking.
+// Safe to run multiple times — uses IF NOT EXISTS DDL.
+router.post("/add-invoice-manual-paid-at", async (_req: Request, res: Response) => {
+  try {
+    await db.execute(sql`
+      ALTER TABLE invoices
+        ADD COLUMN IF NOT EXISTS last_manual_paid_at TIMESTAMPTZ;
+    `);
+    res.json({ ok: true, message: "last_manual_paid_at column ensured on invoices" });
+  } catch (err) {
+    console.error("[admin/migrations] add-invoice-manual-paid-at failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;
