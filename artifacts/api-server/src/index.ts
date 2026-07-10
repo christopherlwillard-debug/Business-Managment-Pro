@@ -122,8 +122,20 @@ async function ensureInvoiceLifecycleColumns(): Promise<void> {
   }
 }
 
+async function ensureJobsManHours(): Promise<void> {
+  try {
+    await db.execute(sql`
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS man_hours NUMERIC(8,2);
+    `);
+    console.log("[startup] jobs.man_hours column ensured.");
+  } catch (err) {
+    console.error("[startup] ensureJobsManHours failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await ensureInvoiceLifecycleColumns();
+  await ensureJobsManHours();
   await seedDefaultBusinesses();
   await backfillMileageBusiness();
   app.listen(port, () => {
