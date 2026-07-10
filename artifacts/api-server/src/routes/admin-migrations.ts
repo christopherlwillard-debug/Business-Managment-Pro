@@ -721,4 +721,15 @@ router.post("/fix-invoice-1031", async (_req: Request, res: Response) => {
   }
 });
 
+// Add man_hours column to jobs table
+router.post("/add-man-hours", async (_req: Request, res: Response) => {
+  try {
+    await db.execute(sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS man_hours NUMERIC(8,2)`);
+    res.json({ ok: true, message: "man_hours column ensured" });
+  } catch (err) {
+    console.error("[admin/migrations] add-man-hours failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;
