@@ -1,30 +1,20 @@
 import { useState } from "react";
-import { Users, Plus, Trash2, Pencil, Clock, CheckCircle2, Link2 } from "lucide-react";
+import { Users, Plus, Trash2, Clock } from "lucide-react";
 import {
   useJobLaborEntries,
   useAddLaborEntry,
-  usePatchLaborEntry,
   useDeleteLaborEntry,
-  useListSubcontractors,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-
-const WORKER_TYPES: { value: string; label: string }[] = [
-  { value: "owner", label: "Owner" },
-  { value: "profit_share", label: "Profit Share" },
-  { value: "sub", label: "Subcontractor" },
-  { value: "hourly", label: "Hourly" },
-  { value: "helper", label: "Helper" },
-];
 
 function fmtHrs(n: number | string | null | undefined) {
   if (n == null || n === "") return "—";
   const v = typeof n === "string" ? parseFloat(n) : n;
   if (isNaN(v)) return "—";
-  return v.toFixed(1) + " hrs";
+  return v % 1 === 0 ? `${v} hrs` : `${v.toFixed(1)} hrs`;
 }
 
-const EMPTY_FORM = { personName: "", workerType: "sub", productiveHours: "", travelHours: "", linkedSubcontractorId: "" };
+const EMPTY_FORM = { workers: "1", days: "1", hrsPerDay: "", travelHrsPerDay: "" };
 
 interface Props {
   jobId: number;
@@ -35,64 +25,39 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
   const { toast } = useToast();
   const { data, isLoading } = useJobLaborEntries(jobId);
   const addEntry = useAddLaborEntry();
-  const patchEntry = usePatchLaborEntry();
   const deleteEntry = useDeleteLaborEntry();
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState(EMPTY_FORM);
 
-  const { data: subs = [] } = useListSubcontractors();
   const entries = data?.entries ?? [];
   const summary = data?.summary ?? { crewCount: 0, totalProductiveHours: 0, totalTravelHours: 0, totalHours: 0 };
 
+  const workers = Math.max(1, parseInt(form.workers) || 1);
+  const days = Math.max(1, parseInt(form.days) || 1);
+  const hrsPerDay = parseFloat(form.hrsPerDay) || 0;
+  const travelPerDay = parseFloat(form.travelHrsPerDay) || 0;
+  const previewProductive = workers * days * hrsPerDay;
+  const previewTravel = workers * days * travelPerDay;
+  const canAdd = hrsPerDay > 0 || travelPerDay > 0;
+
   async function handleAdd() {
-    if (!form.personName.trim()) return;
+    if (!canAdd) return;
     try {
+      const label = `${workers} worker${workers !== 1 ? "s" : ""} · ${days} day${days !== 1 ? "s" : ""}`;
       await addEntry.mutateAsync({
         jobId,
-        personName: form.personName.trim(),
-        workerType: form.workerType,
-        productiveHours: parseFloat(form.productiveHours || "0") || 0,
-        travelHours: parseFloat(form.travelHours || "0") || 0,
-        linkedSubcontractorId: form.linkedSubcontractorId ? parseInt(form.linkedSubcontractorId) : null,
+        personName: label,
+        workerType: "sub",
+        productiveHours: previewProductive,
+        travelHours: previewTravel,
+        linkedSubcontractorId: null,
       });
       setForm(EMPTY_FORM);
       setShowForm(false);
-      toast({ title: "Crew member added" });
+      toast({ title: "Crew time logged" });
     } catch {
-      toast({ title: "Failed to add entry", variant: "destructive" });
-    }
-  }
-
-  function startEdit(entry: NonNullable<typeof data>["entries"][0]) {
-    setEditingId(entry.id);
-    setEditForm({
-      personName: entry.personName,
-      workerType: entry.workerType,
-      productiveHours: entry.productiveHours,
-      travelHours: entry.travelHours,
-      linkedSubcontractorId: entry.linkedSubcontractorId ? String(entry.linkedSubcontractorId) : "",
-    });
-  }
-
-  async function handleSaveEdit() {
-    if (!editingId || !editForm.personName.trim()) return;
-    try {
-      await patchEntry.mutateAsync({
-        jobId,
-        id: editingId,
-        personName: editForm.personName.trim(),
-        workerType: editForm.workerType,
-        productiveHours: parseFloat(editForm.productiveHours || "0") || 0,
-        travelHours: parseFloat(editForm.travelHours || "0") || 0,
-        linkedSubcontractorId: editForm.linkedSubcontractorId ? parseInt(editForm.linkedSubcontractorId) : null,
-      });
-      setEditingId(null);
-      toast({ title: "Updated" });
-    } catch {
-      toast({ title: "Failed to update", variant: "destructive" });
+      toast({ title: "Failed to log crew time", variant: "destructive" });
     }
   }
 
@@ -116,13 +81,15 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
 
   return (
     <div className={`space-y-3 ${compact ? "" : "mt-1"}`}>
-      {/* Header row */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-amber-500" />
           <span className="font-semibold text-sm text-foreground">Labor Summary</span>
           {entries.length > 0 && (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">{entries.length}</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+              {entries.length}
+            </span>
           )}
         </div>
         {!showForm && (
@@ -130,7 +97,7 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
             onClick={() => setShowForm(true)}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-amber-600 hover:bg-amber-50 transition-colors"
           >
-            <Plus className="w-3 h-3" /> Add Crew
+            <Plus className="w-3 h-3" /> Log Crew Time
           </button>
         )}
       </div>
@@ -139,11 +106,11 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
       {entries.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-muted/30 rounded-xl p-2.5 text-center">
-            <p className="text-[10px] text-muted-foreground">Crew Size</p>
+            <p className="text-[10px] text-muted-foreground">Workers</p>
             <p className="font-bold text-sm text-foreground">{summary.crewCount}</p>
           </div>
           <div className="bg-amber-50 rounded-xl p-2.5 text-center">
-            <p className="text-[10px] text-amber-600">Productive</p>
+            <p className="text-[10px] text-amber-600">Work</p>
             <p className="font-bold text-sm text-amber-700">{fmtHrs(summary.totalProductiveHours)}</p>
           </div>
           <div className="bg-muted/30 rounded-xl p-2.5 text-center">
@@ -155,76 +122,80 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
 
       {/* Add form */}
       {showForm && (
-        <div className="border border-amber-200 rounded-xl p-3 bg-amber-50/40 space-y-2.5">
-          <p className="text-xs font-semibold text-amber-700">Add Crew Member</p>
+        <div className="border border-amber-200 rounded-xl p-3 bg-amber-50/40 space-y-3">
+          <p className="text-xs font-semibold text-amber-700">Log Crew Time</p>
+
+          {/* Row 1: Workers + Days */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] font-semibold text-muted-foreground">Name</label>
+              <label className="text-[10px] font-semibold text-muted-foreground">Workers</label>
               <input
                 autoFocus
-                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background"
-                placeholder="e.g. John D."
-                value={form.personName}
-                onChange={e => setForm(f => ({ ...f, personName: e.target.value }))}
-                onKeyDown={e => { if (e.key === "Enter") handleAdd(); if (e.key === "Escape") { setShowForm(false); setForm(EMPTY_FORM); } }}
+                type="number" min="1" step="1"
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-border bg-background text-center font-medium"
+                value={form.workers}
+                onChange={e => setForm(f => ({ ...f, workers: e.target.value }))}
               />
             </div>
             <div>
-              <label className="text-[10px] font-semibold text-muted-foreground">Type</label>
-              <select
-                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background"
-                value={form.workerType}
-                onChange={e => setForm(f => ({ ...f, workerType: e.target.value }))}
-              >
-                {WORKER_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
+              <label className="text-[10px] font-semibold text-muted-foreground">Days on Job</label>
+              <input
+                type="number" min="1" step="1"
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-border bg-background text-center font-medium"
+                value={form.days}
+                onChange={e => setForm(f => ({ ...f, days: e.target.value }))}
+              />
             </div>
           </div>
-          {form.workerType === "sub" && subs.length > 0 && (
-            <div>
-              <label className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
-                <Link2 className="w-3 h-3" /> Link to Sub Record (optional)
-              </label>
-              <select
-                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background mt-0.5"
-                value={form.linkedSubcontractorId}
-                onChange={e => setForm(f => ({ ...f, linkedSubcontractorId: e.target.value }))}
-              >
-                <option value="">— None —</option>
-                {subs.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
-              </select>
-            </div>
-          )}
+
+          {/* Row 2: Work hrs/day + Travel hrs/day */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] font-semibold text-muted-foreground">Productive Hrs</label>
+              <label className="text-[10px] font-semibold text-muted-foreground">Work Hrs / Day</label>
               <input
                 type="number" min="0" step="0.5"
-                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background"
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-border bg-background text-center font-medium"
                 placeholder="0"
-                value={form.productiveHours}
-                onChange={e => setForm(f => ({ ...f, productiveHours: e.target.value }))}
+                value={form.hrsPerDay}
+                onChange={e => setForm(f => ({ ...f, hrsPerDay: e.target.value }))}
               />
             </div>
             <div>
-              <label className="text-[10px] font-semibold text-muted-foreground">Travel Hrs</label>
+              <label className="text-[10px] font-semibold text-muted-foreground">Travel Hrs / Day</label>
               <input
                 type="number" min="0" step="0.5"
-                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border bg-background"
+                className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-border bg-background text-center font-medium"
                 placeholder="0"
-                value={form.travelHours}
-                onChange={e => setForm(f => ({ ...f, travelHours: e.target.value }))}
+                value={form.travelHrsPerDay}
+                onChange={e => setForm(f => ({ ...f, travelHrsPerDay: e.target.value }))}
               />
             </div>
           </div>
+
+          {/* Live preview */}
+          {canAdd && (
+            <div className="flex gap-2 text-[11px] font-semibold rounded-lg bg-white border border-amber-200 px-3 py-2">
+              <span className="text-amber-700 flex-1">
+                {workers} × {days} days
+                {hrsPerDay > 0 && ` = ${fmtHrs(previewProductive)} work`}
+                {travelPerDay > 0 && ` + ${fmtHrs(previewTravel)} travel`}
+              </span>
+            </div>
+          )}
+
           <div className="flex gap-2 justify-end">
-            <button onClick={() => { setShowForm(false); setForm(EMPTY_FORM); }}
-              className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground">
+            <button
+              onClick={() => { setShowForm(false); setForm(EMPTY_FORM); }}
+              className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground"
+            >
               Cancel
             </button>
-            <button onClick={handleAdd} disabled={!form.personName.trim() || addEntry.isPending}
-              className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 disabled:opacity-50">
-              {addEntry.isPending ? "Adding…" : "Add"}
+            <button
+              onClick={handleAdd}
+              disabled={!canAdd || addEntry.isPending}
+              className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 disabled:opacity-50"
+            >
+              {addEntry.isPending ? "Saving…" : "Save"}
             </button>
           </div>
         </div>
@@ -234,103 +205,41 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
       {entries.length === 0 && !showForm ? (
         <div className="py-4 text-center text-xs text-muted-foreground">
           <Clock className="w-6 h-6 text-muted-foreground/30 mx-auto mb-1.5" />
-          No crew members logged yet.
+          No crew time logged yet.
         </div>
       ) : (
         <div className="space-y-1">
           {entries.map(entry => (
-            editingId === entry.id ? (
-              <div key={entry.id} className="border border-amber-200 rounded-xl p-3 bg-amber-50/30 space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground">Name</label>
-                    <input autoFocus className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background"
-                      value={editForm.personName} onChange={e => setEditForm(f => ({ ...f, personName: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground">Type</label>
-                    <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background"
-                      value={editForm.workerType} onChange={e => setEditForm(f => ({ ...f, workerType: e.target.value }))}>
-                      {WORKER_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                    </select>
-                  </div>
-                </div>
-                {editForm.workerType === "sub" && subs.length > 0 && (
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
-                      <Link2 className="w-3 h-3" /> Link to Sub Record
-                    </label>
-                    <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background mt-0.5"
-                      value={editForm.linkedSubcontractorId}
-                      onChange={e => setEditForm(f => ({ ...f, linkedSubcontractorId: e.target.value }))}>
-                      <option value="">— None —</option>
-                      {subs.map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
-                    </select>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground">Productive Hrs</label>
-                    <input type="number" min="0" step="0.5" className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background"
-                      value={editForm.productiveHours} onChange={e => setEditForm(f => ({ ...f, productiveHours: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-muted-foreground">Travel Hrs</label>
-                    <input type="number" min="0" step="0.5" className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background"
-                      value={editForm.travelHours} onChange={e => setEditForm(f => ({ ...f, travelHours: e.target.value }))} />
-                  </div>
-                </div>
-                <div className="flex gap-2 justify-end">
-                  <button onClick={() => setEditingId(null)} className="px-3 py-1 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground">Cancel</button>
-                  <button onClick={handleSaveEdit} disabled={patchEntry.isPending}
-                    className="px-3 py-1 text-xs rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 disabled:opacity-50">
-                    {patchEntry.isPending ? "Saving…" : "Save"}
-                  </button>
-                </div>
+            <div key={entry.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-muted/10 group">
+              <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <Users className="w-3.5 h-3.5 text-amber-600" />
               </div>
-            ) : (
-              <div key={entry.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-muted/10 group">
-                <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                  <span className="text-[10px] font-bold text-amber-700">{entry.personName.charAt(0).toUpperCase()}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-xs font-semibold text-foreground truncate">{entry.personName}</p>
-                    {entry.linkedSubcontractorId && (
-                      <Link2 className="w-3 h-3 text-blue-400 flex-shrink-0" title="Linked to sub record" />
-                    )}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground capitalize">{WORKER_TYPES.find(t => t.value === entry.workerType)?.label ?? entry.workerType}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-semibold text-foreground">{fmtHrs(entry.productiveHours)}</p>
-                  {parseFloat(entry.travelHours) > 0 && (
-                    <p className="text-[10px] text-muted-foreground">+{fmtHrs(entry.travelHours)} travel</p>
-                  )}
-                </div>
-                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => startEdit(entry)} className="p-1 rounded hover:bg-amber-50 text-muted-foreground hover:text-amber-600 transition-colors">
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                  <button onClick={() => handleDelete(entry.id)} className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-foreground truncate">{entry.personName}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {fmtHrs(entry.productiveHours)} work
+                  {parseFloat(entry.travelHours) > 0 && ` · ${fmtHrs(entry.travelHours)} travel`}
+                </p>
               </div>
-            )
+              <button
+                onClick={() => handleDelete(entry.id)}
+                className="p-1.5 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-all"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
           ))}
         </div>
       )}
 
-      {/* Total row */}
+      {/* Total footer */}
       {entries.length > 0 && (
-        <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-muted/20 border border-border">
-          <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-amber-500" />
-            <span className="text-xs font-semibold text-foreground">{summary.crewCount} crew · {fmtHrs(summary.totalProductiveHours)} productive</span>
-          </div>
+        <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-muted/20 border border-border text-xs">
+          <span className="font-semibold text-foreground">
+            {fmtHrs(summary.totalProductiveHours)} work
+          </span>
           {summary.totalTravelHours > 0 && (
-            <span className="text-[10px] text-muted-foreground">+ {fmtHrs(summary.totalTravelHours)} travel</span>
+            <span className="text-muted-foreground">+ {fmtHrs(summary.totalTravelHours)} travel</span>
           )}
         </div>
       )}
