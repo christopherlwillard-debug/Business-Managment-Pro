@@ -456,6 +456,43 @@ router.post("/:id/void", async (req, res) => {
   }
 });
 
+// ── Record a manual payment against an invoice ────────────────────────────────
+// Accumulates amountPaid; auto-advances status to partiallyPaid or paid.
+router.post("/:id/record-payment", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { amount } = req.body as { amount: number };
+    if (!amount || isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ error: "Amount must be a positive number." });
+    }
+
+    const [current] = await db
+      .select({ status: invoicesTable.status, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, id));
+
+    if (!current) return res.status(404).json({ error: "Invoice not found" });
+    if (!["approved", "sent", "partiallyPaid", "overdue"].includes(current.status)) {
+      return res.status(400).json({ error: `Cannot record a payment on a ${current.status} invoice.` });
+    }
+
+    const total = parseFloat(current.total ?? "0");
+    const prevPaid = current.amountPaid ? parseFloat(current.amountPaid) : 0;
+    const newAmountPaid = parseFloat(Math.min(prevPaid + amount, total).toFixed(2));
+    const newStatus = newAmountPaid >= total ? "paid" : "partiallyPaid";
+
+    await db.update(invoicesTable)
+      .set({ amountPaid: String(newAmountPaid), status: newStatus })
+      .where(eq(invoicesTable.id, id));
+
+    const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
+    res.json(fmt(withJoins));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to record payment" });
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);

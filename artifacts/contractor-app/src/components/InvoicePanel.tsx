@@ -186,6 +186,9 @@ export function InvoicePanel({
   const [attachMaterials, setAttachMaterials] = useState(true);
   const [jobHasMaterials, setJobHasMaterials] = useState(false);
   const [extraEmailFiles, setExtraEmailFiles] = useState<{ filename: string; base64: string }[]>([]);
+  const [showRecordPayment, setShowRecordPayment] = useState(false);
+  const [recordPaymentAmount, setRecordPaymentAmount] = useState("");
+  const [recordingPayment, setRecordingPayment] = useState(false);
 
   const clientRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -716,6 +719,17 @@ export function InvoicePanel({
               )
             )}
 
+            {/* Record Payment — for sent / partiallyPaid / overdue invoices */}
+            {isEdit && !isVoided && ["sent", "partiallyPaid", "overdue", "approved"].includes(effectiveExistingInvoice?.status ?? "") && (
+              <button type="button"
+                onClick={() => { setShowRecordPayment(v => !v); setRecordPaymentAmount(""); }}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${showRecordPayment ? "bg-emerald-100 text-emerald-700" : "text-gray-500 hover:bg-emerald-50 hover:text-emerald-700"}`}
+                title="Record a payment received">
+                <Check className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Record Payment</span>
+              </button>
+            )}
+
             {/* Mark as Sent — for approved invoices not yet sent via Gmail */}
             {isEdit && !isVoided && effectiveExistingInvoice?.status === "approved" && (
               <button type="button"
@@ -784,6 +798,90 @@ export function InvoicePanel({
         {formError && (
           <div className="mx-4 mt-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 flex items-center gap-2 flex-shrink-0">
             <X className="w-4 h-4 flex-shrink-0" /> {formError}
+          </div>
+        )}
+
+        {/* Payment balance banner — shown for partiallyPaid invoices */}
+        {isEdit && effectiveExistingInvoice?.status === "partiallyPaid" && effectiveExistingInvoice.amountPaid != null && (
+          <div className="mx-4 mt-3 px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-3 flex-shrink-0">
+            <div className="flex items-center gap-4 text-xs">
+              <span className="text-emerald-700"><span className="font-bold">Paid:</span> {formatCurrency(effectiveExistingInvoice.amountPaid)}</span>
+              <span className="text-orange-600"><span className="font-bold">Remaining:</span> {formatCurrency(Math.max(0, (effectiveExistingInvoice.total ?? 0) - effectiveExistingInvoice.amountPaid))}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Record Payment inline panel */}
+        {showRecordPayment && isEdit && effectiveExistingInvoice && (
+          <div className="bg-emerald-50 border-b border-emerald-200 px-5 py-3.5 flex-shrink-0">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5" /> Record Payment Received
+              </p>
+              <button onClick={() => setShowRecordPayment(false)}
+                className="w-6 h-6 flex items-center justify-center rounded text-emerald-400 hover:bg-emerald-100 hover:text-emerald-600 transition-colors">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-emerald-600 font-bold">$</span>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="Amount received"
+                  value={recordPaymentAmount}
+                  onChange={e => setRecordPaymentAmount(e.target.value)}
+                  className="w-full pl-6 pr-3 py-1.5 border border-emerald-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                />
+              </div>
+              <button
+                disabled={recordingPayment || !recordPaymentAmount || parseFloat(recordPaymentAmount) <= 0}
+                onClick={async () => {
+                  const amount = parseFloat(recordPaymentAmount);
+                  if (!amount || amount <= 0) return;
+                  setRecordingPayment(true);
+                  try {
+                    const res = await fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/record-payment`, {
+                      method: "POST",
+                      credentials: "include",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ amount }),
+                    });
+                    if (!res.ok) {
+                      const err = await res.json().catch(() => ({}));
+                      throw new Error(err.error ?? "Failed to record payment");
+                    }
+                    const updated = await res.json();
+                    toast({
+                      title: updated.status === "paid" ? "Invoice marked as paid!" : "Payment recorded",
+                      description: updated.status === "paid"
+                        ? `${formatCurrency(amount)} received — invoice fully paid.`
+                        : `${formatCurrency(amount)} received — ${formatCurrency(Math.max(0, (updated.total ?? 0) - (updated.amountPaid ?? 0)))} remaining.`,
+                    });
+                    setShowRecordPayment(false);
+                    setRecordPaymentAmount("");
+                    onSaved?.();
+                  } catch (err: any) {
+                    toast({ title: "Failed to record payment", description: err?.message, variant: "destructive" });
+                  } finally {
+                    setRecordingPayment(false);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50"
+              >
+                {recordingPayment
+                  ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : <Check className="w-3 h-3" />}
+                {recordingPayment ? "Saving…" : "Save"}
+              </button>
+            </div>
+            {effectiveExistingInvoice.amountPaid != null && effectiveExistingInvoice.amountPaid > 0 && (
+              <p className="mt-1.5 text-[10px] text-emerald-600">
+                Previously recorded: {formatCurrency(effectiveExistingInvoice.amountPaid)} · Total: {formatCurrency(effectiveExistingInvoice.total ?? 0)}
+              </p>
+            )}
           </div>
         )}
 

@@ -3153,7 +3153,9 @@ function JobCard({
                   : invoiceSummary.status === "sent" ? "Invoice Sent"
                   : invoiceSummary.status === "approved" ? "Approved"
                   : "Draft"}
-                {invoiceSummary.total != null && ` · ${formatCurrency(invoiceSummary.total)}`}
+                {invoiceSummary.status === "partiallyPaid" && (invoiceSummary as any).amountPaid != null && invoiceSummary.total != null
+                  ? ` · ${formatCurrency(Math.max(0, invoiceSummary.total - (invoiceSummary as any).amountPaid))} remaining`
+                  : invoiceSummary.total != null ? ` · ${formatCurrency(invoiceSummary.total)}` : ""}
                 {squarePaid && (
                   <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700">
                     Paid via Square
