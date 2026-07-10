@@ -3840,6 +3840,9 @@ function JobFormDialog({
     setClearHoursForSubIds([]);
     setRemoveSubPrompt(null);
     setSelectedWorkflow(editJob?.workflow ?? null);
+    setMfhMfgId((editJob as Record<string, unknown>)?.mfhManufacturerId as number | null ?? null);
+    setMfhModelId((editJob as Record<string, unknown>)?.mfhModelId as number | null ?? null);
+    setMfhYear((editJob as Record<string, unknown>)?.mfhModelYear ? String((editJob as Record<string, unknown>).mfhModelYear) : "");
     setMfhConstructionType((editJob as Record<string, unknown>)?.mfhConstructionType as string ?? "");
     setMhProductionServices((editJob as Record<string, unknown>)?.mhProductionServices as number[] ?? []);
     setBuilderQuery("");
@@ -3930,13 +3933,13 @@ function JobFormDialog({
           }
         }
         // Apply per-sub compensation defaults if set
-        const compEntries = Object.entries(subCompDefaults).filter(([, c]) => c.rate.trim() !== "");
+        const compEntries = Object.entries(subCompDefaults);
         if (compEntries.length > 0) {
           await Promise.all(compEntries.map(([sid, comp]) => {
             const body: Record<string, unknown> = { compensationType: comp.compensationType };
-            if (comp.compensationType === "hourly") body.hourlyRate = parseFloat(comp.rate);
-            else if (comp.compensationType === "fixed") body.fixedAmount = parseFloat(comp.rate);
-            else if (comp.compensationType === "allocation") body.allocationPct = parseFloat(comp.rate);
+            if (comp.compensationType === "hourly" && comp.rate.trim()) body.hourlyRate = parseFloat(comp.rate);
+            else if (comp.compensationType === "fixed" && comp.rate.trim()) body.fixedAmount = parseFloat(comp.rate);
+            else if (comp.compensationType === "allocation" && comp.rate.trim()) body.allocationPct = parseFloat(comp.rate);
             return fetch(`${BASE}/api/jobs/${editJob.id}/sub-payments/${sid}`, {
               method: "PUT", credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -3946,13 +3949,13 @@ function JobFormDialog({
         }
       } else {
         const newJob = await createJob.mutateAsync({ data: payload });
-        const compEntries = Object.entries(subCompDefaults).filter(([, c]) => c.rate.trim() !== "");
+        const compEntries = Object.entries(subCompDefaults);
         if (compEntries.length > 0 && newJob?.id) {
           await Promise.all(compEntries.map(([sid, comp]) => {
             const body: Record<string, unknown> = { compensationType: comp.compensationType };
-            if (comp.compensationType === "hourly") body.hourlyRate = parseFloat(comp.rate);
-            else if (comp.compensationType === "fixed") body.fixedAmount = parseFloat(comp.rate);
-            else if (comp.compensationType === "allocation") body.allocationPct = parseFloat(comp.rate);
+            if (comp.compensationType === "hourly" && comp.rate.trim()) body.hourlyRate = parseFloat(comp.rate);
+            else if (comp.compensationType === "fixed" && comp.rate.trim()) body.fixedAmount = parseFloat(comp.rate);
+            else if (comp.compensationType === "allocation" && comp.rate.trim()) body.allocationPct = parseFloat(comp.rate);
             return fetch(`${BASE}/api/jobs/${newJob.id}/sub-payments/${sid}`, {
               method: "PUT", credentials: "include",
               headers: { "Content-Type": "application/json" },
