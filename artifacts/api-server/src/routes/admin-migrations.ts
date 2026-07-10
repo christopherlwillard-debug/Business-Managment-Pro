@@ -707,4 +707,18 @@ router.post("/add-invoice-lifecycle-columns", async (_req: Request, res: Respons
   }
 });
 
+// One-time fix: rename Wil-1032 → Wil-1031 on invoice id=32 (1031 was skipped due to
+// the missing accepted_at column crash during the approval attempt)
+router.post("/fix-invoice-1031", async (_req: Request, res: Response) => {
+  try {
+    await db.execute(sql`
+      UPDATE invoices SET invoice_number = 'Wil-1031' WHERE id = 32 AND invoice_number = 'Wil-1032'
+    `);
+    res.json({ ok: true, message: "Invoice id=32 renumbered to Wil-1031" });
+  } catch (err) {
+    console.error("[admin/migrations] fix-invoice-1031 failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;
