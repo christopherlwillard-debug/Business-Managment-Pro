@@ -37,6 +37,7 @@ export const invoicesTable = pgTable("invoices", {
   acceptedAt: timestamp("accepted_at"),
   sentAt: timestamp("sent_at"),
   sentMethod: text("sent_method"),
+  lastManualPaidAt: timestamp("last_manual_paid_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

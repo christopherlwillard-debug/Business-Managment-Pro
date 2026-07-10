@@ -54,6 +54,7 @@ function formatInvoice(inv: any, clientName?: string | null, clientEmail?: strin
       unitPrice: parseFloat(li.unitPrice),
       total: parseFloat(li.quantity) * parseFloat(li.unitPrice),
     })),
+    lastManualPaidAt: inv.lastManualPaidAt instanceof Date ? inv.lastManualPaidAt.toISOString() : (inv.lastManualPaidAt ?? null),
     createdAt: inv.createdAt instanceof Date ? inv.createdAt.toISOString() : inv.createdAt,
   };
 }
@@ -461,7 +462,7 @@ router.post("/:id/void", async (req, res) => {
 router.post("/:id/record-payment", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { amount } = req.body as { amount: number };
+    const { amount, paidAt } = req.body as { amount: number; paidAt?: string };
     if (!amount || isNaN(amount) || amount <= 0) {
       return res.status(400).json({ error: "Amount must be a positive number." });
     }
@@ -480,9 +481,10 @@ router.post("/:id/record-payment", async (req, res) => {
     const prevPaid = current.amountPaid ? parseFloat(current.amountPaid) : 0;
     const newAmountPaid = parseFloat(Math.min(prevPaid + amount, total).toFixed(2));
     const newStatus = newAmountPaid >= total ? "paid" : "partiallyPaid";
+    const paymentDate = paidAt ? new Date(paidAt) : new Date();
 
     await db.update(invoicesTable)
-      .set({ amountPaid: String(newAmountPaid), status: newStatus })
+      .set({ amountPaid: String(newAmountPaid), status: newStatus, lastManualPaidAt: paymentDate })
       .where(eq(invoicesTable.id, id));
 
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));

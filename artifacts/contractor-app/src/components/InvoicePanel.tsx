@@ -188,6 +188,7 @@ export function InvoicePanel({
   const [extraEmailFiles, setExtraEmailFiles] = useState<{ filename: string; base64: string }[]>([]);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [recordPaymentAmount, setRecordPaymentAmount] = useState("");
+  const [recordPaymentDate, setRecordPaymentDate] = useState(() => localDateString(new Date()));
   const [recordingPayment, setRecordingPayment] = useState(false);
 
   const clientRef = useRef<HTMLInputElement>(null);
@@ -722,7 +723,7 @@ export function InvoicePanel({
             {/* Record Payment — for sent / partiallyPaid / overdue invoices */}
             {isEdit && !isVoided && ["sent", "partiallyPaid", "overdue", "approved"].includes(effectiveExistingInvoice?.status ?? "") && (
               <button type="button"
-                onClick={() => { setShowRecordPayment(v => !v); setRecordPaymentAmount(""); }}
+                onClick={() => { setShowRecordPayment(v => !v); setRecordPaymentAmount(""); setRecordPaymentDate(localDateString(new Date())); }}
                 className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${showRecordPayment ? "bg-emerald-100 text-emerald-700" : "text-gray-500 hover:bg-emerald-50 hover:text-emerald-700"}`}
                 title="Record a payment received">
                 <Check className="w-3.5 h-3.5" />
@@ -803,11 +804,16 @@ export function InvoicePanel({
 
         {/* Payment balance banner — shown for partiallyPaid invoices */}
         {isEdit && effectiveExistingInvoice?.status === "partiallyPaid" && effectiveExistingInvoice.amountPaid != null && (
-          <div className="mx-4 mt-3 px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-3 flex-shrink-0">
+          <div className="mx-4 mt-3 px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
             <div className="flex items-center gap-4 text-xs">
               <span className="text-emerald-700"><span className="font-bold">Paid:</span> {formatCurrency(effectiveExistingInvoice.amountPaid)}</span>
               <span className="text-orange-600"><span className="font-bold">Remaining:</span> {formatCurrency(Math.max(0, (effectiveExistingInvoice.total ?? 0) - effectiveExistingInvoice.amountPaid))}</span>
             </div>
+            {(effectiveExistingInvoice as any).lastManualPaidAt && (
+              <span className="text-[10px] text-emerald-600 font-medium">
+                Last payment: {new Date((effectiveExistingInvoice as any).lastManualPaidAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+              </span>
+            )}
           </div>
         )}
 
@@ -823,8 +829,8 @@ export function InvoicePanel({
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[110px]">
                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-emerald-600 font-bold">$</span>
                 <input
                   type="number"
@@ -836,6 +842,12 @@ export function InvoicePanel({
                   className="w-full pl-6 pr-3 py-1.5 border border-emerald-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 />
               </div>
+              <input
+                type="date"
+                value={recordPaymentDate}
+                onChange={e => setRecordPaymentDate(e.target.value)}
+                className="flex-1 min-w-[120px] px-3 py-1.5 border border-emerald-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300"
+              />
               <button
                 disabled={recordingPayment || !recordPaymentAmount || parseFloat(recordPaymentAmount) <= 0}
                 onClick={async () => {
@@ -847,7 +859,7 @@ export function InvoicePanel({
                       method: "POST",
                       credentials: "include",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ amount }),
+                      body: JSON.stringify({ amount, paidAt: recordPaymentDate }),
                     });
                     if (!res.ok) {
                       const err = await res.json().catch(() => ({}));
