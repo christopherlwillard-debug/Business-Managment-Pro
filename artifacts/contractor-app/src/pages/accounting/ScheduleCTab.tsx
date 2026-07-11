@@ -63,12 +63,19 @@ function ScheduleCTab({ year }: { year: number }) {
   const phoneBusinessPct = parseFloat(ho.phonePct || "0") / 100;
   const homeOfficeDed = businessUsePct * (annualRentMortgage + annualUtilities) + phoneBusinessPct * annualPhone;
 
+  const [showMealsBreakdown, setShowMealsBreakdown] = useState(false);
+
   const scheduleCLines = report?.scheduleLines ?? [];
   const totalDeductions = (report?.totalExpenses ?? 0) + homeOfficeDed;
   const netProfit = (report?.grossReceipts ?? 0) - totalDeductions;
 
   const lineMap: Record<number, { description: string; amount: number }> = {};
   for (const l of scheduleCLines) { lineMap[l.line] = { description: l.description, amount: l.amount }; }
+
+  // Extract line 24 sub-lines (24a travel, 24b meals) separately since both share line number 24
+  const travelLine = scheduleCLines.find(l => l.line === 24 && l.description.includes("24a"));
+  const mealsLine = scheduleCLines.find(l => l.line === 24 && l.description.includes("24b"));
+  const mealsBreakdown = report?.mealsBreakdown;
 
   // Inject home office into line 30
   if (homeOfficeDed > 0) { lineMap[30] = { description: "Expenses for business use of your home (Form 8829)", amount: homeOfficeDed }; }
@@ -197,7 +204,6 @@ function ScheduleCTab({ year }: { year: number }) {
                   { line: 21, desc: "Repairs and maintenance" },
                   { line: 22, desc: "Supplies (not included in Part III)" },
                   { line: 23, desc: "Taxes and licenses" },
-                  { line: 24, desc: "Travel and meals" },
                   { line: 25, desc: "Utilities" },
                   { line: 26, desc: "Wages (less employment credits)" },
                   { line: 27, desc: "Other expenses (from line 48)" },
@@ -214,6 +220,68 @@ function ScheduleCTab({ year }: { year: number }) {
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Line 24 — Travel & Meals (full-width, rendered outside the 2-col grid) */}
+              <div className="border-t border-border/30">
+                {/* Line 24a — Travel / lodging (100% deductible) */}
+                {(travelLine || true) && (
+                  <div className="flex items-center gap-2 py-2 px-1">
+                    <span className="text-[11px] text-muted-foreground font-mono w-7 flex-shrink-0 text-right">24</span>
+                    <span className="flex-1 text-xs text-muted-foreground leading-tight">Travel — lodging & transportation (Line 24a)</span>
+                    <span className={`font-medium tabular-nums text-sm min-w-[72px] text-right ${(travelLine?.amount ?? 0) > 0 ? "text-foreground" : "text-muted-foreground/40"}`}>
+                      {(travelLine?.amount ?? 0) > 0 ? formatCurrency(travelLine!.amount) : "—"}
+                    </span>
+                  </div>
+                )}
+
+                {/* Line 24b — Meals (50% deductible) with expandable breakdown */}
+                <div className="border-t border-border/20">
+                  <button
+                    onClick={() => setShowMealsBreakdown(v => !v)}
+                    className="w-full flex items-center gap-2 py-2 px-1 hover:bg-muted/30 rounded transition-colors text-left group"
+                  >
+                    <span className="text-[11px] text-muted-foreground font-mono w-7 flex-shrink-0 text-right">24</span>
+                    <span className="flex-1 text-xs text-muted-foreground leading-tight">
+                      Meals — 50% deductible (Line 24b)
+                    </span>
+                    <span className={`font-medium tabular-nums text-sm min-w-[72px] text-right ${(mealsLine?.amount ?? 0) > 0 ? "text-foreground" : "text-muted-foreground/40"}`}>
+                      {(mealsLine?.amount ?? 0) > 0 ? formatCurrency(mealsLine!.amount) : "—"}
+                    </span>
+                    <span className="ml-1 flex-shrink-0 text-muted-foreground/60 group-hover:text-muted-foreground">
+                      {showMealsBreakdown ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </span>
+                  </button>
+
+                  {showMealsBreakdown && mealsBreakdown && (
+                    <div className="mx-2 mb-2 rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                      <p className="text-[11px] font-semibold text-amber-800 uppercase tracking-wide">Meal Deduction Breakdown</p>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-white rounded-lg px-2 py-2 border border-amber-100">
+                          <p className="text-lg font-bold text-foreground">{mealsBreakdown.receiptCount}</p>
+                          <p className="text-[10px] text-muted-foreground leading-tight">meal receipts</p>
+                        </div>
+                        <div className="bg-white rounded-lg px-2 py-2 border border-amber-100">
+                          <p className="text-sm font-bold text-foreground">{formatCurrency(mealsBreakdown.totalSpend)}</p>
+                          <p className="text-[10px] text-muted-foreground leading-tight">total spend</p>
+                        </div>
+                        <div className="bg-white rounded-lg px-2 py-2 border border-amber-100">
+                          <p className="text-sm font-bold text-primary">{formatCurrency(mealsBreakdown.deductibleAmount)}</p>
+                          <p className="text-[10px] text-muted-foreground leading-tight">deductible (Line 24b)</p>
+                        </div>
+                      </div>
+                      {mealsBreakdown.explicitOverrideCount > 0 ? (
+                        <p className="text-[11px] text-amber-700 leading-snug">
+                          <strong>{mealsBreakdown.explicitOverrideCount}</strong> of {mealsBreakdown.receiptCount} receipts have an explicit deductible amount set (e.g. from trip receipts). The remaining {mealsBreakdown.receiptCount - mealsBreakdown.explicitOverrideCount} used the standard 50% fallback.
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-amber-700 leading-snug">
+                          All {mealsBreakdown.receiptCount} receipts used the standard 50% deduction rule ({formatCurrency(mealsBreakdown.totalSpend)} × 50% = {formatCurrency(mealsBreakdown.deductibleAmount)}).
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Line 28 Total, Line 30 Home Office, Line 31 Net */}

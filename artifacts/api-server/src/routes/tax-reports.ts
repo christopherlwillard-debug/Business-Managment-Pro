@@ -98,6 +98,12 @@ interface ScheduleCReport {
     deduction: number;
     logCount: number;
   };
+  mealsBreakdown: {
+    receiptCount: number;
+    totalSpend: number;
+    deductibleAmount: number;
+    explicitOverrideCount: number;
+  };
   dataQuality: {
     uncategorizedExpenses: number;
     invoicesDraft: number;
@@ -191,6 +197,8 @@ router.get("/schedule-c", async (req, res) => {
         // otherwise fall back to 50% of the raw amount. This prevents double-applying
         // the 50% rule when deductible_amount is already set to amount * 0.5.
         deductibleSum: sql<string>`COALESCE(SUM(COALESCE(${expensesTable.deductibleAmount}::numeric, ${expensesTable.amount}::numeric * 0.5)), '0')`,
+        // Count rows where an explicit deductible_amount override was stored
+        explicitDeductibleCount: sql<string>`SUM(CASE WHEN ${expensesTable.deductibleAmount} IS NOT NULL THEN 1 ELSE 0 END)`,
         count: count(expensesTable.id),
       })
       .from(expensesTable)
@@ -207,6 +215,11 @@ router.get("/schedule-c", async (req, res) => {
     const expensesByCategory: Record<string, { amount: number; count: number }> = {};
     const expenses: Record<string, number> = {};
     let uncategorizedCount = 0;
+
+    // Meals breakdown — accumulated across all category rows that map to mealsDeductible
+    let mealsReceiptCount = 0;
+    let mealsTotalSpend = 0;
+    let mealsExplicitOverrideCount = 0;
 
     for (const exp of expensesData) {
       const amount = parseFloat(exp.amount as any);
@@ -230,6 +243,12 @@ router.get("/schedule-c", async (req, res) => {
         ? parseFloat((exp as any).deductibleSum ?? "0")
         : amount;
       expenses[scheduleCategory] = (expenses[scheduleCategory] || 0) + taxAmount;
+
+      if (scheduleCategory === "mealsDeductible") {
+        mealsReceiptCount += exp.count ?? 0;
+        mealsTotalSpend += amount;
+        mealsExplicitOverrideCount += parseInt((exp as any).explicitDeductibleCount ?? "0", 10);
+      }
 
       if (!SCHEDULE_C_CATEGORY_MAP[category]) {
         uncategorizedCount++;
@@ -422,6 +441,12 @@ router.get("/schedule-c", async (req, res) => {
         ratePerMile: irsMileageRate,
         deduction: mileageDeduction,
         logCount: mileageLogCount.length,
+      },
+      mealsBreakdown: {
+        receiptCount: mealsReceiptCount,
+        totalSpend: mealsTotalSpend,
+        deductibleAmount: mealsDeductibleAmount,
+        explicitOverrideCount: mealsExplicitOverrideCount,
       },
       dataQuality: {
         uncategorizedExpenses: uncategorizedCount,

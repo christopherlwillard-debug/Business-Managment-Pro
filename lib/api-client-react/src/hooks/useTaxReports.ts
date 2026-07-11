@@ -22,6 +22,12 @@ export interface ScheduleCReport {
     deduction: number;
     logCount: number;
   };
+  mealsBreakdown?: {
+    receiptCount: number;
+    totalSpend: number;
+    deductibleAmount: number;
+    explicitOverrideCount: number;
+  };
   dataQuality: {
     uncategorizedExpenses: number;
     invoicesDraft: number;
