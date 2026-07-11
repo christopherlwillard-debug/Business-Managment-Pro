@@ -45,3 +45,4 @@ export * from "./job-checklists";
 export * from "./mfh";
 export * from "./client-billing-profiles";
 export * from "./growth-fund-deployments";
+export * from "./business-trips";

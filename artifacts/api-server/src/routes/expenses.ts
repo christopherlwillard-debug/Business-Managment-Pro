@@ -165,10 +165,21 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit, countsTowardJobProfit, businessLine, businessId } = req.body;
+    const {
+      description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes,
+      excludeFromNetProfit, countsTowardJobProfit, businessLine, businessId,
+      tripId, overnightTravel, isPotentiallyNondeductible,
+      mealTotal, deductibleAmount, nonDeductibleAmount, tipAmount, taxAmount,
+      numPeople, paidBy, receiptStatus, receiptMissingExplanation,
+    } = req.body;
     if (!description || !amount || !category || !date) return res.status(400).json({ error: "Missing required fields" });
 
     const validBusinessLines = ["general_contracting", "asphalt_sealing"];
+    const isMealCategory = category?.toLowerCase() === "meals";
+    const parsedMealTotal = mealTotal ? parseFloat(mealTotal) : (isMealCategory ? parseFloat(amount) : null);
+    const computedDeductible = deductibleAmount != null ? parseFloat(deductibleAmount) : (parsedMealTotal != null ? parsedMealTotal * 0.5 : null);
+    const computedNonDeductible = nonDeductibleAmount != null ? parseFloat(nonDeductibleAmount) : (parsedMealTotal != null ? parsedMealTotal * 0.5 : null);
+
     const [expense] = await db.insert(expensesTable).values({
       description, amount: amount.toString(), category, date,
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes,
@@ -176,6 +187,18 @@ router.post("/", async (req, res) => {
       countsTowardJobProfit: countsTowardJobProfit === false ? false : true,
       businessLine: validBusinessLines.includes(businessLine) ? businessLine : null,
       businessId: businessId ? parseInt(businessId) : null,
+      tripId: tripId ? parseInt(tripId) : null,
+      overnightTravel: overnightTravel === true ? true : (overnightTravel === false ? false : null),
+      isPotentiallyNondeductible: isPotentiallyNondeductible === true,
+      mealTotal: parsedMealTotal != null ? parsedMealTotal.toString() : null,
+      deductibleAmount: computedDeductible != null ? computedDeductible.toString() : null,
+      nonDeductibleAmount: computedNonDeductible != null ? computedNonDeductible.toString() : null,
+      tipAmount: tipAmount ? parseFloat(tipAmount).toString() : null,
+      taxAmount: taxAmount ? parseFloat(taxAmount).toString() : null,
+      numPeople: numPeople ? parseInt(numPeople) : null,
+      paidBy: paidBy || null,
+      receiptStatus: receiptStatus || "uploaded",
+      receiptMissingExplanation: receiptMissingExplanation || null,
     }).returning();
 
     if (expense.category?.toLowerCase() === "subcontractor" && expense.jobId && expense.subcontractorId) {
@@ -205,13 +228,31 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes, excludeFromNetProfit, countsTowardJobProfit, businessLine, businessId } = req.body;
+    const {
+      description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes,
+      excludeFromNetProfit, countsTowardJobProfit, businessLine, businessId,
+      tripId, overnightTravel, isPotentiallyNondeductible,
+      mealTotal, deductibleAmount, nonDeductibleAmount, tipAmount, taxAmount,
+      numPeople, paidBy, receiptStatus, receiptMissingExplanation,
+    } = req.body;
 
     // Capture old values before updating so we can recompute the old pair if it changed
     const [before] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));
     if (!before) return res.status(404).json({ error: "Expense not found" });
 
     const validBusinessLines = ["general_contracting", "asphalt_sealing"];
+
+    const isMealCategory = (category ?? before.category)?.toLowerCase() === "meals";
+    const parsedMealTotal = mealTotal !== undefined
+      ? (mealTotal ? parseFloat(mealTotal) : null)
+      : (isMealCategory && amount ? parseFloat(amount) : null);
+    const computedDeductible = deductibleAmount !== undefined
+      ? (deductibleAmount ? parseFloat(deductibleAmount) : null)
+      : (parsedMealTotal != null ? parsedMealTotal * 0.5 : null);
+    const computedNonDeductible = nonDeductibleAmount !== undefined
+      ? (nonDeductibleAmount ? parseFloat(nonDeductibleAmount) : null)
+      : (parsedMealTotal != null ? parsedMealTotal * 0.5 : null);
+
     const [updated] = await db.update(expensesTable).set({
       description, amount: amount?.toString(), category, date,
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes,
@@ -219,6 +260,18 @@ router.put("/:id", async (req, res) => {
       ...(countsTowardJobProfit !== undefined && { countsTowardJobProfit: countsTowardJobProfit === false ? false : true }),
       ...(businessLine !== undefined && { businessLine: validBusinessLines.includes(businessLine) ? businessLine : null }),
       ...(businessId !== undefined && { businessId: businessId ? parseInt(String(businessId)) : null }),
+      ...(tripId !== undefined && { tripId: tripId ? parseInt(tripId) : null }),
+      ...(overnightTravel !== undefined && { overnightTravel }),
+      ...(isPotentiallyNondeductible !== undefined && { isPotentiallyNondeductible: isPotentiallyNondeductible === true }),
+      ...(mealTotal !== undefined && { mealTotal: parsedMealTotal != null ? parsedMealTotal.toString() : null }),
+      ...(deductibleAmount !== undefined && { deductibleAmount: computedDeductible != null ? computedDeductible.toString() : null }),
+      ...(nonDeductibleAmount !== undefined && { nonDeductibleAmount: computedNonDeductible != null ? computedNonDeductible.toString() : null }),
+      ...(tipAmount !== undefined && { tipAmount: tipAmount ? parseFloat(tipAmount).toString() : null }),
+      ...(taxAmount !== undefined && { taxAmount: taxAmount ? parseFloat(taxAmount).toString() : null }),
+      ...(numPeople !== undefined && { numPeople: numPeople ? parseInt(numPeople) : null }),
+      ...(paidBy !== undefined && { paidBy: paidBy || null }),
+      ...(receiptStatus !== undefined && { receiptStatus }),
+      ...(receiptMissingExplanation !== undefined && { receiptMissingExplanation: receiptMissingExplanation || null }),
     }).where(eq(expensesTable.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "Expense not found" });
 

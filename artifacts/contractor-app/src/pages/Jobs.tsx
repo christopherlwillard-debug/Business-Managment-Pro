@@ -2874,6 +2874,135 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
   );
 }
 
+// ─── Job Trips Panel ───────────────────────────────────────────────────────────
+function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
+  const [trips, setTrips] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${BASE}/api/trips?jobId=${job.id}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setTrips(data))
+      .catch(() => setTrips([]))
+      .finally(() => setLoading(false));
+  }, [job.id]);
+
+  function toggleExpand(id: number) {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function money(n: number) { return `$${Number(n).toFixed(2)}`; }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-card rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-blue-50/60">
+          <div className="flex items-center gap-2.5">
+            <Briefcase className="w-4 h-4 text-blue-600" />
+            <span className="font-bold text-foreground">Business Trips</span>
+            <span className="text-xs text-muted-foreground">— {job.title}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href={`${BASE}/?path=expenses`}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
+              onClick={onClose}
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Trip
+            </a>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted/60 transition-colors text-muted-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-4 space-y-3">
+          {loading ? (
+            <p className="text-sm text-center text-muted-foreground animate-pulse py-8">Loading trips…</p>
+          ) : trips.length === 0 ? (
+            <div className="text-center py-10 text-muted-foreground">
+              <Briefcase className="w-8 h-8 mx-auto mb-2 opacity-20" />
+              <p className="text-sm font-medium">No business trips linked to this job</p>
+              <p className="text-xs mt-1">Create one from the Expenses page to start building an IRS-ready audit folder.</p>
+            </div>
+          ) : (
+            trips.map(trip => {
+              const isOpen = expandedIds.has(trip.id);
+              const dateRange = [trip.startDate, trip.endDate].filter(Boolean).join(" → ");
+              const hasIssues = trip.missingReceipts > 0 || !trip.businessPurpose || !trip.startDate || trip.receiptCount === 0;
+              return (
+                <div key={trip.id} className="rounded-xl border border-border/50 overflow-hidden bg-background">
+                  <div
+                    className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/20 transition-colors"
+                    onClick={() => toggleExpand(trip.id)}
+                  >
+                    {isOpen ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">{trip.destination}</span>
+                        {dateRange && <span className="text-xs text-muted-foreground">{dateRange}</span>}
+                        <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${hasIssues ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+                          {hasIssues ? "🟡 Needs Attention" : "🟢 Audit Ready"}
+                        </span>
+                      </div>
+                      {trip.businessPurpose && <p className="text-xs text-muted-foreground mt-0.5 truncate">{trip.businessPurpose}</p>}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-bold">{money(trip.totalAmount ?? 0)}</p>
+                      <p className="text-[11px] text-muted-foreground">{trip.receiptCount ?? 0} receipts</p>
+                    </div>
+                  </div>
+                  {isOpen && (
+                    <div className="border-t border-border/30 bg-gray-50/60 px-4 py-3 space-y-2">
+                      {trip.mealTotal > 0 && (
+                        <div className="grid grid-cols-2 gap-2 text-center">
+                          <div className="bg-white rounded-xl border border-border/50 px-3 py-2">
+                            <p className="text-xs text-muted-foreground">Meals (50% deductible)</p>
+                            <p className="text-sm font-bold text-emerald-700">{money(trip.deductibleMeals ?? 0)}</p>
+                          </div>
+                          <div className="bg-white rounded-xl border border-border/50 px-3 py-2">
+                            <p className="text-xs text-muted-foreground">Total Travel Spend</p>
+                            <p className="text-sm font-bold text-foreground">{money(trip.totalAmount ?? 0)}</p>
+                          </div>
+                        </div>
+                      )}
+                      {trip.status === "open" ? (
+                        <a
+                          href={`${BASE}/?path=expenses`}
+                          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
+                          onClick={onClose}
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add Receipt to Trip
+                        </a>
+                      ) : (
+                        <p className="text-xs text-center text-muted-foreground italic">Trip completed</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-border/30 bg-muted/10 flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            Manage all trips from Expenses · Accounting → Business Trips
+          </p>
+          <button onClick={onClose} className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 type ChecklistSummary = { completedItems: number; totalItems: number; overallPercent: number };
 
@@ -2919,6 +3048,7 @@ function JobCard({
   const [checklistPanelOpen, setChecklistPanelOpen] = useState(false);
   const [mfhPanelOpen, setMfhPanelOpen] = useState(false);
   const [serviceBillingOpen, setServiceBillingOpen] = useState(false);
+  const [tripsPanelOpen, setTripsPanelOpen] = useState(false);
   const [localSubPaid, setLocalSubPaid] = useState(job.subPaid);
   const jobWorkflow = getJobWorkflow(job);
   const isCompleted = displayStatus(job.status) === "completed";
@@ -3356,6 +3486,15 @@ function JobCard({
         </button>
         )}
 
+        {/* Business Trips — out-of-town receipt folders */}
+        <button
+          onClick={() => setTripsPanelOpen(true)}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
+          <Briefcase className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+          <span className="flex-1 text-left">Business Trips</span>
+          <span className="text-[10px] text-muted-foreground">Travel receipts</span>
+        </button>
+
         {/* Job Financials — consolidated P&L, Pay Breakdown, Sub Hours */}
         <button
           onClick={() => { setFinancialsInitialTab("pl"); setFinancialsPanelOpen(true); }}
@@ -3586,6 +3725,9 @@ function JobCard({
             qc.invalidateQueries({ queryKey: ["/api/jobs"] });
           }}
         />
+      )}
+      {tripsPanelOpen && (
+        <JobTripsPanel job={job} onClose={() => setTripsPanelOpen(false)} />
       )}
     </>
   );

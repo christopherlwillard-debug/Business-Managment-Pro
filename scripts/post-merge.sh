@@ -855,3 +855,40 @@ pool.query('ALTER TABLE mfh_models ADD COLUMN IF NOT EXISTS active boolean NOT N
   .then(() => { console.log('mfh_models.active ensured'); pool.end(); })
   .catch(e => { console.error('mfh_models.active migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #1144: create business_trips table and add trip columns to expenses
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS business_trips (
+    id SERIAL PRIMARY KEY,
+    destination text NOT NULL,
+    business_purpose text,
+    start_date text,
+    end_date text,
+    job_id integer REFERENCES jobs(id) ON DELETE SET NULL,
+    status text NOT NULL DEFAULT 'open',
+    closed_at timestamptz,
+    closed_by text,
+    created_at timestamp NOT NULL DEFAULT now()
+  )
+\`).then(() => {
+  return pool.query(\`
+    ALTER TABLE expenses
+      ADD COLUMN IF NOT EXISTS trip_id integer REFERENCES business_trips(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS overnight_travel boolean,
+      ADD COLUMN IF NOT EXISTS is_potentially_nondeductible boolean DEFAULT false,
+      ADD COLUMN IF NOT EXISTS meal_total numeric(12,2),
+      ADD COLUMN IF NOT EXISTS deductible_amount numeric(12,2),
+      ADD COLUMN IF NOT EXISTS non_deductible_amount numeric(12,2),
+      ADD COLUMN IF NOT EXISTS tip_amount numeric(12,2),
+      ADD COLUMN IF NOT EXISTS tax_amount numeric(12,2),
+      ADD COLUMN IF NOT EXISTS num_people integer,
+      ADD COLUMN IF NOT EXISTS paid_by text,
+      ADD COLUMN IF NOT EXISTS receipt_status text DEFAULT 'uploaded',
+      ADD COLUMN IF NOT EXISTS receipt_missing_explanation text
+  \`);
+}).then(() => { console.log('business_trips and expense trip columns ensured'); pool.end(); })
+  .catch(e => { console.error('business_trips migration error:', e.message); pool.end(); process.exit(1); });
+")

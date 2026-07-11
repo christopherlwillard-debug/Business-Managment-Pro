@@ -22,48 +22,90 @@ import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { openDrivePicker } from "@/lib/googleDrivePicker";
 
 const CATEGORIES = [
-  "Materials",             // Sch C Line 4
-  "Advertising",           // Sch C Line 8
-  "Fuel/Travel",           // Sch C Line 9
-  "Parking/Tolls",         // Sch C Line 9
-  "Subcontractor",         // Sch C Line 11
-  "Insurance",             // Sch C Line 15
-  "Professional Services", // Sch C Line 17
-  "Office/Admin",          // Sch C Line 18
-  "Rent/Lease",            // Sch C Line 20
-  "Repairs/Maintenance",   // Sch C Line 21
-  "Tools/Equipment",       // Sch C Line 22
-  "Travel/Lodging",        // Sch C Line 24a
-  "Meals",                 // Sch C Line 24b (50% deductible)
-  "Utilities",             // Sch C Line 25
-  "Other",                 // Sch C Line 27
-  "Owner Draw",            // Non-deductible — personal distribution
+  "Materials",
+  "Advertising",
+  "Fuel/Travel",
+  "Parking/Tolls",
+  "Subcontractor",
+  "Insurance",
+  "Professional Services",
+  "Office/Admin",
+  "Rent/Lease",
+  "Repairs/Maintenance",
+  "Tools/Equipment",
+  "Travel/Lodging",
+  "Hotel/Lodging",
+  "Meals",
+  "Airfare",
+  "Rental Car",
+  "Taxi/Rideshare",
+  "Campground/RV Site",
+  "Other Travel",
+  "Utilities",
+  "Other",
+  "Owner Draw",
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
-  "Materials":             "Materials — Line 4 (Cost of Goods)",
-  "Advertising":           "Advertising — Line 8 (Advertising)",
-  "Fuel/Travel":           "Fuel/Travel — Line 9 (Car & Truck)",
-  "Parking/Tolls":         "Parking/Tolls — Line 9 (Car & Truck)",
-  "Subcontractor":         "Subcontractor — Line 11 (Contract Labor)",
-  "Insurance":             "Insurance — Line 15 (Insurance)",
-  "Professional Services": "Professional Services — Line 17 (Legal & Prof.)",
-  "Office/Admin":          "Office/Admin — Line 18 (Office Expense)",
-  "Rent/Lease":            "Rent/Lease — Line 20 (Rent or Lease)",
-  "Repairs/Maintenance":   "Repairs/Maintenance — Line 21 (Repairs)",
-  "Tools/Equipment":       "Tools/Equipment — Line 22 (Supplies)",
-  "Travel/Lodging":        "Travel/Lodging — Line 24a (Travel, 100% deductible)",
-  "Meals":                 "Meals — Line 24b (50% deductible)",
-  "Utilities":             "Utilities — Line 25 (Utilities)",
-  "Other":                 "Other — Line 27 (Other Expenses)",
-  "Owner Draw":            "Owner Draw — Personal distribution (not tax-deductible)",
+  "Materials":             "Materials",
+  "Advertising":           "Advertising",
+  "Fuel/Travel":           "Fuel/Travel",
+  "Parking/Tolls":         "Parking/Tolls",
+  "Subcontractor":         "Subcontractor",
+  "Insurance":             "Insurance",
+  "Professional Services": "Professional Services",
+  "Office/Admin":          "Office/Admin",
+  "Rent/Lease":            "Rent/Lease",
+  "Repairs/Maintenance":   "Repairs/Maintenance",
+  "Tools/Equipment":       "Tools/Equipment",
+  "Travel/Lodging":        "Travel/Lodging",
+  "Hotel/Lodging":         "Hotel/Lodging",
+  "Meals":                 "Meals (50% deductible)",
+  "Airfare":               "Airfare",
+  "Rental Car":            "Rental Car",
+  "Taxi/Rideshare":        "Taxi/Rideshare",
+  "Campground/RV Site":    "Campground/RV Site",
+  "Other Travel":          "Other Travel",
+  "Utilities":             "Utilities",
+  "Other":                 "Other",
+  "Owner Draw":            "Owner Draw (personal distribution)",
 };
-// Travel-related categories — kept in sync with the API's trip packet logic.
-// "Travel/Lodging", "Meals", and "Parking/Tolls" plug in automatically once added.
-const TRAVEL_CATEGORIES_LC = ["fuel/travel", "travel/lodging", "meals", "parking/tolls"];
+
+export const SCHEDULE_C_LINES: Record<string, string> = {
+  "Materials":             "Line 4",
+  "Advertising":           "Line 8",
+  "Fuel/Travel":           "Line 9",
+  "Parking/Tolls":         "Line 9",
+  "Subcontractor":         "Line 11",
+  "Insurance":             "Line 15",
+  "Professional Services": "Line 17",
+  "Office/Admin":          "Line 18",
+  "Rent/Lease":            "Line 20",
+  "Repairs/Maintenance":   "Line 21",
+  "Tools/Equipment":       "Line 22",
+  "Travel/Lodging":        "Line 24a",
+  "Hotel/Lodging":         "Line 24a",
+  "Meals":                 "Line 24b",
+  "Airfare":               "Line 24a",
+  "Rental Car":            "Line 24a",
+  "Taxi/Rideshare":        "Line 24a",
+  "Campground/RV Site":    "Line 24a",
+  "Other Travel":          "Line 24a",
+  "Utilities":             "Line 25",
+  "Other":                 "Line 27",
+};
+
+const TRAVEL_CATEGORIES_LC = [
+  "fuel/travel", "travel/lodging", "meals", "parking/tolls",
+  "hotel/lodging", "airfare", "rental car", "taxi/rideshare",
+  "campground/rv site", "other travel",
+];
 function isTravelCategory(category: string | null | undefined): boolean {
   if (!category) return false;
   return TRAVEL_CATEGORIES_LC.includes(category.trim().toLowerCase());
+}
+function isMealCategory(category: string | null | undefined): boolean {
+  return category?.trim().toLowerCase() === "meals";
 }
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -261,6 +303,488 @@ function useUpdateExpense() {
       return res.json();
     },
   });
+}
+
+// ─── Business Trip hooks ───────────────────────────────────────────────────────
+export interface BusinessTrip {
+  id: number;
+  destination: string;
+  businessPurpose: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  jobId: number | null;
+  jobTitle: string | null;
+  status: string;
+  closedAt: string | null;
+  createdAt: string;
+  receiptCount: number;
+  totalAmount: number;
+  mealTotal: number;
+  deductibleMeals: number;
+  missingReceipts: number;
+}
+
+function useTrips(year?: string) {
+  return useQuery<BusinessTrip[]>({
+    queryKey: ["business-trips", year ?? "all"],
+    queryFn: async () => {
+      const url = year ? `${API}/trips?year=${year}` : `${API}/trips`;
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load trips");
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+}
+
+function useCreateTrip() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      const res = await fetch(`${API}/trips`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to create trip");
+      return res.json() as Promise<BusinessTrip>;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["business-trips"] }),
+  });
+}
+
+function useUpdateTrip() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Record<string, unknown> }) => {
+      const res = await fetch(`${API}/trips/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update trip");
+      return res.json() as Promise<BusinessTrip>;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["business-trips"] }),
+  });
+}
+
+function useDeleteTrip() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${API}/trips/${id}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok && res.status !== 204) throw new Error("Failed to delete trip");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["business-trips"] });
+      qc.invalidateQueries({ queryKey: ["/api/expenses"] });
+    },
+  });
+}
+
+function useTripReceipts(tripId: number | null) {
+  return useQuery<any[]>({
+    queryKey: ["trip-receipts", tripId],
+    enabled: !!tripId,
+    queryFn: async () => {
+      const res = await fetch(`${API}/trips/${tripId}/receipts`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load receipts");
+      return res.json();
+    },
+    staleTime: 15_000,
+  });
+}
+
+// ─── Business Trips Section ────────────────────────────────────────────────────
+const PAID_BY_OPTIONS = [
+  "Company Card",
+  "Personal Card",
+  "Cash",
+  "Company Check",
+  "ACH/Bank Transfer",
+  "Other",
+];
+
+function auditStatus(trip: BusinessTrip): { label: string; color: string; description: string } {
+  const issues: string[] = [];
+  if (trip.missingReceipts > 0) issues.push(`${trip.missingReceipts} missing receipt${trip.missingReceipts > 1 ? "s" : ""}`);
+  if (!trip.businessPurpose) issues.push("No business purpose");
+  if (!trip.startDate) issues.push("No start date");
+  if (trip.receiptCount === 0) issues.push("No receipts logged");
+  if (issues.length === 0) {
+    return { label: "Audit Ready", color: "text-emerald-700 bg-emerald-50 border-emerald-200", description: "All required documentation is in order" };
+  }
+  return { label: "Needs Attention", color: "text-amber-700 bg-amber-50 border-amber-200", description: issues.join(" · ") };
+}
+
+function TripReceiptsPanel({
+  trip, onAddReceipt, onClose,
+}: {
+  trip: BusinessTrip;
+  onAddReceipt: (tripId: number, tripPurpose: string) => void;
+  onClose: () => void;
+}) {
+  const { data: receipts = [], isLoading } = useTripReceipts(trip.id);
+  const money = (n: number) => `$${n.toFixed(2)}`;
+  const status = auditStatus(trip);
+
+  return (
+    <div className="border-t border-border/30 bg-gray-50/60">
+      <div className="px-6 py-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${status.color}`}>
+              {status.label === "Audit Ready" ? "🟢" : "🟡"} {status.label}
+            </span>
+            <span className="text-xs text-muted-foreground">{status.description}</span>
+          </div>
+          <button
+            onClick={() => onAddReceipt(trip.id, trip.businessPurpose ?? "")}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Receipt
+          </button>
+        </div>
+
+        {trip.mealTotal > 0 && (
+          <div className="mb-3 grid grid-cols-3 gap-2 text-center">
+            <div className="bg-white rounded-xl border border-border/50 px-3 py-2">
+              <p className="text-xs text-muted-foreground">Total Meals</p>
+              <p className="text-sm font-bold text-gray-900">{money(trip.mealTotal)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-border/50 px-3 py-2">
+              <p className="text-xs text-muted-foreground">Deductible (50%)</p>
+              <p className="text-sm font-bold text-emerald-700">{money(trip.deductibleMeals)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-border/50 px-3 py-2">
+              <p className="text-xs text-muted-foreground">Non-Deductible</p>
+              <p className="text-sm font-bold text-gray-400">{money(trip.mealTotal - trip.deductibleMeals)}</p>
+            </div>
+          </div>
+        )}
+
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground italic animate-pulse py-3">Loading receipts…</p>
+        ) : receipts.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic py-3">No receipts logged yet. Use "Add Receipt" to document expenses for this trip.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {receipts.map((r: any) => (
+              <div key={r.id} className="flex items-start justify-between gap-3 bg-white rounded-xl px-3 py-2 border border-border/40 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-foreground text-xs">{r.description}</span>
+                    {r.vendor && <span className="text-[11px] text-muted-foreground">· {r.vendor}</span>}
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${CATEGORY_COLORS[r.category] ?? "bg-gray-100 text-gray-600"}`}>{r.category}</span>
+                    {r.receiptStatus === "missing" && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-full">⚠ Missing receipt</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{r.date}{r.paidBy ? ` · Paid by: ${r.paidBy}` : ""}{r.numPeople ? ` · ${r.numPeople} people` : ""}</p>
+                  {isMealCategory(r.category) && r.deductibleAmount != null && (
+                    <p className="text-[11px] text-emerald-700 mt-0.5">50% deductible: ${(r.deductibleAmount ?? 0).toFixed(2)}</p>
+                  )}
+                  {r.receiptUrl && (
+                    <a href={r.receiptUrl} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-primary font-semibold hover:underline mt-0.5">
+                      <ImageIcon className="w-2.5 h-2.5" /> Receipt
+                    </a>
+                  )}
+                </div>
+                <span className="text-sm font-bold text-foreground flex-shrink-0">{money(r.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-3 border-t border-border/30 mt-3">
+          <p className="text-xs font-semibold text-muted-foreground">
+            {trip.receiptCount} receipt{trip.receiptCount !== 1 ? "s" : ""} · {money(trip.totalAmount)} total
+          </p>
+          <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground font-medium">Collapse</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BusinessTripsSection({
+  year,
+  jobs,
+  onAddReceipt,
+}: {
+  year: string;
+  jobs: any[];
+  onAddReceipt: (tripId: number, tripPurpose: string, tripJobId: number | null) => void;
+}) {
+  const { data: trips = [], isLoading } = useTrips(year);
+  const createTrip = useCreateTrip();
+  const updateTrip = useUpdateTrip();
+  const deleteTrip = useDeleteTrip();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [sectionOpen, setSectionOpen] = useState(true);
+  const [newTripOpen, setNewTripOpen] = useState(false);
+  const [newDest, setNewDest] = useState("");
+  const [newPurpose, setNewPurpose] = useState("");
+  const [newStart, setNewStart] = useState("");
+  const [newEnd, setNewEnd] = useState("");
+  const [newJobId, setNewJobId] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<BusinessTrip | null>(null);
+
+  function toggleTrip(id: number) {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleCreateTrip(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newDest.trim()) return;
+    try {
+      await createTrip.mutateAsync({
+        destination: newDest.trim(),
+        businessPurpose: newPurpose.trim() || undefined,
+        startDate: newStart || undefined,
+        endDate: newEnd || undefined,
+        jobId: newJobId ? parseInt(newJobId) : undefined,
+      });
+      setNewTripOpen(false);
+      setNewDest(""); setNewPurpose(""); setNewStart(""); setNewEnd(""); setNewJobId("");
+      toast({ title: "Trip created", description: "Add receipts to start building the audit folder." });
+    } catch {
+      toast({ title: "Error", description: "Could not create trip.", variant: "destructive" });
+    }
+  }
+
+  async function handleClose(trip: BusinessTrip) {
+    await updateTrip.mutateAsync({ id: trip.id, data: { status: "completed" } });
+    qc.invalidateQueries({ queryKey: ["trip-receipts", trip.id] });
+  }
+
+  async function handleReopen(trip: BusinessTrip) {
+    await updateTrip.mutateAsync({ id: trip.id, data: { status: "open" } });
+  }
+
+  async function handleDelete() {
+    if (!deleteConfirm) return;
+    await deleteTrip.mutateAsync(deleteConfirm.id);
+    setDeleteConfirm(null);
+    toast({ title: "Trip deleted" });
+  }
+
+  const sortedTrips = [...trips].sort((a, b) => {
+    const statusOrder = { open: 0, completed: 1, archived: 2 };
+    const sa = statusOrder[a.status as keyof typeof statusOrder] ?? 2;
+    const sb = statusOrder[b.status as keyof typeof statusOrder] ?? 2;
+    if (sa !== sb) return sa - sb;
+    return (b.startDate ?? b.createdAt).localeCompare(a.startDate ?? a.createdAt);
+  });
+
+  return (
+    <div className="rounded-2xl border border-border/50 shadow-md overflow-hidden bg-card">
+      <div
+        className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-muted/20 transition-colors select-none"
+        onClick={() => setSectionOpen(o => !o)}
+      >
+        <div className="flex items-center gap-2.5">
+          {sectionOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          <Briefcase className="w-4 h-4 text-blue-600" />
+          <span className="font-bold text-foreground">Business Trips</span>
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{trips.length} {trips.length === 1 ? "trip" : "trips"}</span>
+          <span className="text-xs text-muted-foreground italic">Audit-ready receipt folders for out-of-town work</span>
+        </div>
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); setNewTripOpen(o => !o); setSectionOpen(true); }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+        >
+          <Plus className="w-3.5 h-3.5" /> New Trip
+        </button>
+      </div>
+
+      {sectionOpen && (
+        <>
+          {/* New trip form */}
+          {newTripOpen && (
+            <div className="border-t border-border/30 bg-blue-50/60 px-5 py-4">
+              <p className="text-sm font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                <Plus className="w-4 h-4" /> New Business Trip
+              </p>
+              <form onSubmit={handleCreateTrip} className="space-y-3">
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Destination *</label>
+                    <input
+                      value={newDest} onChange={e => setNewDest(e.target.value)} required
+                      placeholder="e.g. Louisville, KY"
+                      className="w-full px-3 py-1.5 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Business Purpose</label>
+                    <input
+                      value={newPurpose} onChange={e => setNewPurpose(e.target.value)}
+                      placeholder="e.g. Site installation for ABC job"
+                      className="w-full px-3 py-1.5 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Start Date</label>
+                    <input type="date" value={newStart} onChange={e => setNewStart(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">End Date</label>
+                    <input type="date" value={newEnd} onChange={e => setNewEnd(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium mb-1">Linked Job (optional)</label>
+                    <select value={newJobId} onChange={e => setNewJobId(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20">
+                      <option value="">— No job linked —</option>
+                      {jobs.map(j => <option key={j.id} value={j.id}>{formatJobLabel(j)}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setNewTripOpen(false)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted transition-colors">Cancel</button>
+                  <button type="submit" disabled={createTrip.isPending}
+                    className="px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60">
+                    {createTrip.isPending ? "Creating…" : "Create Trip"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="px-5 py-8 text-center text-muted-foreground text-sm animate-pulse">Loading trips…</div>
+          ) : sortedTrips.length === 0 ? (
+            <div className="px-5 py-10 text-center text-muted-foreground">
+              <Briefcase className="w-8 h-8 mx-auto mb-2 opacity-20" />
+              <p className="text-sm">No business trips for {year}.</p>
+              <p className="text-xs mt-1">Create one to start an IRS-ready receipt folder for out-of-town work.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border/30">
+              {sortedTrips.map(trip => {
+                const isOpen = expanded.has(trip.id);
+                const status = auditStatus(trip);
+                const dateRange = [trip.startDate, trip.endDate].filter(Boolean).join(" → ");
+                return (
+                  <div key={trip.id}>
+                    <div
+                      className="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-muted/20 transition-colors select-none"
+                      onClick={() => toggleTrip(trip.id)}
+                    >
+                      {isOpen ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-foreground">{trip.destination}</span>
+                          {dateRange && <span className="text-xs text-muted-foreground">{dateRange}</span>}
+                          {trip.jobTitle && (
+                            <span className="inline-flex items-center gap-1 text-[11px] bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded-full font-medium">
+                              <Briefcase className="w-2.5 h-2.5" />{trip.jobTitle}
+                            </span>
+                          )}
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${status.color}`}>
+                            {status.label === "Audit Ready" ? "🟢" : "🟡"} {status.label}
+                          </span>
+                          {trip.status === "completed" && (
+                            <span className="inline-flex items-center text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium">Completed</span>
+                          )}
+                        </div>
+                        {trip.businessPurpose && <p className="text-xs text-muted-foreground mt-0.5 truncate">{trip.businessPurpose}</p>}
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-foreground">{`$${trip.totalAmount.toFixed(2)}`}</p>
+                          <p className="text-[11px] text-muted-foreground">{trip.receiptCount} receipts</p>
+                        </div>
+                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                          {trip.status === "open" ? (
+                            <button
+                              title="Mark complete"
+                              onClick={() => handleClose(trip)}
+                              className="p-1 rounded-lg text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              title="Reopen"
+                              onClick={() => handleReopen(trip)}
+                              className="p-1 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            title="Delete trip"
+                            onClick={() => setDeleteConfirm(trip)}
+                            className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    {isOpen && (
+                      <TripReceiptsPanel
+                        trip={trip}
+                        onAddReceipt={onAddReceipt}
+                        onClose={() => toggleTrip(trip.id)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Delete trip confirm */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-red-100 p-6 space-y-4">
+            <div className="flex items-start gap-4">
+              <div className="w-11 h-11 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">Delete trip?</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  The trip to <span className="font-semibold text-gray-700">{deleteConfirm.destination}</span> will be deleted.
+                  Its receipts will remain as unlinked expenses.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+              <button onClick={handleDelete} disabled={deleteTrip.isPending}
+                className="px-5 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 transition-colors shadow disabled:opacity-60 flex items-center gap-2">
+                <Trash2 className="w-3.5 h-3.5" />
+                {deleteTrip.isPending ? "Deleting…" : "Delete Trip"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Vendor Combobox ──────────────────────────────────────────────────────────
@@ -577,6 +1101,15 @@ const CATEGORY_COLORS: Record<string, string> = {
   "Tools/Equipment":       "bg-blue-100 text-blue-700",
   "Utilities":             "bg-sky-100 text-sky-700",
   "Other":                 "bg-orange-100 text-orange-700",
+  "Travel/Lodging":        "bg-teal-100 text-teal-700",
+  "Hotel/Lodging":         "bg-teal-100 text-teal-700",
+  "Meals":                 "bg-rose-100 text-rose-700",
+  "Airfare":               "bg-blue-100 text-blue-700",
+  "Rental Car":            "bg-emerald-100 text-emerald-700",
+  "Taxi/Rideshare":        "bg-lime-100 text-lime-700",
+  "Campground/RV Site":    "bg-amber-100 text-amber-700",
+  "Other Travel":          "bg-gray-100 text-gray-600",
+  "Parking/Tolls":         "bg-yellow-100 text-yellow-700",
 };
 
 // ─── Mileage import summary (shown for monthly aggregate mileage expenses) ────
@@ -1532,6 +2065,11 @@ export default function Expenses() {
   useEffect(() => {
     setBusinessLine(activeBusiness?.slug ?? undefined);
   }, [activeBusiness?.slug]);
+  const [prefillTripId, setPrefillTripId]             = useState<number | null>(null);
+  const [paidBy,        setPaidBy]                    = useState("");
+  const [receiptStatus, setReceiptStatus]             = useState<"uploaded" | "missing">("uploaded");
+  const [receiptMissingExpl, setReceiptMissingExpl]   = useState("");
+  const [mealNumPeople, setMealNumPeople]             = useState("");
   const [viewExpense,   setViewExpense]                = useState<any | null>(null);
   const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; countsTowardJobProfit: boolean; businessLine: string; businessId: number | null} | null>(null);
   const [editReceiptFile, setEditReceiptFile]         = useState<File | null>(null);
@@ -1692,6 +2230,33 @@ export default function Expenses() {
     setCountsTowardJobProfit(true);
     setFormJobId("");
     setBusinessLine(activeBusiness?.slug ?? undefined);
+    setPrefillTripId(null);
+    setPaidBy("");
+    setReceiptStatus("uploaded");
+    setReceiptMissingExpl("");
+    setMealNumPeople("");
+  }
+
+  function openDialogForTrip(tripId: number, tripPurpose: string, tripJobId: number | null) {
+    setIsDialogOpen(true);
+    setReceiptFile(null);
+    setUploadError("");
+    setVendor("");
+    setCategory("Meals");
+    setSubcontractorId("");
+    setExcludeFromNetProfit(false);
+    setCountsTowardJobProfit(false);
+    setFormJobId(tripJobId ? String(tripJobId) : "");
+    setBusinessLine(activeBusiness?.slug ?? undefined);
+    setPrefillTripId(tripId);
+    setPaidBy("");
+    setReceiptStatus("uploaded");
+    setReceiptMissingExpl("");
+    setMealNumPeople("");
+    setPrefillAmount("");
+    setPrefillDate("");
+    setPrefillDesc("");
+    setPrefillKey(k => k + 1);
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -1700,11 +2265,13 @@ export default function Expenses() {
     const fd = new FormData(e.currentTarget);
 
     try {
+      const rawCategory = fd.get("category") as string;
+      const rawAmount = parseFloat(fd.get("amount") as string);
       const expense = await createMutation.mutateAsync({
         data: {
           description:    fd.get("description") as string,
-          amount:         parseFloat(fd.get("amount") as string),
-          category:       fd.get("category") as string,
+          amount:         rawAmount,
+          category:       rawCategory,
           date:           fd.get("date") as string,
           vendor:         vendor.trim() || undefined,
           notes:          fd.get("notes") as string || undefined,
@@ -1714,6 +2281,16 @@ export default function Expenses() {
           countsTowardJobProfit,
           businessLine: businessLine || null,
           businessId: activeBusiness?.id ?? (businessLine ? businesses.find(b => b.slug === businessLine)?.id ?? null : null),
+          tripId: prefillTripId ?? undefined,
+          paidBy: paidBy || undefined,
+          receiptStatus,
+          receiptMissingExplanation: receiptStatus === "missing" ? (receiptMissingExpl || undefined) : undefined,
+          numPeople: mealNumPeople ? parseInt(mealNumPeople) : undefined,
+          ...(isMealCategory(rawCategory) && {
+            mealTotal: rawAmount,
+            deductibleAmount: rawAmount * 0.5,
+            nonDeductibleAmount: rawAmount * 0.5,
+          }),
         },
       });
 
@@ -1733,6 +2310,15 @@ export default function Expenses() {
       setSubcontractorId("");
       setExcludeFromNetProfit(false);
       setBusinessLine(activeBusiness?.slug ?? undefined);
+      setPrefillTripId(null);
+      setPaidBy("");
+      setReceiptStatus("uploaded");
+      setReceiptMissingExpl("");
+      setMealNumPeople("");
+      if (prefillTripId) {
+        qc.invalidateQueries({ queryKey: ["trip-receipts", prefillTripId] });
+        qc.invalidateQueries({ queryKey: ["business-trips"] });
+      }
 
       // Background: receipt upload (receiptFile still holds the file — setState is async)
       if (receiptFile && expense.id) {
@@ -1856,6 +2442,12 @@ export default function Expenses() {
           </button>
         </div>
       )}
+
+      <BusinessTripsSection
+        year={selectedYear}
+        jobs={jobs ?? []}
+        onAddReceipt={(tripId, tripPurpose, tripJobId) => openDialogForTrip(tripId, tripPurpose, tripJobId)}
+      />
 
       <Card className="border-border/50 shadow-md overflow-hidden bg-card">
 
@@ -2437,6 +3029,83 @@ export default function Expenses() {
                 placeholder={isTravelCategory(category) ? "Business purpose (required for IRS — e.g. client meeting, site inspection)" : "Optional notes"}
               />
             </div>
+
+            {/* ── Trip context (shown when trip pre-fill is active) */}
+            {prefillTripId && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-800">
+                <Briefcase className="w-3.5 h-3.5 flex-shrink-0 text-blue-600" />
+                <span>This expense will be filed under the selected business trip.</span>
+              </div>
+            )}
+
+            {/* ── Travel/meal extra fields */}
+            {isTravelCategory(category) && (
+              <div className="space-y-3 p-3 rounded-xl bg-teal-50/60 border border-teal-100">
+                <p className="text-[11px] font-semibold text-teal-700 uppercase tracking-widest">IRS Travel Documentation</p>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Paid By</label>
+                    <select
+                      value={paidBy}
+                      onChange={e => setPaidBy(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                    >
+                      <option value="">— Select —</option>
+                      {PAID_BY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  {isMealCategory(category) && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Number of People</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={mealNumPeople}
+                        onChange={e => setMealNumPeople(e.target.value)}
+                        placeholder="How many people at this meal?"
+                        className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                  )}
+                </div>
+                {isMealCategory(category) && (
+                  <p className="text-[11px] text-teal-700 bg-white/70 rounded-lg px-2.5 py-1.5 border border-teal-100">
+                    Meals are 50% deductible — the deductible amount is calculated automatically.
+                  </p>
+                )}
+                <div>
+                  <label className="block text-xs font-medium mb-1">Receipt Status</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setReceiptStatus("uploaded")}
+                      className={`flex-1 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors ${receiptStatus === "uploaded" ? "border-emerald-400 bg-emerald-50 text-emerald-700" : "border-border text-muted-foreground hover:border-emerald-300"}`}
+                    >
+                      ✓ Receipt Uploaded
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReceiptStatus("missing")}
+                      className={`flex-1 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors ${receiptStatus === "missing" ? "border-amber-400 bg-amber-50 text-amber-700" : "border-border text-muted-foreground hover:border-amber-300"}`}
+                    >
+                      ⚠ Receipt Missing
+                    </button>
+                  </div>
+                </div>
+                {receiptStatus === "missing" && (
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Explanation (required for IRS)</label>
+                    <input
+                      type="text"
+                      value={receiptMissingExpl}
+                      onChange={e => setReceiptMissingExpl(e.target.value)}
+                      placeholder="e.g. Receipt lost — credit card statement attached"
+                      className="w-full px-3 py-2 rounded-xl border border-amber-300 bg-background text-sm outline-none focus:ring-2 focus:ring-amber-200"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Business line toggle — hidden when a specific business is active (auto-assigned) */}
             {!activeBusiness && (

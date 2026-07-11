@@ -23,6 +23,18 @@ export const expensesTable = pgTable("expenses", {
   mileageImportId: integer("mileage_import_id"),
   countsTowardJobProfit: boolean("counts_toward_job_profit").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  tripId: integer("trip_id"),
+  overnightTravel: boolean("overnight_travel"),
+  isPotentiallyNondeductible: boolean("is_potentially_nondeductible").default(false),
+  mealTotal: numeric("meal_total", { precision: 12, scale: 2 }),
+  deductibleAmount: numeric("deductible_amount", { precision: 12, scale: 2 }),
+  nonDeductibleAmount: numeric("non_deductible_amount", { precision: 12, scale: 2 }),
+  tipAmount: numeric("tip_amount", { precision: 12, scale: 2 }),
+  taxAmount: numeric("tax_amount", { precision: 12, scale: 2 }),
+  numPeople: integer("num_people"),
+  paidBy: text("paid_by"),
+  receiptStatus: text("receipt_status").default("uploaded"),
+  receiptMissingExplanation: text("receipt_missing_explanation"),
 });
 
 export const insertExpenseSchema = createInsertSchema(expensesTable).omit({ id: true, createdAt: true });
