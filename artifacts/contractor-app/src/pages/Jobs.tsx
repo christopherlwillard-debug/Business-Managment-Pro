@@ -2909,7 +2909,23 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
 }
 
 // ─── Job Trips Panel ───────────────────────────────────────────────────────────
-function JobTripReceipts({ tripId, tripStatus }: { tripId: number; tripStatus: string }) {
+
+const TRIP_RECEIPT_CATEGORIES = [
+  "Hotel/Lodging", "Meals", "Parking/Tolls", "Airfare",
+  "Rental Car", "Taxi/Rideshare", "Campground/RV Site", "Other Travel",
+];
+
+function getTripAuditBadge(trip: any): { isReady: boolean; label: string } {
+  if (!trip.businessPurpose?.trim()) return { isReady: false, label: "Missing Business Purpose" };
+  if (trip.missingReceipts > 0) return { isReady: false, label: "Missing Receipt" };
+  if (trip.mealsCount > 0 && trip.mealsHaveOvernightAnswered < trip.mealsCount) {
+    return { isReady: false, label: "Meal Needs Overnight Status" };
+  }
+  if (trip.receiptCount === 0) return { isReady: false, label: "No Receipts Yet" };
+  return { isReady: true, label: "Audit Ready" };
+}
+
+function JobTripReceipts({ tripId, tripStatus, refreshKey }: { tripId: number; tripStatus: string; refreshKey?: number }) {
   const [receipts, setReceipts] = useState<any[] | null>(null);
   const [toggling, setToggling] = useState<Set<number>>(new Set());
   const isLocked = tripStatus !== "open";
@@ -2917,7 +2933,7 @@ function JobTripReceipts({ tripId, tripStatus }: { tripId: number; tripStatus: s
   useEffect(() => {
     fetch(`${BASE}/api/trips/${tripId}/receipts`, { credentials: "include" })
       .then(r => r.ok ? r.json() : []).then(setReceipts).catch(() => setReceipts([]));
-  }, [tripId]);
+  }, [tripId, refreshKey]);
 
   async function toggleJobProfit(r: any) {
     const newVal = r.countsTowardJobProfit === false;
@@ -2948,9 +2964,11 @@ function JobTripReceipts({ tripId, tripStatus }: { tripId: number; tripStatus: s
               <span className="font-medium text-foreground">{r.description}</span>
               {r.vendor && <span className="text-muted-foreground">· {r.vendor}</span>}
               <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-600">{r.category}</span>
-              {r.receiptStatus === "missing" && (
+              {r.receiptUrl ? (
+                <span title="Receipt photo attached" className="inline-flex items-center gap-0.5 text-[10px] text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full">📎 Photo</span>
+              ) : r.receiptStatus === "missing" ? (
                 <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-full">⚠ Missing</span>
-              )}
+              ) : null}
               {isLocked ? (
                 <span className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
                   r.countsTowardJobProfit !== false
@@ -2995,14 +3013,41 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const [trips, setTrips] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [activeReceiptFormTripId, setActiveReceiptFormTripId] = useState<number | null>(null);
+  const [showNewTripForm, setShowNewTripForm] = useState(false);
+  const [savingTrip, setSavingTrip] = useState(false);
+  const [savingReceipt, setSavingReceipt] = useState(false);
+  const [closingId, setClosingId] = useState<number | null>(null);
+  const [receiptRefreshKeys, setReceiptRefreshKeys] = useState<Record<number, number>>({});
+
+  // New trip form — pre-fill from job
+  const jobLocation = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
+  const [tripDest, setTripDest] = useState(jobLocation);
+  const [tripPurpose, setTripPurpose] = useState(job.title ?? "");
+  const [tripStart, setTripStart] = useState(job.startDate ?? "");
+  const [tripEnd, setTripEnd] = useState(job.endDate ?? "");
+
+  // Receipt form state
+  const [rcptDesc, setRcptDesc] = useState("");
+  const [rcptAmount, setRcptAmount] = useState("");
+  const [rcptCategory, setRcptCategory] = useState("Hotel/Lodging");
+  const [rcptDate, setRcptDate] = useState(new Date().toISOString().slice(0, 10));
+  const [rcptOvernight, setRcptOvernight] = useState<boolean | null>(null);
+
+  function resetReceiptForm() {
+    setRcptDesc(""); setRcptAmount(""); setRcptCategory("Hotel/Lodging");
+    setRcptDate(new Date().toISOString().slice(0, 10)); setRcptOvernight(null);
+  }
+
+  async function fetchTrips() {
+    const data = await fetch(`${BASE}/api/trips?jobId=${job.id}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : []).catch(() => []);
+    setTrips(data);
+  }
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${BASE}/api/trips?jobId=${job.id}`, { credentials: "include" })
-      .then(r => r.ok ? r.json() : [])
-      .then(data => setTrips(data))
-      .catch(() => setTrips([]))
-      .finally(() => setLoading(false));
+    fetchTrips().finally(() => setLoading(false));
   }, [job.id]);
 
   function toggleExpand(id: number) {
@@ -3015,10 +3060,91 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 
   function money(n: number) { return `$${Number(n).toFixed(2)}`; }
 
+  async function createTrip() {
+    if (!tripDest.trim()) return;
+    setSavingTrip(true);
+    try {
+      const res = await fetch(`${BASE}/api/trips`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          destination: tripDest.trim(),
+          businessPurpose: tripPurpose.trim() || null,
+          startDate: tripStart || null,
+          endDate: tripEnd || null,
+          jobId: job.id,
+        }),
+      });
+      if (res.ok) {
+        const newTrip = await res.json();
+        setShowNewTripForm(false);
+        setTripDest(jobLocation); setTripPurpose(job.title ?? "");
+        setTripStart(job.startDate ?? ""); setTripEnd(job.endDate ?? "");
+        await fetchTrips();
+        setExpandedIds(prev => new Set(prev).add(newTrip.id));
+        setActiveReceiptFormTripId(newTrip.id);
+        resetReceiptForm();
+      }
+    } finally {
+      setSavingTrip(false);
+    }
+  }
+
+  async function addReceipt(tripId: number) {
+    if (!rcptDesc.trim() || !rcptAmount) return;
+    setSavingReceipt(true);
+    try {
+      const body: any = {
+        description: rcptDesc.trim(), amount: rcptAmount,
+        category: rcptCategory, date: rcptDate,
+        tripId, jobId: job.id, receiptStatus: "uploaded",
+      };
+      if (rcptCategory === "Meals" && rcptOvernight !== null) body.overnightTravel = rcptOvernight;
+      const res = await fetch(`${BASE}/api/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        setActiveReceiptFormTripId(null);
+        resetReceiptForm();
+        setReceiptRefreshKeys(prev => ({ ...prev, [tripId]: (prev[tripId] ?? 0) + 1 }));
+        await fetchTrips();
+      }
+    } finally {
+      setSavingReceipt(false);
+    }
+  }
+
+  async function closeOrReopenTrip(tripId: number, newStatus: "completed" | "open") {
+    setClosingId(tripId);
+    try {
+      const res = await fetch(`${BASE}/api/trips/${tripId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        if (newStatus === "completed") {
+          setExpandedIds(prev => { const next = new Set(prev); next.delete(tripId); return next; });
+          if (activeReceiptFormTripId === tripId) { setActiveReceiptFormTripId(null); resetReceiptForm(); }
+        }
+        await fetchTrips();
+      }
+    } finally {
+      setClosingId(null);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-lg bg-card rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90vh]">
+
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-blue-50/60">
           <div className="flex items-center gap-2.5">
             <Briefcase className="w-4 h-4 text-blue-600" />
@@ -3026,13 +3152,14 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
             <span className="text-xs text-muted-foreground">— {job.title}</span>
           </div>
           <div className="flex items-center gap-2">
-            <a
-              href={`${BASE}/?path=expenses&prefill_jobId=${job.id}`}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
-              onClick={onClose}
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Trip
-            </a>
+            {!showNewTripForm && (
+              <button
+                onClick={() => setShowNewTripForm(true)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Trip
+              </button>
+            )}
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted/60 transition-colors text-muted-foreground">
               <X className="w-4 h-4" />
             </button>
@@ -3040,43 +3167,116 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
         </div>
 
         <div className="overflow-y-auto flex-1 p-4 space-y-3">
+
+          {/* ── Inline New Trip Form ── */}
+          {showNewTripForm && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-3">
+              <p className="text-xs font-bold text-blue-800 uppercase tracking-widest">New Business Trip</p>
+              <div className="space-y-2">
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Destination *</label>
+                  <input
+                    type="text"
+                    value={tripDest}
+                    onChange={e => setTripDest(e.target.value)}
+                    placeholder="e.g. Evansville, IN"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Business Purpose</label>
+                  <input
+                    type="text"
+                    value={tripPurpose}
+                    onChange={e => setTripPurpose(e.target.value)}
+                    placeholder="e.g. HVAC service call"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-medium text-foreground block mb-1">Start Date</label>
+                    <input type="date" value={tripStart} onChange={e => setTripStart(e.target.value)}
+                      className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-foreground block mb-1">End Date</label>
+                    <input type="date" value={tripEnd} onChange={e => setTripEnd(e.target.value)}
+                      className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={createTrip} disabled={savingTrip || !tripDest.trim()}
+                  className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                  {savingTrip ? "Creating…" : "Create Trip"}
+                </button>
+                <button onClick={() => setShowNewTripForm(false)}
+                  className="px-4 py-2 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-muted/40 transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Trip list ── */}
           {loading ? (
             <p className="text-sm text-center text-muted-foreground animate-pulse py-8">Loading trips…</p>
-          ) : trips.length === 0 ? (
+          ) : trips.length === 0 && !showNewTripForm ? (
             <div className="text-center py-10 text-muted-foreground">
               <Briefcase className="w-8 h-8 mx-auto mb-2 opacity-20" />
-              <p className="text-sm font-medium">No business trips linked to this job</p>
-              <p className="text-xs mt-1">Create one from the Expenses page to start building an IRS-ready audit folder.</p>
+              <p className="text-sm font-medium">No trips on this job yet</p>
+              <p className="text-xs mt-1">Tap "Add Trip" to create an IRS-ready receipt folder.</p>
             </div>
           ) : (
             trips.map(trip => {
-              const isOpen = expandedIds.has(trip.id);
+              const isExpanded = expandedIds.has(trip.id);
+              const isTripOpen = trip.status === "open";
               const dateRange = [trip.startDate, trip.endDate].filter(Boolean).join(" → ");
-              const hasIssues = trip.missingReceipts > 0 || !trip.businessPurpose || !trip.startDate || !trip.endDate || trip.receiptCount === 0;
+              const badge = getTripAuditBadge(trip);
+              const isClosing = closingId === trip.id;
+              const showReceiptForm = activeReceiptFormTripId === trip.id;
+
               return (
-                <div key={trip.id} className="rounded-xl border border-border/50 overflow-hidden bg-background">
-                  <div
-                    className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/20 transition-colors"
-                    onClick={() => toggleExpand(trip.id)}
-                  >
-                    {isOpen ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
+                <div key={trip.id} className={`rounded-xl border overflow-hidden bg-background ${isTripOpen ? "border-border/50" : "border-border/30"}`}>
+
+                  {/* Collapsed summary row */}
+                  <div className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-muted/20 transition-colors"
+                    onClick={() => toggleExpand(trip.id)}>
+                    <div className="mt-0.5 flex-shrink-0">
+                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-sm">{trip.destination}</span>
+                        {!isTripOpen && (
+                          <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full border text-gray-500 bg-gray-100 border-gray-200 font-medium">Closed</span>
+                        )}
                         {dateRange && <span className="text-xs text-muted-foreground">{dateRange}</span>}
-                        <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${hasIssues ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
-                          {hasIssues ? "🟡 Needs Attention" : "🟢 Audit Ready"}
+                        <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${badge.isReady ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                          {badge.isReady ? "🟢" : "🟡"} {badge.label}
                         </span>
                       </div>
                       {trip.businessPurpose && <p className="text-xs text-muted-foreground mt-0.5 truncate">{trip.businessPurpose}</p>}
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-sm font-bold">{money(trip.totalAmount ?? 0)}</p>
-                      <p className="text-[11px] text-muted-foreground">{trip.receiptCount ?? 0} receipts</p>
+                      {/* At-a-glance stats */}
+                      <div className="flex items-center gap-3 mt-1 flex-wrap">
+                        <span className="text-[11px] text-muted-foreground">
+                          {trip.receiptCount} receipt{trip.receiptCount !== 1 ? "s" : ""} · {money(trip.totalAmount ?? 0)}
+                        </span>
+                        {trip.mealTotal > 0 && (
+                          <span className="text-[11px] text-muted-foreground">
+                            Meals: {money(trip.mealTotal)} ({money(trip.deductibleMeals ?? 0)} deductible)
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  {isOpen && (
-                    <div className="border-t border-border/30 bg-gray-50/60 px-4 py-3 space-y-2">
+
+                  {/* Expanded content */}
+                  {isExpanded && (
+                    <div className="border-t border-border/30 bg-gray-50/60 px-4 py-3 space-y-3">
+
+                      {/* Meals breakdown */}
                       {trip.mealTotal > 0 && (
                         <div className="grid grid-cols-2 gap-2 text-center">
                           <div className="bg-white rounded-xl border border-border/50 px-3 py-2">
@@ -3089,22 +3289,109 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                           </div>
                         </div>
                       )}
+
+                      {/* Receipt list */}
                       <div>
                         <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Receipts</p>
-                        <p className="text-[10px] text-blue-700 italic mb-1">Expenses marked "Audit Trail" don't reduce job profit — they're tracked for tax purposes only.</p>
-                        <JobTripReceipts tripId={trip.id} tripStatus={trip.status} />
+                        <p className="text-[10px] text-blue-700 italic mb-1">Expenses marked "Audit Trail" don't reduce job profit — tracked for tax purposes only.</p>
+                        <JobTripReceipts tripId={trip.id} tripStatus={trip.status} refreshKey={receiptRefreshKeys[trip.id] ?? 0} />
                       </div>
-                      {trip.status === "open" ? (
-                        <a
-                          href={`${BASE}/?path=expenses`}
-                          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
-                          onClick={onClose}
-                        >
-                          <Plus className="w-3.5 h-3.5" /> Add Receipt to Trip
-                        </a>
-                      ) : (
-                        <p className="text-xs text-center text-muted-foreground italic">Trip completed</p>
+
+                      {/* Add Receipt form (open trips only) */}
+                      {isTripOpen && (
+                        <>
+                          {showReceiptForm ? (
+                            <div className="rounded-xl border border-border bg-white p-3 space-y-2">
+                              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Add Receipt</p>
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="text-xs font-medium text-foreground block mb-1">Description *</label>
+                                  <input type="text" value={rcptDesc} onChange={e => setRcptDesc(e.target.value)}
+                                    placeholder="e.g. Hampton Inn stay"
+                                    className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="text-xs font-medium text-foreground block mb-1">Amount *</label>
+                                    <input type="number" step="0.01" value={rcptAmount} onChange={e => setRcptAmount(e.target.value)}
+                                      placeholder="0.00"
+                                      className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs font-medium text-foreground block mb-1">Date *</label>
+                                    <input type="date" value={rcptDate} onChange={e => setRcptDate(e.target.value)}
+                                      className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="text-xs font-medium text-foreground block mb-1">Category *</label>
+                                  <select value={rcptCategory} onChange={e => setRcptCategory(e.target.value)}
+                                    className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30">
+                                    {TRIP_RECEIPT_CATEGORIES.map(cat => (
+                                      <option key={cat} value={cat}>{cat}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                {rcptCategory === "Meals" && (
+                                  <div>
+                                    <label className="text-xs font-medium text-foreground block mb-1">Overnight trip?</label>
+                                    <div className="flex gap-2">
+                                      {([{ label: "Yes", val: true }, { label: "No", val: false }] as { label: string; val: boolean }[]).map(opt => (
+                                        <button key={opt.label} type="button" onClick={() => setRcptOvernight(opt.val)}
+                                          className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                                            rcptOvernight === opt.val
+                                              ? "bg-primary text-primary-foreground border-primary"
+                                              : "border-border text-muted-foreground hover:bg-muted/40"
+                                          }`}>
+                                          {opt.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex gap-2 pt-1">
+                                <button onClick={() => addReceipt(trip.id)}
+                                  disabled={savingReceipt || !rcptDesc.trim() || !rcptAmount}
+                                  className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                                  {savingReceipt ? "Saving…" : "Add Receipt"}
+                                </button>
+                                <button onClick={() => { setActiveReceiptFormTripId(null); resetReceiptForm(); }}
+                                  className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/40 transition-colors">
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setActiveReceiptFormTripId(trip.id); resetReceiptForm(); }}
+                              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-semibold hover:bg-primary/20 transition-colors"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> Add Receipt
+                            </button>
+                          )}
+                        </>
                       )}
+
+                      {/* Close / Reopen */}
+                      <div className="pt-1 border-t border-border/20">
+                        {isTripOpen ? (
+                          <button onClick={() => closeOrReopenTrip(trip.id, "completed")} disabled={isClosing}
+                            className="w-full py-2 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors disabled:opacity-50">
+                            {isClosing ? "Closing…" : "✓ Close Trip"}
+                          </button>
+                        ) : (
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs text-muted-foreground italic">
+                              Completed{trip.closedAt ? ` ${new Date(trip.closedAt).toLocaleDateString()}` : ""}
+                            </p>
+                            <button onClick={() => closeOrReopenTrip(trip.id, "open")} disabled={isClosing}
+                              className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/40 transition-colors disabled:opacity-50">
+                              {isClosing ? "…" : "Reopen"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -3113,11 +3400,9 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-border/30 bg-muted/10 flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            Manage all trips from Expenses · Accounting → Business Trips
-          </p>
-          <button onClick={onClose} className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Close</button>
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-border/30 bg-muted/10 flex items-center justify-end">
+          <button onClick={onClose} className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">Done</button>
         </div>
       </div>
     </div>
