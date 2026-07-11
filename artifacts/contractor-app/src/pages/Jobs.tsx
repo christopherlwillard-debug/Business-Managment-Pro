@@ -3524,8 +3524,7 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                                 <input
                                   ref={rcptFileInputRef}
                                   type="file"
-                                  accept="image/*"
-                                  capture="environment"
+                                  accept="image/*,application/pdf"
                                   className="hidden"
                                   onChange={e => {
                                     const file = e.target.files?.[0] ?? null;
