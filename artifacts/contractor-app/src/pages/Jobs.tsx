@@ -3766,22 +3766,26 @@ function JobFormDialog({
   const showModelCreate = modelQuery.trim().length > 0 &&
     !mfhModels.some(m => m.name.toLowerCase() === modelQuery.trim().toLowerCase());
 
-  // Sync combobox text from loaded data (edit mode, or after mutation)
+  // Sync combobox text from loaded data (edit mode, or after mutation).
+  // `open` is in deps so reopening the same job (same mfhMfgId) still re-fires
+  // after the reset effect clears builderQuery.
   useEffect(() => {
+    if (!open) return;
     if (mfhMfgId && mfhMfgs.length > 0) {
       const name = mfhMfgs.find(m => m.id === mfhMfgId)?.name ?? "";
-      setBuilderQuery(prev => prev || name);
+      setBuilderQuery(name);
     }
-  }, [mfhMfgId, mfhMfgs.length]);
+  }, [mfhMfgId, mfhMfgs.length, open]);
   useEffect(() => {
+    if (!open) return;
     if (mfhModelId && mfhModels.length > 0) {
       const m = mfhModels.find(m => m.id === mfhModelId);
       if (m) {
-        setModelQuery(prev => prev || m.name);
+        setModelQuery(m.name);
         if (m.constructionTypeName && !mfhConstructionType) setMfhConstructionType(m.constructionTypeName);
       }
     }
-  }, [mfhModelId, mfhModels.length]);
+  }, [mfhModelId, mfhModels.length, open]);
 
   async function handleCreateModel(name: string, ctId: number, ctName: string) {
     if (!mfhMfgId) return;

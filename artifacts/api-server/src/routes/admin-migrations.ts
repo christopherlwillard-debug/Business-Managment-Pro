@@ -732,4 +732,15 @@ router.post("/add-man-hours", async (_req: Request, res: Response) => {
   }
 });
 
+// Add active column to mfh_models (was missing from migration 0044 which only added it to mfh_manufacturers)
+router.post("/add-mfh-models-active", async (_req: Request, res: Response) => {
+  try {
+    await db.execute(sql`ALTER TABLE mfh_models ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true`);
+    res.json({ ok: true, message: "mfh_models.active column ensured" });
+  } catch (err) {
+    console.error("[admin/migrations] add-mfh-models-active failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;

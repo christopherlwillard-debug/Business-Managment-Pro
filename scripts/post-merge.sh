@@ -846,3 +846,12 @@ pool.query(\`
 \`).then(() => { console.log('growth_fund_deployments table ensured'); pool.end(); })
   .catch(e => { console.error('growth_fund_deployments migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Task #1142: add active column to mfh_models (missing from migration 0044 which only added it to mfh_manufacturers)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE mfh_models ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true')
+  .then(() => { console.log('mfh_models.active ensured'); pool.end(); })
+  .catch(e => { console.error('mfh_models.active migration error:', e.message); pool.end(); process.exit(1); });
+")
