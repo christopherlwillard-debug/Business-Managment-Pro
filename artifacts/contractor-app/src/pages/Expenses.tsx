@@ -13,7 +13,7 @@ import {
   Receipt, Plus, Upload, ImageIcon, X, FileText,
   ExternalLink, Store, ChevronDown, Eye, Trash2, AlertTriangle,
   Calendar, Tag, Briefcase, DollarSign, StickyNote, HardHat,
-  RotateCcw, Pause, Play, ChevronUp, Pencil, Maximize2, Download, EyeOff, Search,
+  RotateCcw, Pause, Play, ChevronUp, Pencil, Maximize2, Download, EyeOff, Search, Archive,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link } from "wouter";
@@ -545,6 +545,7 @@ function BusinessTripsSection({
   const [newEnd, setNewEnd] = useState("");
   const [newJobId, setNewJobId] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<BusinessTrip | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   // Auto-open new trip form when navigated from a job card with prefill_jobId param
   useEffect(() => {
@@ -596,6 +597,10 @@ function BusinessTripsSection({
     await updateTrip.mutateAsync({ id: trip.id, data: { status: "open" } });
   }
 
+  async function handleArchive(trip: BusinessTrip) {
+    await updateTrip.mutateAsync({ id: trip.id, data: { status: "archived" } });
+  }
+
   async function handleDelete() {
     if (!deleteConfirm) return;
     await deleteTrip.mutateAsync(deleteConfirm.id);
@@ -603,13 +608,19 @@ function BusinessTripsSection({
     toast({ title: "Trip deleted" });
   }
 
-  const sortedTrips = [...trips].sort((a, b) => {
-    const statusOrder = { open: 0, completed: 1, archived: 2 };
-    const sa = statusOrder[a.status as keyof typeof statusOrder] ?? 2;
-    const sb = statusOrder[b.status as keyof typeof statusOrder] ?? 2;
-    if (sa !== sb) return sa - sb;
-    return (b.startDate ?? b.createdAt).localeCompare(a.startDate ?? a.createdAt);
-  });
+  const activeTrips = [...trips]
+    .filter(t => t.status !== "archived")
+    .sort((a, b) => {
+      const statusOrder = { open: 0, completed: 1 };
+      const sa = statusOrder[a.status as keyof typeof statusOrder] ?? 1;
+      const sb = statusOrder[b.status as keyof typeof statusOrder] ?? 1;
+      if (sa !== sb) return sa - sb;
+      return (b.startDate ?? b.createdAt).localeCompare(a.startDate ?? a.createdAt);
+    });
+  const archivedTrips = [...trips]
+    .filter(t => t.status === "archived")
+    .sort((a, b) => (b.startDate ?? b.createdAt).localeCompare(a.startDate ?? a.createdAt));
+  const sortedTrips = activeTrips;
 
   return (
     <div className="rounded-2xl border border-border/50 shadow-md overflow-hidden bg-card">
@@ -700,6 +711,9 @@ function BusinessTripsSection({
             </div>
           ) : (
             <div className="divide-y divide-border/30">
+              {activeTrips.length === 0 && archivedTrips.length > 0 ? (
+                <p className="px-5 py-4 text-sm text-muted-foreground italic">All trips are archived. Create a new trip or reopen one below.</p>
+              ) : null}
               {sortedTrips.map(trip => {
                 const isOpen = expanded.has(trip.id);
                 const status = auditStatus(trip);
@@ -735,7 +749,7 @@ function BusinessTripsSection({
                           <p className="text-[11px] text-muted-foreground">{trip.receiptCount} receipts</p>
                         </div>
                         <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                          {trip.status === "open" ? (
+                          {trip.status === "open" && (
                             <button
                               title="Mark complete"
                               onClick={() => handleClose(trip)}
@@ -743,14 +757,24 @@ function BusinessTripsSection({
                             >
                               <FileText className="w-3.5 h-3.5" />
                             </button>
-                          ) : (
-                            <button
-                              title="Reopen"
-                              onClick={() => handleReopen(trip)}
-                              className="p-1 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
+                          )}
+                          {trip.status === "completed" && (
+                            <>
+                              <button
+                                title="Reopen"
+                                onClick={() => handleReopen(trip)}
+                                className="p-1 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                title="Archive"
+                                onClick={() => handleArchive(trip)}
+                                className="p-1 rounded-lg text-muted-foreground hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                              >
+                                <Archive className="w-3.5 h-3.5" />
+                              </button>
+                            </>
                           )}
                           <button
                             title="Delete trip"
@@ -772,6 +796,52 @@ function BusinessTripsSection({
                   </div>
                 );
               })}
+              {/* Archived trips — collapsed by default */}
+              {archivedTrips.length > 0 && (
+                <div className="border-t border-border/30">
+                  <button
+                    type="button"
+                    onClick={() => setShowArchived(v => !v)}
+                    className="w-full flex items-center gap-2 px-5 py-2.5 text-xs text-muted-foreground hover:bg-muted/20 transition-colors"
+                  >
+                    {showArchived ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    <Archive className="w-3.5 h-3.5" />
+                    <span>Archived ({archivedTrips.length})</span>
+                  </button>
+                  {showArchived && archivedTrips.map(trip => (
+                    <div key={trip.id} className="border-t border-border/20">
+                      <div className="flex items-center gap-3 px-5 py-3 bg-gray-50/60">
+                        <Archive className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm text-muted-foreground">{trip.destination}</span>
+                            {[trip.startDate, trip.endDate].filter(Boolean).join(" → ") && (
+                              <span className="text-xs text-muted-foreground">{[trip.startDate, trip.endDate].filter(Boolean).join(" → ")}</span>
+                            )}
+                            <span className="inline-flex items-center text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full font-medium">Archived</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                          <button
+                            title="Reopen"
+                            onClick={() => handleReopen(trip)}
+                            className="p-1 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            title="Delete trip"
+                            onClick={() => setDeleteConfirm(trip)}
+                            className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </>

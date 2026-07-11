@@ -50,7 +50,7 @@ const tripStatsSelect = {
   totalAmount: sql<string>`COALESCE(SUM(${expensesTable.amount}), 0)`,
   mealTotal: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) = 'meals' THEN ${expensesTable.amount} ELSE 0 END), 0)`,
   deductibleMeals: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) = 'meals' THEN COALESCE(${expensesTable.deductibleAmount}::numeric, ${expensesTable.amount}::numeric * 0.5) ELSE 0 END), 0)`,
-  missingReceipts: sql<string>`COUNT(CASE WHEN ${expensesTable.receiptStatus} = 'missing' THEN 1 END)`,
+  missingReceipts: sql<string>`COUNT(CASE WHEN ${expensesTable.receiptStatus} = 'missing' AND (${expensesTable.receiptMissingExplanation} IS NULL OR TRIM(${expensesTable.receiptMissingExplanation}) = '') THEN 1 END)`,
   hotelTotal: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) LIKE '%hotel%' OR LOWER(${expensesTable.category}) LIKE '%lodging%' THEN ${expensesTable.amount} ELSE 0 END), 0)`,
   airfareTotal: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) LIKE '%airfare%' OR LOWER(${expensesTable.category}) LIKE '%flight%' THEN ${expensesTable.amount} ELSE 0 END), 0)`,
   transportTotal: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) LIKE '%rental%' OR LOWER(${expensesTable.category}) LIKE '%taxi%' OR LOWER(${expensesTable.category}) LIKE '%rideshare%' THEN ${expensesTable.amount} ELSE 0 END), 0)`,

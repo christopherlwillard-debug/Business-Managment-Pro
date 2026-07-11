@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Briefcase, ChevronDown, ChevronUp, Plus,
-  FileText, RotateCcw, AlertTriangle, ImageIcon,
+  FileText, RotateCcw, AlertTriangle, ImageIcon, Archive,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -245,12 +245,15 @@ export default function BusinessTripsTab({ year }: { year: number }) {
   });
 
   const openTrips = trips.filter(t => t.status === "open");
-  const closedTrips = trips.filter(t => t.status !== "open");
-  const totalSpend = trips.reduce((s, t) => s + t.totalAmount, 0);
-  const totalMeals = trips.reduce((s, t) => s + t.mealTotal, 0);
-  const deductibleMeals = trips.reduce((s, t) => s + t.deductibleMeals, 0);
-  const needsAttentionCount = trips.filter(t => auditStatus(t).issues.length > 0).length;
-  const allReady = trips.length > 0 && needsAttentionCount === 0;
+  const completedTrips = trips.filter(t => t.status === "completed");
+  const archivedTrips = trips.filter(t => t.status === "archived");
+  const [showArchived, setShowArchived] = useState(false);
+  const activeTrips = trips.filter(t => t.status !== "archived");
+  const totalSpend = activeTrips.reduce((s, t) => s + t.totalAmount, 0);
+  const totalMeals = activeTrips.reduce((s, t) => s + t.mealTotal, 0);
+  const deductibleMeals = activeTrips.reduce((s, t) => s + t.deductibleMeals, 0);
+  const needsAttentionCount = activeTrips.filter(t => auditStatus(t).issues.length > 0).length;
+  const allReady = activeTrips.length > 0 && needsAttentionCount === 0;
 
   return (
     <div className="space-y-6">
@@ -307,12 +310,31 @@ export default function BusinessTripsTab({ year }: { year: number }) {
               {openTrips.map(t => <TripRow key={t.id} trip={t} />)}
             </div>
           )}
-          {closedTrips.length > 0 && (
+          {completedTrips.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <RotateCcw className="w-4 h-4 text-muted-foreground" /> Completed ({closedTrips.length})
+                <RotateCcw className="w-4 h-4 text-muted-foreground" /> Completed ({completedTrips.length})
               </h3>
-              {closedTrips.map(t => <TripRow key={t.id} trip={t} />)}
+              {completedTrips.map(t => <TripRow key={t.id} trip={t} />)}
+            </div>
+          )}
+          {archivedTrips.length > 0 && (
+            <div className="rounded-2xl border border-gray-200 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowArchived(v => !v)}
+                className="w-full flex items-center gap-2 px-5 py-3 text-sm text-muted-foreground hover:bg-muted/20 transition-colors bg-gray-50/60"
+              >
+                {showArchived ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                <Archive className="w-4 h-4" />
+                <span className="font-medium">Archived ({archivedTrips.length})</span>
+                <span className="text-xs ml-1">— hidden from audit summary</span>
+              </button>
+              {showArchived && (
+                <div className="border-t border-gray-200 divide-y divide-gray-100">
+                  {archivedTrips.map(t => <TripRow key={t.id} trip={t} />)}
+                </div>
+              )}
             </div>
           )}
 

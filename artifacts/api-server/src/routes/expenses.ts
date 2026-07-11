@@ -292,8 +292,15 @@ router.put("/:id", async (req, res) => {
     const computedNonDeductible = parsedMealTotal != null ? parsedMealTotal * 0.5 : null;
 
     const [updated] = await db.update(expensesTable).set({
-      description, amount: amount?.toString(), category, date,
-      vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes,
+      ...(description !== undefined && { description }),
+      ...(amount !== undefined && { amount: amount.toString() }),
+      ...(category !== undefined && { category }),
+      ...(date !== undefined && { date }),
+      ...(vendor !== undefined && { vendor }),
+      ...(jobId !== undefined && { jobId: jobId || null }),
+      ...(subcontractorId !== undefined && { subcontractorId: subcontractorId || null }),
+      ...(receiptUrl !== undefined && { receiptUrl }),
+      ...(notes !== undefined && { notes }),
       ...(excludeFromNetProfit !== undefined && { excludeFromNetProfit: excludeFromNetProfit === true }),
       ...(countsTowardJobProfit !== undefined && { countsTowardJobProfit: countsTowardJobProfit === false ? false : true }),
       ...(businessLine !== undefined && { businessLine: validBusinessLines.includes(businessLine) ? businessLine : null }),
