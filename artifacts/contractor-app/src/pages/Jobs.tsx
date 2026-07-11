@@ -3040,10 +3040,15 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const [rcptCategory, setRcptCategory] = useState("Hotel/Lodging");
   const [rcptDate, setRcptDate] = useState(new Date().toISOString().slice(0, 10));
   const [rcptOvernight, setRcptOvernight] = useState<boolean | null>(null);
+  const [rcptFile, setRcptFile] = useState<File | null>(null);
+  const [rcptPreview, setRcptPreview] = useState<string | null>(null);
+  const rcptFileInputRef = useRef<HTMLInputElement>(null);
 
   function resetReceiptForm() {
     setRcptDesc(""); setRcptAmount(""); setRcptCategory("Hotel/Lodging");
     setRcptDate(new Date().toISOString().slice(0, 10)); setRcptOvernight(null);
+    setRcptFile(null); setRcptPreview(null);
+    if (rcptFileInputRef.current) rcptFileInputRef.current.value = "";
   }
 
   async function fetchTrips() {
@@ -3102,6 +3107,7 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   async function addReceipt(tripId: number) {
     if (!rcptDesc.trim() || !rcptAmount) return;
     setSavingReceipt(true);
+    const fileToUpload = rcptFile;
     try {
       const body: any = {
         description: rcptDesc.trim(), amount: rcptAmount,
@@ -3116,8 +3122,19 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
         body: JSON.stringify(body),
       });
       if (res.ok) {
+        const expense = await res.json();
         setActiveReceiptFormTripId(null);
         resetReceiptForm();
+        // Upload photo before refreshing so the 📎 badge shows immediately
+        if (fileToUpload && expense?.id) {
+          const fd = new FormData();
+          fd.append("receipt", fileToUpload);
+          await fetch(`${BASE}/api/expenses/${expense.id}/receipt`, {
+            method: "POST",
+            body: fd,
+            credentials: "include",
+          }).catch(() => {});
+        }
         setReceiptRefreshKeys(prev => ({ ...prev, [tripId]: (prev[tripId] ?? 0) + 1 }));
         await fetchTrips();
         qc.invalidateQueries({ queryKey: ["business-trips"] });
@@ -3393,7 +3410,51 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                         <>
                           {showReceiptForm ? (
                             <div className="rounded-xl border border-border bg-white p-3 space-y-2">
-                              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Add Receipt</p>
+                              <div className="flex items-center justify-between">
+                                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Add Receipt</p>
+                                <button
+                                  type="button"
+                                  onClick={() => rcptFileInputRef.current?.click()}
+                                  title="Attach receipt photo"
+                                  className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-semibold transition-colors ${
+                                    rcptFile
+                                      ? "border-blue-300 bg-blue-50 text-blue-700"
+                                      : "border-border text-muted-foreground hover:bg-muted/40"
+                                  }`}
+                                >
+                                  <ImageIcon className="w-3 h-3" />
+                                  {rcptFile ? "Photo added" : "Add Photo"}
+                                </button>
+                                <input
+                                  ref={rcptFileInputRef}
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  className="hidden"
+                                  onChange={e => {
+                                    const file = e.target.files?.[0] ?? null;
+                                    setRcptFile(file);
+                                    if (file) {
+                                      const url = URL.createObjectURL(file);
+                                      setRcptPreview(url);
+                                    } else {
+                                      setRcptPreview(null);
+                                    }
+                                  }}
+                                />
+                              </div>
+                              {rcptPreview && (
+                                <div className="relative w-full">
+                                  <img src={rcptPreview} alt="Receipt preview" className="w-full max-h-36 object-contain rounded-lg border border-border bg-gray-50" />
+                                  <button
+                                    type="button"
+                                    onClick={() => { setRcptFile(null); setRcptPreview(null); if (rcptFileInputRef.current) rcptFileInputRef.current.value = ""; }}
+                                    className="absolute top-1 right-1 p-0.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
                               <div className="space-y-2">
                                 <div>
                                   <label className="text-xs font-medium text-foreground block mb-1">Description *</label>
