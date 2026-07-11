@@ -3010,6 +3010,7 @@ function JobTripReceipts({ tripId, tripStatus, refreshKey }: { tripId: number; t
 }
 
 function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
+  const qc = useQueryClient();
   const [trips, setTrips] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -3082,6 +3083,7 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
         setTripDest(jobLocation); setTripPurpose(job.title ?? "");
         setTripStart(job.startDate ?? ""); setTripEnd(job.endDate ?? "");
         await fetchTrips();
+        qc.invalidateQueries({ queryKey: ["business-trips"] });
         setExpandedIds(prev => new Set(prev).add(newTrip.id));
         setActiveReceiptFormTripId(newTrip.id);
         resetReceiptForm();
@@ -3112,6 +3114,8 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
         resetReceiptForm();
         setReceiptRefreshKeys(prev => ({ ...prev, [tripId]: (prev[tripId] ?? 0) + 1 }));
         await fetchTrips();
+        qc.invalidateQueries({ queryKey: ["business-trips"] });
+        qc.invalidateQueries({ queryKey: ["trip-receipts", tripId] });
       }
     } finally {
       setSavingReceipt(false);
@@ -3133,6 +3137,7 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
           if (activeReceiptFormTripId === tripId) { setActiveReceiptFormTripId(null); resetReceiptForm(); }
         }
         await fetchTrips();
+        qc.invalidateQueries({ queryKey: ["business-trips"] });
       }
     } finally {
       setClosingId(null);
