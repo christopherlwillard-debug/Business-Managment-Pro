@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { businessTripsTable, expensesTable, jobsTable } from "@workspace/db/schema";
 import { eq, and, desc, isNull, asc, sql } from "drizzle-orm";
+import { generateTripAuditPdfBuffer } from "../lib/generateTripAuditPdf.js";
 
 const router = Router();
 
@@ -199,6 +200,21 @@ router.delete("/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete trip" });
+  }
+});
+
+router.get("/:id/packet.pdf", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid trip id" });
+    const result = await generateTripAuditPdfBuffer(id);
+    if (!result) return res.status(404).json({ error: "Trip not found" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+    res.send(result.buffer);
+  } catch (err) {
+    console.error("trip packet pdf error:", err);
+    res.status(500).json({ error: "Failed to generate trip packet PDF" });
   }
 });
 

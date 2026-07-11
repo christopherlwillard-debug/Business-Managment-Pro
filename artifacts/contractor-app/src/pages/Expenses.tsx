@@ -800,6 +800,15 @@ function BusinessTripsSection({
                               </button>
                             </>
                           )}
+                          <a
+                            href={`${API}/trips/${trip.id}/packet.pdf`}
+                            download
+                            title="Export PDF audit packet"
+                            onClick={e => e.stopPropagation()}
+                            className="p-1 rounded-lg text-muted-foreground hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
                           <button
                             title="Delete trip"
                             onClick={() => setDeleteConfirm(trip)}

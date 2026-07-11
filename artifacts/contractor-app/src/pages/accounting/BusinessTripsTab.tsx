@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Briefcase, ChevronDown, ChevronUp, Plus,
-  FileText, RotateCcw, AlertTriangle, ImageIcon, Archive,
+  FileText, RotateCcw, AlertTriangle, ImageIcon, Archive, Download,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -114,6 +114,15 @@ function TripRow({ trip }: { trip: BusinessTrip }) {
             <p className="text-sm font-bold text-foreground">{money(trip.totalAmount)}</p>
             <p className="text-[11px] text-muted-foreground">{trip.receiptCount} receipt{trip.receiptCount !== 1 ? "s" : ""}</p>
           </div>
+          <a
+            href={`${API}/trips/${trip.id}/packet.pdf`}
+            download
+            title="Export PDF audit packet"
+            onClick={e => e.stopPropagation()}
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-blue-600 hover:bg-blue-50 transition-colors flex-shrink-0"
+          >
+            <Download className="w-4 h-4" />
+          </a>
         </div>
       </div>
 
