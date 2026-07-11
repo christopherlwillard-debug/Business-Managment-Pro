@@ -1003,7 +1003,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 }
 
 // ─── Job Profit Panel ──────────────────────────────────────────────────────────
-type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; auditTrailTotal?: number; subLaborCost?: number; allocPaid?: number; totalSubHours?: number; manHours?: number | null; netProfit: number };
+type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; auditTrailTotal?: number; tripTravelTotal?: number; tripMealsDeductible?: number; subLaborCost?: number; allocPaid?: number; totalSubHours?: number; manHours?: number | null; netProfit: number };
 
 // ─── Pay Breakdown Panel ───────────────────────────────────────────────────────
 function JobPayBreakdownPanel({ job, profitData: initialProfit, onClose }: {
@@ -1368,13 +1368,30 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
               </div>
 
               {(data.auditTrailTotal ?? 0) > 0 && (
-                <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-blue-700 font-bold uppercase tracking-wide">Travel & Audit Docs</p>
-                    <p className="text-xl font-bold text-blue-600 mt-0.5">{formatCurrency(data.auditTrailTotal ?? 0)}</p>
-                    <p className="text-xs text-blue-600/70 mt-0.5">Linked for tax records — not deducted from profit</p>
+                <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-blue-700 font-bold uppercase tracking-wide">Travel & Audit Docs</p>
+                      <p className="text-xl font-bold text-blue-600 mt-0.5">{formatCurrency(data.auditTrailTotal ?? 0)}</p>
+                      <p className="text-xs text-blue-600/70 mt-0.5">Linked for tax records — not deducted from profit</p>
+                    </div>
+                    <FileText className="w-7 h-7 text-blue-200" />
                   </div>
-                  <FileText className="w-7 h-7 text-blue-200" />
+                  {(data.tripTravelTotal ?? 0) > 0 && (
+                    <div className="mt-3 pt-3 border-t border-blue-200/60 space-y-1.5">
+                      <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-wide">Trip/Travel (audit)</p>
+                      <div className="flex items-center justify-between text-xs text-blue-700">
+                        <span>Total trip spend</span>
+                        <span className="font-medium tabular-nums">{formatCurrency(data.tripTravelTotal ?? 0)}</span>
+                      </div>
+                      {(data.tripMealsDeductible ?? 0) > 0 && (
+                        <div className="flex items-center justify-between text-xs text-blue-600/80">
+                          <span>Deductible meals (50%)</span>
+                          <span className="tabular-nums">{formatCurrency(data.tripMealsDeductible ?? 0)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1585,13 +1602,30 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <Briefcase className="w-7 h-7 text-red-100" />
                 </div>
                 {(profit.auditTrailTotal ?? 0) > 0 && (
-                  <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-blue-700 font-bold uppercase tracking-wide">Travel & Audit Docs</p>
-                      <p className="text-xl font-bold text-blue-600 mt-0.5">{formatCurrency(profit.auditTrailTotal ?? 0)}</p>
-                      <p className="text-xs text-blue-600/70 mt-0.5">Linked for tax records — not deducted from profit</p>
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-blue-700 font-bold uppercase tracking-wide">Travel & Audit Docs</p>
+                        <p className="text-xl font-bold text-blue-600 mt-0.5">{formatCurrency(profit.auditTrailTotal ?? 0)}</p>
+                        <p className="text-xs text-blue-600/70 mt-0.5">Linked for tax records — not deducted from profit</p>
+                      </div>
+                      <FileText className="w-7 h-7 text-blue-200" />
                     </div>
-                    <FileText className="w-7 h-7 text-blue-200" />
+                    {(profit.tripTravelTotal ?? 0) > 0 && (
+                      <div className="mt-3 pt-3 border-t border-blue-200/60 space-y-1.5">
+                        <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-wide">Trip/Travel (audit)</p>
+                        <div className="flex items-center justify-between text-xs text-blue-700">
+                          <span>Total trip spend</span>
+                          <span className="font-medium tabular-nums">{formatCurrency(profit.tripTravelTotal ?? 0)}</span>
+                        </div>
+                        {(profit.tripMealsDeductible ?? 0) > 0 && (
+                          <div className="flex items-center justify-between text-xs text-blue-600/80">
+                            <span>Deductible meals (50%)</span>
+                            <span className="tabular-nums">{formatCurrency(profit.tripMealsDeductible ?? 0)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
                 {subLaborCost > 0 && (
