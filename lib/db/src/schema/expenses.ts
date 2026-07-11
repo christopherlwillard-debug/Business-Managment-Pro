@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { jobsTable } from "./jobs";
 import { recurringExpensesTable } from "./recurring-expenses";
+import { businessTripsTable } from "./business-trips";
 
 export const expensesTable = pgTable("expenses", {
   id: serial("id").primaryKey(),
@@ -23,7 +24,7 @@ export const expensesTable = pgTable("expenses", {
   mileageImportId: integer("mileage_import_id"),
   countsTowardJobProfit: boolean("counts_toward_job_profit").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  tripId: integer("trip_id"),
+  tripId: integer("trip_id").references(() => businessTripsTable.id, { onDelete: "set null" }),
   overnightTravel: boolean("overnight_travel"),
   isPotentiallyNondeductible: boolean("is_potentially_nondeductible").default(false),
   mealTotal: numeric("meal_total", { precision: 12, scale: 2 }),

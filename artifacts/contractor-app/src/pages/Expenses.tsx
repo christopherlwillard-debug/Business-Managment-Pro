@@ -441,7 +441,6 @@ function TripReceiptsPanel({
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${status.color}`}>
               {status.label === "Audit Ready" ? "🟢" : "🟡"} {status.label}
             </span>
-            <span className="text-xs text-muted-foreground">{status.description}</span>
           </div>
           {trip.status === "open" && (
             <button
@@ -456,6 +455,31 @@ function TripReceiptsPanel({
               {trip.status === "completed" ? "Completed — Reopen to add receipts" : "Archived"}
             </span>
           )}
+        </div>
+
+        {/* IRS Audit Checklist */}
+        <div className="mb-4 space-y-1.5">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">IRS Audit Checklist</p>
+          {[
+            { label: "Destination", ok: !!trip.destination, value: trip.destination },
+            { label: "Business purpose", ok: !!trip.businessPurpose, value: trip.businessPurpose },
+            { label: "Start date", ok: !!trip.startDate, value: trip.startDate ?? null },
+            { label: "End date", ok: !!trip.endDate, value: trip.endDate ?? null },
+            { label: "Receipts documented", ok: trip.receiptCount > 0, value: `${trip.receiptCount} receipt${trip.receiptCount !== 1 ? "s" : ""}` },
+            { label: "No missing receipts", ok: trip.missingReceipts === 0, value: trip.missingReceipts > 0 ? `${trip.missingReceipts} unproven` : "All proven" },
+            ...((trip as any).mealsCount > 0 ? [{ label: "Overnight travel answered on meals", ok: (trip as any).mealsHaveOvernightAnswered >= (trip as any).mealsCount, value: `${(trip as any).mealsHaveOvernightAnswered}/${(trip as any).mealsCount}` }] : []),
+          ].map(item => (
+            <div key={item.label} className="flex items-center gap-2 text-xs">
+              <span className={item.ok ? "text-emerald-600 font-bold" : "text-amber-500 font-bold"}>{item.ok ? "✓" : "○"}</span>
+              <span className={`${item.ok ? "text-foreground" : "text-muted-foreground"}`}>{item.label}</span>
+              {item.value && <span className="text-muted-foreground ml-auto text-[11px]">{item.value}</span>}
+            </div>
+          ))}
+          <div className="flex items-center gap-2 text-xs">
+            <span className={trip.jobId ? "text-emerald-600 font-bold" : "text-sky-500 font-bold"}>{trip.jobId ? "✓" : "ℹ"}</span>
+            <span className={trip.jobId ? "text-foreground" : "text-muted-foreground"}>Linked to a job (optional)</span>
+            <span className="text-muted-foreground ml-auto text-[11px]">{trip.jobTitle ?? (trip.jobId ? `Job #${trip.jobId}` : "Not linked")}</span>
+          </div>
         </div>
 
         {trip.mealTotal > 0 && (

@@ -6,7 +6,7 @@ import {
   RefreshCw, AlertCircle, FileSpreadsheet, TrendingUp, TrendingDown,
   ChevronUp, ChevronDown, Download, Printer, AlertTriangle,
   CheckCircle2, DollarSign, Navigation, HardHat, CalendarClock,
-  Shield, PieChart, Pencil, Check, X,
+  Shield, PieChart, Pencil, Check, X, Briefcase,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -333,6 +333,166 @@ ${otherIncomeRows}
 <div class="footer">${esc(report.companyName)} &bull; Tax Year ${report.year} &bull; Cash-Basis Accounting &bull; Prepared by BuildPro &bull; For CPA Use</div>
 </body></html>`);
   win.document.close();
+}
+
+interface TripStat {
+  id: number;
+  destination: string;
+  businessPurpose: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  jobTitle: string | null;
+  status: string;
+  totalAmount: number;
+  receiptCount: number;
+  missingReceipts: number;
+  mealTotal: number;
+  deductibleMeals: number;
+}
+
+function BusinessTripSummarySection({ year }: { year: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const [dateFrom, setDateFrom] = useState(`${year}-01-01`);
+  const [dateTo, setDateTo] = useState(`${year}-12-31`);
+
+  const { data: trips = [], isLoading } = useQuery<TripStat[]>({
+    queryKey: ["biz-trips-report", year, dateFrom, dateTo],
+    queryFn: async () => {
+      const params = new URLSearchParams({ year: String(year) });
+      const res = await fetch(`${BASE}/api/trips?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load trips");
+      const all: TripStat[] = await res.json();
+      // Client-side date-range filter
+      return all.filter(t => {
+        const d = t.startDate ?? t.endDate;
+        if (!d) return true;
+        return d >= dateFrom && d <= dateTo;
+      });
+    },
+    staleTime: 60_000,
+  });
+
+  const activeTrips = trips.filter(t => t.status !== "archived");
+  const totalTravelSpend = activeTrips.reduce((s, t) => s + t.totalAmount, 0);
+  const totalTravelReceipts = activeTrips.reduce((s, t) => s + t.receiptCount, 0);
+  const totalDeductibleMeals = activeTrips.reduce((s, t) => s + t.deductibleMeals, 0);
+  const needsAttention = activeTrips.filter(t => t.missingReceipts > 0 || !t.businessPurpose || !t.startDate || !t.endDate);
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2 hover:bg-muted/50 transition-colors text-left"
+      >
+        <Briefcase className="w-4 h-4 text-primary" />
+        <h3 className="font-semibold text-sm text-foreground flex-1">Business Trip Summary</h3>
+        <span className="text-xs text-muted-foreground mr-2">{activeTrips.length} trips · {fmtMoney(totalTravelSpend)}</span>
+        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+      </button>
+      {expanded && (
+        <div className="p-4 space-y-4">
+          {/* Date range filter */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="text-xs font-medium text-muted-foreground">Date range:</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              className="text-xs border border-border rounded-lg px-2 py-1 bg-background"
+            />
+            <span className="text-xs text-muted-foreground">→</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              className="text-xs border border-border rounded-lg px-2 py-1 bg-background"
+            />
+          </div>
+
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground animate-pulse">Loading trips…</p>
+          ) : activeTrips.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">No business trips in this date range.</p>
+          ) : (
+            <>
+              {/* Summary metrics */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Total Trips", value: String(activeTrips.length) },
+                  { label: "Total Travel Spend", value: fmtMoney(totalTravelSpend) },
+                  { label: "Total Travel Receipts", value: String(totalTravelReceipts) },
+                  { label: "Deductible Meals (50%)", value: fmtMoney(totalDeductibleMeals) },
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-muted/30 rounded-xl px-3 py-2 text-center">
+                    <p className="text-base font-bold text-foreground tabular-nums">{value}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">{label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Needs attention */}
+              {needsAttention.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <p className="text-xs font-semibold text-amber-700 mb-1.5 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" /> {needsAttention.length} trip{needsAttention.length > 1 ? "s" : ""} need{needsAttention.length === 1 ? "s" : ""} attention
+                  </p>
+                  <ul className="space-y-0.5">
+                    {needsAttention.map(t => (
+                      <li key={t.id} className="text-xs text-amber-700">
+                        {t.destination}
+                        {t.missingReceipts > 0 && ` — ${t.missingReceipts} unproven receipt${t.missingReceipts > 1 ? "s" : ""}`}
+                        {!t.businessPurpose && " — no business purpose"}
+                        {(!t.startDate || !t.endDate) && " — missing dates"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Trip list */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/20 text-[11px] text-muted-foreground uppercase tracking-wide">
+                      <th className="text-left px-3 py-2">Destination</th>
+                      <th className="text-left px-3 py-2">Dates</th>
+                      <th className="text-left px-3 py-2">Purpose</th>
+                      <th className="text-right px-3 py-2">Receipts</th>
+                      <th className="text-right px-3 py-2">Total Spend</th>
+                      <th className="text-right px-3 py-2">Deductible Meals</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeTrips.map(t => (
+                      <tr key={t.id} className="border-t border-border/40 hover:bg-muted/20">
+                        <td className="px-3 py-2 font-medium">{t.destination}</td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {[t.startDate, t.endDate].filter(Boolean).join(" → ") || "—"}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground max-w-[160px] truncate">{t.businessPurpose ?? "—"}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {t.receiptCount}
+                          {t.missingReceipts > 0 && <span className="text-amber-600 ml-1">⚠</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-medium">{fmtMoney(t.totalAmount)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-emerald-700">{t.deductibleMeals > 0 ? fmtMoney(t.deductibleMeals) : "—"}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 border-border font-semibold bg-muted/20">
+                      <td colSpan={3} className="px-3 py-2">Totals</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{totalTravelReceipts}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(totalTravelSpend)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-emerald-700">{fmtMoney(totalDeductibleMeals)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const ALL_YEAR_END_SECTIONS = ["pl", "expenses", "depreciation", "disposed", "mileage", "1099s", "tax-payments", "tax-liability", "other-income"] as const;
@@ -961,6 +1121,9 @@ export default function YearEndReportTab({ year }: { year: number }) {
           </div>}
         </div>
       )}
+
+      {/* Business Trip Summary */}
+      <BusinessTripSummarySection year={year} />
 
       {/* Disclaimer */}
       <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
