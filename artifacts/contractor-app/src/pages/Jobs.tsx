@@ -2912,7 +2912,8 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
 
 const TRIP_RECEIPT_CATEGORIES = [
   "Hotel/Lodging", "Meals", "Parking/Tolls", "Airfare",
-  "Rental Car", "Taxi/Rideshare", "Campground/RV Site", "Other Travel",
+  "Rental Car", "Taxi/Rideshare", "Campground/RV Site",
+  "Supplies", "Tools", "Other Travel",
 ];
 
 function getTripAuditBadge(trip: any): { isReady: boolean; label: string } {
@@ -3104,6 +3105,7 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 
   // Receipt form state
   const [rcptDesc, setRcptDesc] = useState("");
+  const [rcptVendor, setRcptVendor] = useState("");
   const [rcptAmount, setRcptAmount] = useState("");
   const [rcptCategory, setRcptCategory] = useState("Hotel/Lodging");
   const [rcptDate, setRcptDate] = useState(new Date().toISOString().slice(0, 10));
@@ -3113,7 +3115,7 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const rcptFileInputRef = useRef<HTMLInputElement>(null);
 
   function resetReceiptForm() {
-    setRcptDesc(""); setRcptAmount(""); setRcptCategory("Hotel/Lodging");
+    setRcptDesc(""); setRcptVendor(""); setRcptAmount(""); setRcptCategory("Hotel/Lodging");
     setRcptDate(new Date().toISOString().slice(0, 10)); setRcptOvernight(null);
     setRcptFile(null); setRcptPreview(null);
     if (rcptFileInputRef.current) rcptFileInputRef.current.value = "";
@@ -3181,6 +3183,8 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
         description: rcptDesc.trim(), amount: rcptAmount,
         category: rcptCategory, date: rcptDate,
         tripId, jobId: job.id, receiptStatus: "uploaded",
+        ...(rcptVendor.trim() && { vendor: rcptVendor.trim() }),
+        ...(job.businessLine && { businessLine: job.businessLine }),
       };
       if (rcptCategory === "Meals" && rcptOvernight !== null) body.overnightTravel = rcptOvernight;
       const res = await fetch(`${BASE}/api/expenses`, {
@@ -3555,6 +3559,12 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                                   <label className="text-xs font-medium text-foreground block mb-1">Description *</label>
                                   <input type="text" value={rcptDesc} onChange={e => setRcptDesc(e.target.value)}
                                     placeholder="e.g. Hampton Inn stay"
+                                    className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                                </div>
+                                <div>
+                                  <label className="text-xs font-medium text-foreground block mb-1">Vendor</label>
+                                  <input type="text" value={rcptVendor} onChange={e => setRcptVendor(e.target.value)}
+                                    placeholder="e.g. Home Depot"
                                     className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30" />
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">

@@ -194,13 +194,24 @@ router.post("/", async (req, res) => {
       if (!resolvedNotes && parentTrip.businessPurpose) resolvedNotes = parentTrip.businessPurpose;
     }
 
+    // If businessLine is given but no explicit businessId, resolve the slug → id
+    let resolvedBusinessId: number | null = businessId ? parseInt(businessId) : null;
+    const resolvedBusinessLine = validBusinessLines.includes(businessLine) ? businessLine : null;
+    if (resolvedBusinessLine && !resolvedBusinessId) {
+      const [biz] = await db.select({ id: businessesTable.id })
+        .from(businessesTable)
+        .where(eq(businessesTable.slug, resolvedBusinessLine))
+        .limit(1);
+      if (biz) resolvedBusinessId = biz.id;
+    }
+
     const [expense] = await db.insert(expensesTable).values({
       description, amount: amount.toString(), category, date,
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes: resolvedNotes,
       excludeFromNetProfit: excludeFromNetProfit === true,
       countsTowardJobProfit: countsTowardJobProfit === false ? false : true,
-      businessLine: validBusinessLines.includes(businessLine) ? businessLine : null,
-      businessId: businessId ? parseInt(businessId) : null,
+      businessLine: resolvedBusinessLine,
+      businessId: resolvedBusinessId,
       tripId: tripId ? parseInt(tripId) : null,
       overnightTravel: overnightTravel === true ? true : (overnightTravel === false ? false : null),
       isPotentiallyNondeductible: isPotentiallyNondeductible === true,
