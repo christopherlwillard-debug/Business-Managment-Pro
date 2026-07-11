@@ -1,0 +1,226 @@
+For a contractor management app, I would build this around the actual IRS rules so your expenses stay audit-ready while keeping job profitability separate from tax deductions.
+
+⸻
+
+Meal Expense Guidelines (Business Travel)
+
+Purpose
+
+Meal expenses can be recorded when traveling for business. The app should distinguish between:
+
+* Local jobs (normally not deductible)
+* Overnight business travel (generally deductible)
+* Travel meal deduction (currently 50% deductible for most businesses under current IRS rules)
+
+Meals should always be tax documentation expenses and should never automatically reduce a job’s profit unless the user specifically chooses to include them in job costing.
+
+⸻
+
+When meals are allowed
+
+Allow meal expenses when:
+
+* Employee or owner is traveling away from their tax home.
+* Travel requires an overnight stay or enough rest that sleep is necessary.
+* Meal is directly related to business travel.
+
+Examples:
+
+✓ Staying in a hotel while working several hours away.
+
+✓ Traveling to another state for a project.
+
+✓ Working several days on a manufactured home installation.
+
+⸻
+
+Meals that should NOT qualify
+
+Do not allow as travel meals:
+
+* Lunch while working locally.
+* Coffee during a normal workday.
+* Fast food while driving around town.
+* Meals while commuting.
+
+These should either be:
+
+* Personal
+* Non-deductible
+* Company meal (if applicable)
+
+⸻
+
+Required fields
+
+Meal expense should capture:
+
+* Date
+* Vendor/Restaurant
+* Total Amount
+* Tax
+* Tip
+* Number of people
+* Business purpose
+* Job (optional)
+* Travel destination
+* Receipt photo
+* Paid by
+    * Company Card
+    * Personal Card
+    * Cash
+
+⸻
+
+Business Purpose examples
+
+Examples:
+
+* Manufactured home finish work
+* Warranty service call
+* Client meeting
+* Travel between job sites
+* Overnight construction project
+
+⸻
+
+IRS Documentation Reminder
+
+Display:
+
+“Meal expenses should include the business purpose, date, location, and receipt to support the deduction in the event of an audit.”
+
+⸻
+
+Tax Treatment
+
+Current default:
+
+Business Meals = 50% deductible
+
+Store:
+
+* Total Paid
+* Deductible Amount
+* Non-deductible Portion
+
+Example
+
+Total Meal: $48.00
+
+Deductible: $24.00
+
+Non-deductible: $24.00
+
+This makes reporting much easier later.
+
+⸻
+
+Job Card Integration
+
+If attached to a job:
+
+Show under:
+
+Travel Expenses
+
+Example
+
+Travel Expenses
+
+Hotel
+
+Meals
+
+Parking
+
+Tolls
+
+Fuel (optional)
+
+Flights
+
+Rental Car
+
+Mileage
+
+These expenses should document the cost of performing the work but should not reduce the job’s production profit by default. Instead, provide a toggle:
+
+Count toward Job Profitability
+
+* ON = Included in job costing.
+* OFF (recommended default for travel documentation) = Excluded from production profit but still recorded as a business tax deduction.
+
+⸻
+
+Expense Categories
+
+Travel
+
+* Hotel
+* Meals
+* Airfare
+* Rental Car
+* Taxi/Rideshare
+* Parking
+* Tolls
+* Mileage
+* Fuel
+* Campground
+* RV Site
+* Other Travel
+
+⸻
+
+Smart Validation
+
+If the user selects Meals, automatically ask:
+
+Was this meal while traveling away from your tax home overnight?
+
+* Yes
+* No
+
+If No, display:
+
+“This meal may not qualify as a deductible travel meal under IRS rules.”
+
+Allow the user to save it but mark it as Potentially Non-Deductible.
+
+⸻
+
+Reports
+
+Travel Summary
+
+* Total Travel
+* Hotels
+* Meals
+* Parking
+* Tolls
+* Mileage
+* Fuel
+* Airfare
+* Rental Cars
+
+Meal Summary
+
+* Total Spent
+* Deductible Portion (50%)
+* Non-Deductible Portion
+* Missing Receipts
+* Missing Business Purpose
+
+⸻
+
+Best Practice for Your App
+
+Because your business often travels to manufactured home communities for multi-day projects, I recommend treating Meals, Hotels, Parking, and Tolls as “Travel Documentation Expenses.” They should:
+
+* Be linked to the specific job for documentation.
+* Appear in the job’s travel section.
+* Flow correctly to Schedule C tax categories.
+* Be excluded from production profit calculations by default.
+* Be available in year-end travel and tax reports with complete audit documentation.
+
+This keeps your production metrics accurate while preserving every legitimate business deduction and creating a clean audit trail if the IRS ever requests supporting documentation.

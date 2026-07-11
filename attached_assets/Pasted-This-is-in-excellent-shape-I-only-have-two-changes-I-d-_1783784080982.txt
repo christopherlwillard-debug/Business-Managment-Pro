@@ -1,0 +1,91 @@
+This is in excellent shape. I only have two changes I’d recommend before sending it to Replit.
+
+1. Don’t use a calculated “Audit Readiness Score”
+
+I would replace the 9/10 score with an Audit Checklist and an overall status.
+
+The reason is that a score is subjective. For example, is a missing receipt worth the same as a missing business purpose? The IRS doesn’t use a point system—they care whether required documentation exists.
+
+Instead, show something like:
+
+Audit Status
+
+* 🟢 Audit Ready
+* 🟡 Needs Attention
+
+Then list the checklist:
+
+* ✓ Business Purpose
+* ✓ Destination
+* ✓ Travel Dates
+* ✓ Receipt Photos (or explanation for missing receipts)
+* ✓ Meal Overnight Status
+* ✓ Job Linked (optional if applicable)
+
+If something is missing:
+
+* ⚠ Missing receipt explanation
+* ⚠ Meal missing overnight-travel answer
+
+This is simpler, easier to understand, and less arbitrary.
+
+⸻
+
+2. Keep Business Purpose at the Trip Level
+
+You currently collect Business Purpose on both the trip and the receipt.
+
+I’d treat them differently:
+
+Trip Business Purpose
+
+Overall reason for the trip.
+
+Example:
+
+Warranty repairs for Clayton Homes – Evansville Community.
+
+Receipt Business Purpose
+Default to the trip’s business purpose, but allow editing if needed.
+
+For example:
+
+Trip:
+
+Warranty repairs for Clayton Homes – Evansville Community.
+
+Hotel:
+
+(inherits trip purpose)
+
+Meal:
+
+Dinner while performing warranty repairs.
+
+This saves data entry while still allowing more detailed documentation when appropriate.
+
+⸻
+
+One small enhancement
+
+I’d add these two fields to the business_trips table:
+
+* closed_at
+* closed_by
+
+When a trip is marked Completed, record when and by whom it was closed. It’s a small addition but creates a stronger audit trail and is useful if you ever have multiple users in the app.
+
+⸻
+
+Overall
+
+I’d consider this feature essentially complete. It fits your workflow well:
+
+* No duplicate mileage tracking.
+* Good separation between job costing and tax documentation.
+* Proper handling of meal deductions.
+* Logical organization of receipts by trip.
+* Clean integration with jobs and reports.
+* Scalable if you add employees or office staff later.
+
+The only thing I’d remove is the numeric “Audit Readiness” score in favor of a checklist with an overall status, since that’s more objective and easier to maintain over time.

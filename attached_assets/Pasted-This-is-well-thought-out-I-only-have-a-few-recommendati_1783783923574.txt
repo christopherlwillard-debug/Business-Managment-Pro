@@ -1,0 +1,146 @@
+This is well thought out. I only have a few recommendations to make it more robust and more closely match IRS documentation requirements.
+
+1. Rename “Notes/Purpose” to “Business Purpose”
+
+This is more descriptive and aligns with IRS expectations.
+
+Instead of:
+
+* Notes/Purpose
+
+Use:
+
+* Business Purpose
+
+Example:
+
+Warranty repairs for Clayton Homes – Evansville Community
+
+⸻
+
+2. Add Trip Status
+
+Rather than just open, I would support:
+
+* Open
+* Completed
+* Archived
+
+An open trip allows you to keep adding receipts while you’re traveling. Completed locks the trip unless you intentionally reopen it.
+
+⸻
+
+3. Preserve the Original Meal Amount
+
+You’re storing deductible_amount, but I also recommend storing:
+
+* Meal Total
+* Deductible Amount (50%)
+* Non-Deductible Amount (50%)
+
+That avoids recalculating later and makes reports simpler.
+
+⸻
+
+4. Expand “Paid By”
+
+Instead of only:
+
+* Company Card
+* Personal Card
+* Cash
+
+Add:
+
+* Company Card
+* Personal Card
+* Cash
+* Company Check
+* ACH/Bank Transfer
+* Other
+
+This gives you flexibility if your payment methods change.
+
+⸻
+
+5. Add Receipt Missing Indicator
+
+For each receipt, include:
+
+* Receipt Uploaded ✓
+* No Receipt
+
+If “No Receipt” is selected, require a brief explanation. This helps document exceptions.
+
+⸻
+
+6. Add Receipt Date
+
+A receipt should capture:
+
+* Expense Date
+* Vendor
+* Category
+* Amount
+
+Don’t rely solely on the trip dates, since a trip spans multiple days.
+
+⸻
+
+7. Reports
+
+I’d rename “Travel Summary” to Business Trip Summary so it clearly excludes mileage.
+
+Suggested fields:
+
+* Number of Trips
+* Total Travel Receipts
+* Hotels
+* Meals (Gross)
+* Meals (Deductible)
+* Parking/Tolls
+* Airfare
+* Rental Cars
+* Other Travel
+
+⸻
+
+8. Audit Checklist
+
+Instead of only showing checkmarks, include a completion score:
+
+* Audit Readiness: 9/10
+* Audit Ready ✓
+
+If something is missing (receipt, business purpose, overnight status), the score drops and highlights the missing item.
+
+⸻
+
+9. Schedule C Labels
+
+Keep the internal expense categories user-friendly, but don’t expose Schedule C line numbers throughout the UI. Those can change over time, and most users don’t think in terms of tax form lines.
+
+Instead:
+
+* Hotel/Lodging
+* Meals
+* Parking/Tolls
+* Airfare
+* Rental Car
+* Taxi/Rideshare
+* Campground/RV Site
+* Other Travel
+
+Then map those categories to the appropriate tax reporting internally.
+
+⸻
+
+One Change I’d Definitely Make
+
+I’d change the first sentence to:
+
+Business Trips are audit-ready folders that organize all travel-related receipts for an out-of-town business trip. They simplify documentation, improve job organization, and provide accurate year-end tax reporting.
+
+That better describes the feature from a user’s perspective rather than focusing immediately on the implementation.
+
+Overall, I’d rate this feature 9.8/10. The only thing I think is missing is a receipt status (uploaded vs. missing with explanation) because that’s one of the first things you’d want to verify if you ever needed to substantiate deductions during an audit. Otherwise, this is a strong, practical design that fits your workflow well.
