@@ -3011,6 +3011,7 @@ function JobTripReceipts({ tripId, tripStatus, refreshKey }: { tripId: number; t
 
 function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [trips, setTrips] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -3129,11 +3130,20 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
         if (fileToUpload && expense?.id) {
           const fd = new FormData();
           fd.append("receipt", fileToUpload);
-          await fetch(`${BASE}/api/expenses/${expense.id}/receipt`, {
-            method: "POST",
-            body: fd,
-            credentials: "include",
-          }).catch(() => {});
+          try {
+            const uploadRes = await fetch(`${BASE}/api/expenses/${expense.id}/receipt`, {
+              method: "POST",
+              body: fd,
+              credentials: "include",
+            });
+            if (!uploadRes.ok) throw new Error("upload failed");
+          } catch {
+            toast({
+              title: "Photo upload failed",
+              description: "Receipt saved but photo upload failed — open the expense to re-attach.",
+              variant: "destructive",
+            });
+          }
         }
         setReceiptRefreshKeys(prev => ({ ...prev, [tripId]: (prev[tripId] ?? 0) + 1 }));
         await fetchTrips();
