@@ -254,12 +254,19 @@ router.put("/:id", async (req, res) => {
     const [before] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));
     if (!before) return res.status(404).json({ error: "Expense not found" });
 
-    // Validate missing receipt explanation: check resulting status (request value or existing)
+    // Validate receipt proof: check resulting status (request value or existing)
     const resultingReceiptStatus = receiptStatus !== undefined ? receiptStatus : before.receiptStatus;
     if (resultingReceiptStatus === "missing") {
       const resultingExplanation = receiptMissingExplanation !== undefined ? receiptMissingExplanation : before.receiptMissingExplanation;
       if (!resultingExplanation?.trim()) {
         return res.status(400).json({ error: "receiptMissingExplanation is required when receiptStatus is 'missing'" });
+      }
+    }
+    // Block setting receiptStatus='uploaded' without an actual file URL
+    if (resultingReceiptStatus === "uploaded") {
+      const resultingReceiptUrl = receiptUrl !== undefined ? receiptUrl : before.receiptUrl;
+      if (!resultingReceiptUrl?.trim()) {
+        return res.status(400).json({ error: "receiptUrl is required when receiptStatus is 'uploaded'" });
       }
     }
 
