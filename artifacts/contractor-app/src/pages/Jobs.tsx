@@ -2928,7 +2928,16 @@ function getTripAuditBadge(trip: any): { isReady: boolean; label: string } {
 function JobTripReceipts({ tripId, tripStatus, refreshKey }: { tripId: number; tripStatus: string; refreshKey?: number }) {
   const [receipts, setReceipts] = useState<any[] | null>(null);
   const [toggling, setToggling] = useState<Set<number>>(new Set());
+  const [viewingPhotoUrl, setViewingPhotoUrl] = useState<string | null>(null);
+  const [imgError, setImgError] = useState(false);
   const isLocked = tripStatus !== "open";
+
+  function buildReceiptUrl(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    if (raw.startsWith("http")) return raw;
+    if (raw.startsWith("/objects/")) return `${BASE}/api/storage${raw}`;
+    return `${BASE}${raw}`;
+  }
 
   useEffect(() => {
     fetch(`${BASE}/api/trips/${tripId}/receipts`, { credentials: "include" })
@@ -2956,6 +2965,7 @@ function JobTripReceipts({ tripId, tripStatus, refreshKey }: { tripId: number; t
   if (receipts === null) return <p className="text-xs text-muted-foreground italic animate-pulse py-2">Loading receipts…</p>;
   if (receipts.length === 0) return <p className="text-xs text-muted-foreground italic py-2">No receipts logged yet.</p>;
   return (
+    <>
     <div className="space-y-1.5 mt-2">
       {receipts.map((r: any) => (
         <div key={r.id} className="flex items-start justify-between gap-2 bg-white rounded-xl px-3 py-2 border border-border/40 text-xs">
@@ -2965,7 +2975,12 @@ function JobTripReceipts({ tripId, tripStatus, refreshKey }: { tripId: number; t
               {r.vendor && <span className="text-muted-foreground">· {r.vendor}</span>}
               <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-600">{r.category}</span>
               {r.receiptUrl ? (
-                <span title="Receipt photo attached" className="inline-flex items-center gap-0.5 text-[10px] text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full">📎 Photo</span>
+                <button
+                  type="button"
+                  onClick={() => { setImgError(false); setViewingPhotoUrl(buildReceiptUrl(r.receiptUrl)); }}
+                  title="Tap to view receipt photo"
+                  className="inline-flex items-center gap-0.5 text-[10px] text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full hover:bg-blue-100 transition-colors cursor-pointer"
+                >📎 Photo</button>
               ) : r.receiptStatus === "missing" ? (
                 <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-full">⚠ Missing</span>
               ) : null}
@@ -3006,6 +3021,56 @@ function JobTripReceipts({ tripId, tripStatus, refreshKey }: { tripId: number; t
         </div>
       ))}
     </div>
+
+    {/* Full-screen receipt photo lightbox */}
+    {viewingPhotoUrl && createPortal(
+      <div
+        className="fixed inset-0 z-[200] bg-black/95 overflow-hidden"
+        onClick={() => setViewingPhotoUrl(null)}
+      >
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); setViewingPhotoUrl(null); }}
+          className="absolute z-10 right-4 flex items-center gap-1.5 text-white font-bold text-sm bg-black/70 hover:bg-black/90 px-4 py-2 rounded-xl border border-white/30 backdrop-blur-sm transition-colors"
+          style={{ top: "max(16px, env(safe-area-inset-top, 16px))" }}
+          aria-label="Close"
+        >
+          <X className="w-4 h-4" /> Close
+        </button>
+        <div
+          className="absolute inset-0 flex items-center justify-center overflow-hidden px-4"
+          style={{ paddingTop: "calc(max(52px, env(safe-area-inset-top, 52px)) + 32px)" }}
+        >
+          {!imgError ? (
+            <img
+              src={viewingPhotoUrl}
+              alt="Receipt full view"
+              className="max-w-full max-h-full object-contain select-none"
+              onClick={e => e.stopPropagation()}
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-4 p-8 text-center" onClick={e => e.stopPropagation()}>
+              <ImageIcon className="w-16 h-16 text-red-300" />
+              <p className="text-white font-semibold text-lg">Receipt no longer available</p>
+              <p className="text-white/70 text-sm">This file may have been lost. Close and re-upload the receipt.</p>
+            </div>
+          )}
+        </div>
+        {!imgError && (
+          <a
+            href={viewingPhotoUrl}
+            download
+            onClick={e => e.stopPropagation()}
+            className="absolute bottom-8 left-1/2 -translate-x-1/2 inline-flex items-center gap-2 px-5 py-3 bg-white/15 text-white rounded-xl font-semibold hover:bg-white/25 transition-colors text-sm"
+          >
+            <Download className="w-4 h-4" /> Download
+          </a>
+        )}
+      </div>,
+      document.body
+    )}
+    </>
   );
 }
 
