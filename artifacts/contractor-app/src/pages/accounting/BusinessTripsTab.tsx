@@ -29,6 +29,10 @@ interface BusinessTrip {
   transportTotal: number;
   mealsHaveOvernightAnswered: number;
   mealsCount: number;
+  rentalCarTotal: number;
+  parkingTollTotal: number;
+  potentiallyNonDeductibleMeals: number;
+  mealsMissingReceipts: number;
 }
 
 function money(n: number) { return `$${n.toFixed(2)}`; }
@@ -45,7 +49,6 @@ function auditStatus(trip: BusinessTrip) {
   if (!trip.startDate) issues.push("No start date");
   if (!trip.endDate) issues.push("No end date");
   if (trip.receiptCount === 0) issues.push("No receipts logged");
-  if (!trip.jobId) issues.push("Not linked to a job");
   if (trip.mealsCount > 0 && trip.mealsHaveOvernightAnswered < trip.mealsCount) issues.push("Overnight travel unanswered on meals");
   return issues.length === 0
     ? { emoji: "🟢", label: "Audit Ready", color: "text-emerald-700 bg-emerald-50 border-emerald-200", issues: [] }
@@ -124,7 +127,6 @@ function TripRow({ trip }: { trip: BusinessTrip }) {
               { label: "Business purpose", ok: !!trip.businessPurpose, value: trip.businessPurpose },
               { label: "Start date", ok: !!trip.startDate, value: trip.startDate ? formatDate(trip.startDate) : null },
               { label: "End date", ok: !!trip.endDate, value: trip.endDate ? formatDate(trip.endDate) : null },
-              { label: "Linked to a job", ok: !!trip.jobId, value: trip.jobTitle ?? (trip.jobId ? `Job #${trip.jobId}` : "Not linked") },
               { label: "Receipts documented", ok: trip.receiptCount > 0, value: `${trip.receiptCount} receipt${trip.receiptCount !== 1 ? "s" : ""}` },
               { label: "No missing receipts", ok: trip.missingReceipts === 0, value: trip.missingReceipts > 0 ? `${trip.missingReceipts} missing` : "All present" },
               ...(trip.mealsCount > 0 ? [{ label: "Overnight travel answered on meals", ok: trip.mealsHaveOvernightAnswered >= trip.mealsCount, value: `${trip.mealsHaveOvernightAnswered}/${trip.mealsCount}` }] : []),
@@ -137,23 +139,47 @@ function TripRow({ trip }: { trip: BusinessTrip }) {
                 {item.value && <span className="text-muted-foreground ml-auto">{item.value}</span>}
               </div>
             ))}
+            {/* Job link is optional — shown as advisory note, not blocking */}
+            <div className="flex items-center gap-2.5 text-xs">
+              <span className={trip.jobId ? "text-emerald-600" : "text-sky-500"}>
+                {trip.jobId ? "✓" : "ℹ"}
+              </span>
+              <span className={`font-medium ${trip.jobId ? "text-foreground" : "text-muted-foreground"}`}>Linked to a job (optional)</span>
+              <span className="text-muted-foreground ml-auto">{trip.jobTitle ?? (trip.jobId ? `Job #${trip.jobId}` : "Not linked")}</span>
+            </div>
           </div>
 
           {/* Meal deduction summary */}
           {trip.mealTotal > 0 && (
-            <div className="mb-4 grid grid-cols-3 gap-2 text-center">
-              <div className="bg-white rounded-xl border border-border/50 px-3 py-2">
-                <p className="text-xs text-muted-foreground">Total Meals</p>
-                <p className="text-sm font-bold text-gray-900">{money(trip.mealTotal)}</p>
+            <div className="mb-4">
+              <div className="grid grid-cols-3 gap-2 text-center mb-2">
+                <div className="bg-white rounded-xl border border-border/50 px-3 py-2">
+                  <p className="text-xs text-muted-foreground">Total Meals</p>
+                  <p className="text-sm font-bold text-gray-900">{money(trip.mealTotal)}</p>
+                </div>
+                <div className="bg-white rounded-xl border border-border/50 px-3 py-2">
+                  <p className="text-xs text-muted-foreground">Deductible (50%)</p>
+                  <p className="text-sm font-bold text-emerald-700">{money(trip.deductibleMeals)}</p>
+                </div>
+                <div className="bg-white rounded-xl border border-border/50 px-3 py-2">
+                  <p className="text-xs text-muted-foreground">Non-Deductible</p>
+                  <p className="text-sm font-bold text-gray-400">{money(trip.mealTotal - trip.deductibleMeals)}</p>
+                </div>
               </div>
-              <div className="bg-white rounded-xl border border-border/50 px-3 py-2">
-                <p className="text-xs text-muted-foreground">Deductible (50%)</p>
-                <p className="text-sm font-bold text-emerald-700">{money(trip.deductibleMeals)}</p>
-              </div>
-              <div className="bg-white rounded-xl border border-border/50 px-3 py-2">
-                <p className="text-xs text-muted-foreground">Non-Deductible</p>
-                <p className="text-sm font-bold text-gray-400">{money(trip.mealTotal - trip.deductibleMeals)}</p>
-              </div>
+              {(trip.potentiallyNonDeductibleMeals > 0 || trip.mealsMissingReceipts > 0) && (
+                <div className="flex gap-2 flex-wrap">
+                  {trip.potentiallyNonDeductibleMeals > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                      ⚠ {trip.potentiallyNonDeductibleMeals} potentially non-deductible
+                    </span>
+                  )}
+                  {trip.mealsMissingReceipts > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 px-2 py-0.5 rounded-full">
+                      ⚠ {trip.mealsMissingReceipts} meal receipt{trip.mealsMissingReceipts > 1 ? "s" : ""} missing
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -309,13 +335,18 @@ export default function BusinessTripsTab({ year }: { year: number }) {
           {(() => {
             const hotelTotal = trips.reduce((s, t) => s + (t.hotelTotal ?? 0), 0);
             const airfareTotal = trips.reduce((s, t) => s + (t.airfareTotal ?? 0), 0);
+            const rentalCarTotal = trips.reduce((s, t) => s + (t.rentalCarTotal ?? 0), 0);
+            const parkingTollTotal = trips.reduce((s, t) => s + (t.parkingTollTotal ?? 0), 0);
             const transportTotal = trips.reduce((s, t) => s + (t.transportTotal ?? 0), 0);
+            const otherTransport = Math.max(0, transportTotal - rentalCarTotal);
             const cats = [
               { label: "Hotel/Lodging", amount: hotelTotal, color: "text-blue-700 bg-blue-50 border-blue-100" },
               { label: "Meals", amount: totalMeals, color: "text-amber-700 bg-amber-50 border-amber-100" },
               { label: "Airfare", amount: airfareTotal, color: "text-sky-700 bg-sky-50 border-sky-100" },
-              { label: "Transport", amount: transportTotal, color: "text-violet-700 bg-violet-50 border-violet-100" },
-              { label: "Other", amount: Math.max(0, totalSpend - hotelTotal - totalMeals - airfareTotal - transportTotal), color: "text-gray-600 bg-gray-50 border-gray-100" },
+              { label: "Rental Car", amount: rentalCarTotal, color: "text-violet-700 bg-violet-50 border-violet-100" },
+              { label: "Parking/Tolls", amount: parkingTollTotal, color: "text-teal-700 bg-teal-50 border-teal-100" },
+              { label: "Taxi/Rideshare", amount: otherTransport, color: "text-indigo-700 bg-indigo-50 border-indigo-100" },
+              { label: "Other", amount: Math.max(0, totalSpend - hotelTotal - totalMeals - airfareTotal - transportTotal - parkingTollTotal), color: "text-gray-600 bg-gray-50 border-gray-100" },
             ].filter(c => c.amount > 0);
             if (cats.length === 0) return null;
             return (

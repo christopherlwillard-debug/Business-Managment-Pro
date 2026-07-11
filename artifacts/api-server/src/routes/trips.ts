@@ -27,6 +27,10 @@ function formatTripWithStats(t: any) {
     transportTotal: parseFloat(t.transportTotal ?? "0"),
     mealsHaveOvernightAnswered: Number(t.mealsHaveOvernightAnswered ?? 0),
     mealsCount: Number(t.mealsCount ?? 0),
+    rentalCarTotal: parseFloat(t.rentalCarTotal ?? "0"),
+    parkingTollTotal: parseFloat(t.parkingTollTotal ?? "0"),
+    potentiallyNonDeductibleMeals: Number(t.potentiallyNonDeductibleMeals ?? 0),
+    mealsMissingReceipts: Number(t.mealsMissingReceipts ?? 0),
   };
 }
 
@@ -52,6 +56,10 @@ const tripStatsSelect = {
   transportTotal: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) LIKE '%rental%' OR LOWER(${expensesTable.category}) LIKE '%taxi%' OR LOWER(${expensesTable.category}) LIKE '%rideshare%' THEN ${expensesTable.amount} ELSE 0 END), 0)`,
   mealsHaveOvernightAnswered: sql<string>`COUNT(CASE WHEN LOWER(${expensesTable.category}) = 'meals' AND ${expensesTable.overnightTravel} IS NOT NULL THEN 1 END)`,
   mealsCount: sql<string>`COUNT(CASE WHEN LOWER(${expensesTable.category}) = 'meals' THEN 1 END)`,
+  rentalCarTotal: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) LIKE '%rental%' THEN ${expensesTable.amount} ELSE 0 END), 0)`,
+  parkingTollTotal: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) LIKE '%parking%' OR LOWER(${expensesTable.category}) LIKE '%toll%' OR LOWER(${expensesTable.category}) LIKE '%campground%' THEN ${expensesTable.amount} ELSE 0 END), 0)`,
+  potentiallyNonDeductibleMeals: sql<string>`COUNT(CASE WHEN LOWER(${expensesTable.category}) = 'meals' AND ${expensesTable.isPotentiallyNondeductible} = true THEN 1 END)`,
+  mealsMissingReceipts: sql<string>`COUNT(CASE WHEN LOWER(${expensesTable.category}) = 'meals' AND ${expensesTable.receiptStatus} = 'missing' THEN 1 END)`,
 };
 
 function buildTripsQuery() {

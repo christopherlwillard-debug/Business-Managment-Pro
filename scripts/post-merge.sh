@@ -902,7 +902,7 @@ pool.query(\`
   ALTER TABLE business_trips ADD CONSTRAINT business_trips_status_check CHECK (status IN ('open', 'completed', 'archived'));
 \`).then(() => pool.query(\`
   ALTER TABLE expenses DROP CONSTRAINT IF EXISTS expenses_receipt_status_check;
-  ALTER TABLE expenses ADD CONSTRAINT expenses_receipt_status_check CHECK (receipt_status IN ('uploaded', 'missing', 'verbal_confirmation'));
+  ALTER TABLE expenses ADD CONSTRAINT expenses_receipt_status_check CHECK (receipt_status IN ('uploaded', 'missing'));
 \`)).then(() => { console.log('DB check constraints applied'); pool.end(); })
   .catch(e => { console.error('constraint migration error:', e.message); pool.end(); });
 "

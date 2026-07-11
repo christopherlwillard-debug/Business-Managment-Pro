@@ -2877,10 +2877,31 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
 // ─── Job Trips Panel ───────────────────────────────────────────────────────────
 function JobTripReceipts({ tripId }: { tripId: number }) {
   const [receipts, setReceipts] = useState<any[] | null>(null);
+  const [toggling, setToggling] = useState<Set<number>>(new Set());
+
   useEffect(() => {
     fetch(`${BASE}/api/trips/${tripId}/receipts`, { credentials: "include" })
       .then(r => r.ok ? r.json() : []).then(setReceipts).catch(() => setReceipts([]));
   }, [tripId]);
+
+  async function toggleJobProfit(r: any) {
+    const newVal = r.countsTowardJobProfit === false;
+    setToggling(prev => new Set(prev).add(r.id));
+    try {
+      const res = await fetch(`${BASE}/api/expenses/${r.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ countsTowardJobProfit: newVal }),
+      });
+      if (res.ok) {
+        setReceipts(prev => prev ? prev.map(x => x.id === r.id ? { ...x, countsTowardJobProfit: newVal } : x) : prev);
+      }
+    } finally {
+      setToggling(prev => { const next = new Set(prev); next.delete(r.id); return next; });
+    }
+  }
+
   if (receipts === null) return <p className="text-xs text-muted-foreground italic animate-pulse py-2">Loading receipts…</p>;
   if (receipts.length === 0) return <p className="text-xs text-muted-foreground italic py-2">No receipts logged yet.</p>;
   return (
@@ -2895,9 +2916,20 @@ function JobTripReceipts({ tripId }: { tripId: number }) {
               {r.receiptStatus === "missing" && (
                 <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-full">⚠ Missing</span>
               )}
-              {r.countsTowardJobProfit === false && (
-                <span className="inline-flex items-center text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">Audit Trail</span>
-              )}
+              <button
+                onClick={() => toggleJobProfit(r)}
+                disabled={toggling.has(r.id)}
+                title={r.countsTowardJobProfit !== false
+                  ? "Counts toward job P&L — click to move to Audit Trail only"
+                  : "Audit Trail only — click to count toward job P&L"}
+                className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border transition-colors disabled:opacity-50 ${
+                  r.countsTowardJobProfit !== false
+                    ? "text-green-700 bg-green-50 border-green-200 hover:bg-green-100"
+                    : "text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100"
+                }`}
+              >
+                {toggling.has(r.id) ? "…" : (r.countsTowardJobProfit !== false ? "Job P&L" : "Audit Trail")}
+              </button>
             </div>
             <p className="text-muted-foreground mt-0.5">{r.date}{r.paidBy ? ` · ${r.paidBy}` : ""}</p>
             {r.overnightTravel === false && r.category?.toLowerCase() === "meals" && (
@@ -2950,7 +2982,7 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
           </div>
           <div className="flex items-center gap-2">
             <a
-              href={`${BASE}/?path=expenses`}
+              href={`${BASE}/?path=expenses&prefill_jobId=${job.id}`}
               className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
               onClick={onClose}
             >

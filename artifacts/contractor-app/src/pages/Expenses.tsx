@@ -415,7 +415,6 @@ function auditStatus(trip: BusinessTrip): { label: string; color: string; descri
   if (!trip.startDate) issues.push("No start date");
   if (!trip.endDate) issues.push("No end date");
   if (trip.receiptCount === 0) issues.push("No receipts logged");
-  if (!trip.jobId) issues.push("Not linked to a job");
   if ((trip as any).mealsCount > 0 && (trip as any).mealsHaveOvernightAnswered < (trip as any).mealsCount) issues.push("Overnight travel unanswered on meals");
   if (issues.length === 0) {
     return { label: "Audit Ready", color: "text-emerald-700 bg-emerald-50 border-emerald-200", description: "All required documentation is in order" };
@@ -444,12 +443,19 @@ function TripReceiptsPanel({
             </span>
             <span className="text-xs text-muted-foreground">{status.description}</span>
           </div>
-          <button
-            onClick={() => onAddReceipt(trip.id, trip.businessPurpose ?? "")}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm"
-          >
-            <Plus className="w-3.5 h-3.5" /> Add Receipt
-          </button>
+          {trip.status === "open" && (
+            <button
+              onClick={() => onAddReceipt(trip.id, trip.businessPurpose ?? "")}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Receipt
+            </button>
+          )}
+          {trip.status !== "open" && (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200">
+              {trip.status === "completed" ? "Completed — Reopen to add receipts" : "Archived"}
+            </span>
+          )}
         </div>
 
         {trip.mealTotal > 0 && (
@@ -539,6 +545,20 @@ function BusinessTripsSection({
   const [newEnd, setNewEnd] = useState("");
   const [newJobId, setNewJobId] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<BusinessTrip | null>(null);
+
+  // Auto-open new trip form when navigated from a job card with prefill_jobId param
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const prefillJobId = params.get("prefill_jobId");
+    if (prefillJobId) {
+      setNewJobId(prefillJobId);
+      setNewTripOpen(true);
+      setSectionOpen(true);
+      const clean = new URL(window.location.href);
+      clean.searchParams.delete("prefill_jobId");
+      window.history.replaceState({}, "", clean.toString());
+    }
+  }, []);
 
   function toggleTrip(id: number) {
     setExpanded(prev => {

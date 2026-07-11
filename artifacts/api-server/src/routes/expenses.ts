@@ -180,15 +180,18 @@ router.post("/", async (req, res) => {
     const validBusinessLines = ["general_contracting", "asphalt_sealing"];
     const isMealCategory = category?.toLowerCase() === "meals";
     const parsedMealTotal = mealTotal ? parseFloat(mealTotal) : (isMealCategory ? parseFloat(amount) : null);
-    const computedDeductible = deductibleAmount != null ? parseFloat(deductibleAmount) : (parsedMealTotal != null ? parsedMealTotal * 0.5 : null);
-    const computedNonDeductible = nonDeductibleAmount != null ? parseFloat(nonDeductibleAmount) : (parsedMealTotal != null ? parsedMealTotal * 0.5 : null);
+    // Always derive server-side: 50/50 split from mealTotal (client overrides not accepted)
+    const computedDeductible = parsedMealTotal != null ? parsedMealTotal * 0.5 : null;
+    const computedNonDeductible = parsedMealTotal != null ? parsedMealTotal * 0.5 : null;
 
-    // Trip-purpose defaulting: if notes is blank and tripId provided, inherit trip's businessPurpose
+    // Trip validation: check trip is open + inherit businessPurpose for notes
     let resolvedNotes = notes || null;
-    if (tripId && !resolvedNotes) {
-      const [parentTrip] = await db.select({ businessPurpose: businessTripsTable.businessPurpose })
+    if (tripId) {
+      const [parentTrip] = await db.select({ status: businessTripsTable.status, businessPurpose: businessTripsTable.businessPurpose })
         .from(businessTripsTable).where(eq(businessTripsTable.id, parseInt(tripId)));
-      if (parentTrip?.businessPurpose) resolvedNotes = parentTrip.businessPurpose;
+      if (!parentTrip) return res.status(400).json({ error: "Trip not found" });
+      if (parentTrip.status !== 'open') return res.status(400).json({ error: "Cannot add receipts to a completed or archived trip" });
+      if (!resolvedNotes && parentTrip.businessPurpose) resolvedNotes = parentTrip.businessPurpose;
     }
 
     const [expense] = await db.insert(expensesTable).values({
@@ -257,18 +260,23 @@ router.put("/:id", async (req, res) => {
     const [before] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));
     if (!before) return res.status(404).json({ error: "Expense not found" });
 
+    // Trip lock: if tripId is being explicitly changed, target trip must be open
+    if (tripId !== undefined && tripId) {
+      const [targetTrip] = await db.select({ status: businessTripsTable.status })
+        .from(businessTripsTable).where(eq(businessTripsTable.id, parseInt(tripId)));
+      if (!targetTrip) return res.status(400).json({ error: "Trip not found" });
+      if (targetTrip.status !== 'open') return res.status(400).json({ error: "Cannot move receipt to a completed or archived trip" });
+    }
+
     const validBusinessLines = ["general_contracting", "asphalt_sealing"];
 
     const isMealCategory = (category ?? before.category)?.toLowerCase() === "meals";
     const parsedMealTotal = mealTotal !== undefined
       ? (mealTotal ? parseFloat(mealTotal) : null)
       : (isMealCategory && amount ? parseFloat(amount) : null);
-    const computedDeductible = deductibleAmount !== undefined
-      ? (deductibleAmount ? parseFloat(deductibleAmount) : null)
-      : (parsedMealTotal != null ? parsedMealTotal * 0.5 : null);
-    const computedNonDeductible = nonDeductibleAmount !== undefined
-      ? (nonDeductibleAmount ? parseFloat(nonDeductibleAmount) : null)
-      : (parsedMealTotal != null ? parsedMealTotal * 0.5 : null);
+    // Always derive server-side: 50/50 split from mealTotal
+    const computedDeductible = parsedMealTotal != null ? parsedMealTotal * 0.5 : null;
+    const computedNonDeductible = parsedMealTotal != null ? parsedMealTotal * 0.5 : null;
 
     const [updated] = await db.update(expensesTable).set({
       description, amount: amount?.toString(), category, date,
