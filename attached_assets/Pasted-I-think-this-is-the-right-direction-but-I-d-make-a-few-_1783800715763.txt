@@ -1,0 +1,127 @@
+I think this is the right direction, but I’d make a few changes before giving it to Replit. The goal of the job card should be that everything needed while you’re standing on the job site can be done without leaving the job.
+
+I’d make these changes
+
+1. Don’t use a consolidated expense
+
+This is the biggest thing I’d change.
+
+A Business Trip should remain a container for individual receipts, not become a single expense itself.
+
+For example:
+
+Business Trip
+
+* Evansville Service Call
+    * Hotel – $129.00
+    * Dinner – $32.15
+    * Breakfast – $14.87
+    * Parking – $12.00
+
+The trip should display a calculated total, but the individual receipts remain the actual expense records. This preserves a clean audit trail and makes it easier to review or correct specific receipts later.
+
+⸻
+
+2. Update the receipt categories
+
+Since you’ve committed to the standard mileage method, remove Fuel from the inline form.
+
+Use:
+
+* Hotel/Lodging
+* Meals
+* Parking/Tolls
+* Airfare
+* Rental Car
+* Taxi/Rideshare
+* Campground/RV Site
+* Other Travel
+
+This keeps the job card consistent with your Business Trips feature.
+
+⸻
+
+3. Auto-expand a new trip
+
+After creating a trip:
+
+* Automatically expand it.
+* Open the first Add Receipt form.
+
+That’s usually the very next action you’ll take.
+
+⸻
+
+4. Add a quick summary
+
+Each trip card should display something like:
+
+Evansville Service Call
+
+* 6 receipts
+* $412.83 total receipts
+* Meals: $84.20 ($42.10 deductible)
+* Audit Ready ✓
+
+That lets you see the essentials without expanding the trip.
+
+⸻
+
+5. Show receipt photos
+
+If a receipt has a photo, show a small paperclip or camera icon next to it so you can immediately tell which receipts have supporting documentation.
+
+⸻
+
+6. Add a “Close Trip” action
+
+When you’re done with the trip, include a Close Trip button.
+
+Closing a trip should:
+
+* Mark it as completed.
+* Collapse it by default.
+* Prevent accidental new receipts unless you explicitly reopen it.
+
+⸻
+
+7. Make the audit badge meaningful
+
+Instead of only showing:
+
+Audit Ready
+
+Allow statuses such as:
+
+* 🟢 Audit Ready
+* 🟡 Missing Receipt
+* 🟡 Missing Business Purpose
+* 🟡 Meal Needs Overnight Status
+
+That tells you exactly what still needs attention.
+
+⸻
+
+One thing I’d change in the “Done looks like”
+
+Instead of:
+
+“A consolidated expense rolls up to the job P&L automatically…”
+
+I’d write:
+
+Business Trip totals automatically roll up into the job’s travel expense summary while preserving every individual receipt for documentation and tax reporting.
+
+That’s more accurate to the data model and avoids implying that all receipts are merged into a single expense record.
+
+Overall
+
+I’d rate this feature 10/10 with those adjustments. Together with your Business Trips feature, it creates a smooth workflow:
+
+* Create the job.
+* Create the trip directly from the job card.
+* Add receipts as they happen.
+* Review the audit checklist.
+* Close the trip when the project is complete.
+
+You rarely need to visit the Expenses page unless you’re reviewing expenses across all jobs, which is exactly how I’d expect a field-first contractor app to work.
