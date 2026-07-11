@@ -2875,9 +2875,10 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
 }
 
 // ─── Job Trips Panel ───────────────────────────────────────────────────────────
-function JobTripReceipts({ tripId }: { tripId: number }) {
+function JobTripReceipts({ tripId, tripStatus }: { tripId: number; tripStatus: string }) {
   const [receipts, setReceipts] = useState<any[] | null>(null);
   const [toggling, setToggling] = useState<Set<number>>(new Set());
+  const isLocked = tripStatus !== "open";
 
   useEffect(() => {
     fetch(`${BASE}/api/trips/${tripId}/receipts`, { credentials: "include" })
@@ -2916,20 +2917,30 @@ function JobTripReceipts({ tripId }: { tripId: number }) {
               {r.receiptStatus === "missing" && (
                 <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-full">⚠ Missing</span>
               )}
-              <button
-                onClick={() => toggleJobProfit(r)}
-                disabled={toggling.has(r.id)}
-                title={r.countsTowardJobProfit !== false
-                  ? "Counts toward job P&L — click to move to Audit Trail only"
-                  : "Audit Trail only — click to count toward job P&L"}
-                className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border transition-colors disabled:opacity-50 ${
+              {isLocked ? (
+                <span className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
                   r.countsTowardJobProfit !== false
-                    ? "text-green-700 bg-green-50 border-green-200 hover:bg-green-100"
-                    : "text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100"
-                }`}
-              >
-                {toggling.has(r.id) ? "…" : (r.countsTowardJobProfit !== false ? "Job P&L" : "Audit Trail")}
-              </button>
+                    ? "text-green-700 bg-green-50 border-green-200"
+                    : "text-blue-700 bg-blue-50 border-blue-200"
+                }`}>
+                  {r.countsTowardJobProfit !== false ? "Job P&L" : "Audit Trail"}
+                </span>
+              ) : (
+                <button
+                  onClick={() => toggleJobProfit(r)}
+                  disabled={toggling.has(r.id)}
+                  title={r.countsTowardJobProfit !== false
+                    ? "Counts toward job P&L — click to move to Audit Trail only"
+                    : "Audit Trail only — click to count toward job P&L"}
+                  className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border transition-colors disabled:opacity-50 ${
+                    r.countsTowardJobProfit !== false
+                      ? "text-green-700 bg-green-50 border-green-200 hover:bg-green-100"
+                      : "text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100"
+                  }`}
+                >
+                  {toggling.has(r.id) ? "…" : (r.countsTowardJobProfit !== false ? "Job P&L" : "Audit Trail")}
+                </button>
+              )}
             </div>
             <p className="text-muted-foreground mt-0.5">{r.date}{r.paidBy ? ` · ${r.paidBy}` : ""}</p>
             {r.overnightTravel === false && r.category?.toLowerCase() === "meals" && (
@@ -3047,7 +3058,7 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                       <div>
                         <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Receipts</p>
                         <p className="text-[10px] text-blue-700 italic mb-1">Expenses marked "Audit Trail" don't reduce job profit — they're tracked for tax purposes only.</p>
-                        <JobTripReceipts tripId={trip.id} />
+                        <JobTripReceipts tripId={trip.id} tripStatus={trip.status} />
                       </div>
                       {trip.status === "open" ? (
                         <a

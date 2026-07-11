@@ -250,31 +250,44 @@ router.put("/:id", async (req, res) => {
       numPeople, paidBy, receiptStatus, receiptMissingExplanation,
     } = req.body;
 
-    // Validate missing receipt explanation on explicit update
-    const effectiveReceiptStatus = receiptStatus ?? undefined;
-    if (effectiveReceiptStatus === "missing" && receiptMissingExplanation !== undefined && !receiptMissingExplanation?.trim()) {
-      return res.status(400).json({ error: "receiptMissingExplanation is required when receiptStatus is 'missing'" });
-    }
-
-    // Capture old values before updating so we can recompute the old pair if it changed
+    // Capture old values before updating
     const [before] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));
     if (!before) return res.status(404).json({ error: "Expense not found" });
 
-    // Trip lock: if tripId is being explicitly changed, target trip must be open
+    // Validate missing receipt explanation: check resulting status (request value or existing)
+    const resultingReceiptStatus = receiptStatus !== undefined ? receiptStatus : before.receiptStatus;
+    if (resultingReceiptStatus === "missing") {
+      const resultingExplanation = receiptMissingExplanation !== undefined ? receiptMissingExplanation : before.receiptMissingExplanation;
+      if (!resultingExplanation?.trim()) {
+        return res.status(400).json({ error: "receiptMissingExplanation is required when receiptStatus is 'missing'" });
+      }
+    }
+
+    // Trip lock: block all edits to receipts attached to a non-open trip
+    // (a) if attaching to / moving to a new trip, that trip must be open
     if (tripId !== undefined && tripId) {
       const [targetTrip] = await db.select({ status: businessTripsTable.status })
         .from(businessTripsTable).where(eq(businessTripsTable.id, parseInt(tripId)));
       if (!targetTrip) return res.status(400).json({ error: "Trip not found" });
       if (targetTrip.status !== 'open') return res.status(400).json({ error: "Cannot move receipt to a completed or archived trip" });
     }
+    // (b) if expense is already in a trip and tripId is not being cleared, lock the edit
+    if (before.tripId && !(tripId !== undefined && !tripId)) {
+      const [currentTrip] = await db.select({ status: businessTripsTable.status })
+        .from(businessTripsTable).where(eq(businessTripsTable.id, before.tripId));
+      if (currentTrip && currentTrip.status !== 'open') {
+        return res.status(400).json({ error: "Cannot modify receipts attached to a completed or archived trip. Reopen the trip first." });
+      }
+    }
 
     const validBusinessLines = ["general_contracting", "asphalt_sealing"];
 
     const isMealCategory = (category ?? before.category)?.toLowerCase() === "meals";
+    // Recompute meal split whenever mealTotal or amount (for meal category) changes
+    const shouldRecomputeMealSplit = mealTotal !== undefined || (amount !== undefined && isMealCategory);
     const parsedMealTotal = mealTotal !== undefined
       ? (mealTotal ? parseFloat(mealTotal) : null)
-      : (isMealCategory && amount ? parseFloat(amount) : null);
-    // Always derive server-side: 50/50 split from mealTotal
+      : (amount !== undefined && isMealCategory ? parseFloat(amount) : null);
     const computedDeductible = parsedMealTotal != null ? parsedMealTotal * 0.5 : null;
     const computedNonDeductible = parsedMealTotal != null ? parsedMealTotal * 0.5 : null;
 
@@ -288,9 +301,11 @@ router.put("/:id", async (req, res) => {
       ...(tripId !== undefined && { tripId: tripId ? parseInt(tripId) : null }),
       ...(overnightTravel !== undefined && { overnightTravel }),
       ...(isPotentiallyNondeductible !== undefined && { isPotentiallyNondeductible: isPotentiallyNondeductible === true }),
-      ...(mealTotal !== undefined && { mealTotal: parsedMealTotal != null ? parsedMealTotal.toString() : null }),
-      ...(deductibleAmount !== undefined && { deductibleAmount: computedDeductible != null ? computedDeductible.toString() : null }),
-      ...(nonDeductibleAmount !== undefined && { nonDeductibleAmount: computedNonDeductible != null ? computedNonDeductible.toString() : null }),
+      ...(shouldRecomputeMealSplit && {
+        mealTotal: parsedMealTotal != null ? parsedMealTotal.toString() : null,
+        deductibleAmount: computedDeductible != null ? computedDeductible.toString() : null,
+        nonDeductibleAmount: computedNonDeductible != null ? computedNonDeductible.toString() : null,
+      }),
       ...(tipAmount !== undefined && { tipAmount: tipAmount ? parseFloat(tipAmount).toString() : null }),
       ...(taxAmount !== undefined && { taxAmount: taxAmount ? parseFloat(taxAmount).toString() : null }),
       ...(numPeople !== undefined && { numPeople: numPeople ? parseInt(numPeople) : null }),

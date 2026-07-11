@@ -146,7 +146,9 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { destination, businessPurpose, startDate, endDate, jobId, status, closedBy } = req.body;
+    const { destination, businessPurpose, startDate, endDate, jobId, status } = req.body;
+    const authedUser = (req as any).user;
+    const serverUserId = authedUser?.claims?.sub || authedUser?.id?.toString() || null;
 
     const updateData: Record<string, any> = {};
     if (destination !== undefined) updateData.destination = destination;
@@ -158,7 +160,7 @@ router.patch("/:id", async (req, res) => {
       updateData.status = status;
       if (status === "completed" || status === "archived") {
         updateData.closedAt = new Date();
-        updateData.closedBy = closedBy || null;
+        updateData.closedBy = serverUserId;
       } else if (status === "open") {
         updateData.closedAt = null;
         updateData.closedBy = null;
