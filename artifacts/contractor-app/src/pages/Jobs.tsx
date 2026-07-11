@@ -3092,6 +3092,8 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const [editStart, setEditStart] = useState("");
   const [editEnd, setEditEnd] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingTripId, setDeletingTripId] = useState<number | null>(null);
+  const [confirmDeleteTripId, setConfirmDeleteTripId] = useState<number | null>(null);
 
   // New trip form — pre-fill from job
   const jobLocation = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
@@ -3250,6 +3252,25 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
       }
     } finally {
       setSavingEdit(false);
+    }
+  }
+
+  async function deleteTrip(tripId: number) {
+    setDeletingTripId(tripId);
+    try {
+      const res = await fetch(`${BASE}/api/trips/${tripId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.ok) {
+        setConfirmDeleteTripId(null);
+        setExpandedIds(prev => { const next = new Set(prev); next.delete(tripId); return next; });
+        if (activeReceiptFormTripId === tripId) { setActiveReceiptFormTripId(null); resetReceiptForm(); }
+        await fetchTrips();
+        qc.invalidateQueries({ queryKey: ["business-trips"] });
+      }
+    } finally {
+      setDeletingTripId(null);
     }
   }
 
@@ -3600,13 +3621,40 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                         </>
                       )}
 
-                      {/* Close / Reopen */}
-                      <div className="pt-1 border-t border-border/20">
+                      {/* Close / Reopen + Delete */}
+                      <div className="pt-1 border-t border-border/20 space-y-2">
                         {isTripOpen ? (
-                          <button onClick={() => closeOrReopenTrip(trip.id, "completed")} disabled={isClosing}
-                            className="w-full py-2 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors disabled:opacity-50">
-                            {isClosing ? "Closing…" : "✓ Close Trip"}
-                          </button>
+                          <>
+                            <button onClick={() => closeOrReopenTrip(trip.id, "completed")} disabled={isClosing}
+                              className="w-full py-2 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors disabled:opacity-50">
+                              {isClosing ? "Closing…" : "✓ Close Trip"}
+                            </button>
+                            {confirmDeleteTripId === trip.id ? (
+                              <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                                <p className="flex-1 text-xs text-red-700 font-medium">Delete this trip and all its receipts?</p>
+                                <button
+                                  onClick={() => deleteTrip(trip.id)}
+                                  disabled={deletingTripId === trip.id}
+                                  className="px-2.5 py-1 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
+                                >
+                                  {deletingTripId === trip.id ? "Deleting…" : "Delete"}
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteTripId(null)}
+                                  className="px-2.5 py-1 rounded-lg border border-red-200 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmDeleteTripId(trip.id)}
+                                className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> Delete Trip
+                              </button>
+                            )}
+                          </>
                         ) : (
                           <div className="flex items-center justify-between">
                             <p className="text-xs text-muted-foreground italic">
