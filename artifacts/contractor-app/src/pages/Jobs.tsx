@@ -3020,6 +3020,12 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const [savingReceipt, setSavingReceipt] = useState(false);
   const [closingId, setClosingId] = useState<number | null>(null);
   const [receiptRefreshKeys, setReceiptRefreshKeys] = useState<Record<number, number>>({});
+  const [editingTripId, setEditingTripId] = useState<number | null>(null);
+  const [editDest, setEditDest] = useState("");
+  const [editPurpose, setEditPurpose] = useState("");
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // New trip form — pre-fill from job
   const jobLocation = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
@@ -3119,6 +3125,39 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
       }
     } finally {
       setSavingReceipt(false);
+    }
+  }
+
+  function startEdit(trip: any) {
+    setEditingTripId(trip.id);
+    setEditDest(trip.destination ?? "");
+    setEditPurpose(trip.businessPurpose ?? "");
+    setEditStart(trip.startDate ?? "");
+    setEditEnd(trip.endDate ?? "");
+  }
+
+  async function saveEdit(tripId: number) {
+    if (!editDest.trim()) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`${BASE}/api/trips/${tripId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          destination: editDest.trim(),
+          businessPurpose: editPurpose.trim() || null,
+          startDate: editStart || null,
+          endDate: editEnd || null,
+        }),
+      });
+      if (res.ok) {
+        setEditingTripId(null);
+        await fetchTrips();
+        qc.invalidateQueries({ queryKey: ["business-trips"] });
+      }
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -3245,37 +3284,84 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
               return (
                 <div key={trip.id} className={`rounded-xl border overflow-hidden bg-background ${isTripOpen ? "border-border/50" : "border-border/30"}`}>
 
-                  {/* Collapsed summary row */}
-                  <div className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-muted/20 transition-colors"
-                    onClick={() => toggleExpand(trip.id)}>
-                    <div className="mt-0.5 flex-shrink-0">
-                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm">{trip.destination}</span>
-                        {!isTripOpen && (
-                          <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full border text-gray-500 bg-gray-100 border-gray-200 font-medium">Closed</span>
-                        )}
-                        {dateRange && <span className="text-xs text-muted-foreground">{dateRange}</span>}
-                        <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${badge.isReady ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
-                          {badge.isReady ? "🟢" : "🟡"} {badge.label}
-                        </span>
+                  {/* Collapsed summary row / inline edit form */}
+                  {editingTripId === trip.id ? (
+                    <div className="px-4 py-3 space-y-2 bg-blue-50/40">
+                      <p className="text-[11px] font-bold text-blue-800 uppercase tracking-widest">Edit Trip</p>
+                      <div>
+                        <label className="text-xs font-medium text-foreground block mb-1">Destination *</label>
+                        <input type="text" value={editDest} onChange={e => setEditDest(e.target.value)}
+                          placeholder="e.g. Evansville, IN"
+                          className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30" />
                       </div>
-                      {trip.businessPurpose && <p className="text-xs text-muted-foreground mt-0.5 truncate">{trip.businessPurpose}</p>}
-                      {/* At-a-glance stats */}
-                      <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        <span className="text-[11px] text-muted-foreground">
-                          {trip.receiptCount} receipt{trip.receiptCount !== 1 ? "s" : ""} · {money(trip.totalAmount ?? 0)}
-                        </span>
-                        {trip.mealTotal > 0 && (
-                          <span className="text-[11px] text-muted-foreground">
-                            Meals: {money(trip.mealTotal)} ({money(trip.deductibleMeals ?? 0)} deductible)
+                      <div>
+                        <label className="text-xs font-medium text-foreground block mb-1">Business Purpose</label>
+                        <input type="text" value={editPurpose} onChange={e => setEditPurpose(e.target.value)}
+                          placeholder="e.g. HVAC service call"
+                          className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs font-medium text-foreground block mb-1">Start Date</label>
+                          <input type="date" value={editStart} onChange={e => setEditStart(e.target.value)}
+                            className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-foreground block mb-1">End Date</label>
+                          <input type="date" value={editEnd} onChange={e => setEditEnd(e.target.value)}
+                            className="w-full rounded-lg border border-border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <button onClick={() => saveEdit(trip.id)} disabled={savingEdit || !editDest.trim()}
+                          className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                          {savingEdit ? "Saving…" : "Save Changes"}
+                        </button>
+                        <button onClick={() => setEditingTripId(null)}
+                          className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted/40 transition-colors">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-muted/20 transition-colors"
+                      onClick={() => toggleExpand(trip.id)}>
+                      <div className="mt-0.5 flex-shrink-0">
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm">{trip.destination}</span>
+                          {!isTripOpen && (
+                            <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full border text-gray-500 bg-gray-100 border-gray-200 font-medium">Closed</span>
+                          )}
+                          {dateRange && <span className="text-xs text-muted-foreground">{dateRange}</span>}
+                          <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${badge.isReady ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                            {badge.isReady ? "🟢" : "🟡"} {badge.label}
                           </span>
-                        )}
+                        </div>
+                        {trip.businessPurpose && <p className="text-xs text-muted-foreground mt-0.5 truncate">{trip.businessPurpose}</p>}
+                        {/* At-a-glance stats */}
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          <span className="text-[11px] text-muted-foreground">
+                            {trip.receiptCount} receipt{trip.receiptCount !== 1 ? "s" : ""} · {money(trip.totalAmount ?? 0)}
+                          </span>
+                          {trip.mealTotal > 0 && (
+                            <span className="text-[11px] text-muted-foreground">
+                              Meals: {money(trip.mealTotal)} ({money(trip.deductibleMeals ?? 0)} deductible)
+                            </span>
+                          )}
+                        </div>
                       </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); startEdit(trip); }}
+                        className="flex-shrink-0 p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+                        title="Edit trip details"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  </div>
+                  )}
 
                   {/* Expanded content */}
                   {isExpanded && (
