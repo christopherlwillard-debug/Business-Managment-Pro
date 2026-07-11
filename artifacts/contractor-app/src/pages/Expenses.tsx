@@ -2264,6 +2264,8 @@ export default function Expenses() {
   const yearExpenses = useMemo(
     () => (expenses ?? [])
       .filter(e => (e.date ?? "").startsWith(selectedYear))
+      // Exclude expenses already grouped inside a business trip folder
+      .filter(e => !(e as any).tripId)
       .filter(e => !activeBusiness || (e as any).businessId === activeBusiness.id || (!(e as any).businessId && (e as any).businessLine === activeBusiness.slug)),
     [expenses, selectedYear, activeBusiness]
   );

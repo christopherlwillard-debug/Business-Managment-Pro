@@ -262,8 +262,11 @@ router.put("/:id", async (req, res) => {
         return res.status(400).json({ error: "receiptMissingExplanation is required when receiptStatus is 'missing'" });
       }
     }
-    // Block setting receiptStatus='uploaded' without an actual file URL
-    if (resultingReceiptStatus === "uploaded") {
+    // Block explicitly setting receiptStatus='uploaded' without an actual file URL.
+    // Only fires when the caller is actively changing the status to 'uploaded';
+    // existing rows that already have receiptStatus='uploaded' but no URL are not
+    // blocked from unrelated field edits (e.g. toggling countsTowardJobProfit).
+    if (receiptStatus === "uploaded") {
       const resultingReceiptUrl = receiptUrl !== undefined ? receiptUrl : before.receiptUrl;
       if (!resultingReceiptUrl?.trim()) {
         return res.status(400).json({ error: "receiptUrl is required when receiptStatus is 'uploaded'" });
