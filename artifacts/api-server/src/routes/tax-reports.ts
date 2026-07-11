@@ -4,7 +4,7 @@ import {
   invoicesTable, expensesTable, mileageLogsTable,
   paymentsTable, subcontractorsTable, clientsTable, otherIncomeTable, businessesTable
 } from "@workspace/db/schema";
-import { eq, and, gte, lte, sum, desc, count, ne, or, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, sum, desc, count, ne, or, isNull, sql } from "drizzle-orm";
 
 const router = Router();
 
@@ -106,6 +106,29 @@ interface ScheduleCReport {
   };
 }
 
+/**
+ * Compute the Schedule C Line 24b tax amount for a single category row.
+ *
+ * For meals: use the pre-summed deductibleSum (COALESCE(deductible_amount, amount*0.5))
+ * that the SQL query computes. This honours any explicitly stored deductible_amount
+ * (e.g. set by trip receipt logic) rather than blindly re-applying 50% to the raw total.
+ *
+ * Exported for unit testing.
+ */
+export function scheduleCMealsTaxAmount(
+  scheduleCategory: string,
+  rawAmount: number,
+  deductibleSum: number | null
+): number {
+  if (scheduleCategory === "mealsDeductible") {
+    // Use stored deductible sum when available; fall back to 50% of raw amount
+    return deductibleSum !== null && deductibleSum !== undefined
+      ? deductibleSum
+      : rawAmount * 0.5;
+  }
+  return rawAmount;
+}
+
 // GET /api/tax-reports/schedule-c?year=2025&businessLine=general_contracting
 router.get("/schedule-c", async (req, res) => {
   try {
@@ -164,6 +187,10 @@ router.get("/schedule-c", async (req, res) => {
       .select({
         category: expensesTable.category,
         amount: sum(expensesTable.amount),
+        // deductibleSum: use stored deductible_amount when present (e.g. trip meals),
+        // otherwise fall back to 50% of the raw amount. This prevents double-applying
+        // the 50% rule when deductible_amount is already set to amount * 0.5.
+        deductibleSum: sql<string>`COALESCE(SUM(COALESCE(${expensesTable.deductibleAmount}::numeric, ${expensesTable.amount}::numeric * 0.5)), '0')`,
         count: count(expensesTable.id),
       })
       .from(expensesTable)
@@ -196,8 +223,12 @@ router.get("/schedule-c", async (req, res) => {
       };
 
       const scheduleCategory = SCHEDULE_C_CATEGORY_MAP[category] || "other";
-      // Meals are only 50% deductible on Schedule C line 24b — store the deductible portion
-      const taxAmount = scheduleCategory === "mealsDeductible" ? amount * 0.5 : amount;
+      // Meals: use the pre-computed deductibleSum (COALESCE(deductible_amount, amount * 0.5))
+      // so that explicitly stored deductible_amount values (e.g. from trip receipts) are
+      // honored rather than blindly re-applying 50% to the raw amount.
+      const taxAmount = scheduleCategory === "mealsDeductible"
+        ? parseFloat((exp as any).deductibleSum ?? "0")
+        : amount;
       expenses[scheduleCategory] = (expenses[scheduleCategory] || 0) + taxAmount;
 
       if (!SCHEDULE_C_CATEGORY_MAP[category]) {

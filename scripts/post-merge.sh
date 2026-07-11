@@ -894,7 +894,7 @@ pool.query(\`
 ")
 
 # Add CHECK constraints for business_trips status and expenses receipt_status
-node -e "
+(cd lib/db && node -e "
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 pool.query(\`
@@ -905,4 +905,4 @@ pool.query(\`
   ALTER TABLE expenses ADD CONSTRAINT expenses_receipt_status_check CHECK (receipt_status IN ('uploaded', 'missing'));
 \`)).then(() => { console.log('DB check constraints applied'); pool.end(); })
   .catch(e => { console.error('constraint migration error:', e.message); pool.end(); });
-"
+")
