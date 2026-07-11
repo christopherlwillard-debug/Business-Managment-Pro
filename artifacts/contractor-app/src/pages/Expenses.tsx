@@ -14,6 +14,7 @@ import {
   ExternalLink, Store, ChevronDown, Eye, Trash2, AlertTriangle,
   Calendar, Tag, Briefcase, DollarSign, StickyNote, HardHat,
   RotateCcw, Pause, Play, ChevronUp, Pencil, Maximize2, Download, EyeOff, Search, Archive,
+  Link2, Unlink2, Navigation,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link } from "wouter";
@@ -303,6 +304,124 @@ function useUpdateExpense() {
       return res.json();
     },
   });
+}
+
+function useLinkExpenseToTrip() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, tripId }: { id: number; tripId: number | null }) => {
+      const res = await fetch(`${API}/expenses/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tripId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as any).error ?? "Failed to link expense");
+      }
+      return res.json();
+    },
+    onSuccess: (_data, { tripId }) => {
+      qc.invalidateQueries({ queryKey: ["/api/expenses"] });
+      qc.invalidateQueries({ queryKey: ["business-trips"] });
+      if (tripId) qc.invalidateQueries({ queryKey: ["trip-receipts", tripId] });
+    },
+  });
+}
+
+function TripLinkButton({
+  exp,
+  trips,
+  onLink,
+  onUnlink,
+  isPending,
+}: {
+  exp: any;
+  trips: BusinessTrip[];
+  onLink: (tripId: number) => void;
+  onUnlink: () => void;
+  isPending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const linkedTripId: number | null = exp.tripId ?? null;
+  const linkedTrip = linkedTripId ? trips.find(t => t.id === linkedTripId) ?? null : null;
+  const openTrips = trips.filter(t => t.status === "open");
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  if (linkedTrip) {
+    return (
+      <div className="flex items-center gap-1 mt-0.5" onClick={e => e.stopPropagation()}>
+        <span className="inline-flex items-center gap-1 bg-sky-50 text-sky-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-sky-200 flex-shrink-0">
+          <Navigation className="w-2.5 h-2.5" /> {linkedTrip.destination}
+        </span>
+        <button
+          type="button"
+          onClick={() => onUnlink()}
+          disabled={isPending}
+          className="text-[9px] text-muted-foreground hover:text-destructive font-medium transition-colors disabled:opacity-50 flex items-center gap-0.5"
+          title="Remove from trip"
+        >
+          <Unlink2 className="w-2.5 h-2.5" /> Unlink
+        </button>
+      </div>
+    );
+  }
+
+  if (!isTravelCategory(exp.category) && !isMealCategory(exp.category)) return null;
+
+  return (
+    <div ref={ref} className="relative mt-0.5" onClick={e => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        disabled={isPending}
+        className="inline-flex items-center gap-0.5 text-[9px] text-sky-600 hover:text-sky-800 font-semibold transition-colors disabled:opacity-50"
+      >
+        <Link2 className="w-2.5 h-2.5" /> Link to Trip
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-white rounded-xl border border-border shadow-xl min-w-[220px] max-w-[280px] overflow-hidden">
+          <div className="px-3 py-2 border-b border-border/40 bg-muted/30">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Select a Trip</p>
+          </div>
+          {openTrips.length === 0 ? (
+            <p className="px-3 py-3 text-xs text-muted-foreground italic">No open trips. Create one above.</p>
+          ) : (
+            <div className="max-h-52 overflow-y-auto divide-y divide-border/30">
+              {openTrips.map(trip => (
+                <button
+                  key={trip.id}
+                  type="button"
+                  onClick={() => { onLink(trip.id); setOpen(false); }}
+                  className="w-full text-left px-3 py-2.5 hover:bg-sky-50 transition-colors"
+                >
+                  <p className="text-xs font-semibold text-foreground">{trip.destination}</p>
+                  {trip.businessPurpose && (
+                    <p className="text-[10px] text-muted-foreground truncate">{trip.businessPurpose}</p>
+                  )}
+                  {(trip.startDate || trip.endDate) && (
+                    <p className="text-[10px] text-muted-foreground">
+                      {trip.startDate ?? "?"} → {trip.endDate ?? "?"}
+                    </p>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Business Trip hooks ───────────────────────────────────────────────────────
@@ -2144,6 +2263,7 @@ export default function Expenses() {
   const deleteExpense     = useDeleteExpense();
   const deleteSpr         = useDeleteSpr();
   const updateExpense     = useUpdateExpense();
+  const linkExpenseToTrip = useLinkExpenseToTrip();
 
   const [isDialogOpen, setIsDialogOpen]               = useState(false);
   const [importOpen,   setImportOpen]                 = useState(false);
@@ -2294,11 +2414,11 @@ export default function Expenses() {
     return [...years].sort((a, b) => b.localeCompare(a));
   }, [expenses, currentYear]);
 
+  const { data: allTrips = [] } = useTrips(selectedYear);
+
   const yearExpenses = useMemo(
     () => (expenses ?? [])
       .filter(e => (e.date ?? "").startsWith(selectedYear))
-      // Exclude expenses already grouped inside a business trip folder
-      .filter(e => !(e as any).tripId)
       .filter(e => !activeBusiness || (e as any).businessId === activeBusiness.id || (!(e as any).businessId && (e as any).businessLine === activeBusiness.slug)),
     [expenses, selectedYear, activeBusiness]
   );
@@ -2967,6 +3087,31 @@ export default function Expenses() {
                                     <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                                       <Briefcase className="w-3 h-3" /> {(exp as any).jobTitle}
                                     </div>
+                                  )}
+                                  {(exp as any)._source !== "sub_payment_record" && canEdit("expenses") && (
+                                    <TripLinkButton
+                                      exp={exp}
+                                      trips={allTrips}
+                                      isPending={linkExpenseToTrip.isPending}
+                                      onLink={async (tripId) => {
+                                        try {
+                                          await linkExpenseToTrip.mutateAsync({ id: (exp as any).id, tripId });
+                                          toast({ title: "Linked to trip", description: `Expense added to ${allTrips.find(t => t.id === tripId)?.destination ?? "trip"}.` });
+                                        } catch (err: any) {
+                                          toast({ title: "Could not link", description: err?.message ?? "Please try again.", variant: "destructive" });
+                                        }
+                                      }}
+                                      onUnlink={async () => {
+                                        const prevTripId = (exp as any).tripId;
+                                        try {
+                                          await linkExpenseToTrip.mutateAsync({ id: (exp as any).id, tripId: null });
+                                          if (prevTripId) qc.invalidateQueries({ queryKey: ["trip-receipts", prevTripId] });
+                                          toast({ title: "Unlinked from trip" });
+                                        } catch (err: any) {
+                                          toast({ title: "Could not unlink", description: err?.message ?? "Please try again.", variant: "destructive" });
+                                        }
+                                      }}
+                                    />
                                   )}
                                 </td>
                                 <td className="px-6 py-4">
