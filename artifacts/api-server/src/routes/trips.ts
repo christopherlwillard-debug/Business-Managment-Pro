@@ -22,6 +22,11 @@ function formatTripWithStats(t: any) {
     mealTotal: parseFloat(t.mealTotal ?? "0"),
     deductibleMeals: parseFloat(t.deductibleMeals ?? "0"),
     missingReceipts: Number(t.missingReceipts ?? 0),
+    hotelTotal: parseFloat(t.hotelTotal ?? "0"),
+    airfareTotal: parseFloat(t.airfareTotal ?? "0"),
+    transportTotal: parseFloat(t.transportTotal ?? "0"),
+    mealsHaveOvernightAnswered: Number(t.mealsHaveOvernightAnswered ?? 0),
+    mealsCount: Number(t.mealsCount ?? 0),
   };
 }
 
@@ -42,6 +47,11 @@ const tripStatsSelect = {
   mealTotal: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) = 'meals' THEN ${expensesTable.amount} ELSE 0 END), 0)`,
   deductibleMeals: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) = 'meals' THEN COALESCE(${expensesTable.deductibleAmount}::numeric, ${expensesTable.amount}::numeric * 0.5) ELSE 0 END), 0)`,
   missingReceipts: sql<string>`COUNT(CASE WHEN ${expensesTable.receiptStatus} = 'missing' THEN 1 END)`,
+  hotelTotal: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) LIKE '%hotel%' OR LOWER(${expensesTable.category}) LIKE '%lodging%' THEN ${expensesTable.amount} ELSE 0 END), 0)`,
+  airfareTotal: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) LIKE '%airfare%' OR LOWER(${expensesTable.category}) LIKE '%flight%' THEN ${expensesTable.amount} ELSE 0 END), 0)`,
+  transportTotal: sql<string>`COALESCE(SUM(CASE WHEN LOWER(${expensesTable.category}) LIKE '%rental%' OR LOWER(${expensesTable.category}) LIKE '%taxi%' OR LOWER(${expensesTable.category}) LIKE '%rideshare%' THEN ${expensesTable.amount} ELSE 0 END), 0)`,
+  mealsHaveOvernightAnswered: sql<string>`COUNT(CASE WHEN LOWER(${expensesTable.category}) = 'meals' AND ${expensesTable.overnightTravel} IS NOT NULL THEN 1 END)`,
+  mealsCount: sql<string>`COUNT(CASE WHEN LOWER(${expensesTable.category}) = 'meals' THEN 1 END)`,
 };
 
 function buildTripsQuery() {
@@ -197,11 +207,14 @@ router.get("/:id/receipts", async (req, res) => {
         tipAmount: expensesTable.tipAmount,
         taxAmount: expensesTable.taxAmount,
         overnightTravel: expensesTable.overnightTravel,
-        businessPurpose: sql<string | null>`${expensesTable.notes}`,
+        isPotentiallyNondeductible: expensesTable.isPotentiallyNondeductible,
+        countsTowardJobProfit: expensesTable.countsTowardJobProfit,
+        businessPurpose: sql<string | null>`COALESCE(NULLIF(${expensesTable.notes}, ''), ${businessTripsTable.businessPurpose})`,
         jobTitle: jobsTable.title,
       })
       .from(expensesTable)
       .leftJoin(jobsTable, eq(expensesTable.jobId, jobsTable.id))
+      .leftJoin(businessTripsTable, eq(expensesTable.tripId, businessTripsTable.id))
       .where(eq(expensesTable.tripId, id))
       .orderBy(asc(expensesTable.date));
 

@@ -2875,6 +2875,45 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
 }
 
 // ─── Job Trips Panel ───────────────────────────────────────────────────────────
+function JobTripReceipts({ tripId }: { tripId: number }) {
+  const [receipts, setReceipts] = useState<any[] | null>(null);
+  useEffect(() => {
+    fetch(`${BASE}/api/trips/${tripId}/receipts`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : []).then(setReceipts).catch(() => setReceipts([]));
+  }, [tripId]);
+  if (receipts === null) return <p className="text-xs text-muted-foreground italic animate-pulse py-2">Loading receipts…</p>;
+  if (receipts.length === 0) return <p className="text-xs text-muted-foreground italic py-2">No receipts logged yet.</p>;
+  return (
+    <div className="space-y-1.5 mt-2">
+      {receipts.map((r: any) => (
+        <div key={r.id} className="flex items-start justify-between gap-2 bg-white rounded-xl px-3 py-2 border border-border/40 text-xs">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-medium text-foreground">{r.description}</span>
+              {r.vendor && <span className="text-muted-foreground">· {r.vendor}</span>}
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-600">{r.category}</span>
+              {r.receiptStatus === "missing" && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-full">⚠ Missing</span>
+              )}
+              {r.countsTowardJobProfit === false && (
+                <span className="inline-flex items-center text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">Audit Trail</span>
+              )}
+            </div>
+            <p className="text-muted-foreground mt-0.5">{r.date}{r.paidBy ? ` · ${r.paidBy}` : ""}</p>
+            {r.overnightTravel === false && r.category?.toLowerCase() === "meals" && (
+              <p className="text-amber-600 mt-0.5">⚠ Day-trip meal — may be non-deductible</p>
+            )}
+            {r.receiptMissingExplanation && (
+              <p className="text-amber-700 mt-0.5 italic">Reason: {r.receiptMissingExplanation}</p>
+            )}
+          </div>
+          <span className="font-bold text-foreground flex-shrink-0">${Number(r.amount).toFixed(2)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const [trips, setTrips] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2936,7 +2975,7 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
             trips.map(trip => {
               const isOpen = expandedIds.has(trip.id);
               const dateRange = [trip.startDate, trip.endDate].filter(Boolean).join(" → ");
-              const hasIssues = trip.missingReceipts > 0 || !trip.businessPurpose || !trip.startDate || trip.receiptCount === 0;
+              const hasIssues = trip.missingReceipts > 0 || !trip.businessPurpose || !trip.startDate || !trip.endDate || trip.receiptCount === 0;
               return (
                 <div key={trip.id} className="rounded-xl border border-border/50 overflow-hidden bg-background">
                   <div
@@ -2973,6 +3012,11 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                           </div>
                         </div>
                       )}
+                      <div>
+                        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Receipts</p>
+                        <p className="text-[10px] text-blue-700 italic mb-1">Expenses marked "Audit Trail" don't reduce job profit — they're tracked for tax purposes only.</p>
+                        <JobTripReceipts tripId={trip.id} />
+                      </div>
                       {trip.status === "open" ? (
                         <a
                           href={`${BASE}/?path=expenses`}

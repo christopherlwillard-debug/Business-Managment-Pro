@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { expensesTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable } from "@workspace/db/schema";
+import { expensesTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable, businessTripsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, sql, isNull, or, desc } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
@@ -173,6 +173,9 @@ router.post("/", async (req, res) => {
       numPeople, paidBy, receiptStatus, receiptMissingExplanation,
     } = req.body;
     if (!description || !amount || !category || !date) return res.status(400).json({ error: "Missing required fields" });
+    if (receiptStatus === "missing" && !receiptMissingExplanation?.trim()) {
+      return res.status(400).json({ error: "receiptMissingExplanation is required when receiptStatus is 'missing'" });
+    }
 
     const validBusinessLines = ["general_contracting", "asphalt_sealing"];
     const isMealCategory = category?.toLowerCase() === "meals";
@@ -180,9 +183,17 @@ router.post("/", async (req, res) => {
     const computedDeductible = deductibleAmount != null ? parseFloat(deductibleAmount) : (parsedMealTotal != null ? parsedMealTotal * 0.5 : null);
     const computedNonDeductible = nonDeductibleAmount != null ? parseFloat(nonDeductibleAmount) : (parsedMealTotal != null ? parsedMealTotal * 0.5 : null);
 
+    // Trip-purpose defaulting: if notes is blank and tripId provided, inherit trip's businessPurpose
+    let resolvedNotes = notes || null;
+    if (tripId && !resolvedNotes) {
+      const [parentTrip] = await db.select({ businessPurpose: businessTripsTable.businessPurpose })
+        .from(businessTripsTable).where(eq(businessTripsTable.id, parseInt(tripId)));
+      if (parentTrip?.businessPurpose) resolvedNotes = parentTrip.businessPurpose;
+    }
+
     const [expense] = await db.insert(expensesTable).values({
       description, amount: amount.toString(), category, date,
-      vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes,
+      vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes: resolvedNotes,
       excludeFromNetProfit: excludeFromNetProfit === true,
       countsTowardJobProfit: countsTowardJobProfit === false ? false : true,
       businessLine: validBusinessLines.includes(businessLine) ? businessLine : null,
@@ -235,6 +246,12 @@ router.put("/:id", async (req, res) => {
       mealTotal, deductibleAmount, nonDeductibleAmount, tipAmount, taxAmount,
       numPeople, paidBy, receiptStatus, receiptMissingExplanation,
     } = req.body;
+
+    // Validate missing receipt explanation on explicit update
+    const effectiveReceiptStatus = receiptStatus ?? undefined;
+    if (effectiveReceiptStatus === "missing" && receiptMissingExplanation !== undefined && !receiptMissingExplanation?.trim()) {
+      return res.status(400).json({ error: "receiptMissingExplanation is required when receiptStatus is 'missing'" });
+    }
 
     // Capture old values before updating so we can recompute the old pair if it changed
     const [before] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));

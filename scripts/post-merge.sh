@@ -892,3 +892,17 @@ pool.query(\`
 }).then(() => { console.log('business_trips and expense trip columns ensured'); pool.end(); })
   .catch(e => { console.error('business_trips migration error:', e.message); pool.end(); process.exit(1); });
 ")
+
+# Add CHECK constraints for business_trips status and expenses receipt_status
+node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  ALTER TABLE business_trips DROP CONSTRAINT IF EXISTS business_trips_status_check;
+  ALTER TABLE business_trips ADD CONSTRAINT business_trips_status_check CHECK (status IN ('open', 'completed', 'archived'));
+\`).then(() => pool.query(\`
+  ALTER TABLE expenses DROP CONSTRAINT IF EXISTS expenses_receipt_status_check;
+  ALTER TABLE expenses ADD CONSTRAINT expenses_receipt_status_check CHECK (receipt_status IN ('uploaded', 'missing', 'verbal_confirmation'));
+\`)).then(() => { console.log('DB check constraints applied'); pool.end(); })
+  .catch(e => { console.error('constraint migration error:', e.message); pool.end(); });
+"

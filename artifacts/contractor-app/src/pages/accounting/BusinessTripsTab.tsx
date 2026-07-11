@@ -24,6 +24,11 @@ interface BusinessTrip {
   mealTotal: number;
   deductibleMeals: number;
   missingReceipts: number;
+  hotelTotal: number;
+  airfareTotal: number;
+  transportTotal: number;
+  mealsHaveOvernightAnswered: number;
+  mealsCount: number;
 }
 
 function money(n: number) { return `$${n.toFixed(2)}`; }
@@ -38,7 +43,10 @@ function auditStatus(trip: BusinessTrip) {
   if (trip.missingReceipts > 0) issues.push(`${trip.missingReceipts} missing receipt${trip.missingReceipts > 1 ? "s" : ""}`);
   if (!trip.businessPurpose) issues.push("No business purpose");
   if (!trip.startDate) issues.push("No start date");
+  if (!trip.endDate) issues.push("No end date");
   if (trip.receiptCount === 0) issues.push("No receipts logged");
+  if (!trip.jobId) issues.push("Not linked to a job");
+  if (trip.mealsCount > 0 && trip.mealsHaveOvernightAnswered < trip.mealsCount) issues.push("Overnight travel unanswered on meals");
   return issues.length === 0
     ? { emoji: "🟢", label: "Audit Ready", color: "text-emerald-700 bg-emerald-50 border-emerald-200", issues: [] }
     : { emoji: "🟡", label: "Needs Attention", color: "text-amber-700 bg-amber-50 border-amber-200", issues };
@@ -115,8 +123,11 @@ function TripRow({ trip }: { trip: BusinessTrip }) {
               { label: "Destination", ok: !!trip.destination, value: trip.destination },
               { label: "Business purpose", ok: !!trip.businessPurpose, value: trip.businessPurpose },
               { label: "Start date", ok: !!trip.startDate, value: trip.startDate ? formatDate(trip.startDate) : null },
+              { label: "End date", ok: !!trip.endDate, value: trip.endDate ? formatDate(trip.endDate) : null },
+              { label: "Linked to a job", ok: !!trip.jobId, value: trip.jobTitle ?? (trip.jobId ? `Job #${trip.jobId}` : "Not linked") },
               { label: "Receipts documented", ok: trip.receiptCount > 0, value: `${trip.receiptCount} receipt${trip.receiptCount !== 1 ? "s" : ""}` },
               { label: "No missing receipts", ok: trip.missingReceipts === 0, value: trip.missingReceipts > 0 ? `${trip.missingReceipts} missing` : "All present" },
+              ...(trip.mealsCount > 0 ? [{ label: "Overnight travel answered on meals", ok: trip.mealsHaveOvernightAnswered >= trip.mealsCount, value: `${trip.mealsHaveOvernightAnswered}/${trip.mealsCount}` }] : []),
             ].map(item => (
               <div key={item.label} className="flex items-center gap-2.5 text-xs">
                 <span className={item.ok ? "text-emerald-600" : "text-amber-500"}>
@@ -212,7 +223,8 @@ export default function BusinessTripsTab({ year }: { year: number }) {
   const totalSpend = trips.reduce((s, t) => s + t.totalAmount, 0);
   const totalMeals = trips.reduce((s, t) => s + t.mealTotal, 0);
   const deductibleMeals = trips.reduce((s, t) => s + t.deductibleMeals, 0);
-  const allReady = trips.length > 0 && trips.every(t => auditStatus(t).issues.length === 0);
+  const needsAttentionCount = trips.filter(t => auditStatus(t).issues.length > 0).length;
+  const allReady = trips.length > 0 && needsAttentionCount === 0;
 
   return (
     <div className="space-y-6">
@@ -292,6 +304,66 @@ export default function BusinessTripsTab({ year }: { year: number }) {
               </p>
             </div>
           )}
+
+          {/* Category Breakdown Summary */}
+          {(() => {
+            const hotelTotal = trips.reduce((s, t) => s + (t.hotelTotal ?? 0), 0);
+            const airfareTotal = trips.reduce((s, t) => s + (t.airfareTotal ?? 0), 0);
+            const transportTotal = trips.reduce((s, t) => s + (t.transportTotal ?? 0), 0);
+            const cats = [
+              { label: "Hotel/Lodging", amount: hotelTotal, color: "text-blue-700 bg-blue-50 border-blue-100" },
+              { label: "Meals", amount: totalMeals, color: "text-amber-700 bg-amber-50 border-amber-100" },
+              { label: "Airfare", amount: airfareTotal, color: "text-sky-700 bg-sky-50 border-sky-100" },
+              { label: "Transport", amount: transportTotal, color: "text-violet-700 bg-violet-50 border-violet-100" },
+              { label: "Other", amount: Math.max(0, totalSpend - hotelTotal - totalMeals - airfareTotal - transportTotal), color: "text-gray-600 bg-gray-50 border-gray-100" },
+            ].filter(c => c.amount > 0);
+            if (cats.length === 0) return null;
+            return (
+              <div className="rounded-2xl border border-border/50 bg-card px-5 py-4">
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">Spend by Category</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {cats.map(c => (
+                    <div key={c.label} className={`rounded-xl border px-3 py-2 text-center ${c.color}`}>
+                      <p className="text-sm font-bold">{money(c.amount)}</p>
+                      <p className="text-[11px] mt-0.5">{c.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Needs Attention list */}
+          {(() => {
+            const attention = trips.filter(t => auditStatus(t).issues.length > 0);
+            if (attention.length === 0) return null;
+            return (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/60 px-5 py-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                  <p className="text-sm font-bold text-amber-800">Needs Attention ({attention.length})</p>
+                </div>
+                <div className="space-y-2">
+                  {attention.map(t => {
+                    const s = auditStatus(t);
+                    return (
+                      <div key={t.id} className="bg-white rounded-xl border border-amber-100 px-3 py-2.5">
+                        <p className="text-xs font-semibold text-foreground">{t.destination}</p>
+                        <ul className="mt-1 space-y-0.5">
+                          {s.issues.map(issue => (
+                            <li key={issue} className="text-[11px] text-amber-700 flex items-center gap-1.5">
+                              <span className="w-1 h-1 rounded-full bg-amber-400 flex-shrink-0" />
+                              {issue}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
     </div>

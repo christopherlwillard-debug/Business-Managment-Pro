@@ -413,7 +413,10 @@ function auditStatus(trip: BusinessTrip): { label: string; color: string; descri
   if (trip.missingReceipts > 0) issues.push(`${trip.missingReceipts} missing receipt${trip.missingReceipts > 1 ? "s" : ""}`);
   if (!trip.businessPurpose) issues.push("No business purpose");
   if (!trip.startDate) issues.push("No start date");
+  if (!trip.endDate) issues.push("No end date");
   if (trip.receiptCount === 0) issues.push("No receipts logged");
+  if (!trip.jobId) issues.push("Not linked to a job");
+  if ((trip as any).mealsCount > 0 && (trip as any).mealsHaveOvernightAnswered < (trip as any).mealsCount) issues.push("Overnight travel unanswered on meals");
   if (issues.length === 0) {
     return { label: "Audit Ready", color: "text-emerald-700 bg-emerald-50 border-emerald-200", description: "All required documentation is in order" };
   }
@@ -2070,6 +2073,9 @@ export default function Expenses() {
   const [receiptStatus, setReceiptStatus]             = useState<"uploaded" | "missing">("uploaded");
   const [receiptMissingExpl, setReceiptMissingExpl]   = useState("");
   const [mealNumPeople, setMealNumPeople]             = useState("");
+  const [overnightTravel, setOvernightTravel]         = useState<boolean | null>(null);
+  const [tipAmount,     setTipAmount]                 = useState("");
+  const [taxAmount,     setTaxAmount]                 = useState("");
   const [viewExpense,   setViewExpense]                = useState<any | null>(null);
   const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; countsTowardJobProfit: boolean; businessLine: string; businessId: number | null} | null>(null);
   const [editReceiptFile, setEditReceiptFile]         = useState<File | null>(null);
@@ -2253,6 +2259,9 @@ export default function Expenses() {
     setReceiptStatus("uploaded");
     setReceiptMissingExpl("");
     setMealNumPeople("");
+    setOvernightTravel(null);
+    setTipAmount("");
+    setTaxAmount("");
     setPrefillAmount("");
     setPrefillDate("");
     setPrefillDesc("");
@@ -2265,6 +2274,10 @@ export default function Expenses() {
     const fd = new FormData(e.currentTarget);
 
     try {
+      if (receiptStatus === "missing" && !receiptMissingExpl.trim()) {
+        toast({ title: "Explanation required", description: "Please describe why the receipt is missing (IRS requirement).", variant: "destructive" });
+        return;
+      }
       const rawCategory = fd.get("category") as string;
       const rawAmount = parseFloat(fd.get("amount") as string);
       const expense = await createMutation.mutateAsync({
@@ -2286,6 +2299,10 @@ export default function Expenses() {
           receiptStatus,
           receiptMissingExplanation: receiptStatus === "missing" ? (receiptMissingExpl || undefined) : undefined,
           numPeople: mealNumPeople ? parseInt(mealNumPeople) : undefined,
+          overnightTravel: overnightTravel ?? undefined,
+          tipAmount: tipAmount ? parseFloat(tipAmount) : undefined,
+          taxAmount: taxAmount ? parseFloat(taxAmount) : undefined,
+          isPotentiallyNondeductible: isMealCategory(rawCategory) && overnightTravel === false,
           ...(isMealCategory(rawCategory) && {
             mealTotal: rawAmount,
             deductibleAmount: rawAmount * 0.5,
@@ -2315,6 +2332,9 @@ export default function Expenses() {
       setReceiptStatus("uploaded");
       setReceiptMissingExpl("");
       setMealNumPeople("");
+      setOvernightTravel(null);
+      setTipAmount("");
+      setTaxAmount("");
       if (prefillTripId) {
         qc.invalidateQueries({ queryKey: ["trip-receipts", prefillTripId] });
         qc.invalidateQueries({ queryKey: ["business-trips"] });
@@ -3068,10 +3088,69 @@ export default function Expenses() {
                     </div>
                   )}
                 </div>
+
+                {/* Overnight travel toggle — required for IRS meal deductibility */}
+                <div>
+                  <label className="block text-xs font-medium mb-1.5">
+                    Overnight travel? <span className="text-muted-foreground font-normal">(IRS requires this to deduct meals)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    {([{ v: true, label: "Yes — overnight" }, { v: false, label: "No — day trip" }, { v: null, label: "Not sure" }] as const).map(opt => (
+                      <button
+                        key={String(opt.v)}
+                        type="button"
+                        onClick={() => setOvernightTravel(opt.v)}
+                        className={`flex-1 px-2 py-2 rounded-xl border text-xs font-semibold transition-colors ${
+                          overnightTravel === opt.v
+                            ? opt.v === true ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                              : opt.v === false ? "border-amber-400 bg-amber-50 text-amber-700"
+                              : "border-blue-300 bg-blue-50 text-blue-700"
+                            : "border-border text-muted-foreground hover:border-primary/40"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {isMealCategory(category) && overnightTravel === false && (
+                    <p className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                      ⚠ Day-trip meals are typically non-deductible unless you can document a clear business reason (IRS Pub. 463). This expense is flagged as potentially non-deductible.
+                    </p>
+                  )}
+                </div>
+
                 {isMealCategory(category) && (
-                  <p className="text-[11px] text-teal-700 bg-white/70 rounded-lg px-2.5 py-1.5 border border-teal-100">
-                    Meals are 50% deductible — the deductible amount is calculated automatically.
-                  </p>
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium mb-1">Tip Amount <span className="font-normal text-muted-foreground">(optional)</span></label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={tipAmount}
+                          onChange={e => setTipAmount(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1">Tax Amount <span className="font-normal text-muted-foreground">(optional)</span></label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={taxAmount}
+                          onChange={e => setTaxAmount(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-teal-700 bg-white/70 rounded-lg px-2.5 py-1.5 border border-teal-100">
+                      Meals are 50% deductible — the deductible amount is calculated automatically.
+                    </p>
+                  </>
                 )}
                 <div>
                   <label className="block text-xs font-medium mb-1">Receipt Status</label>
