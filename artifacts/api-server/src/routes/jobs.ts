@@ -812,14 +812,36 @@ router.get("/:id/invoice-draft", async (req, res) => {
 
       const sbLines: InvoiceLine[] = [];
 
-      const repairLabor = sb.repairHours * repairRate;
-      if (repairLabor > 0) {
-        sbLines.push({ description: "Repair Labor", quantity: 1, unitPrice: parseFloat(repairLabor.toFixed(2)) });
+      const techLabel = sb.techCount === 1 ? "1 Tech" : `${sb.techCount} Techs`;
+
+      if (sb.repairHours > 0) {
+        if (repairRate > 0) {
+          sbLines.push({
+            description: `Repair Labor (${techLabel})`,
+            quantity: parseFloat(sb.repairHours.toFixed(2)),
+            unitPrice: parseFloat(repairRate.toFixed(2)),
+          });
+        } else {
+          const repairLabor = sb.repairHours * repairRate;
+          if (repairLabor > 0) {
+            sbLines.push({ description: "Repair Labor", quantity: 1, unitPrice: parseFloat(repairLabor.toFixed(2)) });
+          }
+        }
       }
 
-      const driveTime = sb.driveHours * driveRate;
-      if (driveTime > 0) {
-        sbLines.push({ description: "Drive Time", quantity: 1, unitPrice: parseFloat(driveTime.toFixed(2)) });
+      if (sb.driveHours > 0) {
+        if (driveRate > 0) {
+          sbLines.push({
+            description: `Drive Time (${techLabel})`,
+            quantity: parseFloat(sb.driveHours.toFixed(2)),
+            unitPrice: parseFloat(driveRate.toFixed(2)),
+          });
+        } else {
+          const driveTime = sb.driveHours * driveRate;
+          if (driveTime > 0) {
+            sbLines.push({ description: "Drive Time", quantity: 1, unitPrice: parseFloat(driveTime.toFixed(2)) });
+          }
+        }
       }
 
       const isContracted = sb.workType === "contracted";

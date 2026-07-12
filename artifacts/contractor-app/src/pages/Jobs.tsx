@@ -6260,6 +6260,17 @@ export default function Jobs() {
       }
 
       if (existingDraft) {
+        // For service billing jobs: always refresh line items from current worksheet data
+        // so that changes to hours/rates/mileage are immediately reflected without
+        // the user having to delete and recreate the draft.
+        if (job.serviceBilling && existingDraft.status === "draft" && jobDraft?.lineItems?.length) {
+          existingDraft = { ...existingDraft, lineItems: jobDraft.lineItems as typeof existingDraft.lineItems };
+          setInvoiceDraftData(null);
+          setSelectedExistingInvoice(existingDraft);
+          setInvoiceEditorOpen(true);
+          return;
+        }
+
         // Merge estimate lines from the job draft into the existing draft invoice.
         // Material lines are already managed by auto-sync; we handle all other lines here.
         const isMaterialLine = (li: { description: string; [k: string]: unknown }) =>
