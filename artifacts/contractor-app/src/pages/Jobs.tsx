@@ -1944,6 +1944,15 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
       toast({ title: "Enter work hours and rate to record payment", variant: "destructive" });
       return;
     }
+    const th = parseFloat(bdTravelHours) || 0;
+    if (th > 0 && p.totalHours > 0) {
+      const confirmed = window.confirm(
+        `Double-pay check:\n\nWork Hours (${wh}h) was pre-filled from ${p.totalHours.toFixed(1)} logged hours. ` +
+        `If any of those logged hours were travel time, adding ${th}h Travel Hours here will pay for them twice.\n\n` +
+        `Have you already reduced Work Hours to exclude travel? Press OK to record anyway, or Cancel to review.`
+      );
+      if (!confirmed) return;
+    }
     handlePay(bdTotal, {
       workHours:     wh,
       workRate:      wr,
@@ -2163,6 +2172,18 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
               </div>
               {bdTravelPay > 0 && (
                 <p className="text-[9px] text-sky-600">Travel pay: ${fmt(bdTravelPay)}</p>
+              )}
+
+              {/* Overpayment warning: travel hours entered while tracked hours pre-filled work hours */}
+              {(parseFloat(bdTravelHours) || 0) > 0 && p.totalHours > 0 && (
+                <div className="flex items-start gap-1.5 bg-amber-50 border border-amber-300 rounded-lg px-2 py-1.5">
+                  <span className="text-amber-600 flex-shrink-0 text-xs font-bold mt-0.5">⚠</span>
+                  <p className="text-[10px] text-amber-800 leading-snug">
+                    <span className="font-semibold">Double-pay risk:</span> Work Hours was pre-filled from{" "}
+                    {p.totalHours.toFixed(1)} logged hrs — if any of those were travel, entering Travel Hours
+                    here will count them twice. Reduce Work Hours by your travel amount before recording.
+                  </p>
+                </div>
               )}
 
               {/* Bonus */}
