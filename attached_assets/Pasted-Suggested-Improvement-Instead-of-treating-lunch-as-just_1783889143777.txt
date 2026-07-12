@@ -1,0 +1,86 @@
+Suggested Improvement
+
+Instead of treating lunch as just a deduction, model it internally as an Advance Against Wages.
+
+This keeps the accounting accurate because the subcontractor has already received value earlier in the day. It also makes the feature much more flexible for future use.
+
+Rename the deduction fields throughout the database and API to:
+
+* Advance Amount
+* Advance Note
+
+The UI can still use examples such as:
+
+* Lunch advance
+* Fuel advance
+* Tool advance
+* Cash advance
+
+This allows any type of advance to be recorded without changing the workflow.
+
+⸻
+
+Store the Complete Payment Breakdown
+
+Do not store only the final payment amount. Persist every component of the payment so the ledger can always be reconstructed later.
+
+Store:
+
+* Base Pay
+* Work Hours
+* Work Rate
+* Travel Hours
+* Travel Rate
+* Bonus Amount
+* Bonus Note
+* Advance Amount
+* Advance Note
+* Net Paid
+
+Calculate:
+
+Base Pay = (Work Hours × Work Rate) + (Travel Hours × Travel Rate)
+
+Net Paid = Base Pay + Bonus Amount − Advance Amount
+
+Keeping every component allows future reporting, audits, payment history, and potential 1099 reporting without losing any information.
+
+⸻
+
+Improve the Payment History
+
+Instead of only displaying the net payment amount, show the complete breakdown for every payment.
+
+Example:
+
+Paid: $455.00
+
+Work:
+12.0 hrs × $25.00 = $300.00
+
+Travel:
+8.0 hrs × $15.00 = $120.00
+
+Performance Bonus:
++$50.00
+“Finished punch list ahead of schedule”
+
+Lunch Advance:
+−$15.00
+
+Net Paid:
+$455.00
+
+This makes the ledger self-documenting so months later it is immediately obvious how every payment was calculated.
+
+⸻
+
+Future-Proofing
+
+Use the term Advance instead of Deduction throughout the database schema, API, and business logic.
+
+An advance simply reduces the cash paid because the subcontractor has already received part of their compensation earlier (lunch, fuel, tools, cash, etc.).
+
+This leaves room in the future to add true payroll deductions (taxes, insurance, garnishments, retirement contributions, etc.) without renaming database fields or performing migrations.
+
+This change makes the system more accurate from an accounting perspective while also making it more flexible for future payroll and reporting features.

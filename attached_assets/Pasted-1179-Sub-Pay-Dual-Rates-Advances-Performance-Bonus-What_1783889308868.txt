@@ -1,0 +1,237 @@
+1179 - Sub Pay: Dual Rates, Advances & Performance Bonus
+
+What & Why
+
+Three improvements to the hourly subcontractor payment workflow, designed to make every payment self-documenting while future-proofing the ledger for reporting, audits, and 1099 preparation.
+
+1. Advance Against Wages (replaces “Deduction”)
+
+When Willard fronts money to a subcontractor during the day (lunch, fuel, tools, cash, etc.), it should be recorded as an Advance Against Wages, not a deduction.
+
+The advance simply reduces the amount of cash paid at the end of the job because the subcontractor has already received part of their compensation.
+
+Using the term Advance throughout the database and API leaves room for true payroll deductions (taxes, insurance, garnishments, retirement, etc.) in the future without requiring schema changes or field renaming.
+
+2. Separate Work Rate and Travel Rate
+
+Hourly subcontractors are often paid different rates depending on what they were doing.
+
+Example:
+
+* Work Time: $25.00/hour
+* Travel Time: $15.00/hour
+
+The payment dialog should support independent hour/rate pairs so both the calculation and payment history accurately reflect how the subcontractor was paid.
+
+3. Performance Bonus
+
+Allow an optional one-time dollar bonus for exceptional work.
+
+A bonus includes an optional note explaining why it was given and is added before any advance is subtracted.
+
+⸻
+
+Done Looks Like
+
+The payment summary always displays:
+
+Work Pay + Travel Pay + Bonus − Advance = Net Paid
+
+Example:
+
+Base Pay: $420.00
+
+Performance Bonus: +$50.00
+
+Advance: −$15.00
+
+Net Paid: $455.00
+
+⸻
+
+Every payment history entry permanently shows the complete breakdown.
+
+Example:
+
+Paid: $455.00
+
+Work:
+12.0 hrs × $25.00 = $300.00
+
+Travel:
+8.0 hrs × $15.00 = $120.00
+
+Performance Bonus:
++$50.00
+“Finished punch list ahead of schedule”
+
+Advance:
+−$15.00
+“Lunch”
+
+Net Paid:
+$455.00
+
+The payment ledger becomes completely self-documenting, making it easy to understand exactly how every payment was calculated months or years later.
+
+⸻
+
+The subcontractor profile includes a default Travel Rate alongside the existing hourly pay rate.
+
+Every payment stores all information required to completely reconstruct the calculation:
+
+* Work Hours
+* Work Rate
+* Travel Hours
+* Travel Rate
+* Bonus Amount
+* Bonus Note
+* Advance Amount
+* Advance Note
+* Net Paid
+
+Base Pay is calculated from the stored hours and rates rather than stored separately, preventing duplicate data and ensuring calculations always remain consistent.
+
+⸻
+
+Out of Scope
+
+* Fixed-pay subcontractors
+* Allocation/pay-split subcontractors
+* Payroll deductions (taxes, insurance, garnishments, retirement, etc.)
+* Reporting grouped by work vs. travel hours
+* Payroll processing
+
+⸻
+
+Steps
+
+1. Extend sub_payment_records
+
+Add nullable columns:
+
+* workHours
+* workRate
+* travelHours
+* travelRate
+* bonusAmount
+* bonusNote
+* advanceAmount
+* advanceNote
+* netPaid
+
+Run the ALTER statements using the existing startup migration pattern in:
+
+artifacts/api-server/src/index.ts
+
+⸻
+
+2. Add Travel Rate
+
+Add:
+
+* travelPayRate to subcontractors
+* travelRate to job_subcontractors
+
+These provide a profile default with optional per-job overrides.
+
+⸻
+
+3. Update Pay Worker API
+
+Accept:
+
+* workHours
+* workRate
+* travelHours
+* travelRate
+* bonusAmount
+* bonusNote
+* advanceAmount
+* advanceNote
+
+Server calculates:
+
+Work Pay = workHours × workRate
+
+Travel Pay = travelHours × travelRate
+
+Base Pay = Work Pay + Travel Pay
+
+Net Paid = Base Pay + Bonus Amount − Advance Amount
+
+Store:
+
+* Net Paid as the payment amount
+* Every payment component individually
+* A readable payment description summarizing the breakdown
+
+⸻
+
+4. Subcontractor Profile
+
+Add a Travel Rate field next to the existing hourly rate so defaults can be configured once per subcontractor.
+
+⸻
+
+5. Pay Worker Dialog
+
+Replace the single hourly section with:
+
+Work
+
+* Hours
+* Rate
+
+Travel
+
+* Hours
+* Rate
+
+Performance Bonus (optional)
+
+* Dollar amount
+* Note
+
+Advance Against Wages (optional)
+
+* Dollar amount
+* Note
+
+Examples:
+
+* Lunch
+* Fuel
+* Tool Purchase
+* Cash Advance
+
+Summary displayed live:
+
+Work Pay + Travel Pay + Bonus − Advance = Net Paid
+
+Existing partial payment and pay-in-full workflows remain unchanged.
+
+⸻
+
+6. Payment History
+
+Each payment entry displays:
+
+* Work hours × rate
+* Travel hours × rate
+* Performance bonus with note
+* Advance with note
+* Net paid
+
+Older payment records created before this feature continue displaying only the recorded payment amount for backward compatibility.
+
+⸻
+
+Relevant Files
+
+* lib/db/src/schema/sub-payment-records.ts
+* lib/db/src/schema/job-subcontractors.ts
+* lib/db/src/schema/subcontractors.ts
+* artifacts/api-server/src/index.ts
+* artifacts/api-server/src/routes/jobs.ts
+* artifacts/contractor-app/src/pages/Jobs.tsx
