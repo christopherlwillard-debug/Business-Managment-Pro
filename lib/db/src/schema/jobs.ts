@@ -41,6 +41,7 @@ export const serviceBillingSchema = z.object({
   }).nullable().optional(),
   internalLaborRate: z.number().nullable().optional(),
   fuelEstimate: z.number().nullable().optional(),
+  workType: z.enum(["service", "contracted"]).default("service").optional(),
 });
 export type ServiceBilling = z.infer<typeof serviceBillingSchema>;
 

@@ -71,6 +71,7 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
   const [fuelEstimate, setFuelEstimate] = useState<string>(existing?.fuelEstimate != null ? String(existing.fuelEstimate) : "");
   const [showInternal, setShowInternal] = useState(false);
   const [billingNotes, setBillingNotes] = useState<string | null>(null);
+  const [workType, setWorkType] = useState<"service" | "contracted">(existing?.workType ?? "service");
   // Default reimbursable flag for newly added parts, seeded from the client's profile rule.
   const [partsDefaultReimbursable, setPartsDefaultReimbursable] = useState(true);
 
@@ -154,7 +155,13 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
 
   const repairLabor = toNum(repairHours) * repairRate;
   const driveTime = toNum(driveHours) * driveRate;
-  const mileageCharge = toNum(mileage) * mileageRate;
+
+  const MILEAGE_THRESHOLD = 60;
+  const MILEAGE_DAY_RATE = 150;
+  const isContracted = workType === "contracted";
+  const mileageCharge = isContracted
+    ? (toNum(mileage) > MILEAGE_THRESHOLD ? MILEAGE_DAY_RATE : 0)
+    : toNum(mileage) * mileageRate;
   const partsBillable = useMemo(
     () => parts.filter(p => p.reimbursable).reduce((s, p) => s + toNum(p.quantity) * toNum(p.unitCost), 0),
     [parts],
@@ -201,7 +208,8 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
     rateSnapshot: snapshot,
     internalLaborRate: internalLaborRate === "" ? null : toNum(internalLaborRate),
     fuelEstimate: fuelEstimate === "" ? null : toNum(fuelEstimate),
-  }), [profileId, profileName, techCount, repairHours, driveHours, mileage, parts, snapshot, internalLaborRate, fuelEstimate]);
+    workType,
+  }), [profileId, profileName, techCount, repairHours, driveHours, mileage, parts, snapshot, internalLaborRate, fuelEstimate, workType]);
 
   // ── Debounced autosave: persist worksheet state to the job on change ──
   const lastSaved = useRef<string>(JSON.stringify(existing ?? null));
@@ -338,10 +346,38 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
               <span className="font-mono font-semibold text-foreground">{money(driveTime)}</span>
             </div>
 
+            {/* Work type toggle */}
+            <div className="space-y-1.5 pt-1">
+              <label className={labelCls}>Work Type</label>
+              <div className="flex gap-2">
+                {(["service", "contracted"] as const).map(wt => (
+                  <button
+                    key={wt}
+                    onClick={() => setWorkType(wt)}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                      workType === wt
+                        ? "bg-blue-500 text-white border-blue-500"
+                        : "bg-background text-muted-foreground border-border hover:bg-muted/40"
+                    }`}
+                  >
+                    {wt === "service" ? "Service" : "Contracted"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <LineInput icon={<MapPin className="w-4 h-4 text-blue-500" />} label="Mileage" value={mileage} onChange={setMileage} suffix="mi" />
             <div className="flex items-center justify-between text-xs px-1">
-              <span className="text-muted-foreground">Mileage</span>
-              <span className="font-mono font-semibold text-foreground">{money(mileageCharge)}</span>
+              <span className="text-muted-foreground">
+                {isContracted && toNum(mileage) <= MILEAGE_THRESHOLD
+                  ? "Mileage (no charge — contracted, ≤60 mi)"
+                  : isContracted
+                  ? "Mileage — Day Rate"
+                  : "Mileage"}
+              </span>
+              <span className={`font-mono font-semibold ${isContracted && toNum(mileage) <= MILEAGE_THRESHOLD ? "text-muted-foreground" : "text-foreground"}`}>
+                {isContracted && toNum(mileage) <= MILEAGE_THRESHOLD ? "$0.00" : money(mileageCharge)}
+              </span>
             </div>
           </div>
 

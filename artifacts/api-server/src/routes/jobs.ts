@@ -822,9 +822,16 @@ router.get("/:id/invoice-draft", async (req, res) => {
         sbLines.push({ description: "Drive Time", quantity: 1, unitPrice: parseFloat(driveTime.toFixed(2)) });
       }
 
-      const mileageCharge = sb.mileage * mileageRate;
-      if (mileageCharge > 0) {
-        sbLines.push({ description: "Mileage", quantity: 1, unitPrice: parseFloat(mileageCharge.toFixed(2)) });
+      const isContracted = sb.workType === "contracted";
+      const sbMileageCharge = isContracted
+        ? (sb.mileage > 60 ? 150 : 0)
+        : sb.mileage * mileageRate;
+      if (sbMileageCharge > 0) {
+        sbLines.push({
+          description: isContracted ? "Mileage (Day Rate)" : "Mileage",
+          quantity: isContracted ? 1 : parseFloat(sb.mileage.toFixed(1)),
+          unitPrice: isContracted ? 150 : parseFloat(mileageRate.toFixed(4)),
+        });
       }
 
       for (const part of sb.parts) {
