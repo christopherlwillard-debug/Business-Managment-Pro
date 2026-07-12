@@ -433,6 +433,15 @@ tokenRouter.get("/income-report", async (req, res) => {
         jobId: subPaymentRecordsTable.jobId,
         notes: subPaymentRecordsTable.notes,
         jobTitle: jobsTable.title,
+        workHours: subPaymentRecordsTable.workHours,
+        workRate: subPaymentRecordsTable.workRate,
+        travelHours: subPaymentRecordsTable.travelHours,
+        travelRate: subPaymentRecordsTable.travelRate,
+        bonusAmount: subPaymentRecordsTable.bonusAmount,
+        bonusNote: subPaymentRecordsTable.bonusNote,
+        advanceAmount: subPaymentRecordsTable.advanceAmount,
+        advanceNote: subPaymentRecordsTable.advanceNote,
+        netPaid: subPaymentRecordsTable.netPaid,
       })
       .from(subPaymentRecordsTable)
       .leftJoin(jobsTable, eq(subPaymentRecordsTable.jobId, jobsTable.id))
@@ -495,6 +504,15 @@ tokenRouter.get("/income-report", async (req, res) => {
       jobTitle: string | null;
       notes: string | null;
       source: "payment" | "expense";
+      workHours?: number | null;
+      workRate?: number | null;
+      travelHours?: number | null;
+      travelRate?: number | null;
+      bonusAmount?: number | null;
+      bonusNote?: string | null;
+      advanceAmount?: number | null;
+      advanceNote?: string | null;
+      netPaid?: number | null;
     }> = [
       ...subPayments.map(e => ({
         id: `spr-${e.id}`,
@@ -505,6 +523,15 @@ tokenRouter.get("/income-report", async (req, res) => {
         jobTitle: e.jobTitle ?? null,
         notes: e.notes ?? null,
         source: "payment" as const,
+        workHours: e.workHours != null ? parseFloat(e.workHours) : null,
+        workRate: e.workRate != null ? parseFloat(e.workRate) : null,
+        travelHours: e.travelHours != null ? parseFloat(e.travelHours) : null,
+        travelRate: e.travelRate != null ? parseFloat(e.travelRate) : null,
+        bonusAmount: e.bonusAmount != null ? parseFloat(e.bonusAmount) : null,
+        bonusNote: e.bonusNote ?? null,
+        advanceAmount: e.advanceAmount != null ? parseFloat(e.advanceAmount) : null,
+        advanceNote: e.advanceNote ?? null,
+        netPaid: e.netPaid != null ? parseFloat(e.netPaid) : null,
       })),
       ...directPayments.map(p => ({
         id: `pay-${p.id}`,

@@ -2041,6 +2041,72 @@ function TaxReportsTab({ token }: { token: string }) {
   );
 }
 
+// ─── Income Entry Row (expandable breakdown) ──────────────────────────────────
+function IncomeEntryRow({ entry }: { entry: any }) {
+  const [open, setOpen] = useState(false);
+  const hasBreakdown = entry.workHours != null || entry.travelHours != null || entry.bonusAmount != null || entry.advanceAmount != null;
+
+  return (
+    <div className="border-b border-border/40 last:border-0">
+      <button
+        type="button"
+        className={`w-full flex items-start gap-3 py-2 text-left ${hasBreakdown ? "cursor-pointer" : "cursor-default"}`}
+        onClick={() => hasBreakdown && setOpen(v => !v)}
+      >
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-foreground">{entry.description || "Payment"}</p>
+          <div className="flex flex-wrap gap-2 mt-0.5">
+            <span className="text-xs text-muted-foreground">{entry.date}</span>
+            {entry.jobTitle && (
+              <span className="text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{entry.jobTitle}</span>
+            )}
+            {entry.notes && (
+              <span className="text-xs text-muted-foreground italic">{entry.notes}</span>
+            )}
+            {hasBreakdown && (
+              <span className="text-xs text-amber-600 font-medium">{open ? "Hide details ▲" : "See breakdown ▼"}</span>
+            )}
+          </div>
+        </div>
+        <span className="font-semibold text-sm text-emerald-700 flex-shrink-0 pt-0.5">{formatCurrency(entry.amount)}</span>
+      </button>
+
+      {open && hasBreakdown && (
+        <div className="ml-3 mb-2 bg-muted/40 rounded-xl px-3 py-2.5 space-y-1.5 text-xs">
+          {entry.workHours != null && entry.workRate != null && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Work: {entry.workHours} hrs × {formatCurrency(entry.workRate)}/hr</span>
+              <span className="font-medium">{formatCurrency(entry.workHours * entry.workRate)}</span>
+            </div>
+          )}
+          {entry.travelHours != null && entry.travelRate != null && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Travel: {entry.travelHours} hrs × {formatCurrency(entry.travelRate)}/hr</span>
+              <span className="font-medium">{formatCurrency(entry.travelHours * entry.travelRate)}</span>
+            </div>
+          )}
+          {entry.bonusAmount != null && entry.bonusAmount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Bonus{entry.bonusNote ? ` — ${entry.bonusNote}` : ""}</span>
+              <span className="font-medium text-emerald-600">+{formatCurrency(entry.bonusAmount)}</span>
+            </div>
+          )}
+          {entry.advanceAmount != null && entry.advanceAmount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Advance deducted{entry.advanceNote ? ` — ${entry.advanceNote}` : ""}</span>
+              <span className="font-medium text-red-500">−{formatCurrency(entry.advanceAmount)}</span>
+            </div>
+          )}
+          <div className="flex justify-between border-t border-border/50 pt-1.5 font-semibold">
+            <span className="text-foreground">Net paid</span>
+            <span className="text-emerald-700">{formatCurrency(entry.amount)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Income Report Tab ────────────────────────────────────────────────────────
 function IncomeReportTab({ token, subName, ytdPayments }: { token: string; subName: string; ytdPayments?: number }) {
   const currentYear = new Date().getFullYear();
@@ -2180,21 +2246,7 @@ function IncomeReportTab({ token, subName, ytdPayments }: { token: string; subNa
             ) : (
               <div className="space-y-2">
                 {data.entries.map((entry: any) => (
-                  <div key={entry.id} className="flex items-start gap-3 py-2 border-b border-border/40 last:border-0">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">{entry.description || "Payment"}</p>
-                      <div className="flex flex-wrap gap-2 mt-0.5">
-                        <span className="text-xs text-muted-foreground">{entry.date}</span>
-                        {entry.jobTitle && (
-                          <span className="text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{entry.jobTitle}</span>
-                        )}
-                        {entry.notes && (
-                          <span className="text-xs text-muted-foreground italic">{entry.notes}</span>
-                        )}
-                      </div>
-                    </div>
-                    <span className="font-semibold text-sm text-emerald-700 flex-shrink-0 pt-0.5">{formatCurrency(entry.amount)}</span>
-                  </div>
+                  <IncomeEntryRow key={entry.id} entry={entry} />
                 ))}
               </div>
             )}
