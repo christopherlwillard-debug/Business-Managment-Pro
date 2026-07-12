@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, expensesTable, subPaymentRecordsTable, productionServiceTypesTable } from "@workspace/db";
-import { invoicesTable, materialListsTable, materialListItemsTable } from "@workspace/db/schema";
+import { invoicesTable, materialListsTable, materialListItemsTable, clientBillingProfilesTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, or, like, asc, sql, ilike, eq } from "drizzle-orm";
 import { recalcImportExpenses } from "./mileage";
 import { syncMaterialsToJobInvoice } from "./material-lists";
@@ -385,6 +385,70 @@ router.post("/strip-legacy-material-lines", async (_req: Request, res: Response)
   } catch (err) {
     console.error("[admin/migrations] strip-legacy-material-lines failed:", err);
     res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
+// Seed Clayton Homes of Evansville client + Factory Billback billing profile.
+// Idempotent: skips client creation if already exists, skips profile if already present.
+router.post("/seed-clayton-billback", async (_req: Request, res: Response) => {
+  try {
+    // 1. Upsert client
+    let clientId: number;
+    const existing = await db.select({ id: clientsTable.id })
+      .from(clientsTable)
+      .where(ilike(clientsTable.name, "Clayton Homes of Evansville"))
+      .limit(1);
+
+    if (existing.length > 0) {
+      clientId = existing[0].id;
+    } else {
+      const [inserted] = await db.insert(clientsTable).values({
+        name: "Clayton Homes of Evansville",
+        address: "19410 US-41",
+        city: "Evansville",
+        state: "IN",
+        zip: "47725",
+      }).returning({ id: clientsTable.id });
+      clientId = inserted.id;
+    }
+
+    // 2. Insert billing profile if not already present
+    const existingProfile = await db.select({ id: clientBillingProfilesTable.id })
+      .from(clientBillingProfilesTable)
+      .where(and(
+        eq(clientBillingProfilesTable.clientId, clientId),
+        ilike(clientBillingProfilesTable.name, "Factory Billback"),
+      ))
+      .limit(1);
+
+    let profileAction = "skipped";
+    if (existingProfile.length === 0) {
+      await db.insert(clientBillingProfilesTable).values({
+        clientId,
+        name: "Factory Billback",
+        repairRate1Tech: "33.00",
+        repairRate2Tech: "50.00",
+        driveRate1Tech: "15.00",
+        driveRate2Tech: "30.00",
+        mileageRate: "0.35",
+        partsReimbursable: true,
+        defaultTechCount: 2,
+        billingNotes: "All work must be completed before billing. Pictures required for all repairs — send to Michelle/Service @ (812)215-9619. Mileage calculated from home center to customer site. No mileage on contracted work unless >60 miles from Home Center ($150/Day).",
+        active: true,
+      });
+      profileAction = "created";
+    }
+
+    console.log(`[admin/migrations] seed-clayton-billback: clientId=${clientId}, profile=${profileAction}`);
+    res.json({
+      ok: true,
+      clientId,
+      clientAction: existing.length > 0 ? "existing" : "created",
+      profileAction,
+    });
+  } catch (err) {
+    console.error("[admin/migrations] seed-clayton-billback failed:", err);
+    res.status(500).json({ error: "Seed failed", detail: String(err) });
   }
 });
 

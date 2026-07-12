@@ -70,6 +70,7 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
   const [internalLaborRate, setInternalLaborRate] = useState<string>(existing?.internalLaborRate != null ? String(existing.internalLaborRate) : "");
   const [fuelEstimate, setFuelEstimate] = useState<string>(existing?.fuelEstimate != null ? String(existing.fuelEstimate) : "");
   const [showInternal, setShowInternal] = useState(false);
+  const [billingNotes, setBillingNotes] = useState<string | null>(null);
   // Default reimbursable flag for newly added parts, seeded from the client's profile rule.
   const [partsDefaultReimbursable, setPartsDefaultReimbursable] = useState(true);
 
@@ -116,6 +117,7 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
     setProfileName(p.name);
     setTechCount(p.defaultTechCount);
     setPartsDefaultReimbursable(p.partsReimbursable);
+    setBillingNotes(p.billingNotes ?? null);
     setSnapshot({
       repairRate1Tech: p.repairRate1Tech ?? null,
       repairRate2Tech: p.repairRate2Tech ?? null,
@@ -129,12 +131,21 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
     if (id === "") {
       setProfileId(null);
       setProfileName(null);
+      setBillingNotes(null);
       setSnapshot(EMPTY_SNAPSHOT);
       return;
     }
     const p = profiles.find(x => x.id === parseInt(id));
     if (p) applyProfile(p);
   }
+
+  // Restore billingNotes for already-saved worksheets when profiles finish loading
+  useEffect(() => {
+    if (!existing?.profileId) return;
+    if (profiles.length === 0) return;
+    const p = profiles.find(x => x.id === existing.profileId);
+    if (p) setBillingNotes(p.billingNotes ?? null);
+  }, [profiles, existing?.profileId]);
 
   // ── Live client-billing calculations ──
   const repairRate = techCount === 1 ? toNum(snapshot.repairRate1Tech) : toNum(snapshot.repairRate2Tech);
@@ -267,6 +278,16 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
               </select>
             )}
           </div>
+
+          {/* Billing rules reminder banner */}
+          {billingNotes && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+              <svg className="mt-0.5 shrink-0 h-3.5 w-3.5 text-amber-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+              <p className="leading-relaxed">{billingNotes}</p>
+            </div>
+          )}
 
           {/* Tech count selector */}
           <div className="space-y-1.5">
