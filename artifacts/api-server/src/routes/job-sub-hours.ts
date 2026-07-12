@@ -10,6 +10,7 @@ function fmt(row: typeof jobSubHoursTable.$inferSelect & { subName?: string | nu
   return {
     ...row,
     hours: parseFloat(row.hours ?? "0"),
+    hourType: (row.hourType ?? null) as "work" | "travel" | null,
     rateSnapshot: row.rateSnapshot != null ? parseFloat(row.rateSnapshot) : null,
     subName: row.subName ?? null,
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
@@ -78,10 +79,11 @@ router.post("/:jobId/sub-hours", async (req, res) => {
   try {
     const jobId = parseInt(req.params.jobId);
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
-    const { subcontractorId, date, hours, description, rateSnapshot } = req.body;
+    const { subcontractorId, date, hours, description, rateSnapshot, hourType } = req.body;
     if (!subcontractorId || !date || hours == null) {
       return res.status(400).json({ error: "subcontractorId, date, and hours are required" });
     }
+    const validHourType = hourType === "travel" ? "travel" : hourType === "work" ? "work" : null;
 
     // Enforce: sub must be assigned to this job
     const [link] = await db.select({ jobId: jobSubcontractorsTable.jobId })
@@ -105,6 +107,7 @@ router.post("/:jobId/sub-hours", async (req, res) => {
       jobId, subcontractorId: parseInt(subcontractorId),
       date, hours: String(hours), description: description || null,
       rateSnapshot: resolvedRate,
+      hourType: validHourType,
     }).returning();
 
     const [sub] = await db.select({ name: subcontractorsTable.name })
@@ -126,12 +129,13 @@ router.post("/:jobId/sub-hours", async (req, res) => {
 router.put("/sub-hours/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { date, hours, description, rateSnapshot } = req.body;
+    const { date, hours, description, rateSnapshot, hourType } = req.body;
     const updates: Record<string, unknown> = {};
     if (date !== undefined) updates.date = date;
     if (hours !== undefined) updates.hours = String(hours);
     if (description !== undefined) updates.description = description || null;
     if (rateSnapshot !== undefined) updates.rateSnapshot = rateSnapshot != null ? String(rateSnapshot) : null;
+    if (hourType !== undefined) updates.hourType = hourType === "travel" ? "travel" : hourType === "work" ? "work" : null;
 
     const [row] = await db.update(jobSubHoursTable).set(updates).where(eq(jobSubHoursTable.id, id)).returning();
     if (!row) return res.status(404).json({ error: "Entry not found" });

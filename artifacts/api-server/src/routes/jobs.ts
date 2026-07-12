@@ -1305,6 +1305,20 @@ router.get("/:id/sub-payments", async (req, res) => {
           WHERE ${jobSubHoursTable.jobId} = ${id}
             AND ${jobSubHoursTable.subcontractorId} = ${jobSubcontractorsTable.subcontractorId}
         ), 0)`,
+        totalWorkHours: sql<string>`COALESCE((
+          SELECT SUM(${jobSubHoursTable.hours})
+          FROM ${jobSubHoursTable}
+          WHERE ${jobSubHoursTable.jobId} = ${id}
+            AND ${jobSubHoursTable.subcontractorId} = ${jobSubcontractorsTable.subcontractorId}
+            AND (${jobSubHoursTable.hourType} IS NULL OR ${jobSubHoursTable.hourType} = 'work')
+        ), 0)`,
+        totalTravelHours: sql<string>`COALESCE((
+          SELECT SUM(${jobSubHoursTable.hours})
+          FROM ${jobSubHoursTable}
+          WHERE ${jobSubHoursTable.jobId} = ${id}
+            AND ${jobSubHoursTable.subcontractorId} = ${jobSubcontractorsTable.subcontractorId}
+            AND ${jobSubHoursTable.hourType} = 'travel'
+        ), 0)`,
       })
       .from(jobSubcontractorsTable)
       .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
@@ -1397,6 +1411,8 @@ router.get("/:id/sub-payments", async (req, res) => {
         paidAt: r.paidAt ?? null,
         lastPaidAt: r.lastPaidAt ?? null,
         totalHours: parseFloat(r.totalHours ?? "0"),
+        totalWorkHours: parseFloat((r as any).totalWorkHours ?? "0"),
+        totalTravelHours: parseFloat((r as any).totalTravelHours ?? "0"),
         paymentHistory: historyMap[r.subcontractorId ?? -1] ?? [],
       };
     }));

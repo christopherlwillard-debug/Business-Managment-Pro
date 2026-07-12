@@ -1865,9 +1865,15 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
   const history = p.paymentHistory ?? [];
 
   // Breakdown form state (hourly subs)
-  const [bdWorkHours, setBdWorkHours] = useState(() => p.totalHours > 0 ? p.totalHours.toFixed(2) : "");
+  const [bdWorkHours, setBdWorkHours] = useState(() => {
+    const wh = p.totalWorkHours ?? 0;
+    return wh > 0 ? wh.toFixed(2) : p.totalHours > 0 ? p.totalHours.toFixed(2) : "";
+  });
   const [bdWorkRate, setBdWorkRate]   = useState(() => { const r = p.hourlyRate ?? p.payRate; return r != null ? String(r) : ""; });
-  const [bdTravelHours, setBdTravelHours] = useState("");
+  const [bdTravelHours, setBdTravelHours] = useState(() => {
+    const th = p.totalTravelHours ?? 0;
+    return th > 0 ? th.toFixed(2) : "";
+  });
   const [bdTravelRate, setBdTravelRate]   = useState(() => { const r = p.travelRate ?? p.travelPayRate; return r != null ? String(r) : ""; });
   const [bdBonus,      setBdBonus]      = useState("");
   const [bdBonusNote,  setBdBonusNote]  = useState("");
@@ -1943,15 +1949,6 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
     if (wh <= 0 || wr <= 0) {
       toast({ title: "Enter work hours and rate to record payment", variant: "destructive" });
       return;
-    }
-    const th = parseFloat(bdTravelHours) || 0;
-    if (th > 0 && p.totalHours > 0) {
-      const confirmed = window.confirm(
-        `Double-pay check:\n\nWork Hours (${wh}h) was pre-filled from ${p.totalHours.toFixed(1)} logged hours. ` +
-        `If any of those logged hours were travel time, adding ${th}h Travel Hours here will pay for them twice.\n\n` +
-        `Have you already reduced Work Hours to exclude travel? Press OK to record anyway, or Cancel to review.`
-      );
-      if (!confirmed) return;
     }
     handlePay(bdTotal, {
       workHours:     wh,
@@ -2174,18 +2171,6 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
                 <p className="text-[9px] text-sky-600">Travel pay: ${fmt(bdTravelPay)}</p>
               )}
 
-              {/* Overpayment warning: travel hours entered while tracked hours pre-filled work hours */}
-              {(parseFloat(bdTravelHours) || 0) > 0 && p.totalHours > 0 && (
-                <div className="flex items-start gap-1.5 bg-amber-50 border border-amber-300 rounded-lg px-2 py-1.5">
-                  <span className="text-amber-600 flex-shrink-0 text-xs font-bold mt-0.5">⚠</span>
-                  <p className="text-[10px] text-amber-800 leading-snug">
-                    <span className="font-semibold">Double-pay risk:</span> Work Hours was pre-filled from{" "}
-                    {p.totalHours.toFixed(1)} logged hrs — if any of those were travel, entering Travel Hours
-                    here will count them twice. Reduce Work Hours by your travel amount before recording.
-                  </p>
-                </div>
-              )}
-
               {/* Bonus */}
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
@@ -2265,9 +2250,9 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
 }
 
 // ─── Sub Hours & Payments Panel ────────────────────────────────────────────────
-type SubHourEntry = { id: number; subcontractorId: number; subName: string | null; date: string; hours: number; description: string | null; rateSnapshot: number | null };
+type SubHourEntry = { id: number; subcontractorId: number; subName: string | null; date: string; hours: number; hourType: "work" | "travel" | null; description: string | null; rateSnapshot: number | null };
 type SubPayHistoryEntry = { date: string; amount: number; workHours?: number; workRate?: number; travelHours?: number; travelRate?: number; bonusAmount?: number; bonusNote?: string | null; advanceAmount?: number; advanceNote?: string | null; netPaid?: number };
-type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; balance: number | null; percentComplete: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; payRate: number | null; travelPayRate: number | null; payType: string | null; role: string | null; growthPct: number | null; compensationType: string; hourlyRate: number | null; travelRate: number | null; fixedAmount: number | null; allocationPct: number | null; paymentStatus: string; paidAt: string | null; lastPaidAt: string | null; paymentHistory?: SubPayHistoryEntry[] };
+type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; balance: number | null; percentComplete: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; totalWorkHours: number; totalTravelHours: number; payRate: number | null; travelPayRate: number | null; payType: string | null; role: string | null; growthPct: number | null; compensationType: string; hourlyRate: number | null; travelRate: number | null; fixedAmount: number | null; allocationPct: number | null; paymentStatus: string; paidAt: string | null; lastPaidAt: string | null; paymentHistory?: SubPayHistoryEntry[] };
 type BenchmarkRow = { id: number; jobType: string; estimatedHours: number | null; estimatedLaborCost: number | null; estimatedMaterialCost: number | null; notes: string | null };
 
 function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; onClose: () => void; initialTab?: "hours" | "payments" | "benchmark" }) {
@@ -2290,7 +2275,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
   const [subExpenses, setSubExpenses] = useState<SubExpenseRow[]>([]);
 
   const today = localDateString();
-  const [form, setForm] = useState({ subcontractorId: "", date: today, hours: "", description: "", rateSnapshot: "" });
+  const [form, setForm] = useState({ subcontractorId: "", date: today, hours: "", description: "", rateSnapshot: "", hourType: "work" as "work" | "travel" });
   const [payForm, setPayForm] = useState<Record<number, { amountOwed: string; amountPaid: string; paidDate: string; paidNotes: string }>>({});
 
   const { data: subs = [] } = useListSubcontractors();
@@ -2353,12 +2338,13 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
           hours: parseFloat(form.hours),
           description: form.description || undefined,
           rateSnapshot: rateVal,
+          hourType: form.hourType,
         }),
       });
       if (!res.ok) throw new Error();
       const entry = await res.json();
       setHours(prev => [...prev, entry]);
-      setForm(f => ({ ...f, hours: "", description: "" }));
+      setForm(f => ({ ...f, hours: "", description: "", hourType: "work" }));
       qc.invalidateQueries({ queryKey: ["/api/jobs"] });
       toast({ title: "Hours logged", description: `${form.hours} hrs added` });
     } catch {
@@ -2541,6 +2527,23 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                         className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20" required />
                     </div>
                     <div>
+                      <label className="block text-xs font-medium mb-1">Hour Type</label>
+                      <div className="flex rounded-xl border border-border overflow-hidden text-xs font-semibold h-[38px]">
+                        <button type="button"
+                          onClick={() => setForm(f => ({ ...f, hourType: "work" }))}
+                          className={`flex-1 transition-colors ${form.hourType === "work" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted/50"}`}>
+                          Work
+                        </button>
+                        <button type="button"
+                          onClick={() => setForm(f => ({ ...f, hourType: "travel" }))}
+                          className={`flex-1 transition-colors ${form.hourType === "travel" ? "bg-sky-500 text-white" : "bg-background text-muted-foreground hover:bg-muted/50"}`}>
+                          Travel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
                       <label className="block text-xs font-medium mb-1">
                         Rate/hr
                         {form.rateSnapshot && <span className="ml-1 text-[9px] text-muted-foreground">(auto-filled)</span>}
@@ -2591,7 +2594,12 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                           {grp.hours.map(h => (
                             <div key={h.id} className="flex items-center gap-2 px-3 py-2">
                               <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium text-foreground">{formatDate(h.date)} — {h.hours}h</p>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-xs font-medium text-foreground">{formatDate(h.date)} — {h.hours}h</p>
+                                  {h.hourType === "travel" && (
+                                    <span className="px-1.5 py-0.5 text-[9px] font-semibold rounded bg-sky-100 text-sky-700 border border-sky-200">Travel</span>
+                                  )}
+                                </div>
                                 {h.description && <p className="text-[10px] text-muted-foreground truncate">{h.description}</p>}
                                 {h.rateSnapshot != null && <p className="text-[10px] text-orange-600">${h.rateSnapshot}/hr → {formatCurrency(h.hours * h.rateSnapshot)}</p>}
                               </div>

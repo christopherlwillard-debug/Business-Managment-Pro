@@ -212,10 +212,23 @@ async function seedClaytonBillback(): Promise<void> {
   }
 }
 
+async function ensureSubHoursHourType(): Promise<void> {
+  try {
+    await db.execute(sql`
+      ALTER TABLE job_sub_hours ADD COLUMN IF NOT EXISTS hour_type TEXT
+        CHECK (hour_type IN ('work', 'travel'));
+    `);
+    console.log("[startup] job_sub_hours.hour_type column ensured.");
+  } catch (err) {
+    console.error("[startup] ensureSubHoursHourType failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await ensureInvoiceLifecycleColumns();
   await ensureJobsManHours();
   await ensureSubPayDualRateColumns();
+  await ensureSubHoursHourType();
   await seedDefaultBusinesses();
   await seedClaytonBillback();
   await backfillMileageBusiness();

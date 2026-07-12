@@ -10,6 +10,7 @@ export const jobSubHoursTable = pgTable("job_sub_hours", {
   subcontractorId: integer("subcontractor_id").references(() => subcontractorsTable.id, { onDelete: "cascade" }).notNull(),
   date: text("date").notNull(),
   hours: numeric("hours", { precision: 6, scale: 2 }).notNull(),
+  hourType: text("hour_type"),
   description: text("description"),
   rateSnapshot: numeric("rate_snapshot", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
