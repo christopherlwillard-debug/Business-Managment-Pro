@@ -37,7 +37,7 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench,
+  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench, Navigation,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 import { JobChecklistPanel } from "@/components/JobChecklistPanel";
@@ -3729,6 +3729,18 @@ function JobCard({
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
   const qc = useQueryClient();
+
+  const { data: routeDistData } = useQuery<{ miles: number | null }>({
+    queryKey: ["route-distance", job.id],
+    queryFn: () =>
+      fetch(`${BASE}/api/route-distance?clientId=${job.clientId}&jobId=${job.id}`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : { miles: null }),
+    enabled: job.clientId != null && !!(job.address || job.city),
+    staleTime: 1000 * 60 * 60 * 24,
+    gcTime: 1000 * 60 * 60 * 24,
+  });
+  const routeMiles = routeDistData?.miles ?? null;
+
   const [showSmartEstimate, setShowSmartEstimate] = useState(false);
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
@@ -3926,6 +3938,12 @@ function JobCard({
             <div className="flex items-center gap-1.5">
               <MapPin className="w-3 h-3 flex-shrink-0" />
               <span>{[job.locationName, job.city, job.state].filter(Boolean).join(", ")}</span>
+            </div>
+          )}
+          {routeMiles != null && (
+            <div className="flex items-center gap-1.5 text-blue-600">
+              <Navigation className="w-3 h-3 flex-shrink-0" />
+              <span className="font-medium">{routeMiles} mi from client</span>
             </div>
           )}
           {job.startDate && (

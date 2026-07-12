@@ -1,8 +1,14 @@
 import { Router, type Request, type Response } from "express";
 import { wrapAsync } from "./guards";
-import { censusGeocode, nominatimGeocode } from "../geocode-helpers";
+import { censusGeocode, nominatimGeocode, geocodeAddressString } from "../geocode-helpers";
+import { db } from "@workspace/db";
+import { clientsTable, jobsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 
 export { censusGeocode, nominatimGeocode };
+
+// In-memory route distance cache: "clientId:jobId" → { miles, expires }
+const routeDistanceCache = new Map<string, { miles: number; expires: number }>();
 
 const router = Router();
 
@@ -91,6 +97,79 @@ router.get(
     }
 
     res.json([]);
+  })
+);
+
+// ── Route distance: driving miles between a client's address and a job site ──
+router.get(
+  "/route-distance",
+  wrapAsync(async (req: Request, res: Response) => {
+    const { clientId, jobId } = req.query as Record<string, string | undefined>;
+
+    if (!clientId || !jobId) {
+      res.status(400).json({ error: "clientId and jobId are required" });
+      return;
+    }
+
+    const cacheKey = `${clientId}:${jobId}`;
+    const cached = routeDistanceCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      res.json({ miles: cached.miles });
+      return;
+    }
+
+    const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, parseInt(clientId)));
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, parseInt(jobId)));
+
+    if (!client || !job) {
+      res.status(404).json({ error: "Client or job not found" });
+      return;
+    }
+
+    const clientAddr = [client.address, client.city, client.state, client.zip].filter(Boolean).join(", ");
+    const jobAddr = [job.address, job.city, job.state].filter(Boolean).join(", ");
+
+    if (!clientAddr.trim() || !jobAddr.trim()) {
+      res.json({ miles: null, reason: "missing address" });
+      return;
+    }
+
+    const [fromCoords, toCoords] = await Promise.all([
+      geocodeAddressString(clientAddr),
+      geocodeAddressString(jobAddr),
+    ]);
+
+    if (!fromCoords || !toCoords) {
+      res.json({ miles: null, reason: "geocoding failed" });
+      return;
+    }
+
+    try {
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${fromCoords.lng},${fromCoords.lat};${toCoords.lng},${toCoords.lat}?overview=false`;
+      const osrmRes = await fetch(osrmUrl, {
+        headers: { "User-Agent": "BuildPro/1.0 (Willards General Contracting)" },
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (!osrmRes.ok) {
+        res.json({ miles: null, reason: "routing service error" });
+        return;
+      }
+
+      const osrmData = await osrmRes.json() as { routes?: Array<{ distance: number }> };
+      const distanceMeters = osrmData.routes?.[0]?.distance;
+
+      if (distanceMeters == null) {
+        res.json({ miles: null, reason: "no route found" });
+        return;
+      }
+
+      const miles = Math.round((distanceMeters / 1609.344) * 10) / 10;
+      routeDistanceCache.set(cacheKey, { miles, expires: Date.now() + 24 * 60 * 60 * 1000 });
+      res.json({ miles });
+    } catch {
+      res.json({ miles: null, reason: "routing request failed" });
+    }
   })
 );
 

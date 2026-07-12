@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   X, Plus, Trash2, Wrench, Truck, MapPin, Package, DollarSign,
   ChevronDown, ChevronRight, Users, TrendingUp, Save, Info,
@@ -12,6 +12,8 @@ import {
   type ClientBillingProfile,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface JobLike {
   id: number;
@@ -70,6 +72,26 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
   const [showInternal, setShowInternal] = useState(false);
   // Default reimbursable flag for newly added parts, seeded from the client's profile rule.
   const [partsDefaultReimbursable, setPartsDefaultReimbursable] = useState(true);
+
+  // Route distance: auto-fill mileage on new worksheets
+  const { data: routeDistData } = useQuery<{ miles: number | null }>({
+    queryKey: ["route-distance", job.id],
+    queryFn: () =>
+      fetch(`${BASE}/api/route-distance?clientId=${job.clientId}&jobId=${job.id}`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : { miles: null }),
+    enabled: !existing && job.clientId != null,
+    staleTime: 1000 * 60 * 60 * 24,
+    gcTime: 1000 * 60 * 60 * 24,
+  });
+
+  const mileageAutoFilled = useRef(false);
+  useEffect(() => {
+    if (mileageAutoFilled.current) return;
+    if (existing) return;
+    if (routeDistData?.miles == null) return;
+    setMileage(String(routeDistData.miles));
+    mileageAutoFilled.current = true;
+  }, [routeDistData?.miles, existing]);
 
   // Auto-load the client's default/active billing profile into a fresh worksheet.
   const autoApplied = useRef(false);
