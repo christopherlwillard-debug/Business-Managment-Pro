@@ -32,7 +32,7 @@ export default function Subcontractors() {
     payRate: number | null; payType: string | null; role: string | null; growthPct: number | null;
   } | null>(null);
   const [editingRate, setEditingRate] = useState(false);
-  const [rateForm, setRateForm] = useState({ payRate: "", payType: "hourly", role: "hourly", growthPct: "" });
+  const [rateForm, setRateForm] = useState({ payRate: "", travelPayRate: "", payType: "hourly", role: "hourly", growthPct: "" });
   const [savingRate, setSavingRate] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [revoking, setRevoking] = useState(false);
@@ -395,10 +395,11 @@ export default function Subcontractors() {
     setHistoryYear(new Date().getFullYear());
     setHistoryBusinessLine("");
     const pr = (sub as any).payRate;
+    const tpr = (sub as any).travelPayRate;
     const pt = (sub as any).payType;
     const rl = (sub as any).role ?? "hourly";
     const gp = (sub as any).growthPct ?? 0;
-    setRateForm({ payRate: pr != null ? String(pr) : "", payType: pt ?? "hourly", role: rl, growthPct: gp > 0 ? String(gp * 100) : "" });
+    setRateForm({ payRate: pr != null ? String(pr) : "", travelPayRate: tpr != null ? String(tpr) : "", payType: pt ?? "hourly", role: rl, growthPct: gp > 0 ? String(gp * 100) : "" });
     setInviteModal({
       name: sub.name,
       token: sub.portalToken ?? null,
@@ -417,11 +418,12 @@ export default function Subcontractors() {
     setSavingRate(true);
     try {
       const rate = rateForm.payRate ? parseFloat(rateForm.payRate) : null;
+      const travelRate = rateForm.travelPayRate ? parseFloat(rateForm.travelPayRate) : null;
       const growthPctDecimal = rateForm.role === "member" && rateForm.growthPct ? parseFloat(rateForm.growthPct) / 100 : 0;
       const res = await fetch(`${BASE}/api/subcontractors/${inviteModal.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payRate: rate, payType: rateForm.payType, role: rateForm.role, growthPct: growthPctDecimal }),
+        body: JSON.stringify({ payRate: rate, travelPayRate: travelRate, payType: rateForm.payType, role: rateForm.role, growthPct: growthPctDecimal }),
       });
       if (!res.ok) throw new Error();
       setInviteModal(prev => prev ? { ...prev, payRate: rate, payType: rateForm.payType, role: rateForm.role, growthPct: growthPctDecimal } : null);
@@ -1058,22 +1060,29 @@ export default function Subcontractors() {
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Rate/hr or flat</label>
+                        <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Work rate/hr or flat</label>
                         <input type="number" step="0.01" min="0" placeholder="0.00"
                           value={rateForm.payRate}
                           onChange={e => setRateForm(f => ({ ...f, payRate: e.target.value }))}
                           className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Type</label>
-                        <select value={rateForm.payType}
-                          onChange={e => setRateForm(f => ({ ...f, payType: e.target.value }))}
-                          className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none">
-                          <option value="hourly">Hourly</option>
-                          <option value="flat">Flat per Job</option>
-                          <option value="per_sqft">Per Sq Ft</option>
-                        </select>
+                        <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Travel rate/hr</label>
+                        <input type="number" step="0.01" min="0" placeholder="0.00"
+                          value={rateForm.travelPayRate}
+                          onChange={e => setRateForm(f => ({ ...f, travelPayRate: e.target.value }))}
+                          className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none" />
                       </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Type</label>
+                      <select value={rateForm.payType}
+                        onChange={e => setRateForm(f => ({ ...f, payType: e.target.value }))}
+                        className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none">
+                        <option value="hourly">Hourly</option>
+                        <option value="flat">Flat per Job</option>
+                        <option value="per_sqft">Per Sq Ft</option>
+                      </select>
                     </div>
                     <div>
                       <label className="block text-[10px] font-medium mb-1 text-muted-foreground">Role</label>

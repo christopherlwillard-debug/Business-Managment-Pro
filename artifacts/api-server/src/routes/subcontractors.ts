@@ -368,7 +368,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, email, phone, trade, licenseNumber, licenseExpiry, insuranceExpiry, w9OnFile, address, notes, payRate, payType, role, growthPct } = req.body;
+    const { name, email, phone, trade, licenseNumber, licenseExpiry, insuranceExpiry, w9OnFile, address, notes, payRate, travelPayRate, payType, role, growthPct } = req.body;
     const updates: Record<string, unknown> = {};
     if ("name" in req.body) updates.name = name;
     if ("email" in req.body) updates.email = email;
@@ -381,6 +381,7 @@ router.put("/:id", async (req, res) => {
     if ("address" in req.body) updates.address = address;
     if ("notes" in req.body) updates.notes = notes;
     if ("payRate" in req.body) updates.payRate = payRate != null ? String(payRate) : null;
+    if ("travelPayRate" in req.body) updates.travelPayRate = travelPayRate != null ? String(travelPayRate) : null;
     if ("payType" in req.body) updates.payType = payType || "hourly";
     if ("role" in req.body) updates.role = role || "hourly";
     if ("growthPct" in req.body) updates.growthPct = growthPct != null ? String(growthPct) : "0";

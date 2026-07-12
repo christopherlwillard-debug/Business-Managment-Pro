@@ -11,6 +11,7 @@ export const jobSubcontractorsTable = pgTable("job_subcontractors", {
   paidNotes: text("paid_notes"),
   compensationType: text("compensation_type").notNull().default("hourly"),
   hourlyRate: numeric("hourly_rate", { precision: 10, scale: 2 }),
+  travelRate: numeric("travel_rate", { precision: 10, scale: 2 }),
   fixedAmount: numeric("fixed_amount", { precision: 10, scale: 2 }),
   allocationPct: numeric("allocation_pct", { precision: 5, scale: 2 }),
   // paymentStatus: "unpaid" | "partial" | "paid"

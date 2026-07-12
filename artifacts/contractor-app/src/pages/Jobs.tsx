@@ -1864,17 +1864,61 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
   const [historyOpen, setHistoryOpen] = useState(false);
   const history = p.paymentHistory ?? [];
 
+  // Breakdown form state (hourly subs)
+  const [bdWorkHours, setBdWorkHours] = useState(() => p.totalHours > 0 ? p.totalHours.toFixed(2) : "");
+  const [bdWorkRate, setBdWorkRate]   = useState(() => { const r = p.hourlyRate ?? p.payRate; return r != null ? String(r) : ""; });
+  const [bdTravelHours, setBdTravelHours] = useState("");
+  const [bdTravelRate, setBdTravelRate]   = useState(() => { const r = p.travelRate ?? p.travelPayRate; return r != null ? String(r) : ""; });
+  const [bdBonus,      setBdBonus]      = useState("");
+  const [bdBonusNote,  setBdBonusNote]  = useState("");
+  const [bdAdvance,    setBdAdvance]    = useState("");
+  const [bdAdvanceNote, setBdAdvanceNote] = useState("");
+
+  const bdWorkPay    = (parseFloat(bdWorkHours)   || 0) * (parseFloat(bdWorkRate)   || 0);
+  const bdTravelPay  = (parseFloat(bdTravelHours) || 0) * (parseFloat(bdTravelRate) || 0);
+  const bdBonusAmt   = parseFloat(bdBonus)   || 0;
+  const bdAdvanceAmt = parseFloat(bdAdvance) || 0;
+  const bdTotal      = bdWorkPay + bdTravelPay + bdBonusAmt - bdAdvanceAmt;
+
   function fmt(n: number) {
     return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  async function handlePay(amount: number) {
+  async function handlePay(amount: number, breakdown?: {
+    workHours: number; workRate: number;
+    travelHours?: number; travelRate?: number;
+    bonusAmount?: number; bonusNote?: string;
+    advanceAmount?: number; advanceNote?: string;
+  }) {
     if (amount <= 0) return;
     setPaying(true);
     try {
+      const body: Record<string, unknown> = {
+        subName: p.subName,
+        idempotencyKey: crypto.randomUUID(),
+        agreedOwed: owed > 0 ? owed : undefined,
+      };
+      if (breakdown) {
+        body.workHours  = breakdown.workHours;
+        body.workRate   = breakdown.workRate;
+        if ((breakdown.travelHours ?? 0) > 0) {
+          body.travelHours = breakdown.travelHours;
+          body.travelRate  = breakdown.travelRate;
+        }
+        if ((breakdown.bonusAmount ?? 0) > 0) {
+          body.bonusAmount = breakdown.bonusAmount;
+          body.bonusNote   = breakdown.bonusNote;
+        }
+        if ((breakdown.advanceAmount ?? 0) > 0) {
+          body.advanceAmount = breakdown.advanceAmount;
+          body.advanceNote   = breakdown.advanceNote;
+        }
+      } else {
+        body.amount = amount;
+      }
       const r = await fetch(`${BASE}/api/jobs/${jobId}/pay-worker/${p.subcontractorId}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ amount, agreedOwed: owed > 0 ? owed : undefined, subName: p.subName, idempotencyKey: crypto.randomUUID() }),
+        body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error();
       const data = await r.json();
@@ -1891,6 +1935,25 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
     } finally {
       setPaying(false);
     }
+  }
+
+  function handlePayBreakdown() {
+    const wh = parseFloat(bdWorkHours) || 0;
+    const wr = parseFloat(bdWorkRate)  || 0;
+    if (wh <= 0 || wr <= 0) {
+      toast({ title: "Enter work hours and rate to record payment", variant: "destructive" });
+      return;
+    }
+    handlePay(bdTotal, {
+      workHours:     wh,
+      workRate:      wr,
+      travelHours:   parseFloat(bdTravelHours) || undefined,
+      travelRate:    parseFloat(bdTravelRate)  || undefined,
+      bonusAmount:   bdBonusAmt  > 0 ? bdBonusAmt  : undefined,
+      bonusNote:     bdBonusNote || undefined,
+      advanceAmount: bdAdvanceAmt > 0 ? bdAdvanceAmt : undefined,
+      advanceNote:   bdAdvanceNote || undefined,
+    });
   }
 
   async function handleSaveOwed(valueOrNull: number | null) {
@@ -1990,11 +2053,27 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
             <span>Payment History ({history.length})</span>
           </button>
           {historyOpen && (
-            <div className="mt-1 space-y-0.5 border-l border-border/50 pl-2 ml-0.5">
+            <div className="mt-1 space-y-1 border-l border-border/50 pl-2 ml-0.5">
               {history.map((e, i) => (
-                <div key={i} className="flex justify-between text-[10px] text-muted-foreground">
-                  <span>{new Date(e.date + "T12:00:00").toLocaleDateString()}</span>
-                  <span className="font-medium">${fmt(e.amount)}</span>
+                <div key={i} className="space-y-0.5">
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>{new Date(e.date + "T12:00:00").toLocaleDateString()}</span>
+                    <span className="font-medium text-foreground">${fmt(e.amount)}</span>
+                  </div>
+                  {e.workHours != null && e.workRate != null && (
+                    <div className="text-[9px] text-blue-600 space-y-0.5 pl-1">
+                      <div>Work: {e.workHours}h × ${fmt(e.workRate)}/hr = ${fmt(e.workHours * e.workRate)}</div>
+                      {(e.travelHours ?? 0) > 0 && e.travelRate != null && (
+                        <div>Travel: {e.travelHours}h × ${fmt(e.travelRate)}/hr = ${fmt((e.travelHours ?? 0) * e.travelRate)}</div>
+                      )}
+                      {(e.bonusAmount ?? 0) > 0 && (
+                        <div className="text-emerald-600">Bonus: +${fmt(e.bonusAmount ?? 0)}{e.bonusNote ? ` (${e.bonusNote})` : ""}</div>
+                      )}
+                      {(e.advanceAmount ?? 0) > 0 && (
+                        <div className="text-amber-600">Advance deducted: −${fmt(e.advanceAmount ?? 0)}{e.advanceNote ? ` (${e.advanceNote})` : ""}</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -2042,29 +2121,122 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
 
       {/* Payment section (only when not fully paid) */}
       {!isFullyPaid && owed > 0.01 && (
-        <div className="pl-6 space-y-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-muted-foreground">Amount: $</span>
-            <input type="number" step="0.01" min="0.01" value={payInput} onChange={e => setPayInput(e.target.value)}
-              className="w-24 px-2 py-0.5 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-emerald-500/30" />
-            <button
-              onClick={() => { const a = parseFloat(payInput); if (!isNaN(a) && a > 0) handlePay(a); }}
-              disabled={paying}
-              className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-full hover:bg-emerald-100 transition-colors disabled:opacity-50">
-              {paying ? "…" : "Record Payment"}
-            </button>
-          </div>
-          {isPartial && balance > 0.01 ? (
-            <button onClick={() => handlePay(balance)} disabled={paying}
-              className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full hover:bg-blue-100 transition-colors disabled:opacity-50">
-              Pay Full Balance (${fmt(balance)})
-            </button>
-          ) : !isPartial ? (
-            <button onClick={() => handlePay(owed)} disabled={paying}
-              className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full hover:bg-blue-100 transition-colors disabled:opacity-50">
-              Mark Paid (${fmt(owed)})
-            </button>
-          ) : null}
+        <div className="pl-6 space-y-2">
+          {p.compensationType === "hourly" ? (
+            /* ── Breakdown form for hourly subs ── */
+            <div className="space-y-2 bg-muted/20 rounded-xl p-2.5 border border-border">
+              <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">Record Payment</p>
+
+              {/* Work hours × rate */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-[9px] font-medium text-muted-foreground mb-0.5">Work Hours</label>
+                  <input type="number" step="0.25" min="0" placeholder="0.00"
+                    value={bdWorkHours} onChange={e => setBdWorkHours(e.target.value)}
+                    className="w-full px-2 py-1 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-primary/20" />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-medium text-muted-foreground mb-0.5">Work Rate/hr $</label>
+                  <input type="number" step="0.01" min="0" placeholder="0.00"
+                    value={bdWorkRate} onChange={e => setBdWorkRate(e.target.value)}
+                    className="w-full px-2 py-1 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-primary/20" />
+                </div>
+              </div>
+              {bdWorkPay > 0 && (
+                <p className="text-[9px] text-blue-600">Work pay: ${fmt(bdWorkPay)}</p>
+              )}
+
+              {/* Travel hours × rate */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-[9px] font-medium text-muted-foreground mb-0.5">Travel Hours <span className="text-muted-foreground/60">(opt)</span></label>
+                  <input type="number" step="0.25" min="0" placeholder="0.00"
+                    value={bdTravelHours} onChange={e => setBdTravelHours(e.target.value)}
+                    className="w-full px-2 py-1 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-primary/20" />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-medium text-muted-foreground mb-0.5">Travel Rate/hr $</label>
+                  <input type="number" step="0.01" min="0" placeholder="0.00"
+                    value={bdTravelRate} onChange={e => setBdTravelRate(e.target.value)}
+                    className="w-full px-2 py-1 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-primary/20" />
+                </div>
+              </div>
+              {bdTravelPay > 0 && (
+                <p className="text-[9px] text-sky-600">Travel pay: ${fmt(bdTravelPay)}</p>
+              )}
+
+              {/* Bonus */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-[9px] font-medium text-muted-foreground mb-0.5">Bonus $ <span className="text-muted-foreground/60">(opt)</span></label>
+                  <input type="number" step="0.01" min="0" placeholder="0.00"
+                    value={bdBonus} onChange={e => setBdBonus(e.target.value)}
+                    className="w-full px-2 py-1 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-primary/20" />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-medium text-muted-foreground mb-0.5">Bonus Note</label>
+                  <input type="text" placeholder="reason…"
+                    value={bdBonusNote} onChange={e => setBdBonusNote(e.target.value)}
+                    className="w-full px-2 py-1 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-primary/20" />
+                </div>
+              </div>
+
+              {/* Advance against wages */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-[9px] font-medium text-muted-foreground mb-0.5">Advance Deduct $ <span className="text-muted-foreground/60">(opt)</span></label>
+                  <input type="number" step="0.01" min="0" placeholder="0.00"
+                    value={bdAdvance} onChange={e => setBdAdvance(e.target.value)}
+                    className="w-full px-2 py-1 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-primary/20" />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-medium text-muted-foreground mb-0.5">Advance Note</label>
+                  <input type="text" placeholder="prev advance #…"
+                    value={bdAdvanceNote} onChange={e => setBdAdvanceNote(e.target.value)}
+                    className="w-full px-2 py-1 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-primary/20" />
+                </div>
+              </div>
+
+              {/* Computed total */}
+              {bdTotal > 0 && (
+                <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                  <span className="text-[10px] text-muted-foreground">Net to pay</span>
+                  <span className="text-sm font-bold text-emerald-600">${fmt(bdTotal)}</span>
+                </div>
+              )}
+
+              <button onClick={handlePayBreakdown} disabled={paying || bdTotal <= 0}
+                className="w-full py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-40">
+                {paying ? "Recording…" : bdTotal > 0 ? `Record Payment — $${fmt(bdTotal)}` : "Enter hours & rate above"}
+              </button>
+            </div>
+          ) : (
+            /* ── Simple amount input for fixed / allocation subs ── */
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-muted-foreground">Amount: $</span>
+                <input type="number" step="0.01" min="0.01" value={payInput} onChange={e => setPayInput(e.target.value)}
+                  className="w-24 px-2 py-0.5 text-xs border border-border rounded-lg bg-background outline-none focus:ring-1 focus:ring-emerald-500/30" />
+                <button
+                  onClick={() => { const a = parseFloat(payInput); if (!isNaN(a) && a > 0) handlePay(a); }}
+                  disabled={paying}
+                  className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-full hover:bg-emerald-100 transition-colors disabled:opacity-50">
+                  {paying ? "…" : "Record Payment"}
+                </button>
+              </div>
+              {isPartial && balance > 0.01 ? (
+                <button onClick={() => handlePay(balance)} disabled={paying}
+                  className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full hover:bg-blue-100 transition-colors disabled:opacity-50">
+                  Pay Full Balance (${fmt(balance)})
+                </button>
+              ) : !isPartial ? (
+                <button onClick={() => handlePay(owed)} disabled={paying}
+                  className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full hover:bg-blue-100 transition-colors disabled:opacity-50">
+                  Mark Paid (${fmt(owed)})
+                </button>
+              ) : null}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2073,7 +2245,8 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
 
 // ─── Sub Hours & Payments Panel ────────────────────────────────────────────────
 type SubHourEntry = { id: number; subcontractorId: number; subName: string | null; date: string; hours: number; description: string | null; rateSnapshot: number | null };
-type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; balance: number | null; percentComplete: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; payRate: number | null; payType: string | null; role: string | null; growthPct: number | null; compensationType: string; hourlyRate: number | null; fixedAmount: number | null; allocationPct: number | null; paymentStatus: string; paidAt: string | null; lastPaidAt: string | null; paymentHistory?: { date: string; amount: number }[] };
+type SubPayHistoryEntry = { date: string; amount: number; workHours?: number; workRate?: number; travelHours?: number; travelRate?: number; bonusAmount?: number; bonusNote?: string | null; advanceAmount?: number; advanceNote?: string | null; netPaid?: number };
+type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; balance: number | null; percentComplete: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; payRate: number | null; travelPayRate: number | null; payType: string | null; role: string | null; growthPct: number | null; compensationType: string; hourlyRate: number | null; travelRate: number | null; fixedAmount: number | null; allocationPct: number | null; paymentStatus: string; paidAt: string | null; lastPaidAt: string | null; paymentHistory?: SubPayHistoryEntry[] };
 type BenchmarkRow = { id: number; jobType: string; estimatedHours: number | null; estimatedLaborCost: number | null; estimatedMaterialCost: number | null; notes: string | null };
 
 function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; onClose: () => void; initialTab?: "hours" | "payments" | "benchmark" }) {
@@ -2510,8 +2683,9 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                               ))}
                             </div>
                             {pay.compensationType === 'hourly' && (
+                              <>
                               <div key={`rate-${pay.hourlyRate}`} className="flex items-center gap-2">
-                                <span className="text-[10px] text-muted-foreground w-16 flex-shrink-0">Rate/hr $</span>
+                                <span className="text-[10px] text-muted-foreground w-20 flex-shrink-0">Work rate/hr $</span>
                                 <input type="number" step="0.01" min="0"
                                   defaultValue={pay.hourlyRate ?? pay.payRate ?? ""}
                                   placeholder={pay.payRate ? String(pay.payRate) : "0.00"}
@@ -2527,6 +2701,24 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                                   }}
                                   className="flex-1 px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary/20" />
                               </div>
+                              <div key={`travel-rate-${pay.travelRate}`} className="flex items-center gap-2">
+                                <span className="text-[10px] text-muted-foreground w-20 flex-shrink-0">Travel rate/hr $</span>
+                                <input type="number" step="0.01" min="0"
+                                  defaultValue={pay.travelRate ?? pay.travelPayRate ?? ""}
+                                  placeholder={pay.travelPayRate ? String(pay.travelPayRate) : "0.00"}
+                                  onBlur={async (e) => {
+                                    const v = e.target.value ? parseFloat(e.target.value) : null;
+                                    if (v !== (pay.travelRate ?? pay.travelPayRate ?? null)) {
+                                      await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${pay.subcontractorId}`, {
+                                        method: "PUT", headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ travelRate: v }),
+                                      });
+                                      await loadData();
+                                    }
+                                  }}
+                                  className="flex-1 px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary/20" />
+                              </div>
+                              </>
                             )}
                             {pay.compensationType === 'fixed' && (
                               <div key={`fixed-${pay.fixedAmount}`} className="flex items-center gap-2">

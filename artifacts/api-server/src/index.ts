@@ -133,6 +133,30 @@ async function ensureJobsManHours(): Promise<void> {
   }
 }
 
+async function ensureSubPayDualRateColumns(): Promise<void> {
+  try {
+    await db.execute(sql`
+      ALTER TABLE sub_payment_records
+        ADD COLUMN IF NOT EXISTS work_hours    NUMERIC(8,2),
+        ADD COLUMN IF NOT EXISTS work_rate     NUMERIC(10,2),
+        ADD COLUMN IF NOT EXISTS travel_hours  NUMERIC(8,2),
+        ADD COLUMN IF NOT EXISTS travel_rate   NUMERIC(10,2),
+        ADD COLUMN IF NOT EXISTS bonus_amount  NUMERIC(10,2),
+        ADD COLUMN IF NOT EXISTS bonus_note    TEXT,
+        ADD COLUMN IF NOT EXISTS advance_amount NUMERIC(10,2),
+        ADD COLUMN IF NOT EXISTS advance_note  TEXT,
+        ADD COLUMN IF NOT EXISTS net_paid      NUMERIC(10,2);
+      ALTER TABLE subcontractors
+        ADD COLUMN IF NOT EXISTS travel_pay_rate NUMERIC(10,2);
+      ALTER TABLE job_subcontractors
+        ADD COLUMN IF NOT EXISTS travel_rate NUMERIC(10,2);
+    `);
+    console.log("[startup] Sub pay dual-rate columns ensured.");
+  } catch (err) {
+    console.error("[startup] ensureSubPayDualRateColumns failed (non-fatal):", err);
+  }
+}
+
 // Idempotent: creates Clayton Homes of Evansville client (if missing) and
 // inserts the Factory Billback billing profile. Safe to run on every boot.
 async function seedClaytonBillback(): Promise<void> {
@@ -191,6 +215,7 @@ async function seedClaytonBillback(): Promise<void> {
 async function start() {
   await ensureInvoiceLifecycleColumns();
   await ensureJobsManHours();
+  await ensureSubPayDualRateColumns();
   await seedDefaultBusinesses();
   await seedClaytonBillback();
   await backfillMileageBusiness();

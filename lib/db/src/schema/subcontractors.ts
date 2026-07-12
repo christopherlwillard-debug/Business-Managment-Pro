@@ -38,6 +38,7 @@ export const subcontractorsTable = pgTable("subcontractors", {
   portalPinLockedUntil: timestamp("portal_pin_locked_until"),
   // Pay rate
   payRate: numeric("pay_rate", { precision: 10, scale: 2 }),
+  travelPayRate: numeric("travel_pay_rate", { precision: 10, scale: 2 }),
   payType: text("pay_type").default("hourly"),
   // Member vs hourly worker role + equity growth %
   role: text("role").notNull().default("hourly"),

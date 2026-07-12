@@ -20,6 +20,19 @@ export const subPaymentRecordsTable = pgTable("sub_payment_records", {
   isReversal: boolean("is_reversal").default(false),
   reversesPaymentId: integer("reverses_payment_id"),
   bankTransactionId: integer("bank_transaction_id"),
+  // Dual-rate pay breakdown (hourly subs)
+  workHours: numeric("work_hours", { precision: 8, scale: 2 }),
+  workRate: numeric("work_rate", { precision: 10, scale: 2 }),
+  travelHours: numeric("travel_hours", { precision: 8, scale: 2 }),
+  travelRate: numeric("travel_rate", { precision: 10, scale: 2 }),
+  // Bonus
+  bonusAmount: numeric("bonus_amount", { precision: 10, scale: 2 }),
+  bonusNote: text("bonus_note"),
+  // Advance against wages (deducted from net)
+  advanceAmount: numeric("advance_amount", { precision: 10, scale: 2 }),
+  advanceNote: text("advance_note"),
+  // Computed net paid = workPay + travelPay + bonus - advance (stored for ledger display)
+  netPaid: numeric("net_paid", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

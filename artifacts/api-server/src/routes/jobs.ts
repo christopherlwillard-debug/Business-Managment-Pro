@@ -1182,7 +1182,7 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
     const subId = parseInt(req.params.subId);
     if (isNaN(jobId) || isNaN(subId)) return res.status(400).json({ error: "Invalid ids" });
     // Strip paymentStatus — it is always derived server-side from the numbers, never accepted from the client.
-    const { amountOwed, amountPaid, paidDate, paidNotes, compensationType, hourlyRate, fixedAmount, allocationPct } = req.body;
+    const { amountOwed, amountPaid, paidDate, paidNotes, compensationType, hourlyRate, travelRate, fixedAmount, allocationPct } = req.body;
     const updates: Record<string, unknown> = {};
     if (amountOwed !== undefined) updates.amountOwed = amountOwed != null ? String(amountOwed) : null;
     if (amountPaid !== undefined) updates.amountPaid = amountPaid != null ? String(amountPaid) : null;
@@ -1190,6 +1190,7 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
     if (paidNotes !== undefined) updates.paidNotes = paidNotes || null;
     if (compensationType !== undefined) updates.compensationType = compensationType || "hourly";
     if (hourlyRate !== undefined) updates.hourlyRate = hourlyRate != null ? String(hourlyRate) : null;
+    if (travelRate !== undefined) updates.travelRate = travelRate != null ? String(travelRate) : null;
     if (fixedAmount !== undefined) updates.fixedAmount = fixedAmount != null ? String(fixedAmount) : null;
     if (allocationPct !== undefined) updates.allocationPct = allocationPct != null ? String(allocationPct) : null;
     // Upsert: creates the sub-job link if it doesn't exist yet, then updates payment fields.
@@ -1280,11 +1281,13 @@ router.get("/:id/sub-payments", async (req, res) => {
         paidDate: jobSubcontractorsTable.paidDate,
         paidNotes: jobSubcontractorsTable.paidNotes,
         payRate: subcontractorsTable.payRate,
+        travelPayRate: subcontractorsTable.travelPayRate,
         payType: subcontractorsTable.payType,
         role: subcontractorsTable.role,
         growthPct: subcontractorsTable.growthPct,
         compensationType: jobSubcontractorsTable.compensationType,
         hourlyRate: jobSubcontractorsTable.hourlyRate,
+        travelRate: jobSubcontractorsTable.travelRate,
         fixedAmount: jobSubcontractorsTable.fixedAmount,
         allocationPct: jobSubcontractorsTable.allocationPct,
         paymentStatus: jobSubcontractorsTable.paymentStatus,
@@ -1313,17 +1316,43 @@ router.get("/:id/sub-payments", async (req, res) => {
         subcontractorId: subPaymentRecordsTable.subcontractorId,
         paymentDate: subPaymentRecordsTable.paymentDate,
         amount: subPaymentRecordsTable.amount,
+        workHours: subPaymentRecordsTable.workHours,
+        workRate: subPaymentRecordsTable.workRate,
+        travelHours: subPaymentRecordsTable.travelHours,
+        travelRate: subPaymentRecordsTable.travelRate,
+        bonusAmount: subPaymentRecordsTable.bonusAmount,
+        bonusNote: subPaymentRecordsTable.bonusNote,
+        advanceAmount: subPaymentRecordsTable.advanceAmount,
+        advanceNote: subPaymentRecordsTable.advanceNote,
+        netPaid: subPaymentRecordsTable.netPaid,
       })
       .from(subPaymentRecordsTable)
       .where(eq(subPaymentRecordsTable.jobId, id))
       .orderBy(desc(subPaymentRecordsTable.paymentDate), desc(subPaymentRecordsTable.id));
 
-    const historyMap: Record<number, { date: string; amount: number }[]> = {};
+    const historyMap: Record<number, {
+      date: string; amount: number;
+      workHours?: number; workRate?: number;
+      travelHours?: number; travelRate?: number;
+      bonusAmount?: number; bonusNote?: string | null;
+      advanceAmount?: number; advanceNote?: string | null;
+      netPaid?: number;
+    }[]> = {};
     for (const rec of paymentRecords) {
       const subId = rec.subcontractorId;
       if (subId == null) continue;
       if (!historyMap[subId]) historyMap[subId] = [];
-      historyMap[subId].push({ date: rec.paymentDate ?? "", amount: parseFloat(rec.amount ?? "0") });
+      historyMap[subId].push({
+        date: rec.paymentDate ?? "",
+        amount: parseFloat(rec.amount ?? "0"),
+        ...(rec.workHours   != null ? { workHours:   parseFloat(rec.workHours)   } : {}),
+        ...(rec.workRate    != null ? { workRate:    parseFloat(rec.workRate)    } : {}),
+        ...(rec.travelHours != null ? { travelHours: parseFloat(rec.travelHours) } : {}),
+        ...(rec.travelRate  != null ? { travelRate:  parseFloat(rec.travelRate)  } : {}),
+        ...(rec.bonusAmount  != null ? { bonusAmount:  parseFloat(rec.bonusAmount),  bonusNote:  rec.bonusNote  } : {}),
+        ...(rec.advanceAmount != null ? { advanceAmount: parseFloat(rec.advanceAmount), advanceNote: rec.advanceNote } : {}),
+        ...(rec.netPaid  != null ? { netPaid: parseFloat(rec.netPaid) } : {}),
+      });
     }
 
     res.json(rows.map(r => {
@@ -1355,11 +1384,13 @@ router.get("/:id/sub-payments", async (req, res) => {
         paidDate: r.paidDate,
         paidNotes: r.paidNotes,
         payRate: r.payRate != null ? parseFloat(r.payRate) : null,
+        travelPayRate: r.travelPayRate != null ? parseFloat(r.travelPayRate) : null,
         payType: r.payType,
         role: r.role ?? "hourly",
         growthPct: r.growthPct != null ? parseFloat(r.growthPct) : 0,
         compensationType: r.compensationType ?? "hourly",
         hourlyRate: r.hourlyRate != null ? parseFloat(r.hourlyRate) : null,
+        travelRate: r.travelRate != null ? parseFloat(r.travelRate) : null,
         fixedAmount: r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
         allocationPct: r.allocationPct != null ? parseFloat(r.allocationPct) : null,
         paymentStatus: r.paymentStatus ?? "unpaid",
@@ -1386,8 +1417,28 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     const [job] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
     if (!job) return res.status(404).json({ error: "Job not found" });
 
-    // Payment amount validated before entering transaction
-    const paymentAmount = parseFloat(String(req.body.amount ?? "0"));
+    // Breakdown fields (hourly subs with dual rates / bonus / advance)
+    const workHours  = req.body.workHours  != null ? parseFloat(String(req.body.workHours))  : null;
+    const workRate   = req.body.workRate   != null ? parseFloat(String(req.body.workRate))   : null;
+    const travelHours = req.body.travelHours != null ? parseFloat(String(req.body.travelHours)) : null;
+    const travelRate  = req.body.travelRate  != null ? parseFloat(String(req.body.travelRate))  : null;
+    const bonusAmount  = req.body.bonusAmount  != null ? parseFloat(String(req.body.bonusAmount))  : null;
+    const bonusNote    = req.body.bonusNote   ? String(req.body.bonusNote)  : null;
+    const advanceAmount = req.body.advanceAmount != null ? parseFloat(String(req.body.advanceAmount)) : null;
+    const advanceNote   = req.body.advanceNote  ? String(req.body.advanceNote) : null;
+
+    // If breakdown is supplied, compute net from parts; otherwise fall back to explicit amount field.
+    const hasBreakdown = workHours != null && workRate != null;
+    let paymentAmount: number;
+    if (hasBreakdown) {
+      const workPay   = workHours  * workRate;
+      const travelPay = (travelHours ?? 0) * (travelRate ?? 0);
+      const bonus     = bonusAmount  ?? 0;
+      const advance   = advanceAmount ?? 0;
+      paymentAmount = workPay + travelPay + bonus - advance;
+    } else {
+      paymentAmount = parseFloat(String(req.body.amount ?? "0"));
+    }
     if (paymentAmount <= 0) return res.status(400).json({ error: "No amount to pay" });
 
     const today = new Date().toISOString();
@@ -1478,6 +1529,16 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         createdFrom: "pay-worker",
         ...(idempotencyKey ? { idempotencyKey } : {}),
         ...(agreedOwed != null ? { agreedOwedSnapshot: agreedOwed.toFixed(2) } : {}),
+        // Dual-rate breakdown (nullable — only set when client sends them)
+        ...(workHours  != null ? { workHours:  workHours.toFixed(2)  } : {}),
+        ...(workRate   != null ? { workRate:   workRate.toFixed(2)   } : {}),
+        ...(travelHours != null && travelHours > 0 ? { travelHours: travelHours.toFixed(2) } : {}),
+        ...(travelRate  != null && (travelHours ?? 0) > 0 ? { travelRate:  travelRate.toFixed(2) } : {}),
+        ...(bonusAmount  != null && bonusAmount  > 0 ? { bonusAmount:  bonusAmount.toFixed(2)  } : {}),
+        ...(bonusNote   ? { bonusNote   } : {}),
+        ...(advanceAmount != null && advanceAmount > 0 ? { advanceAmount: advanceAmount.toFixed(2) } : {}),
+        ...(advanceNote  ? { advanceNote  } : {}),
+        ...(hasBreakdown ? { netPaid: paymentAmount.toFixed(2) } : {}),
       }).returning({ id: subPaymentRecordsTable.id });
 
       txResult = { ok: true, paymentId: spr.id, amount: paymentAmount, accumulated: newAccumulated, status: newStatus };
