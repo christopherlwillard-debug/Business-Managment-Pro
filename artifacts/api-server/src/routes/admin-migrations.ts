@@ -452,6 +452,34 @@ router.post("/seed-clayton-billback", async (_req: Request, res: Response) => {
   }
 });
 
+// Clear invoice numbers from all draft invoices so they receive sequential
+// numbers in send order (not creation order). Idempotent: drafts already
+// without a number are unaffected. Non-draft invoices are never touched.
+router.post("/clear-draft-invoice-numbers", async (_req: Request, res: Response) => {
+  try {
+    const draftsWithNumbers = await db
+      .select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber })
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.status, "draft"), isNotNull(invoicesTable.invoiceNumber)));
+
+    if (draftsWithNumbers.length === 0) {
+      return res.json({ ok: true, cleared: 0, message: "No draft invoices with numbers found — nothing to do." });
+    }
+
+    const ids = draftsWithNumbers.map(r => r.id);
+    await db.update(invoicesTable)
+      .set({ invoiceNumber: null })
+      .where(inArray(invoicesTable.id, ids));
+
+    const cleared = draftsWithNumbers.map(r => ({ id: r.id, wasNumber: r.invoiceNumber }));
+    console.log(`[admin/migrations] clear-draft-invoice-numbers: cleared ${ids.length} drafts`, cleared);
+    res.json({ ok: true, cleared: ids.length, invoices: cleared });
+  } catch (err) {
+    console.error("[admin/migrations] clear-draft-invoice-numbers failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 // ── (add more one-time migration endpoints above this line) ───────────────────
 
 // Seed MFH manufacturers if none exist
