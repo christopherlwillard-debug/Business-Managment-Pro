@@ -1,0 +1,78 @@
+I like the idea, but I think it can be even more contractor-friendly without adding much complexity.
+
+The biggest issue is that "Before" and "After" are really properties of the photo, not separate upload areas. Having three upload sections makes the UI larger and forces the user to decide where to upload before they even pick a photo.
+
+I'd change the task to this:
+
+#1192 – Before & After Photo Tags for Service Call Invoices
+What & Why
+
+Service call invoices should clearly document the condition of the work before and after the repair.
+
+Instead of storing all invoice photos together, each photo can be tagged as Before, After, or left General. The invoice email automatically groups the photos so customers can easily compare the completed work.
+
+Done Looks Like
+The invoice contains a single Attachments section.
+Each uploaded photo displays a small tag selector:
+Before
+After
+General
+New photos default to General.
+Users can change the tag at any time.
+Photos remain in one grid while editing to avoid duplicate upload controls.
+The invoice email automatically groups photos into:
+Before Photos
+After Photos
+Job Photos (General)
+Why This Is Better
+
+The upload experience stays simple:
+
+Upload photos.
+Click Before or After on each thumbnail.
+Done.
+
+Instead of:
+
+Upload Before
+Upload After
+Upload General
+
+which becomes cumbersome when you have 20+ photos.
+
+Email Output
+Before Photos
+
+[photo]
+[photo]
+[photo]
+
+After Photos
+
+[photo]
+[photo]
+
+Job Photos
+
+[photo]
+Data Model
+
+No migration required.
+
+photoType?: "before" | "after" | "general"
+
+If absent, treat as "general".
+
+Nice UI Enhancement
+
+Show a small badge on each thumbnail:
+
+🟦 BEFORE
+
+🟩 AFTER
+
+⚪ GENERAL
+
+Clicking the badge cycles through the three states.
+
+I think this is a much smoother workflow. On a typical service call, you'll often upload all your photos at once from your phone. It's faster to upload everything into one gallery and then quickly tag each image than to keep deciding which upload button to use before every batch. It also scales much better for jobs with lots of photos.
