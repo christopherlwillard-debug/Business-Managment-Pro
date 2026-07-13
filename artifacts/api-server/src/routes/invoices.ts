@@ -652,12 +652,18 @@ router.post("/:id/send", async (req, res) => {
 
         let buffer: Buffer | null = null;
 
-        if (rawUrl.startsWith("/objects/")) {
+        // Normalize the URL produced by the current /api/uploads endpoint, which returns
+        // url: "/api/storage/objects/..." → underlying objectPath is "/objects/..."
+        const normalizedUrl = rawUrl.startsWith("/api/storage/objects/")
+          ? "/objects/" + rawUrl.slice("/api/storage/objects/".length)
+          : rawUrl;
+
+        if (normalizedUrl.startsWith("/objects/")) {
           // GCS-backed object storage
-          const file = await objStorage.getObjectEntityFile(rawUrl);
+          const file = await objStorage.getObjectEntityFile(normalizedUrl);
           const [dl] = await file.download();
           buffer = dl as Buffer;
-        } else if (rawUrl.startsWith("/uploads/") || rawUrl.startsWith("/api/uploads/")) {
+        } else if (normalizedUrl.startsWith("/uploads/") || normalizedUrl.startsWith("/api/uploads/")) {
           // Legacy local-disk uploads
           const rel = rawUrl.startsWith("/api/uploads/")
             ? rawUrl.slice("/api/uploads/".length)
