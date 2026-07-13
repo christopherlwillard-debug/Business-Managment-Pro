@@ -1756,7 +1756,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
               </div>
               {payments.length > 0 && (
                 <div className="rounded-xl border border-border/50 overflow-hidden">
-                  <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sub Payment Records</p></div>
+                  <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50 flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sub Payment Records</p>
+                    <Link href={`/jobs/${job.id}/payroll`} className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wide">Full Payroll Page →</Link>
+                  </div>
                   <div className="divide-y divide-border/30">
                     {payments.map(p => {
                       const calcOwed = p.compensationType === "allocation"

@@ -43,6 +43,7 @@ const ChecklistTemplates = lazy(() => import("./pages/ChecklistTemplates"));
 const JobStatusPage = lazy(() => import("./pages/JobStatusPage"));
 const MfhKnowledgeBase = lazy(() => import("./pages/MfhKnowledgeBase"));
 const TripPacket = lazy(() => import("./pages/TripPacket"));
+const JobPayroll = lazy(() => import("./pages/JobPayroll"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -325,6 +326,9 @@ function AdminApp() {
           </Route>
           <Route path="/trip-packet/:jobId">
             <PermissionGuard section="jobs"><TripPacket /></PermissionGuard>
+          </Route>
+          <Route path="/jobs/:id/payroll">
+            <PermissionGuard ownerOnly><JobPayroll /></PermissionGuard>
           </Route>
           <Route component={NotFound} />
         </Switch>

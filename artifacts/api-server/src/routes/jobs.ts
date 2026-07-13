@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { computeAllocationSplitPool, computeSubOwed } from "../lib/allocation.js";
@@ -1424,6 +1424,57 @@ router.get("/:id/sub-payments", async (req, res) => {
   }
 });
 
+// ── Sub Advances CRUD ────────────────────────────────────────────────────────────
+router.get("/:id/advances", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
+    const subId = req.query.subId ? parseInt(req.query.subId as string) : null;
+    const rows = await db.select().from(subAdvancesTable)
+      .where(and(
+        eq(subAdvancesTable.jobId, jobId),
+        ...(subId ? [eq(subAdvancesTable.subcontractorId, subId)] : []),
+      ))
+      .orderBy(desc(subAdvancesTable.advanceDate), desc(subAdvancesTable.id));
+    res.json(rows.map(r => ({ ...r, amount: parseFloat(r.amount) })));
+  } catch (err) { console.error(err); res.status(500).json({ error: "Failed to fetch advances" }); }
+});
+
+router.post("/:id/advances", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
+    const { subcontractorId, amount, description, advanceDate } = req.body;
+    if (!subcontractorId || !amount || !description || !advanceDate)
+      return res.status(400).json({ error: "subcontractorId, amount, description, and advanceDate are required" });
+    const subId = parseInt(String(subcontractorId));
+    const amt = parseFloat(String(amount));
+    if (isNaN(subId) || isNaN(amt) || amt <= 0)
+      return res.status(400).json({ error: "Invalid subcontractorId or amount" });
+    const [row] = await db.insert(subAdvancesTable).values({
+      jobId, subcontractorId: subId,
+      amount: amt.toFixed(2),
+      description: String(description).trim(),
+      advanceDate: String(advanceDate),
+    }).returning();
+    res.json({ ...row, amount: parseFloat(row.amount) });
+  } catch (err) { console.error(err); res.status(500).json({ error: "Failed to create advance" }); }
+});
+
+router.delete("/:id/advances/:advId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const advId = parseInt(req.params.advId);
+    if (isNaN(jobId) || isNaN(advId)) return res.status(400).json({ error: "Invalid ids" });
+    const [row] = await db.select().from(subAdvancesTable)
+      .where(and(eq(subAdvancesTable.id, advId), eq(subAdvancesTable.jobId, jobId)));
+    if (!row) return res.status(404).json({ error: "Advance not found" });
+    if (row.appliedPaymentId != null) return res.status(400).json({ error: "Cannot delete an advance that has already been applied to a payment" });
+    await db.delete(subAdvancesTable).where(eq(subAdvancesTable.id, advId));
+    res.json({ ok: true });
+  } catch (err) { console.error(err); res.status(500).json({ error: "Failed to delete advance" }); }
+});
+
 router.post("/:id/pay-worker/:subId", async (req, res) => {
   // Declared at handler scope so the catch block can reference it for idempotency race recovery
   const idempotencyKey: string | null = req.body.idempotencyKey ? String(req.body.idempotencyKey) : null;
@@ -1563,6 +1614,26 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     });
 
     await recomputeSubPaid(jobId);
+
+    // Mark any advance records as applied to this payment
+    const advanceIds: number[] = Array.isArray(req.body.advanceIds)
+      ? req.body.advanceIds.map((x: unknown) => parseInt(String(x))).filter((n: number) => !isNaN(n))
+      : [];
+    if (advanceIds.length > 0 && txResult?.paymentId) {
+      try {
+        await db.update(subAdvancesTable)
+          .set({ appliedPaymentId: txResult.paymentId })
+          .where(and(
+            inArray(subAdvancesTable.id, advanceIds),
+            eq(subAdvancesTable.jobId, jobId),
+            eq(subAdvancesTable.subcontractorId, subId),
+            isNull(subAdvancesTable.appliedPaymentId),
+          ));
+      } catch (advErr) {
+        console.warn("[pay-worker] Failed to mark advances applied (non-fatal):", advErr);
+      }
+    }
+
     res.json(txResult ?? { ok: true });
   } catch (err: any) {
     if (err?.alreadyPaid) return res.json({ ok: true, alreadyPaid: true });

@@ -1,0 +1,446 @@
+I completely agree with you. Looking at this from the perspective of using it every day, this doesn't feel like a payroll page—it feels like a sidebar trying to cram payroll into a small space.
+
+The biggest problem is that you're trying to manage an entire financial workflow inside a narrow panel. This is something you'll use every single payday, so it deserves its own full page.
+
+I'd redesign it completely
+Job Payments (Full Screen)
+
+Instead of opening a sidebar, clicking Pay Crew should take you to a dedicated page.
+
+-------------------------------------------------------------
+                 Job Payroll - Clayton Evansville
+-------------------------------------------------------------
+
+Job Revenue                    $5,800
+Labor Budget                   $2,209
+Owner Draw                      $967
+Crew Members (2)
+
+-------------------------------------------------------------
+James Willard
+Split Partner (50%)
+
+Amount Owed               $1,289.71
+
+Payments
+-------------------------------------------------------------
+Date         Type              Amount
+7/13/26      Owner Draw      $1,289.71
+
+Balance                     $0.00
+
+[ Record Payment ]
+-------------------------------------------------------------
+
+-------------------------------------------------------------
+Dewayne Lamb
+Hourly Employee
+
+Hours Worked
+
+Work Hours          32
+Travel Hours         8
+Rate               $25
+Travel Rate        $15
+
+Gross Pay        $920
+
+-------------------------------------------------------------
+Advances
+-------------------------------------------------------------
+
+Date          Description            Amount
+
+7/12         Lunch                  $15
+
+7/12         Fuel                   $40
+
+7/13         Materials              $30
+
+                     Total Advances  $85
+
+[ + Add Advance ]
+
+-------------------------------------------------------------
+
+Bonuses
+
+Performance Bonus        $50
+
+-------------------------------------------------------------
+
+Payment Summary
+
+Gross Pay              $920
+Advances               -85
+Bonus                  +50
+
+Net Pay               $885
+
+[ Record Payment ]
+
+Payment History
+
+Everything is visible.
+
+No collapsing.
+
+No tiny inputs.
+
+No scrolling inside scrolling.
+
+Advances should be their own records
+
+This is the biggest issue I see.
+
+Right now you have:
+
+Advance Deduct
+
+30
+
+Once you hit Record Payment...
+
+it's gone forever.
+
+Instead it should work like expenses.
+
+Advances
++ Add Advance
+
+Opens
+
+Amount
+
+Description
+
+Date
+
+Category
+
+☐ Lunch
+
+☐ Fuel
+
+☐ Tools
+
+☐ Cash
+
+☐ Other
+
+Save
+
+Then it builds a ledger
+
+Advances
+
+7/10  Lunch              $18
+
+7/11  Fuel               $40
+
+7/12  Cash Advance       $50
+
+Total Outstanding Advances
+
+$108
+
+Now payroll simply subtracts them automatically.
+
+Payment history should also be a ledger
+
+Instead of
+
+$100 paid
+
+I'd show
+
+Payments
+
+7/10      Partial Payment       $100
+
+7/13      Final Payment         $790
+
+This makes auditing much easier.
+
+I also don't think hours should disappear
+
+If you pay someone multiple times...
+
+The hours they worked should remain visible.
+
+Instead, each payment should say
+
+Payment #1
+
+Hours Included
+
+20
+
+Travel
+
+4
+
+Advance
+
+20
+
+Net
+
+$520
+
+Then
+
+Payment #2
+
+Hours Included
+
+12
+
+Travel
+
+4
+
+Advance
+
+10
+
+Net
+
+$370
+
+That way you're paying for actual hours instead of editing the totals each time.
+
+I would send Replit something like this
+
+The current Sub Pay sidebar has become too complex for a narrow side panel. Payroll is a primary workflow and should be redesigned as a dedicated full-screen Job Payroll page. Each crew member should have their own payment card with separate sections for Work Summary, Advances, Bonuses, Payments, and Payment History. Advances should no longer be a single deduction field. Instead, they should be recorded as individual ledger entries with a date, amount, description, and category (Lunch, Fuel, Tools, Cash, Other). Multiple advances should be supported, automatically totaled, and deducted from the employee's net pay. Payment History should also be a ledger showing each payment made instead of a single running balance. This redesign makes payroll self-documenting, supports multiple advances and partial payments, and provides a complete audit trail for every crew member.
+
+I actually think this would be one of the biggest usability improvements you could make to your app. Payroll is something you'll interact with constantly, and giving it a dedicated page with proper ledgers instead of squeezing it into a sidebar will make it feel much more like professional contractor management software.
+
+Ad
+well i think i have a ledger for myself and then also in subcontractor portal they should have their own ledger to see
+
+I think that's exactly the right direction. I'd actually separate it into two ledgers with one source of truth.
+
+1. Company Payroll Ledger (Your View)
+
+This is your internal accounting ledger.
+
+Every payroll-related event gets recorded:
+
+Dewayne Lamb
+
+7/10  Clocked 8.0 hrs
+7/10  Lunch Advance               -$15
+7/10  Fuel Advance                -$30
+
+7/11  Clocked 10.0 hrs
+
+7/12  Partial Payment            $200
+
+7/13  Tool Advance               -$40
+
+7/15  Final Payment              $685
+
+-----------------------------------
+Gross Earnings                   $970
+Advances                        -$85
+Payments                        -$885
+Outstanding                     $0
+
+This becomes your audit trail if you ever need to answer questions like:
+
+"Did I already pay him?"
+"How much lunch money did I front?"
+"Why is his final check lower?"
+2. Subcontractor Portal Ledger (Their View)
+
+The subcontractor logs in and sees their own statement.
+
+Payment Ledger
+
+Job
+Clayton Evansville
+
+Gross Pay             $920
+
+Advances
+
+7/10 Lunch             -$15
+
+7/10 Fuel              -$30
+
+7/13 Tools             -$40
+
+Payments
+
+7/12 Partial          $100
+
+Balance Due           $735
+
+They don't see:
+
+Other employees
+Company profits
+Owner draw
+Tax reserve
+Split pool calculations
+Internal notes
+
+Only their own earnings and transactions.
+
+3. They should also be able to acknowledge advances
+
+When you hand someone $20 for lunch, you could record:
+
+Lunch Advance
+
+$20
+
+Reason
+Lunch
+
+Employee Signature
+
+[Sign]
+
+Later there's no dispute because it's documented.
+
+4. Everything should be generated automatically
+
+You should never have to manually keep both ledgers updated.
+
+When you click:
+
+Add Advance
+
+the app should automatically:
+
+Company Ledger
+
+Lunch Advance -$20
+
+and at the exact same time add:
+
+Employee Ledger
+
+Lunch Advance -$20
+
+Same database record.
+
+Different views.
+
+5. Record Payment works the same way
+
+When you pay:
+
+$500
+
+it automatically creates:
+
+Company Ledger
+
+Payment $500
+
+and
+
+Employee Portal
+
+Payment Received $500
+I think this is the architecture you want
+
+Instead of thinking:
+
+"I have a payroll page."
+
+Think:
+
+"Every subcontractor has an account."
+
+That account has a ledger, just like a bank account.
+
+Every transaction—hours earned, bonuses, advances, deductions, and payments—creates a ledger entry. Your company view and the subcontractor's portal simply present that same ledger with different levels of detail and permissions.
+
+That design scales naturally as your business grows. Whether you have one subcontractor or fifty, each person has a complete financial history, and you always have a clear audit trail without entering the same information twice.
+
+well they are subcontractors 
+
+That's actually an important distinction, and I think it changes the terminology and workflow.
+
+These aren't employees—they're subcontractors (1099). You aren't running payroll; you're tracking amounts earned, advances, and payments owed.
+
+I'd avoid calling it Payroll altogether.
+
+Instead, I'd call it something like:
+
+Subcontractor Payments
+Subcontractor Ledger
+Payment Ledger
+Settlement Ledger (my favorite for 1099 work)
+Your View (Business)
+
+Each subcontractor has a ledger for every job.
+
+James Willard
+
+Date	Type	Description	Amount	Balance
+7/10	Earnings	32 Work Hours	+$800.00	$800.00
+7/10	Earnings	8 Travel Hours	+$120.00	$920.00
+7/10	Advance	Lunch	-$15.00	$905.00
+7/11	Advance	Fuel	-$40.00	$865.00
+7/13	Payment	Check #1042	-$500.00	$365.00
+
+Current Balance Owed: $365.00
+
+Everything is documented.
+
+Their Portal
+
+The subcontractor sees the same ledger, but only for themselves.
+
+Amount Earned
+
+$920.00
+
+Advances
+
+Lunch: $15
+Fuel: $40
+
+Payments Received
+
+Check #1042: $500
+
+Balance Due
+
+$365.00
+
+No access to:
+
+Your owner draw
+Profit split
+Other subcontractors
+Job profitability
+Internal notes
+I would also stop calling them "deductions"
+
+Since they're subcontractors, these are better described as:
+
+Advance
+Cash Advance
+Fuel Advance
+Material Advance
+Tool Purchase
+Expense Paid on Behalf of Subcontractor
+
+Those terms are more accurate and make the ledger easier to understand.
+
+Long-term benefit
+
+If every earning, advance, and payment creates a ledger entry, then at year-end you can instantly answer questions like:
+
+How much have I paid this subcontractor this year?
+What jobs did they work on?
+How much is still owed?
+How much did I front them in fuel, meals, or tools?
+
+That same ledger also becomes the foundation for generating a 1099 payment summary or reconciling your records. You're not just building a payment screen—you'd be building a complete financial history for each subcontractor, with one source of truth that both you and the subcontractor can reference.

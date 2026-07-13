@@ -260,11 +260,32 @@ async function clearDraftInvoiceNumbers(): Promise<void> {
   }
 }
 
+async function ensureSubAdvancesTable(): Promise<void> {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS sub_advances (
+        id SERIAL PRIMARY KEY,
+        job_id INTEGER NOT NULL REFERENCES jobs(id),
+        subcontractor_id INTEGER NOT NULL REFERENCES subcontractors(id),
+        amount NUMERIC(10,2) NOT NULL,
+        description TEXT NOT NULL,
+        advance_date DATE NOT NULL,
+        applied_payment_id INTEGER REFERENCES sub_payment_records(id),
+        created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+      )
+    `);
+    console.log("[startup] sub_advances table ensured.");
+  } catch (err) {
+    console.error("[startup] ensureSubAdvancesTable failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await ensureInvoiceLifecycleColumns();
   await ensureJobsManHours();
   await ensureSubPayDualRateColumns();
   await ensureSubHoursHourType();
+  await ensureSubAdvancesTable();
   await clearDraftInvoiceNumbers();
   await seedDefaultBusinesses();
   await seedClaytonBillback();
