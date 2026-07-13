@@ -205,14 +205,16 @@ router.get("/job/:jobId/draft", async (req, res) => {
 
 // Assign the next sequential invoice number to an invoice that is transitioning
 // out of Draft status. No-op if the invoice already has a number.
-async function assignInvoiceNumberIfNeeded(invoiceId: number): Promise<void> {
+// Returns the assigned (or pre-existing) invoice number.
+export async function assignInvoiceNumberIfNeeded(invoiceId: number): Promise<string | null> {
   const [inv] = await db
     .select({ invoiceNumber: invoicesTable.invoiceNumber })
     .from(invoicesTable)
     .where(eq(invoicesTable.id, invoiceId));
-  if (inv?.invoiceNumber) return; // already assigned
+  if (inv?.invoiceNumber) return inv.invoiceNumber; // already assigned
   const number = await getNextInvoiceNumber();
   await db.update(invoicesTable).set({ invoiceNumber: number }).where(eq(invoicesTable.id, invoiceId));
+  return number;
 }
 
 router.post("/", async (req, res) => {

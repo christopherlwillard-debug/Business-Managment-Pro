@@ -4,7 +4,7 @@ import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, d
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { computeAllocationSplitPool, computeSubOwed } from "../lib/allocation.js";
-import { calcInvoice, getNextInvoiceNumber, buildInvoiceQuery, fmt } from "./invoices";
+import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
 import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/productionBilling.js";
 import { z } from "zod/v4";
 
@@ -674,13 +674,12 @@ router.post("/:id/apply-production-pricing", async (req, res) => {
       return res.json({ invoice: fmt(withJoins), updated: true });
     }
 
-    const invoiceNumber = await getNextInvoiceNumber();
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, null);
     const issueDate = new Date().toISOString().slice(0, 10);
     const [invoice] = await db
       .insert(invoicesTable)
       .values({
-        invoiceNumber,
+        invoiceNumber: null,
         clientId: job.clientId ?? null,
         jobId: id,
         status: "draft",

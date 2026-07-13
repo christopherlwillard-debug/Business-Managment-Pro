@@ -669,7 +669,7 @@ export function InvoicePanel({
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0 bg-white">
           <div className="flex items-center gap-2 min-w-0">
             <h2 className="text-sm font-bold text-gray-900 truncate">
-              {isEdit ? `Invoice ${effectiveExistingInvoice!.invoiceNumber}` : "New Invoice"}
+              {isEdit ? (effectiveExistingInvoice!.invoiceNumber ? `Invoice ${effectiveExistingInvoice!.invoiceNumber}` : "Draft Invoice") : "New Invoice"}
             </h2>
             {isEdit && (
               <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide flex-shrink-0 ${STATUS_COLORS[effectiveExistingInvoice!.status] ?? "bg-gray-100 text-gray-600"}`}>
