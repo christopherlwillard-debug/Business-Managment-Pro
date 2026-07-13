@@ -180,7 +180,7 @@ router.get("/", async (req, res) => {
 
     const invoices = await buildInvoiceQuery()
       .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(invoicesTable.createdAt));
+      .orderBy(desc(invoicesTable.issueDate), desc(invoicesTable.id));
 
     res.json(invoices.map(fmt));
   } catch (err) {
