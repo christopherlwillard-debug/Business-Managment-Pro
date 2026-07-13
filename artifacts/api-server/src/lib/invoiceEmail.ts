@@ -197,7 +197,10 @@ export async function sendInvoiceEmail(
   const safeNum = (inv.invoiceNumber ?? "invoice").replace(/[^a-zA-Z0-9\-_]/g, "_");
   const pdfFilename = `Invoice-${safeNum}.pdf`;
 
-  const pdfBuffer = await generateInvoicePdf(html);
+  // Generate the PDF from plain HTML (no inline photo data URIs) so Puppeteer
+  // stays fast and reliable regardless of how many photos are in the email body.
+  const pdfHtml = buildInvoiceEmailHtml(inv, settings, message);
+  const pdfBuffer = await generateInvoicePdf(pdfHtml);
 
   const smtpConfigured = !!(settings.smtpHost && settings.smtpUser && settings.smtpPass);
 

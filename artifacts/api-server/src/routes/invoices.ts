@@ -698,9 +698,10 @@ router.post("/:id/send", async (req, res) => {
            ["before", "after", "general"].includes((entry as Record<string, unknown>).photoType as string))
             ? (entry as Record<string, unknown>).photoType as "before" | "after" | "general"
             : "general";
-        extraAttachments.push({ filename, mimeType, buffer });
         if (imageTypes.has(mimeType)) {
           inlineImages.push({ filename, mimeType, buffer, photoType });
+        } else {
+          extraAttachments.push({ filename, mimeType, buffer });
         }
       } catch (photoErr) {
         console.warn("[invoices/send] Could not attach photo — skipping:", entry, photoErr);
