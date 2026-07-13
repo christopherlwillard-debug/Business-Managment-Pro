@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import path from "path";
 import fs from "fs";
+import sharp from "sharp";
 import { launchBrowser } from "../lib/launchBrowser.js";
 import { sendInvoiceEmail, type InvoiceEmailSettings, type InlineImage } from "../lib/invoiceEmail";
 import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
@@ -699,7 +700,17 @@ router.post("/:id/send", async (req, res) => {
             ? (entry as Record<string, unknown>).photoType as "before" | "after" | "general"
             : "general";
         if (imageTypes.has(mimeType)) {
-          inlineImages.push({ filename, mimeType, buffer, photoType });
+          // Resize to max 1200px to keep the email under Gmail's size limit.
+          // iPhone photos are typically 3-5 MB; this brings them down to ~150-250 KB each.
+          try {
+            buffer = await sharp(buffer)
+              .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
+              .jpeg({ quality: 80 })
+              .toBuffer();
+          } catch (resizeErr) {
+            console.warn("[invoices/send] Could not resize photo, using original:", filename, resizeErr);
+          }
+          inlineImages.push({ filename: filename.replace(/\.[^.]+$/, ".jpg"), mimeType: "image/jpeg", buffer, photoType });
         } else {
           extraAttachments.push({ filename, mimeType, buffer });
         }

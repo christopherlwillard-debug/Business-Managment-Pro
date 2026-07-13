@@ -17,6 +17,7 @@ import { useBusiness } from "@/contexts/BusinessContext";
 import {
   Building2, MapPin, Check, X, Plus, Trash2, Printer,
   Send, Mail, CreditCard, Copy, Eye, ChevronDown, ChevronUp, Paperclip, Upload,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 interface LineItem { description: string; quantity: number; unitPrice: number; }
@@ -186,6 +187,7 @@ export function InvoicePanel({
   const [attachMaterials, setAttachMaterials] = useState(true);
   const [jobHasMaterials, setJobHasMaterials] = useState(false);
   const [extraEmailFiles, setExtraEmailFiles] = useState<{ filename: string; base64: string }[]>([]);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [recordPaymentAmount, setRecordPaymentAmount] = useState("");
   const [recordPaymentDate, setRecordPaymentDate] = useState(() => localDateString(new Date()));
@@ -660,6 +662,7 @@ export function InvoicePanel({
   ) : null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !submitting && onOpenChange(false)} />
       <div className="relative w-full bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden"
@@ -1375,7 +1378,8 @@ export function InvoicePanel({
                           return (
                             <div key={i} className="relative group flex-shrink-0" style={{ width: 72, height: 72 }}>
                               <img src={att.url} alt={att.name}
-                                className="w-full h-full object-cover rounded-lg border border-gray-200" />
+                                onClick={() => setLightboxIndex(i)}
+                                className="w-full h-full object-cover rounded-lg border border-gray-200 cursor-pointer" />
                               <button type="button" onClick={() => cyclePhotoType(i)}
                                 title="Tap to cycle: General → Before → After"
                                 className={`absolute bottom-0.5 left-0.5 right-5 px-0.5 py-px rounded text-[7px] font-bold text-white ${tagCfg.bg} truncate text-center leading-tight cursor-pointer`}>
@@ -1479,5 +1483,91 @@ export function InvoicePanel({
 
       </div>
     </div>
+
+    {/* ── Fullscreen photo lightbox ── */}
+    {lightboxIndex !== null && (() => {
+      const imgAtts = attachments
+        .map((a, i) => ({ ...a, origIdx: i }))
+        .filter(a => /\.(jpg|jpeg|png|gif|webp)$/i.test(a.name));
+      const pos = imgAtts.findIndex(a => a.origIdx === lightboxIndex);
+      const att = imgAtts[pos];
+      if (!att) return null;
+      const type = att.photoType ?? "general";
+      const tagCfg = type === "before"
+        ? { bg: "bg-blue-500", label: "BEFORE" }
+        : type === "after"
+        ? { bg: "bg-green-500", label: "AFTER" }
+        : { bg: "bg-gray-400", label: "GENERAL" };
+      const prevIdx = pos > 0 ? imgAtts[pos - 1].origIdx : null;
+      const nextIdx = pos < imgAtts.length - 1 ? imgAtts[pos + 1].origIdx : null;
+      return (
+        <div
+          className="fixed inset-0 z-[500] bg-black/92 flex flex-col"
+          onClick={() => setLightboxIndex(null)}
+        >
+          {/* Top bar */}
+          <div
+            className="flex items-center justify-between px-4 py-3 flex-shrink-0"
+            onClick={e => e.stopPropagation()}
+          >
+            <span className="text-white/80 text-sm font-medium truncate max-w-[55%]">{att.name}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-white/40 text-xs">{pos + 1} / {imgAtts.length}</span>
+              <button
+                type="button"
+                onClick={() => cyclePhotoType(lightboxIndex)}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold text-white ${tagCfg.bg}`}
+              >
+                {tagCfg.label}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLightboxIndex(null)}
+                className="text-white/60 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Photo + prev/next arrows */}
+          <div
+            className="flex-1 flex items-center justify-center relative px-14 min-h-0"
+            onClick={e => e.stopPropagation()}
+          >
+            <img
+              src={att.url}
+              alt={att.name}
+              className="max-w-full max-h-full object-contain rounded-lg select-none"
+              style={{ maxHeight: "calc(100dvh - 120px)" }}
+            />
+            {prevIdx !== null && (
+              <button
+                type="button"
+                onClick={() => setLightboxIndex(prevIdx)}
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white transition-colors"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            )}
+            {nextIdx !== null && (
+              <button
+                type="button"
+                onClick={() => setLightboxIndex(nextIdx)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white transition-colors"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+
+          {/* Bottom hint */}
+          <div className="h-10 flex items-center justify-center flex-shrink-0">
+            <p className="text-white/25 text-[10px]">tap outside to close · tap badge to tag</p>
+          </div>
+        </div>
+      );
+    })()}
+    </>
   );
 }
