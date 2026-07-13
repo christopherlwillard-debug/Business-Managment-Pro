@@ -388,6 +388,68 @@ router.post("/strip-legacy-material-lines", async (_req: Request, res: Response)
   }
 });
 
+// Strip phantom zero-dollar unsourced lines from draft invoices that have been
+// consolidated (have a "Materials" aggregate line with source="material").
+// These $0 lines have no financial impact but look wrong on the printed invoice.
+// Targets lines where unitPrice=0, quantity=1, and no source field.
+// Idempotent: invoices with no matching lines are untouched.
+router.post("/strip-phantom-zero-lines", async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const draftInvoices = await db
+      .select({ id: invoicesTable.id, lineItems: invoicesTable.lineItems })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.status, "draft"));
+
+    let fixed = 0;
+    const affected: number[] = [];
+
+    for (const inv of draftInvoices) {
+      const lines = Array.isArray(inv.lineItems) ? (inv.lineItems as any[]) : [];
+
+      // Only touch invoices that have already been consolidated (have a Materials aggregate)
+      const hasAggregateLine = lines.some(
+        li => li.source === "material" && li.description === "Materials"
+      );
+      if (!hasAggregateLine) continue;
+
+      // Find phantom lines: no source, unitPrice=0, quantity=1
+      const phantomLines = lines.filter(
+        li => !li.source && (li.unitPrice === 0 || li.unitPrice === "0") && (li.quantity === 1 || li.quantity === "1")
+      );
+      if (phantomLines.length === 0) continue;
+
+      const stripped = lines.filter(
+        li => li.source || !(
+          (li.unitPrice === 0 || li.unitPrice === "0") && (li.quantity === 1 || li.quantity === "1")
+        )
+      );
+
+      const subtotal = stripped.reduce((s: number, li: any) => s + (parseFloat(li.quantity) || 1) * (parseFloat(li.unitPrice) || 0), 0);
+      const [existing] = await db.select({ taxRate: invoicesTable.taxRate }).from(invoicesTable).where(eq(invoicesTable.id, inv.id));
+      const taxRate = existing?.taxRate ? parseFloat(existing.taxRate) : 0;
+      const taxAmount = taxRate ? subtotal * (taxRate / 100) : 0;
+
+      await db.update(invoicesTable)
+        .set({
+          lineItems: stripped,
+          subtotal: subtotal.toFixed(2),
+          taxAmount: taxAmount.toFixed(2),
+          total: (subtotal + taxAmount).toFixed(2),
+        })
+        .where(eq(invoicesTable.id, inv.id));
+
+      fixed++;
+      affected.push(inv.id);
+    }
+
+    console.log(`[admin/migrations] strip-phantom-zero-lines: fixed=${fixed}, affected=${affected}`);
+    res.json({ ok: true, invoicesFixed: fixed, affected });
+  } catch (err) {
+    console.error("[admin/migrations] strip-phantom-zero-lines failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 // Seed Clayton Homes of Evansville client + Factory Billback billing profile.
 // Idempotent: skips client creation if already exists, skips profile if already present.
 router.post("/seed-clayton-billback", async (_req: Request, res: Response) => {
