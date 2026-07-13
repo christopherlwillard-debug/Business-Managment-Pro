@@ -694,7 +694,20 @@ router.post("/:id/send", async (req, res) => {
       }
     }
 
-    await sendInvoiceEmail(fmt(invForEmail), mergedSettings, to, subjectLine, message, extraAttachments.length ? extraAttachments : undefined);
+    // Split photo attachments: images are embedded inline AND sent as attachments;
+    // PDFs (and anything else) remain download-only attachments.
+    const imageTypes = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+    const inlineImages = extraAttachments.filter(a => imageTypes.has(a.mimeType));
+
+    await sendInvoiceEmail(
+      fmt(invForEmail),
+      mergedSettings,
+      to,
+      subjectLine,
+      message,
+      extraAttachments.length ? extraAttachments : undefined,
+      inlineImages.length ? inlineImages : undefined,
+    );
 
     const now = new Date();
     await db.update(invoicesTable)
