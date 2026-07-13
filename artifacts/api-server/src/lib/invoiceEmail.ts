@@ -45,7 +45,7 @@ export interface InlineImage {
   photoType?: "before" | "after" | "general";
 }
 
-export function buildInvoiceEmailHtml(inv: InvoiceEmailInv, settings: InvoiceEmailSettings, message?: string, inlineImages?: InlineImage[]): string {
+export function buildInvoiceEmailHtml(inv: InvoiceEmailInv, settings: InvoiceEmailSettings, message?: string, photoSummary?: string): string {
   const lineItems: any[] = Array.isArray(inv.lineItems) ? inv.lineItems : [];
 
   const lineRows = lineItems.map(li => `
@@ -120,17 +120,10 @@ export function buildInvoiceEmailHtml(inv: InvoiceEmailInv, settings: InvoiceEma
             <p style="margin:10px 0 0;font-size:11px;color:#6b7280;">Powered by Square · Secure payment</p>
           </div>` : ""}
         </td></tr>
-        ${(inlineImages && inlineImages.length > 0) ? `
+        ${photoSummary ? `
         <tr><td style="padding:0 40px 32px;">
-          ${(["before", "after", "general"] as const).map(type => {
-            const group = inlineImages.filter(img => (img.photoType ?? "general") === type);
-            if (!group.length) return "";
-            const labels: Record<string, string> = { before: "Before Photos", after: "After Photos", general: "Job Photos" };
-            return `<p style="margin:0 0 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#aaa;">${labels[type]}</p>${group.map(img => {
-              const b64 = img.buffer.toString("base64");
-              return `<div style="margin-bottom:16px;"><img src="data:${img.mimeType};base64,${b64}" alt="${img.filename}" style="max-width:500px;width:100%;height:auto;border-radius:6px;display:block;"></div>`;
-            }).join("")}<div style="margin-bottom:16px;"></div>`;
-          }).join("")}
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#aaa;">Job Photos</p>
+          <p style="margin:0;font-size:13px;color:#555;">📎 ${photoSummary} — see attached files.</p>
         </td></tr>` : ""}
         <tr><td style="padding:20px 40px;background:#fafafa;border-top:1px solid #f0f0f0;">
           <p style="margin:0;font-size:12px;color:#aaa;text-align:center;">Thank you for your business · ${settings.companyName || ""} · ${settings.companyEmail || ""}</p>
@@ -189,16 +182,25 @@ export async function sendInvoiceEmail(
   subject: string,
   message?: string,
   extraAttachments?: ExtraAttachment[],
-  inlineImages?: InlineImage[],
 ): Promise<void> {
-  const html = buildInvoiceEmailHtml(inv, settings, message, inlineImages);
+  const photoAttachments = (extraAttachments ?? []).filter(a => a.mimeType.startsWith("image/"));
+  let photoSummary: string | undefined;
+  if (photoAttachments.length > 0) {
+    const beforeCount = photoAttachments.filter(a => a.filename.startsWith("before-")).length;
+    const afterCount  = photoAttachments.filter(a => a.filename.startsWith("after-")).length;
+    const otherCount  = photoAttachments.length - beforeCount - afterCount;
+    const parts: string[] = [];
+    if (beforeCount) parts.push(`${beforeCount} before photo${beforeCount === 1 ? "" : "s"}`);
+    if (afterCount)  parts.push(`${afterCount} after photo${afterCount === 1 ? "" : "s"}`);
+    if (otherCount)  parts.push(`${otherCount} photo${otherCount === 1 ? "" : "s"}`);
+    photoSummary = parts.join(", ");
+  }
+  const html = buildInvoiceEmailHtml(inv, settings, message, photoSummary);
   const total = parseFloat(inv.total ?? "0");
   const text = message || `Please find invoice ${inv.invoiceNumber} attached. Total Due: $${total.toFixed(2)}`;
   const safeNum = (inv.invoiceNumber ?? "invoice").replace(/[^a-zA-Z0-9\-_]/g, "_");
   const pdfFilename = `Invoice-${safeNum}.pdf`;
 
-  // Generate the PDF from plain HTML (no inline photo data URIs) so Puppeteer
-  // stays fast and reliable regardless of how many photos are in the email body.
   const pdfHtml = buildInvoiceEmailHtml(inv, settings, message);
   const pdfBuffer = await generateInvoicePdf(pdfHtml);
 

@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import sharp from "sharp";
 import { launchBrowser } from "../lib/launchBrowser.js";
-import { sendInvoiceEmail, type InvoiceEmailSettings, type InlineImage } from "../lib/invoiceEmail";
+import { sendInvoiceEmail, type InvoiceEmailSettings } from "../lib/invoiceEmail";
 import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
 import { generateMaterialsPdfBuffer } from "../lib/generateMaterialsPdf.js";
 import { db } from "@workspace/db";
@@ -645,7 +645,7 @@ router.post("/:id/send", async (req, res) => {
       ".webp": "image/webp", ".pdf": "application/pdf",
     };
     const imageTypes = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
-    const inlineImages: InlineImage[] = [];
+    const photoCounters: Record<"before" | "after" | "general", number> = { before: 0, after: 0, general: 0 };
     const rawAttachments: unknown[] = Array.isArray(invForEmail.attachments) ? invForEmail.attachments : [];
     for (const entry of rawAttachments) {
       try {
@@ -688,10 +688,10 @@ router.post("/:id/send", async (req, res) => {
 
         if (!buffer) continue;
 
-        const filename = (typeof entry === "object" && entry !== null && "name" in entry)
+        const origFilename = (typeof entry === "object" && entry !== null && "name" in entry)
           ? String((entry as { name: unknown }).name)
           : path.basename(rawUrl);
-        const ext = path.extname(filename).toLowerCase();
+        const ext = path.extname(origFilename).toLowerCase();
         const mimeType = mimeMap[ext] ?? "application/octet-stream";
         const photoType: "before" | "after" | "general" =
           (typeof entry === "object" && entry !== null && "photoType" in entry &&
@@ -700,19 +700,23 @@ router.post("/:id/send", async (req, res) => {
             ? (entry as Record<string, unknown>).photoType as "before" | "after" | "general"
             : "general";
         if (imageTypes.has(mimeType)) {
-          // Resize to max 1200px to keep the email under Gmail's size limit.
-          // iPhone photos are typically 3-5 MB; this brings them down to ~150-250 KB each.
+          // Resize to max 1200px before attaching — keeps each photo ~150-250 KB.
           try {
             buffer = await sharp(buffer)
               .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
               .jpeg({ quality: 80 })
               .toBuffer();
           } catch (resizeErr) {
-            console.warn("[invoices/send] Could not resize photo, using original:", filename, resizeErr);
+            console.warn("[invoices/send] Could not resize photo, using original:", origFilename, resizeErr);
           }
-          inlineImages.push({ filename: filename.replace(/\.[^.]+$/, ".jpg"), mimeType: "image/jpeg", buffer, photoType });
+          // Send as a named file attachment so Gmail delivers it reliably regardless of email size.
+          // Naming: before-1.jpg, after-1.jpg, photo-1.jpg
+          photoCounters[photoType] += 1;
+          const prefix = photoType === "before" ? "before" : photoType === "after" ? "after" : "photo";
+          const attachFilename = `${prefix}-${photoCounters[photoType]}.jpg`;
+          extraAttachments.push({ filename: attachFilename, mimeType: "image/jpeg", buffer });
         } else {
-          extraAttachments.push({ filename, mimeType, buffer });
+          extraAttachments.push({ filename: origFilename, mimeType, buffer });
         }
       } catch (photoErr) {
         console.warn("[invoices/send] Could not attach photo — skipping:", entry, photoErr);
@@ -726,7 +730,6 @@ router.post("/:id/send", async (req, res) => {
       subjectLine,
       message,
       extraAttachments.length ? extraAttachments : undefined,
-      inlineImages.length ? inlineImages : undefined,
     );
 
     const now = new Date();
