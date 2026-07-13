@@ -10,7 +10,8 @@ import { startBidSyncJob } from "./jobs/bidSync.js";
 import { startComplianceReminderJob } from "./jobs/complianceReminders.js";
 import { db } from "@workspace/db";
 import { businessesTable, mileageLogsTable, expensesTable, clientsTable, clientBillingProfilesTable } from "@workspace/db/schema";
-import { isNull, and, inArray, asc, sql, ilike, eq } from "drizzle-orm";
+import { invoicesTable } from "@workspace/db/schema";
+import { isNull, isNotNull, and, inArray, asc, sql, ilike, eq } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
 
@@ -224,11 +225,47 @@ async function ensureSubHoursHourType(): Promise<void> {
   }
 }
 
+// One-time startup migration: drop NOT NULL on invoice_number (if still present)
+// and clear any numbers from draft invoices so they receive sequential numbers
+// when sent (not when created). Idempotent — safe to run on every boot.
+async function clearDraftInvoiceNumbers(): Promise<void> {
+  try {
+    // Drop NOT NULL constraint if it still exists (production may still have it)
+    await db.execute(sql`
+      ALTER TABLE invoices ALTER COLUMN invoice_number DROP NOT NULL;
+    `);
+  } catch {
+    // Already nullable — ignore
+  }
+
+  try {
+    const draftsWithNumbers = await db
+      .select({ id: invoicesTable.id })
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.status, "draft"), isNotNull(invoicesTable.invoiceNumber)));
+
+    if (draftsWithNumbers.length === 0) {
+      console.log("[startup] clearDraftInvoiceNumbers: no draft invoices with numbers — skipped.");
+      return;
+    }
+
+    const ids = draftsWithNumbers.map(r => r.id);
+    await db.update(invoicesTable)
+      .set({ invoiceNumber: null })
+      .where(inArray(invoicesTable.id, ids));
+
+    console.log(`[startup] clearDraftInvoiceNumbers: cleared invoice numbers from ${ids.length} draft invoice(s).`);
+  } catch (err) {
+    console.error("[startup] clearDraftInvoiceNumbers failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await ensureInvoiceLifecycleColumns();
   await ensureJobsManHours();
   await ensureSubPayDualRateColumns();
   await ensureSubHoursHourType();
+  await clearDraftInvoiceNumbers();
   await seedDefaultBusinesses();
   await seedClaytonBillback();
   await backfillMileageBusiness();
