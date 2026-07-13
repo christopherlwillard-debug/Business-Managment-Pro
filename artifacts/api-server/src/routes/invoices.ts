@@ -3,7 +3,7 @@ import { z } from "zod";
 import path from "path";
 import fs from "fs";
 import { launchBrowser } from "../lib/launchBrowser.js";
-import { sendInvoiceEmail, type InvoiceEmailSettings } from "../lib/invoiceEmail";
+import { sendInvoiceEmail, type InvoiceEmailSettings, type InlineImage } from "../lib/invoiceEmail";
 import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
 import { generateMaterialsPdfBuffer } from "../lib/generateMaterialsPdf.js";
 import { db } from "@workspace/db";
@@ -641,6 +641,8 @@ router.post("/:id/send", async (req, res) => {
       ".png": "image/png", ".gif": "image/gif",
       ".webp": "image/webp", ".pdf": "application/pdf",
     };
+    const imageTypes = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+    const inlineImages: InlineImage[] = [];
     const rawAttachments: unknown[] = Array.isArray(invForEmail.attachments) ? invForEmail.attachments : [];
     for (const entry of rawAttachments) {
       try {
@@ -688,16 +690,20 @@ router.post("/:id/send", async (req, res) => {
           : path.basename(rawUrl);
         const ext = path.extname(filename).toLowerCase();
         const mimeType = mimeMap[ext] ?? "application/octet-stream";
+        const photoType: "before" | "after" | "general" =
+          (typeof entry === "object" && entry !== null && "photoType" in entry &&
+           typeof (entry as Record<string, unknown>).photoType === "string" &&
+           ["before", "after", "general"].includes((entry as Record<string, unknown>).photoType as string))
+            ? (entry as Record<string, unknown>).photoType as "before" | "after" | "general"
+            : "general";
         extraAttachments.push({ filename, mimeType, buffer });
+        if (imageTypes.has(mimeType)) {
+          inlineImages.push({ filename, mimeType, buffer, photoType });
+        }
       } catch (photoErr) {
         console.warn("[invoices/send] Could not attach photo — skipping:", entry, photoErr);
       }
     }
-
-    // Split photo attachments: images are embedded inline AND sent as attachments;
-    // PDFs (and anything else) remain download-only attachments.
-    const imageTypes = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
-    const inlineImages = extraAttachments.filter(a => imageTypes.has(a.mimeType));
 
     await sendInvoiceEmail(
       fmt(invForEmail),

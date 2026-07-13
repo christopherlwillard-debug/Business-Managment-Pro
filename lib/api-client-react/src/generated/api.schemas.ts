@@ -229,6 +229,7 @@ export interface InvoiceLineItem {
 }
 
 export interface InvoiceAttachment {
+  photoType?: "before" | "after" | "general" | null;
   name: string;
   url: string;
   size?: number | null;

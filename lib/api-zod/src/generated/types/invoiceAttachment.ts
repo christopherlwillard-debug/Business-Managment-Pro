@@ -10,4 +10,5 @@ export interface InvoiceAttachment {
   name: string;
   url: string;
   size?: number | null;
+  photoType?: "before" | "after" | "general" | null;
 }

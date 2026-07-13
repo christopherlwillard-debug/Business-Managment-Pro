@@ -2027,6 +2027,10 @@ components:
         size:
           type: number
           nullable: true
+        photoType:
+          type: string
+          enum: [before, after, general]
+          nullable: true
       required: [name, url]
 
     InvoiceLineItem:

@@ -291,6 +291,11 @@ export function InvoicePanel({
     if (lineItems.length > 1) setLineItems(ls => ls.filter((_, idx) => idx !== i));
   }
 
+  function cyclePhotoType(idx: number) {
+    const cycle: Record<string, "before" | "after" | "general"> = { general: "before", before: "after", after: "general" };
+    setAttachments(prev => prev.map((a, i) => i !== idx ? a : { ...a, photoType: cycle[a.photoType ?? "general"] }));
+  }
+
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
@@ -303,7 +308,7 @@ export function InvoicePanel({
         const res = await fetch(`${base}/api/uploads`, { method: "POST", body: fd });
         if (res.ok) {
           const data = await res.json();
-          results.push({ name: data.filename || file.name, url: data.url, size: data.size });
+          results.push({ name: data.filename || file.name, url: data.url, size: data.size, photoType: "general" });
         }
       }
       if (results.length) setAttachments(prev => [...prev, ...results]);
@@ -1352,21 +1357,57 @@ export function InvoicePanel({
                 {/* Attachments display */}
                 {attachments.length > 0 && (
                   <div className="border-t border-gray-100 pt-3">
-                    <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-1.5 flex items-center gap-1">
+                    <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-2 flex items-center gap-1">
                       <Paperclip className="w-2.5 h-2.5" /> Attachments
+                      <span className="ml-1 font-normal text-gray-300">· tap badge to tag</span>
                     </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {attachments.map((att, i) => (
-                        <div key={i} className="flex items-center gap-1.5 px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 max-w-[200px]">
-                          <Paperclip className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                          <span className="truncate flex-1">{att.name}</span>
-                          <button type="button" onClick={() => setAttachments(a => a.filter((_, idx) => idx !== i))}
-                            className="text-gray-400 hover:text-red-400 transition-colors flex-shrink-0">
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                    {/* Photo grid with cycling Before / After / General badges */}
+                    {attachments.some(a => /\.(jpg|jpeg|png|gif|webp)$/i.test(a.name)) && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {attachments.map((att, i) => {
+                          if (!/\.(jpg|jpeg|png|gif|webp)$/i.test(att.name)) return null;
+                          const type = att.photoType ?? "general";
+                          const tagCfg = type === "before"
+                            ? { bg: "bg-blue-500", label: "BEFORE" }
+                            : type === "after"
+                            ? { bg: "bg-green-500", label: "AFTER" }
+                            : { bg: "bg-gray-400", label: "GENERAL" };
+                          return (
+                            <div key={i} className="relative group flex-shrink-0" style={{ width: 72, height: 72 }}>
+                              <img src={att.url} alt={att.name}
+                                className="w-full h-full object-cover rounded-lg border border-gray-200" />
+                              <button type="button" onClick={() => cyclePhotoType(i)}
+                                title="Tap to cycle: General → Before → After"
+                                className={`absolute bottom-0.5 left-0.5 right-5 px-0.5 py-px rounded text-[7px] font-bold text-white ${tagCfg.bg} truncate text-center leading-tight cursor-pointer`}>
+                                {tagCfg.label}
+                              </button>
+                              <button type="button" onClick={() => setAttachments(a => a.filter((_, idx) => idx !== i))}
+                                className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {/* Non-image file chips (PDFs etc.) */}
+                    {attachments.some(a => !/\.(jpg|jpeg|png|gif|webp)$/i.test(a.name)) && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {attachments.map((att, i) => {
+                          if (/\.(jpg|jpeg|png|gif|webp)$/i.test(att.name)) return null;
+                          return (
+                            <div key={i} className="flex items-center gap-1.5 px-2 py-1 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 max-w-[200px]">
+                              <Paperclip className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                              <span className="truncate flex-1">{att.name}</span>
+                              <button type="button" onClick={() => setAttachments(a => a.filter((_, idx) => idx !== i))}
+                                className="text-gray-400 hover:text-red-400 transition-colors flex-shrink-0">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
 

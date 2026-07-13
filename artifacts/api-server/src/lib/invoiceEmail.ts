@@ -42,6 +42,7 @@ export interface InlineImage {
   filename: string;
   mimeType: string;
   buffer: Buffer;
+  photoType?: "before" | "after" | "general";
 }
 
 export function buildInvoiceEmailHtml(inv: InvoiceEmailInv, settings: InvoiceEmailSettings, message?: string, inlineImages?: InlineImage[]): string {
@@ -121,10 +122,14 @@ export function buildInvoiceEmailHtml(inv: InvoiceEmailInv, settings: InvoiceEma
         </td></tr>
         ${(inlineImages && inlineImages.length > 0) ? `
         <tr><td style="padding:0 40px 32px;">
-          <p style="margin:0 0 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#aaa;">Job Photos</p>
-          ${inlineImages.map(img => {
-            const b64 = img.buffer.toString("base64");
-            return `<div style="margin-bottom:12px;"><img src="data:${img.mimeType};base64,${b64}" alt="${img.filename}" style="max-width:500px;width:100%;height:auto;border-radius:6px;display:block;"></div>`;
+          ${(["before", "after", "general"] as const).map(type => {
+            const group = inlineImages.filter(img => (img.photoType ?? "general") === type);
+            if (!group.length) return "";
+            const labels: Record<string, string> = { before: "Before Photos", after: "After Photos", general: "Job Photos" };
+            return `<p style="margin:0 0 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#aaa;">${labels[type]}</p>${group.map(img => {
+              const b64 = img.buffer.toString("base64");
+              return `<div style="margin-bottom:16px;"><img src="data:${img.mimeType};base64,${b64}" alt="${img.filename}" style="max-width:500px;width:100%;height:auto;border-radius:6px;display:block;"></div>`;
+            }).join("")}<div style="margin-bottom:16px;"></div>`;
           }).join("")}
         </td></tr>` : ""}
         <tr><td style="padding:20px 40px;background:#fafafa;border-top:1px solid #f0f0f0;">
