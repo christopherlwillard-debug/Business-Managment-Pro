@@ -10,6 +10,7 @@ import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable, businessesTable, type Business } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, inArray, ne } from "drizzle-orm";
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router = Router();
 
@@ -626,31 +627,64 @@ router.post("/:id/send", async (req, res) => {
       }
     }
 
-    // Attach any photos stored on the invoice (invoice.attachments is an array of URL strings
-    // like "/uploads/filename.jpg"). Read each file from disk and include it in the email.
-    const uploadsDir = path.resolve("uploads");
-    const invoiceAttachments: string[] = Array.isArray(invForEmail.attachments) ? invForEmail.attachments : [];
-    for (const url of invoiceAttachments) {
+    // Attach any photos stored on the invoice.
+    // invoice.attachments is a JSON array of { name, url, size? } objects
+    // (legacy records may contain plain URL strings — both are handled).
+    // URL patterns:
+    //   /objects/...        → GCS-backed object storage (new uploads)
+    //   /uploads/...        → legacy local disk (express.static serves these)
+    //   /api/uploads/...    → legacy local disk with api prefix
+    const objStorage = new ObjectStorageService();
+    const uploadsRoot = path.resolve("uploads");
+    const mimeMap: Record<string, string> = {
+      ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+      ".png": "image/png", ".gif": "image/gif",
+      ".webp": "image/webp", ".pdf": "application/pdf",
+    };
+    const rawAttachments: unknown[] = Array.isArray(invForEmail.attachments) ? invForEmail.attachments : [];
+    for (const entry of rawAttachments) {
       try {
-        if (typeof url !== "string" || !url) continue;
-        // Strip any leading path segments — keep only the bare filename
-        const filename = path.basename(url);
-        const filePath = path.join(uploadsDir, filename);
-        if (!fs.existsSync(filePath)) {
-          console.warn(`[invoices/send] Photo not found on disk, skipping: ${filePath}`);
-          continue;
+        // Normalise to a URL string regardless of whether the DB stores objects or plain strings
+        const rawUrl: string = (typeof entry === "object" && entry !== null && "url" in entry)
+          ? String((entry as { url: unknown }).url)
+          : typeof entry === "string" ? entry : "";
+        if (!rawUrl) continue;
+
+        let buffer: Buffer | null = null;
+
+        if (rawUrl.startsWith("/objects/")) {
+          // GCS-backed object storage
+          const file = await objStorage.getObjectEntityFile(rawUrl);
+          const [dl] = await file.download();
+          buffer = dl as Buffer;
+        } else if (rawUrl.startsWith("/uploads/") || rawUrl.startsWith("/api/uploads/")) {
+          // Legacy local-disk uploads
+          const rel = rawUrl.startsWith("/api/uploads/")
+            ? rawUrl.slice("/api/uploads/".length)
+            : rawUrl.slice("/uploads/".length);
+          const filePath = path.resolve(uploadsRoot, rel);
+          // Path-traversal guard
+          if (!filePath.startsWith(uploadsRoot + path.sep) && filePath !== uploadsRoot) {
+            console.warn("[invoices/send] Photo path traversal blocked, skipping:", rawUrl);
+            continue;
+          }
+          if (!fs.existsSync(filePath)) {
+            console.warn("[invoices/send] Photo not found on disk, skipping:", filePath);
+            continue;
+          }
+          buffer = fs.readFileSync(filePath);
         }
-        const buffer = fs.readFileSync(filePath);
+
+        if (!buffer) continue;
+
+        const filename = (typeof entry === "object" && entry !== null && "name" in entry)
+          ? String((entry as { name: unknown }).name)
+          : path.basename(rawUrl);
         const ext = path.extname(filename).toLowerCase();
-        const mimeMap: Record<string, string> = {
-          ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-          ".png": "image/png", ".gif": "image/gif",
-          ".webp": "image/webp", ".pdf": "application/pdf",
-        };
         const mimeType = mimeMap[ext] ?? "application/octet-stream";
         extraAttachments.push({ filename, mimeType, buffer });
       } catch (photoErr) {
-        console.warn("[invoices/send] Could not attach photo — skipping:", url, photoErr);
+        console.warn("[invoices/send] Could not attach photo — skipping:", entry, photoErr);
       }
     }
 
