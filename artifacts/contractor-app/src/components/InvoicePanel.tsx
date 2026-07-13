@@ -589,6 +589,35 @@ export function InvoicePanel({
         } catch { /* non-fatal — send without materials PDF if fetch fails */ }
       }
 
+      const photoAttachments: { base64: string; filename: string }[] = [];
+      const photoCounters: Record<"before" | "after" | "general", number> = { before: 0, after: 0, general: 0 };
+      for (const att of attachments) {
+        try {
+          const fetchUrl = att.url.startsWith("http") ? att.url : `${base}${att.url}`;
+          const attResp = await fetch(fetchUrl, { credentials: "include" });
+          if (!attResp.ok) continue;
+          const attBuffer = await attResp.arrayBuffer();
+          let binary = "";
+          const bytes = new Uint8Array(attBuffer);
+          bytes.forEach(b => { binary += String.fromCharCode(b); });
+          const attBase64 = btoa(binary);
+          const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.name);
+          let filename: string;
+          if (isImage) {
+            const photoType: "before" | "after" | "general" =
+              att.photoType === "before" || att.photoType === "after" || att.photoType === "general"
+                ? att.photoType
+                : "general";
+            photoCounters[photoType] += 1;
+            const prefix = photoType === "before" ? "before" : photoType === "after" ? "after" : "photo";
+            filename = `${prefix}-${photoCounters[photoType]}.jpg`;
+          } else {
+            filename = att.name;
+          }
+          photoAttachments.push({ base64: attBase64, filename });
+        } catch { /* non-fatal — skip attachment if fetch fails */ }
+      }
+
       await sendViaGmail({
         token,
         to: gmailTo.trim(),
@@ -600,6 +629,7 @@ export function InvoicePanel({
         extraAttachments: [
           ...(checklistBase64 && checklistFilename ? [{ base64: checklistBase64, filename: checklistFilename }] : []),
           ...(materialsBase64 && materialsFilename ? [{ base64: materialsBase64, filename: materialsFilename }] : []),
+          ...photoAttachments,
           ...extraEmailFiles,
         ],
       });
