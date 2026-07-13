@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, expensesTable, subPaymentRecordsTable, productionServiceTypesTable } from "@workspace/db";
-import { invoicesTable, materialListsTable, materialListItemsTable, clientBillingProfilesTable } from "@workspace/db/schema";
+import { invoicesTable, materialListsTable, materialListItemsTable, clientBillingProfilesTable, settingsTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, or, like, asc, sql, ilike, eq } from "drizzle-orm";
 import { recalcImportExpenses } from "./mileage";
 import { syncMaterialsToJobInvoice } from "./material-lists";
@@ -893,6 +893,69 @@ router.post("/add-mfh-models-active", async (_req: Request, res: Response) => {
     res.json({ ok: true, message: "mfh_models.active column ensured" });
   } catch (err) {
     console.error("[admin/migrations] add-mfh-models-active failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
+// Fix invoice Wil-1036 → Wil-1032 and reset the counter to 1033.
+//
+// Background: 4 draft invoices were created (consuming numbers 1032–1035 from
+// the settings counter) then had their numbers cleared on server restart.
+// The counter stayed at 1036, so the next sent invoice (drywall repair, id=33)
+// got Wil-1036 instead of Wil-1032. The two pending drafts (ids 34, 35) will
+// then get 1037/1038 instead of 1033/1034.
+//
+// Fix: rename id=33 → Wil-1032, reset counter to 1033.
+// Idempotent: no-op if id=33 already has number Wil-1032.
+router.post("/fix-invoice-1036-sequence", async (_req: Request, res: Response) => {
+  try {
+    const TARGET_ID = 33;
+    const WRONG_NUM = "Wil-1036";
+    const RIGHT_NUM = "Wil-1032";
+    const NEW_COUNTER = 1033;
+
+    // Check current state
+    const [inv] = await db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber })
+      .from(invoicesTable).where(eq(invoicesTable.id, TARGET_ID));
+
+    if (!inv) return res.status(404).json({ error: `Invoice id=${TARGET_ID} not found` });
+
+    if (inv.invoiceNumber === RIGHT_NUM) {
+      return res.json({ ok: true, alreadyFixed: true, message: `Invoice id=${TARGET_ID} already has number ${RIGHT_NUM} — nothing to do.` });
+    }
+
+    if (inv.invoiceNumber !== WRONG_NUM) {
+      return res.status(409).json({
+        error: `Invoice id=${TARGET_ID} has unexpected number "${inv.invoiceNumber}" (expected "${WRONG_NUM}"). Aborting to avoid unintended changes.`,
+      });
+    }
+
+    // Verify Wil-1032 isn't already taken by another invoice
+    const [conflict] = await db.select({ id: invoicesTable.id })
+      .from(invoicesTable).where(eq(invoicesTable.invoiceNumber, RIGHT_NUM));
+    if (conflict) {
+      return res.status(409).json({ error: `${RIGHT_NUM} is already used by invoice id=${conflict.id}` });
+    }
+
+    await db.transaction(async (tx) => {
+      // 1. Rename the invoice
+      await tx.update(invoicesTable)
+        .set({ invoiceNumber: RIGHT_NUM })
+        .where(eq(invoicesTable.id, TARGET_ID));
+
+      // 2. Reset the counter so the two pending drafts get 1033 and 1034
+      const [s] = await tx.select().from(settingsTable).limit(1);
+      if (s) {
+        await tx.update(settingsTable)
+          .set({ invoiceNextNumber: NEW_COUNTER })
+          .where(eq(settingsTable.id, s.id));
+      }
+    });
+
+    console.log(`[admin/migrations] fix-invoice-1036-sequence: renamed id=${TARGET_ID} ${WRONG_NUM}→${RIGHT_NUM}, counter reset to ${NEW_COUNTER}`);
+    res.json({ ok: true, renamed: `${WRONG_NUM} → ${RIGHT_NUM}`, counterResetTo: NEW_COUNTER });
+  } catch (err) {
+    console.error("[admin/migrations] fix-invoice-1036-sequence failed:", err);
     res.status(500).json({ error: "Migration failed", detail: String(err) });
   }
 });

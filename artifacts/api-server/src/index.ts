@@ -10,7 +10,7 @@ import { startBidSyncJob } from "./jobs/bidSync.js";
 import { startComplianceReminderJob } from "./jobs/complianceReminders.js";
 import { db } from "@workspace/db";
 import { businessesTable, mileageLogsTable, expensesTable, clientsTable, clientBillingProfilesTable } from "@workspace/db/schema";
-import { invoicesTable } from "@workspace/db/schema";
+import { invoicesTable, settingsTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, asc, sql, ilike, eq } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
@@ -260,6 +260,43 @@ async function clearDraftInvoiceNumbers(): Promise<void> {
   }
 }
 
+// One-time fix: invoice id=33 was assigned Wil-1036 due to draft invoices
+// consuming numbers 1032-1035 from the counter before being cleared.
+// Renames it to Wil-1032 (correct sequential position) and resets the counter
+// to 1033 so the two pending drafts get 1033/1034. Idempotent.
+async function fixInvoice1036Sequence(): Promise<void> {
+  try {
+    const [inv] = await db
+      .select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, 33));
+
+    if (!inv || inv.invoiceNumber !== "Wil-1036") {
+      console.log("[startup] fixInvoice1036Sequence: nothing to do (already fixed or invoice not found).");
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(invoicesTable)
+        .set({ invoiceNumber: "Wil-1032" })
+        .where(eq(invoicesTable.id, 33));
+
+      const [s] = await tx.select().from(settingsTable).limit(1);
+      if (s) {
+        await tx
+          .update(settingsTable)
+          .set({ invoiceNextNumber: 1033 })
+          .where(eq(settingsTable.id, s.id));
+      }
+    });
+
+    console.log("[startup] fixInvoice1036Sequence: renamed Wil-1036 → Wil-1032, counter reset to 1033.");
+  } catch (err) {
+    console.error("[startup] fixInvoice1036Sequence failed (non-fatal):", err);
+  }
+}
+
 async function ensureSubAdvancesTable(): Promise<void> {
   try {
     await db.execute(sql`
@@ -287,6 +324,7 @@ async function start() {
   await ensureSubHoursHourType();
   await ensureSubAdvancesTable();
   await clearDraftInvoiceNumbers();
+  await fixInvoice1036Sequence();
   await seedDefaultBusinesses();
   await seedClaytonBillback();
   await backfillMileageBusiness();
