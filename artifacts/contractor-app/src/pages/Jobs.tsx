@@ -6485,7 +6485,10 @@ export default function Jobs() {
         // so that changes to hours/rates/mileage are immediately reflected without
         // the user having to delete and recreate the draft.
         if (job.serviceBilling && existingDraft.status === "draft" && jobDraft?.lineItems?.length) {
-          existingDraft = { ...existingDraft, lineItems: jobDraft.lineItems as typeof existingDraft.lineItems };
+          const filteredJobDraftLines = (jobDraft.lineItems as typeof existingDraft.lineItems).filter(
+            (li: any) => li.source || (parseFloat(li.unitPrice) !== 0) || (parseFloat(li.quantity) !== 1)
+          );
+          existingDraft = { ...existingDraft, lineItems: filteredJobDraftLines };
           setInvoiceDraftData(null);
           setSelectedExistingInvoice(existingDraft);
           setInvoiceEditorOpen(true);
