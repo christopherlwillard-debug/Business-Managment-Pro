@@ -867,7 +867,10 @@ router.get("/:id/invoice-draft", async (req, res) => {
       }
 
       if (sbLines.length > 0) {
-        lineItems = sbLines;
+        // Preserve any Materials line item that was built from the job's material lists.
+        // Without this, the service billing override would silently discard materials costs.
+        const materialLines = lineItems.filter(li => li.description === "Materials");
+        lineItems = [...sbLines, ...materialLines];
       }
     }
 

@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
+import path from "path";
+import fs from "fs";
 import { launchBrowser } from "../lib/launchBrowser.js";
 import { sendInvoiceEmail, type InvoiceEmailSettings } from "../lib/invoiceEmail";
 import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
@@ -621,6 +623,34 @@ router.post("/:id/send", async (req, res) => {
         }
       } catch (materialsErr) {
         console.warn("[invoices/send] Could not generate materials PDF — sending without it:", materialsErr);
+      }
+    }
+
+    // Attach any photos stored on the invoice (invoice.attachments is an array of URL strings
+    // like "/uploads/filename.jpg"). Read each file from disk and include it in the email.
+    const uploadsDir = path.resolve("uploads");
+    const invoiceAttachments: string[] = Array.isArray(invForEmail.attachments) ? invForEmail.attachments : [];
+    for (const url of invoiceAttachments) {
+      try {
+        if (typeof url !== "string" || !url) continue;
+        // Strip any leading path segments — keep only the bare filename
+        const filename = path.basename(url);
+        const filePath = path.join(uploadsDir, filename);
+        if (!fs.existsSync(filePath)) {
+          console.warn(`[invoices/send] Photo not found on disk, skipping: ${filePath}`);
+          continue;
+        }
+        const buffer = fs.readFileSync(filePath);
+        const ext = path.extname(filename).toLowerCase();
+        const mimeMap: Record<string, string> = {
+          ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+          ".png": "image/png", ".gif": "image/gif",
+          ".webp": "image/webp", ".pdf": "application/pdf",
+        };
+        const mimeType = mimeMap[ext] ?? "application/octet-stream";
+        extraAttachments.push({ filename, mimeType, buffer });
+      } catch (photoErr) {
+        console.warn("[invoices/send] Could not attach photo — skipping:", url, photoErr);
       }
     }
 
