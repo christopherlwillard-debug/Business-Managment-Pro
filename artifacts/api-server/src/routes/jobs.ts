@@ -1457,6 +1457,13 @@ router.delete("/:id/sub-payments/:paymentId", async (req, res) => {
     const subId = payment.subcontractorId;
     if (subId == null) return res.status(400).json({ error: "Payment has no subcontractor" });
 
+    // Count advances linked to this payment before we unlink them
+    const linkedAdvances = await db
+      .select({ id: subAdvancesTable.id })
+      .from(subAdvancesTable)
+      .where(eq(subAdvancesTable.appliedPaymentId, paymentId));
+    const releasedAdvanceCount = linkedAdvances.length;
+
     // Delete the payment
     await db.delete(subPaymentRecordsTable).where(and(
       eq(subPaymentRecordsTable.id, paymentId),
@@ -1529,7 +1536,7 @@ router.delete("/:id/sub-payments/:paymentId", async (req, res) => {
         eq(jobSubcontractorsTable.subcontractorId, subId),
       ));
 
-    res.json({ ok: true, newPaid, newStatus });
+    res.json({ ok: true, newPaid, newStatus, releasedAdvanceCount });
   } catch (err) {
     console.error("Delete sub payment failed:", err);
     res.status(500).json({ error: "Failed to delete payment" });

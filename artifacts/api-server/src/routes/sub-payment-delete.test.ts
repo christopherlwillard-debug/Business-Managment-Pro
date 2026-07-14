@@ -90,10 +90,11 @@ app.use("/jobs", jobsRouter);
 /**
  * Push DB result rows in the exact order the DELETE handler issues selects:
  *
- *   1. SELECT subcontractorId  (verify ownership)
- *   2. SELECT total            (remaining paid after delete)
- *   3. SELECT compensationType / amountOwed / fixedAmount  (sub profile)
- *   4. SELECT computedOwed     (hourly only, pushed when computedOwed is given)
+ *   1. SELECT id FROM sub_advances WHERE appliedPaymentId = paymentId  (count released advances)
+ *   2. SELECT subcontractorId  (verify ownership)
+ *   3. SELECT total            (remaining paid after delete)
+ *   4. SELECT compensationType / amountOwed / fixedAmount  (sub profile)
+ *   5. SELECT computedOwed     (hourly only, pushed when computedOwed is given)
  *
  * delete() and update() don't return queued rows; those are fire-and-forget.
  */
@@ -104,14 +105,22 @@ function pushSelects(opts: {
   amountOwed: string | null;
   fixedAmount: string | null;
   computedOwed?: string;
+  releasedAdvances?: number;
 }) {
+  // 1. ownership check (first select in the handler)
   h.selectQueue.push([{ subcontractorId: opts.subcontractorId }]);
+  // 2. linked advances count (runs after ownership check, before delete)
+  const advCount = opts.releasedAdvances ?? 0;
+  h.selectQueue.push(Array.from({ length: advCount }, (_, i) => ({ id: i + 1 })));
+  // 3. remaining paid (after delete + unlink)
   h.selectQueue.push([{ total: opts.remainingPaid }]);
+  // 4. sub profile
   h.selectQueue.push([{
     compensationType: opts.compensationType,
     amountOwed:       opts.amountOwed,
     fixedAmount:      opts.fixedAmount,
   }]);
+  // 5. hourly computed owed (only when needed)
   if (opts.computedOwed !== undefined) {
     h.selectQueue.push([{ computedOwed: opts.computedOwed }]);
   }

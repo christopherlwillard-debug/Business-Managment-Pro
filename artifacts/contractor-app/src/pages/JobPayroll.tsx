@@ -176,9 +176,10 @@ function WorkerPayCard({
   const [advDate,     setAdvDate]     = useState(() => new Date().toISOString().split("T")[0]);
   const [savingAdv,   setSavingAdv]   = useState(false);
 
-  const [historyOpen,    setHistoryOpen]    = useState(() => (p.paymentHistory?.length ?? 0) > 0);
-  const [paying,         setPaying]         = useState(false);
-  const [deletingPayId,  setDeletingPayId]  = useState<number | null>(null);
+  const [historyOpen,           setHistoryOpen]           = useState(() => (p.paymentHistory?.length ?? 0) > 0);
+  const [paying,                setPaying]                = useState(false);
+  const [deletingPayId,         setDeletingPayId]         = useState<number | null>(null);
+  const [releasedAdvanceCount,  setReleasedAdvanceCount]  = useState(0);
 
   // Auto-open the history accordion whenever a new payment appears (e.g. right after recording one)
   const historyLen = p.paymentHistory?.length ?? 0;
@@ -219,8 +220,18 @@ function WorkerPayCard({
         method: "DELETE", credentials: "include",
       });
       if (!r.ok) throw new Error(await r.text());
+      const data = await r.json().catch(() => ({}));
+      const released = data.releasedAdvanceCount ?? 0;
       await onRefresh();
-      toast({ title: "Payment deleted", description: "Balance has been recalculated." });
+      if (released > 0) {
+        setReleasedAdvanceCount(released);
+        toast({
+          title: "Payment deleted",
+          description: `${released} advance${released === 1 ? "" : "s"} released — review deductions before the next payment.`,
+        });
+      } else {
+        toast({ title: "Payment deleted", description: "Balance has been recalculated." });
+      }
     } catch {
       toast({ title: "Failed to delete payment", variant: "destructive" });
     } finally {
@@ -325,6 +336,7 @@ function WorkerPayCard({
       if (!r.ok) throw new Error();
       await onRefresh();
       closeReview();
+      setReleasedAdvanceCount(0);
       toast({ title: "Payment recorded", description: `${p.subName ?? "Sub"}: $${fmt(draftNet)} paid` });
     } catch { toast({ title: "Failed to record payment", variant: "destructive" }); }
     finally { setPaying(false); }
@@ -438,6 +450,25 @@ function WorkerPayCard({
 
           {/* ── Advances ── */}
           <div className="px-5 pt-3 pb-3">
+            {releasedAdvanceCount > 0 && (
+              <div className="mb-3 flex items-start justify-between gap-2 px-3.5 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <div className="flex items-start gap-2 min-w-0">
+                  <span className="text-amber-500 text-base leading-none mt-0.5">⚠</span>
+                  <p className="text-xs font-semibold text-amber-800 leading-snug">
+                    {releasedAdvanceCount === 1
+                      ? "1 advance was released from the deleted payment — review deductions before recording the next payment."
+                      : `${releasedAdvanceCount} advances were released from the deleted payment — review deductions before recording the next payment.`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setReleasedAdvanceCount(0)}
+                  className="flex-shrink-0 text-amber-400 hover:text-amber-600 transition-colors"
+                  aria-label="Dismiss"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
             <div className="flex items-center justify-between mb-3">
               <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Advances</p>
               <button onClick={() => setShowAdvForm(v => !v)}
