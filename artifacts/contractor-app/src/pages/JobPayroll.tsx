@@ -18,6 +18,7 @@ type SubAdvance = {
 };
 
 type SubPayHistoryEntry = {
+  id: number;
   date: string;
   amount: number;
   workHours?: number;
@@ -164,10 +165,28 @@ function WorkerPayCard({
   const [advDate,     setAdvDate]     = useState(() => new Date().toISOString().split("T")[0]);
   const [savingAdv,   setSavingAdv]   = useState(false);
 
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [paying,      setPaying]      = useState(false);
+  const [historyOpen,    setHistoryOpen]    = useState(false);
+  const [paying,         setPaying]         = useState(false);
+  const [deletingPayId,  setDeletingPayId]  = useState<number | null>(null);
 
   const history = p.paymentHistory ?? [];
+
+  async function handleDeletePayment(payId: number, amount: number) {
+    if (!window.confirm(`Delete this $${fmt(amount)} payment? This cannot be undone.`)) return;
+    setDeletingPayId(payId);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${jobId}/sub-payments/${payId}`, {
+        method: "DELETE", credentials: "include",
+      });
+      if (!r.ok) throw new Error(await r.text());
+      await onRefresh();
+      toast({ title: "Payment deleted", description: "Balance has been recalculated." });
+    } catch {
+      toast({ title: "Failed to delete payment", variant: "destructive" });
+    } finally {
+      setDeletingPayId(null);
+    }
+  }
 
   async function handleAddAdvance() {
     const amt = parseFloat(advAmount);
@@ -507,14 +526,28 @@ function WorkerPayCard({
             <div className="px-5 pb-5 space-y-2">
               {history.map((h, i) => (
                 <div key={i} className="p-3.5 bg-muted/20 rounded-xl text-xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <span className="font-bold text-foreground text-sm">{fmtDate(h.date)}</span>
                       {h.paymentMethod && (
-                        <span className="ml-2 text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full">{h.paymentMethod}</span>
+                        <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full">{h.paymentMethod}</span>
                       )}
                     </div>
-                    <span className="font-black text-emerald-700 text-sm">${fmt(h.netPaid ?? h.amount)}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-black text-emerald-700 text-sm">${fmt(h.netPaid ?? h.amount)}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePayment(h.id, h.netPaid ?? h.amount)}
+                        disabled={deletingPayId === h.id}
+                        className="p-1 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                        title="Delete payment"
+                      >
+                        {deletingPayId === h.id
+                          ? <div className="w-3.5 h-3.5 border border-red-400 border-t-transparent rounded-full animate-spin" />
+                          : <Trash2 className="w-3.5 h-3.5" />
+                        }
+                      </button>
+                    </div>
                   </div>
                   {h.referenceNumber && <p className="text-muted-foreground">Ref: {h.referenceNumber}</p>}
                   {h.workHours != null && <p className="text-muted-foreground">Work: {h.workHours} hrs @ ${h.workRate}/hr = ${fmt((h.workHours || 0) * (h.workRate || 0))}</p>}

@@ -1335,6 +1335,7 @@ router.get("/:id/sub-payments", async (req, res) => {
     // newest first. Grouped by sub so each row can include its history.
     const paymentRecords = await db
       .select({
+        id: subPaymentRecordsTable.id,
         subcontractorId: subPaymentRecordsTable.subcontractorId,
         paymentDate: subPaymentRecordsTable.paymentDate,
         amount: subPaymentRecordsTable.amount,
@@ -1355,18 +1356,21 @@ router.get("/:id/sub-payments", async (req, res) => {
       .orderBy(desc(subPaymentRecordsTable.paymentDate), desc(subPaymentRecordsTable.id));
 
     const historyMap: Record<number, {
+      id: number;
       date: string; amount: number;
       workHours?: number; workRate?: number;
       travelHours?: number; travelRate?: number;
       bonusAmount?: number; bonusNote?: string | null;
       advanceAmount?: number; advanceNote?: string | null;
       netPaid?: number;
+      paymentMethod?: string; referenceNumber?: string;
     }[]> = {};
     for (const rec of paymentRecords) {
       const subId = rec.subcontractorId;
       if (subId == null) continue;
       if (!historyMap[subId]) historyMap[subId] = [];
       historyMap[subId].push({
+        id: rec.id,
         date: rec.paymentDate ?? "",
         amount: parseFloat(rec.amount ?? "0"),
         ...(rec.workHours   != null ? { workHours:   parseFloat(rec.workHours)   } : {}),
@@ -1431,6 +1435,88 @@ router.get("/:id/sub-payments", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch sub payments" });
+  }
+});
+
+// ── Delete sub payment record ─────────────────────────────────────────────────────
+router.delete("/:id/sub-payments/:paymentId", async (req, res) => {
+  try {
+    const jobId     = parseInt(req.params.id);
+    const paymentId = parseInt(req.params.paymentId);
+    if (isNaN(jobId) || isNaN(paymentId)) return res.status(400).json({ error: "Invalid ids" });
+
+    // Verify the record belongs to this job and get the subcontractorId
+    const [payment] = await db
+      .select({ subcontractorId: subPaymentRecordsTable.subcontractorId })
+      .from(subPaymentRecordsTable)
+      .where(and(
+        eq(subPaymentRecordsTable.id, paymentId),
+        eq(subPaymentRecordsTable.jobId, jobId),
+      ));
+    if (!payment) return res.status(404).json({ error: "Payment not found" });
+    const subId = payment.subcontractorId;
+    if (subId == null) return res.status(400).json({ error: "Payment has no subcontractor" });
+
+    // Delete the payment
+    await db.delete(subPaymentRecordsTable).where(and(
+      eq(subPaymentRecordsTable.id, paymentId),
+      eq(subPaymentRecordsTable.jobId, jobId),
+    ));
+
+    // Un-link any advances that were applied to this payment
+    await db.update(subAdvancesTable)
+      .set({ appliedPaymentId: null, appliedAt: null })
+      .where(eq(subAdvancesTable.appliedPaymentId, paymentId));
+
+    // Re-aggregate remaining paid total for this sub on this job
+    const [remaining] = await db
+      .select({ total: sql<string>`COALESCE(SUM(amount), '0')` })
+      .from(subPaymentRecordsTable)
+      .where(and(
+        eq(subPaymentRecordsTable.jobId, jobId),
+        eq(subPaymentRecordsTable.subcontractorId, subId),
+        sql`(is_reversal IS NULL OR is_reversal = false)`,
+      ));
+    const newPaid = parseFloat(remaining?.total ?? "0");
+
+    // Determine new payment status
+    const [subRow] = await db
+      .select({
+        fixedAmount:   jobSubcontractorsTable.fixedAmount,
+        amountOwed:    jobSubcontractorsTable.amountOwed,
+        compensationType: jobSubcontractorsTable.compensationType,
+      })
+      .from(jobSubcontractorsTable)
+      .where(and(
+        eq(jobSubcontractorsTable.jobId, jobId),
+        eq(jobSubcontractorsTable.subcontractorId, subId),
+      ));
+
+    let newStatus = "unpaid";
+    if (newPaid > 0.005) {
+      const owedAmount = subRow?.amountOwed != null
+        ? parseFloat(String(subRow.amountOwed))
+        : subRow?.fixedAmount != null
+          ? parseFloat(String(subRow.fixedAmount))
+          : null;
+      newStatus = owedAmount != null && newPaid >= owedAmount * 0.99 ? "paid" : "partial";
+    }
+
+    await db.update(jobSubcontractorsTable)
+      .set({
+        amountPaid:    newPaid > 0.005 ? newPaid.toFixed(2) : null,
+        paymentStatus: newStatus,
+        ...(newPaid <= 0.005 ? { paidAt: null, lastPaidAt: null } : {}),
+      })
+      .where(and(
+        eq(jobSubcontractorsTable.jobId, jobId),
+        eq(jobSubcontractorsTable.subcontractorId, subId),
+      ));
+
+    res.json({ ok: true, newPaid, newStatus });
+  } catch (err) {
+    console.error("Delete sub payment failed:", err);
+    res.status(500).json({ error: "Failed to delete payment" });
   }
 });
 
