@@ -299,7 +299,7 @@ export default function JobStatusPage() {
     refetchInterval: 60_000,
   });
 
-  const [, setLightbox] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   if (summaryLoading) {
     return (
@@ -358,6 +358,25 @@ export default function JobStatusPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <img
+            src={lightbox}
+            alt=""
+            className="max-w-full max-h-full rounded-xl object-contain"
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white text-lg font-bold"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {/* Header — renders as soon as summary resolves */}
       <div className="bg-white border-b border-slate-200 px-4 pt-6 pb-5">
         <div className="max-w-lg mx-auto">
