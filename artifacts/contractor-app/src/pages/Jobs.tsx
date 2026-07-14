@@ -1756,21 +1756,48 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
               </div>
               {payments.length > 0 && (
                 <div className="rounded-xl border border-border/50 overflow-hidden">
-                  <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50 flex items-center justify-between">
+                  <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50">
                     <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sub Payment Records</p>
                   </div>
                   <div className="divide-y divide-border/30">
                     {payments.map(p => {
-                      const calcOwed = p.compensationType === "allocation"
-                        ? toSplit * ((p.allocationPct ?? 0) / 100)
-                        : p.compensationType === "fixed" ? (p.fixedAmount ?? p.computedOwed ?? 0)
-                        : p.computedOwed ?? 0;
-                      const owed = p.amountOwed != null ? p.amountOwed : calcOwed;
-                      return <SubPaymentRowCard key={p.subcontractorId} p={p} jobId={job.id} owed={owed} calculatedOwed={calcOwed} onRefresh={refreshPayments} />;
+                      const owed = owedFor(p, toSplit);
+                      const paid = p.amountPaid ?? 0;
+                      const bal  = Math.max(0, owed - paid);
+                      const settled = p.paymentStatus === "paid";
+                      const isPartial = p.paymentStatus === "partial";
+                      const borderCls = settled ? "bg-emerald-50/40" : isPartial ? "bg-amber-50/40" : "";
+                      return (
+                        <div key={p.subcontractorId} className={`px-4 py-3 flex items-center justify-between ${borderCls}`}>
+                          <div className="flex items-center gap-2">
+                            <HardHat className={`w-3.5 h-3.5 flex-shrink-0 ${settled ? "text-emerald-500" : isPartial ? "text-amber-500" : "text-muted-foreground/50"}`} />
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{p.subName ?? "Sub"}</p>
+                              <p className="text-[10px] text-muted-foreground">
+                                {p.compensationType === "allocation"
+                                  ? `${(p.allocationPct ?? 0).toFixed(1)}% of split pool`
+                                  : p.compensationType === "fixed"
+                                    ? "Fixed"
+                                    : p.totalHours > 0 ? `${p.totalHours.toFixed(1)} hrs` : "Hourly"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-foreground">{formatCurrency(owed)}</p>
+                            {settled && <p className="text-[10px] font-bold text-emerald-600">✓ Settled</p>}
+                            {isPartial && <p className="text-[10px] text-amber-600">Due: {formatCurrency(bal)}</p>}
+                            {!settled && !isPartial && bal > 0 && <p className="text-[10px] text-orange-600">Due: {formatCurrency(bal)}</p>}
+                          </div>
+                        </div>
+                      );
                     })}
                   </div>
                 </div>
               )}
+              <Link href={`/jobs/${job.id}/payroll`}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-xs hover:bg-amber-600 transition-colors shadow-sm">
+                <Timer className="w-3.5 h-3.5" /> Track Hours &amp; Manage Pay →
+              </Link>
               {ownerTakeHome > 0.01 && (
                 <button
                   onClick={async () => {

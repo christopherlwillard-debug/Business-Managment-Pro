@@ -55,11 +55,12 @@ type SubPaymentRow = {
 };
 
 type JobProfit = {
-  revenue: number;
+  grossInvoiced: number;
   collected: number;
+  jobExpenses: number;
   subLaborCost: number;
-  materialCost: number;
-  otherCost: number;
+  allocPaid: number;
+  totalSubHours?: number;
   netProfit: number;
 };
 
@@ -856,12 +857,13 @@ export default function JobPayroll() {
     );
   }
 
-  const revenue        = profit?.revenue       ?? 0;
-  const subLaborCost   = profit?.subLaborCost  ?? 0;
-  const materialCost   = profit?.materialCost  ?? 0;
-  const otherCost      = profit?.otherCost     ?? 0;
-  const growthReserve  = revenue * (growthReservePct / 100);
-  const toSplit        = Math.max(0, revenue - growthReserve - subLaborCost - materialCost - otherCost);
+  const revenue        = profit?.grossInvoiced  ?? 0;
+  const jobExpenses    = profit?.jobExpenses    ?? 0;
+  const subLaborCost   = profit?.subLaborCost   ?? 0;
+  const jobIncome      = Math.max(0, revenue - jobExpenses);
+  const afterWorkers   = Math.max(0, jobIncome - subLaborCost);
+  const growthReserve  = afterWorkers * (growthReservePct / 100);
+  const toSplit        = Math.max(0, afterWorkers - growthReserve);
   const ownerShare     = toSplit * (ownerSplitPct / 100);
   const taxReserve     = ownerShare * (taxReservePct / 100);
   const ownerTakeHome  = ownerShare - taxReserve;
@@ -926,7 +928,7 @@ export default function JobPayroll() {
                   const stepDefs: Record<string, { label: string; amount: number }> = {
                     growth:   { label: `Growth Reserve (${growthReservePct}%)`, amount: growthReserve },
                     labor:    { label: "Sub Labor",                              amount: subLaborCost },
-                    expenses: { label: "Materials & Expenses",                   amount: materialCost + otherCost },
+                    expenses: { label: "Materials & Expenses",                   amount: jobExpenses },
                   };
                   let running = revenue;
                   const rows: React.ReactNode[] = [];
