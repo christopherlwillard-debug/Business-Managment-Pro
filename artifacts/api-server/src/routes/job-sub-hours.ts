@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobSubHoursTable, subcontractorsTable, jobSubcontractorsTable, expensesTable, jobsTable } from "@workspace/db/schema";
-import { eq, and, inArray, getTableColumns } from "drizzle-orm";
+import { jobSubHoursTable, subcontractorsTable, jobSubcontractorsTable, expensesTable, jobsTable, subPaymentRecordsTable } from "@workspace/db/schema";
+import { eq, and, inArray, getTableColumns, sql } from "drizzle-orm";
 import { recomputeSubPaid } from "./jobs";
 
 const router = Router();
@@ -56,6 +56,59 @@ async function upsertLinkedExpense(hoursId: number, jobId: number, subcontractor
 
 async function deleteLinkedExpense(hoursId: number): Promise<void> {
   await db.delete(expensesTable).where(eq(expensesTable.jobSubHoursId, hoursId));
+}
+
+// Recompute and persist paymentStatus for one sub on one job after hours change.
+// Only runs when payments already exist — no-op when the sub has never been paid.
+async function recomputeSubPaymentStatus(jobId: number, subId: number): Promise<void> {
+  const [paid] = await db
+    .select({ total: sql<string>`COALESCE(SUM(amount), '0')` })
+    .from(subPaymentRecordsTable)
+    .where(and(
+      eq(subPaymentRecordsTable.jobId, jobId),
+      eq(subPaymentRecordsTable.subcontractorId, subId),
+      sql`(is_reversal IS NULL OR is_reversal = false)`,
+    ));
+  const amountPaid = parseFloat(paid?.total ?? "0");
+  if (amountPaid <= 0.005) return; // no payments on record — nothing to recalculate
+
+  const [subRow] = await db
+    .select({
+      fixedAmount:      jobSubcontractorsTable.fixedAmount,
+      amountOwed:       jobSubcontractorsTable.amountOwed,
+      compensationType: jobSubcontractorsTable.compensationType,
+    })
+    .from(jobSubcontractorsTable)
+    .where(and(
+      eq(jobSubcontractorsTable.jobId, jobId),
+      eq(jobSubcontractorsTable.subcontractorId, subId),
+    ));
+
+  let owedAmount: number | null = subRow?.amountOwed != null
+    ? parseFloat(String(subRow.amountOwed))
+    : subRow?.fixedAmount != null
+      ? parseFloat(String(subRow.fixedAmount))
+      : null;
+
+  if (owedAmount == null && (subRow?.compensationType ?? "hourly") === "hourly") {
+    const [hoursRow] = await db
+      .select({ computedOwed: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), '0')` })
+      .from(jobSubHoursTable)
+      .where(and(
+        eq(jobSubHoursTable.jobId, jobId),
+        eq(jobSubHoursTable.subcontractorId, subId),
+      ));
+    const computed = parseFloat(hoursRow?.computedOwed ?? "0");
+    if (computed > 0) owedAmount = computed;
+  }
+
+  const newStatus = owedAmount != null && amountPaid >= owedAmount * 0.99 ? "paid" : "partial";
+  await db.update(jobSubcontractorsTable)
+    .set({ paymentStatus: newStatus })
+    .where(and(
+      eq(jobSubcontractorsTable.jobId, jobId),
+      eq(jobSubcontractorsTable.subcontractorId, subId),
+    ));
 }
 
 router.get("/:jobId/sub-hours", async (req, res) => {
@@ -119,6 +172,7 @@ router.post("/:jobId/sub-hours", async (req, res) => {
     });
 
     await recomputeSubPaid(jobId).catch(() => {});
+    await recomputeSubPaymentStatus(jobId, row.subcontractorId).catch(() => {});
     res.status(201).json(fmt({ ...row, subName: sub?.name ?? null }));
   } catch (err) {
     console.error(err);
@@ -150,6 +204,7 @@ router.put("/sub-hours/:id", async (req, res) => {
     });
 
     await recomputeSubPaid(row.jobId).catch(() => {});
+    await recomputeSubPaymentStatus(row.jobId, row.subcontractorId).catch(() => {});
     res.json(fmt({ ...row, subName: sub?.name ?? null }));
   } catch (err) {
     console.error(err);
@@ -186,6 +241,9 @@ router.delete("/:jobId/sub-hours", async (req, res) => {
     }
 
     await recomputeSubPaid(jobId).catch(() => {});
+    for (const subId of subIds) {
+      await recomputeSubPaymentStatus(jobId, subId).catch(() => {});
+    }
     res.json({ ok: true, deleted: hoursIds.length });
   } catch (err) {
     console.error(err);
@@ -200,7 +258,10 @@ router.delete("/sub-hours/:id", async (req, res) => {
       console.error("Auto-expense deletion failed:", e.message);
     });
     const [deleted] = await db.delete(jobSubHoursTable).where(eq(jobSubHoursTable.id, id)).returning();
-    if (deleted) await recomputeSubPaid(deleted.jobId).catch(() => {});
+    if (deleted) {
+      await recomputeSubPaid(deleted.jobId).catch(() => {});
+      await recomputeSubPaymentStatus(deleted.jobId, deleted.subcontractorId).catch(() => {});
+    }
     res.status(204).send();
   } catch (err) {
     console.error(err);
