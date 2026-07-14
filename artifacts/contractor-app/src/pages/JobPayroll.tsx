@@ -802,6 +802,7 @@ export default function JobPayroll() {
   const [ownerSplitPct,    setOwnerSplitPct]    = useState(50);
   const [taxReservePct,    setTaxReservePct]    = useState(25);
   const [growthReservePct, setGrowthReservePct] = useState(5);
+  const [plStepOrder,      setPlStepOrder]      = useState<string[]>(["expenses", "labor", "growth"]);
   const [recordingDraw,    setRecordingDraw]    = useState(false);
 
   const normaliseAdvances = (rows: unknown[]) =>
@@ -839,6 +840,9 @@ export default function JobPayroll() {
         if (s.ownerSplitPct != null)    setOwnerSplitPct(parseFloat(String(s.ownerSplitPct)));
         if (s.taxReservePct != null)    setTaxReservePct(parseFloat(String(s.taxReservePct)));
         if (s.growthReservePct != null) setGrowthReservePct(parseFloat(String(s.growthReservePct)));
+        if (s.plStepOrder) {
+          try { setPlStepOrder(JSON.parse(String(s.plStepOrder))); } catch {}
+        }
       }
       setLoading(false);
     };
@@ -918,38 +922,31 @@ export default function JobPayroll() {
                 </div>
               </div>
 
-              {/* Fixed sequential waterfall: expenses → labor → growth → split pool */}
+              {/* Configurable deduction steps — order from Settings P&L Layout */}
               <div className="divide-y divide-border/30">
-                {jobExpenses > 0.005 && (
-                  <div className="px-5 py-2.5 flex items-center justify-between text-sm bg-muted/5">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-red-400 text-xs font-mono flex-shrink-0">−</span>
-                      <span className="text-muted-foreground truncate">Materials &amp; Expenses</span>
-                      <span className="text-xs font-semibold text-red-500 flex-shrink-0">${fmt(jobExpenses)}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground/50 flex-shrink-0 ml-3">→ ${fmt(jobIncome)}</span>
-                  </div>
-                )}
-                {subLaborCost > 0.005 && (
-                  <div className="px-5 py-2.5 flex items-center justify-between text-sm bg-muted/5">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-red-400 text-xs font-mono flex-shrink-0">−</span>
-                      <span className="text-muted-foreground truncate">Sub Labor</span>
-                      <span className="text-xs font-semibold text-red-500 flex-shrink-0">${fmt(subLaborCost)}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground/50 flex-shrink-0 ml-3">→ ${fmt(afterWorkers)}</span>
-                  </div>
-                )}
-                {growthReserve > 0.005 && (
-                  <div className="px-5 py-2.5 flex items-center justify-between text-sm bg-muted/5">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-red-400 text-xs font-mono flex-shrink-0">−</span>
-                      <span className="text-muted-foreground truncate">Growth Reserve ({growthReservePct}%)</span>
-                      <span className="text-xs font-semibold text-red-500 flex-shrink-0">${fmt(growthReserve)}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground/50 flex-shrink-0 ml-3">→ ${fmt(toSplit)}</span>
-                  </div>
-                )}
+                {(() => {
+                  const stepDefs: Record<string, { label: string; amount: number }> = {
+                    expenses: { label: "Materials & Expenses",                   amount: jobExpenses },
+                    labor:    { label: "Sub Labor",                              amount: subLaborCost },
+                    growth:   { label: `Growth Reserve (${growthReservePct}%)`, amount: growthReserve },
+                  };
+                  let running = revenue;
+                  return plStepOrder.flatMap(key => {
+                    const step = stepDefs[key];
+                    if (!step || step.amount < 0.005) return [];
+                    running = Math.max(0, running - step.amount);
+                    return (
+                      <div key={key} className="px-5 py-2.5 flex items-center justify-between text-sm bg-muted/5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-red-400 text-xs font-mono flex-shrink-0">−</span>
+                          <span className="text-muted-foreground truncate">{step.label}</span>
+                          <span className="text-xs font-semibold text-red-500 flex-shrink-0">${fmt(step.amount)}</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground/50 flex-shrink-0 ml-3">→ ${fmt(running)}</span>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
 
               {/* Split pool + Owner share + Tax + Take-Home */}
