@@ -238,10 +238,7 @@ function WorkerPayCard({
       if (isHourly) {
         const wh = parseFloat(workHours) || 0;
         const wr = parseFloat(workRate)  || 0;
-        if (wh <= 0 || wr <= 0) {
-          toast({ title: "Enter work hours and rate", variant: "destructive" });
-          setPaying(false); return;
-        }
+        if (wh <= 0 || wr <= 0) { setPaying(false); return; }
         body.workHours = wh; body.workRate = wr;
         if ((parseFloat(travelHours) || 0) > 0) { body.travelHours = parseFloat(travelHours); body.travelRate = parseFloat(travelRate) || 0; }
         if (bonusAmt > 0) { body.bonusAmount = bonusAmt; if (bonusNote) body.bonusNote = bonusNote; }
@@ -301,33 +298,39 @@ function WorkerPayCard({
             <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-3">Earnings</p>
             {isHourly ? (
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">Work Hours</label>
-                    <input type="number" value={workHours} onChange={e => setWorkHours(e.target.value)}
-                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="0" />
+                {/* Read-only work hours from tracker */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="py-2.5 px-3 bg-muted/20 rounded-xl">
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Work Hours</p>
+                    <p className="text-sm font-bold text-foreground">
+                      {(parseFloat(workHours) || 0) > 0 ? `${parseFloat(workHours).toFixed(2)} hrs` : <span className="text-muted-foreground/50">—</span>}
+                    </p>
                   </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">Rate $/hr</label>
-                    <input type="number" value={workRate} onChange={e => setWorkRate(e.target.value)}
-                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="0" />
+                  <div className="py-2.5 px-3 bg-muted/20 rounded-xl">
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Rate $/hr</p>
+                    <p className="text-sm font-bold text-foreground">
+                      {(parseFloat(workRate) || 0) > 0 ? `$${fmt(parseFloat(workRate))}` : <span className="text-muted-foreground/50">—</span>}
+                    </p>
                   </div>
                 </div>
                 {workPay > 0 && <p className="text-xs font-medium text-blue-600">Work pay: ${fmt(workPay)}</p>}
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">Travel Hours <span className="opacity-50">(opt)</span></label>
-                    <input type="number" value={travelHours} onChange={e => setTravelHours(e.target.value)}
-                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="0" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">Travel Rate $/hr</label>
-                    <input type="number" value={travelRate} onChange={e => setTravelRate(e.target.value)}
-                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="0" />
-                  </div>
-                </div>
-                {travelPay > 0 && <p className="text-xs font-medium text-blue-600">Travel pay: ${fmt(travelPay)}</p>}
+                {/* Read-only travel hours from tracker — only shown when logged */}
+                {(parseFloat(travelHours) || 0) > 0 && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="py-2.5 px-3 bg-muted/20 rounded-xl">
+                        <p className="text-[10px] text-muted-foreground mb-0.5">Travel Hours</p>
+                        <p className="text-sm font-bold text-foreground">{parseFloat(travelHours).toFixed(2)} hrs</p>
+                      </div>
+                      <div className="py-2.5 px-3 bg-muted/20 rounded-xl">
+                        <p className="text-[10px] text-muted-foreground mb-0.5">Travel Rate $/hr</p>
+                        <p className="text-sm font-bold text-foreground">${fmt(parseFloat(travelRate) || 0)}</p>
+                      </div>
+                    </div>
+                    {travelPay > 0 && <p className="text-xs font-medium text-blue-600">Travel pay: ${fmt(travelPay)}</p>}
+                  </>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -500,13 +503,20 @@ function WorkerPayCard({
               </div>
               <p className="text-3xl font-black text-foreground">${fmt(netToPay)}</p>
             </div>
-            <button
-              onClick={handlePay}
-              disabled={paying || netToPay <= 0}
-              className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted text-white font-bold rounded-2xl text-base transition-colors disabled:opacity-50 shadow-sm"
-            >
-              {paying ? "Recording…" : `Record Payment — $${fmt(netToPay)}`}
-            </button>
+            {isHourly && (parseFloat(workHours) || 0) <= 0 ? (
+              <div className="w-full py-4 px-5 bg-amber-50 border border-amber-200 rounded-2xl text-center">
+                <p className="text-sm font-semibold text-amber-700">Log hours in Sub Hours first</p>
+                <p className="text-xs text-amber-600 mt-0.5">Hours will auto-fill once logged</p>
+              </div>
+            ) : (
+              <button
+                onClick={handlePay}
+                disabled={paying || netToPay <= 0}
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted text-white font-bold rounded-2xl text-base transition-colors disabled:opacity-50 shadow-sm"
+              >
+                {paying ? "Recording…" : `Record Payment — $${fmt(netToPay)}`}
+              </button>
+            )}
           </div>
         </>
       )}
