@@ -170,6 +170,13 @@ function WorkerPayCard({
   const [paying,         setPaying]         = useState(false);
   const [deletingPayId,  setDeletingPayId]  = useState<number | null>(null);
 
+  // Inline hours entry (shown when hourly sub has no hours logged)
+  const [showLogHours,   setShowLogHours]   = useState(false);
+  const [logDate,        setLogDate]        = useState(() => new Date().toISOString().split("T")[0]);
+  const [logHours,       setLogHours]       = useState("");
+  const [logHourType,    setLogHourType]    = useState<"work" | "travel">("work");
+  const [savingLogHours, setSavingLogHours] = useState(false);
+
   // Review-sheet draft — captured from card state when the sheet opens;
   // edits inside the sheet only mutate this draft, NOT the card state.
   // Cancelling discards the draft; confirming passes it to submitPayment.
@@ -234,6 +241,32 @@ function WorkerPayCard({
       await onRefresh();
     } catch (e: any) {
       toast({ title: e?.message?.includes("applied") ? "Cannot delete — already applied to a payment" : "Failed to delete advance", variant: "destructive" });
+    }
+  }
+
+  async function handleLogHours() {
+    const hrs = parseFloat(logHours);
+    if (!hrs || hrs <= 0) {
+      toast({ title: "Enter a valid number of hours", variant: "destructive" });
+      return;
+    }
+    setSavingLogHours(true);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${jobId}/sub-hours`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ subcontractorId: p.subcontractorId, date: logDate, hours: hrs, hourType: logHourType }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      await onRefresh();
+      setShowLogHours(false);
+      setLogHours("");
+      toast({ title: "Hours logged", description: "Work hours updated — payment is now available." });
+    } catch (e: any) {
+      toast({ title: "Failed to log hours", description: e?.message, variant: "destructive" });
+    } finally {
+      setSavingLogHours(false);
     }
   }
 
@@ -525,9 +558,54 @@ function WorkerPayCard({
               <p className="text-3xl font-black text-foreground">${fmt(netToPay)}</p>
             </div>
             {isHourly && (parseFloat(workHours) || 0) <= 0 ? (
-              <div className="w-full py-4 px-5 bg-amber-50 border border-amber-200 rounded-2xl text-center">
-                <p className="text-sm font-semibold text-amber-700">Log hours in Sub Hours first</p>
-                <p className="text-xs text-amber-600 mt-0.5">Hours will auto-fill once logged</p>
+              <div className="w-full">
+                {!showLogHours ? (
+                  <div className="py-4 px-5 bg-amber-50 border border-amber-200 rounded-2xl text-center">
+                    <p className="text-sm font-semibold text-amber-700">No hours logged yet</p>
+                    <p className="text-xs text-amber-600 mt-0.5 mb-3">Log hours to enable payment</p>
+                    <button
+                      onClick={() => setShowLogHours(true)}
+                      className="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 transition-colors"
+                    >
+                      + Log Hours
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-blue-50/70 rounded-xl border border-blue-100 space-y-3">
+                    <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Log Hours</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-muted-foreground block mb-1">Date</label>
+                        <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)}
+                          className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground block mb-1">Hours</label>
+                        <input type="number" value={logHours} onChange={e => setLogHours(e.target.value)} autoFocus
+                          className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                          placeholder="0.0" step="0.25" min="0" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Hour Type</label>
+                      <select value={logHourType} onChange={e => setLogHourType(e.target.value as "work" | "travel")}
+                        className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
+                        <option value="work">Work</option>
+                        <option value="travel">Travel</option>
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleLogHours} disabled={savingLogHours}
+                        className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                        {savingLogHours ? "Saving…" : "Save Hours"}
+                      </button>
+                      <button onClick={() => { setShowLogHours(false); setLogHours(""); }}
+                        className="px-4 py-2.5 border border-border rounded-xl text-sm text-muted-foreground hover:bg-muted/20 transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <button

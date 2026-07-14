@@ -1175,7 +1175,6 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const [profit, setProfit] = useState<JobProfit | null>(initialProfit ?? null);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [loading, setLoading] = useState(!initialProfit);
-  const [subHoursOpen, setSubHoursOpen] = useState(false);
 
   const [ownerSplitPct, setOwnerSplitPct] = useState(50);
   const [taxReservePct, setTaxReservePct] = useState(25);
@@ -1578,7 +1577,6 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
           )}
         </div>
       </div>
-      {subHoursOpen && <JobSubHoursPanel job={job} onClose={() => { setSubHoursOpen(false); refreshPayments(); }} />}
     </div>
   );
 }
