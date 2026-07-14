@@ -11,6 +11,7 @@ import { useBusiness } from "@/contexts/BusinessContext";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const cl = "block text-xs font-semibold text-gray-500 mb-1";
+const ci = "w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-1 focus:ring-primary/50 transition-colors";
 
 function loadHomeOffice(year: number) {
   try {

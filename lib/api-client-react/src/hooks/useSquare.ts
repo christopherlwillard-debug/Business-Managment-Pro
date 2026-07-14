@@ -10,6 +10,7 @@ export interface QuickCharge {
   notes?: string | null;
   squarePaymentLinkId?: string | null;
   squarePaymentLinkUrl?: string | null;
+  stripePaymentLinkUrl?: string | null;
   payToken?: string | null;
   qrCodeDataUrl?: string | null;
   status: string;
@@ -23,6 +24,7 @@ export interface CreateQuickChargeRequest {
   customerName?: string | null;
   customerEmail?: string | null;
   notes?: string | null;
+  payPageBaseUrl?: string | null;
 }
 
 export interface CreateInvoicePaymentLinkResponse {

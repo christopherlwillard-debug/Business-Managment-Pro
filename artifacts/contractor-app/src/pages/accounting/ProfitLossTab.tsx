@@ -7,6 +7,19 @@ import { useBusiness } from "@/contexts/BusinessContext";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+interface ProfitLossReport {
+  year: number;
+  revenue: { grossReceipts: number; otherIncome: number; grossRevenue: number };
+  cogs: { materials: number; total: number };
+  grossProfit: number;
+  operatingExpenses: { label: string; key: string; amount: number }[];
+  totalOperatingExpenses: number;
+  netOperatingIncome: number;
+  deductions: { mileageDeduction: number; totalMiles: number; mileageRate: number };
+  netProfit: number;
+  closedJobCount?: number;
+}
+
 function useProfitLoss(year: number, businessLine?: string) {
   return useQuery<ProfitLossReport>({
     queryKey: ["profit-loss", year, businessLine ?? "all"],

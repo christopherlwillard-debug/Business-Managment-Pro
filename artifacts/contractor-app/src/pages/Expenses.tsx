@@ -941,7 +941,7 @@ function BusinessTripsSection({
                     {isOpen && (
                       <TripReceiptsPanel
                         trip={trip}
-                        onAddReceipt={onAddReceipt}
+                        onAddReceipt={(tripId, tripPurpose) => onAddReceipt(tripId, tripPurpose, null)}
                         onClose={() => toggleTrip(trip.id)}
                       />
                     )}
@@ -2455,7 +2455,7 @@ export default function Expenses() {
       return {
         key: mk,
         expenses: [...groups[mk]].sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "")),
-        total: groups[mk].reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
+        total: groups[mk].reduce((s, e) => s + parseFloat(String(e.amount ?? "0")), 0),
         label: new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("en-US", {
           month: "long", year: "numeric",
         }),
@@ -2463,7 +2463,7 @@ export default function Expenses() {
     });
   }, [filteredYearExpenses]);
 
-  const yearTotal = filteredYearExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+  const yearTotal = filteredYearExpenses.reduce((s, e) => s + parseFloat(String(e.amount ?? "0")), 0);
 
   function jumpToTemplate(id: number) {
     setHighlightedTemplateId(id);
@@ -2750,7 +2750,7 @@ export default function Expenses() {
               <>
                 <span className="text-muted-foreground">·</span>
                 <span className="text-muted-foreground text-xs">
-                  {formatCurrency(filteredYearExpenses.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0))} excl. mileage
+                  {formatCurrency(filteredYearExpenses.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(String(e.amount ?? "0")), 0))} excl. mileage
                 </span>
               </>
             )}
@@ -2826,19 +2826,19 @@ export default function Expenses() {
                               return (
                                 <tr key={exp.id} className="bg-amber-500/5 border-l-2 border-amber-500">
                                   <td className="px-3 py-2">
-                                    <input type="date" value={editingRow.date}
+                                    <input type="date" value={editingRow!.date}
                                       onChange={e => setEditingRow(r => r && ({ ...r, date: e.target.value }))}
                                       className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400" />
                                   </td>
                                   <td className="px-3 py-2 space-y-1">
-                                    <input type="text" value={editingRow.description}
+                                    <input type="text" value={editingRow!.description}
                                       onChange={e => setEditingRow(r => r && ({ ...r, description: e.target.value }))}
                                       className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
                                       placeholder="Description" />
-                                    <VendorCombobox value={editingRow.vendor} onChange={v => setEditingRow(r => r && ({ ...r, vendor: v }))} />
+                                    <VendorCombobox value={editingRow!.vendor} onChange={v => setEditingRow(r => r && ({ ...r, vendor: v }))} />
                                   </td>
                                   <td className="px-3 py-2">
-                                    <select value={editingRow.category}
+                                    <select value={editingRow!.category}
                                       onChange={e => setEditingRow(r => r && ({ ...r, category: e.target.value }))}
                                       className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none">
                                       {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>)}
@@ -2847,7 +2847,7 @@ export default function Expenses() {
                                   <td className="px-3 py-2">
                                     <div className="relative">
                                       <span className="absolute left-2 top-1.5 text-xs text-muted-foreground">$</span>
-                                      <input type="number" step="0.01" min="0" value={editingRow.amount}
+                                      <input type="number" step="0.01" min="0" value={editingRow!.amount}
                                         onChange={e => setEditingRow(r => r && ({ ...r, amount: e.target.value }))}
                                         className="w-full pl-5 pr-2 py-1 text-xs text-right rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400" />
                                     </div>
@@ -2855,7 +2855,7 @@ export default function Expenses() {
                                   <td className="px-3 py-2 space-y-1">
                                     {editReceiptFile ? (
                                       <div className="flex items-center gap-1">
-                                        <span className="text-xs text-emerald-600 font-medium truncate max-w-[80px]" title={editReceiptFile.name}>{editReceiptFile.name}</span>
+                                        <span className="text-xs text-emerald-600 font-medium truncate max-w-[80px]" title={editReceiptFile!.name}>{editReceiptFile!.name}</span>
                                         <button type="button" onClick={() => { setEditReceiptFile(null); if (editReceiptInputRef.current) editReceiptInputRef.current.value = ""; }}
                                           className="text-red-400 hover:text-red-600"><X className="w-3 h-3" /></button>
                                       </div>
@@ -2863,7 +2863,7 @@ export default function Expenses() {
                                       <div className="flex items-center gap-1.5 flex-wrap">
                                         <button type="button" onClick={() => {
                                           const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-                                          const url = exp.receiptUrl.startsWith("http") ? exp.receiptUrl : `${base}${exp.receiptUrl}`;
+                                          const url = exp.receiptUrl!.startsWith("http") ? exp.receiptUrl! : `${base}${exp.receiptUrl!}`;
                                           if (/\.pdf$/i.test(url.split("?")[0])) {
                                             window.open(url, "_blank", "noopener,noreferrer");
                                             return;
@@ -2925,7 +2925,7 @@ export default function Expenses() {
                                     <input ref={editReceiptInputRef} type="file" className="hidden"
                                       accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf"
                                       onChange={e => { const f = e.target.files?.[0]; if (f) setEditReceiptFile(f); }} />
-                                    <select value={editingRow.jobId}
+                                    <select value={editingRow!.jobId}
                                       onChange={e => setEditingRow(r => r && ({ ...r, jobId: e.target.value }))}
                                       className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400 mt-1">
                                       <option value="">— No job —</option>
@@ -2938,14 +2938,14 @@ export default function Expenses() {
                                         </optgroup>
                                       )}
                                     </select>
-                                    <input type="text" value={editingRow.notes}
+                                    <input type="text" value={editingRow!.notes}
                                       onChange={e => setEditingRow(r => r && ({ ...r, notes: e.target.value }))}
                                       className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
                                       placeholder="Notes" />
                                     <label className="flex items-center gap-1.5 cursor-pointer mt-1">
                                       <input
                                         type="checkbox"
-                                        checked={editingRow.excludeFromNetProfit}
+                                        checked={editingRow!.excludeFromNetProfit}
                                         onChange={e => setEditingRow(r => r && ({ ...r, excludeFromNetProfit: e.target.checked }))}
                                         className="w-3 h-3 accent-amber-500"
                                       />
@@ -2965,7 +2965,7 @@ export default function Expenses() {
                                           title={val === "" ? "Untagged" : val === "general_contracting" ? "General Contracting" : "Asphalt Sealing"}
                                           onClick={() => { const biz = businesses.find((b: any) => b.slug === val); setEditingRow(r => r && ({ ...r, businessLine: val, businessId: biz?.id ?? null })); }}
                                           className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition-all ${
-                                            editingRow.businessLine === val
+                                            editingRow!.businessLine === val
                                               ? val === "asphalt_sealing" ? "bg-amber-500 text-white" : val === "general_contracting" ? "bg-blue-600 text-white" : "bg-muted text-foreground"
                                               : "text-muted-foreground hover:bg-muted"
                                           }`}
@@ -2981,27 +2981,27 @@ export default function Expenses() {
                                       <button
                                         onClick={async () => {
                                           await updateExpense.mutateAsync({
-                                            id: editingRow.id,
+                                            id: editingRow!.id,
                                             data: {
-                                              description: editingRow.description,
-                                              amount: parseFloat(editingRow.amount),
-                                              date: editingRow.date,
-                                              category: editingRow.category,
-                                              vendor: editingRow.vendor || undefined,
-                                              jobId: editingRow.jobId ? parseInt(editingRow.jobId) : undefined,
-                                              notes: editingRow.notes || undefined,
+                                              description: editingRow!.description,
+                                              amount: parseFloat(editingRow!.amount),
+                                              date: editingRow!.date,
+                                              category: editingRow!.category,
+                                              vendor: editingRow!.vendor || undefined,
+                                              jobId: editingRow!.jobId ? parseInt(editingRow!.jobId) : undefined,
+                                              notes: editingRow!.notes || undefined,
                                               receiptUrl: exp.receiptUrl,
-                                              excludeFromNetProfit: editingRow.excludeFromNetProfit,
-                                              countsTowardJobProfit: editingRow.countsTowardJobProfit,
-                                              businessLine: editingRow.businessLine || null,
-                                              businessId: editingRow.businessId,
+                                              excludeFromNetProfit: editingRow!.excludeFromNetProfit,
+                                              countsTowardJobProfit: editingRow!.countsTowardJobProfit,
+                                              businessLine: editingRow!.businessLine || null,
+                                              businessId: editingRow!.businessId,
                                             },
                                           });
                                           if (editReceiptFile) {
-                                            await uploadMutation.mutateAsync({ id: editingRow.id, data: { receipt: editReceiptFile } });
+                                            await uploadMutation.mutateAsync({ id: editingRow!.id, data: { receipt: editReceiptFile } });
                                           }
                                           await qc.invalidateQueries({ queryKey: ["/api/expenses"] });
-                                          if (editingRow.vendor.trim()) saveVendor.mutate(editingRow.vendor.trim());
+                                          if (editingRow!.vendor.trim()) saveVendor.mutate(editingRow!.vendor.trim());
                                           setEditReceiptFile(null);
                                           setEditingRow(null);
                                         }}
@@ -3124,7 +3124,7 @@ export default function Expenses() {
                                   {exp.receiptUrl ? (
                                     <button
                                       type="button"
-                                      onClick={() => openReceiptLightbox(exp.receiptUrl)}
+                                      onClick={() => openReceiptLightbox(exp.receiptUrl!)}
                                       className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/8 hover:bg-primary/15 px-3 py-1.5 rounded-lg transition-colors border border-primary/20 hover:border-primary/40"
                                     >
                                       <ImageIcon className="w-3 h-3" /> View
@@ -3625,7 +3625,7 @@ export default function Expenses() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Date</label>
-                  <input type="date" value={editingRow.date}
+                  <input type="date" value={editingRow!.date}
                     onChange={e => setEditingRow(r => r && ({ ...r, date: e.target.value }))}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-amber-400/50" />
                 </div>
@@ -3633,7 +3633,7 @@ export default function Expenses() {
                   <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Amount</label>
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">$</span>
-                    <input type="number" step="0.01" min="0" value={editingRow.amount}
+                    <input type="number" step="0.01" min="0" value={editingRow!.amount}
                       onChange={e => setEditingRow(r => r && ({ ...r, amount: e.target.value }))}
                       className="w-full pl-7 pr-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-amber-400/50" />
                   </div>
@@ -3641,18 +3641,18 @@ export default function Expenses() {
               </div>
               <div>
                 <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Description</label>
-                <input type="text" value={editingRow.description}
+                <input type="text" value={editingRow!.description}
                   onChange={e => setEditingRow(r => r && ({ ...r, description: e.target.value }))}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-amber-400/50"
                   placeholder="What was this expense for?" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Vendor / Paid To</label>
-                <VendorCombobox value={editingRow.vendor} onChange={v => setEditingRow(r => r && ({ ...r, vendor: v }))} />
+                <VendorCombobox value={editingRow!.vendor} onChange={v => setEditingRow(r => r && ({ ...r, vendor: v }))} />
               </div>
               <div>
                 <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Category</label>
-                <select value={editingRow.category}
+                <select value={editingRow!.category}
                   onChange={e => setEditingRow(r => r && ({ ...r, category: e.target.value }))}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none">
                   {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>)}
@@ -3660,7 +3660,7 @@ export default function Expenses() {
               </div>
               <div>
                 <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Linked Job</label>
-                <select value={editingRow.jobId}
+                <select value={editingRow!.jobId}
                   onChange={e => setEditingRow(r => r && ({ ...r, jobId: e.target.value }))}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none">
                   <option value="">— No job linked —</option>
@@ -3676,7 +3676,7 @@ export default function Expenses() {
               </div>
               <div>
                 <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Notes</label>
-                <input type="text" value={editingRow.notes}
+                <input type="text" value={editingRow!.notes}
                   onChange={e => setEditingRow(r => r && ({ ...r, notes: e.target.value }))}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-amber-400/50"
                   placeholder="Optional notes" />
@@ -3691,7 +3691,7 @@ export default function Expenses() {
                     <button key={val} type="button"
                       onClick={() => { const biz = businesses.find((b: any) => b.slug === val); setEditingRow(r => r && ({ ...r, businessLine: val, businessId: biz?.id ?? null })); }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                        editingRow.businessLine === val
+                        editingRow!.businessLine === val
                           ? mapIdx === 0 ? "bg-muted text-foreground border-border" : ["bg-blue-100 text-blue-800 border-blue-400", "bg-amber-100 text-amber-800 border-amber-400", "bg-violet-100 text-violet-800 border-violet-400"][(mapIdx - 1) % 3]
                           : "text-muted-foreground border-border hover:bg-muted"
                       }`}>{label}</button>
@@ -3699,7 +3699,7 @@ export default function Expenses() {
                 </div>
               </div>
               <label className="flex items-center gap-3 cursor-pointer py-1">
-                <input type="checkbox" checked={editingRow.excludeFromNetProfit}
+                <input type="checkbox" checked={editingRow!.excludeFromNetProfit}
                   onChange={e => setEditingRow(r => r && ({ ...r, excludeFromNetProfit: e.target.checked }))}
                   className="w-4 h-4 accent-amber-500 flex-shrink-0" />
                 <div>
@@ -3707,9 +3707,9 @@ export default function Expenses() {
                   <p className="text-xs text-muted-foreground">Exclude this expense from net profit calculation</p>
                 </div>
               </label>
-              {editingRow.jobId && editingRow.category !== "Owner Draw" && (
+              {editingRow!.jobId && editingRow!.category !== "Owner Draw" && (
                 <label className="flex items-center gap-3 cursor-pointer py-1">
-                  <input type="checkbox" checked={!editingRow.countsTowardJobProfit}
+                  <input type="checkbox" checked={!editingRow!.countsTowardJobProfit}
                     onChange={e => setEditingRow(r => r && ({ ...r, countsTowardJobProfit: !e.target.checked }))}
                     className="w-4 h-4 accent-blue-500 flex-shrink-0" />
                   <div>
@@ -3722,7 +3722,7 @@ export default function Expenses() {
                 <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">Receipt</label>
                 {editReceiptFile ? (
                   <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
-                    <span className="text-sm text-emerald-700 font-medium flex-1 truncate">{editReceiptFile.name}</span>
+                    <span className="text-sm text-emerald-700 font-medium flex-1 truncate">{editReceiptFile!.name}</span>
                     <button type="button" onClick={() => { setEditReceiptFile(null); if (editReceiptInputRef.current) editReceiptInputRef.current.value = ""; }}
                       className="text-red-500 hover:text-red-700 flex-shrink-0"><X className="w-4 h-4" /></button>
                   </div>
@@ -3752,27 +3752,27 @@ export default function Expenses() {
                 onClick={async () => {
                   if (!editingRow) return;
                   await updateExpense.mutateAsync({
-                    id: editingRow.id,
+                    id: editingRow!.id,
                     data: {
-                      description: editingRow.description,
-                      amount: parseFloat(editingRow.amount),
-                      date: editingRow.date,
-                      category: editingRow.category,
-                      vendor: editingRow.vendor || undefined,
-                      jobId: editingRow.jobId ? parseInt(editingRow.jobId) : undefined,
-                      notes: editingRow.notes || undefined,
+                      description: editingRow!.description,
+                      amount: parseFloat(editingRow!.amount),
+                      date: editingRow!.date,
+                      category: editingRow!.category,
+                      vendor: editingRow!.vendor || undefined,
+                      jobId: editingRow!.jobId ? parseInt(editingRow!.jobId) : undefined,
+                      notes: editingRow!.notes || undefined,
                       receiptUrl: undefined,
-                      excludeFromNetProfit: editingRow.excludeFromNetProfit,
-                      countsTowardJobProfit: editingRow.countsTowardJobProfit,
-                      businessLine: editingRow.businessLine || null,
-                      businessId: editingRow.businessId,
+                      excludeFromNetProfit: editingRow!.excludeFromNetProfit,
+                      countsTowardJobProfit: editingRow!.countsTowardJobProfit,
+                      businessLine: editingRow!.businessLine || null,
+                      businessId: editingRow!.businessId,
                     },
                   });
                   if (editReceiptFile) {
-                    await uploadMutation.mutateAsync({ id: editingRow.id, data: { receipt: editReceiptFile } });
+                    await uploadMutation.mutateAsync({ id: editingRow!.id, data: { receipt: editReceiptFile } });
                   }
                   await qc.invalidateQueries({ queryKey: ["/api/expenses"] });
-                  if (editingRow.vendor.trim()) saveVendor.mutate(editingRow.vendor.trim());
+                  if (editingRow!.vendor.trim()) saveVendor.mutate(editingRow!.vendor.trim());
                   setEditReceiptFile(null);
                   setEditingRow(null);
                 }}

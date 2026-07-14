@@ -32,7 +32,7 @@ function slugify(name: string) {
 }
 
 function BusinessCardStats({ business }: { business: Business }) {
-  const { data: stats, isLoading } = useGetDashboardStats({ period: "month", businessLine: business.slug });
+  const { data: stats, isLoading } = useGetDashboardStats({ period: "month", businessLine: business.slug as any });
   if (isLoading) return <div className="flex gap-3 mt-1.5"><div className="h-3.5 w-16 bg-current opacity-10 rounded animate-pulse" /><div className="h-3.5 w-20 bg-current opacity-10 rounded animate-pulse" /></div>;
   if (!stats) return null;
   return (

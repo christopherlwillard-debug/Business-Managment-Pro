@@ -169,7 +169,7 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const { toast } = useToast();
   const { canEdit } = useUserPermissions();
 
-  const [checklist, setChecklist] = useState<JobChecklist | null | undefined>(undefined);
+  const [checklist, setChecklist] = useState<JobChecklist | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
   const [updatingItem, setUpdatingItem] = useState<number | null>(null);

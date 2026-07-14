@@ -1418,6 +1418,7 @@ function DeleteBusinessSection({ activeBusiness, businesses, BASE, refresh }: {
 
 export default function Settings() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: settings, isLoading } = useGetSettings();
   const updateMutation = useUpdateSettings();
   const { isOwner } = useUserPermissions();
@@ -1487,14 +1488,14 @@ export default function Settings() {
         thresholdAmount1099: s.thresholdAmount1099 != null ? String(s.thresholdAmount1099) : "2000",
         invoiceLogoPosition: s.invoiceLogoPosition ?? "top-left",
         invoiceLogoSize: s.invoiceLogoSize ?? "medium",
-        smtpHost: s.smtpHost ?? "",
-        smtpPort: s.smtpPort ?? "587",
-        smtpUser: s.smtpUser ?? "",
+        smtpHost: (s.smtpHost as string | undefined) ?? "",
+        smtpPort: (s.smtpPort as string | undefined) ?? "587",
+        smtpUser: (s.smtpUser as string | undefined) ?? "",
         smtpSecure: s.smtpSecure ? "1" : "0",
-        mileageDefaultClassification: s.mileageDefaultClassification ?? "business",
-        mileageUnits: s.mileageUnits ?? "miles",
-        mileageReminderFrequency: s.mileageReminderFrequency ?? "daily",
-        complianceNotificationEmail: s.complianceNotificationEmail ?? "",
+        mileageDefaultClassification: (s.mileageDefaultClassification as string | undefined) ?? "business",
+        mileageUnits: (s.mileageUnits as string | undefined) ?? "miles",
+        mileageReminderFrequency: (s.mileageReminderFrequency as string | undefined) ?? "daily",
+        complianceNotificationEmail: (s.complianceNotificationEmail as string | undefined) ?? "",
         complianceEmailEnabled: s.complianceEmailEnabled === false ? "0" : "1",
         invoiceReminderEnabled: s.invoiceReminderEnabled === false ? "0" : "1",
         invoiceReminderDay1: String(s.invoiceReminderDay1 ?? 7),

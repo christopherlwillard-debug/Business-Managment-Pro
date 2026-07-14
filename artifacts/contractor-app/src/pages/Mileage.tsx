@@ -134,11 +134,11 @@ export default function Mileage() {
   const queryClient = useQueryClient();
   const { data: logs, isLoading } = useListMileageLogs(
     businessId ? { businessId } : undefined,
-    { query: { enabled: !!businessId } }
+    { query: { enabled: !!businessId } as any }
   );
   const { data: summary } = useGetMileageSummary(
     businessId ? { businessId } : undefined,
-    { query: { enabled: !!businessId } }
+    { query: { enabled: !!businessId } as any }
   );
   const { data: jobs = [] } = useListJobs();
   const { data: settings } = useGetSettings();

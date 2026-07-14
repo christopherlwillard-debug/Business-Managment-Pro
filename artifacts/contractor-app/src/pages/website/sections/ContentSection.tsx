@@ -712,8 +712,6 @@ interface ContentSectionProps {
   onBeforeAction?: () => void;
   /** Toggle component hidden state; called with component id */
   onToggleHide?: (id: string) => void;
-  /** Parent section id — used to pass context to the canvas context menu */
-  sectionId?: string;
   /** Called when user right-clicks a component — opens the canvas context menu */
   onComponentContextMenu?: (sectionId: string, compId: string, compType: string, e: React.MouseEvent) => void;
 }

@@ -195,8 +195,8 @@ function renderSection(
     );
     case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
     case "contact": return <ContactFormSection {...props} businessId={extras?.businessId} />;
-    case "footer":  return <FooterSection {...props} sectionId={extras?.sectionId} onOpenMediaLibrary={extras?.onOpenMediaLibrary} />;
-    case "image":   return <ImageSection {...props} onOpenMediaLibrary={extras?.onOpenMediaLibrary} />;
+    case "footer":  return <FooterSection {...props} sectionId={extras?.sectionId} onOpenMediaLibrary={extras?.onOpenMediaLibrary as any} />;
+    case "image":   return <ImageSection {...(props as any)} onOpenMediaLibrary={extras?.onOpenMediaLibrary as any} />;
     case "portfolio": return (
       <PortfolioSection
         {...props}
@@ -728,13 +728,13 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={node.children.map(c => c.id)} strategy={verticalListSortingStrategy}>
                 {node.children.map(child => (
-                  <SiteTreeNode key={child.id} node={child} depth={depth + 1} {...sharedProps} />
+                  <SiteTreeNode key={child.id} node={child} {...sharedProps} depth={depth + 1} />
                 ))}
               </SortableContext>
             </DndContext>
           ) : (
             node.children.map(child => (
-              <SiteTreeNode key={child.id} node={child} depth={depth + 1} {...sharedProps} />
+              <SiteTreeNode key={child.id} node={child} {...sharedProps} depth={depth + 1} />
             ))
           )}
 
@@ -2893,7 +2893,7 @@ function WebsiteEditor() {
       };
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
       const templatePayload = {
-        sections: appliedSections.map((s, i) => ({ ...s, order: i })),
+        sections: (appliedSections as any[]).map((s, i) => ({ ...s, order: i })),
         settings: savedSettings,
       };
       const templateRes = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
@@ -2903,7 +2903,7 @@ function WebsiteEditor() {
         body: JSON.stringify(templatePayload),
       });
       if (!templateRes.ok) throw new Error("Failed to apply template");
-      setLocalPages([{ id: "home", name: "Home", slug: "home", sections: appliedSections }]);
+      setLocalPages([{ id: "home", name: "Home", slug: "home", sections: appliedSections as any }]);
       setActivePageId("home");
       setLocalSettings(savedSettings);
       isDirtyRef.current = false;
@@ -4347,7 +4347,7 @@ function WebsiteEditor() {
                     { label: "Muted text", key: "textMutedColor" },
                   ] as const).map(({ label, key }) => {
                     const activeTheme = settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId) : undefined;
-                    const effectiveVal = (settings as Record<string, unknown>)[key] as string | undefined
+                    const effectiveVal = (settings as unknown as Record<string, unknown>)[key] as string | undefined
                       ?? (activeTheme as Record<string, unknown> | undefined)?.[key] as string | undefined
                       ?? "#888888";
                     return (
@@ -4694,7 +4694,7 @@ function WebsiteEditor() {
                       <label className="text-sm text-muted-foreground flex-1">{label}</label>
                       <input
                         type="color"
-                        value={(settings as Record<string, unknown>)[key] as string ?? fallback ?? "#000000"}
+                        value={(settings as unknown as Record<string, unknown>)[key] as string ?? fallback ?? "#000000"}
                         onChange={e => patchSettings({ [key]: e.target.value })}
                         className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent flex-shrink-0"
                       />
@@ -5057,7 +5057,7 @@ function WebsiteEditor() {
                 };
               }
             } else if (sec.type === "row") {
-              rowData = sec.content as RowSectionData;
+              rowData = sec.content as unknown as RowSectionData;
               onChangeRowData = (newData: RowSectionData) =>
                 updateContent(sec.id, newData as unknown as Record<string, unknown>);
               if (selectedRowState?.sectionId === sec.id && selectedRowState.componentId) {
@@ -5324,7 +5324,7 @@ function WebsiteEditor() {
                 };
               }
             } else if (sec.type === "row") {
-              rowData = sec.content as RowSectionData;
+              rowData = sec.content as unknown as RowSectionData;
               onChangeRowData = (newData: RowSectionData) =>
                 updateContent(sec.id, newData as unknown as Record<string, unknown>);
               if (selectedRowState?.sectionId === sec.id && selectedRowState.componentId) {

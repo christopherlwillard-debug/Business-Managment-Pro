@@ -22,6 +22,7 @@ interface InlineEditableTextProps {
   as?: InlineAs;
   className?: string;
   style?: React.CSSProperties;
+  disabled?: boolean;
   onCommit: (value: string) => void;
 }
 

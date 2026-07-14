@@ -297,6 +297,8 @@ export default function JobStatusPage() {
     refetchInterval: 60_000,
   });
 
+  const [, setLightbox] = useState<string | null>(null);
+
   if (summaryLoading) {
     return (
       <div className="min-h-screen bg-slate-50 animate-pulse">

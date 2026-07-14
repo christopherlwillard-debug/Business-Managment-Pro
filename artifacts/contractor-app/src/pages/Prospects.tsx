@@ -372,10 +372,10 @@ export default function Prospects() {
 
     try {
       if (editingProspect) {
-        await updateMutation.mutateAsync({ id: editingProspect.id, ...payload });
+        await updateMutation.mutateAsync({ id: editingProspect.id, ...payload } as any);
         toast({ title: "Prospect updated" });
       } else {
-        await createMutation.mutateAsync(payload);
+        await createMutation.mutateAsync(payload as any);
         toast({ title: "Prospect added" });
       }
       closeDialog();

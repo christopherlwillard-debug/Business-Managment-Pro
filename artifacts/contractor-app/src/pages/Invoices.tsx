@@ -128,7 +128,7 @@ export default function Invoices() {
   const prevInvoiceStatuses = useRef<Record<number, string>>({});
   const { data: invoices, isLoading: loadingInvoices } = useListInvoices(
     undefined,
-    { query: { refetchInterval: 15_000 } },
+    { query: { refetchInterval: 15_000 } as any },
   );
 
   useEffect(() => {

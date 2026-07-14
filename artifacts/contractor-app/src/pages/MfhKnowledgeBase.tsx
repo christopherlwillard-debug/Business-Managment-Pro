@@ -97,8 +97,8 @@ function ModelCard({ model, onClick }: { model: MfhKnowledgeBaseEntry; onClick: 
       </div>
 
       <div className="mt-2 flex items-center justify-between">
-        {model.acceptedCount > 0 ? (
-          <p className="text-[10px] text-amber-600 font-medium">Based on {model.acceptedCount} accepted job{model.acceptedCount !== 1 ? "s" : ""}</p>
+        {(model.acceptedCount ?? 0) > 0 ? (
+          <p className="text-[10px] text-amber-600 font-medium">Based on {model.acceptedCount} accepted job{(model.acceptedCount ?? 0) !== 1 ? "s" : ""}</p>
         ) : (
           <p className="text-[10px] text-muted-foreground/60">No KB data yet</p>
         )}
@@ -279,8 +279,8 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
         <StatTile label="Avg Prod. Hours" value={model.avgProductiveHours != null ? `${fmt(model.avgProductiveHours, "decimal")} hrs` : model.avgHours != null ? `${fmt(model.avgHours, "decimal")} hrs` : "—"} />
         <StatTile label="Avg Margin" value={margin != null ? fmt(margin) : "—"} sub={margin != null && model.avgDealerPrice ? `dealer ${fmt(model.avgDealerPrice)}` : undefined} />
       </div>
-      {model.acceptedCount > 0 ? (
-        <p className="text-xs text-amber-600 font-medium -mt-1">Based on {model.acceptedCount} accepted job{model.acceptedCount !== 1 ? "s" : ""}</p>
+      {(model.acceptedCount ?? 0) > 0 ? (
+        <p className="text-xs text-amber-600 font-medium -mt-1">Based on {model.acceptedCount} accepted job{(model.acceptedCount ?? 0) !== 1 ? "s" : ""}</p>
       ) : (
         <p className="text-xs text-muted-foreground/60 -mt-1">No accepted KB records yet</p>
       )}
@@ -877,7 +877,7 @@ export default function MfhKnowledgeBase() {
                       </td>
                       <td className="px-3 py-3 text-right">
                         <p className="font-bold text-foreground text-sm">{m.jobCount}</p>
-                        {m.acceptedCount > 0 && <p className="text-[10px] text-amber-600">KB accepted</p>}
+                        {(m.acceptedCount ?? 0) > 0 && <p className="text-[10px] text-amber-600">KB accepted</p>}
                       </td>
                       <td className="px-3 py-3 text-right text-muted-foreground text-sm hidden md:table-cell">
                         {fmt(m.avgInvoice)}

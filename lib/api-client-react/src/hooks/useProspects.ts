@@ -4,7 +4,6 @@ import type {
   Prospect,
   CreateProspectRequest,
   UpdateProspectRequest,
-  ListProspectsParams,
   ProspectStatus,
   ProspectStatusEvent,
   ProspectDetail,
@@ -13,7 +12,11 @@ import type {
   ProspectRevenueSummary,
 } from "../generated/api.schemas";
 
-export type { Prospect, CreateProspectRequest, UpdateProspectRequest, ListProspectsParams, ProspectStatus };
+export interface ListProspectsParams {
+  status?: ProspectStatus;
+}
+
+export type { Prospect, CreateProspectRequest, UpdateProspectRequest, ProspectStatus };
 export type { ProspectStatusEvent, ProspectDetail, ProspectServiceVisit, AddServiceVisitRequest };
 export type { ProspectRevenueSummary };
 export { ProspectStatus as ProspectStatusEnum } from "../generated/api.schemas";

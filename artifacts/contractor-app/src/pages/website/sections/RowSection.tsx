@@ -264,8 +264,6 @@ interface RowSectionProps {
   onBeforeAction?: () => void;
   /** Toggle component hidden state; called with colId and componentId */
   onToggleRowComponentHide?: (colId: string, compId: string) => void;
-  /** Parent section id — used to pass context to the canvas context menu */
-  sectionId?: string;
   /** Called when user right-clicks a component — opens the canvas context menu */
   onComponentContextMenu?: (sectionId: string, colId: string, compId: string, compType: string, e: React.MouseEvent) => void;
   /** Called when user right-clicks a column header — opens column context menu */
@@ -438,8 +436,8 @@ export function RowSection({
                   <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 flex items-center gap-1 select-none">
                     <LayoutGrid className="w-2.5 h-2.5" />
                     Col {idx + 1}
-                    {col.locked && <Lock className="w-2.5 h-2.5 text-amber-500 ml-0.5" title="Locked" />}
-                    {col.hidden && <EyeOff className="w-2.5 h-2.5 text-gray-400 ml-0.5" title="Hidden" />}
+                    {col.locked && <Lock className="w-2.5 h-2.5 text-amber-500 ml-0.5" aria-label="Locked" />}
+                    {col.hidden && <EyeOff className="w-2.5 h-2.5 text-gray-400 ml-0.5" aria-label="Hidden" />}
                     <span className="ml-auto text-gray-300">{col.widthRatio}fr</span>
                   </div>
 

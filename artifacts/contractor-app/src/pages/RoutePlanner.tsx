@@ -469,7 +469,7 @@ export default function RoutePlanner() {
   const { data: profitSummary = {}, isLoading: isLoadingProfit } = useQuery<Record<number, JobProfitData>>({
     queryKey: ["job-profit-summary", dayJobIdsKey],
     queryFn: () =>
-      apiFetch(`/jobs/profit-summary?jobIds=${dayJobIdsKey}`) as Promise<Record<number, JobProfitData>>,
+      apiFetch(`/jobs/profit-summary?jobIds=${dayJobIdsKey}`) as unknown as Promise<Record<number, JobProfitData>>,
     staleTime: 60_000,
     enabled: dayJobIds.length > 0,
   });
@@ -566,7 +566,7 @@ export default function RoutePlanner() {
   });
 
   const fixGeocoding = useMutation({
-    mutationFn: () => apiFetch("/route-stops/fix-geocoding", { method: "POST" }) as Promise<{ total: number; fixed: number; failed: number }>,
+    mutationFn: () => apiFetch("/route-stops/fix-geocoding", { method: "POST" }) as unknown as Promise<{ total: number; fixed: number; failed: number }>,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
       if (data.fixed > 0) {

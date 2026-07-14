@@ -138,6 +138,7 @@ export function EstimateModal({
   onClose: () => void;
   onSave: (req: CreateEstimateRequest) => void;
 }) {
+  const qc = useQueryClient();
   const { data: clients = [] } = useListClients();
   const { data: settings } = useGetSettings();
   const s = (settings ?? {}) as AppSettings;
@@ -219,7 +220,7 @@ export function EstimateModal({
       businessLine: businessLine || null,
     };
     const jobId = prelinkedJobId ?? (initial as Estimate & { jobId?: number })?.jobId ?? null;
-    if (jobId) (req as Record<string, unknown>).jobId = jobId;
+    if (jobId) (req as unknown as Record<string, unknown>).jobId = jobId;
     onSave(req);
   }
 

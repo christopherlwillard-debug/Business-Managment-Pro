@@ -25,12 +25,12 @@ export interface PageTemplate {
   sections: () => PageSectionConfig[];
 }
 
-function getTemplatContent(id: string) {
-  return SECTION_TEMPLATES.find(t => t.id === id)!.content();
+function getTemplatContent(id: string): Record<string, unknown> {
+  return SECTION_TEMPLATES.find(t => t.id === id)!.content() as unknown as Record<string, unknown>;
 }
 
-function getTemplateStyle(id: string) {
-  return SECTION_TEMPLATES.find(t => t.id === id)!.blockStyle;
+function getTemplateStyle(id: string): Record<string, unknown> | undefined {
+  return SECTION_TEMPLATES.find(t => t.id === id)!.blockStyle as unknown as Record<string, unknown>;
 }
 
 function makeSvg(labels: string[]): string {

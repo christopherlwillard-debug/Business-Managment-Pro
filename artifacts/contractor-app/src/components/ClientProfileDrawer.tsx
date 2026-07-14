@@ -131,7 +131,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
           return;
         }
         const body = await res.json();
-        squareId = body.squareCustomerId as string | null | undefined;
+        squareId = body.squareCustomerId as string | null;
         if (!squareId) {
           toast({ title: "Sync succeeded but Square returned no customer ID", variant: "destructive" });
           return;
@@ -525,7 +525,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
               )}
 
               {tab === "billing" && (
-                <BillingProfilesTab clientId={client.id} canEdit={canEdit} />
+                <BillingProfilesTab clientId={client.id} canEdit={canEdit("clients")} />
               )}
 
               {tab === "invoices" && (
@@ -591,7 +591,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
 
                 const filteredSquareCents = filteredSquare.reduce((s, p) => s + p.amountCents, 0);
                 const filteredOtherCents = filteredOther.reduce((s, oi) => s + Math.round(parseFloat(oi.amount) * 100), 0);
-                const paidInvoicesTotalCents = Math.round((summary.paidInvoicesTotal ?? 0) * 100);
+                const paidInvoicesTotalCents = Math.round(((summary as any).paidInvoicesTotal ?? 0) * 100);
                 const filteredTotalCents = filteredSquareCents + filteredOtherCents + paidInvoicesTotalCents;
 
                 return (

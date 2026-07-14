@@ -600,7 +600,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                     isActive={detailItem?.id === item.id}
                     renamingId={renamingId}
                     renameValue={renameValue}
-                    renameRef={renameRef}
+                    renameRef={renameRef as any}
                     folders={folders}
                     mode={mode}
                     onActivate={() => {

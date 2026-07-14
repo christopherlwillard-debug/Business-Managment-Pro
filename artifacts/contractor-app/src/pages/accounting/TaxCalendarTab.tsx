@@ -1260,7 +1260,7 @@ function TaxCalendarTab({ year }: { year: number }) {
                   <p className="text-xs text-muted-foreground">{item.category}</p>
                 </div>
                 <button
-                  onClick={() => updateItem.mutate({ id: item.id, ...item, enabled: !item.enabled })}
+                  onClick={() => updateItem.mutate({ ...item, enabled: !item.enabled })}
                   className={`ml-3 flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium transition-colors flex-shrink-0 ${item.enabled !== false ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
                 >
                   {item.enabled !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}

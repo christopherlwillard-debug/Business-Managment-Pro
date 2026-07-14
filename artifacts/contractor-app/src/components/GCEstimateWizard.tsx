@@ -778,7 +778,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
           unitCost: t.selectedCost,
         })),
       };
-      await createEstimate.mutateAsync(req);
+      await createEstimate.mutateAsync(req as any);
       qc.invalidateQueries({ queryKey: ["/api/estimates"] });
 
       const permitItems = (KY_PERMITS[jobType] ?? KY_PERMITS.other);
@@ -793,7 +793,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
           ...(savePhasesToJob && phasesEditable.length > 0
             ? { phases: phasesEditable.map(name => ({ name, completed: false })) }
             : {}),
-          permitChecklist: permitChecklistData,
+          permitChecklist: permitChecklistData as any,
         },
       });
       qc.invalidateQueries({ queryKey: ["/api/jobs"] });

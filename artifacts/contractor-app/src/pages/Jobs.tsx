@@ -57,10 +57,10 @@ const JOB_WORKFLOWS = {
 type WorkflowKey = keyof typeof JOB_WORKFLOWS;
 
 function getJobWorkflow(job: Job): WorkflowKey | null {
-  const w = (job as Record<string, unknown>).workflow as string | null;
+  const w = (job as unknown as Record<string, unknown>).workflow as string | null;
   if (w && w in JOB_WORKFLOWS) return w as WorkflowKey;
   if (job.businessLine === "general_contracting") return "general_contracting";
-  if ((job as Record<string, unknown>).mfhManufacturerId != null) return "mh_production";
+  if ((job as unknown as Record<string, unknown>).mfhManufacturerId != null) return "mh_production";
   return null;
 }
 
@@ -3807,13 +3807,13 @@ function JobCard({
                   {JOB_WORKFLOWS[jobWorkflow].emoji} {JOB_WORKFLOWS[jobWorkflow].label}
                 </span>
               )}
-              {jobWorkflow === "mh_production" && (job as Record<string, unknown>).mfhConstructionType ? (
+              {jobWorkflow === "mh_production" && (job as unknown as Record<string, unknown>).mfhConstructionType ? (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-300 text-amber-700 bg-transparent">
-                  {(job as Record<string, unknown>).mfhConstructionType as string}
+                  {(job as unknown as Record<string, unknown>).mfhConstructionType as string}
                 </span>
               ) : null}
-              {jobWorkflow === "mh_production" && Array.isArray((job as Record<string, unknown>).mhProductionServices) &&
-                ((job as Record<string, unknown>).mhProductionServices as number[]).map(svcId => {
+              {jobWorkflow === "mh_production" && Array.isArray((job as unknown as Record<string, unknown>).mhProductionServices) &&
+                ((job as unknown as Record<string, unknown>).mhProductionServices as number[]).map(svcId => {
                   const svc = productionServiceTypes.find(t => t.id === svcId);
                   if (!svc) return null;
                   return (
@@ -3914,10 +3914,10 @@ function JobCard({
               <span>{formatDate(job.startDate)}{job.endDate && ` – ${formatDate(job.endDate)}`}</span>
             </div>
           )}
-          {job.subcontractorNames?.length > 0 && (
+          {(job.subcontractorNames?.length ?? 0) > 0 && (
             <div className="flex items-center gap-1.5">
               <HardHat className="w-3 h-3 flex-shrink-0" />
-              <span>{job.subcontractorNames.join(", ")}</span>
+              <span>{job.subcontractorNames!.join(", ")}</span>
             </div>
           )}
 
@@ -3933,10 +3933,10 @@ function JobCard({
             </div>
           )}
 
-          {(job as Record<string, unknown>).manHours != null && (
+          {(job as unknown as Record<string, unknown>).manHours != null && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Timer className="w-3 h-3 flex-shrink-0" />
-              <span className="font-medium">{parseFloat(String((job as Record<string, unknown>).manHours)).toLocaleString(undefined, { maximumFractionDigits: 1 })} man-hrs</span>
+              <span className="font-medium">{parseFloat(String((job as unknown as Record<string, unknown>).manHours)).toLocaleString(undefined, { maximumFractionDigits: 1 })} man-hrs</span>
             </div>
           )}
 
@@ -4071,15 +4071,15 @@ function JobCard({
 
         {/* Manufactured Home panel — MH Production and MH Service only */}
         {(jobWorkflow === "mh_production" || jobWorkflow === "mh_service" || (!jobWorkflow && job.businessLine !== "general_contracting" && job.businessLine !== "asphalt_sealing")) && (
-          (job.jobType === "Manufactured Home" || (job as Record<string, unknown>).mfhManufacturerId != null) ? (
+          (job.jobType === "Manufactured Home" || (job as unknown as Record<string, unknown>).mfhManufacturerId != null) ? (
             <button
               onClick={() => setMfhPanelOpen(true)}
               className="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/80 transition-colors text-xs font-medium text-amber-700 w-full">
               <Home className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
               <span className="flex-1 text-left">Manufactured Home</span>
-              {(job as Record<string, unknown>).mfhQuotedPrice ? (
+              {(job as unknown as Record<string, unknown>).mfhQuotedPrice ? (
                 <span className="text-[10px] font-bold text-amber-600 font-mono">
-                  {`$${parseFloat(String((job as Record<string, unknown>).mfhQuotedPrice)).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                  {`$${parseFloat(String((job as unknown as Record<string, unknown>).mfhQuotedPrice)).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                 </span>
               ) : (
                 <span className="text-[10px] text-amber-400">{jobWorkflow === "mh_production" ? "Builder & model" : "Set pricing"}</span>
@@ -4123,7 +4123,7 @@ function JobCard({
         )}
 
         {/* Labor Summary for MFH jobs */}
-        {(job as Record<string, unknown>).mfhModelId != null && (
+        {(job as unknown as Record<string, unknown>).mfhModelId != null && (
           <div className="border border-border rounded-xl p-3">
             <LaborSummaryPanel jobId={job.id} compact />
           </div>
@@ -4528,9 +4528,9 @@ function JobFormDialog({
   );
 
   // MFH structured fields (separate from form string state)
-  const [mfhMfgId, setMfhMfgId] = useState<number | null>((editJob as Record<string, unknown>)?.mfhManufacturerId as number | null ?? null);
-  const [mfhModelId, setMfhModelId] = useState<number | null>((editJob as Record<string, unknown>)?.mfhModelId as number | null ?? null);
-  const [mfhYear, setMfhYear] = useState<string>((editJob as Record<string, unknown>)?.mfhModelYear ? String((editJob as Record<string, unknown>).mfhModelYear) : "");
+  const [mfhMfgId, setMfhMfgId] = useState<number | null>((editJob as unknown as Record<string, unknown>)?.mfhManufacturerId as number | null ?? null);
+  const [mfhModelId, setMfhModelId] = useState<number | null>((editJob as unknown as Record<string, unknown>)?.mfhModelId as number | null ?? null);
+  const [mfhYear, setMfhYear] = useState<string>((editJob as unknown as Record<string, unknown>)?.mfhModelYear ? String((editJob as unknown as Record<string, unknown>).mfhModelYear) : "");
   const { data: mfhMfgs = [] } = useListMfhManufacturers();
   const { data: mfhPanelData } = useMfhPanelData(mfhMfgId);
   const mfhModels = mfhPanelData?.models ?? [];
@@ -4546,10 +4546,10 @@ function JobFormDialog({
 
   // MH Production: job-level construction type + services included
   const [mfhConstructionType, setMfhConstructionType] = useState<string>(
-    (editJob as Record<string, unknown>)?.mfhConstructionType as string ?? ""
+    (editJob as unknown as Record<string, unknown>)?.mfhConstructionType as string ?? ""
   );
   const [mhProductionServices, setMhProductionServices] = useState<number[]>(
-    (editJob as Record<string, unknown>)?.mhProductionServices as number[] ?? []
+    (editJob as unknown as Record<string, unknown>)?.mhProductionServices as number[] ?? []
   );
   const [showAddService, setShowAddService] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
@@ -4661,14 +4661,14 @@ function JobFormDialog({
 
   // Man-hours calculator state
   const [manHoursExpanded, setManHoursExpanded] = useState(
-    (editJob as Record<string, unknown>)?.manHours != null
+    (editJob as unknown as Record<string, unknown>)?.manHours != null
   );
   const [manHoursWorkers, setManHoursWorkers] = useState("0");
   const [manHoursDays, setManHoursDays] = useState("0");
   const [manHoursHrsPerDay, setManHoursHrsPerDay] = useState("0");
   const [manHoursTotal, setManHoursTotal] = useState(
-    (editJob as Record<string, unknown>)?.manHours != null
-      ? String(parseFloat(String((editJob as Record<string, unknown>).manHours)))
+    (editJob as unknown as Record<string, unknown>)?.manHours != null
+      ? String(parseFloat(String((editJob as unknown as Record<string, unknown>).manHours)))
       : ""
   );
 
@@ -4685,17 +4685,17 @@ function JobFormDialog({
     setClearHoursForSubIds([]);
     setRemoveSubPrompt(null);
     setSelectedWorkflow(editJob?.workflow ?? null);
-    const existing = (editJob as Record<string, unknown>)?.manHours;
+    const existing = (editJob as unknown as Record<string, unknown>)?.manHours;
     setManHoursTotal(existing != null ? String(parseFloat(String(existing))) : "");
     setManHoursExpanded(existing != null);
     setManHoursWorkers("0");
     setManHoursDays("0");
     setManHoursHrsPerDay("0");
-    setMfhMfgId((editJob as Record<string, unknown>)?.mfhManufacturerId as number | null ?? null);
-    setMfhModelId((editJob as Record<string, unknown>)?.mfhModelId as number | null ?? null);
-    setMfhYear((editJob as Record<string, unknown>)?.mfhModelYear ? String((editJob as Record<string, unknown>).mfhModelYear) : "");
-    setMfhConstructionType((editJob as Record<string, unknown>)?.mfhConstructionType as string ?? "");
-    setMhProductionServices((editJob as Record<string, unknown>)?.mhProductionServices as number[] ?? []);
+    setMfhMfgId((editJob as unknown as Record<string, unknown>)?.mfhManufacturerId as number | null ?? null);
+    setMfhModelId((editJob as unknown as Record<string, unknown>)?.mfhModelId as number | null ?? null);
+    setMfhYear((editJob as unknown as Record<string, unknown>)?.mfhModelYear ? String((editJob as unknown as Record<string, unknown>).mfhModelYear) : "");
+    setMfhConstructionType((editJob as unknown as Record<string, unknown>)?.mfhConstructionType as string ?? "");
+    setMhProductionServices((editJob as unknown as Record<string, unknown>)?.mhProductionServices as number[] ?? []);
     setBuilderQuery("");
     setModelQuery("");
     setShowAddService(false);
@@ -5999,7 +5999,7 @@ export default function Jobs() {
           const getHrs = (j: typeof a) => {
             const p = profitMap.get(j.id);
             const tracked = p?.totalSubHours ?? 0;
-            const manual = p?.manHours ?? ((j as Record<string, unknown>).manHours != null ? parseFloat(String((j as Record<string, unknown>).manHours)) : 0);
+            const manual = p?.manHours ?? ((j as unknown as Record<string, unknown>).manHours != null ? parseFloat(String((j as unknown as Record<string, unknown>).manHours)) : 0);
             return tracked > 0 ? tracked : manual;
           };
           return getHrs(b) - getHrs(a);
@@ -6092,7 +6092,7 @@ export default function Jobs() {
     }
 
     // MFH jobs → show KB training review before completing
-    if ((job as Record<string, unknown>).mfhModelId) {
+    if ((job as unknown as Record<string, unknown>).mfhModelId) {
       setKbTrainingJob(job);
       return;
     }
@@ -6118,7 +6118,7 @@ export default function Jobs() {
             Array.isArray(inv.lineItems) ? inv.lineItems : [];
           const isMaterialLine = (li: { description: string; [k: string]: unknown }) =>
             (li as { source?: string }).source === "material" || li.description === "Materials";
-          const estimateLines = jobDraft.lineItems.filter(li => !isMaterialLine(li));
+          const estimateLines = jobDraft.lineItems.filter((li: any) => !isMaterialLine(li));
 
           // Update existing $0 lines that match an estimate line, and add any missing ones
           let nextId = currentLines.length > 0 ? Math.max(...currentLines.map(l => l.id)) + 1 : 1;
@@ -6226,10 +6226,10 @@ export default function Jobs() {
         // so that changes to hours/rates/mileage are immediately reflected without
         // the user having to delete and recreate the draft.
         if (job.serviceBilling && existingDraft.status === "draft" && jobDraft?.lineItems?.length) {
-          const filteredJobDraftLines = (jobDraft.lineItems as typeof existingDraft.lineItems).filter(
+          const filteredJobDraftLines = (jobDraft!.lineItems as any[]).filter(
             (li: any) => li.source || (parseFloat(li.unitPrice) !== 0) || (parseFloat(li.quantity) !== 1)
           );
-          existingDraft = { ...existingDraft, lineItems: filteredJobDraftLines };
+          existingDraft = { ...existingDraft, lineItems: filteredJobDraftLines as any };
           setInvoiceDraftData(null);
           setSelectedExistingInvoice(existingDraft);
           setInvoiceEditorOpen(true);
@@ -6245,7 +6245,7 @@ export default function Jobs() {
           Array.isArray(existingDraft.lineItems) ? existingDraft.lineItems : [];
 
         // All lines from the job draft except material-sourced lines are estimate-sourced
-        const estimateLines = (jobDraft?.lineItems ?? []).filter(li => !isMaterialLine(li));
+        const estimateLines = (jobDraft?.lineItems ?? []).filter((li: any) => !isMaterialLine(li));
 
         // Which estimate lines are not yet represented in the existing invoice?
         const missingLines = estimateLines.filter(
@@ -6672,7 +6672,7 @@ export default function Jobs() {
                 const totalHrs = allClosedBase.reduce((s, j) => {
                   const p = profitMap.get(j.id);
                   const tracked = p?.totalSubHours ?? 0;
-                  const manual = p?.manHours ?? ((j as Record<string, unknown>).manHours != null ? parseFloat(String((j as Record<string, unknown>).manHours)) : 0);
+                  const manual = p?.manHours ?? ((j as unknown as Record<string, unknown>).manHours != null ? parseFloat(String((j as unknown as Record<string, unknown>).manHours)) : 0);
                   return s + (tracked > 0 ? tracked : manual);
                 }, 0);
                 return (
@@ -6761,7 +6761,7 @@ export default function Jobs() {
                               : job.endDate ? formatDate(job.endDate) : "—";
                             // Man-hours: prefer tracked sub hours, fall back to manually entered field
                             const trackedHrs = profit?.totalSubHours ?? 0;
-                            const manualHrs = profit?.manHours ?? ((job as Record<string, unknown>).manHours != null ? parseFloat(String((job as Record<string, unknown>).manHours)) : 0);
+                            const manualHrs = profit?.manHours ?? ((job as unknown as Record<string, unknown>).manHours != null ? parseFloat(String((job as unknown as Record<string, unknown>).manHours)) : 0);
                             const displayHrs = trackedHrs > 0 ? trackedHrs : manualHrs;
                             const revenuePerHr = displayHrs > 0 && grossInvoiced > 0 ? grossInvoiced / displayHrs : null;
                             return (
@@ -6893,9 +6893,9 @@ export default function Jobs() {
           open={!!productionPricingJob}
           onOpenChange={open => { if (!open) setProductionPricingJob(null); }}
           jobId={productionPricingJob.id}
-          checkedServiceIds={((productionPricingJob as Record<string, unknown>).mhProductionServices as number[] | null) ?? []}
-          homeType={((productionPricingJob as Record<string, unknown>).mfhConstructionType as string | null) ?? null}
-          clientName={((productionPricingJob as Record<string, unknown>).clientName as string | null) ?? null}
+          checkedServiceIds={((productionPricingJob as unknown as Record<string, unknown>).mhProductionServices as number[] | null) ?? []}
+          homeType={((productionPricingJob as unknown as Record<string, unknown>).mfhConstructionType as string | null) ?? null}
+          clientName={((productionPricingJob as unknown as Record<string, unknown>).clientName as string | null) ?? null}
           catalog={allProductionServiceTypes}
           onApplied={(invoice, meta) => {
             setInvoiceDraftData(null);
@@ -6983,7 +6983,7 @@ export default function Jobs() {
       {/* KB Training Modal — shown when marking an MFH job complete */}
       {kbTrainingJob && (
         <KbTrainingModal
-          job={kbTrainingJob as Parameters<typeof KbTrainingModal>[0]["job"]}
+          job={kbTrainingJob as unknown as Parameters<typeof KbTrainingModal>[0]["job"]}
           onClose={() => setKbTrainingJob(null)}
           onComplete={async () => {
             const job = kbTrainingJob;

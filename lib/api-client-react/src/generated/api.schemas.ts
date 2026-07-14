@@ -61,6 +61,9 @@ export interface Client {
   state?: string | null;
   zip?: string | null;
   notes?: string | null;
+  businessLine?: string | null;
+  nextServiceDate?: string | null;
+  squareCustomerId?: string | null;
   createdAt: string;
 }
 
@@ -84,6 +87,7 @@ export const JobStatus = {
   completed: "completed",
   invoiced: "invoiced",
   cancelled: "cancelled",
+  closed: "closed",
 } as const;
 
 export interface PhaseItem {
@@ -117,6 +121,7 @@ export interface ServiceBilling {
   rateSnapshot?: ServiceBillingRateSnapshot | null;
   internalLaborRate?: number | null;
   fuelEstimate?: number | null;
+  workType?: string | null;
 }
 
 export interface Job {
@@ -137,11 +142,22 @@ export interface Job {
   endDate?: string | null;
   notes?: string | null;
   businessLine?: string | null;
+  workflow?: string | null;
   subPaid?: boolean;
   sqFt?: number | null;
   coats?: number | null;
   phases?: PhaseItem[] | null;
   serviceBilling?: ServiceBilling | null;
+  permitChecklist?: Record<string, unknown> | null;
+  mfhManufacturerId?: number | null;
+  mfhModelId?: number | null;
+  mfhModelYear?: number | null;
+  mfhConstructionType?: string | null;
+  mhProductionServices?: number[] | null;
+  manHours?: number | null;
+  homeModel?: string | null;
+  jobNumber?: string | null;
+  closedAt?: string | null;
   createdAt: string;
 }
 
@@ -155,10 +171,11 @@ export const CreateJobRequestStatus = {
   completed: "completed",
   invoiced: "invoiced",
   cancelled: "cancelled",
+  closed: "closed",
 } as const;
 
 export interface CreateJobRequest {
-  title: string;
+  title?: string;
   description?: string | null;
   clientId?: number | null;
   subcontractorIds?: number[];
@@ -185,6 +202,7 @@ export interface CreateJobRequest {
   mfhConstructionType?: string | null;
   mhProductionServices?: number[] | null;
   manHours?: number | null;
+  permitChecklist?: Record<string, unknown> | null;
 }
 
 export interface DraftLineItem {
@@ -207,6 +225,7 @@ export interface InvoiceDraft {
   locationName?: string | null;
   city?: string | null;
   state?: string | null;
+  businessLine?: string | null;
   lineItems: DraftLineItem[];
 }
 
@@ -218,6 +237,8 @@ export const InvoiceStatus = {
   paid: "paid",
   overdue: "overdue",
   cancelled: "cancelled",
+  partiallyPaid: "partiallyPaid",
+  approved: "approved",
 } as const;
 
 export interface InvoiceLineItem {
@@ -244,6 +265,22 @@ export interface Invoice {
   jobTitle?: string | null;
   jobCity?: string | null;
   jobState?: string | null;
+  city?: string | null;
+  state?: string | null;
+  locationName?: string | null;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  clientAddress?: string | null;
+  clientCity?: string | null;
+  clientState?: string | null;
+  clientZip?: string | null;
+  clientNotes?: string | null;
+  businessLine?: string | null;
+  squarePaymentLinkUrl?: string | null;
+  stripePaymentLinkUrl?: string | null;
+  squarePaidAt?: string | null;
+  stripePaidAt?: string | null;
+  remindersSentAt?: string[] | null;
   status: InvoiceStatus;
   issueDate: string;
   dueDate?: string | null;
@@ -288,6 +325,7 @@ export interface CreateInvoiceRequest {
   locationName?: string | null;
   city?: string | null;
   state?: string | null;
+  businessLine?: string | null;
   lineItems?: CreateInvoiceRequestLineItemsItem[];
   attachments?: InvoiceAttachment[] | null;
 }
@@ -318,6 +356,10 @@ export interface Expense {
   receiptUrl?: string | null;
   notes?: string | null;
   recurringExpenseId?: number | null;
+  subcontractorId?: number | null;
+  countsTowardJobProfit?: boolean | null;
+  excludeFromNetProfit?: boolean | null;
+  businessLine?: string | null;
   createdAt: string;
 }
 
@@ -330,6 +372,20 @@ export interface CreateExpenseRequest {
   jobId?: number | null;
   receiptUrl?: string | null;
   notes?: string | null;
+  subcontractorId?: number | null;
+  countsTowardJobProfit?: boolean | null;
+  excludeFromNetProfit?: boolean | null;
+  businessLine?: string | null;
+  businessId?: number | null;
+  tripId?: number | null;
+  paidBy?: string | null;
+  receiptStatus?: string | null;
+  receiptMissingExplanation?: string | null;
+  numPeople?: number | null;
+  overnightTravel?: boolean | null;
+  tipAmount?: number | null;
+  taxAmount?: number | null;
+  isPotentiallyNondeductible?: boolean | null;
 }
 
 export interface ClientBillingProfile {
@@ -510,6 +566,7 @@ export interface CreateMileageLogRequest {
   classification: CreateMileageLogRequestClassification;
   notes?: string | null;
   source?: CreateMileageLogRequestSource;
+  businessId?: number | null;
 }
 
 export interface MileageSummary {
@@ -597,6 +654,12 @@ export interface Estimate {
   jobType?: string | null;
   notes?: string | null;
   lineItems?: EstimateLineItem[];
+  businessLine?: string | null;
+  depositPaidAt?: string | null;
+  depositPaidAmount?: number | null;
+  squarePaymentLinkUrl?: string | null;
+  stripePaymentLinkUrl?: string | null;
+  jobId?: number | null;
   createdAt: string;
 }
 
@@ -628,6 +691,8 @@ export interface CreateEstimateRequest {
   jobType?: string | null;
   notes?: string | null;
   lineItems?: CreateEstimateRequestLineItemsItem[];
+  businessLine?: string | null;
+  jobId?: number | null;
 }
 
 export interface DailyLog {
@@ -643,6 +708,8 @@ export interface DailyLog {
   hoursWorked?: number | null;
   notes?: string | null;
   photoUrls: string[];
+  materialListId?: number | null;
+  authorName?: string | null;
   createdAt: string;
 }
 
@@ -657,6 +724,7 @@ export interface CreateDailyLogRequest {
   hoursWorked?: number | null;
   notes?: string | null;
   photoUrls?: string[];
+  materialListId?: number | null;
 }
 
 export type AppSettingsInvoiceLogoSize =
@@ -688,6 +756,7 @@ export interface AppSettings {
   companyPhone?: string | null;
   companyEmail?: string | null;
   logoUrl?: string | null;
+  dbaLogoUrl?: string | null;
   defaultTaxRate?: number | null;
   defaultPaymentTerms?: string | null;
   lateFeePercent?: number | null;
@@ -699,6 +768,8 @@ export interface AppSettings {
   thresholdAmount1099?: number | null;
   invoiceLogoSize?: AppSettingsInvoiceLogoSize;
   invoiceLogoPosition?: AppSettingsInvoiceLogoPosition;
+  bottomNavItems?: string[] | null;
+  calculatorDefaults?: Record<string, unknown> | null;
 }
 
 export type DashboardStatsMonthlyRevenueItem = {
@@ -1122,11 +1193,13 @@ export type ListMileageLogsParams = {
   startDate?: string;
   endDate?: string;
   classified?: boolean;
+  businessId?: number;
 };
 
 export type GetMileageSummaryParams = {
   startDate?: string;
   endDate?: string;
+  businessId?: number;
 };
 
 export type Get1099ReportParams = {

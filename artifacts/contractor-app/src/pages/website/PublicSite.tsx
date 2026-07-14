@@ -256,7 +256,7 @@ export default function PublicSite() {
 
   const siteBodyStyle: React.CSSProperties = settings.bodyFont
     ? { fontFamily: `'${settings.bodyFont}', system-ui, sans-serif` }
-    : undefined;
+    : {};
 
   return (
     <div

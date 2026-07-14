@@ -7,7 +7,9 @@ export interface ButtonConfig {
   bgColor?: string;
   textColor?: string;
   borderRadius?: "pill" | "rounded" | "square";
+  rounding?: "pill" | "rounded" | "square" | "full";
   size?: "sm" | "md" | "lg";
+  style?: "solid" | "outline" | "ghost";
 }
 
 const BORDER_RADIUS_OPTIONS: { label: string; value: ButtonConfig["borderRadius"] }[] = [

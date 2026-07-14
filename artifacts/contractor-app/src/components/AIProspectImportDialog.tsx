@@ -129,6 +129,7 @@ export function AIProspectImportDialog({ open, onClose, onImported }: Props) {
       document.addEventListener("paste", handlePaste);
       return () => document.removeEventListener("paste", handlePaste);
     }
+    return undefined;
   }, [open, handlePaste]);
 
   function handleDragOver(e: React.DragEvent) {

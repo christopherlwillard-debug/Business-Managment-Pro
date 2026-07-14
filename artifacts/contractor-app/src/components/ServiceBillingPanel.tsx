@@ -54,7 +54,7 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
 
   const { data: profiles = [] } = useListClientBillingProfiles(
     job.clientId != null ? { clientId: job.clientId } : undefined,
-    { query: { enabled: job.clientId != null } },
+    { query: { enabled: job.clientId != null } as any },
   );
 
   const existing = job.serviceBilling;
@@ -71,7 +71,7 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
   const [fuelEstimate, setFuelEstimate] = useState<string>(existing?.fuelEstimate != null ? String(existing.fuelEstimate) : "");
   const [showInternal, setShowInternal] = useState(false);
   const [billingNotes, setBillingNotes] = useState<string | null>(null);
-  const [workType, setWorkType] = useState<"service" | "contracted">(existing?.workType ?? "service");
+  const [workType, setWorkType] = useState<"service" | "contracted">((existing?.workType as "service" | "contracted" | undefined) ?? "service");
   // Default reimbursable flag for newly added parts, seeded from the client's profile rule.
   const [partsDefaultReimbursable, setPartsDefaultReimbursable] = useState(true);
 
@@ -321,11 +321,11 @@ export function ServiceBillingPanel({ job, onClose }: Props) {
           <div className="space-y-2 rounded-xl border border-border p-3">
             <p className={labelCls}>Rates {profileName ? `· ${profileName}` : "(manual)"}</p>
             <div className="grid grid-cols-2 gap-2">
-              <RateInput label="Repair / 1 Tech" value={snapshot.repairRate1Tech} onChange={v => setSnapshot(s => ({ ...s, repairRate1Tech: v }))} />
-              <RateInput label="Repair / 2 Tech" value={snapshot.repairRate2Tech} onChange={v => setSnapshot(s => ({ ...s, repairRate2Tech: v }))} />
-              <RateInput label="Drive / 1 Tech" value={snapshot.driveRate1Tech} onChange={v => setSnapshot(s => ({ ...s, driveRate1Tech: v }))} />
-              <RateInput label="Drive / 2 Tech" value={snapshot.driveRate2Tech} onChange={v => setSnapshot(s => ({ ...s, driveRate2Tech: v }))} />
-              <RateInput label="Mileage / mi" value={snapshot.mileageRate} onChange={v => setSnapshot(s => ({ ...s, mileageRate: v }))} />
+              <RateInput label="Repair / 1 Tech" value={snapshot.repairRate1Tech ?? null} onChange={v => setSnapshot(s => ({ ...s, repairRate1Tech: v }))} />
+              <RateInput label="Repair / 2 Tech" value={snapshot.repairRate2Tech ?? null} onChange={v => setSnapshot(s => ({ ...s, repairRate2Tech: v }))} />
+              <RateInput label="Drive / 1 Tech" value={snapshot.driveRate1Tech ?? null} onChange={v => setSnapshot(s => ({ ...s, driveRate1Tech: v }))} />
+              <RateInput label="Drive / 2 Tech" value={snapshot.driveRate2Tech ?? null} onChange={v => setSnapshot(s => ({ ...s, driveRate2Tech: v }))} />
+              <RateInput label="Mileage / mi" value={snapshot.mileageRate ?? null} onChange={v => setSnapshot(s => ({ ...s, mileageRate: v }))} />
             </div>
             <p className="text-[10px] text-muted-foreground">
               Active rate: Repair {money(repairRate)}/hr · Drive {money(driveRate)}/hr ({techCount} tech)

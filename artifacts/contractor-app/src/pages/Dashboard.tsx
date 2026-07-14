@@ -22,7 +22,7 @@ const CARD_COLORS: Record<string, { border: string; header: string; text: string
 const DEFAULT_CARD_COLORS = { border: "border-gray-200", header: "bg-gray-50", text: "text-gray-700" };
 
 function BusinessStatsCard({ business, period }: { business: Business; period: "week"|"month"|"quarter"|"year" }) {
-  const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: business.slug });
+  const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: business.slug as any });
   const colors = CARD_COLORS[business.type] ?? CARD_COLORS[business.slug] ?? DEFAULT_CARD_COLORS;
   if (isLoading) return <div className={`rounded-xl border ${colors.border} overflow-hidden animate-pulse h-40`} />;
   if (!stats) return null;
@@ -112,7 +112,7 @@ export default function Dashboard() {
   const businessLine = activeBusiness ? activeBusiness.slug : localBLFilter;
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
-  const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: businessLine || undefined });
+  const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: (businessLine || undefined) as any });
   const { data: todayData, isLoading: todayLoading } = useDashboardToday();
   const complianceItems = todayData?.complianceItems ?? [];
   const todayStops = todayData?.routeStops ?? [];

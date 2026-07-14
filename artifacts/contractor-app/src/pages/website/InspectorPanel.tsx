@@ -621,7 +621,7 @@ export function InspectorPanel({
   const [searchRaw, setSearchRaw] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   function handleSearchChange(raw: string) {
     setSearchRaw(raw);

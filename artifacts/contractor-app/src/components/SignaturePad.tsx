@@ -57,6 +57,7 @@ export function SignaturePad({ savedUrl, onSaved, onRemoved }: SignaturePadProps
       const t = setTimeout(initPad, 50);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [mode, initPad]);
 
   // Re-init on window resize so the canvas stays the right size

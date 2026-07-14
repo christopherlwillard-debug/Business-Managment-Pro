@@ -27,7 +27,7 @@ async function fetchAccounting(year: number, businessLine?: string) {
   return res.json();
 }
 
-type AccountingTab = "overview" | "profit-loss" | "schedule-c" | "tax-calendar" | "reconcile" | "year-end" | "benchmarks" | "business-trips";
+export type AccountingTab = "overview" | "profit-loss" | "schedule-c" | "tax-calendar" | "reconcile" | "year-end" | "benchmarks" | "business-trips";
 
 function getInitialTab(): AccountingTab {
   const params = new URLSearchParams(window.location.search);

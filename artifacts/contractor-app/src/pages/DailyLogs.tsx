@@ -69,7 +69,7 @@ export default function DailyLogs() {
         notes: form.notes || undefined,
         materialListId: form.materialListId ? parseInt(form.materialListId) : undefined,
       };
-      if (form.jobId) (body as Record<string, unknown>).jobId = parseInt(form.jobId);
+      if (form.jobId) (body as unknown as Record<string, unknown>).jobId = parseInt(form.jobId);
       await createLog.mutateAsync({ data: body });
       setForm({ jobId: "", date: today(), workCompleted: "", notes: "", materialListId: "" });
       setShowForm(false);

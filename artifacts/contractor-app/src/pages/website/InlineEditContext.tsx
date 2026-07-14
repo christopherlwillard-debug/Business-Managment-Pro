@@ -208,6 +208,7 @@ export function InlineEditStatus({ editingId }: { editingId: string | null }) {
       return () => clearTimeout(t);
     }
     prevId.current = editingId;
+    return undefined;
   }, [editingId]);
 
   if (editingId) {
