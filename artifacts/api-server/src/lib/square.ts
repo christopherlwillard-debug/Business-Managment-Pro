@@ -62,7 +62,7 @@ export async function createSquarePaymentLink(opts: {
       : undefined,
   };
 
-  const result = await client.checkout.paymentLinks.create(body);
+  const result = await client.checkout.paymentLinks.create(body as any);
 
   if (!result.paymentLink?.url) {
     throw new Error("Square did not return a payment link URL");

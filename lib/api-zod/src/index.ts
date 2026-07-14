@@ -1,2 +1,10 @@
 export * from "./generated/api";
-export * from "./generated/types";
+export type * from "./generated/types";
+export {
+  PortalCheckSessionBody,
+  PortalSetPinBody,
+  PortalVerifyPinBody,
+  UpdateInvoiceStatusBody,
+  UploadExpenseReceiptBody,
+  UploadFileBody,
+} from "./generated/api";

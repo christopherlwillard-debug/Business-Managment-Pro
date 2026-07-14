@@ -109,6 +109,7 @@ router.post("/parse-receipt", upload.single("file"), async (req, res) => {
 
     if (isPdf) {
       // Extract text from PDF then send to GPT as text
+      // @ts-ignore — pdf-parse types not available
       const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
       const data = await pdfParse(buffer);
       const text = data.text.slice(0, 4000);

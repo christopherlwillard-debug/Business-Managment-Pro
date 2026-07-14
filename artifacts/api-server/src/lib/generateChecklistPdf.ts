@@ -93,7 +93,7 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   const [template] = await db
     .select({ name: checklistTemplatesTable.name })
     .from(checklistTemplatesTable)
-    .where(eq(checklistTemplatesTable.id, checklistRow.templateId));
+    .where(eq(checklistTemplatesTable.id, checklistRow.templateId!));
 
   const [settings] = await db
     .select({ companyName: settingsTable.companyName, signatureImage: settingsTable.signatureImage, logoUrl: settingsTable.logoUrl })
@@ -414,7 +414,7 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
         const mp: string[] = [];
         if ((item as any).completedByName) mp.push((item as any).completedByName);
         if (item.completedAt) {
-          const d = new Date(item.completedAt as string);
+          const d = new Date(item.completedAt as unknown as string);
           if (!isNaN(d.getTime())) {
             mp.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }));
           }

@@ -211,6 +211,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         label: "Unattributed",
         totalRevenue: unattribRevenue,
         totalExpenses: unattribExpenseTotal,
+        businessExpenses: unattribExpenseTotal,
         operationalNetProfit: unattribRevenue - (unattribExpenseTotal - unattribExcluded),
         activeJobs: 0,
       });
@@ -1563,7 +1564,7 @@ router.post("/growth-fund-deployments", sectionGuard("jobs"), async (req, res) =
 
 router.delete("/growth-fund-deployments/:id", sectionGuard("jobs"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
     await db.delete(growthFundDeploymentsTable).where(eq(growthFundDeploymentsTable.id, id));
     res.json({ ok: true });

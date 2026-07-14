@@ -108,7 +108,7 @@ router.put("/overrides", wrapAsync(async (req, res) => {
 }));
 
 router.delete("/overrides/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
   const [row] = await db
     .delete(productionPriceOverridesTable)
@@ -165,7 +165,7 @@ router.post("/", wrapAsync(async (req, res) => {
 }));
 
 router.put("/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
   const b = req.body as Record<string, unknown>;
   const set: Record<string, unknown> = {};
@@ -197,7 +197,7 @@ router.put("/:id", wrapAsync(async (req, res) => {
 }));
 
 router.delete("/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
   const [row] = await db
     .update(productionServiceTypesTable)

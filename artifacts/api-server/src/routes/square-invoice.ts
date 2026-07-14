@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, getTableColumns } from "drizzle-orm";
 import { createSquarePaymentLink, deleteSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendInvoiceEmail } from "../lib/invoiceEmail";
 import { assignInvoiceNumberIfNeeded } from "./invoices";
@@ -9,7 +9,7 @@ import { assignInvoiceNumberIfNeeded } from "./invoices";
 const router = Router();
 
 const invoiceSelect = {
-  ...invoicesTable,
+  ...getTableColumns(invoicesTable),
   clientName: clientsTable.name,
   clientEmail: clientsTable.email,
 };
@@ -88,7 +88,7 @@ router.post("/:id/payment-link", async (req, res) => {
       currency,
       productName,
       referenceId: `inv_${id}`,
-      customerEmail: inv.clientEmail,
+      customerEmail: inv.clientEmail as string | undefined,
     });
 
     // Square call succeeded — now assign the invoice number (no-op if already set)
@@ -113,7 +113,7 @@ router.post("/:id/payment-link", async (req, res) => {
       emailWarning = "No client email on file — payment link was not emailed.";
     } else {
       try {
-        const invWithLink = { ...updated, squarePaymentLinkUrl: url };
+        const invWithLink = { ...updated, squarePaymentLinkUrl: url } as any;
         await sendInvoiceEmail(
           invWithLink,
           settings ?? {},

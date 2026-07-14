@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobSubHoursTable, subcontractorsTable, jobSubcontractorsTable, expensesTable, jobsTable } from "@workspace/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, getTableColumns } from "drizzle-orm";
 import { recomputeSubPaid } from "./jobs";
 
 const router = Router();
@@ -63,7 +63,7 @@ router.get("/:jobId/sub-hours", async (req, res) => {
     const jobId = parseInt(req.params.jobId);
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
     const rows = await db
-      .select({ ...jobSubHoursTable, subName: subcontractorsTable.name })
+      .select({ ...getTableColumns(jobSubHoursTable), subName: subcontractorsTable.name })
       .from(jobSubHoursTable)
       .leftJoin(subcontractorsTable, eq(jobSubHoursTable.subcontractorId, subcontractorsTable.id))
       .where(eq(jobSubHoursTable.jobId, jobId))

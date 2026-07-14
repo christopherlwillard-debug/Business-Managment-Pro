@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { dailyLogsTable, jobsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, type SQL } from "drizzle-orm";
+import { eq, and, gte, lte, type SQL, getTableColumns } from "drizzle-orm";
 
 const router = Router();
 
@@ -26,13 +26,13 @@ router.get("/", async (req, res) => {
     if (endDate) conditions.push(lte(dailyLogsTable.date, endDate as string));
 
     const logs = await db
-      .select({ ...dailyLogsTable, jobTitle: jobsTable.title })
+      .select({ ...getTableColumns(dailyLogsTable), jobTitle: jobsTable.title })
       .from(dailyLogsTable)
       .leftJoin(jobsTable, eq(dailyLogsTable.jobId, jobsTable.id))
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(dailyLogsTable.date);
 
-    res.json(logs.map(l => format(l)));
+    res.json(logs.map(l => format(l as any)));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch daily logs" });
@@ -70,12 +70,12 @@ router.post("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const [log] = await db
-      .select({ ...dailyLogsTable, jobTitle: jobsTable.title })
+      .select({ ...getTableColumns(dailyLogsTable), jobTitle: jobsTable.title })
       .from(dailyLogsTable)
       .leftJoin(jobsTable, eq(dailyLogsTable.jobId, jobsTable.id))
       .where(eq(dailyLogsTable.id, parseInt(req.params.id)));
     if (!log) return res.status(404).json({ error: "Daily log not found" });
-    res.json(format(log));
+    res.json(format(log as any));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch daily log" });

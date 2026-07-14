@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { prospectsTable, estimatesTable, settingsTable, prospectEventsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, getTableColumns } from "drizzle-orm";
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 
 const router = Router();
@@ -67,7 +67,7 @@ router.post("/prospects/:id/deposit-link", async (req, res) => {
     });
 
     const [updated] = await db
-      .select({ ...prospectsTable, estimateNumber: estimatesTable.title })
+      .select({ ...getTableColumns(prospectsTable), estimateNumber: estimatesTable.title })
       .from(prospectsTable)
       .leftJoin(estimatesTable, eq(prospectsTable.linkedEstimateId, estimatesTable.id))
       .where(eq(prospectsTable.id, id));

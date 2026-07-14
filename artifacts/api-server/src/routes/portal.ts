@@ -106,7 +106,7 @@ function setPortalSession(res: Response, token: string, current: Record<string, 
  * Routes that do NOT need this gate: /check-session, /set-pin, /verify-pin
  */
 async function requirePinSession(req: Request, res: Response, next: NextFunction) {
-  const token = req.params.token;
+  const token = (req.params as any).token;
   if (!token) return res.status(401).json({ error: "Invalid portal link" });
 
   const sub = await getSubByToken(token);
@@ -128,7 +128,7 @@ async function requirePinSession(req: Request, res: Response, next: NextFunction
 
 // Check if a portal PIN session is valid
 router.post("/check-session", async (req, res) => {
-  const { token } = req.body;
+  const { token } = req.body as { token: string };
   if (!token) return res.json({ valid: false, pinSet: false });
 
   try {
@@ -148,7 +148,7 @@ router.post("/check-session", async (req, res) => {
 
 // Set a PIN for the first time
 router.post("/set-pin", async (req, res) => {
-  const { token, pin } = req.body;
+  const { token, pin } = req.body as { token: string; pin: string };
   if (!token || !pin) return res.status(400).json({ error: "Token and PIN are required" });
   if (!/^\d{4,6}$/.test(pin)) return res.status(400).json({ error: "PIN must be 4–6 digits" });
 
@@ -173,7 +173,7 @@ router.post("/set-pin", async (req, res) => {
 
 // Verify PIN and issue session
 router.post("/verify-pin", async (req, res) => {
-  const { token, pin } = req.body;
+  const { token, pin } = req.body as { token: string; pin: string };
   if (!token || !pin) return res.status(400).json({ error: "Token and PIN are required" });
 
   try {
@@ -225,7 +225,7 @@ router.post("/verify-pin", async (req, res) => {
 // Approve or revoke portal access — requires authenticated admin access
 router.post("/approve/:subId", sectionGuard("subcontractors"), async (req, res) => {
   try {
-    const id = parseInt(req.params.subId);
+    const id = parseInt(req.params.subId as string);
     const { approved } = req.body; // boolean
     const [sub] = await db
       .update(subcontractorsTable)
@@ -243,7 +243,7 @@ router.post("/approve/:subId", sectionGuard("subcontractors"), async (req, res) 
 // Generate portal token for a sub — requires authenticated admin access
 router.post("/generate/:subId", sectionGuard("subcontractors"), async (req, res) => {
   try {
-    const id = parseInt(req.params.subId);
+    const id = parseInt(req.params.subId as string);
     const token = crypto.randomUUID();
     const [sub] = await db
       .update(subcontractorsTable)
@@ -290,14 +290,14 @@ router.post("/lookup", async (req, res) => {
 
 // ─── Per-token PWA manifest — gives "Sub Portal" name + correct start_url ──────
 router.get("/:token/manifest.json", async (req, res) => {
-  const sub = await getSubByToken(req.params.token);
+  const sub = await getSubByToken((req.params as any).token);
   if (!sub) return res.status(404).json({ error: "Not found" });
   const base = process.env.BASE_URL ?? "";
   res.json({
     name: "Sub Portal",
     short_name: "Sub Portal",
     description: `Secure subcontractor portal for ${sub.name}`,
-    start_url: `${base}/portal/${req.params.token}`,
+    start_url: `${base}/portal/${(req.params as any).token}`,
     scope: `${base}/`,
     display: "standalone",
     orientation: "portrait-primary",
@@ -321,7 +321,7 @@ tokenRouter.use(requirePinSession);
 // Get full portal data
 tokenRouter.get("/", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved", pendingApproval: true });
 
@@ -415,7 +415,7 @@ tokenRouter.get("/", async (req, res) => {
 // Income report for a year (payments made by contractor to this subcontractor)
 tokenRouter.get("/income-report", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
 
@@ -590,7 +590,7 @@ tokenRouter.get("/income-report", async (req, res) => {
 // Tax report for a year
 tokenRouter.get("/tax-report", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
 
@@ -672,7 +672,7 @@ tokenRouter.get("/tax-report", async (req, res) => {
 // Save W-9 data
 tokenRouter.put("/w9", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
 
     const { w9LegalName, w9BusinessName, w9TaxClassification, w9LlcType,
@@ -698,7 +698,7 @@ tokenRouter.put("/w9", async (req, res) => {
 // Save portal feature preferences
 tokenRouter.put("/features", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     const { features } = req.body;
     if (!Array.isArray(features)) return res.status(400).json({ error: "features must be an array" });
@@ -713,7 +713,7 @@ tokenRouter.put("/features", async (req, res) => {
 // Expenses
 tokenRouter.get("/expenses", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     const expenses = await db.select().from(expensesTable)
       .where(
@@ -730,7 +730,7 @@ tokenRouter.get("/expenses", async (req, res) => {
 
 tokenRouter.post("/expenses", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     const { description, amount, category, date, vendor, jobId, notes, receiptUrl } = req.body;
     if (!description || !amount || !category || !date) return res.status(400).json({ error: "Missing required fields" });
@@ -748,7 +748,7 @@ tokenRouter.post("/expenses", async (req, res) => {
 
 tokenRouter.get("/vendors", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     const vendors = await db.select().from(vendorsTable).orderBy(vendorsTable.name);
     res.json(vendors);
@@ -759,11 +759,11 @@ tokenRouter.get("/vendors", async (req, res) => {
 
 tokenRouter.post("/upload", portalUpload.single("file"), async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     // Return a portal-scoped URL so receipts are served through PIN-authenticated route
-    res.json({ url: `/api/portal/${req.params.token}/uploads/${req.file.filename}` });
+    res.json({ url: `/api/portal/${(req.params as any).token}/uploads/${req.file.filename}` });
   } catch (err) {
     res.status(500).json({ error: "Failed to upload file" });
   }
@@ -773,11 +773,11 @@ tokenRouter.post("/upload", portalUpload.single("file"), async (req, res) => {
 // Verifies the file is referenced by one of this subcontractor's expenses (object-level authorization)
 tokenRouter.get("/uploads/:filename", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
 
     const filename = path.basename(req.params.filename); // prevent path traversal
-    const portalScopedUrl = `/api/portal/${req.params.token}/uploads/${filename}`;
+    const portalScopedUrl = `/api/portal/${(req.params as any).token}/uploads/${filename}`;
 
     // Verify this file belongs to one of the subcontractor's expenses
     const [ownerExpense] = await db
@@ -801,7 +801,7 @@ tokenRouter.get("/uploads/:filename", async (req, res) => {
 
 tokenRouter.delete("/expenses/:id", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     await db.delete(expensesTable).where(
       and(eq(expensesTable.id, parseInt(req.params.id)), eq(expensesTable.subcontractorId, sub.id))
@@ -815,7 +815,7 @@ tokenRouter.delete("/expenses/:id", async (req, res) => {
 // Mileage
 tokenRouter.get("/mileage", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     const logs = await db.select().from(mileageLogsTable)
       .where(eq(mileageLogsTable.subcontractorId, sub.id)).orderBy(mileageLogsTable.date);
@@ -832,7 +832,7 @@ tokenRouter.get("/mileage", async (req, res) => {
 
 tokenRouter.post("/mileage", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     const { date, miles, startLocation, endLocation, purpose, jobId, classification, notes } = req.body;
     if (!date || miles == null) return res.status(400).json({ error: "Missing required fields" });
@@ -859,7 +859,7 @@ tokenRouter.post("/mileage", async (req, res) => {
 
 tokenRouter.delete("/mileage/:id", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     await db.delete(mileageLogsTable).where(
       and(eq(mileageLogsTable.id, parseInt(req.params.id)), eq(mileageLogsTable.subcontractorId, sub.id))
@@ -873,7 +873,7 @@ tokenRouter.delete("/mileage/:id", async (req, res) => {
 // GET /portal/:token/1099s — list generated 1099s for this subcontractor
 tokenRouter.get("/1099s", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
 
     const records = await db
@@ -899,7 +899,7 @@ tokenRouter.get("/1099s", async (req, res) => {
 // GET /portal/:token/1099s/:id/pdf — download a specific 1099 PDF (base64)
 tokenRouter.get("/1099s/:id/pdf", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
 
     const [record] = await db
@@ -923,7 +923,7 @@ tokenRouter.get("/1099s/:id/pdf", async (req, res) => {
 // Get material lists for a job (portal use: sub can view and select)
 tokenRouter.get("/jobs/:jobId/material-lists", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
 
@@ -957,7 +957,7 @@ tokenRouter.get("/jobs/:jobId/material-lists", async (req, res) => {
 // Complete a job from the portal — writes a daily log entry on the BMS job
 tokenRouter.post("/jobs/:jobId/complete", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
 
@@ -1011,7 +1011,7 @@ tokenRouter.post("/jobs/:jobId/complete", async (req, res) => {
 // GET /:token/jobs/:jobId/checklist
 tokenRouter.get("/jobs/:jobId/checklist", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
 
@@ -1069,7 +1069,7 @@ tokenRouter.get("/jobs/:jobId/checklist", async (req, res) => {
 // PATCH /:token/jobs/:jobId/checklist/items/:itemId — check/uncheck
 tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
 
@@ -1141,7 +1141,7 @@ tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId", async (req, res) => {
 // PATCH /:token/jobs/:jobId/checklist/items/:itemId/skip — skip/unskip
 tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId/skip", async (req, res) => {
   try {
-    const sub = await getSubByToken(req.params.token);
+    const sub = await getSubByToken((req.params as any).token);
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
 

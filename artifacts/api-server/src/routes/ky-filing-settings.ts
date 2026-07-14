@@ -64,7 +64,7 @@ router.get("/", async (_req, res) => {
 
 router.put("/:filingId", async (req, res) => {
   try {
-    const { filingId } = req.params;
+    const filingId = req.params.filingId as string;
     const { enabled } = req.body;
     if (typeof enabled !== "boolean") return res.status(400).json({ error: "enabled (boolean) is required" });
 
@@ -93,7 +93,7 @@ router.put("/:filingId", async (req, res) => {
 router.post("/:filingId/documents", upload.single("file"), async (req, res): Promise<void> => {
   if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
   try {
-    const { filingId } = req.params;
+    const filingId = req.params.filingId as string;
 
     const [existing] = await db.select().from(kyFilingSettingsTable).where(eq(kyFilingSettingsTable.filingId, filingId));
     const currentDocs: ComplianceDocument[] = existing && Array.isArray(existing.documents) ? (existing.documents as ComplianceDocument[]) : [];
@@ -102,12 +102,12 @@ router.post("/:filingId/documents", upload.single("file"), async (req, res): Pro
       req.file.buffer,
       req.file.mimetype,
       `ky-filings/${filingId}`,
-      req.file.originalname,
+      req.file.originalname as string,
     );
 
     const newDoc: ComplianceDocument = {
       objectPath,
-      fileName: req.file.originalname,
+      fileName: req.file.originalname as string,
       uploadedAt: new Date().toISOString(),
     };
     const updated = [...currentDocs, newDoc];
@@ -136,7 +136,7 @@ router.post("/:filingId/documents", upload.single("file"), async (req, res): Pro
 
 router.delete("/:filingId/documents/:docIndex", async (req, res) => {
   try {
-    const { filingId } = req.params;
+    const filingId = req.params.filingId as string;
     const docIndex = parseInt(req.params.docIndex);
 
     const [existing] = await db.select().from(kyFilingSettingsTable).where(eq(kyFilingSettingsTable.filingId, filingId));

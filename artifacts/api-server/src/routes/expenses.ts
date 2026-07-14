@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { expensesTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable, businessTripsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, sql, isNull, or, desc } from "drizzle-orm";
+import { eq, and, gte, lte, sql, isNull, or, desc, getTableColumns } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -57,7 +57,7 @@ function formatExpense(e: any, jobTitle?: string | null, subcontractorName?: str
 }
 
 const expenseSelect = {
-  ...expensesTable,
+  ...getTableColumns(expensesTable),
   jobTitle: jobsTable.title,
   subcontractorName: subcontractorsTable.name,
   businessName: businessesTable.name,
@@ -240,7 +240,7 @@ router.post("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const [expense] = await buildExpenseQuery().where(eq(expensesTable.id, id));
     if (!expense) return res.status(404).json({ error: "Expense not found" });
     res.json(formatExpense(expense, expense.jobTitle, expense.subcontractorName));
@@ -252,7 +252,7 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const {
       description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes,
       excludeFromNetProfit, countsTowardJobProfit, businessLine, businessId,
@@ -368,7 +368,7 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/spr/:sprId", async (req, res) => {
   try {
-    const sprId = parseInt(req.params.sprId);
+    const sprId = parseInt(req.params.sprId as string);
     if (isNaN(sprId)) return res.status(400).json({ error: "Invalid id" });
     await db.delete(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.id, sprId));
     res.status(204).send();
@@ -380,8 +380,8 @@ router.delete("/spr/:sprId", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    const [toDelete] = await db.select().from(expensesTable).where(eq(expensesTable.id, parseInt(req.params.id)));
-    await db.delete(expensesTable).where(eq(expensesTable.id, parseInt(req.params.id)));
+    const [toDelete] = await db.select().from(expensesTable).where(eq(expensesTable.id, parseInt(req.params.id as string)));
+    await db.delete(expensesTable).where(eq(expensesTable.id, parseInt(req.params.id as string)));
     if (toDelete?.category?.toLowerCase() === "subcontractor" && toDelete.jobId && toDelete.subcontractorId) {
       await syncJobSubPayment(toDelete.jobId, toDelete.subcontractorId);
     }
@@ -394,7 +394,7 @@ router.delete("/:id", async (req, res) => {
 
 router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     let fileBuffer = req.file.buffer;

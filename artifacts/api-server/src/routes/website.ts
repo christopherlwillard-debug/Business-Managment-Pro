@@ -291,8 +291,8 @@ router.post("/publish", wrapAsync(async (req, res) => {
 }));
 
 publicRouter.get("/:slug/logo", wrapAsync(async (req, res) => {
-  const { slug } = req.params;
-  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  const slug = req.params.slug as string;
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
@@ -314,7 +314,7 @@ publicRouter.get("/:slug/logo", wrapAsync(async (req, res) => {
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } else {
       res.end();
@@ -326,8 +326,8 @@ publicRouter.get("/:slug/logo", wrapAsync(async (req, res) => {
 }));
 
 publicRouter.get("/:slug/about-photo", wrapAsync(async (req, res) => {
-  const { slug } = req.params;
-  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  const slug = req.params.slug as string;
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
@@ -350,7 +350,7 @@ publicRouter.get("/:slug/about-photo", wrapAsync(async (req, res) => {
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } else {
       res.end();
@@ -393,8 +393,8 @@ publicRouter.get("/by-host", wrapAsync(async (req, res) => {
 }));
 
 publicRouter.get("/:slug", wrapAsync(async (req, res) => {
-  const { slug } = req.params;
-  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.slug, slug));
+  const slug = req.params.slug as string;
+  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
@@ -408,7 +408,7 @@ publicRouter.get("/:slug", wrapAsync(async (req, res) => {
 }));
 
 publicRouter.post("/:slug/view", (req, res) => {
-  const { slug } = req.params;
+  const slug = req.params.slug as string;
   const ua = req.headers["user-agent"] ?? "";
   const deviceType = /Mobile|Android|iPhone|iPad/i.test(ua) ? "mobile" : "desktop";
 
@@ -416,7 +416,7 @@ publicRouter.post("/:slug/view", (req, res) => {
 
   db.select({ id: businessesTable.id })
     .from(businessesTable)
-    .where(eq(businessesTable.slug, slug))
+    .where(eq(businessesTable.slug, slug as string))
     .then(([biz]) => {
       if (biz) {
         return db.insert(websitePageViewsTable).values({ businessId: biz.id, deviceType });
@@ -426,8 +426,8 @@ publicRouter.post("/:slug/view", (req, res) => {
 });
 
 publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
-  const { slug } = req.params;
-  const [biz] = await db.select({ id: businessesTable.id, slug: businessesTable.slug }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  const slug = req.params.slug as string;
+  const [biz] = await db.select({ id: businessesTable.id, slug: businessesTable.slug }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const { name, phone, email, serviceType, message, fieldValues, labeledFields } = req.body as {
@@ -515,7 +515,7 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
 }));
 
 publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
-  const { slug } = req.params;
+  const slug = req.params.slug as string;
 
   if (!isSquareConfigured()) {
     return res.status(400).json({ error: "Payments are not configured for this site." });
@@ -524,7 +524,7 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
   const [biz] = await db
     .select({ id: businessesTable.id, name: businessesTable.name })
     .from(businessesTable)
-    .where(eq(businessesTable.slug, slug));
+    .where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
@@ -590,7 +590,7 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
 }));
 
 publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
-  const { slug } = req.params;
+  const slug = req.params.slug as string;
 
   if (!isSquareConfigured()) {
     return res.status(400).json({ error: "Payments are not configured for this site." });
@@ -608,7 +608,7 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
   const [biz] = await db
     .select({ id: businessesTable.id, name: businessesTable.name })
     .from(businessesTable)
-    .where(eq(businessesTable.slug, slug));
+    .where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
@@ -900,8 +900,8 @@ router.post("/upload-card-image", wrapAsync(async (req, res) => {
 }));
 
 publicRouter.get("/:slug/favicon", wrapAsync(async (req, res) => {
-  const { slug } = req.params;
-  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  const slug = req.params.slug as string;
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
@@ -923,7 +923,7 @@ publicRouter.get("/:slug/favicon", wrapAsync(async (req, res) => {
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } else {
       res.end();
@@ -936,7 +936,7 @@ publicRouter.get("/:slug/favicon", wrapAsync(async (req, res) => {
 
 publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
   const { slug, bgUuid } = req.params;
-  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
@@ -957,7 +957,7 @@ publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } else {
       res.end();
@@ -970,7 +970,7 @@ publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
 
 publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
   const { slug, imgUuid } = req.params;
-  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
@@ -996,7 +996,7 @@ publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } else {
       res.end();
@@ -1009,7 +1009,7 @@ publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
 
 publicRouter.get("/:slug/portfolio-photo/:photoUuid", wrapAsync(async (req, res) => {
   const { slug, photoUuid } = req.params;
-  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
@@ -1042,7 +1042,7 @@ publicRouter.get("/:slug/portfolio-photo/:photoUuid", wrapAsync(async (req, res)
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } else {
       res.end();
@@ -1096,7 +1096,7 @@ router.post("/media", wrapAsync(async (req, res) => {
 
 router.delete("/media/:id", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
   const [item] = await db
     .select()
@@ -1111,7 +1111,7 @@ router.delete("/media/:id", wrapAsync(async (req, res) => {
 
 router.patch("/media/:id", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
   const { displayName, folderId } = req.body as { displayName?: string | null; folderId?: number | null };
   const updateValues: Record<string, unknown> = {};
@@ -1139,7 +1139,7 @@ router.patch("/media/:id", wrapAsync(async (req, res) => {
 
 router.post("/media/:id/replace", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
   const { newUrl, newObjectPath, newFilename } = req.body as { newUrl: string; newObjectPath: string; newFilename: string };
   if (!newUrl || !newObjectPath) return res.status(400).json({ error: "newUrl and newObjectPath required" });
@@ -1176,7 +1176,7 @@ router.post("/media/:id/replace", wrapAsync(async (req, res) => {
 
 router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
   if (!req.file) return res.status(400).json({ error: "No file provided" });
 
@@ -1256,7 +1256,7 @@ router.get("/media/usage-counts", wrapAsync(async (req, res) => {
 
 router.get("/media/:id/usage-details", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
 
   const [item] = await db.select({ url: websiteMediaTable.url })
@@ -1322,7 +1322,7 @@ router.post("/media/folders", wrapAsync(async (req, res) => {
 
 router.patch("/media/folders/:folderId", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
-  const folderId = parseInt(req.params.folderId);
+  const folderId = parseInt(req.params.folderId as string);
   if (!businessId || !folderId) return res.status(400).json({ error: "Invalid params" });
   const { name } = req.body as { name: string };
   if (!name?.trim()) return res.status(400).json({ error: "name required" });
@@ -1336,7 +1336,7 @@ router.patch("/media/folders/:folderId", wrapAsync(async (req, res) => {
 
 router.delete("/media/folders/:folderId", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
-  const folderId = parseInt(req.params.folderId);
+  const folderId = parseInt(req.params.folderId as string);
   if (!businessId || !folderId) return res.status(400).json({ error: "Invalid params" });
   await db.update(websiteMediaTable)
     .set({ folderId: null })
@@ -1358,7 +1358,7 @@ publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } else {
       res.end();
@@ -1378,7 +1378,7 @@ publicRouter.get("/card-image/:uuid", wrapAsync(async (req, res) => {
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } else {
       res.end();
@@ -1390,8 +1390,8 @@ publicRouter.get("/card-image/:uuid", wrapAsync(async (req, res) => {
 }));
 
 router.get("/preview-by-slug/:slug", wrapAsync(async (req, res) => {
-  const { slug } = req.params;
-  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.slug, slug));
+  const slug = req.params.slug as string;
+  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db

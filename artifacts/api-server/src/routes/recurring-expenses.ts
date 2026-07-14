@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { recurringExpensesTable, expensesTable, jobsTable } from "@workspace/db/schema";
-import { eq, and, or, isNull } from "drizzle-orm";
+import { eq, and, or, isNull, getTableColumns } from "drizzle-orm";
 
 const router = Router();
 
@@ -46,7 +46,7 @@ router.get("/", async (req, res) => {
       ? or(eq(recurringExpensesTable.businessId, bizId), isNull(recurringExpensesTable.businessId))
       : undefined;
     const rows = await db
-      .select({ ...recurringExpensesTable, jobTitle: jobsTable.title })
+      .select({ ...getTableColumns(recurringExpensesTable), jobTitle: jobsTable.title })
       .from(recurringExpensesTable)
       .leftJoin(jobsTable, eq(recurringExpensesTable.jobId, jobsTable.id))
       .where(condition)
@@ -102,7 +102,7 @@ router.post("/", async (req, res) => {
     }
 
     const [row] = await db
-      .select({ ...recurringExpensesTable, jobTitle: jobsTable.title })
+      .select({ ...getTableColumns(recurringExpensesTable), jobTitle: jobsTable.title })
       .from(recurringExpensesTable)
       .leftJoin(jobsTable, eq(recurringExpensesTable.jobId, jobsTable.id))
       .where(eq(recurringExpensesTable.id, template.id));
@@ -118,12 +118,12 @@ router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const [row] = await db
-      .select({ ...recurringExpensesTable, jobTitle: jobsTable.title })
+      .select({ ...getTableColumns(recurringExpensesTable), jobTitle: jobsTable.title })
       .from(recurringExpensesTable)
       .leftJoin(jobsTable, eq(recurringExpensesTable.jobId, jobsTable.id))
       .where(eq(recurringExpensesTable.id, id));
     if (!row) return res.status(404).json({ error: "Recurring expense not found" });
-    res.json(formatTemplate(row, row.jobTitle));
+    res.json(formatTemplate(row as any, (row as any).jobTitle));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch recurring expense" });
@@ -172,7 +172,7 @@ router.put("/:id", async (req, res) => {
     if (!updated) return res.status(404).json({ error: "Recurring expense not found" });
 
     const [row] = await db
-      .select({ ...recurringExpensesTable, jobTitle: jobsTable.title })
+      .select({ ...getTableColumns(recurringExpensesTable), jobTitle: jobsTable.title })
       .from(recurringExpensesTable)
       .leftJoin(jobsTable, eq(recurringExpensesTable.jobId, jobsTable.id))
       .where(eq(recurringExpensesTable.id, id));

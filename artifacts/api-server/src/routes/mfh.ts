@@ -437,7 +437,7 @@ mfhJobRouter.get("/jobs/:id", async (req, res) => {
       mfhGuideName: jobsTable.mfhGuideName,
       mfhSelectedAddons: jobsTable.mfhSelectedAddons,
       mfhTravelDays: jobsTable.mfhTravelDays,
-    } as Record<string, unknown>).from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+    }).from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
     res.json(job ?? {});
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
@@ -533,7 +533,7 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
           mfhQuotedPrice: String(quotedPrice),
           mfhGuideName: guideName,
           jobType: "Manufactured Home",
-        } as Record<string, unknown>).where(eq(estimatesTable.id, existing.id));
+        }).where(eq(estimatesTable.id, existing.id));
         estimateId = existing.id;
       } else {
         const jobRows = await tx.select({ title: jobsTable.title, clientId: jobsTable.clientId, businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
@@ -550,7 +550,7 @@ mfhJobRouter.post("/jobs/:id/apply", async (req, res) => {
           mfhDealerPrice: String(dealerPrice),
           mfhQuotedPrice: String(quotedPrice),
           mfhGuideName: guideName,
-        } as Record<string, unknown>).returning();
+        } as any).returning();
         estimateId = newEst.id;
       }
 

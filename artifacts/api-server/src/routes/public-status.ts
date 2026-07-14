@@ -36,7 +36,7 @@ router.get("/business-logo", async (req, res) => {
     });
     res.setHeader("Cache-Control", "public, max-age=3600");
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } else {
       res.end();
@@ -202,13 +202,13 @@ router.get("/status/:token", async (req, res) => {
       photosByItemId.get(p.jobChecklistItemId)!.push({ id: p.id, createdAt: p.createdAt });
     }
 
-    const partsByItemId = new Map<number, typeof parts>();
+    const partsByItemId = new Map<number, any[]>();
     for (const p of parts) {
       if (!partsByItemId.has(p.jobChecklistItemId)) partsByItemId.set(p.jobChecklistItemId, []);
       partsByItemId.get(p.jobChecklistItemId)!.push(p);
     }
 
-    const notesBySection = new Map<number, typeof sectionNoteRows>();
+    const notesBySection = new Map<number, any[]>();
     for (const n of sectionNoteRows) {
       if (!notesBySection.has(n.jobChecklistSectionId)) notesBySection.set(n.jobChecklistSectionId, []);
       notesBySection.get(n.jobChecklistSectionId)!.push(n);
@@ -339,7 +339,7 @@ router.get("/checklist-photos/:photoId", async (req, res) => {
     res.setHeader("Cache-Control", "public, max-age=3600");
 
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } else {
       res.end();
@@ -378,7 +378,7 @@ router.get("/start-photos/:photoId", async (req, res) => {
     res.setHeader("Cache-Control", "public, max-age=3600");
 
     if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } else {
       res.end();

@@ -10,7 +10,7 @@ router.get("/", async (req, res) => {
   try {
     const { year, subcontractorId } = req.query;
 
-    let query = db
+    let query: any = db
       .select({
         id: paymentsTable.id,
         subcontractorId: paymentsTable.subcontractorId,
@@ -41,7 +41,7 @@ router.get("/", async (req, res) => {
 
     const payments = await query.orderBy(desc(paymentsTable.paymentDate));
 
-    res.json(payments.map(p => ({
+    res.json(payments.map((p: any) => ({
       id: p.id,
       subcontractorId: p.subcontractorId,
       subcontractorName: p.subcontractorName,

@@ -170,7 +170,7 @@ async function getJobWithSubs(jobId: number) {
     }
   }
 
-  return formatJob({ ...base, subcontractorIds, subcontractorNames });
+  return formatJob({ ...base, subcontractorIds, subcontractorNames } as any);
 }
 
 async function replaceSubcontractors(jobId: number, ids: number[]) {
@@ -257,7 +257,7 @@ router.get("/", async (req, res) => {
     const jobMap = new Map<number, JobRow & { subcontractorIds: number[]; subcontractorNames: string[] }>();
     for (const r of rows) {
       if (!jobMap.has(r.id)) {
-        jobMap.set(r.id, { ...r, subcontractorIds: [], subcontractorNames: [] });
+        jobMap.set(r.id, { ...r, subcontractorIds: [], subcontractorNames: [] } as any);
       }
       const job = jobMap.get(r.id)!;
       if (r.subcontractorId && !job.subcontractorIds.includes(r.subcontractorId)) {
@@ -266,7 +266,7 @@ router.get("/", async (req, res) => {
       }
     }
 
-    res.json(Array.from(jobMap.values()).map(formatJob));
+    res.json(Array.from(jobMap.values()).map((j) => formatJob(j as any)));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch jobs" });
@@ -1062,7 +1062,7 @@ router.get("/closed/export", async (req, res) => {
         dateOpened,
         dateClosed,
         daysOpen,
-        jobNumber: job.jobNumber ?? job.id,
+        jobNumber: (job as any).jobNumber ?? job.id,
         businessLine: job.businessLine ?? "",
         jobName: job.title,
         customer: job.clientName ?? "",

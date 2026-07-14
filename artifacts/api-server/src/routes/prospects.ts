@@ -10,7 +10,7 @@ import {
   PROSPECT_STATUSES,
   type Prospect as ProspectRow,
 } from "@workspace/db/schema";
-import { eq, asc, desc, and, ilike, or, max, sql } from "drizzle-orm";
+import { eq, asc, desc, and, ilike, or, max, sql, getTableColumns } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { z } from "zod";
 
@@ -92,7 +92,7 @@ router.get("/", async (req, res) => {
     ].filter(Boolean) as Parameters<typeof and>;
 
     const rows = await db
-      .select({ ...prospectsTable, estimateNumber: estimatesTable.title })
+      .select({ ...getTableColumns(prospectsTable), estimateNumber: estimatesTable.title })
       .from(prospectsTable)
       .leftJoin(estimatesTable, eq(prospectsTable.linkedEstimateId, estimatesTable.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -325,7 +325,7 @@ router.get("/:id", async (req, res) => {
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
 
     const [p] = await db
-      .select({ ...prospectsTable, estimateNumber: estimatesTable.title })
+      .select({ ...getTableColumns(prospectsTable), estimateNumber: estimatesTable.title })
       .from(prospectsTable)
       .leftJoin(estimatesTable, eq(prospectsTable.linkedEstimateId, estimatesTable.id))
       .where(eq(prospectsTable.id, id));
@@ -549,7 +549,7 @@ router.put("/:id", async (req, res) => {
     });
 
     const [p] = await db
-      .select({ ...prospectsTable, estimateNumber: estimatesTable.title })
+      .select({ ...getTableColumns(prospectsTable), estimateNumber: estimatesTable.title })
       .from(prospectsTable)
       .leftJoin(estimatesTable, eq(prospectsTable.linkedEstimateId, estimatesTable.id))
       .where(eq(prospectsTable.id, id));
@@ -638,7 +638,7 @@ router.post("/:id/service-visits", async (req, res) => {
     });
 
     const [[p], visits, events] = await Promise.all([
-      db.select({ ...prospectsTable, estimateNumber: estimatesTable.title })
+      db.select({ ...getTableColumns(prospectsTable), estimateNumber: estimatesTable.title })
         .from(prospectsTable)
         .leftJoin(estimatesTable, eq(prospectsTable.linkedEstimateId, estimatesTable.id))
         .where(eq(prospectsTable.id, id)),
@@ -728,7 +728,7 @@ router.put("/:id/service-visits/:visitId", async (req, res) => {
     if (!updated) return res.status(404).json({ error: "Service visit not found" });
 
     const [[p], visits, events] = await Promise.all([
-      db.select({ ...prospectsTable, estimateNumber: estimatesTable.title })
+      db.select({ ...getTableColumns(prospectsTable), estimateNumber: estimatesTable.title })
         .from(prospectsTable)
         .leftJoin(estimatesTable, eq(prospectsTable.linkedEstimateId, estimatesTable.id))
         .where(eq(prospectsTable.id, id)),
@@ -812,7 +812,7 @@ router.delete("/:id/service-visits/:visitId", async (req, res) => {
     if (!deleted) return res.status(404).json({ error: "Service visit not found" });
 
     const [[p], visits, events] = await Promise.all([
-      db.select({ ...prospectsTable, estimateNumber: estimatesTable.title })
+      db.select({ ...getTableColumns(prospectsTable), estimateNumber: estimatesTable.title })
         .from(prospectsTable)
         .leftJoin(estimatesTable, eq(prospectsTable.linkedEstimateId, estimatesTable.id))
         .where(eq(prospectsTable.id, id)),

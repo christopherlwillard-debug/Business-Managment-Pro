@@ -100,7 +100,7 @@ router.post("/", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const { name, slug, type, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
@@ -134,7 +134,7 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     await db.delete(businessesTable).where(eq(businessesTable.id, id));
     res.json({ success: true });
   } catch (err) {
@@ -145,7 +145,7 @@ router.delete("/:id", async (req, res) => {
 
 router.post("/:id/logo", logoUpload.single("logo"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const objectPath = await objectStorage.uploadBufferWithFilename(
       req.file.buffer,
@@ -169,7 +169,7 @@ router.post("/:id/logo", logoUpload.single("logo"), async (req, res) => {
 
 router.delete("/:id/logo", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, id)).limit(1);
     if (!biz) return res.status(404).json({ error: "Business not found" });
     if (biz.logoUrl && biz.logoUrl.startsWith("/objects/")) {

@@ -186,7 +186,7 @@ async function sendComplianceAdvanceEmail(itemTitle: string, newDueDate: string)
 
 router.put("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const { title, category, jurisdiction, dueDate, recurrence, status, notes, enabled } = req.body;
 
     let resolvedDueDate = dueDate;
@@ -229,7 +229,7 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const [item] = await db.select().from(complianceItemsTable).where(eq(complianceItemsTable.id, id));
     if (item && Array.isArray(item.documents)) {
       for (const doc of item.documents as ComplianceDocument[]) {
@@ -247,7 +247,7 @@ router.delete("/:id", async (req, res) => {
 router.post("/:id/documents", upload.single("file"), async (req, res): Promise<void> => {
   if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const [item] = await db.select().from(complianceItemsTable).where(eq(complianceItemsTable.id, id));
     if (!item) { res.status(404).json({ error: "Not found" }); return; }
 
@@ -281,7 +281,7 @@ router.post("/:id/documents", upload.single("file"), async (req, res): Promise<v
 
 router.delete("/:id/documents/:docIndex", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const docIndex = parseInt(req.params.docIndex);
     const [item] = await db.select().from(complianceItemsTable).where(eq(complianceItemsTable.id, id));
     if (!item) return res.status(404).json({ error: "Not found" });

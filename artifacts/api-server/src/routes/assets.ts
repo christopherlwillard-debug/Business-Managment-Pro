@@ -104,7 +104,7 @@ router.post("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const [asset] = await db.select().from(assetsTable).where(eq(assetsTable.id, id));
     if (!asset) return res.status(404).json({ error: "Asset not found" });
     const busUseRows = await db.select().from(assetBusinessUseTable)
@@ -122,7 +122,7 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const {
       name, assetType, purchaseDate, purchasePrice, vendor, serialNumber,
       notes, receiptUrl, section179Eligible, status, saleDate, salePrice,
@@ -168,7 +168,7 @@ router.delete("/:id", async (req, res) => {
 
 router.get("/:id/business-use", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     const rows = await db.select().from(assetBusinessUseTable)
       .where(eq(assetBusinessUseTable.assetId, id))
       .orderBy(assetBusinessUseTable.year);
@@ -224,7 +224,7 @@ router.delete("/:id/business-use/:year", async (req, res) => {
 
 router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     let fileBuffer = req.file.buffer;

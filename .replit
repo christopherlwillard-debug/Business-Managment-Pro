@@ -34,6 +34,10 @@ args = "test"
 task = "workflow.run"
 args = "typecheck"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "typecheck-api"
+
 [[workflows.workflow]]
 name = "Contractor App"
 author = "agent"
@@ -67,6 +71,17 @@ isValidation = true
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm exec tsc -b lib/api-client-react lib/replit-auth-web && pnpm --filter contractor-app run typecheck"
+
+[[workflows.workflow]]
+name = "typecheck-api"
+author = "agent"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm exec tsc -b lib/db lib/api-zod lib/integrations-openai-ai-server && pnpm --filter @workspace/api-server run typecheck"
 
 [agent]
 stack = "PNPM_WORKSPACE"

@@ -159,7 +159,7 @@ export async function buildChecklistResponse(checklistId: number) {
     photosByItemId.get(p.jobChecklistItemId)!.push({ id: p.id, url: toServingUrl(p.objectPath), createdAt: p.createdAt });
   }
 
-  const partsByItemId = new Map<number, typeof parts>();
+  const partsByItemId = new Map<number, any[]>();
   for (const p of parts) {
     if (!partsByItemId.has(p.jobChecklistItemId)) partsByItemId.set(p.jobChecklistItemId, []);
     partsByItemId.get(p.jobChecklistItemId)!.push(p);
@@ -193,8 +193,8 @@ export async function buildChecklistResponse(checklistId: number) {
     statusLog,
     sections: sections.map(s => ({
       ...s,
-      noteEntries: sectionNoteRows.filter(n => n.jobChecklistSectionId === s.id),
-      items: items.filter(i => i.jobChecklistSectionId === s.id).map(i => ({
+      noteEntries: sectionNoteRows.filter((n: any) => n.jobChecklistSectionId === s.id),
+      items: items.filter((i: any) => i.jobChecklistSectionId === s.id).map(i => ({
         ...i,
         photos: photosByItemId.get(i.id) ?? [],
         parts: partsByItemId.get(i.id) ?? [],
@@ -611,8 +611,8 @@ router.get("/:jobId/checklist/pdf", async (req, res) => {
 // ── POST /:jobId/checklist/items/:itemId/parts — create a part ────────────────
 router.post("/:jobId/checklist/items/:itemId/parts", async (req, res) => {
   try {
-    const jobId = parseInt(req.params.jobId, 10);
-    const itemId = parseInt(req.params.itemId, 10);
+    const jobId = parseInt(req.params.jobId as string, 10);
+    const itemId = parseInt(req.params.itemId as string, 10);
     if (isNaN(jobId) || isNaN(itemId)) return res.status(400).json({ error: "Invalid parameters" });
 
     const [checklist] = await db.select().from(jobChecklistsTable).where(eq(jobChecklistsTable.jobId, jobId));
@@ -647,8 +647,8 @@ router.post("/:jobId/checklist/items/:itemId/parts", async (req, res) => {
 // ── PATCH /:jobId/checklist/items/:itemId/parts/:partId — toggle/rename ───────
 router.patch("/:jobId/checklist/items/:itemId/parts/:partId", async (req, res) => {
   try {
-    const jobId = parseInt(req.params.jobId, 10);
-    const itemId = parseInt(req.params.itemId, 10);
+    const jobId = parseInt(req.params.jobId as string, 10);
+    const itemId = parseInt(req.params.itemId as string, 10);
     const partId = parseInt(req.params.partId, 10);
     if (isNaN(jobId) || isNaN(itemId) || isNaN(partId)) return res.status(400).json({ error: "Invalid parameters" });
     const user = getRequestUser(req);
@@ -698,8 +698,8 @@ router.patch("/:jobId/checklist/items/:itemId/parts/:partId", async (req, res) =
 // ── DELETE /:jobId/checklist/items/:itemId/parts/:partId ──────────────────────
 router.delete("/:jobId/checklist/items/:itemId/parts/:partId", async (req, res) => {
   try {
-    const jobId = parseInt(req.params.jobId, 10);
-    const itemId = parseInt(req.params.itemId, 10);
+    const jobId = parseInt(req.params.jobId as string, 10);
+    const itemId = parseInt(req.params.itemId as string, 10);
     const partId = parseInt(req.params.partId, 10);
     if (isNaN(jobId) || isNaN(itemId) || isNaN(partId)) return res.status(400).json({ error: "Invalid parameters" });
 
@@ -730,8 +730,8 @@ router.delete("/:jobId/checklist/items/:itemId/parts/:partId", async (req, res) 
 // ── POST /:jobId/checklist/items/:itemId/photos ───────────────────────────────
 router.post("/:jobId/checklist/items/:itemId/photos", photoUpload.array("photos", 10), async (req, res) => {
   try {
-    const jobId = parseInt(req.params.jobId, 10);
-    const itemId = parseInt(req.params.itemId, 10);
+    const jobId = parseInt(req.params.jobId as string, 10);
+    const itemId = parseInt(req.params.itemId as string, 10);
     if (isNaN(jobId) || isNaN(itemId)) return res.status(400).json({ error: "Invalid parameters" });
     const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) return res.status(400).json({ error: "No files uploaded" });
@@ -773,8 +773,8 @@ router.post("/:jobId/checklist/items/:itemId/photos", photoUpload.array("photos"
 // ── DELETE /:jobId/checklist/items/:itemId/photos/:photoId ────────────────────
 router.delete("/:jobId/checklist/items/:itemId/photos/:photoId", async (req, res) => {
   try {
-    const jobId = parseInt(req.params.jobId, 10);
-    const itemId = parseInt(req.params.itemId, 10);
+    const jobId = parseInt(req.params.jobId as string, 10);
+    const itemId = parseInt(req.params.itemId as string, 10);
     const photoId = parseInt(req.params.photoId, 10);
     if (isNaN(jobId) || isNaN(itemId) || isNaN(photoId)) return res.status(400).json({ error: "Invalid parameters" });
 
@@ -980,7 +980,7 @@ router.delete("/:jobId/checklist/sections/:sectionId/notes/:noteId", async (req,
 // ── POST /:jobId/checklist/finished-photos ────────────────────────────────────
 router.post("/:jobId/checklist/finished-photos", photoUpload.array("photos", 20), async (req, res) => {
   try {
-    const jobId = parseInt(req.params.jobId, 10);
+    const jobId = parseInt(req.params.jobId as string, 10);
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
     const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) return res.status(400).json({ error: "No files uploaded" });
@@ -1013,7 +1013,7 @@ router.post("/:jobId/checklist/finished-photos", photoUpload.array("photos", 20)
 // ── DELETE /:jobId/checklist/finished-photos/:photoId ─────────────────────────
 router.delete("/:jobId/checklist/finished-photos/:photoId", async (req, res) => {
   try {
-    const jobId = parseInt(req.params.jobId, 10);
+    const jobId = parseInt(req.params.jobId as string, 10);
     const photoId = parseInt(req.params.photoId, 10);
     if (isNaN(jobId) || isNaN(photoId)) return res.status(400).json({ error: "Invalid parameters" });
 
@@ -1049,7 +1049,7 @@ router.delete("/:jobId/checklist/finished-photos/:photoId", async (req, res) => 
 // ── POST /:jobId/checklist/start-photos ───────────────────────────────────────
 router.post("/:jobId/checklist/start-photos", photoUpload.array("photos", 20), async (req, res) => {
   try {
-    const jobId = parseInt(req.params.jobId, 10);
+    const jobId = parseInt(req.params.jobId as string, 10);
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
     const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) return res.status(400).json({ error: "No files uploaded" });
@@ -1079,7 +1079,7 @@ router.post("/:jobId/checklist/start-photos", photoUpload.array("photos", 20), a
 // ── DELETE /:jobId/checklist/start-photos/:photoId ────────────────────────────
 router.delete("/:jobId/checklist/start-photos/:photoId", async (req, res) => {
   try {
-    const jobId = parseInt(req.params.jobId, 10);
+    const jobId = parseInt(req.params.jobId as string, 10);
     const photoId = parseInt(req.params.photoId, 10);
     if (isNaN(jobId) || isNaN(photoId)) return res.status(400).json({ error: "Invalid parameters" });
 

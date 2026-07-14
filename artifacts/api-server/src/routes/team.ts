@@ -69,7 +69,7 @@ router.get("/requests", async (_req: Request, res: Response) => {
 
 router.post("/requests/:id/approve", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid request id" }); return; }
     const { permissions } = req.body;
     const permError = validatePermissionsPayload(permissions);
@@ -97,7 +97,7 @@ router.post("/requests/:id/approve", async (req: Request, res: Response) => {
 
 router.post("/requests/:id/reject", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid request id" }); return; }
     const [existing] = await db.select({ status: accessRequestsTable.status })
       .from(accessRequestsTable).where(eq(accessRequestsTable.id, id));
@@ -197,9 +197,9 @@ router.put("/members/:userId/permissions", async (req: Request, res: Response) =
 
     const [updated] = await db
       .update(accessRequestsTable)
-      .set({ permissions: normalized })
+      .set({ permissions: normalized as any })
       .where(and(
-        eq(accessRequestsTable.userId, userId),
+        eq(accessRequestsTable.userId, userId as string),
         or(eq(accessRequestsTable.status, "approved"), eq(accessRequestsTable.status, "invited")),
       ))
       .returning();
@@ -221,11 +221,11 @@ router.delete("/members/:userId", async (req: Request, res: Response) => {
       return;
     }
 
-    await db.delete(accessRequestsTable).where(eq(accessRequestsTable.userId, userId));
+    await db.delete(accessRequestsTable).where(eq(accessRequestsTable.userId, userId as string));
 
-    if (!userId.startsWith("invite:")) {
+    if (!(userId as string).startsWith("invite:")) {
       await db.delete(sessionsTable)
-        .where(sql`${sessionsTable.sess}->'user'->>'id' = ${userId}`);
+        .where(sql`${sessionsTable.sess}->'user'->>'id' = ${userId as string}`);
     }
 
     res.status(204).send();

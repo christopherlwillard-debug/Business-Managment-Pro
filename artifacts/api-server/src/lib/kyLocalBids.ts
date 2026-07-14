@@ -194,7 +194,7 @@ async function scrapeDaviessCounty(): Promise<LocalOpportunity[]> {
     const seen = new Set<string>();
     const results: LocalOpportunity[] = [];
 
-    const processCard = (el: cheerio.AnyNode) => {
+    const processCard = (el: any) => {
       const $el = $(el);
       const headingEl = $el.find("h1,h2,h3,h4,h5").first();
       const linkEl = $el.find("a[href]").first();

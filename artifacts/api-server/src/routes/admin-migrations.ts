@@ -30,9 +30,9 @@ router.post("/remove-orphan-mileage", async (_req: Request, res: Response) => {
 router.delete("/delete-payworker-expenses", async (_req: Request, res: Response) => {
   try {
     const linkedExpenseIds = (
-      await db.select({ expenseId: subPaymentRecordsTable.expenseId })
+      await db.select({ expenseId: (subPaymentRecordsTable as any).expenseId })
         .from(subPaymentRecordsTable)
-        .where(isNotNull(subPaymentRecordsTable.expenseId))
+        .where(isNotNull((subPaymentRecordsTable as any).expenseId))
     ).map(r => r.expenseId!);
 
     if (linkedExpenseIds.length === 0) return res.json({ ok: true, deleted: 0 });

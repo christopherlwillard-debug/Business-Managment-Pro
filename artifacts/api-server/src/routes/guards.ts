@@ -44,7 +44,7 @@ export function getRequestUser(req: Request): RequestUser | undefined {
   return req.user as RequestUser | undefined;
 }
 
-export function wrapAsync(fn: (req: Request, res: Response, next: NextFunction) => Promise<void>): RequestHandler {
+export function wrapAsync(fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>): RequestHandler {
   return (req, res, next) => { fn(req, res, next).catch(next); };
 }
 

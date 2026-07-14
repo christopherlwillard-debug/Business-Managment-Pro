@@ -9,7 +9,7 @@ import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
 import { generateMaterialsPdfBuffer } from "../lib/generateMaterialsPdf.js";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable, businessesTable, type Business } from "@workspace/db/schema";
-import { eq, and, gte, lte, desc, inArray, ne } from "drizzle-orm";
+import { eq, and, gte, lte, desc, inArray, ne, getTableColumns } from "drizzle-orm";
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
@@ -82,7 +82,7 @@ function formatInvoice(inv: any, clientName?: string | null, clientEmail?: strin
 }
 
 const invoiceSelect = {
-  ...invoicesTable,
+  ...getTableColumns(invoicesTable),
   clientName: clientsTable.name,
   clientEmail: clientsTable.email,
   clientAddress: clientsTable.address,
