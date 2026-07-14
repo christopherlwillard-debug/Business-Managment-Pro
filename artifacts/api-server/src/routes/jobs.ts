@@ -1494,11 +1494,27 @@ router.delete("/:id/sub-payments/:paymentId", async (req, res) => {
 
     let newStatus = "unpaid";
     if (newPaid > 0.005) {
-      const owedAmount = subRow?.amountOwed != null
+      let owedAmount: number | null = subRow?.amountOwed != null
         ? parseFloat(String(subRow.amountOwed))
         : subRow?.fixedAmount != null
           ? parseFloat(String(subRow.fixedAmount))
           : null;
+
+      // For hourly subs, amountOwed and fixedAmount are both null — the obligation
+      // is derived from logged hours × rate. Compute it here so we can correctly
+      // distinguish "paid" from "partial" instead of always falling back to "partial".
+      if (owedAmount == null && (subRow?.compensationType ?? "hourly") === "hourly") {
+        const [hoursRow] = await db
+          .select({ computedOwed: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), '0')` })
+          .from(jobSubHoursTable)
+          .where(and(
+            eq(jobSubHoursTable.jobId, jobId),
+            eq(jobSubHoursTable.subcontractorId, subId),
+          ));
+        const computed = parseFloat(hoursRow?.computedOwed ?? "0");
+        if (computed > 0) owedAmount = computed;
+      }
+
       newStatus = owedAmount != null && newPaid >= owedAmount * 0.99 ? "paid" : "partial";
     }
 
