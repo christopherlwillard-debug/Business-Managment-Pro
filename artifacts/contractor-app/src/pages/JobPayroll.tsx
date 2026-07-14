@@ -168,7 +168,22 @@ function WorkerPayCard({
   const [historyOpen,    setHistoryOpen]    = useState(false);
   const [paying,         setPaying]         = useState(false);
   const [deletingPayId,  setDeletingPayId]  = useState<number | null>(null);
-  const [reviewOpen,     setReviewOpen]     = useState(false);
+
+  // Review-sheet draft — captured from card state when the sheet opens;
+  // edits inside the sheet only mutate this draft, NOT the card state.
+  // Cancelling discards the draft; confirming passes it to submitPayment.
+  type ReviewDraft = { bonus: string; bonusNote: string; paymentMethod: string; paymentReference: string };
+  const [reviewDraft, setReviewDraft] = useState<ReviewDraft | null>(null);
+  const reviewOpen = reviewDraft !== null;
+
+  function openReview() {
+    setReviewDraft({ bonus, bonusNote, paymentMethod, paymentReference });
+  }
+  function closeReview() { setReviewDraft(null); }
+
+  const draftBonusAmt  = reviewDraft ? (parseFloat(reviewDraft.bonus) || 0) : bonusAmt;
+  const draftGrossPay  = isHourly ? workPay + travelPay + draftBonusAmt : (parseFloat(simpleAmount) || 0);
+  const draftNetToPay  = Math.max(0, draftGrossPay - totalOutstanding);
 
   const history = p.paymentHistory ?? [];
 
@@ -221,8 +236,11 @@ function WorkerPayCard({
     }
   }
 
-  async function handlePay() {
-    if (netToPay <= 0) {
+  async function submitPayment(draft: ReviewDraft) {
+    const draftBonus  = parseFloat(draft.bonus) || 0;
+    const draftGross  = isHourly ? workPay + travelPay + draftBonus : (parseFloat(simpleAmount) || 0);
+    const draftNet    = Math.max(0, draftGross - totalOutstanding);
+    if (draftNet <= 0) {
       toast({ title: "Nothing to pay — check amounts", variant: "destructive" });
       return;
     }
@@ -233,8 +251,8 @@ function WorkerPayCard({
         idempotencyKey: crypto.randomUUID(),
         agreedOwed: owed > 0 ? owed : undefined,
         advanceIds: checkedOutstanding.map(a => a.id),
-        ...(paymentMethod    ? { paymentMethod }                     : {}),
-        ...(paymentReference ? { paymentReference }                  : {}),
+        ...(draft.paymentMethod    ? { paymentMethod: draft.paymentMethod }       : {}),
+        ...(draft.paymentReference ? { paymentReference: draft.paymentReference } : {}),
       };
       if (isHourly) {
         const wh = parseFloat(workHours) || 0;
@@ -242,7 +260,7 @@ function WorkerPayCard({
         if (wh <= 0 || wr <= 0) { setPaying(false); return; }
         body.workHours = wh; body.workRate = wr;
         if ((parseFloat(travelHours) || 0) > 0) { body.travelHours = parseFloat(travelHours); body.travelRate = parseFloat(travelRate) || 0; }
-        if (bonusAmt > 0) { body.bonusAmount = bonusAmt; if (bonusNote) body.bonusNote = bonusNote; }
+        if (draftBonus > 0) { body.bonusAmount = draftBonus; if (draft.bonusNote) body.bonusNote = draft.bonusNote; }
         if (totalOutstanding > 0) { body.advanceAmount = totalOutstanding; body.advanceNote = checkedOutstanding.map(a => a.description).join(", "); }
       } else {
         const amt = parseFloat(simpleAmount) || 0;
@@ -256,8 +274,8 @@ function WorkerPayCard({
       });
       if (!r.ok) throw new Error();
       await onRefresh();
-      setReviewOpen(false);
-      toast({ title: "Payment recorded", description: `${p.subName ?? "Sub"}: $${fmt(netToPay)} paid` });
+      closeReview();
+      toast({ title: "Payment recorded", description: `${p.subName ?? "Sub"}: $${fmt(draftNet)} paid` });
     } catch { toast({ title: "Failed to record payment", variant: "destructive" }); }
     finally { setPaying(false); }
   }
@@ -512,7 +530,7 @@ function WorkerPayCard({
               </div>
             ) : (
               <button
-                onClick={() => setReviewOpen(true)}
+                onClick={openReview}
                 disabled={netToPay <= 0}
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted text-white font-bold rounded-2xl text-base transition-colors disabled:opacity-50 shadow-sm"
               >
@@ -579,7 +597,7 @@ function WorkerPayCard({
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black/40 z-40"
-            onClick={() => { if (!paying) setReviewOpen(false); }}
+            onClick={() => { if (!paying) closeReview(); }}
           />
           {/* Bottom Sheet */}
           <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[90dvh] overflow-y-auto">
@@ -595,7 +613,7 @@ function WorkerPayCard({
                 <p className="text-lg font-bold text-foreground mt-0.5">{p.subName ?? "Sub"}</p>
               </div>
               <button
-                onClick={() => { if (!paying) setReviewOpen(false); }}
+                onClick={() => { if (!paying) closeReview(); }}
                 className="p-2 rounded-xl text-muted-foreground hover:bg-muted/20 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -634,18 +652,23 @@ function WorkerPayCard({
 
               {checkedOutstanding.length > 0 && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-amber-600">
-                    Advance deduction ({checkedOutstanding.length})
-                  </span>
+                  <span className="text-amber-600">Advance deduction ({checkedOutstanding.length})</span>
                   <span className="font-semibold text-amber-600">−${fmt(totalOutstanding)}</span>
                 </div>
               )}
 
-              {/* Gross subtotal for hourly when there are deductions */}
-              {isHourly && grossPay > 0 && totalOutstanding > 0 && (
+              {/* Bonus line — live from draft */}
+              {isHourly && draftBonusAmt > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-emerald-600">Bonus</span>
+                  <span className="font-semibold text-emerald-600">+${fmt(draftBonusAmt)}</span>
+                </div>
+              )}
+
+              {checkedOutstanding.length > 0 && draftGrossPay > 0 && (
                 <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border/40 pt-2">
                   <span>Gross</span>
-                  <span>${fmt(grossPay)}</span>
+                  <span>${fmt(draftGrossPay)}</span>
                 </div>
               )}
             </div>
@@ -662,8 +685,8 @@ function WorkerPayCard({
                       <label className="text-xs text-muted-foreground block mb-1">Amount <span className="opacity-50">(opt)</span></label>
                       <input
                         type="number"
-                        value={bonus}
-                        onChange={e => setBonus(e.target.value)}
+                        value={reviewDraft?.bonus ?? ""}
+                        onChange={e => setReviewDraft(d => d && ({ ...d, bonus: e.target.value }))}
                         className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                         placeholder="0.00"
                       />
@@ -672,16 +695,13 @@ function WorkerPayCard({
                       <label className="text-xs text-muted-foreground block mb-1">Note</label>
                       <input
                         type="text"
-                        value={bonusNote}
-                        onChange={e => setBonusNote(e.target.value)}
+                        value={reviewDraft?.bonusNote ?? ""}
+                        onChange={e => setReviewDraft(d => d && ({ ...d, bonusNote: e.target.value }))}
                         className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                         placeholder="reason..."
                       />
                     </div>
                   </div>
-                  {bonusAmt > 0 && (
-                    <p className="text-xs font-medium text-emerald-600">Bonus: +${fmt(bonusAmt)}</p>
-                  )}
                 </div>
                 <div className="h-px bg-border/50 mx-5" />
               </>
@@ -694,8 +714,8 @@ function WorkerPayCard({
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Method</label>
                   <select
-                    value={paymentMethod}
-                    onChange={e => setPaymentMethod(e.target.value)}
+                    value={reviewDraft?.paymentMethod ?? ""}
+                    onChange={e => setReviewDraft(d => d && ({ ...d, paymentMethod: e.target.value }))}
                     className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
                   >
                     <option value="">Select…</option>
@@ -706,8 +726,8 @@ function WorkerPayCard({
                   <label className="text-xs text-muted-foreground block mb-1">Reference # <span className="opacity-50">(opt)</span></label>
                   <input
                     type="text"
-                    value={paymentReference}
-                    onChange={e => setPaymentReference(e.target.value)}
+                    value={reviewDraft?.paymentReference ?? ""}
+                    onChange={e => setReviewDraft(d => d && ({ ...d, paymentReference: e.target.value }))}
                     className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                     placeholder="Transaction ID…"
                   />
@@ -724,16 +744,16 @@ function WorkerPayCard({
                   <p className="text-sm text-muted-foreground">Net to Pay</p>
                   {totalOutstanding > 0 && (
                     <p className="text-xs text-amber-600 mt-0.5">
-                      ${fmt(grossPay)} − ${fmt(totalOutstanding)} advances
+                      ${fmt(draftGrossPay)} − ${fmt(totalOutstanding)} advances
                     </p>
                   )}
                 </div>
-                <p className="text-4xl font-black text-foreground">${fmt(netToPay)}</p>
+                <p className="text-4xl font-black text-foreground">${fmt(draftNetToPay)}</p>
               </div>
 
               <button
-                onClick={handlePay}
-                disabled={paying || netToPay <= 0}
+                onClick={() => reviewDraft && submitPayment(reviewDraft)}
+                disabled={paying || draftNetToPay <= 0}
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted text-white font-bold rounded-2xl text-base transition-colors disabled:opacity-50 shadow-sm flex items-center justify-center gap-2"
               >
                 {paying ? (
@@ -744,13 +764,13 @@ function WorkerPayCard({
                 ) : (
                   <>
                     <CheckCircle2 className="w-5 h-5" />
-                    Confirm &amp; Record — ${fmt(netToPay)}
+                    Confirm &amp; Record — ${fmt(draftNetToPay)}
                   </>
                 )}
               </button>
 
               <button
-                onClick={() => setReviewOpen(false)}
+                onClick={closeReview}
                 disabled={paying}
                 className="w-full mt-3 py-3 border border-border rounded-2xl text-sm font-semibold text-muted-foreground hover:bg-muted/20 transition-colors disabled:opacity-50"
               >
