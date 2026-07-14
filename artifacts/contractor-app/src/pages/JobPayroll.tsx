@@ -180,6 +180,12 @@ function WorkerPayCard({
   const [paying,         setPaying]         = useState(false);
   const [deletingPayId,  setDeletingPayId]  = useState<number | null>(null);
 
+  // Auto-open the history accordion whenever a new payment appears (e.g. right after recording one)
+  const historyLen = p.paymentHistory?.length ?? 0;
+  useEffect(() => {
+    if (historyLen > 0) setHistoryOpen(true);
+  }, [historyLen]);
+
   // Inline hours entry (shown when hourly sub has no hours logged)
   const [showLogHours,   setShowLogHours]   = useState(false);
   const [logDate,        setLogDate]        = useState(() => new Date().toISOString().split("T")[0]);
