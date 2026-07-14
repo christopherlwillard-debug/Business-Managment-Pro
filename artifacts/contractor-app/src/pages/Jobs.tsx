@@ -1176,12 +1176,17 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [loading, setLoading] = useState(!initialProfit);
   const [deletingPayId, setDeletingPayId] = useState<number | null>(null);
+  const [subHours, setSubHours] = useState<SubHourEntry[]>([]);
+  const [deletingHourId, setDeletingHourId] = useState<number | null>(null);
 
   const [ownerSplitPct, setOwnerSplitPct] = useState(50);
   const [taxReservePct, setTaxReservePct] = useState(25);
   const [useCollected, setUseCollected] = useState(false);
 
   const { toast } = useToast();
+  const { data: settingsData } = useGetSettings();
+  const splitSettingsLoaded = useRef(false);
+  const splitSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function owedFor(p: SubPaymentRow, splitPool?: number): number {
     if (p.amountOwed != null) return p.amountOwed;
@@ -1226,20 +1231,66 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
     }
   }
 
+  function saveOwnerSplit(pct: number) {
+    setOwnerSplitPct(pct);
+    if (splitSaveTimer.current) clearTimeout(splitSaveTimer.current);
+    splitSaveTimer.current = setTimeout(() => {
+      fetch(`${BASE}/api/settings`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ ownerSplitPct: pct }),
+      }).catch(() => {});
+    }, 500);
+  }
+
+  function saveTaxReserve(pct: number) {
+    setTaxReservePct(pct);
+    if (splitSaveTimer.current) clearTimeout(splitSaveTimer.current);
+    splitSaveTimer.current = setTimeout(() => {
+      fetch(`${BASE}/api/settings`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ taxReservePct: pct }),
+      }).catch(() => {});
+    }, 500);
+  }
+
+  async function handleDeleteHour(id: number) {
+    setDeletingHourId(id);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/sub-hours/${id}`, { method: "DELETE", credentials: "include" });
+      if (!r.ok) throw new Error();
+      setSubHours(prev => prev.filter(h => h.id !== id));
+      toast({ title: "Hours entry deleted" });
+    } catch {
+      toast({ title: "Failed to delete hours entry", variant: "destructive" });
+    } finally {
+      setDeletingHourId(null);
+    }
+  }
+
+  useEffect(() => {
+    if (settingsData && !splitSettingsLoaded.current) {
+      splitSettingsLoaded.current = true;
+      if (settingsData.ownerSplitPct != null) setOwnerSplitPct(settingsData.ownerSplitPct);
+      if (settingsData.taxReservePct != null) setTaxReservePct(settingsData.taxReservePct);
+    }
+  }, [settingsData]);
+
   useEffect(() => {
     const fetches: Promise<any>[] = [
       fetch(`${BASE}/api/jobs/${job.id}/sub-payments`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${job.id}/sub-hours`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
     ];
     if (!initialProfit) {
       fetches.push(fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" }).then(r => r.ok ? r.json() : null));
     }
     Promise.allSettled(fetches).then(results => {
-      const [pRes, profRes] = results;
+      const [pRes, hRes, profRes] = results;
       if (pRes.status === "fulfilled" && Array.isArray(pRes.value)) {
         const rows = pRes.value as SubPaymentRow[];
         setPayments(rows);
         notifySubsPaid(rows);
       }
+      if (hRes.status === "fulfilled" && Array.isArray(hRes.value)) setSubHours(hRes.value as SubHourEntry[]);
       if (profRes?.status === "fulfilled" && profRes.value) setProfit(profRes.value as JobProfit);
       setLoading(false);
     });
@@ -1415,7 +1466,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                     <span className="text-xs font-semibold text-muted-foreground">Your Split</span>
                     <span className="text-xs font-bold text-blue-600">{ownerSplitPct}% · {formatCurrency(ownerShare)}</span>
                   </div>
-                  <input type="range" min={0} max={100} value={ownerSplitPct} onChange={e => setOwnerSplitPct(Number(e.target.value))} className="w-full" />
+                  <input type="range" min={0} max={100} value={ownerSplitPct} onChange={e => saveOwnerSplit(Number(e.target.value))} className="w-full" />
                   <div className="flex justify-between text-[10px] text-muted-foreground"><span>0%</span><span>100%</span></div>
                 </div>
               ) : (
@@ -1432,7 +1483,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <span className="text-xs font-semibold text-muted-foreground">Tax Reserve</span>
                   <span className="text-xs font-bold text-red-600">{taxReservePct}% · {formatCurrency(taxReserve)}</span>
                 </div>
-                <input type="range" min={0} max={40} value={taxReservePct} onChange={e => setTaxReservePct(Number(e.target.value))} className="w-full" />
+                <input type="range" min={0} max={40} value={taxReservePct} onChange={e => saveTaxReserve(Number(e.target.value))} className="w-full" />
                 <div className="flex justify-between text-[10px] text-muted-foreground"><span>0%</span><span>40%</span></div>
               </div>
               <div className="rounded-xl border border-border/50 overflow-hidden">
@@ -1583,7 +1634,58 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
           ) : (
             /* ── Sub Hours tab ── */
             <div className="space-y-4">
-              {payments.length > 0 ? (
+              {/* Individual logged hour entries with delete buttons */}
+              {subHours.length > 0 ? (
+                <div className="rounded-xl border border-border/50 overflow-hidden">
+                  <div className="bg-muted/30 px-4 py-2 border-b border-border/50 flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Logged Hours</p>
+                    <p className="text-[10px] text-muted-foreground">{subHours.reduce((s, h) => s + h.hours, 0).toFixed(1)} hrs total</p>
+                  </div>
+                  <div className="divide-y divide-border/30">
+                    {subHours.map(h => (
+                      <div key={h.id} className="flex items-center justify-between px-4 py-2.5">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold text-foreground truncate">{h.subName ?? "Sub"}</span>
+                            {h.hourType === "travel" && <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-1 rounded shrink-0">travel</span>}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            {h.date ? new Date(h.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
+                            {h.rateSnapshot != null ? ` · $${h.rateSnapshot.toFixed(2)}/hr` : ""}
+                            {h.description ? ` · ${h.description}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-right">
+                            <span className="text-xs font-bold text-foreground">{h.hours.toFixed(1)} hrs</span>
+                            {h.rateSnapshot != null && h.rateSnapshot > 0 && (
+                              <p className="text-[10px] text-muted-foreground">${(h.hours * h.rateSnapshot).toFixed(0)}</p>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHour(h.id)}
+                            disabled={deletingHourId === h.id}
+                            className="p-1 rounded text-muted-foreground/40 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                            title="Delete this hours entry"
+                          >
+                            {deletingHourId === h.id
+                              ? <div className="w-3 h-3 border border-red-400 border-t-transparent rounded-full animate-spin" />
+                              : <Trash2 className="w-3 h-3" />}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <Timer className="w-8 h-8 text-muted-foreground/30 mb-2" />
+                  <p className="text-sm text-muted-foreground">No hours logged yet</p>
+                </div>
+              )}
+              {/* Sub payment status summary */}
+              {payments.length > 0 && (
                 <div className="space-y-2">
                   {payments.map(p => {
                     const owed = owedFor(p, toSplit);
@@ -1615,11 +1717,6 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                       </div>
                     );
                   })}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <Timer className="w-10 h-10 text-muted-foreground/30 mb-3" />
-                  <p className="text-sm text-muted-foreground">No subs assigned yet</p>
                 </div>
               )}
               <Link href={`/jobs/${job.id}/payroll`} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500 text-white font-bold text-sm hover:bg-amber-600 transition-colors shadow-sm">
