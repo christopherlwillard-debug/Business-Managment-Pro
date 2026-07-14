@@ -9,6 +9,7 @@ import {
   jobChecklistItemPhotosTable,
   jobChecklistItemPartsTable,
   jobFinishedPhotosTable,
+  jobStartPhotosTable,
   jobsTable,
   clientsTable,
   checklistTemplatesTable,
@@ -104,25 +105,28 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   const allItems   = checklistData.sections.flatMap(s => s.items);
   const allItemIds = allItems.map(i => i.id);
 
-  const [rawPhotos, rawParts, rawFinishedPhotos] = await Promise.all([
+  const [rawPhotos, rawParts, rawFinishedPhotos, rawStartPhotos] = await Promise.all([
     allItemIds.length > 0
       ? db.select().from(jobChecklistItemPhotosTable).where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, allItemIds))
       : Promise.resolve([]),
     allItemIds.length > 0
       ? db.select().from(jobChecklistItemPartsTable).where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, allItemIds)).orderBy(asc(jobChecklistItemPartsTable.sortOrder))
       : Promise.resolve([]),
-    // Finished photos are linked to the checklist, not individual items
     db.select().from(jobFinishedPhotosTable)
       .where(eq(jobFinishedPhotosTable.jobChecklistId, checklistRow.id))
       .orderBy(asc(jobFinishedPhotosTable.createdAt)),
+    db.select().from(jobStartPhotosTable)
+      .where(eq(jobStartPhotosTable.jobChecklistId, checklistRow.id))
+      .orderBy(asc(jobStartPhotosTable.createdAt)),
   ]);
 
   const objStorage = new ObjectStorageService();
 
-  // Resolve all photos (per-item + finished) in parallel
+  // Resolve all photos (per-item + finished + start) in parallel
   const allPhotoRows = [
     ...rawPhotos.map(p => ({ id: p.id, objectPath: p.objectPath, kind: "item" as const, itemId: p.jobChecklistItemId })),
     ...rawFinishedPhotos.map(p => ({ id: p.id, objectPath: p.objectPath, kind: "finished" as const, itemId: -1 })),
+    ...rawStartPhotos.map(p => ({ id: p.id, objectPath: p.objectPath, kind: "start" as const, itemId: -1 })),
   ];
   const photoBufById = new Map<string, Buffer>();
   await Promise.all(allPhotoRows.map(async (p) => {
@@ -145,6 +149,10 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
 
   const finishedPhotoBufs: Buffer[] = rawFinishedPhotos
     .map(p => photoBufById.get(`finished-${p.id}`))
+    .filter((b): b is Buffer => b !== undefined);
+
+  const startPhotoBufs: Buffer[] = rawStartPhotos
+    .map(p => photoBufById.get(`start-${p.id}`))
     .filter((b): b is Buffer => b !== undefined);
 
   const partsByItemId = new Map<number, Array<{ label: string; completed: boolean; completedByName: string | null }>>();
@@ -357,6 +365,31 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   doc.y += 8;
   hRule("#d1d5db", 1);
 
+  // ── Start-of-Job Photos ───────────────────────────────────────────────────
+  const startNotes = (checklistData as any).startNotes as string | null | undefined;
+  if (startNotes || startPhotoBufs.length > 0) {
+    ensureSpace(30);
+    doc.y += 2;
+
+    doc.font("Helvetica-Bold").fontSize(9.5).fillColor(DARK)
+       .text("START-OF-JOB PHOTOS", L, doc.y, { width: W });
+    doc.y += 3;
+
+    if (startNotes) {
+      doc.font("Helvetica-Oblique").fontSize(9).fillColor(GRAY)
+         .text(startNotes, L, doc.y, { width: W });
+      doc.y += 4;
+    }
+
+    if (startPhotoBufs.length > 0) {
+      doc.y += 2;
+      drawPhotoGrid(startPhotoBufs, L, W, 160, 120);
+      doc.y += 4;
+    }
+
+    hRule();
+  }
+
   // ── Sections & Items ──────────────────────────────────────────────────────
   for (const section of checklistData.sections) {
     if (!section.active) continue;
@@ -466,7 +499,7 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     doc.y += 2;
 
     doc.font("Helvetica-Bold").fontSize(9.5).fillColor(DARK)
-       .text("FINISHED WORK", L, doc.y, { width: W });
+       .text("FINISHED PHOTOS", L, doc.y, { width: W });
     doc.y += 3;
 
     if (finishedNotes) {
