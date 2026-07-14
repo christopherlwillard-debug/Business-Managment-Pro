@@ -13,6 +13,7 @@ type SubAdvance = {
   description: string;
   advanceDate: string;
   appliedPaymentId: number | null;
+  appliedAt: string | null;
   createdAt: string;
 };
 
@@ -28,6 +29,8 @@ type SubPayHistoryEntry = {
   advanceAmount?: number;
   advanceNote?: string | null;
   netPaid?: number;
+  paymentMethod?: string | null;
+  referenceNumber?: string | null;
 };
 
 type SubPaymentRow = {
@@ -77,6 +80,8 @@ function fmtDate(d: string) {
   } catch { return d; }
 }
 
+const PAYMENT_METHODS = ["Zelle", "Cash App", "Cash", "Check", "Venmo", "ACH / Bank Transfer", "Other"];
+
 // ── Worker Card ──────────────────────────────────────────────────────────────────
 function WorkerPayCard({
   p, jobId, splitPool, advances, onRefresh,
@@ -94,7 +99,6 @@ function WorkerPayCard({
 
   const outstanding = advances.filter(a => a.appliedPaymentId === null);
   const applied     = advances.filter(a => a.appliedPaymentId !== null);
-  const totalOutstanding = outstanding.reduce((s, a) => s + a.amount, 0);
 
   const owed = isAlloc
     ? (p.amountOwed ?? splitPool * ((p.allocationPct ?? 0) / 100))
@@ -103,6 +107,24 @@ function WorkerPayCard({
   const balance = Math.max(0, owed - paid);
   const isFullyPaid = p.paymentStatus === "paid";
   const isPartial   = p.paymentStatus === "partial";
+
+  // Advance checkbox state — auto pre-check all outstanding advances
+  const [checkedAdvanceIds, setCheckedAdvanceIds] = useState<Set<number>>(
+    () => new Set(outstanding.map(a => a.id))
+  );
+  useEffect(() => {
+    setCheckedAdvanceIds(prev => {
+      const next = new Set(prev);
+      for (const a of advances) {
+        if (a.appliedPaymentId === null && !prev.has(a.id)) next.add(a.id);
+      }
+      return next;
+    });
+  }, [advances]);
+
+  // Payment method / reference
+  const [paymentMethod,    setPaymentMethod]    = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
 
   // Hourly form
   const [workHours,   setWorkHours]   = useState(() => {
@@ -128,8 +150,12 @@ function WorkerPayCard({
     return bal > 0.01 ? bal.toFixed(2) : owed > 0 ? owed.toFixed(2) : "";
   });
 
-  const grossPay  = isHourly ? workPay + travelPay + bonusAmt : parseFloat(simpleAmount) || 0;
-  const netToPay  = Math.max(0, grossPay - totalOutstanding);
+  const grossPay = isHourly ? workPay + travelPay + bonusAmt : parseFloat(simpleAmount) || 0;
+
+  // Only checked outstanding advances get deducted
+  const checkedOutstanding   = outstanding.filter(a => checkedAdvanceIds.has(a.id));
+  const totalOutstanding     = checkedOutstanding.reduce((s, a) => s + a.amount, 0);
+  const netToPay             = Math.max(0, grossPay - totalOutstanding);
 
   // Add advance form
   const [showAdvForm, setShowAdvForm] = useState(false);
@@ -186,7 +212,9 @@ function WorkerPayCard({
         subName: p.subName,
         idempotencyKey: crypto.randomUUID(),
         agreedOwed: owed > 0 ? owed : undefined,
-        advanceIds: outstanding.map(a => a.id),
+        advanceIds: checkedOutstanding.map(a => a.id),
+        ...(paymentMethod    ? { paymentMethod }                     : {}),
+        ...(paymentReference ? { paymentReference }                  : {}),
       };
       if (isHourly) {
         const wh = parseFloat(workHours) || 0;
@@ -198,12 +226,12 @@ function WorkerPayCard({
         body.workHours = wh; body.workRate = wr;
         if ((parseFloat(travelHours) || 0) > 0) { body.travelHours = parseFloat(travelHours); body.travelRate = parseFloat(travelRate) || 0; }
         if (bonusAmt > 0) { body.bonusAmount = bonusAmt; if (bonusNote) body.bonusNote = bonusNote; }
-        if (totalOutstanding > 0) { body.advanceAmount = totalOutstanding; body.advanceNote = outstanding.map(a => a.description).join(", "); }
+        if (totalOutstanding > 0) { body.advanceAmount = totalOutstanding; body.advanceNote = checkedOutstanding.map(a => a.description).join(", "); }
       } else {
         const amt = parseFloat(simpleAmount) || 0;
         if (amt <= 0) { toast({ title: "Enter an amount", variant: "destructive" }); setPaying(false); return; }
         body.amount = amt;
-        if (totalOutstanding > 0) { body.advanceAmount = totalOutstanding; body.advanceNote = outstanding.map(a => a.description).join(", "); }
+        if (totalOutstanding > 0) { body.advanceAmount = totalOutstanding; body.advanceNote = checkedOutstanding.map(a => a.description).join(", "); }
       }
       const r = await fetch(`${BASE}/api/jobs/${jobId}/pay-worker/${p.subcontractorId}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
@@ -363,24 +391,43 @@ function WorkerPayCard({
               <p className="text-xs text-muted-foreground/70 italic">No outstanding advances</p>
             ) : outstanding.length > 0 ? (
               <div className="space-y-2">
-                {outstanding.map(adv => (
-                  <div key={adv.id} className="flex items-center justify-between py-2.5 px-3.5 bg-amber-50 rounded-xl border border-amber-100">
-                    <div className="min-w-0 mr-2">
-                      <p className="text-sm font-semibold text-foreground">{adv.description}</p>
-                      <p className="text-[10px] text-muted-foreground">{fmtDate(adv.advanceDate)}</p>
+                {outstanding.map(adv => {
+                  const isChecked = checkedAdvanceIds.has(adv.id);
+                  return (
+                    <div key={adv.id} className={`flex items-center justify-between py-2.5 px-3.5 rounded-xl border transition-colors ${isChecked ? "bg-amber-50 border-amber-100" : "bg-muted/10 border-border/50"}`}>
+                      <div className="flex items-center gap-2.5 min-w-0 mr-2">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => setCheckedAdvanceIds(prev => {
+                            const next = new Set(prev);
+                            e.target.checked ? next.add(adv.id) : next.delete(adv.id);
+                            return next;
+                          })}
+                          className="w-4 h-4 flex-shrink-0 accent-amber-500 cursor-pointer"
+                        />
+                        <div className="min-w-0">
+                          <p className={`text-sm font-semibold ${isChecked ? "text-foreground" : "text-muted-foreground"}`}>{adv.description}</p>
+                          <p className="text-[10px] text-muted-foreground">{fmtDate(adv.advanceDate)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <span className={`text-sm font-bold ${isChecked ? "text-amber-700" : "text-muted-foreground/40 line-through"}`}>${fmt(adv.amount)}</span>
+                        <button onClick={() => handleDeleteAdvance(adv.id)} className="text-muted-foreground/40 hover:text-red-500 transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <span className="text-sm font-bold text-amber-700">${fmt(adv.amount)}</span>
-                      <button onClick={() => handleDeleteAdvance(adv.id)} className="text-muted-foreground/40 hover:text-red-500 transition-colors">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                  );
+                })}
+                {checkedOutstanding.length > 0 && (
+                  <div className="flex items-center justify-between px-1 pt-1">
+                    <span className="text-xs text-muted-foreground">
+                      Deducting {checkedOutstanding.length < outstanding.length ? `${checkedOutstanding.length} of ${outstanding.length}` : "all"}
+                    </span>
+                    <span className="text-sm font-bold text-amber-600">−${fmt(totalOutstanding)}</span>
                   </div>
-                ))}
-                <div className="flex items-center justify-between px-1 pt-1">
-                  <span className="text-xs text-muted-foreground">Total outstanding</span>
-                  <span className="text-sm font-bold text-amber-600">−${fmt(totalOutstanding)}</span>
-                </div>
+                )}
               </div>
             ) : null}
 
@@ -395,6 +442,28 @@ function WorkerPayCard({
                 ))}
               </div>
             )}
+          </div>
+
+          <div className="h-px bg-border/50 mx-5" />
+
+          {/* ── Payment Method & Reference ── */}
+          <div className="px-5 pt-3 pb-3">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-3">Payment Info</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Method</label>
+                <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
+                  className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
+                  <option value="">Select…</option>
+                  {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Reference # <span className="opacity-50">(opt)</span></label>
+                <input type="text" value={paymentReference} onChange={e => setPaymentReference(e.target.value)}
+                  className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="Transaction ID…" />
+              </div>
+            </div>
           </div>
 
           <div className="h-px bg-border/50 mx-5" />
@@ -439,9 +508,15 @@ function WorkerPayCard({
               {history.map((h, i) => (
                 <div key={i} className="p-3.5 bg-muted/20 rounded-xl text-xs space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-foreground text-sm">{fmtDate(h.date)}</span>
+                    <div>
+                      <span className="font-bold text-foreground text-sm">{fmtDate(h.date)}</span>
+                      {h.paymentMethod && (
+                        <span className="ml-2 text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full">{h.paymentMethod}</span>
+                      )}
+                    </div>
                     <span className="font-black text-emerald-700 text-sm">${fmt(h.netPaid ?? h.amount)}</span>
                   </div>
+                  {h.referenceNumber && <p className="text-muted-foreground">Ref: {h.referenceNumber}</p>}
                   {h.workHours != null && <p className="text-muted-foreground">Work: {h.workHours} hrs @ ${h.workRate}/hr = ${fmt((h.workHours || 0) * (h.workRate || 0))}</p>}
                   {(h.travelHours ?? 0) > 0 && <p className="text-muted-foreground">Travel: {h.travelHours} hrs @ ${h.travelRate}/hr = ${fmt((h.travelHours || 0) * (h.travelRate || 0))}</p>}
                   {(h.bonusAmount ?? 0) > 0 && <p className="text-emerald-600">Bonus: +${fmt(h.bonusAmount ?? 0)}{h.bonusNote ? ` (${h.bonusNote})` : ""}</p>}
@@ -483,23 +558,22 @@ export default function JobPayroll() {
   const refreshAll = useCallback(async () => {
     const [pRes, profRes, advRes] = await Promise.allSettled([
       fetch(`${BASE}/api/jobs/${jobId}/sub-payments`,  { credentials: "include" }).then(r => r.ok ? r.json() : []),
-      fetch(`${BASE}/api/jobs/${jobId}/profit`,         { credentials: "include" }).then(r => r.ok ? r.json() : null),
-      fetch(`${BASE}/api/jobs/${jobId}/advances`,       { credentials: "include" }).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${jobId}/profit`,        { credentials: "include" }).then(r => r.ok ? r.json() : null),
+      fetch(`${BASE}/api/jobs/${jobId}/advances`,      { credentials: "include" }).then(r => r.ok ? r.json() : []),
     ]);
-    if (pRes.status   === "fulfilled") setPayments(pRes.value   as SubPaymentRow[]);
+    if (pRes.status    === "fulfilled") setPayments(pRes.value as SubPaymentRow[]);
     if (profRes.status === "fulfilled" && profRes.value) setProfit(profRes.value as JobProfit);
-    if (advRes.status === "fulfilled") setAdvances(normaliseAdvances(advRes.value as unknown[]));
+    if (advRes.status  === "fulfilled") setAdvances(normaliseAdvances(advRes.value as unknown[]));
   }, [jobId]);
 
   useEffect(() => {
-    if (isNaN(jobId) || jobId <= 0) { setLoading(false); return; }
     const load = async () => {
       const [jobRes, pRes, profRes, advRes, settingsRes] = await Promise.allSettled([
-        fetch(`${BASE}/api/jobs/${jobId}`,              { credentials: "include" }).then(r => r.ok ? r.json() : null),
-        fetch(`${BASE}/api/jobs/${jobId}/sub-payments`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
-        fetch(`${BASE}/api/jobs/${jobId}/profit`,        { credentials: "include" }).then(r => r.ok ? r.json() : null),
-        fetch(`${BASE}/api/jobs/${jobId}/advances`,      { credentials: "include" }).then(r => r.ok ? r.json() : []),
-        fetch(`${BASE}/api/settings`,                    { credentials: "include" }).then(r => r.ok ? r.json() : null),
+        fetch(`${BASE}/api/jobs/${jobId}`,             { credentials: "include" }).then(r => r.ok ? r.json() : null),
+        fetch(`${BASE}/api/jobs/${jobId}/sub-payments`,{ credentials: "include" }).then(r => r.ok ? r.json() : []),
+        fetch(`${BASE}/api/jobs/${jobId}/profit`,      { credentials: "include" }).then(r => r.ok ? r.json() : null),
+        fetch(`${BASE}/api/jobs/${jobId}/advances`,    { credentials: "include" }).then(r => r.ok ? r.json() : []),
+        fetch(`${BASE}/api/settings`,                  { credentials: "include" }).then(r => r.ok ? r.json() : null),
       ]);
       if (jobRes.status     === "fulfilled" && jobRes.value)     setJob(jobRes.value as Job);
       if (pRes.status       === "fulfilled")                     setPayments(pRes.value as SubPaymentRow[]);

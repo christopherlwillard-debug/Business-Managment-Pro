@@ -10,6 +10,7 @@ export const subAdvancesTable = pgTable("sub_advances", {
   description: text("description").notNull(),
   advanceDate: date("advance_date").notNull(),
   appliedPaymentId: integer("applied_payment_id"),
+  appliedAt: timestamp("applied_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

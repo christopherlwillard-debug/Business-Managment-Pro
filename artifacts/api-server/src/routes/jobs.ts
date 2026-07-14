@@ -1279,7 +1279,13 @@ router.get("/:id/sub-payments", async (req, res) => {
         subcontractorId: jobSubcontractorsTable.subcontractorId,
         subName: subcontractorsTable.name,
         amountOwedOverride: jobSubcontractorsTable.amountOwed,
-        amountPaid: jobSubcontractorsTable.amountPaid,
+        amountPaid: sql<string>`COALESCE((
+          SELECT SUM(spr.amount)
+          FROM sub_payment_records spr
+          WHERE spr.job_id = ${id}
+            AND spr.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+            AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+        ), 0)`,
         paidDate: jobSubcontractorsTable.paidDate,
         paidNotes: jobSubcontractorsTable.paidNotes,
         payRate: subcontractorsTable.payRate,
@@ -1341,6 +1347,8 @@ router.get("/:id/sub-payments", async (req, res) => {
         advanceAmount: subPaymentRecordsTable.advanceAmount,
         advanceNote: subPaymentRecordsTable.advanceNote,
         netPaid: subPaymentRecordsTable.netPaid,
+        paymentMethod: subPaymentRecordsTable.paymentMethod,
+        referenceNumber: subPaymentRecordsTable.referenceNumber,
       })
       .from(subPaymentRecordsTable)
       .where(eq(subPaymentRecordsTable.jobId, id))
@@ -1368,6 +1376,8 @@ router.get("/:id/sub-payments", async (req, res) => {
         ...(rec.bonusAmount  != null ? { bonusAmount:  parseFloat(rec.bonusAmount),  bonusNote:  rec.bonusNote  } : {}),
         ...(rec.advanceAmount != null ? { advanceAmount: parseFloat(rec.advanceAmount), advanceNote: rec.advanceNote } : {}),
         ...(rec.netPaid  != null ? { netPaid: parseFloat(rec.netPaid) } : {}),
+        ...(rec.paymentMethod    ? { paymentMethod:   rec.paymentMethod    } : {}),
+        ...(rec.referenceNumber  ? { referenceNumber: rec.referenceNumber  } : {}),
       });
     }
 
@@ -1495,6 +1505,11 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     const bonusNote    = req.body.bonusNote   ? String(req.body.bonusNote)  : null;
     const advanceAmount = req.body.advanceAmount != null ? parseFloat(String(req.body.advanceAmount)) : null;
     const advanceNote   = req.body.advanceNote  ? String(req.body.advanceNote) : null;
+    const paymentMethod   = req.body.paymentMethod   ? String(req.body.paymentMethod)   : null;
+    const paymentReference = req.body.paymentReference ? String(req.body.paymentReference) : null;
+    const advanceIds: number[] = Array.isArray(req.body.advanceIds)
+      ? req.body.advanceIds.map((x: unknown) => parseInt(String(x))).filter((n: number) => !isNaN(n))
+      : [];
 
     // If breakdown is supplied, compute net from parts; otherwise fall back to explicit amount field.
     const hasBreakdown = workHours != null && workRate != null;
@@ -1608,31 +1623,26 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         ...(advanceAmount != null && advanceAmount > 0 ? { advanceAmount: advanceAmount.toFixed(2) } : {}),
         ...(advanceNote  ? { advanceNote  } : {}),
         ...(hasBreakdown ? { netPaid: paymentAmount.toFixed(2) } : {}),
+        ...(paymentMethod    ? { paymentMethod }                  : {}),
+        ...(paymentReference ? { referenceNumber: paymentReference } : {}),
       }).returning({ id: subPaymentRecordsTable.id });
 
-      txResult = { ok: true, paymentId: spr.id, amount: paymentAmount, accumulated: newAccumulated, status: newStatus };
-    });
-
-    await recomputeSubPaid(jobId);
-
-    // Mark any advance records as applied to this payment
-    const advanceIds: number[] = Array.isArray(req.body.advanceIds)
-      ? req.body.advanceIds.map((x: unknown) => parseInt(String(x))).filter((n: number) => !isNaN(n))
-      : [];
-    if (advanceIds.length > 0 && txResult?.paymentId) {
-      try {
-        await db.update(subAdvancesTable)
-          .set({ appliedPaymentId: txResult.paymentId })
+      // Mark selected advances as repaid — inside the transaction so it's atomic
+      if (advanceIds.length > 0) {
+        await tx.update(subAdvancesTable)
+          .set({ appliedPaymentId: spr.id, appliedAt: new Date() })
           .where(and(
             inArray(subAdvancesTable.id, advanceIds),
             eq(subAdvancesTable.jobId, jobId),
             eq(subAdvancesTable.subcontractorId, subId),
             isNull(subAdvancesTable.appliedPaymentId),
           ));
-      } catch (advErr) {
-        console.warn("[pay-worker] Failed to mark advances applied (non-fatal):", advErr);
       }
-    }
+
+      txResult = { ok: true, paymentId: spr.id, amount: paymentAmount, accumulated: newAccumulated, status: newStatus };
+    });
+
+    await recomputeSubPaid(jobId);
 
     res.json(txResult ?? { ok: true });
   } catch (err: any) {

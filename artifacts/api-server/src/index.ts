@@ -311,9 +311,39 @@ async function ensureSubAdvancesTable(): Promise<void> {
         created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
       )
     `);
+    await db.execute(sql`
+      ALTER TABLE sub_advances ADD COLUMN IF NOT EXISTS applied_at TIMESTAMPTZ;
+    `);
     console.log("[startup] sub_advances table ensured.");
   } catch (err) {
     console.error("[startup] ensureSubAdvancesTable failed (non-fatal):", err);
+  }
+}
+
+async function fixDewayneAmountPaid(): Promise<void> {
+  try {
+    const result = await db.execute(sql`
+      SELECT amount_paid FROM job_subcontractors
+      WHERE job_id = 42 AND subcontractor_id = 6
+    `);
+    const row = result.rows[0];
+    const current = row ? parseFloat(String((row as any).amount_paid ?? "0")) : null;
+    if (current === null) {
+      console.log("[startup] fixDewayneAmountPaid: sub not found — skipped.");
+      return;
+    }
+    if (current >= 889.99) {
+      console.log("[startup] fixDewayneAmountPaid: already correct — skipped.");
+      return;
+    }
+    await db.execute(sql`
+      UPDATE job_subcontractors
+      SET amount_paid = 890.00, payment_status = 'partial'
+      WHERE job_id = 42 AND subcontractor_id = 6
+    `);
+    console.log("[startup] fixDewayneAmountPaid: set amount_paid=890.00, payment_status=partial.");
+  } catch (err) {
+    console.error("[startup] fixDewayneAmountPaid failed (non-fatal):", err);
   }
 }
 
@@ -325,6 +355,7 @@ async function start() {
   await ensureSubAdvancesTable();
   await clearDraftInvoiceNumbers();
   await fixInvoice1036Sequence();
+  await fixDewayneAmountPaid();
   await seedDefaultBusinesses();
   await seedClaytonBillback();
   await backfillMileageBusiness();

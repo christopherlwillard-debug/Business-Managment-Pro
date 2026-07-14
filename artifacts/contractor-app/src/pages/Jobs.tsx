@@ -1758,7 +1758,6 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                 <div className="rounded-xl border border-border/50 overflow-hidden">
                   <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50 flex items-center justify-between">
                     <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sub Payment Records</p>
-                    <Link href={`/jobs/${job.id}/payroll`} className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wide">Full Payroll Page →</Link>
                   </div>
                   <div className="divide-y divide-border/30">
                     {payments.map(p => {
@@ -1833,9 +1832,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <p className="text-sm text-muted-foreground">No subs assigned yet</p>
                 </div>
               )}
-              <button onClick={() => setSubHoursOpen(true)} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500 text-white font-bold text-sm hover:bg-amber-600 transition-colors shadow-sm">
+              <Link href={`/jobs/${job.id}/payroll`} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-amber-500 text-white font-bold text-sm hover:bg-amber-600 transition-colors shadow-sm">
                 <Timer className="w-4 h-4" /> Track Hours &amp; Manage Pay →
-              </button>
+              </Link>
             </div>
           )}
         </div>
