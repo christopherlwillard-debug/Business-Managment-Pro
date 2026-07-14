@@ -1521,7 +1521,10 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
       const advance   = advanceAmount ?? 0;
       paymentAmount = workPay + travelPay + bonus - advance;
     } else {
-      paymentAmount = parseFloat(String(req.body.amount ?? "0"));
+      // For fixed/allocation subs: client sends gross as `amount`, advances are deducted server-side
+      const grossAmount = parseFloat(String(req.body.amount ?? "0"));
+      const advance     = advanceAmount ?? 0;
+      paymentAmount = Math.max(0, grossAmount - advance);
     }
     if (paymentAmount <= 0) return res.status(400).json({ error: "No amount to pay" });
 
@@ -1572,14 +1575,6 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         ?? clientAgreedOwed
         ?? (compType === "fixed" ? parseFloat(subRow.fixedAmount ?? "0") : null);
 
-      // Accumulate — prevPaid is read inside the lock, safe from concurrent mutation
-      const prevPaid = subRow.amountPaid != null ? parseFloat(subRow.amountPaid) : 0;
-      const newAccumulated = prevPaid + paymentAmount;
-
-      // Status: "paid" if accumulated >= agreed owed
-      const newStatus: "paid" | "partial" =
-        agreedOwed != null && newAccumulated < agreedOwed - 0.005 ? "partial" : "paid";
-
       // paidAt = first payment date (set once); lastPaidAt = most recent
       const newPaidAt = subRow.paidAt ?? today;
 
@@ -1592,17 +1587,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
           ? clientAgreedOwed.toFixed(2)
           : undefined;
 
-      await tx.update(jobSubcontractorsTable).set({
-        paymentStatus: newStatus,
-        paidAt: newPaidAt,
-        lastPaidAt: today,
-        amountPaid: newAccumulated.toFixed(2),
-        ...(lockAmountOwed !== undefined ? { amountOwed: lockAmountOwed } : {}),
-      }).where(and(
-        eq(jobSubcontractorsTable.jobId, jobId),
-        eq(jobSubcontractorsTable.subcontractorId, subId),
-      ));
-
+      // 1. Insert the payment record first
       const [spr] = await tx.insert(subPaymentRecordsTable).values({
         jobId,
         subcontractorId: subId,
@@ -1622,12 +1607,13 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         ...(bonusNote   ? { bonusNote   } : {}),
         ...(advanceAmount != null && advanceAmount > 0 ? { advanceAmount: advanceAmount.toFixed(2) } : {}),
         ...(advanceNote  ? { advanceNote  } : {}),
-        ...(hasBreakdown ? { netPaid: paymentAmount.toFixed(2) } : {}),
-        ...(paymentMethod    ? { paymentMethod }                  : {}),
+        // netPaid stored whenever advance is involved or hourly breakdown exists
+        ...((hasBreakdown || (advanceAmount != null && advanceAmount > 0)) ? { netPaid: paymentAmount.toFixed(2) } : {}),
+        ...(paymentMethod    ? { paymentMethod }                    : {}),
         ...(paymentReference ? { referenceNumber: paymentReference } : {}),
       }).returning({ id: subPaymentRecordsTable.id });
 
-      // Mark selected advances as repaid — inside the transaction so it's atomic
+      // 2. Mark selected advances as repaid — inside the transaction so it's atomic
       if (advanceIds.length > 0) {
         await tx.update(subAdvancesTable)
           .set({ appliedPaymentId: spr.id, appliedAt: new Date() })
@@ -1638,6 +1624,34 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
             isNull(subAdvancesTable.appliedPaymentId),
           ));
       }
+
+      // 3. Compute accumulated from ledger SUM — authoritative, includes the just-inserted record
+      //    This prevents cached column drift regardless of reversals or manual corrections.
+      const [sumRow] = await tx
+        .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), '0')` })
+        .from(subPaymentRecordsTable)
+        .where(and(
+          eq(subPaymentRecordsTable.jobId, jobId),
+          eq(subPaymentRecordsTable.subcontractorId, subId),
+          sql`(${subPaymentRecordsTable.isReversal} IS NULL OR ${subPaymentRecordsTable.isReversal} = false)`,
+        ));
+      const newAccumulated = parseFloat(sumRow?.total ?? "0");
+
+      // 4. Status: "paid" if accumulated >= agreed owed
+      const newStatus: "paid" | "partial" =
+        agreedOwed != null && newAccumulated < agreedOwed - 0.005 ? "partial" : "paid";
+
+      // 5. Update cached columns — amount_paid is now derived from the ledger SUM
+      await tx.update(jobSubcontractorsTable).set({
+        paymentStatus: newStatus,
+        paidAt: newPaidAt,
+        lastPaidAt: today,
+        amountPaid: newAccumulated.toFixed(2),
+        ...(lockAmountOwed !== undefined ? { amountOwed: lockAmountOwed } : {}),
+      }).where(and(
+        eq(jobSubcontractorsTable.jobId, jobId),
+        eq(jobSubcontractorsTable.subcontractorId, subId),
+      ));
 
       txResult = { ok: true, paymentId: spr.id, amount: paymentAmount, accumulated: newAccumulated, status: newStatus };
     });
