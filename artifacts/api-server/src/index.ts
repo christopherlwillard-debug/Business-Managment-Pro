@@ -329,6 +329,9 @@ async function ensureSubAdvancesTable(): Promise<void> {
     await db.execute(sql`
       ALTER TABLE sub_advances ADD COLUMN IF NOT EXISTS applied_at TIMESTAMPTZ;
     `);
+    await db.execute(sql`
+      ALTER TABLE sub_advances ADD COLUMN IF NOT EXISTS expense_id INTEGER REFERENCES expenses(id) ON DELETE SET NULL;
+    `);
     console.log("[startup] sub_advances table ensured.");
   } catch (err) {
     console.error("[startup] ensureSubAdvancesTable failed (non-fatal):", err);

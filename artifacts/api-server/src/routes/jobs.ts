@@ -1547,13 +1547,42 @@ router.post("/:id/advances", async (req, res) => {
     const amt = parseFloat(String(amount));
     if (isNaN(subId) || isNaN(amt) || amt <= 0)
       return res.status(400).json({ error: "Invalid subcontractorId or amount" });
+
+    const descTrimmed = String(description).trim();
+    const dateStr = String(advanceDate);
+
+    // Look up sub name + job businessLine so the expense is properly tagged
+    const [[sub], [job]] = await Promise.all([
+      db.select({ name: subcontractorsTable.name }).from(subcontractorsTable).where(eq(subcontractorsTable.id, subId)),
+      db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId)),
+    ]);
+
     const [row] = await db.insert(subAdvancesTable).values({
       jobId, subcontractorId: subId,
       amount: amt.toFixed(2),
-      description: String(description).trim(),
-      advanceDate: String(advanceDate),
+      description: descTrimmed,
+      advanceDate: dateStr,
     }).returning();
-    res.json({ ...row, amount: parseFloat(row.amount) });
+
+    // Auto-create a matching expense entry so advances appear in the Expenses ledger
+    let expenseId: number | null = null;
+    if (sub) {
+      const [expense] = await db.insert(expensesTable).values({
+        description: `${sub.name} — Advance`,
+        amount: amt.toFixed(2),
+        category: "Subcontractor",
+        date: dateStr,
+        vendor: sub.name,
+        notes: descTrimmed,
+        jobId,
+        subcontractorId: subId,
+        businessLine: job?.businessLine ?? null,
+      }).returning({ id: expensesTable.id });
+      expenseId = expense.id;
+      await db.update(subAdvancesTable).set({ expenseId }).where(eq(subAdvancesTable.id, row.id));
+    }
+
+    res.json({ ...row, amount: parseFloat(row.amount), expenseId });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed to create advance" }); }
 });
 
@@ -1566,6 +1595,10 @@ router.delete("/:id/advances/:advId", async (req, res) => {
       .where(and(eq(subAdvancesTable.id, advId), eq(subAdvancesTable.jobId, jobId)));
     if (!row) return res.status(404).json({ error: "Advance not found" });
     if (row.appliedPaymentId != null) return res.status(400).json({ error: "Cannot delete an advance that has already been applied to a payment" });
+    // Delete the linked auto-expense first (deletion blocked once applied, so this is always safe)
+    if (row.expenseId != null) {
+      await db.delete(expensesTable).where(eq(expensesTable.id, row.expenseId));
+    }
     await db.delete(subAdvancesTable).where(eq(subAdvancesTable.id, advId));
     res.json({ ok: true });
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed to delete advance" }); }
