@@ -332,14 +332,17 @@ async function fixDewayneAmountPaid(): Promise<void> {
       console.log("[startup] fixDewayneAmountPaid: sub not found — skipped.");
       return;
     }
-    if (current >= 889.99) {
-      console.log("[startup] fixDewayneAmountPaid: already correct — skipped.");
+    // Only fix the one specific bad value (100.00) that resulted from the drift bug.
+    // Any other value means either already fixed or a legitimate payment was recorded — leave it alone.
+    const isBadValue = Math.abs(current - 100.0) < 0.005;
+    if (!isBadValue) {
+      console.log(`[startup] fixDewayneAmountPaid: amount_paid=${current} — not the expected bad value, skipped.`);
       return;
     }
     await db.execute(sql`
       UPDATE job_subcontractors
       SET amount_paid = 890.00, payment_status = 'partial'
-      WHERE job_id = 42 AND subcontractor_id = 6
+      WHERE job_id = 42 AND subcontractor_id = 6 AND ABS(amount_paid - 100.00) < 0.005
     `);
     console.log("[startup] fixDewayneAmountPaid: set amount_paid=890.00, payment_status=partial.");
   } catch (err) {
