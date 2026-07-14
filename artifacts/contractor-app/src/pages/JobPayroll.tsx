@@ -362,39 +362,39 @@ function WorkerPayCard({
             <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-3">Earnings</p>
             {isHourly ? (
               <div className="space-y-3">
-                {/* Read-only work hours from tracker */}
+                {/* Editable work hours + rate */}
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="py-2.5 px-3 bg-muted/20 rounded-xl">
-                    <p className="text-[10px] text-muted-foreground mb-0.5">Work Hours</p>
-                    <p className="text-sm font-bold text-foreground">
-                      {(parseFloat(workHours) || 0) > 0 ? `${parseFloat(workHours).toFixed(2)} hrs` : <span className="text-muted-foreground/50">—</span>}
-                    </p>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Work Hours</label>
+                    <input type="number" value={workHours} onChange={e => setWorkHours(e.target.value)}
+                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      placeholder="0.0" step="0.25" min="0" />
                   </div>
-                  <div className="py-2.5 px-3 bg-muted/20 rounded-xl">
-                    <p className="text-[10px] text-muted-foreground mb-0.5">Rate $/hr</p>
-                    <p className="text-sm font-bold text-foreground">
-                      {(parseFloat(workRate) || 0) > 0 ? `$${fmt(parseFloat(workRate))}` : <span className="text-muted-foreground/50">—</span>}
-                    </p>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Rate $/hr</label>
+                    <input type="number" value={workRate} onChange={e => setWorkRate(e.target.value)}
+                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      placeholder="0.00" step="0.01" min="0" />
                   </div>
                 </div>
                 {workPay > 0 && <p className="text-xs font-medium text-blue-600">Work pay: ${fmt(workPay)}</p>}
 
-                {/* Read-only travel hours from tracker — only shown when logged */}
-                {(parseFloat(travelHours) || 0) > 0 && (
-                  <>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="py-2.5 px-3 bg-muted/20 rounded-xl">
-                        <p className="text-[10px] text-muted-foreground mb-0.5">Travel Hours</p>
-                        <p className="text-sm font-bold text-foreground">{parseFloat(travelHours).toFixed(2)} hrs</p>
-                      </div>
-                      <div className="py-2.5 px-3 bg-muted/20 rounded-xl">
-                        <p className="text-[10px] text-muted-foreground mb-0.5">Travel Rate $/hr</p>
-                        <p className="text-sm font-bold text-foreground">${fmt(parseFloat(travelRate) || 0)}</p>
-                      </div>
-                    </div>
-                    {travelPay > 0 && <p className="text-xs font-medium text-blue-600">Travel pay: ${fmt(travelPay)}</p>}
-                  </>
-                )}
+                {/* Editable travel hours + rate */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Travel Hours <span className="opacity-50">(opt)</span></label>
+                    <input type="number" value={travelHours} onChange={e => setTravelHours(e.target.value)}
+                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      placeholder="0.0" step="0.25" min="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Travel Rate $/hr <span className="opacity-50">(opt)</span></label>
+                    <input type="number" value={travelRate} onChange={e => setTravelRate(e.target.value)}
+                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      placeholder="0.00" step="0.01" min="0" />
+                  </div>
+                </div>
+                {travelPay > 0 && <p className="text-xs font-medium text-blue-600">Travel pay: ${fmt(travelPay)}</p>}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
