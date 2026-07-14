@@ -8,6 +8,7 @@ import {
   jobChecklistItemPartsTable,
   jobChecklistItemPhotosTable,
   jobStartPhotosTable,
+  jobFinishedPhotosTable,
   jobChecklistStatusLogTable,
   jobChecklistSectionNotesTable,
   jobsTable,
@@ -159,7 +160,7 @@ router.get("/status/:token", async (req, res) => {
     const allItemIds = items.map(i => i.id);
     const activeSectionIds = activeSections.map(s => s.id);
 
-    const [parts, photos, startPhotos, sectionNoteRows, delayLog] = await Promise.all([
+    const [parts, photos, startPhotos, finishedPhotos, sectionNoteRows, delayLog] = await Promise.all([
       allItemIds.length > 0
         ? db.select().from(jobChecklistItemPartsTable)
             .where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, allItemIds))
@@ -178,6 +179,10 @@ router.get("/status/:token", async (req, res) => {
         .from(jobStartPhotosTable)
         .where(eq(jobStartPhotosTable.jobChecklistId, row.checklist.id))
         .orderBy(asc(jobStartPhotosTable.createdAt)),
+      db.select({ id: jobFinishedPhotosTable.id, createdAt: jobFinishedPhotosTable.createdAt })
+        .from(jobFinishedPhotosTable)
+        .where(eq(jobFinishedPhotosTable.jobChecklistId, row.checklist.id))
+        .orderBy(asc(jobFinishedPhotosTable.createdAt)),
       activeSectionIds.length > 0
         ? db.select()
             .from(jobChecklistSectionNotesTable)
@@ -253,6 +258,8 @@ router.get("/status/:token", async (req, res) => {
       completedItems: completedCount,
       startPhotos: startPhotos.map(p => ({ id: p.id, createdAt: p.createdAt })),
       startNotes: row.checklist.startNotes || null,
+      finishedPhotos: finishedPhotos.map(p => ({ id: p.id, createdAt: p.createdAt })),
+      finishedNotes: row.checklist.finishedNotes || null,
       delayLog: delayLog.map(d => ({
         id: d.id,
         status: d.status,
@@ -325,6 +332,45 @@ router.get("/checklist-photos/:photoId", async (req, res) => {
       .innerJoin(jobChecklistItemsTable, eq(jobChecklistItemPhotosTable.jobChecklistItemId, jobChecklistItemsTable.id))
       .innerJoin(jobChecklistsTable, eq(jobChecklistItemsTable.jobChecklistId, jobChecklistsTable.id))
       .where(eq(jobChecklistItemPhotosTable.id, photoId));
+
+    if (!photo) return res.status(404).json({ error: "Photo not found" });
+    if (!photo.checklistShareEnabled) return res.status(403).json({ error: "Checklist not publicly shared" });
+
+    const objectFile = await objStorage.getObjectEntityFile(photo.objectPath);
+    const response = await objStorage.downloadObject(objectFile, 3600);
+
+    res.status(response.status);
+    response.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== "cache-control") res.setHeader(key, value);
+    });
+    res.setHeader("Cache-Control", "public, max-age=3600");
+
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as any);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (err) {
+    if (err instanceof ObjectNotFoundError) return res.status(404).json({ error: "Photo not found" });
+    console.error(err);
+    res.status(500).json({ error: "Failed to serve photo" });
+  }
+});
+
+router.get("/finished-photos/:photoId", async (req, res) => {
+  try {
+    const photoId = parseInt(req.params.photoId);
+    if (isNaN(photoId)) return res.status(400).json({ error: "Invalid photo ID" });
+
+    const [photo] = await db
+      .select({
+        objectPath: jobFinishedPhotosTable.objectPath,
+        checklistShareEnabled: jobChecklistsTable.shareEnabled,
+      })
+      .from(jobFinishedPhotosTable)
+      .innerJoin(jobChecklistsTable, eq(jobFinishedPhotosTable.jobChecklistId, jobChecklistsTable.id))
+      .where(eq(jobFinishedPhotosTable.id, photoId));
 
     if (!photo) return res.status(404).json({ error: "Photo not found" });
     if (!photo.checklistShareEnabled) return res.status(403).json({ error: "Checklist not publicly shared" });

@@ -68,6 +68,8 @@ type StatusData = {
   logoUrl: string | null;
   startPhotos: { id: number; createdAt: string | null }[];
   startNotes: string | null;
+  finishedPhotos: { id: number; createdAt: string | null }[];
+  finishedNotes: string | null;
   delayLog: DelayLogEntry[];
   sections: StatusSection[];
 };
@@ -469,6 +471,41 @@ export default function JobStatusPage() {
                       >
                         <img
                           src={`${BASE}/api/public/start-photos/${photo.id}`}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                      {photo.createdAt && (
+                        <span className="text-[9px] text-slate-400 text-center w-20">{formatDateTime(photo.createdAt)}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Finished photos */}
+      {data && (data.finishedPhotos?.length > 0 || data.finishedNotes) && (
+        <div className="px-4 pt-4">
+          <div className="max-w-lg mx-auto">
+            <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Finished Photos</p>
+              {data.finishedNotes && (
+                <p className="text-sm text-slate-700 leading-relaxed mb-3">{data.finishedNotes}</p>
+              )}
+              {data.finishedPhotos?.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {data.finishedPhotos.map(photo => (
+                    <div key={photo.id} className="flex flex-col items-center gap-0.5">
+                      <button
+                        onClick={() => setLightbox(`${BASE}/api/public/finished-photos/${photo.id}`)}
+                        className="w-20 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0"
+                      >
+                        <img
+                          src={`${BASE}/api/public/finished-photos/${photo.id}`}
                           alt=""
                           className="w-full h-full object-cover"
                         />
