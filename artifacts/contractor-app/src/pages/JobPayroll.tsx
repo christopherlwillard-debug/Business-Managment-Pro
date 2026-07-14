@@ -128,7 +128,7 @@ function WorkerPayCard({
   const [paymentMethod,    setPaymentMethod]    = useState("");
   const [paymentReference, setPaymentReference] = useState("");
 
-  // Hourly form
+  // Hourly form — initialized from props; synced via effects so onRefresh() updates unlock the payment button
   const [workHours,   setWorkHours]   = useState(() => {
     const wh = p.totalWorkHours ?? 0;
     return wh > 0 ? wh.toFixed(2) : p.totalHours > 0 ? p.totalHours.toFixed(2) : "";
@@ -139,6 +139,16 @@ function WorkerPayCard({
     return th > 0 ? th.toFixed(2) : "";
   });
   const [travelRate,  setTravelRate]  = useState(() => String(p.travelRate ?? p.travelPayRate ?? ""));
+
+  // Sync read-only hours from refreshed props (so "Review & Record" unlocks after inline log)
+  useEffect(() => {
+    const wh = p.totalWorkHours ?? 0;
+    setWorkHours(wh > 0 ? wh.toFixed(2) : p.totalHours > 0 ? p.totalHours.toFixed(2) : "");
+  }, [p.totalWorkHours, p.totalHours]);
+  useEffect(() => {
+    const th = p.totalTravelHours ?? 0;
+    setTravelHours(th > 0 ? th.toFixed(2) : "");
+  }, [p.totalTravelHours]);
   const [bonus,       setBonus]       = useState("");
   const [bonusNote,   setBonusNote]   = useState("");
 
