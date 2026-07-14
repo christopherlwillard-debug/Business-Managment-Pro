@@ -11,7 +11,7 @@ import {
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
   Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2,
-  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy, ClipboardList, BookOpen, Package,
+  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy, ClipboardList, BookOpen, Package, TrendingUp,
 } from "lucide-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
@@ -59,6 +59,7 @@ const TABS = [
   { key: "profile", label: "Business", icon: Building2 },
   { key: "invoice", label: "Invoice Defaults", icon: FileText },
   { key: "financial", label: "Financial", icon: DollarSign },
+  { key: "pl", label: "P&L Layout", icon: TrendingUp },
   { key: "production", label: "Production Billing", icon: Package },
   { key: "mileage", label: "Mileage", icon: Navigation },
   { key: "modules", label: "Modules", icon: Settings2 },
@@ -1447,7 +1448,12 @@ export default function Settings() {
     invoiceReminderDay2: "14",
     // tax filing preference
     taxFilingFrequency: "quarterly",
+    // P&L layout
+    ownerSplitPct: "50",
+    taxReservePct: "25",
+    growthReservePct: "5",
   });
+  const [plStepOrder, setPlStepOrder] = useState<string[]>(["growth", "labor", "expenses"]);
   const [smtpPass, setSmtpPass] = useState("");
   const [smtpConfigured, setSmtpConfigured] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("unsupported");
@@ -1494,7 +1500,13 @@ export default function Settings() {
         invoiceReminderDay1: String(s.invoiceReminderDay1 ?? 7),
         invoiceReminderDay2: String(s.invoiceReminderDay2 ?? 14),
         taxFilingFrequency: (s.taxFilingFrequency as string | undefined) ?? "quarterly",
+        ownerSplitPct: (s as any).ownerSplitPct != null ? String((s as any).ownerSplitPct) : "50",
+        taxReservePct: (s as any).taxReservePct != null ? String((s as any).taxReservePct) : "25",
+        growthReservePct: (s as any).growthReservePct != null ? String((s as any).growthReservePct) : "5",
       });
+      if ((s as any).plStepOrder) {
+        try { setPlStepOrder(JSON.parse(String((s as any).plStepOrder))); } catch {}
+      }
       setLogoUrl(s.logoUrl ?? null);
       setSignatureUrl((s as any).signatureImage ?? null);
       const feat: Record<string, boolean> = {};
@@ -1550,8 +1562,11 @@ export default function Settings() {
           invoiceReminderDay1: parseInt(form.invoiceReminderDay1) || 7,
           invoiceReminderDay2: parseInt(form.invoiceReminderDay2) || 14,
           taxFilingFrequency: form.taxFilingFrequency || "quarterly",
-
-        } as Partial<AppSettings>,
+          ownerSplitPct: parseFloat(form.ownerSplitPct) || 50,
+          taxReservePct: parseFloat(form.taxReservePct) || 0,
+          growthReservePct: parseFloat(form.growthReservePct) || 0,
+          plStepOrder: JSON.stringify(plStepOrder),
+        } as any,
       });
       queryClient.invalidateQueries();
       setSuccess(true);
@@ -2103,6 +2118,152 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* ── P&L Layout ── */}
+        {activeTab === "pl" && (
+          <div className="space-y-5">
+            {/* Percentages card */}
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" /> Pay Percentages
+                </CardTitle>
+                <CardDescription>Configure how job revenue is divided on the payroll page.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                {/* Growth Reserve % */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Growth Reserve %</label>
+                  <p className="text-xs text-muted-foreground">Percentage of revenue set aside for business reinvestment before the owner/sub split.</p>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={0}
+                      max={50}
+                      step={0.5}
+                      value={form.growthReservePct}
+                      onChange={e => setF("growthReservePct", e.target.value)}
+                      className={inp + " w-24"}
+                    />
+                    <span className="text-sm text-muted-foreground">{form.growthReservePct || "0"}% of gross revenue</span>
+                  </div>
+                </div>
+
+                {/* Owner Split % */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Your Split %</label>
+                  <p className="text-xs text-muted-foreground">Your share of the split pool after growth reserve and all job costs.</p>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="range"
+                      min={10}
+                      max={100}
+                      step={5}
+                      value={form.ownerSplitPct}
+                      onChange={e => setF("ownerSplitPct", e.target.value)}
+                      className="flex-1"
+                    />
+                    <span className="text-sm font-bold text-blue-600 w-12 text-right">{form.ownerSplitPct}%</span>
+                  </div>
+                </div>
+
+                {/* Tax Reserve % */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Tax Reserve %</label>
+                  <p className="text-xs text-muted-foreground">Percentage of your share withheld as a self-employment tax reserve.</p>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="range"
+                      min={0}
+                      max={40}
+                      step={1}
+                      value={form.taxReservePct}
+                      onChange={e => setF("taxReservePct", e.target.value)}
+                      className="flex-1"
+                    />
+                    <span className="text-sm font-bold text-red-500 w-12 text-right">{form.taxReservePct}%</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Step reorder card */}
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" /> P&L Waterfall Order
+                </CardTitle>
+                <CardDescription>Choose the order deductions appear in the job payroll breakdown. Revenue is always first; Your Take-Home is always last.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-3">
+                {/* Fixed: Revenue */}
+                <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/20 border border-border/40 opacity-50">
+                  <span className="text-xs font-bold text-muted-foreground w-5 text-center">—</span>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Revenue</p>
+                    <p className="text-xs text-muted-foreground">Always first</p>
+                  </div>
+                </div>
+
+                {/* Reorderable steps */}
+                {plStepOrder.map((key, idx) => {
+                  const stepMeta: Record<string, { label: string; desc: string }> = {
+                    growth:   { label: "Growth Reserve", desc: `${form.growthReservePct || "0"}% of revenue` },
+                    labor:    { label: "Sub Labor",       desc: "Subcontractor pay (hourly + fixed)" },
+                    expenses: { label: "Materials & Expenses", desc: "Material costs and other job expenses" },
+                  };
+                  const step = stepMeta[key];
+                  if (!step) return null;
+                  const canUp   = idx > 0;
+                  const canDown = idx < plStepOrder.length - 1;
+                  const move = (dir: -1 | 1) => {
+                    const next = [...plStepOrder];
+                    [next[idx], next[idx + dir]] = [next[idx + dir], next[idx]];
+                    setPlStepOrder(next);
+                  };
+                  return (
+                    <div key={key} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white border border-border/70 shadow-sm">
+                      <span className="text-sm font-bold text-muted-foreground/50 w-5 text-center">{idx + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground">{step.label}</p>
+                        <p className="text-xs text-muted-foreground">{step.desc}</p>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => canUp && move(-1)}
+                          disabled={!canUp}
+                          className={`p-1 rounded-lg transition-colors ${canUp ? "hover:bg-muted text-foreground" : "text-muted-foreground/25 cursor-not-allowed"}`}
+                        >
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => canDown && move(1)}
+                          disabled={!canDown}
+                          className={`p-1 rounded-lg transition-colors ${canDown ? "hover:bg-muted text-foreground" : "text-muted-foreground/25 cursor-not-allowed"}`}
+                        >
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Fixed: Take-Home */}
+                <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/20 border border-border/40 opacity-50">
+                  <span className="text-xs font-bold text-muted-foreground w-5 text-center">—</span>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Your Take-Home</p>
+                    <p className="text-xs text-muted-foreground">Always last (after split &amp; tax reserve)</p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground pt-1">Use the arrows to reorder, then click <strong>Save</strong> at the bottom.</p>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {/* ── Mileage ── */}

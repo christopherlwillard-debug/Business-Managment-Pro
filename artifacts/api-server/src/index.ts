@@ -297,6 +297,21 @@ async function fixInvoice1036Sequence(): Promise<void> {
   }
 }
 
+async function ensurePlLayoutColumns(): Promise<void> {
+  try {
+    await db.execute(sql`
+      ALTER TABLE settings
+        ADD COLUMN IF NOT EXISTS owner_split_pct   NUMERIC(5,2),
+        ADD COLUMN IF NOT EXISTS tax_reserve_pct   NUMERIC(5,2),
+        ADD COLUMN IF NOT EXISTS growth_reserve_pct NUMERIC(5,2),
+        ADD COLUMN IF NOT EXISTS pl_step_order     TEXT;
+    `);
+    console.log("[startup] P&L layout columns ensured.");
+  } catch (err) {
+    console.error("[startup] ensurePlLayoutColumns failed (non-fatal):", err);
+  }
+}
+
 async function ensureSubAdvancesTable(): Promise<void> {
   try {
     await db.execute(sql`
@@ -351,6 +366,7 @@ async function fixDewayneAmountPaid(): Promise<void> {
 }
 
 async function start() {
+  await ensurePlLayoutColumns();
   await ensureInvoiceLifecycleColumns();
   await ensureJobsManHours();
   await ensureSubPayDualRateColumns();

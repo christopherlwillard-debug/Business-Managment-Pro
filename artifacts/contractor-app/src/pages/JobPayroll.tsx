@@ -545,9 +545,11 @@ export default function JobPayroll() {
   const [advances, setAdvances] = useState<SubAdvance[]>([]);
   const [loading,  setLoading]  = useState(true);
 
-  const [ownerSplitPct, setOwnerSplitPct] = useState(50);
-  const [taxReservePct, setTaxReservePct] = useState(25);
-  const [recordingDraw, setRecordingDraw] = useState(false);
+  const [ownerSplitPct,   setOwnerSplitPct]   = useState(50);
+  const [taxReservePct,   setTaxReservePct]   = useState(25);
+  const [growthReservePct, setGrowthReservePct] = useState(5);
+  const [plStepOrder,     setPlStepOrder]     = useState<string[]>(["growth", "labor", "expenses"]);
+  const [recordingDraw,   setRecordingDraw]   = useState(false);
 
   const normaliseAdvances = (rows: unknown[]) =>
     (rows as SubAdvance[]).map(a => ({
@@ -581,8 +583,12 @@ export default function JobPayroll() {
       if (advRes.status     === "fulfilled")                     setAdvances(normaliseAdvances(advRes.value as unknown[]));
       if (settingsRes.status === "fulfilled" && settingsRes.value) {
         const s = settingsRes.value as Record<string, unknown>;
-        if (s.ownerSplitPct != null) setOwnerSplitPct(parseFloat(String(s.ownerSplitPct)));
-        if (s.taxReservePct != null) setTaxReservePct(parseFloat(String(s.taxReservePct)));
+        if (s.ownerSplitPct != null)    setOwnerSplitPct(parseFloat(String(s.ownerSplitPct)));
+        if (s.taxReservePct != null)    setTaxReservePct(parseFloat(String(s.taxReservePct)));
+        if (s.growthReservePct != null) setGrowthReservePct(parseFloat(String(s.growthReservePct)));
+        if (s.plStepOrder) {
+          try { setPlStepOrder(JSON.parse(String(s.plStepOrder))); } catch {}
+        }
       }
       setLoading(false);
     };
@@ -597,14 +603,15 @@ export default function JobPayroll() {
     );
   }
 
-  const revenue       = profit?.revenue       ?? 0;
-  const subLaborCost  = profit?.subLaborCost  ?? 0;
-  const materialCost  = profit?.materialCost  ?? 0;
-  const otherCost     = profit?.otherCost     ?? 0;
-  const toSplit       = Math.max(0, revenue - subLaborCost - materialCost - otherCost);
-  const ownerShare    = toSplit * (ownerSplitPct / 100);
-  const taxReserve    = ownerShare * (taxReservePct / 100);
-  const ownerTakeHome = ownerShare - taxReserve;
+  const revenue        = profit?.revenue       ?? 0;
+  const subLaborCost   = profit?.subLaborCost  ?? 0;
+  const materialCost   = profit?.materialCost  ?? 0;
+  const otherCost      = profit?.otherCost     ?? 0;
+  const growthReserve  = revenue * (growthReservePct / 100);
+  const toSplit        = Math.max(0, revenue - growthReserve - subLaborCost - materialCost - otherCost);
+  const ownerShare     = toSplit * (ownerSplitPct / 100);
+  const taxReserve     = ownerShare * (taxReservePct / 100);
+  const ownerTakeHome  = ownerShare - taxReserve;
 
   async function handleOwnerDraw() {
     if (ownerTakeHome <= 0.01) return;
@@ -645,25 +652,58 @@ export default function JobPayroll() {
       ) : (
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-5 pb-24">
 
-          {/* ── Job Summary ── */}
+          {/* ── Job Summary (P&L Waterfall) ── */}
           {profit != null && (
             <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
-              <div className="px-5 py-4 grid grid-cols-3 divide-x divide-border/50">
-                <div className="pr-4">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Revenue</p>
-                  <p className="text-lg font-black text-foreground">${fmt(revenue)}</p>
+              {/* Revenue header */}
+              <div className="px-5 py-4 flex items-center justify-between border-b border-border/40">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-0.5">Revenue</p>
+                  <p className="text-2xl font-black text-foreground">${fmt(revenue)}</p>
                 </div>
-                <div className="px-4">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Sub Labor</p>
-                  <p className="text-lg font-black text-foreground">${fmt(subLaborCost)}</p>
-                </div>
-                <div className="pl-4">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Net Profit</p>
+                <div className="text-right">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-0.5">Net Profit</p>
                   <p className="text-lg font-black text-foreground">${fmt(profit.netProfit ?? 0)}</p>
                 </div>
               </div>
+
+              {/* Configurable deduction steps */}
+              <div className="divide-y divide-border/30">
+                {(() => {
+                  const stepDefs: Record<string, { label: string; amount: number }> = {
+                    growth:   { label: `Growth Reserve (${growthReservePct}%)`, amount: growthReserve },
+                    labor:    { label: "Sub Labor",                              amount: subLaborCost },
+                    expenses: { label: "Materials & Expenses",                   amount: materialCost + otherCost },
+                  };
+                  let running = revenue;
+                  const rows: React.ReactNode[] = [];
+                  plStepOrder.forEach(key => {
+                    const step = stepDefs[key];
+                    if (!step) return;
+                    running = Math.max(0, running - step.amount);
+                    if (step.amount < 0.005) return;
+                    rows.push(
+                      <div key={key} className="px-5 py-2.5 flex items-center justify-between text-sm bg-muted/5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-red-400 text-xs font-mono flex-shrink-0">−</span>
+                          <span className="text-muted-foreground truncate">{step.label}</span>
+                          <span className="text-xs font-semibold text-red-500 flex-shrink-0">${fmt(step.amount)}</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground/50 flex-shrink-0 ml-3">→ ${fmt(running)}</span>
+                      </div>
+                    );
+                  });
+                  return rows;
+                })()}
+              </div>
+
+              {/* Split pool + Owner share + Tax + Take-Home */}
               {ownerShare > 0 && (
-                <div className="border-t border-border/50 px-5 py-3 space-y-1.5">
+                <div className="border-t border-border/50 px-5 py-3 space-y-1.5 bg-blue-50/30">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="font-semibold">Split Pool</span>
+                    <span className="font-bold text-foreground">${fmt(toSplit)}</span>
+                  </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Your Share ({ownerSplitPct}%)</span>
                     <span className="font-bold text-foreground">${fmt(ownerShare)}</span>
@@ -674,7 +714,7 @@ export default function JobPayroll() {
                       <span className="font-bold text-red-500">−${fmt(taxReserve)}</span>
                     </div>
                   )}
-                  <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                  <div className="flex items-center justify-between pt-1.5 border-t border-border/50">
                     <span className="text-sm font-bold text-emerald-800">Your Take-Home</span>
                     <span className="text-xl font-black text-emerald-700">${fmt(ownerTakeHome)}</span>
                   </div>

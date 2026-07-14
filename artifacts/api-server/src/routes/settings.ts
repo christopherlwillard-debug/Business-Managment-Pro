@@ -246,6 +246,11 @@ const DEFAULT_SETTINGS = {
   complianceNotificationEmail: null,
   complianceEmailEnabled: 1,
   taxFilingFrequency: "quarterly",
+  // P&L layout defaults
+  ownerSplitPct: "50",
+  taxReservePct: "25",
+  growthReservePct: "5",
+  plStepOrder: '["growth","labor","expenses"]',
   calculatorDefaults: {
     plumbing: { baseCharge: 1000, dropRate: 125 },
     flooring: {
@@ -308,6 +313,11 @@ function format(s: any) {
     invoiceReminderDay2: s.invoiceReminderDay2 ?? 14,
     calculatorDefaults: s.calculatorDefaults ?? null,
     quickLinks: Array.isArray(s.quickLinks) ? s.quickLinks : [],
+    // P&L layout
+    ownerSplitPct: s.ownerSplitPct != null ? parseFloat(String(s.ownerSplitPct)) : 50,
+    taxReservePct: s.taxReservePct != null ? parseFloat(String(s.taxReservePct)) : 25,
+    growthReservePct: s.growthReservePct != null ? parseFloat(String(s.growthReservePct)) : 5,
+    plStepOrder: s.plStepOrder ?? '["growth","labor","expenses"]',
   };
 }
 
@@ -455,6 +465,11 @@ router.put("/", async (req, res) => {
       quickLinks: body.quickLinks !== undefined
         ? (Array.isArray(body.quickLinks) ? body.quickLinks : null)
         : (settings?.quickLinks ?? null),
+      // P&L layout
+      ownerSplitPct: body.ownerSplitPct != null ? String(parseFloat(body.ownerSplitPct)) : settings?.ownerSplitPct,
+      taxReservePct: body.taxReservePct != null ? String(parseFloat(body.taxReservePct)) : settings?.taxReservePct,
+      growthReservePct: body.growthReservePct != null ? String(parseFloat(body.growthReservePct)) : settings?.growthReservePct,
+      plStepOrder: body.plStepOrder !== undefined ? body.plStepOrder : settings?.plStepOrder,
       updatedAt: new Date(),
     };
 

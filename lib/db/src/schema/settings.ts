@@ -53,6 +53,11 @@ export const settingsTable = pgTable("settings", {
   quickLinks: jsonb("quick_links"),
   // Company signature image — stored as object storage path; embedded in exported PDFs
   signatureImage: text("signature_image"),
+  // P&L layout: owner split %, tax reserve %, growth reserve %, and step order
+  ownerSplitPct: numeric("owner_split_pct", { precision: 5, scale: 2 }),
+  taxReservePct: numeric("tax_reserve_pct", { precision: 5, scale: 2 }),
+  growthReservePct: numeric("growth_reserve_pct", { precision: 5, scale: 2 }),
+  plStepOrder: text("pl_step_order"),
   // Team access
   ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
