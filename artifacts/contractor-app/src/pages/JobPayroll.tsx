@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
-import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
@@ -168,6 +168,7 @@ function WorkerPayCard({
   const [historyOpen,    setHistoryOpen]    = useState(false);
   const [paying,         setPaying]         = useState(false);
   const [deletingPayId,  setDeletingPayId]  = useState<number | null>(null);
+  const [reviewOpen,     setReviewOpen]     = useState(false);
 
   const history = p.paymentHistory ?? [];
 
@@ -255,6 +256,7 @@ function WorkerPayCard({
       });
       if (!r.ok) throw new Error();
       await onRefresh();
+      setReviewOpen(false);
       toast({ title: "Payment recorded", description: `${p.subName ?? "Sub"}: $${fmt(netToPay)} paid` });
     } catch { toast({ title: "Failed to record payment", variant: "destructive" }); }
     finally { setPaying(false); }
@@ -510,11 +512,11 @@ function WorkerPayCard({
               </div>
             ) : (
               <button
-                onClick={handlePay}
-                disabled={paying || netToPay <= 0}
+                onClick={() => setReviewOpen(true)}
+                disabled={netToPay <= 0}
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted text-white font-bold rounded-2xl text-base transition-colors disabled:opacity-50 shadow-sm"
               >
-                {paying ? "Recording…" : `Record Payment — $${fmt(netToPay)}`}
+                Review &amp; Record — ${fmt(netToPay)}
               </button>
             )}
           </div>
@@ -568,6 +570,194 @@ function WorkerPayCard({
               ))}
             </div>
           )}
+        </>
+      )}
+
+      {/* ── Review & Record Sheet ── */}
+      {reviewOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/40 z-40"
+            onClick={() => { if (!paying) setReviewOpen(false); }}
+          />
+          {/* Bottom Sheet */}
+          <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[90dvh] overflow-y-auto">
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full bg-border" />
+            </div>
+
+            {/* Header */}
+            <div className="flex items-start justify-between px-5 pt-3 pb-4 border-b border-border/50">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Review Payment</p>
+                <p className="text-lg font-bold text-foreground mt-0.5">{p.subName ?? "Sub"}</p>
+              </div>
+              <button
+                onClick={() => { if (!paying) setReviewOpen(false); }}
+                className="p-2 rounded-xl text-muted-foreground hover:bg-muted/20 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Breakdown — read-only */}
+            <div className="px-5 pt-4 pb-3 space-y-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Breakdown</p>
+
+              {isHourly ? (
+                <>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Work — {parseFloat(workHours).toFixed(2)} hrs @ ${fmt(parseFloat(workRate) || 0)}/hr
+                    </span>
+                    <span className="font-semibold text-foreground">${fmt(workPay)}</span>
+                  </div>
+                  {(parseFloat(travelHours) || 0) > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        Travel — {parseFloat(travelHours).toFixed(2)} hrs @ ${fmt(parseFloat(travelRate) || 0)}/hr
+                      </span>
+                      <span className="font-semibold text-foreground">${fmt(travelPay)}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    {isPartial ? "Partial payment" : "Payment amount"}
+                  </span>
+                  <span className="font-semibold text-foreground">${fmt(parseFloat(simpleAmount) || 0)}</span>
+                </div>
+              )}
+
+              {checkedOutstanding.length > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-amber-600">
+                    Advance deduction ({checkedOutstanding.length})
+                  </span>
+                  <span className="font-semibold text-amber-600">−${fmt(totalOutstanding)}</span>
+                </div>
+              )}
+
+              {/* Gross subtotal for hourly when there are deductions */}
+              {isHourly && grossPay > 0 && totalOutstanding > 0 && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border/40 pt-2">
+                  <span>Gross</span>
+                  <span>${fmt(grossPay)}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="h-px bg-border/50 mx-5" />
+
+            {/* Editable: Bonus (hourly only) */}
+            {isHourly && (
+              <>
+                <div className="px-5 pt-4 pb-3 space-y-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Bonus</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Amount <span className="opacity-50">(opt)</span></label>
+                      <input
+                        type="number"
+                        value={bonus}
+                        onChange={e => setBonus(e.target.value)}
+                        className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">Note</label>
+                      <input
+                        type="text"
+                        value={bonusNote}
+                        onChange={e => setBonusNote(e.target.value)}
+                        className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        placeholder="reason..."
+                      />
+                    </div>
+                  </div>
+                  {bonusAmt > 0 && (
+                    <p className="text-xs font-medium text-emerald-600">Bonus: +${fmt(bonusAmt)}</p>
+                  )}
+                </div>
+                <div className="h-px bg-border/50 mx-5" />
+              </>
+            )}
+
+            {/* Editable: Payment method & reference */}
+            <div className="px-5 pt-4 pb-3 space-y-3">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Payment Info</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Method</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={e => setPaymentMethod(e.target.value)}
+                    className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    <option value="">Select…</option>
+                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Reference # <span className="opacity-50">(opt)</span></label>
+                  <input
+                    type="text"
+                    value={paymentReference}
+                    onChange={e => setPaymentReference(e.target.value)}
+                    className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    placeholder="Transaction ID…"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="h-px bg-border/50 mx-5" />
+
+            {/* Net to Pay + Confirm */}
+            <div className="px-5 pt-4 pb-8">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <p className="text-sm text-muted-foreground">Net to Pay</p>
+                  {totalOutstanding > 0 && (
+                    <p className="text-xs text-amber-600 mt-0.5">
+                      ${fmt(grossPay)} − ${fmt(totalOutstanding)} advances
+                    </p>
+                  )}
+                </div>
+                <p className="text-4xl font-black text-foreground">${fmt(netToPay)}</p>
+              </div>
+
+              <button
+                onClick={handlePay}
+                disabled={paying || netToPay <= 0}
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted text-white font-bold rounded-2xl text-base transition-colors disabled:opacity-50 shadow-sm flex items-center justify-center gap-2"
+              >
+                {paying ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                    Recording…
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-5 h-5" />
+                    Confirm &amp; Record — ${fmt(netToPay)}
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => setReviewOpen(false)}
+                disabled={paying}
+                className="w-full mt-3 py-3 border border-border rounded-2xl text-sm font-semibold text-muted-foreground hover:bg-muted/20 transition-colors disabled:opacity-50"
+              >
+                Go Back &amp; Edit
+              </button>
+            </div>
+          </div>
         </>
       )}
     </div>
