@@ -176,7 +176,7 @@ function WorkerPayCard({
   const [advDate,     setAdvDate]     = useState(() => new Date().toISOString().split("T")[0]);
   const [savingAdv,   setSavingAdv]   = useState(false);
 
-  const [historyOpen,    setHistoryOpen]    = useState(false);
+  const [historyOpen,    setHistoryOpen]    = useState(() => (p.paymentHistory?.length ?? 0) > 0);
   const [paying,         setPaying]         = useState(false);
   const [deletingPayId,  setDeletingPayId]  = useState<number | null>(null);
 

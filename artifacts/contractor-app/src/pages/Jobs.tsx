@@ -1175,6 +1175,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const [profit, setProfit] = useState<JobProfit | null>(initialProfit ?? null);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [loading, setLoading] = useState(!initialProfit);
+  const [deletingPayId, setDeletingPayId] = useState<number | null>(null);
 
   const [ownerSplitPct, setOwnerSplitPct] = useState(50);
   const [taxReservePct, setTaxReservePct] = useState(25);
@@ -1206,6 +1207,23 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
       .then(r => r.ok ? r.json() : []).catch(() => []);
     setPayments(rows);
     notifySubsPaid(rows);
+  }
+
+  async function handleDeletePayment(subId: number, payId: number, amount: number) {
+    if (!window.confirm(`Delete this $${amount.toFixed(2)} payment? This cannot be undone.`)) return;
+    setDeletingPayId(payId);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/sub-payments/${payId}`, {
+        method: "DELETE", credentials: "include",
+      });
+      if (!r.ok) throw new Error(await r.text());
+      await refreshPayments();
+      toast({ title: "Payment deleted", description: "Balance has been recalculated." });
+    } catch {
+      toast({ title: "Failed to delete payment", variant: "destructive" });
+    } finally {
+      setDeletingPayId(null);
+    }
   }
 
   useEffect(() => {
@@ -1478,27 +1496,61 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                       const settled = p.paymentStatus === "paid";
                       const isPartial = p.paymentStatus === "partial";
                       const borderCls = settled ? "bg-emerald-50/40" : isPartial ? "bg-amber-50/40" : "";
+                      const history = p.paymentHistory ?? [];
                       return (
-                        <div key={p.subcontractorId} className={`px-4 py-3 flex items-center justify-between ${borderCls}`}>
-                          <div className="flex items-center gap-2">
-                            <HardHat className={`w-3.5 h-3.5 flex-shrink-0 ${settled ? "text-emerald-500" : isPartial ? "text-amber-500" : "text-muted-foreground/50"}`} />
-                            <div>
-                              <p className="text-sm font-medium text-foreground">{p.subName ?? "Sub"}</p>
-                              <p className="text-[10px] text-muted-foreground">
-                                {p.compensationType === "allocation"
-                                  ? `${(p.allocationPct ?? 0).toFixed(1)}% of split pool`
-                                  : p.compensationType === "fixed"
-                                    ? "Fixed"
-                                    : p.totalHours > 0 ? `${p.totalHours.toFixed(1)} hrs` : "Hourly"}
-                              </p>
+                        <div key={p.subcontractorId} className={borderCls}>
+                          {/* Sub summary row */}
+                          <div className="px-4 py-3 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <HardHat className={`w-3.5 h-3.5 flex-shrink-0 ${settled ? "text-emerald-500" : isPartial ? "text-amber-500" : "text-muted-foreground/50"}`} />
+                              <div>
+                                <p className="text-sm font-medium text-foreground">{p.subName ?? "Sub"}</p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {p.compensationType === "allocation"
+                                    ? `${(p.allocationPct ?? 0).toFixed(1)}% of split pool`
+                                    : p.compensationType === "fixed"
+                                      ? "Fixed"
+                                      : p.totalHours > 0 ? `${p.totalHours.toFixed(1)} hrs` : "Hourly"}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-foreground">{formatCurrency(owed)}</p>
+                              {settled && <p className="text-[10px] font-bold text-emerald-600">✓ Settled</p>}
+                              {isPartial && <p className="text-[10px] text-amber-600">Due: {formatCurrency(bal)}</p>}
+                              {!settled && !isPartial && bal > 0 && <p className="text-[10px] text-orange-600">Due: {formatCurrency(bal)}</p>}
                             </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-sm font-bold text-foreground">{formatCurrency(owed)}</p>
-                            {settled && <p className="text-[10px] font-bold text-emerald-600">✓ Settled</p>}
-                            {isPartial && <p className="text-[10px] text-amber-600">Due: {formatCurrency(bal)}</p>}
-                            {!settled && !isPartial && bal > 0 && <p className="text-[10px] text-orange-600">Due: {formatCurrency(bal)}</p>}
-                          </div>
+                          {/* Individual payment records with delete buttons */}
+                          {history.length > 0 && (
+                            <div className="px-4 pb-3 space-y-1.5">
+                              {history.map(h => (
+                                <div key={h.id} className="flex items-center justify-between py-1.5 px-2.5 bg-white/70 rounded-lg border border-border/40">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs font-semibold text-foreground">{h.date ? new Date(h.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}</span>
+                                      {h.paymentMethod && <span className="text-[10px] text-blue-600 bg-blue-50 border border-blue-100 px-1 py-0.5 rounded">{h.paymentMethod}</span>}
+                                    </div>
+                                    {h.workHours != null && <p className="text-[10px] text-muted-foreground">{h.workHours} hrs @ ${h.workRate}/hr</p>}
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    <span className="text-xs font-bold text-emerald-700">${(h.netPaid ?? h.amount).toFixed(2)}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeletePayment(p.subcontractorId, h.id, h.netPaid ?? h.amount)}
+                                      disabled={deletingPayId === h.id}
+                                      className="p-1 rounded text-muted-foreground/50 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                                      title="Delete this payment"
+                                    >
+                                      {deletingPayId === h.id
+                                        ? <div className="w-3 h-3 border border-red-400 border-t-transparent rounded-full animate-spin" />
+                                        : <Trash2 className="w-3 h-3" />}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1990,7 +2042,7 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
 
 // ─── Sub Hours & Payments Panel ────────────────────────────────────────────────
 type SubHourEntry = { id: number; subcontractorId: number; subName: string | null; date: string; hours: number; hourType: "work" | "travel" | null; description: string | null; rateSnapshot: number | null };
-type SubPayHistoryEntry = { date: string; amount: number; workHours?: number; workRate?: number; travelHours?: number; travelRate?: number; bonusAmount?: number; bonusNote?: string | null; advanceAmount?: number; advanceNote?: string | null; netPaid?: number };
+type SubPayHistoryEntry = { id: number; date: string; amount: number; workHours?: number; workRate?: number; travelHours?: number; travelRate?: number; bonusAmount?: number; bonusNote?: string | null; advanceAmount?: number; advanceNote?: string | null; netPaid?: number; paymentMethod?: string | null };
 type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; balance: number | null; percentComplete: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; totalWorkHours: number; totalTravelHours: number; payRate: number | null; travelPayRate: number | null; payType: string | null; role: string | null; growthPct: number | null; compensationType: string; hourlyRate: number | null; travelRate: number | null; fixedAmount: number | null; allocationPct: number | null; paymentStatus: string; paidAt: string | null; lastPaidAt: string | null; paymentHistory?: SubPayHistoryEntry[] };
 type BenchmarkRow = { id: number; jobType: string; estimatedHours: number | null; estimatedLaborCost: number | null; estimatedMaterialCost: number | null; notes: string | null };
 
