@@ -4018,8 +4018,8 @@ function JobCard({
           )}
         </button>
 
-        {/* Estimates button — not shown for MH Production */}
-        {jobWorkflow !== "mh_production" && (
+        {/* Estimates button — GC only */}
+        {jobWorkflow === "general_contracting" && (
         <button
           onClick={() => setEstimatesPanelOpen(true)}
           className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
@@ -4029,8 +4029,8 @@ function JobCard({
         </button>
         )}
 
-        {/* Smart Estimate Wizard — not shown for MH Production */}
-        {jobWorkflow !== "mh_production" && onSmartEstimate && canEdit("estimates") && (
+        {/* Smart Estimate Wizard — GC only */}
+        {jobWorkflow === "general_contracting" && onSmartEstimate && canEdit("estimates") && (
           showSmartEstimate ? (
             <button
               onClick={() => onSmartEstimate(job)}
@@ -4050,8 +4050,8 @@ function JobCard({
           )
         )}
 
-        {/* Phases — not shown for MH Production, hidden when a checklist is active */}
-        {jobWorkflow !== "mh_production" && !checklistSummary && (
+        {/* Phases — GC only, hidden when a checklist is active */}
+        {jobWorkflow === "general_contracting" && !checklistSummary && (
           <button
             onClick={() => setPhasesPanelOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border hover:bg-muted/40 transition-colors text-xs font-medium text-muted-foreground w-full">
@@ -4120,8 +4120,8 @@ function JobCard({
           </button>
         )}
 
-        {/* Labor Summary for MFH jobs */}
-        {(job as unknown as Record<string, unknown>).mfhModelId != null && (
+        {/* Labor Summary for MH Production, MH Service, and any job with a linked MFH model */}
+        {(jobWorkflow === "mh_production" || jobWorkflow === "mh_service" || (job as unknown as Record<string, unknown>).mfhModelId != null) && (
           <div className="border border-border rounded-xl p-3">
             <LaborSummaryPanel jobId={job.id} compact />
           </div>
