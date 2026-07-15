@@ -192,7 +192,18 @@ function WorkerPayCard({
   const [logDate,        setLogDate]        = useState(() => new Date().toISOString().split("T")[0]);
   const [logHours,       setLogHours]       = useState("");
   const [logHourType,    setLogHourType]    = useState<"work" | "travel">("work");
+  const [logRate,        setLogRate]        = useState(() => String(p.hourlyRate ?? p.payRate ?? ""));
   const [savingLogHours, setSavingLogHours] = useState(false);
+
+  // Swap rate default when user switches hour type
+  function handleLogHourTypeChange(type: "work" | "travel") {
+    setLogHourType(type);
+    if (type === "travel") {
+      setLogRate(String(p.travelPayRate ?? p.travelRate ?? ""));
+    } else {
+      setLogRate(String(p.hourlyRate ?? p.payRate ?? ""));
+    }
+  }
 
   // Review-sheet draft — captured from card state when the sheet opens;
   // edits inside the sheet only mutate this draft, NOT the card state.
@@ -283,12 +294,13 @@ function WorkerPayCard({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ subcontractorId: p.subcontractorId, date: logDate, hours: hrs, hourType: logHourType }),
+        body: JSON.stringify({ subcontractorId: p.subcontractorId, date: logDate, hours: hrs, hourType: logHourType, rateSnapshot: parseFloat(logRate) || undefined }),
       });
       if (!r.ok) throw new Error(await r.text());
       await onRefresh();
       setShowLogHours(false);
       setLogHours("");
+      setLogRate(String(p.hourlyRate ?? p.payRate ?? ""));
       toast({ title: "Hours logged", description: `${logHourType === "travel" ? "Travel" : "Work"} hours saved — totals updated.` });
     } catch (e: any) {
       toast({ title: "Failed to log hours", description: e?.message, variant: "destructive" });
@@ -620,13 +632,21 @@ function WorkerPayCard({
                       placeholder="0.0" step="0.25" min="0" />
                   </div>
                 </div>
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Hour Type</label>
-                  <select value={logHourType} onChange={e => setLogHourType(e.target.value as "work" | "travel")}
-                    className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
-                    <option value="work">Work</option>
-                    <option value="travel">Travel</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Hour Type</label>
+                    <select value={logHourType} onChange={e => handleLogHourTypeChange(e.target.value as "work" | "travel")}
+                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
+                      <option value="work">Work</option>
+                      <option value="travel">Travel</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Rate $/hr</label>
+                    <input type="number" value={logRate} onChange={e => setLogRate(e.target.value)}
+                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      placeholder="0.00" step="0.01" min="0" />
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={handleLogHours} disabled={savingLogHours}

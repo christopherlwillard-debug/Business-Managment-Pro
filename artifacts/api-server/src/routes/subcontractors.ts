@@ -124,12 +124,14 @@ async function computeSubAggregates(subcontractorId: number) {
     .from(jobSubHoursTable)
     .where(eq(jobSubHoursTable.subcontractorId, subcontractorId));
 
-  // totalOwed: for each job link, use manual amountOwed if set, otherwise sum hours×rate_snapshot
+  // totalOwed: for each job link, use manual amountOwed if set, otherwise sum hours×rate_snapshot.
+  // Jobs marked "paid" contribute 0 to the balance (owed = amountPaid) so stale overrides don't inflate totals.
   const owedRows = await db
     .select({
       jobId: jobSubcontractorsTable.jobId,
       amountOwed: jobSubcontractorsTable.amountOwed,
       amountPaid: jobSubcontractorsTable.amountPaid,
+      paymentStatus: jobSubcontractorsTable.paymentStatus,
       computedOwed: sql<string>`COALESCE((
         SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
         FROM job_sub_hours h
@@ -143,9 +145,15 @@ async function computeSubAggregates(subcontractorId: number) {
   let totalOwed = 0;
   let totalPaid = 0;
   for (const row of owedRows) {
-    const owed = row.amountOwed != null ? parseFloat(row.amountOwed) : parseFloat(row.computedOwed ?? "0");
-    totalOwed += owed;
-    totalPaid += row.amountPaid != null ? parseFloat(row.amountPaid) : 0;
+    const paid = row.amountPaid != null ? parseFloat(row.amountPaid) : 0;
+    totalPaid += paid;
+    if (row.paymentStatus === "paid") {
+      // Job is fully settled — treat owed = paid so it contributes 0 to outstanding balance
+      totalOwed += paid;
+    } else {
+      const owed = row.amountOwed != null ? parseFloat(row.amountOwed) : parseFloat(row.computedOwed ?? "0");
+      totalOwed += owed;
+    }
   }
 
   return {
