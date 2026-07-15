@@ -43,6 +43,7 @@ type SubPaymentRow = {
   totalHours: number;
   totalWorkHours: number;
   totalTravelHours: number;
+  avgTravelRateSnapshot: number;
   payRate: number | null;
   travelPayRate: number | null;
   compensationType: string;
@@ -138,7 +139,13 @@ function WorkerPayCard({
     const th = p.totalTravelHours ?? 0;
     return th > 0 ? th.toFixed(2) : "";
   });
-  const [travelRate,  setTravelRate]  = useState(() => String(p.travelRate ?? p.travelPayRate ?? ""));
+  const [travelRate,  setTravelRate]  = useState(() => {
+    // Prefer job-level override → profile rate → average rate_snapshot from logged travel hours
+    const explicit = p.travelRate ?? p.travelPayRate ?? null;
+    if (explicit != null && explicit > 0) return String(explicit);
+    if ((p.avgTravelRateSnapshot ?? 0) > 0) return String(p.avgTravelRateSnapshot);
+    return "";
+  });
 
   // Sync read-only hours from refreshed props (so "Review & Record" unlocks after inline log)
   useEffect(() => {

@@ -1327,6 +1327,15 @@ router.get("/:id/sub-payments", async (req, res) => {
             AND ${jobSubHoursTable.subcontractorId} = ${jobSubcontractorsTable.subcontractorId}
             AND ${jobSubHoursTable.hourType} = 'travel'
         ), 0)`,
+        avgTravelRateSnapshot: sql<string>`COALESCE((
+          SELECT AVG(${jobSubHoursTable.rateSnapshot})
+          FROM ${jobSubHoursTable}
+          WHERE ${jobSubHoursTable.jobId} = ${id}
+            AND ${jobSubHoursTable.subcontractorId} = ${jobSubcontractorsTable.subcontractorId}
+            AND ${jobSubHoursTable.hourType} = 'travel'
+            AND ${jobSubHoursTable.rateSnapshot} IS NOT NULL
+            AND ${jobSubHoursTable.rateSnapshot}::numeric > 0
+        ), 0)`,
       })
       .from(jobSubcontractorsTable)
       .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
@@ -1429,6 +1438,7 @@ router.get("/:id/sub-payments", async (req, res) => {
         totalHours: parseFloat(r.totalHours ?? "0"),
         totalWorkHours: parseFloat((r as any).totalWorkHours ?? "0"),
         totalTravelHours: parseFloat((r as any).totalTravelHours ?? "0"),
+        avgTravelRateSnapshot: parseFloat((r as any).avgTravelRateSnapshot ?? "0"),
         paymentHistory: historyMap[r.subcontractorId ?? -1] ?? [],
       };
     }));
