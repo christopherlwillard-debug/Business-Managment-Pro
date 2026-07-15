@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, expensesTable, subPaymentRecordsTable, productionServiceTypesTable } from "@workspace/db";
-import { invoicesTable, materialListsTable, materialListItemsTable, clientBillingProfilesTable, settingsTable } from "@workspace/db/schema";
+import { jobSubcontractorsTable, invoicesTable, materialListsTable, materialListItemsTable, clientBillingProfilesTable, settingsTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, or, like, asc, sql, ilike, eq } from "drizzle-orm";
 import { recalcImportExpenses } from "./mileage";
 import { syncMaterialsToJobInvoice } from "./material-lists";
@@ -8,6 +8,53 @@ import { syncMaterialsToJobInvoice } from "./material-lists";
 const router = Router();
 
 // ── All routes require MIGRATION_KEY header auth (set in index.ts) ────────────
+
+// Recompute sub payment statuses for records where advances were applied but status is still "partial"
+router.post("/recompute-sub-payment-status", async (_req: Request, res: Response) => {
+  try {
+    // Find all partial job_subcontractors records
+    const partialRows = await db
+      .select({
+        jobId: jobSubcontractorsTable.jobId,
+        subId: jobSubcontractorsTable.subcontractorId,
+        amountOwed: jobSubcontractorsTable.amountOwed,
+      })
+      .from(jobSubcontractorsTable)
+      .where(eq(jobSubcontractorsTable.paymentStatus, "partial"));
+
+    let fixed = 0;
+    for (const row of partialRows) {
+      const [sumRow] = await db
+        .select({
+          cashPaid: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), '0')`,
+          advancesApplied: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.advanceAmount}), '0')`,
+        })
+        .from(subPaymentRecordsTable)
+        .where(and(
+          eq(subPaymentRecordsTable.jobId, row.jobId),
+          eq(subPaymentRecordsTable.subcontractorId, row.subId),
+          sql`(${subPaymentRecordsTable.isReversal} IS NULL OR ${subPaymentRecordsTable.isReversal} = false)`,
+        ));
+      const cashPaid = parseFloat(sumRow?.cashPaid ?? "0");
+      const advances = parseFloat(sumRow?.advancesApplied ?? "0");
+      const effectivePaid = cashPaid + advances;
+      const owedAmt = row.amountOwed != null ? parseFloat(row.amountOwed) : null;
+      if (owedAmt != null && effectivePaid >= owedAmt - 0.005) {
+        await db.update(jobSubcontractorsTable)
+          .set({ paymentStatus: "paid" })
+          .where(and(
+            eq(jobSubcontractorsTable.jobId, row.jobId),
+            eq(jobSubcontractorsTable.subcontractorId, row.subId),
+          ));
+        fixed++;
+      }
+    }
+    res.json({ ok: true, scanned: partialRows.length, fixed });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Migration failed" });
+  }
+});
 
 // Remove orphan mileage logs
 router.post("/remove-orphan-mileage", async (_req: Request, res: Response) => {

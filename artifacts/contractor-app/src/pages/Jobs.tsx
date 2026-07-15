@@ -1966,7 +1966,7 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
                         <div className="text-emerald-600">Bonus: +${fmt(e.bonusAmount ?? 0)}{e.bonusNote ? ` (${e.bonusNote})` : ""}</div>
                       )}
                       {(e.advanceAmount ?? 0) > 0 && (
-                        <div className="text-amber-600">Advance deducted: −${fmt(e.advanceAmount ?? 0)}{e.advanceNote ? ` (${e.advanceNote})` : ""}</div>
+                        <div className="text-amber-600">Advancement deducted: −${fmt(e.advanceAmount ?? 0)}{e.advanceNote ? ` (${e.advanceNote})` : ""}</div>
                       )}
                     </div>
                   )}

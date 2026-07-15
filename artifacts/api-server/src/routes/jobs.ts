@@ -1765,17 +1765,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         ...(paymentReference ? { referenceNumber: paymentReference } : {}),
       }).returning({ id: subPaymentRecordsTable.id });
 
-      // 2. Mark selected advances as repaid — inside the transaction so it's atomic
-      if (advanceIds.length > 0) {
-        await tx.update(subAdvancesTable)
-          .set({ appliedPaymentId: spr.id, appliedAt: new Date() })
-          .where(and(
-            inArray(subAdvancesTable.id, advanceIds),
-            eq(subAdvancesTable.jobId, jobId),
-            eq(subAdvancesTable.subcontractorId, subId),
-            isNull(subAdvancesTable.appliedPaymentId),
-          ));
-      }
+      // 2. (Advances are now simple deductions — no sub_advances table updates needed)
 
       // 3. Compute accumulated from ledger SUM — authoritative, includes the just-inserted record
       //    This prevents cached column drift regardless of reversals or manual corrections.

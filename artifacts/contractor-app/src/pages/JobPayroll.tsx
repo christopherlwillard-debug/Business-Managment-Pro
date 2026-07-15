@@ -17,17 +17,6 @@ type SubHourEntry = {
   subName: string | null;
 };
 
-type SubAdvance = {
-  id: number;
-  jobId: number;
-  subcontractorId: number;
-  amount: number;
-  description: string;
-  advanceDate: string;
-  appliedPaymentId: number | null;
-  appliedAt: string | null;
-  createdAt: string;
-};
 
 type SubPayHistoryEntry = {
   id: number;
@@ -99,12 +88,11 @@ const PAYMENT_METHODS = ["Zelle", "Cash App", "Cash", "Check", "Venmo", "ACH / B
 
 // ── Worker Card ──────────────────────────────────────────────────────────────────
 function WorkerPayCard({
-  p, jobId, splitPool, advances, subHours, onRefresh,
+  p, jobId, splitPool, subHours, onRefresh,
 }: {
   p: SubPaymentRow;
   jobId: number;
   splitPool: number;
-  advances: SubAdvance[];
   subHours: SubHourEntry[];
   onRefresh: () => Promise<void>;
 }) {
@@ -112,9 +100,6 @@ function WorkerPayCard({
   const isHourly = p.compensationType === "hourly";
   const isFixed  = p.compensationType === "fixed";
   const isAlloc  = p.compensationType === "allocation";
-
-  const outstanding = advances.filter(a => a.appliedPaymentId === null);
-  const applied     = advances.filter(a => a.appliedPaymentId !== null);
 
   const owed = isAlloc
     ? (p.amountOwed ?? splitPool * ((p.allocationPct ?? 0) / 100))
@@ -124,20 +109,6 @@ function WorkerPayCard({
   const balance = Math.max(0, owed - paid - appliedAdvances);
   const isFullyPaid = p.paymentStatus === "paid";
   const isPartial   = p.paymentStatus === "partial";
-
-  // Advance checkbox state — auto pre-check all outstanding advances
-  const [checkedAdvanceIds, setCheckedAdvanceIds] = useState<Set<number>>(
-    () => new Set(outstanding.map(a => a.id))
-  );
-  useEffect(() => {
-    setCheckedAdvanceIds(prev => {
-      const next = new Set(prev);
-      for (const a of advances) {
-        if (a.appliedPaymentId === null && !prev.has(a.id)) next.add(a.id);
-      }
-      return next;
-    });
-  }, [advances]);
 
   // Payment method / reference
   const [paymentMethod,    setPaymentMethod]    = useState("");
@@ -172,10 +143,13 @@ function WorkerPayCard({
   }, [p.totalTravelHours]);
   const [bonus,       setBonus]       = useState("");
   const [bonusNote,   setBonusNote]   = useState("");
+  // Advancement = a deduction from the sub's pay (money already given to them personally)
+  const [advancementAmt, setAdvancementAmt] = useState("");
 
   const workPay   = (parseFloat(workHours)   || 0) * (parseFloat(workRate)   || 0);
   const travelPay = (parseFloat(travelHours) || 0) * (parseFloat(travelRate) || 0);
   const bonusAmt  = parseFloat(bonus) || 0;
+  const advancementDeduction = parseFloat(advancementAmt) || 0;
 
   // Fixed/alloc simple amount
   const [simpleAmount, setSimpleAmount] = useState(() => {
@@ -184,23 +158,11 @@ function WorkerPayCard({
   });
 
   const grossPay = isHourly ? workPay + travelPay + bonusAmt : parseFloat(simpleAmount) || 0;
+  const netToPay = Math.max(0, grossPay - advancementDeduction);
 
-  // Only checked outstanding advances get deducted
-  const checkedOutstanding   = outstanding.filter(a => checkedAdvanceIds.has(a.id));
-  const totalOutstanding     = checkedOutstanding.reduce((s, a) => s + a.amount, 0);
-  const netToPay             = Math.max(0, grossPay - totalOutstanding);
-
-  // Add advance form
-  const [showAdvForm, setShowAdvForm] = useState(false);
-  const [advAmount,   setAdvAmount]   = useState("");
-  const [advDesc,     setAdvDesc]     = useState("");
-  const [advDate,     setAdvDate]     = useState(() => new Date().toISOString().split("T")[0]);
-  const [savingAdv,   setSavingAdv]   = useState(false);
-
-  const [historyOpen,           setHistoryOpen]           = useState(() => (p.paymentHistory?.length ?? 0) > 0);
-  const [paying,                setPaying]                = useState(false);
-  const [deletingPayId,         setDeletingPayId]         = useState<number | null>(null);
-  const [releasedAdvanceCount,  setReleasedAdvanceCount]  = useState(0);
+  const [historyOpen, setHistoryOpen] = useState(() => (p.paymentHistory?.length ?? 0) > 0);
+  const [paying,      setPaying]      = useState(false);
+  const [deletingPayId, setDeletingPayId] = useState<number | null>(null);
 
   // Auto-open the history accordion whenever a new payment appears (e.g. right after recording one)
   const historyLen = p.paymentHistory?.length ?? 0;
@@ -290,7 +252,7 @@ function WorkerPayCard({
 
   const draftBonusAmt  = reviewDraft ? (parseFloat(reviewDraft.bonus) || 0) : bonusAmt;
   const draftGrossPay  = isHourly ? workPay + travelPay + draftBonusAmt : (parseFloat(simpleAmount) || 0);
-  const draftNetToPay  = Math.max(0, draftGrossPay - totalOutstanding);
+  const draftNetToPay  = Math.max(0, draftGrossPay - advancementDeduction);
 
   const history = p.paymentHistory ?? [];
 
@@ -302,54 +264,12 @@ function WorkerPayCard({
         method: "DELETE", credentials: "include",
       });
       if (!r.ok) throw new Error(await r.text());
-      const data = await r.json().catch(() => ({}));
-      const released = data.releasedAdvanceCount ?? 0;
       await onRefresh();
-      if (released > 0) {
-        setReleasedAdvanceCount(released);
-        toast({
-          title: "Payment deleted",
-          description: `${released} advance${released === 1 ? "" : "s"} released — review deductions before the next payment.`,
-        });
-      } else {
-        toast({ title: "Payment deleted", description: "Balance has been recalculated." });
-      }
+      toast({ title: "Payment deleted", description: "Balance has been recalculated." });
     } catch {
       toast({ title: "Failed to delete payment", variant: "destructive" });
     } finally {
       setDeletingPayId(null);
-    }
-  }
-
-  async function handleAddAdvance() {
-    const amt = parseFloat(advAmount);
-    if (!amt || amt <= 0 || !advDesc.trim() || !advDate) {
-      toast({ title: "Enter amount, description, and date", variant: "destructive" });
-      return;
-    }
-    setSavingAdv(true);
-    try {
-      const r = await fetch(`${BASE}/api/jobs/${jobId}/advances`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ subcontractorId: p.subcontractorId, amount: amt, description: advDesc.trim(), advanceDate: advDate }),
-      });
-      if (!r.ok) throw new Error();
-      await onRefresh();
-      setAdvAmount(""); setAdvDesc(""); setShowAdvForm(false);
-      toast({ title: "Advance saved" });
-    } catch { toast({ title: "Failed to save advance", variant: "destructive" }); }
-    finally { setSavingAdv(false); }
-  }
-
-  async function handleDeleteAdvance(advId: number) {
-    try {
-      const r = await fetch(`${BASE}/api/jobs/${jobId}/advances/${advId}`, {
-        method: "DELETE", credentials: "include",
-      });
-      if (!r.ok) throw new Error(await r.text());
-      await onRefresh();
-    } catch (e: any) {
-      toast({ title: e?.message?.includes("applied") ? "Cannot delete — already applied to a payment" : "Failed to delete advance", variant: "destructive" });
     }
   }
 
@@ -383,7 +303,7 @@ function WorkerPayCard({
   async function submitPayment(draft: ReviewDraft) {
     const draftBonus  = parseFloat(draft.bonus) || 0;
     const draftGross  = isHourly ? workPay + travelPay + draftBonus : (parseFloat(simpleAmount) || 0);
-    const draftNet    = Math.max(0, draftGross - totalOutstanding);
+    const draftNet    = Math.max(0, draftGross - advancementDeduction);
     if (draftNet <= 0) {
       toast({ title: "Nothing to pay — check amounts", variant: "destructive" });
       return;
@@ -394,7 +314,6 @@ function WorkerPayCard({
         subName: p.subName,
         idempotencyKey: crypto.randomUUID(),
         agreedOwed: owed > 0 ? owed : undefined,
-        advanceIds: checkedOutstanding.map(a => a.id),
         ...(draft.paymentMethod    ? { paymentMethod: draft.paymentMethod }       : {}),
         ...(draft.paymentReference ? { paymentReference: draft.paymentReference } : {}),
       };
@@ -405,12 +324,12 @@ function WorkerPayCard({
         body.workHours = wh; body.workRate = wr;
         if ((parseFloat(travelHours) || 0) > 0) { body.travelHours = parseFloat(travelHours); body.travelRate = parseFloat(travelRate) || 0; }
         if (draftBonus > 0) { body.bonusAmount = draftBonus; if (draft.bonusNote) body.bonusNote = draft.bonusNote; }
-        if (totalOutstanding > 0) { body.advanceAmount = totalOutstanding; body.advanceNote = checkedOutstanding.map(a => a.description).join(", "); }
+        if (advancementDeduction > 0) { body.advanceAmount = advancementDeduction; }
       } else {
         const amt = parseFloat(simpleAmount) || 0;
         if (amt <= 0) { toast({ title: "Enter an amount", variant: "destructive" }); setPaying(false); return; }
         body.amount = amt;
-        if (totalOutstanding > 0) { body.advanceAmount = totalOutstanding; body.advanceNote = checkedOutstanding.map(a => a.description).join(", "); }
+        if (advancementDeduction > 0) { body.advanceAmount = advancementDeduction; }
       }
       const r = await fetch(`${BASE}/api/jobs/${jobId}/pay-worker/${p.subcontractorId}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
@@ -419,7 +338,7 @@ function WorkerPayCard({
       if (!r.ok) throw new Error();
       await onRefresh();
       closeReview();
-      setReleasedAdvanceCount(0);
+      setAdvancementAmt("");
       toast({ title: "Payment recorded", description: `${p.subName ?? "Sub"}: $${fmt(draftNet)} paid` });
     } catch { toast({ title: "Failed to record payment", variant: "destructive" }); }
     finally { setPaying(false); }
@@ -613,121 +532,24 @@ function WorkerPayCard({
 
           <div className="h-px bg-border/50 mx-5" />
 
-          {/* ── Advances ── */}
+          {/* ── Advancement Deduction ── */}
           <div className="px-5 pt-3 pb-3">
-            {releasedAdvanceCount > 0 && (
-              <div className="mb-3 flex items-start justify-between gap-2 px-3.5 py-3 bg-amber-50 border border-amber-200 rounded-xl">
-                <div className="flex items-start gap-2 min-w-0">
-                  <span className="text-amber-500 text-base leading-none mt-0.5">⚠</span>
-                  <p className="text-xs font-semibold text-amber-800 leading-snug">
-                    {releasedAdvanceCount === 1
-                      ? "1 advance was released from the deleted payment — review deductions before recording the next payment."
-                      : `${releasedAdvanceCount} advances were released from the deleted payment — review deductions before recording the next payment.`}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setReleasedAdvanceCount(0)}
-                  className="flex-shrink-0 text-amber-400 hover:text-amber-600 transition-colors"
-                  aria-label="Dismiss"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Advances</p>
-              <button onClick={() => setShowAdvForm(v => !v)}
-                className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors">
-                <Plus className="w-3.5 h-3.5" /> Add Advance
-              </button>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-3">Advancement</p>
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Advancement deduction <span className="opacity-50">(opt)</span></label>
+              <input
+                type="number"
+                value={advancementAmt}
+                onChange={e => setAdvancementAmt(e.target.value)}
+                className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
+                placeholder="0.00"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">Money already given to them — deducted from this payment</p>
             </div>
-
-            {showAdvForm && (
-              <div className="mb-3 p-4 bg-blue-50/70 rounded-xl border border-blue-100 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">Amount</label>
-                    <input type="number" value={advAmount} onChange={e => setAdvAmount(e.target.value)} autoFocus
-                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="0.00" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">Date</label>
-                    <input type="date" value={advDate} onChange={e => setAdvDate(e.target.value)}
-                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300" />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Description</label>
-                  <input type="text" value={advDesc} onChange={e => setAdvDesc(e.target.value)}
-                    className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    placeholder="e.g. Lunch advance, Fuel money..." />
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={handleAddAdvance} disabled={savingAdv}
-                    className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                    {savingAdv ? "Saving..." : "Save Advance"}
-                  </button>
-                  <button onClick={() => { setShowAdvForm(false); setAdvAmount(""); setAdvDesc(""); }}
-                    className="px-4 py-2.5 border border-border rounded-xl text-sm text-muted-foreground hover:bg-muted/20 transition-colors">
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {outstanding.length === 0 && !showAdvForm ? (
-              <p className="text-xs text-muted-foreground/70 italic">No outstanding advances</p>
-            ) : outstanding.length > 0 ? (
-              <div className="space-y-2">
-                {outstanding.map(adv => {
-                  const isChecked = checkedAdvanceIds.has(adv.id);
-                  return (
-                    <div key={adv.id} className={`flex items-center justify-between py-2.5 px-3.5 rounded-xl border transition-colors ${isChecked ? "bg-amber-50 border-amber-100" : "bg-muted/10 border-border/50"}`}>
-                      <div className="flex items-center gap-2.5 min-w-0 mr-2">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={e => setCheckedAdvanceIds(prev => {
-                            const next = new Set(prev);
-                            e.target.checked ? next.add(adv.id) : next.delete(adv.id);
-                            return next;
-                          })}
-                          className="w-4 h-4 flex-shrink-0 accent-amber-500 cursor-pointer"
-                        />
-                        <div className="min-w-0">
-                          <p className={`text-sm font-semibold ${isChecked ? "text-foreground" : "text-muted-foreground"}`}>{adv.description}</p>
-                          <p className="text-[10px] text-muted-foreground">{fmtDate(adv.advanceDate)}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        <span className={`text-sm font-bold ${isChecked ? "text-amber-700" : "text-muted-foreground/40 line-through"}`}>${fmt(adv.amount)}</span>
-                        <button onClick={() => handleDeleteAdvance(adv.id)} className="text-muted-foreground/40 hover:text-red-500 transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-                {checkedOutstanding.length > 0 && (
-                  <div className="flex items-center justify-between px-1 pt-1">
-                    <span className="text-xs text-muted-foreground">
-                      Deducting {checkedOutstanding.length < outstanding.length ? `${checkedOutstanding.length} of ${outstanding.length}` : "all"}
-                    </span>
-                    <span className="text-sm font-bold text-amber-600">−${fmt(totalOutstanding)}</span>
-                  </div>
-                )}
-              </div>
-            ) : null}
-
-            {applied.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-border/40">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground/50 mb-2">Previously Applied</p>
-                {applied.map(adv => (
-                  <div key={adv.id} className="flex items-center justify-between py-1 text-muted-foreground/60">
-                    <span className="text-xs">{adv.description} · {fmtDate(adv.advanceDate)}</span>
-                    <span className="text-xs line-through">${fmt(adv.amount)}</span>
-                  </div>
-                ))}
+            {advancementDeduction > 0 && (
+              <div className="flex items-center justify-between px-1 pt-2">
+                <span className="text-xs text-muted-foreground">Deducting advancement</span>
+                <span className="text-sm font-bold text-amber-600">−${fmt(advancementDeduction)}</span>
               </div>
             )}
           </div>
@@ -761,9 +583,9 @@ function WorkerPayCard({
             <div className="flex items-center justify-between mb-4">
               <div>
                 <p className="text-sm text-muted-foreground">Net to Pay</p>
-                {totalOutstanding > 0 && (
+                {advancementDeduction > 0 && (
                   <p className="text-xs text-amber-600 mt-0.5">
-                    ${fmt(grossPay)} − ${fmt(totalOutstanding)} advances
+                    ${fmt(grossPay)} − ${fmt(advancementDeduction)} advancement
                   </p>
                 )}
               </div>
@@ -888,7 +710,7 @@ function WorkerPayCard({
                   {h.workHours != null && <p className="text-muted-foreground">Work: {h.workHours} hrs @ ${h.workRate}/hr = ${fmt((h.workHours || 0) * (h.workRate || 0))}</p>}
                   {(h.travelHours ?? 0) > 0 && <p className="text-muted-foreground">Travel: {h.travelHours} hrs @ ${h.travelRate}/hr = ${fmt((h.travelHours || 0) * (h.travelRate || 0))}</p>}
                   {(h.bonusAmount ?? 0) > 0 && <p className="text-emerald-600">Bonus: +${fmt(h.bonusAmount ?? 0)}{h.bonusNote ? ` (${h.bonusNote})` : ""}</p>}
-                  {(h.advanceAmount ?? 0) > 0 && <p className="text-amber-600">Advance deducted: −${fmt(h.advanceAmount ?? 0)}{h.advanceNote ? ` (${h.advanceNote})` : ""}</p>}
+                  {(h.advanceAmount ?? 0) > 0 && <p className="text-amber-600">Advancement deducted: −${fmt(h.advanceAmount ?? 0)}{h.advanceNote ? ` (${h.advanceNote})` : ""}</p>}
                 </div>
               ))}
             </div>
@@ -955,10 +777,10 @@ function WorkerPayCard({
                 </div>
               )}
 
-              {checkedOutstanding.length > 0 && (
+              {advancementDeduction > 0 && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-amber-600">Advance deduction ({checkedOutstanding.length})</span>
-                  <span className="font-semibold text-amber-600">−${fmt(totalOutstanding)}</span>
+                  <span className="text-amber-600">Advancement deduction</span>
+                  <span className="font-semibold text-amber-600">−${fmt(advancementDeduction)}</span>
                 </div>
               )}
 
@@ -970,7 +792,7 @@ function WorkerPayCard({
                 </div>
               )}
 
-              {checkedOutstanding.length > 0 && draftGrossPay > 0 && (
+              {advancementDeduction > 0 && draftGrossPay > 0 && (
                 <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border/40 pt-2">
                   <span>Gross</span>
                   <span>${fmt(draftGrossPay)}</span>
@@ -1047,9 +869,9 @@ function WorkerPayCard({
               <div className="flex items-center justify-between mb-5">
                 <div>
                   <p className="text-sm text-muted-foreground">Net to Pay</p>
-                  {totalOutstanding > 0 && (
+                  {advancementDeduction > 0 && (
                     <p className="text-xs text-amber-600 mt-0.5">
-                      ${fmt(draftGrossPay)} − ${fmt(totalOutstanding)} advances
+                      ${fmt(draftGrossPay)} − ${fmt(advancementDeduction)} advancement
                     </p>
                   )}
                 </div>
@@ -1100,7 +922,6 @@ export default function JobPayroll() {
   const [job,      setJob]      = useState<Job | null>(null);
   const [profit,   setProfit]   = useState<JobProfit | null>(null);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
-  const [advances, setAdvances] = useState<SubAdvance[]>([]);
   const [subHours, setSubHours] = useState<SubHourEntry[]>([]);
   const [loading,  setLoading]  = useState(true);
 
@@ -1110,39 +931,29 @@ export default function JobPayroll() {
   const [plStepOrder,      setPlStepOrder]      = useState<string[]>(["expenses", "labor", "growth"]);
   const [recordingDraw,    setRecordingDraw]    = useState(false);
 
-  const normaliseAdvances = (rows: unknown[]) =>
-    (rows as SubAdvance[]).map(a => ({
-      ...a,
-      amount: typeof a.amount === "string" ? parseFloat(a.amount) : a.amount,
-    }));
-
   const refreshAll = useCallback(async () => {
-    const [pRes, profRes, advRes, hoursRes] = await Promise.allSettled([
+    const [pRes, profRes, hoursRes] = await Promise.allSettled([
       fetch(`${BASE}/api/jobs/${jobId}/sub-payments`,  { credentials: "include" }).then(r => r.ok ? r.json() : []),
       fetch(`${BASE}/api/jobs/${jobId}/profit`,        { credentials: "include" }).then(r => r.ok ? r.json() : null),
-      fetch(`${BASE}/api/jobs/${jobId}/advances`,      { credentials: "include" }).then(r => r.ok ? r.json() : []),
       fetch(`${BASE}/api/jobs/${jobId}/sub-hours`,     { credentials: "include" }).then(r => r.ok ? r.json() : []),
     ]);
     if (pRes.status    === "fulfilled") setPayments(pRes.value as SubPaymentRow[]);
     if (profRes.status === "fulfilled" && profRes.value) setProfit(profRes.value as JobProfit);
     if (hoursRes.status === "fulfilled") setSubHours(hoursRes.value as SubHourEntry[]);
-    if (advRes.status  === "fulfilled") setAdvances(normaliseAdvances(advRes.value as unknown[]));
   }, [jobId]);
 
   useEffect(() => {
     const load = async () => {
-      const [jobRes, pRes, profRes, advRes, settingsRes, hoursInitRes] = await Promise.allSettled([
+      const [jobRes, pRes, profRes, settingsRes, hoursInitRes] = await Promise.allSettled([
         fetch(`${BASE}/api/jobs/${jobId}`,             { credentials: "include" }).then(r => r.ok ? r.json() : null),
         fetch(`${BASE}/api/jobs/${jobId}/sub-payments`,{ credentials: "include" }).then(r => r.ok ? r.json() : []),
         fetch(`${BASE}/api/jobs/${jobId}/profit`,      { credentials: "include" }).then(r => r.ok ? r.json() : null),
-        fetch(`${BASE}/api/jobs/${jobId}/advances`,    { credentials: "include" }).then(r => r.ok ? r.json() : []),
         fetch(`${BASE}/api/settings`,                  { credentials: "include" }).then(r => r.ok ? r.json() : null),
         fetch(`${BASE}/api/jobs/${jobId}/sub-hours`,   { credentials: "include" }).then(r => r.ok ? r.json() : []),
       ]);
       if (jobRes.status       === "fulfilled" && jobRes.value)     setJob(jobRes.value as Job);
       if (pRes.status         === "fulfilled")                     setPayments(pRes.value as SubPaymentRow[]);
       if (profRes.status      === "fulfilled" && profRes.value)    setProfit(profRes.value as JobProfit);
-      if (advRes.status       === "fulfilled")                     setAdvances(normaliseAdvances(advRes.value as unknown[]));
       if (hoursInitRes.status === "fulfilled")                     setSubHours(hoursInitRes.value as SubHourEntry[]);
       if (settingsRes.status === "fulfilled" && settingsRes.value) {
         const s = settingsRes.value as Record<string, unknown>;
@@ -1297,7 +1108,6 @@ export default function JobPayroll() {
                 p={p}
                 jobId={jobId}
                 splitPool={toSplit}
-                advances={advances.filter(a => a.subcontractorId === p.subcontractorId)}
                 subHours={subHours.filter(h => h.subcontractorId === p.subcontractorId)}
                 onRefresh={refreshAll}
               />

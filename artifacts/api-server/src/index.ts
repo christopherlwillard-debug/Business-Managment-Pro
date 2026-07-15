@@ -10,7 +10,7 @@ import { startBidSyncJob } from "./jobs/bidSync.js";
 import { startComplianceReminderJob } from "./jobs/complianceReminders.js";
 import { db } from "@workspace/db";
 import { businessesTable, mileageLogsTable, expensesTable, clientsTable, clientBillingProfilesTable } from "@workspace/db/schema";
-import { invoicesTable, settingsTable } from "@workspace/db/schema";
+import { invoicesTable, settingsTable, jobSubcontractorsTable, subPaymentRecordsTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, asc, sql, ilike, eq } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
@@ -368,6 +368,52 @@ async function fixDewayneAmountPaid(): Promise<void> {
   }
 }
 
+async function recomputePartialSubPaymentStatuses(): Promise<void> {
+  try {
+    const partialRows = await db
+      .select({
+        jobId: jobSubcontractorsTable.jobId,
+        subId: jobSubcontractorsTable.subcontractorId,
+        amountOwed: jobSubcontractorsTable.amountOwed,
+      })
+      .from(jobSubcontractorsTable)
+      .where(eq(jobSubcontractorsTable.paymentStatus, "partial"));
+
+    let fixed = 0;
+    for (const row of partialRows) {
+      const [sumRow] = await db
+        .select({
+          cashPaid: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), '0')`,
+          advancesApplied: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.advanceAmount}), '0')`,
+        })
+        .from(subPaymentRecordsTable)
+        .where(and(
+          eq(subPaymentRecordsTable.jobId, row.jobId),
+          eq(subPaymentRecordsTable.subcontractorId, row.subId),
+          sql`(${subPaymentRecordsTable.isReversal} IS NULL OR ${subPaymentRecordsTable.isReversal} = false)`,
+        ));
+      const cashPaid = parseFloat(sumRow?.cashPaid ?? "0");
+      const advances = parseFloat(sumRow?.advancesApplied ?? "0");
+      const effectivePaid = cashPaid + advances;
+      const owedAmt = row.amountOwed != null ? parseFloat(String(row.amountOwed)) : null;
+      if (owedAmt != null && effectivePaid >= owedAmt - 0.005) {
+        await db.update(jobSubcontractorsTable)
+          .set({ paymentStatus: "paid" })
+          .where(and(
+            eq(jobSubcontractorsTable.jobId, row.jobId),
+            eq(jobSubcontractorsTable.subcontractorId, row.subId),
+          ));
+        fixed++;
+      }
+    }
+    if (fixed > 0) {
+      console.log(`[startup] recomputePartialSubPaymentStatuses: fixed ${fixed} of ${partialRows.length} partial records.`);
+    }
+  } catch (err) {
+    console.error("[startup] recomputePartialSubPaymentStatuses failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await ensurePlLayoutColumns();
   await ensureInvoiceLifecycleColumns();
@@ -378,6 +424,7 @@ async function start() {
   await clearDraftInvoiceNumbers();
   await fixInvoice1036Sequence();
   await fixDewayneAmountPaid();
+  await recomputePartialSubPaymentStatuses();
   await seedDefaultBusinesses();
   await seedClaytonBillback();
   await backfillMileageBusiness();
