@@ -1060,4 +1060,69 @@ router.post("/fix-dewayne-rate-snapshots", async (_req: Request, res: Response) 
   }
 });
 
+// Diagnostic: show all job_sub_hours + Subcontractor expenses for Peters Booneville
+// Helps trace the source of the $1,140 P&L sub labor cost figure.
+router.get("/diag-peters-booneville", async (_req: Request, res: Response) => {
+  try {
+    const [job] = await db
+      .select({ id: jobsTable.id, title: jobsTable.title })
+      .from(jobsTable)
+      .where(and(ilike(jobsTable.title, "%peter%"), ilike(jobsTable.title, "%booneville%")));
+    if (!job) return res.status(404).json({ error: "Job not found" });
+
+    const hours = await db
+      .select({
+        id: jobSubHoursTable.id,
+        subId: jobSubHoursTable.subcontractorId,
+        subName: subcontractorsTable.name,
+        hours: jobSubHoursTable.hours,
+        hourType: jobSubHoursTable.hourType,
+        rateSnapshot: jobSubHoursTable.rateSnapshot,
+        cost: sql<string>`${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)`,
+        date: jobSubHoursTable.date,
+      })
+      .from(jobSubHoursTable)
+      .leftJoin(subcontractorsTable, eq(subcontractorsTable.id, jobSubHoursTable.subcontractorId))
+      .where(eq(jobSubHoursTable.jobId, job.id));
+
+    const expRows = await db
+      .select({
+        id: expensesTable.id,
+        category: expensesTable.category,
+        amount: expensesTable.amount,
+        description: expensesTable.description,
+        jobSubHoursId: expensesTable.jobSubHoursId,
+      })
+      .from(expensesTable)
+      .where(eq(expensesTable.jobId, job.id));
+
+    const sprRows = await db
+      .select({
+        id: subPaymentRecordsTable.id,
+        subId: subPaymentRecordsTable.subcontractorId,
+        subName: subcontractorsTable.name,
+        amount: subPaymentRecordsTable.amount,
+        advanceAmount: subPaymentRecordsTable.advanceAmount,
+        compType: jobSubcontractorsTable.compensationType,
+        isReversal: subPaymentRecordsTable.isReversal,
+      })
+      .from(subPaymentRecordsTable)
+      .leftJoin(subcontractorsTable, eq(subcontractorsTable.id, subPaymentRecordsTable.subcontractorId))
+      .leftJoin(jobSubcontractorsTable, and(
+        eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+        eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+      ))
+      .where(eq(subPaymentRecordsTable.jobId, job.id));
+
+    const totalHoursLabor = hours.reduce((s, h) => s + parseFloat(String(h.cost)), 0);
+    const subcontractorExpenses = expRows.filter(e => e.category === "Subcontractor" && !e.jobSubHoursId);
+    const flatSubCost = subcontractorExpenses.reduce((s, e) => s + parseFloat(String(e.amount ?? "0")), 0);
+
+    res.json({ job, hours, subcontractorExpenses, sprRows, totalHoursLabor, flatSubCost, computedSubLaborCost: totalHoursLabor + (flatSubCost > 0 ? flatSubCost : 0) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export default router;

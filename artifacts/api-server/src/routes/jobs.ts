@@ -404,7 +404,10 @@ router.get("/:id/profit", async (req, res) => {
     // Allocation payouts (profit-split subs) are real cash out of the job —
     // kept separate from subLaborCost so Pay Breakdown math stays unchanged.
     const allocPaid = parseFloat(sprRows.find(r => r.compType === "allocation")?.total ?? "0");
-    const nonHoursCost = sprFixedCost > 0 ? sprFixedCost : flatSubCost;
+    // Only fall back to legacy flat Subcontractor expenses when there are no
+    // tracked hours AND no fixed-sub payment records — otherwise the expense
+    // was recorded alongside hours and would double-count the labor cost.
+    const nonHoursCost = sprFixedCost > 0 ? sprFixedCost : (hoursLaborCost > 0 ? 0 : flatSubCost);
     // Sub labor: hourly (hours × rate) + fixed (cash paid)
     const subLaborCost = hoursLaborCost + nonHoursCost;
 
@@ -508,8 +511,10 @@ router.get("/profit-summary", async (req, res) => {
     for (const id of jobIds) {
       const hoursLaborCost = hoursMap.get(id) ?? 0;
       const sprFixedCost = sprFixedMap.get(id) ?? 0;
-      // Prefer sub_payment_records (new ledger); fall back to flat expense entries (legacy)
-      const nonHoursCost = sprFixedCost > 0 ? sprFixedCost : (flatSubCostMap[id] ?? 0);
+      // Prefer sub_payment_records (new ledger); fall back to flat Subcontractor expenses
+      // ONLY when there are no tracked hours — if hours exist, those capture the labor cost
+      // and the flat expense would be a double-count.
+      const nonHoursCost = sprFixedCost > 0 ? sprFixedCost : (hoursLaborCost > 0 ? 0 : (flatSubCostMap[id] ?? 0));
       result[id].subLaborCost = hoursLaborCost + nonHoursCost;
       // Allocation payouts are real cash out — subtracted from net profit,
       // but kept out of subLaborCost so Pay Breakdown math stays unchanged.
