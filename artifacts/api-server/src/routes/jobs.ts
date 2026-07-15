@@ -1780,18 +1780,26 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
       // 3. Compute accumulated from ledger SUM — authoritative, includes the just-inserted record
       //    This prevents cached column drift regardless of reversals or manual corrections.
       const [sumRow] = await tx
-        .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), '0')` })
+        .select({
+          cashPaid:      sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), '0')`,
+          advancesApplied: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.advanceAmount}), '0')`,
+        })
         .from(subPaymentRecordsTable)
         .where(and(
           eq(subPaymentRecordsTable.jobId, jobId),
           eq(subPaymentRecordsTable.subcontractorId, subId),
           sql`(${subPaymentRecordsTable.isReversal} IS NULL OR ${subPaymentRecordsTable.isReversal} = false)`,
         ));
-      const newAccumulated = parseFloat(sumRow?.total ?? "0");
+      const newAccumulated = parseFloat(sumRow?.cashPaid ?? "0");
+      // Advances were real cash already given to the sub — count them toward "paid" status.
+      // Without this, a $60 advance + $1,229.71 net payment on a $1,289.71 obligation
+      // would show "partial — $60 due" even though the sub is fully settled.
+      const totalAdvancesApplied = parseFloat(sumRow?.advancesApplied ?? "0");
+      const effectivePaid = newAccumulated + totalAdvancesApplied;
 
-      // 4. Status: "paid" if accumulated >= agreed owed
+      // 4. Status: "paid" if cash + applied advances >= agreed owed
       const newStatus: "paid" | "partial" =
-        agreedOwed != null && newAccumulated < agreedOwed - 0.005 ? "partial" : "paid";
+        agreedOwed != null && effectivePaid < agreedOwed - 0.005 ? "partial" : "paid";
 
       // 5. Update cached columns — amount_paid is now derived from the ledger SUM
       await tx.update(jobSubcontractorsTable).set({

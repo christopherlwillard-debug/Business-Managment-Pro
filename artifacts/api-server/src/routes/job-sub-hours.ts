@@ -102,7 +102,19 @@ async function recomputeSubPaymentStatus(jobId: number, subId: number): Promise<
     if (computed > 0) owedAmount = computed;
   }
 
-  const newStatus = owedAmount != null && amountPaid >= owedAmount * 0.99 ? "paid" : "partial";
+  // Also sum advance amounts applied across all payment records — they are real cash
+  // already given to the sub and count toward the settled total.
+  const [advRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.advanceAmount}), '0')` })
+    .from(subPaymentRecordsTable)
+    .where(and(
+      eq(subPaymentRecordsTable.jobId, jobId),
+      eq(subPaymentRecordsTable.subcontractorId, subId),
+      sql`(${subPaymentRecordsTable.isReversal} IS NULL OR ${subPaymentRecordsTable.isReversal} = false)`,
+    ));
+  const advancesApplied = parseFloat(advRow?.total ?? "0");
+  const effectivePaid = amountPaid + advancesApplied;
+  const newStatus = owedAmount != null && effectivePaid >= owedAmount * 0.99 ? "paid" : "partial";
   await db.update(jobSubcontractorsTable)
     .set({ paymentStatus: newStatus })
     .where(and(
