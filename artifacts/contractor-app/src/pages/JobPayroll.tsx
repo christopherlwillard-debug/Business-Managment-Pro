@@ -289,7 +289,7 @@ function WorkerPayCard({
       await onRefresh();
       setShowLogHours(false);
       setLogHours("");
-      toast({ title: "Hours logged", description: "Work hours updated — payment is now available." });
+      toast({ title: "Hours logged", description: `${logHourType === "travel" ? "Travel" : "Work"} hours saved — totals updated.` });
     } catch (e: any) {
       toast({ title: "Failed to log hours", description: e?.message, variant: "destructive" });
     } finally {
@@ -604,64 +604,70 @@ function WorkerPayCard({
               </div>
               <p className="text-3xl font-black text-foreground">${fmt(netToPay)}</p>
             </div>
-            {isHourly && (parseFloat(workHours) || 0) <= 0 ? (
-              <div className="w-full">
-                {!showLogHours ? (
-                  <div className="py-4 px-5 bg-amber-50 border border-amber-200 rounded-2xl text-center">
-                    <p className="text-sm font-semibold text-amber-700">No hours logged yet</p>
-                    <p className="text-xs text-amber-600 mt-0.5 mb-3">Log hours to enable payment</p>
-                    <button
-                      onClick={() => setShowLogHours(true)}
-                      className="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 transition-colors"
-                    >
-                      + Log Hours
-                    </button>
+            {isHourly && showLogHours ? (
+              <div className="p-4 bg-blue-50/70 rounded-xl border border-blue-100 space-y-3">
+                <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Log Hours</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Date</label>
+                    <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)}
+                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300" />
                   </div>
-                ) : (
-                  <div className="p-4 bg-blue-50/70 rounded-xl border border-blue-100 space-y-3">
-                    <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Log Hours</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-muted-foreground block mb-1">Date</label>
-                        <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)}
-                          className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground block mb-1">Hours</label>
-                        <input type="number" value={logHours} onChange={e => setLogHours(e.target.value)} autoFocus
-                          className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
-                          placeholder="0.0" step="0.25" min="0" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground block mb-1">Hour Type</label>
-                      <select value={logHourType} onChange={e => setLogHourType(e.target.value as "work" | "travel")}
-                        className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
-                        <option value="work">Work</option>
-                        <option value="travel">Travel</option>
-                      </select>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={handleLogHours} disabled={savingLogHours}
-                        className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                        {savingLogHours ? "Saving…" : "Save Hours"}
-                      </button>
-                      <button onClick={() => { setShowLogHours(false); setLogHours(""); }}
-                        className="px-4 py-2.5 border border-border rounded-xl text-sm text-muted-foreground hover:bg-muted/20 transition-colors">
-                        Cancel
-                      </button>
-                    </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">Hours</label>
+                    <input type="number" value={logHours} onChange={e => setLogHours(e.target.value)} autoFocus
+                      className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      placeholder="0.0" step="0.25" min="0" />
                   </div>
-                )}
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Hour Type</label>
+                  <select value={logHourType} onChange={e => setLogHourType(e.target.value as "work" | "travel")}
+                    className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
+                    <option value="work">Work</option>
+                    <option value="travel">Travel</option>
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={handleLogHours} disabled={savingLogHours}
+                    className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                    {savingLogHours ? "Saving…" : "Save Hours"}
+                  </button>
+                  <button onClick={() => { setShowLogHours(false); setLogHours(""); }}
+                    className="px-4 py-2.5 border border-border rounded-xl text-sm text-muted-foreground hover:bg-muted/20 transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : isHourly && (parseFloat(workHours) || 0) <= 0 ? (
+              <div className="py-4 px-5 bg-amber-50 border border-amber-200 rounded-2xl text-center">
+                <p className="text-sm font-semibold text-amber-700">No hours logged yet</p>
+                <p className="text-xs text-amber-600 mt-0.5 mb-3">Log hours to enable payment</p>
+                <button
+                  onClick={() => setShowLogHours(true)}
+                  className="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 transition-colors"
+                >
+                  + Log Hours
+                </button>
               </div>
             ) : (
-              <button
-                onClick={openReview}
-                disabled={netToPay <= 0}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted text-white font-bold rounded-2xl text-base transition-colors disabled:opacity-50 shadow-sm"
-              >
-                Review &amp; Record — ${fmt(netToPay)}
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={openReview}
+                  disabled={netToPay <= 0}
+                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted text-white font-bold rounded-2xl text-base transition-colors disabled:opacity-50 shadow-sm"
+                >
+                  Review &amp; Record — ${fmt(netToPay)}
+                </button>
+                {isHourly && (
+                  <button
+                    onClick={() => setShowLogHours(true)}
+                    className="w-full py-1.5 text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    + Log Hours
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </>
