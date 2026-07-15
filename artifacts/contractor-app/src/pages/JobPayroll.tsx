@@ -1,9 +1,21 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
-import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCircle2, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
+
+type SubHourEntry = {
+  id: number;
+  jobId: number;
+  subcontractorId: number;
+  date: string;
+  hours: number;
+  hourType: "work" | "travel" | null;
+  rateSnapshot: number | null;
+  description: string | null;
+  subName: string | null;
+};
 
 type SubAdvance = {
   id: number;
@@ -87,12 +99,13 @@ const PAYMENT_METHODS = ["Zelle", "Cash App", "Cash", "Check", "Venmo", "ACH / B
 
 // ── Worker Card ──────────────────────────────────────────────────────────────────
 function WorkerPayCard({
-  p, jobId, splitPool, advances, onRefresh,
+  p, jobId, splitPool, advances, subHours, onRefresh,
 }: {
   p: SubPaymentRow;
   jobId: number;
   splitPool: number;
   advances: SubAdvance[];
+  subHours: SubHourEntry[];
   onRefresh: () => Promise<void>;
 }) {
   const { toast } = useToast();
@@ -209,6 +222,56 @@ function WorkerPayCard({
       setLogRate(String(p.travelPayRate ?? p.travelRate ?? ""));
     } else {
       setLogRate(String(p.hourlyRate ?? p.payRate ?? ""));
+    }
+  }
+
+  // Edit existing logged hour entry
+  const [editingHourId,  setEditingHourId]  = useState<number | null>(null);
+  const [editDate,       setEditDate]       = useState("");
+  const [editHours,      setEditHours]      = useState("");
+  const [editHourType,   setEditHourType]   = useState<"work" | "travel">("work");
+  const [editRate,       setEditRate]       = useState("");
+  const [savingEdit,     setSavingEdit]     = useState(false);
+
+  function openEditHour(entry: SubHourEntry) {
+    setEditingHourId(entry.id);
+    setEditDate(entry.date);
+    setEditHours(String(entry.hours));
+    setEditHourType(entry.hourType === "travel" ? "travel" : "work");
+    setEditRate(entry.rateSnapshot != null ? String(entry.rateSnapshot) : "");
+  }
+
+  function cancelEditHour() {
+    setEditingHourId(null);
+  }
+
+  async function handleSaveEditHour() {
+    const hrs = parseFloat(editHours);
+    if (!hrs || hrs <= 0) {
+      toast({ title: "Enter a valid number of hours", variant: "destructive" });
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      const r = await fetch(`${BASE}/api/sub-hours/${editingHourId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          date: editDate,
+          hours: hrs,
+          hourType: editHourType,
+          rateSnapshot: parseFloat(editRate) || null,
+        }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      await onRefresh();
+      setEditingHourId(null);
+      toast({ title: "Hours updated", description: "Rate and totals recalculated." });
+    } catch (e: any) {
+      toast({ title: "Failed to update hours", description: e?.message, variant: "destructive" });
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -432,6 +495,88 @@ function WorkerPayCard({
                   </div>
                 </div>
                 {travelPay > 0 && <p className="text-xs font-medium text-blue-600">Travel pay: ${fmt(travelPay)}</p>}
+
+                {/* ── Logged hours list with inline edit ── */}
+                {subHours.length > 0 && (
+                  <div className="mt-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-2">Logged Entries</p>
+                    <div className="space-y-1.5">
+                      {subHours.map(entry => (
+                        <div key={entry.id}>
+                          {editingHourId === entry.id ? (
+                            <div className="p-3.5 bg-blue-50/80 rounded-xl border border-blue-200 space-y-3">
+                              <p className="text-[10px] font-bold text-blue-700 uppercase tracking-wide">Edit Entry</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-xs text-muted-foreground block mb-1">Date</label>
+                                  <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
+                                    className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground block mb-1">Hours</label>
+                                  <input type="number" value={editHours} onChange={e => setEditHours(e.target.value)} autoFocus
+                                    className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                    placeholder="0.0" step="0.25" min="0" />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-xs text-muted-foreground block mb-1">Type</label>
+                                  <select value={editHourType} onChange={e => setEditHourType(e.target.value as "work" | "travel")}
+                                    className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
+                                    <option value="work">Work</option>
+                                    <option value="travel">Travel</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground block mb-1">Rate $/hr</label>
+                                  <input type="number" value={editRate} onChange={e => setEditRate(e.target.value)}
+                                    className="w-full border border-border rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                    placeholder="0.00" step="0.01" min="0" />
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={handleSaveEditHour} disabled={savingEdit}
+                                  className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                                  {savingEdit ? "Saving…" : "Save"}
+                                </button>
+                                <button onClick={cancelEditHour} disabled={savingEdit}
+                                  className="px-4 py-2 border border-border rounded-xl text-xs text-muted-foreground hover:bg-muted/20 transition-colors">
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between px-3 py-2.5 bg-muted/20 rounded-xl">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-semibold text-foreground">{fmtDate(entry.date)}</span>
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${entry.hourType === "travel" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
+                                    {entry.hourType === "travel" ? "Travel" : "Work"}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {entry.hours}h
+                                  {entry.rateSnapshot != null && entry.rateSnapshot > 0
+                                    ? ` @ $${entry.rateSnapshot}/hr = $${fmt(entry.hours * entry.rateSnapshot)}`
+                                    : <span className="text-amber-500"> — no rate set</span>
+                                  }
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => openEditHour(entry)}
+                                className="ml-3 p-1.5 rounded-lg text-muted-foreground/50 hover:text-blue-600 hover:bg-blue-50 transition-colors flex-shrink-0"
+                                title="Edit this entry"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -955,6 +1100,7 @@ export default function JobPayroll() {
   const [profit,   setProfit]   = useState<JobProfit | null>(null);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [advances, setAdvances] = useState<SubAdvance[]>([]);
+  const [subHours, setSubHours] = useState<SubHourEntry[]>([]);
   const [loading,  setLoading]  = useState(true);
 
   const [ownerSplitPct,    setOwnerSplitPct]    = useState(50);
@@ -970,29 +1116,33 @@ export default function JobPayroll() {
     }));
 
   const refreshAll = useCallback(async () => {
-    const [pRes, profRes, advRes] = await Promise.allSettled([
+    const [pRes, profRes, advRes, hoursRes] = await Promise.allSettled([
       fetch(`${BASE}/api/jobs/${jobId}/sub-payments`,  { credentials: "include" }).then(r => r.ok ? r.json() : []),
       fetch(`${BASE}/api/jobs/${jobId}/profit`,        { credentials: "include" }).then(r => r.ok ? r.json() : null),
       fetch(`${BASE}/api/jobs/${jobId}/advances`,      { credentials: "include" }).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${jobId}/sub-hours`,     { credentials: "include" }).then(r => r.ok ? r.json() : []),
     ]);
     if (pRes.status    === "fulfilled") setPayments(pRes.value as SubPaymentRow[]);
     if (profRes.status === "fulfilled" && profRes.value) setProfit(profRes.value as JobProfit);
+    if (hoursRes.status === "fulfilled") setSubHours(hoursRes.value as SubHourEntry[]);
     if (advRes.status  === "fulfilled") setAdvances(normaliseAdvances(advRes.value as unknown[]));
   }, [jobId]);
 
   useEffect(() => {
     const load = async () => {
-      const [jobRes, pRes, profRes, advRes, settingsRes] = await Promise.allSettled([
+      const [jobRes, pRes, profRes, advRes, settingsRes, hoursInitRes] = await Promise.allSettled([
         fetch(`${BASE}/api/jobs/${jobId}`,             { credentials: "include" }).then(r => r.ok ? r.json() : null),
         fetch(`${BASE}/api/jobs/${jobId}/sub-payments`,{ credentials: "include" }).then(r => r.ok ? r.json() : []),
         fetch(`${BASE}/api/jobs/${jobId}/profit`,      { credentials: "include" }).then(r => r.ok ? r.json() : null),
         fetch(`${BASE}/api/jobs/${jobId}/advances`,    { credentials: "include" }).then(r => r.ok ? r.json() : []),
         fetch(`${BASE}/api/settings`,                  { credentials: "include" }).then(r => r.ok ? r.json() : null),
+        fetch(`${BASE}/api/jobs/${jobId}/sub-hours`,   { credentials: "include" }).then(r => r.ok ? r.json() : []),
       ]);
-      if (jobRes.status     === "fulfilled" && jobRes.value)     setJob(jobRes.value as Job);
-      if (pRes.status       === "fulfilled")                     setPayments(pRes.value as SubPaymentRow[]);
-      if (profRes.status    === "fulfilled" && profRes.value)    setProfit(profRes.value as JobProfit);
-      if (advRes.status     === "fulfilled")                     setAdvances(normaliseAdvances(advRes.value as unknown[]));
+      if (jobRes.status       === "fulfilled" && jobRes.value)     setJob(jobRes.value as Job);
+      if (pRes.status         === "fulfilled")                     setPayments(pRes.value as SubPaymentRow[]);
+      if (profRes.status      === "fulfilled" && profRes.value)    setProfit(profRes.value as JobProfit);
+      if (advRes.status       === "fulfilled")                     setAdvances(normaliseAdvances(advRes.value as unknown[]));
+      if (hoursInitRes.status === "fulfilled")                     setSubHours(hoursInitRes.value as SubHourEntry[]);
       if (settingsRes.status === "fulfilled" && settingsRes.value) {
         const s = settingsRes.value as Record<string, unknown>;
         if (s.ownerSplitPct != null)    setOwnerSplitPct(parseFloat(String(s.ownerSplitPct)));
@@ -1147,6 +1297,7 @@ export default function JobPayroll() {
                 jobId={jobId}
                 splitPool={toSplit}
                 advances={advances.filter(a => a.subcontractorId === p.subcontractorId)}
+                subHours={subHours.filter(h => h.subcontractorId === p.subcontractorId)}
                 onRefresh={refreshAll}
               />
             ))
