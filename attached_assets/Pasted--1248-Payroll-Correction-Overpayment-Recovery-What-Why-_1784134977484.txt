@@ -1,0 +1,117 @@
+#1248 - Payroll Correction: Overpayment Recovery
+
+What & Why
+
+Occasionally a subcontractor may be paid more than they actually earned because the payroll calculations were incorrect at the time of payment (for example, travel hours, profit split, or backend calculation bugs).
+
+Instead of permanently inflating payroll, the system should recognize the difference as an overpayment credit that can be recovered from future payments.
+
+This is not an advance against wages or a loan. It is simply correcting a previous payroll error.
+
+Done Looks Like
+If a subcontractor is paid more than their final calculated earnings, the payment status changes to Overpaid.
+The overpaid amount is stored as a Payroll Correction Credit.
+The job is still considered fully settled.
+Future payroll sheets display:
+
+Payroll Correction Available: $125.00
+
+This subcontractor was previously overpaid due to a payroll calculation correction.
+
+A one-click Apply Correction button deducts the credit from today's payment.
+The owner can edit the amount if necessary.
+The payment record shows:
+Gross earnings
+Payroll correction applied
+Cash paid today
+Once fully recovered, the correction is marked as resolved.
+Out of Scope
+Employee loans
+Wage advances
+Multi-business credits
+Manual credit creation
+Partial recovery logic (entire balance applied by default)
+Backend Logic
+
+If
+
+amountPaid > amountOwed
+
+then
+
+paymentStatus = "overpaid"
+
+correctionCredit = amountPaid - amountOwed
+
+This credit remains attached to the subcontractor until recovered.
+
+Future Payroll
+
+When opening payroll:
+
+Payroll Correction
+
+Previous payroll overpayment
+
+$187.50
+
+[Apply Correction]
+
+Clicking Apply Correction fills the existing deduction field.
+
+Payment Summary
+Gross Earnings
+
+$1,000
+
+Payroll Correction
+
+-$187.50
+
+Cash Due
+
+$812.50
+History
+
+Job #42
+
+Gross Owed
+
+$900
+
+Paid
+
+$1,050
+
+Payroll Correction Created
+
+$150
+
+Next Job
+
+Gross Owed
+
+$1,000
+
+Payroll Correction Applied
+
+$150
+
+Cash Paid
+
+$850
+Why I like this approach better
+
+Calling it an "Overpayment Credit" can make it sound like you're intentionally carrying balances between jobs or extending credit to subcontractors. In your case, that's not what's happening.
+
+This feature exists because the software was wrong, not because of a business practice.
+
+Using language like "Payroll Correction", "Payroll Adjustment", or "Overpayment Recovery" makes it clear that it's an accounting correction rather than a normal payroll workflow.
+
+I would even label the notice in the UI as:
+
+Payroll Correction Available
+
+This subcontractor was previously overpaid due to a payroll calculation correction. Applying this adjustment reduces today's cash payment by the unrecovered amount.
+
+That wording is much more accurate to the real-world scenario you described.
