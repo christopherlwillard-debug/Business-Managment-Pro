@@ -1543,7 +1543,8 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                     {payments.map(p => {
                       const owed = owedFor(p, toSplit);
                       const paid = p.amountPaid ?? 0;
-                      const bal  = Math.max(0, owed - paid);
+                      const appliedAdvances = (p.paymentHistory ?? []).reduce((s, h) => s + (h.advanceAmount ?? 0), 0);
+                      const bal  = Math.max(0, owed - paid - appliedAdvances);
                       const settled = p.paymentStatus === "paid";
                       const isPartial = p.paymentStatus === "partial";
                       const borderCls = settled ? "bg-emerald-50/40" : isPartial ? "bg-amber-50/40" : "";
@@ -1690,7 +1691,8 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   {payments.map(p => {
                     const owed = owedFor(p, toSplit);
                     const paid = p.amountPaid ?? 0;
-                    const bal = Math.max(0, owed - paid);
+                    const appliedAdvances = (p.paymentHistory ?? []).reduce((s, h) => s + (h.advanceAmount ?? 0), 0);
+                    const bal = Math.max(0, owed - paid - appliedAdvances);
                     const settled = p.paymentStatus === 'paid';
                     const isPartial = p.paymentStatus === 'partial';
                     const isOverpaidRow = settled && owed > 0 && paid > owed + 0.005;

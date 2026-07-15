@@ -120,7 +120,8 @@ function WorkerPayCard({
     ? (p.amountOwed ?? splitPool * ((p.allocationPct ?? 0) / 100))
     : (p.amountOwed ?? p.fixedAmount ?? p.computedOwed ?? 0);
   const paid    = p.amountPaid ?? 0;
-  const balance = Math.max(0, owed - paid);
+  const appliedAdvances = (p.paymentHistory ?? []).reduce((s, h) => s + (h.advanceAmount ?? 0), 0);
+  const balance = Math.max(0, owed - paid - appliedAdvances);
   const isFullyPaid = p.paymentStatus === "paid";
   const isPartial   = p.paymentStatus === "partial";
 
