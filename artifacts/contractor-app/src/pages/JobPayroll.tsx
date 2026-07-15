@@ -107,7 +107,8 @@ function WorkerPayCard({
   const paid    = p.amountPaid ?? 0;
   const appliedAdvances = (p.paymentHistory ?? []).reduce((s, h) => s + (h.advanceAmount ?? 0), 0);
   const balance = Math.max(0, owed - paid - appliedAdvances);
-  const isFullyPaid = p.paymentStatus === "paid";
+  const isFullyPaid = p.paymentStatus === "paid" || p.paymentStatus === "overpaid";
+  const isOvpd      = p.paymentStatus === "overpaid";
   const isPartial   = p.paymentStatus === "partial";
 
   // Payment method / reference
@@ -145,6 +146,17 @@ function WorkerPayCard({
   const [bonusNote,   setBonusNote]   = useState("");
   // Advancement = a deduction from the sub's pay (money already given to them personally)
   const [advancementAmt, setAdvancementAmt] = useState("");
+
+  // Payroll correction credit (from prior overpayment on other jobs)
+  const [correctionBalance, setCorrectionBalance] = useState(0);
+  const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
+  useEffect(() => {
+    if (isFullyPaid) return;
+    fetch(`${BASE}/api/jobs/payroll-correction/${p.subcontractorId}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setCorrectionBalance(d.correctionBalance ?? 0); })
+      .catch(() => {});
+  }, [p.subcontractorId, isFullyPaid]);
 
   const workPay   = (parseFloat(workHours)   || 0) * (parseFloat(workRate)   || 0);
   const travelPay = (parseFloat(travelHours) || 0) * (parseFloat(travelRate) || 0);
@@ -360,12 +372,14 @@ function WorkerPayCard({
           <div className="flex items-center flex-wrap gap-2 mb-0.5">
             <span className="text-base font-bold text-foreground">{p.subName ?? "Sub"}</span>
             <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${badgeCls}`}>{badgeLabel}</span>
-            {isFullyPaid && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">✓ Paid</span>}
+            {isFullyPaid && !isOvpd && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">✓ Paid</span>}
+            {isOvpd && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">⚠ Payroll Correction</span>}
             {isPartial   && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Partial</span>}
           </div>
           {isAlloc   && <p className="text-xs text-purple-600">{(p.allocationPct ?? 0).toFixed(1)}% of split pool</p>}
           {isPartial && <p className="text-xs text-muted-foreground">Paid ${fmt(paid)} · Balance ${fmt(balance)}</p>}
-          {isFullyPaid && paid > 0 && <p className="text-xs text-emerald-600">Settled — ${fmt(paid)} paid</p>}
+          {isOvpd    && <p className="text-xs text-amber-600">Payroll correction on file — ${fmt(Math.max(0, paid - owed))} overpaid</p>}
+          {isFullyPaid && !isOvpd && paid > 0 && <p className="text-xs text-emerald-600">Settled — ${fmt(paid)} paid</p>}
         </div>
         <div className="text-right flex-shrink-0">
           <p className="text-xl font-black text-foreground">${fmt(owed)}</p>
@@ -532,6 +546,23 @@ function WorkerPayCard({
 
           <div className="h-px bg-border/50 mx-5" />
 
+          {/* ── Payroll Correction Notice ── */}
+          {correctionBalance > 0.005 && (
+            <div className="mx-5 mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+              <p className="text-xs font-bold text-amber-800 mb-1">⚠ Payroll Correction Available — ${fmt(correctionBalance)}</p>
+              <p className="text-[11px] text-amber-700 mb-2 leading-relaxed">
+                This sub was previously overpaid on another job. Applying this adjustment deducts the unrecovered amount from today's cash payment.
+              </p>
+              <button
+                type="button"
+                onClick={() => setAdvancementAmt(correctionBalance.toFixed(2))}
+                className="text-xs font-bold text-amber-800 bg-white border border-amber-300 rounded-lg px-3 py-1.5 hover:bg-amber-100 active:bg-amber-200 transition-colors"
+              >
+                Apply Correction
+              </button>
+            </div>
+          )}
+
           {/* ── Advancement Deduction ── */}
           <div className="px-5 pt-3 pb-3">
             <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-3">Advancement</p>
@@ -548,7 +579,11 @@ function WorkerPayCard({
             </div>
             {advancementDeduction > 0 && (
               <div className="flex items-center justify-between px-1 pt-2">
-                <span className="text-xs text-muted-foreground">Deducting advancement</span>
+                <span className="text-xs text-muted-foreground">
+                  {correctionBalance > 0.005 && advancementDeduction >= correctionBalance - 0.005
+                    ? "Payroll correction deducted"
+                    : "Deducting advancement"}
+                </span>
                 <span className="text-sm font-bold text-amber-600">−${fmt(advancementDeduction)}</span>
               </div>
             )}
@@ -585,7 +620,10 @@ function WorkerPayCard({
                 <p className="text-sm text-muted-foreground">Net to Pay</p>
                 {advancementDeduction > 0 && (
                   <p className="text-xs text-amber-600 mt-0.5">
-                    ${fmt(grossPay)} − ${fmt(advancementDeduction)} advancement
+                    ${fmt(grossPay)} − ${fmt(advancementDeduction)}{" "}
+                    {correctionBalance > 0.005 && advancementDeduction >= correctionBalance - 0.005
+                      ? "payroll correction"
+                      : "advancement"}
                   </p>
                 )}
               </div>

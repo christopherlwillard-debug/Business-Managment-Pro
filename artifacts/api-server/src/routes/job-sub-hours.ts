@@ -114,7 +114,16 @@ async function recomputeSubPaymentStatus(jobId: number, subId: number): Promise<
     ));
   const advancesApplied = parseFloat(advRow?.total ?? "0");
   const effectivePaid = amountPaid + advancesApplied;
-  const newStatus = owedAmount != null && effectivePaid >= owedAmount * 0.99 ? "paid" : "partial";
+  let newStatus: string;
+  if (owedAmount == null) {
+    newStatus = "partial";
+  } else if (effectivePaid > owedAmount + 0.005) {
+    newStatus = "overpaid";
+  } else if (effectivePaid >= owedAmount - 0.005) {
+    newStatus = "paid";
+  } else {
+    newStatus = "partial";
+  }
   await db.update(jobSubcontractorsTable)
     .set({ paymentStatus: newStatus })
     .where(and(

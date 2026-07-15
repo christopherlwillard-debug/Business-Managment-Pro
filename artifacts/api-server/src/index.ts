@@ -396,18 +396,48 @@ async function recomputePartialSubPaymentStatuses(): Promise<void> {
       const advances = parseFloat(sumRow?.advancesApplied ?? "0");
       const effectivePaid = cashPaid + advances;
       const owedAmt = row.amountOwed != null ? parseFloat(String(row.amountOwed)) : null;
-      if (owedAmt != null && effectivePaid >= owedAmt - 0.005) {
+      if (owedAmt != null) {
+        const newStatus = effectivePaid > owedAmt + 0.005 ? "overpaid" : effectivePaid >= owedAmt - 0.005 ? "paid" : null;
+        if (newStatus) {
+          await db.update(jobSubcontractorsTable)
+            .set({ paymentStatus: newStatus })
+            .where(and(
+              eq(jobSubcontractorsTable.jobId, row.jobId),
+              eq(jobSubcontractorsTable.subcontractorId, row.subId),
+            ));
+          fixed++;
+        }
+      }
+    }
+
+    // Promote "paid" records that are actually overpaid (paid > owed + $0.005)
+    const paidRows = await db
+      .select({
+        jobId: jobSubcontractorsTable.jobId,
+        subId: jobSubcontractorsTable.subcontractorId,
+        amountOwed: jobSubcontractorsTable.amountOwed,
+        amountPaid: jobSubcontractorsTable.amountPaid,
+      })
+      .from(jobSubcontractorsTable)
+      .where(eq(jobSubcontractorsTable.paymentStatus, "paid"));
+
+    let promoted = 0;
+    for (const row of paidRows) {
+      const paid = row.amountPaid != null ? parseFloat(String(row.amountPaid)) : 0;
+      const owed = row.amountOwed != null ? parseFloat(String(row.amountOwed)) : null;
+      if (owed != null && paid > owed + 0.005) {
         await db.update(jobSubcontractorsTable)
-          .set({ paymentStatus: "paid" })
+          .set({ paymentStatus: "overpaid" })
           .where(and(
             eq(jobSubcontractorsTable.jobId, row.jobId),
             eq(jobSubcontractorsTable.subcontractorId, row.subId),
           ));
-        fixed++;
+        promoted++;
       }
     }
-    if (fixed > 0) {
-      console.log(`[startup] recomputePartialSubPaymentStatuses: fixed ${fixed} of ${partialRows.length} partial records.`);
+
+    if (fixed > 0 || promoted > 0) {
+      console.log(`[startup] recomputeSubPaymentStatuses: ${fixed} partial promoted, ${promoted} paid→overpaid.`);
     }
   } catch (err) {
     console.error("[startup] recomputePartialSubPaymentStatuses failed (non-fatal):", err);

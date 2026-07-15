@@ -32,8 +32,8 @@ export async function recomputeSubPaid(jobId: number): Promise<boolean> {
   const splitPool = hasAllocation ? (await computeAllocationSplitPool(jobId)).splitPool : 0;
 
   const allPaid = allRows.length > 0 && allRows.every(r => {
-    // paymentStatus='paid' is authoritative — set by pay-worker endpoint
-    if (r.paymentStatus === "paid") return true;
+    // paymentStatus='paid'/'overpaid' is authoritative — set by pay-worker endpoint
+    if (r.paymentStatus === "paid" || r.paymentStatus === "overpaid") return true;
     // partial is explicitly not paid
     if (r.paymentStatus === "partial") return false;
     const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
@@ -1208,8 +1208,8 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
     // Derive paymentStatus from the four-rule formula — status is never accepted from the client.
     //   amountPaid = null/0  → "unpaid"
     //   0 < paid < owed      → "partial"
-    //   paid = owed          → "paid"
-    //   paid > owed          → "paid" + isOverpaid flag
+    //   paid ≈ owed          → "paid"
+    //   paid > owed + 0.005  → "overpaid" (payroll correction)
     const paidNum = row.amountPaid != null ? parseFloat(row.amountPaid) : null;
     const compType = row.compensationType ?? "hourly";
 
@@ -1238,12 +1238,12 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
       newStatus = "unpaid";
     } else if (effectiveOwed == null || effectiveOwed <= 0) {
       newStatus = "partial";
+    } else if (paidNum > effectiveOwed + 0.005) {
+      newStatus = "overpaid";
+      isOverpaid = true;
+      overpaidBy = parseFloat((paidNum - effectiveOwed).toFixed(2));
     } else if (paidNum >= effectiveOwed - 0.005) {
       newStatus = "paid";
-      if (paidNum > effectiveOwed + 0.005) {
-        isOverpaid = true;
-        overpaidBy = parseFloat((paidNum - effectiveOwed).toFixed(2));
-      }
     } else {
       newStatus = "partial";
     }
@@ -1532,7 +1532,13 @@ router.delete("/:id/sub-payments/:paymentId", async (req, res) => {
         if (computed > 0) owedAmount = computed;
       }
 
-      newStatus = owedAmount != null && newPaid >= owedAmount * 0.99 ? "paid" : "partial";
+      if (owedAmount != null) {
+        if (newPaid > owedAmount + 0.005) newStatus = "overpaid";
+        else if (newPaid >= owedAmount - 0.005) newStatus = "paid";
+        else newStatus = "partial";
+      } else {
+        newStatus = "partial";
+      }
     }
 
     await db.update(jobSubcontractorsTable)
@@ -1716,7 +1722,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
       )).for("update");
 
       if (!subRow) throw Object.assign(new Error("NOT_FOUND"), { notFound: true });
-      if (subRow.paymentStatus === "paid") throw Object.assign(new Error("ALREADY_PAID"), { alreadyPaid: true });
+      if (subRow.paymentStatus === "paid" || subRow.paymentStatus === "overpaid") throw Object.assign(new Error("ALREADY_PAID"), { alreadyPaid: true });
 
       const compType = subRow.compensationType ?? "hourly";
       const typeLabel = compType === "allocation" ? "Allocation Pay" : compType === "fixed" ? "Fixed Pay" : "Labor Pay";
@@ -1787,9 +1793,10 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
       const totalAdvancesApplied = parseFloat(sumRow?.advancesApplied ?? "0");
       const effectivePaid = newAccumulated + totalAdvancesApplied;
 
-      // 4. Status: "paid" if cash + applied advances >= agreed owed
-      const newStatus: "paid" | "partial" =
-        agreedOwed != null && effectivePaid < agreedOwed - 0.005 ? "partial" : "paid";
+      // 4. Status: "paid"/"overpaid"/"partial" relative to agreed owed
+      const newStatus: "paid" | "partial" | "overpaid" =
+        agreedOwed != null && effectivePaid < agreedOwed - 0.005 ? "partial" :
+        agreedOwed != null && effectivePaid > agreedOwed + 0.005 ? "overpaid" : "paid";
 
       // 5. Update cached columns — amount_paid is now derived from the ledger SUM
       await tx.update(jobSubcontractorsTable).set({
@@ -1985,9 +1992,10 @@ router.patch("/:id/sub-payments/:subId", async (req, res) => {
         ? parseFloat(current.fixedAmount)
         : null;
 
-    let newStatus: "unpaid" | "partial" | "paid";
+    let newStatus: "unpaid" | "partial" | "paid" | "overpaid";
     if (effectiveOwed != null) {
-      if (paid >= effectiveOwed - 0.005) newStatus = "paid";
+      if (paid > effectiveOwed + 0.005) newStatus = "overpaid";
+      else if (paid >= effectiveOwed - 0.005) newStatus = "paid";
       else if (paid > 0) newStatus = "partial";
       else newStatus = "unpaid";
     } else {
@@ -2104,6 +2112,70 @@ router.patch("/:id/owner-pay-included", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update" });
+  }
+});
+
+// ── Payroll Correction credit balance for a sub ──────────────────────────────
+// Returns total unrecovered overpayment across all "overpaid" jobs for this sub.
+// Recovery is tracked via advance_amount entries on payment records for other jobs.
+router.get("/payroll-correction/:subId", async (req, res) => {
+  try {
+    const subId = parseInt(req.params.subId);
+    if (isNaN(subId)) return res.status(400).json({ error: "Invalid sub id" });
+
+    // 1. Collect all jobs where this sub was overpaid
+    const overpaidRows = await db
+      .select({
+        jobId: jobSubcontractorsTable.jobId,
+        amountOwed: jobSubcontractorsTable.amountOwed,
+        amountPaid: jobSubcontractorsTable.amountPaid,
+        jobTitle: jobsTable.title,
+      })
+      .from(jobSubcontractorsTable)
+      .leftJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id))
+      .where(and(
+        eq(jobSubcontractorsTable.subcontractorId, subId),
+        eq(jobSubcontractorsTable.paymentStatus, "overpaid"),
+      ));
+
+    if (overpaidRows.length === 0) {
+      return res.json({ correctionBalance: 0, resolved: true, sources: [] });
+    }
+
+    const overpaidJobIds = overpaidRows.map(r => r.jobId).filter((id): id is number => id != null);
+
+    const totalOverpaid = overpaidRows.reduce((sum, r) => {
+      const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+      const owed = r.amountOwed != null ? parseFloat(r.amountOwed) : 0;
+      return sum + Math.max(0, paid - owed);
+    }, 0);
+
+    // 2. Advances applied on non-overpaid jobs = amount already recovered
+    const [advRow] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.advanceAmount}), '0')` })
+      .from(subPaymentRecordsTable)
+      .where(and(
+        eq(subPaymentRecordsTable.subcontractorId, subId),
+        sql`(${subPaymentRecordsTable.isReversal} IS NULL OR ${subPaymentRecordsTable.isReversal} = false)`,
+        ...(overpaidJobIds.length > 0 ? [sql`${subPaymentRecordsTable.jobId} NOT IN (${sql.join(overpaidJobIds.map(id => sql`${id}`), sql`, `)})`] : []),
+      ));
+    const totalRecovered = parseFloat(advRow?.total ?? "0");
+
+    const correctionBalance = parseFloat(Math.max(0, totalOverpaid - totalRecovered).toFixed(2));
+    const resolved = correctionBalance < 0.005;
+
+    const sources = overpaidRows
+      .map(r => ({
+        jobId: r.jobId,
+        jobName: r.jobTitle ?? `Job #${r.jobId}`,
+        overpaidBy: parseFloat(Math.max(0, (r.amountPaid != null ? parseFloat(r.amountPaid) : 0) - (r.amountOwed != null ? parseFloat(r.amountOwed) : 0)).toFixed(2)),
+      }))
+      .filter(s => s.overpaidBy > 0.005);
+
+    res.json({ correctionBalance, resolved, sources });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to get payroll correction balance" });
   }
 });
 

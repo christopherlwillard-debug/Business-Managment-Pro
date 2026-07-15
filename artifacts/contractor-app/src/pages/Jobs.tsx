@@ -1693,12 +1693,12 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                     const paid = p.amountPaid ?? 0;
                     const appliedAdvances = (p.paymentHistory ?? []).reduce((s, h) => s + (h.advanceAmount ?? 0), 0);
                     const bal = Math.max(0, owed - paid - appliedAdvances);
-                    const settled = p.paymentStatus === 'paid';
+                    const isOverpaidRow = p.paymentStatus === 'overpaid';
+                    const settled = p.paymentStatus === 'paid' || isOverpaidRow;
                     const isPartial = p.paymentStatus === 'partial';
-                    const isOverpaidRow = settled && owed > 0 && paid > owed + 0.005;
-                    const overpaidAmt = isOverpaidRow ? paid - owed : 0;
-                    const borderCls = settled ? "border-emerald-200 bg-emerald-50/60" : isPartial ? "border-amber-200 bg-amber-50/60" : "border-orange-200 bg-orange-50/60";
-                    const iconCls = settled ? "text-emerald-600" : isPartial ? "text-amber-500" : "text-orange-500";
+                    const overpaidAmt = isOverpaidRow ? Math.max(0, paid - owed) : 0;
+                    const borderCls = isOverpaidRow ? "border-amber-200 bg-amber-50/60" : settled ? "border-emerald-200 bg-emerald-50/60" : isPartial ? "border-amber-200 bg-amber-50/60" : "border-orange-200 bg-orange-50/60";
+                    const iconCls = isOverpaidRow ? "text-amber-500" : settled ? "text-emerald-600" : isPartial ? "text-amber-500" : "text-orange-500";
                     return (
                       <div key={p.subcontractorId} className={`rounded-xl border p-3 flex items-center justify-between ${borderCls}`}>
                         <div className="flex items-center gap-2">
@@ -1712,7 +1712,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                           <p className="text-sm font-bold">{formatCurrency(owed)}</p>
                           {paid > 0 && <p className="text-[10px] text-emerald-600">Paid: {formatCurrency(paid)}</p>}
                           {settled && !isOverpaidRow && <p className="text-[10px] font-bold text-emerald-600">✓ Settled</p>}
-                          {settled && isOverpaidRow && <p className="text-[10px] font-bold text-amber-600">⚠ Overpaid +{formatCurrency(overpaidAmt)}</p>}
+                          {isOverpaidRow && <p className="text-[10px] font-bold text-amber-600">⚠ Payroll Correction +{formatCurrency(overpaidAmt)}</p>}
                           {isPartial && <p className="text-[10px] font-bold text-amber-600">● Partial · Due {formatCurrency(bal)}</p>}
                           {!settled && !isPartial && bal > 0 && <p className="text-[10px] text-orange-600">Due: {formatCurrency(bal)}</p>}
                         </div>
@@ -2544,10 +2544,10 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                     : pay.computedOwed;
                   const amountPaid = pay.amountPaid ?? 0;
                   const balance = Math.max(0, displayOwed - amountPaid);
-                  const isPaid = pay.paymentStatus === 'paid';
+                  const isOverpaidStatus = pay.paymentStatus === 'overpaid';
+                  const isPaid = pay.paymentStatus === 'paid' || isOverpaidStatus;
                   const isPartialStatus = pay.paymentStatus === 'partial';
-                  const isOverpaidStatus = isPaid && amountPaid > 0 && displayOwed > 0 && amountPaid > displayOwed + 0.005;
-                  const overpaidByAmt = isOverpaidStatus ? parseFloat((amountPaid - displayOwed).toFixed(2)) : 0;
+                  const overpaidByAmt = isOverpaidStatus ? parseFloat(Math.max(0, amountPaid - displayOwed).toFixed(2)) : 0;
                   const hasExpenses = subExpenses.some(e => e.subcontractorId === pay.subcontractorId);
                   const isEditing = editPayId === pay.subcontractorId;
                   const isMarkingThisOne = markingPaidId === pay.subcontractorId;
@@ -2564,7 +2564,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                           )}
                         </div>
                         {isOverpaidStatus ? (
-                          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">⚠ Overpaid +{formatCurrency(overpaidByAmt)}</span>
+                          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">⚠ Payroll Correction +{formatCurrency(overpaidByAmt)}</span>
                         ) : isPaid ? (
                           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Paid ✓</span>
                         ) : isPartialStatus ? (
