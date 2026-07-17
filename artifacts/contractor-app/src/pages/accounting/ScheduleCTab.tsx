@@ -55,6 +55,7 @@ function ScheduleCTab({ year }: { year: number }) {
     });
   }
 
+  const hoMethod: "regular" | "simplified" = (ho.method === "simplified") ? "simplified" : "regular";
   const totalSqft = parseFloat(ho.totalSqft || "0");
   const officeSqft = parseFloat(ho.officeSqft || "0");
   const businessUsePct = totalSqft > 0 && officeSqft > 0 ? Math.min(officeSqft / totalSqft, 1) : 0;
@@ -62,7 +63,9 @@ function ScheduleCTab({ year }: { year: number }) {
   const annualUtilities = parseFloat(ho.utilities || "0");
   const annualPhone = parseFloat(ho.phone || "0");
   const phoneBusinessPct = parseFloat(ho.phonePct || "0") / 100;
-  const homeOfficeDed = businessUsePct * (annualRentMortgage + annualUtilities) + phoneBusinessPct * annualPhone;
+  const homeOfficeDed = hoMethod === "simplified"
+    ? Math.min(officeSqft, 300) * 5
+    : businessUsePct * (annualRentMortgage + annualUtilities) + phoneBusinessPct * annualPhone;
 
   const [showMealsBreakdown, setShowMealsBreakdown] = useState(false);
 
@@ -328,69 +331,111 @@ function ScheduleCTab({ year }: { year: number }) {
 
             {showHomeOffice && (
               <div className="px-6 py-5 space-y-5">
-                <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-xs text-blue-800">
-                  <strong>Part I — Business Use of Home</strong> — Enter square footage to calculate the business-use percentage. Only expenses attributable to the office portion are deductible.
+                {/* Method toggle */}
+                <div className="flex items-center gap-1 p-1 bg-muted/40 rounded-xl border border-border w-fit">
+                  <button
+                    onClick={() => setHoField("method", "regular")}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${hoMethod === "regular" ? "bg-white shadow-sm text-foreground border border-border" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Regular
+                  </button>
+                  <button
+                    onClick={() => setHoField("method", "simplified")}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${hoMethod === "simplified" ? "bg-white shadow-sm text-foreground border border-border" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    IRS Simplified
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className={cl}>Total Home Sq Ft</label>
-                    <input type="number" min="0" className={ci} placeholder="e.g. 1800"
-                      value={ho.totalSqft ?? ""} onChange={e => setHoField("totalSqft", e.target.value)} />
-                  </div>
-                  <div>
-                    <label className={cl}>Office Sq Ft</label>
-                    <input type="number" min="0" className={ci} placeholder="e.g. 180"
-                      value={ho.officeSqft ?? ""} onChange={e => setHoField("officeSqft", e.target.value)} />
-                  </div>
-                  <div>
-                    <label className={cl}>Business Use %</label>
-                    <div className="px-3 py-2 rounded-xl border border-border bg-muted/30 text-sm font-semibold text-foreground">
-                      {totalSqft > 0 ? `${(businessUsePct * 100).toFixed(1)}%` : "—"}
+                {hoMethod === "simplified" ? (
+                  <>
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-xs text-blue-800">
+                      <strong>IRS Simplified Method</strong> — $5 per sq ft of office space, up to 300 sq ft (max deduction: $1,500). No need to track actual housing expenses.
                     </div>
-                  </div>
-                </div>
+                    <div className="max-w-xs">
+                      <label className={cl}>Office Sq Ft (max 300)</label>
+                      <input type="number" min="0" max="300" className={ci} placeholder="e.g. 150"
+                        value={ho.officeSqft ?? ""} onChange={e => setHoField("officeSqft", e.target.value)} />
+                    </div>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-emerald-800">Calculated Home Office Deduction (Line 30)</p>
+                        <p className="text-xs text-emerald-700 mt-0.5">
+                          {officeSqft > 0
+                            ? `${Math.min(officeSqft, 300)} sq ft × $5/sq ft${officeSqft > 300 ? " (capped at 300 sq ft)" : ""}`
+                            : "Enter office sq ft above to calculate"}
+                        </p>
+                      </div>
+                      <p className="text-2xl font-display font-bold text-emerald-700">{formatCurrency(homeOfficeDed)}</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-xs text-blue-800">
+                      <strong>Part I — Business Use of Home</strong> — Enter square footage to calculate the business-use percentage. Only expenses attributable to the office portion are deductible.
+                    </div>
 
-                <div className="border-t border-border/50 pt-4">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Part II — Deductible Expenses</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className={cl}>Annual Rent or Mortgage Interest ($)</label>
-                      <input type="number" min="0" step="0.01" className={ci} placeholder="e.g. 12000"
-                        value={ho.rentMortgage ?? ""} onChange={e => setHoField("rentMortgage", e.target.value)} />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className={cl}>Total Home Sq Ft</label>
+                        <input type="number" min="0" className={ci} placeholder="e.g. 1800"
+                          value={ho.totalSqft ?? ""} onChange={e => setHoField("totalSqft", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className={cl}>Office Sq Ft</label>
+                        <input type="number" min="0" className={ci} placeholder="e.g. 180"
+                          value={ho.officeSqft ?? ""} onChange={e => setHoField("officeSqft", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className={cl}>Business Use %</label>
+                        <div className="px-3 py-2 rounded-xl border border-border bg-muted/30 text-sm font-semibold text-foreground">
+                          {totalSqft > 0 ? `${(businessUsePct * 100).toFixed(1)}%` : "—"}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className={cl}>Annual Utilities — Electric, Gas, Water ($)</label>
-                      <input type="number" min="0" step="0.01" className={ci} placeholder="e.g. 2400"
-                        value={ho.utilities ?? ""} onChange={e => setHoField("utilities", e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={cl}>Annual Phone / Internet ($)</label>
-                      <input type="number" min="0" step="0.01" className={ci} placeholder="e.g. 1200"
-                        value={ho.phone ?? ""} onChange={e => setHoField("phone", e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={cl}>Business Use of Phone / Internet (%)</label>
-                      <input type="number" min="0" max="100" className={ci} placeholder="e.g. 80"
-                        value={ho.phonePct ?? ""} onChange={e => setHoField("phonePct", e.target.value)} />
-                    </div>
-                  </div>
-                </div>
 
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-emerald-800">Calculated Home Office Deduction (Line 30)</p>
-                    <p className="text-xs text-emerald-700 mt-0.5">
-                      {businessUsePct > 0
-                        ? `${(businessUsePct * 100).toFixed(1)}% × (rent + utilities) + ${ho.phonePct || 0}% of phone`
-                        : "Enter square footage above to calculate"}
-                    </p>
-                  </div>
-                  <p className="text-2xl font-display font-bold text-emerald-700">{formatCurrency(homeOfficeDed)}</p>
-                </div>
+                    <div className="border-t border-border/50 pt-4">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Part II — Deductible Expenses</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className={cl}>Annual Rent or Mortgage Interest ($)</label>
+                          <input type="number" min="0" step="0.01" className={ci} placeholder="e.g. 12000"
+                            value={ho.rentMortgage ?? ""} onChange={e => setHoField("rentMortgage", e.target.value)} />
+                        </div>
+                        <div>
+                          <label className={cl}>Annual Utilities — Electric, Gas, Water ($)</label>
+                          <input type="number" min="0" step="0.01" className={ci} placeholder="e.g. 2400"
+                            value={ho.utilities ?? ""} onChange={e => setHoField("utilities", e.target.value)} />
+                        </div>
+                        <div>
+                          <label className={cl}>Annual Phone / Internet ($)</label>
+                          <input type="number" min="0" step="0.01" className={ci} placeholder="e.g. 1200"
+                            value={ho.phone ?? ""} onChange={e => setHoField("phone", e.target.value)} />
+                        </div>
+                        <div>
+                          <label className={cl}>Business Use of Phone / Internet (%)</label>
+                          <input type="number" min="0" max="100" className={ci} placeholder="e.g. 80"
+                            value={ho.phonePct ?? ""} onChange={e => setHoField("phonePct", e.target.value)} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-emerald-800">Calculated Home Office Deduction (Line 30)</p>
+                        <p className="text-xs text-emerald-700 mt-0.5">
+                          {businessUsePct > 0
+                            ? `${(businessUsePct * 100).toFixed(1)}% × (rent + utilities) + ${ho.phonePct || 0}% of phone`
+                            : "Enter square footage above to calculate"}
+                        </p>
+                      </div>
+                      <p className="text-2xl font-display font-bold text-emerald-700">{formatCurrency(homeOfficeDed)}</p>
+                    </div>
+                  </>
+                )}
 
                 <p className="text-xs text-muted-foreground">
-                  Values are saved automatically and persist across sessions. This calculator is for estimation only — consult a CPA and attach the actual Form 8829 when filing.
+                  Values are saved automatically and persist across sessions. This calculator is for estimation only — consult a CPA when filing.
                 </p>
               </div>
             )}
