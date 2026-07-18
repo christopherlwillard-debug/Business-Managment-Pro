@@ -368,6 +368,29 @@ async function fixDewayneAmountPaid(): Promise<void> {
   }
 }
 
+// One-time fix: delete the ghost draft invoice (id=34, $99.53, Peters Booneville)
+// that was auto-saved when the invoice builder was opened but never completed.
+// Wil-1031 is the real paid invoice for that job. This ghost triggered an incorrect
+// reminder email before the draft-filter fix. Idempotent — skips if already gone.
+async function deletePetersBoonvilleGhostInvoice(): Promise<void> {
+  try {
+    const [inv] = await db
+      .select({ id: invoicesTable.id, status: invoicesTable.status })
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.id, 34), isNull(invoicesTable.invoiceNumber)));
+
+    if (!inv) {
+      console.log("[startup] deletePetersBoonvilleGhostInvoice: ghost already gone — skipped.");
+      return;
+    }
+
+    await db.delete(invoicesTable).where(and(eq(invoicesTable.id, 34), isNull(invoicesTable.invoiceNumber)));
+    console.log("[startup] deletePetersBoonvilleGhostInvoice: deleted ghost draft invoice id=34 (Peters Booneville $99.53).");
+  } catch (err) {
+    console.error("[startup] deletePetersBoonvilleGhostInvoice failed (non-fatal):", err);
+  }
+}
+
 async function recomputePartialSubPaymentStatuses(): Promise<void> {
   try {
     const partialRows = await db
@@ -454,6 +477,7 @@ async function start() {
   await clearDraftInvoiceNumbers();
   await fixInvoice1036Sequence();
   await fixDewayneAmountPaid();
+  await deletePetersBoonvilleGhostInvoice();
   await recomputePartialSubPaymentStatuses();
   await seedDefaultBusinesses();
   await seedClaytonBillback();

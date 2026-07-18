@@ -1125,4 +1125,45 @@ router.get("/diag-peters-booneville", async (_req: Request, res: Response) => {
   }
 });
 
+// ── List all draft invoices (null invoice number) ─────────────────────────────
+router.get("/diag-draft-invoices", async (_req: Request, res: Response) => {
+  try {
+    const drafts = await db
+      .select({
+        id: invoicesTable.id,
+        invoiceNumber: invoicesTable.invoiceNumber,
+        status: invoicesTable.status,
+        total: invoicesTable.total,
+        issueDate: invoicesTable.issueDate,
+        createdAt: invoicesTable.createdAt,
+        clientId: invoicesTable.clientId,
+        jobId: invoicesTable.jobId,
+        clientName: clientsTable.name,
+        lineItems: invoicesTable.lineItems,
+      })
+      .from(invoicesTable)
+      .leftJoin(clientsTable, eq(clientsTable.id, invoicesTable.clientId))
+      .where(isNull(invoicesTable.invoiceNumber));
+    res.json({ count: drafts.length, drafts });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ── Delete a specific draft/ghost invoice by id ────────────────────────────────
+router.delete("/cleanup-draft-invoice/:id", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    const [inv] = await db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, status: invoicesTable.status })
+      .from(invoicesTable).where(eq(invoicesTable.id, id));
+    if (!inv) return res.status(404).json({ error: "Invoice not found" });
+    if (inv.invoiceNumber) return res.status(400).json({ error: `Invoice has invoice number ${inv.invoiceNumber} — only unnumbered ghost invoices can be deleted here.` });
+    await db.delete(invoicesTable).where(eq(invoicesTable.id, id));
+    res.json({ deleted: true, id, wasStatus: inv.status });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export default router;
