@@ -1443,8 +1443,8 @@ export default function Settings() {
     // compliance notifications
     complianceNotificationEmail: "",
     complianceEmailEnabled: "1",
-    // invoice payment reminders
-    invoiceReminderEnabled: "1",
+    // invoice payment reminders — off by default; user must opt in
+    invoiceReminderEnabled: "0",
     invoiceReminderDay1: "7",
     invoiceReminderDay2: "14",
     // tax filing preference
@@ -2038,7 +2038,7 @@ export default function Settings() {
               <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <Bell className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-800">
-                  Reminders are only sent to invoices with a Square payment link and a client email address. Emails are sent via your connected Gmail account (or SMTP if configured in Payments).
+                  Reminders are sent to all unpaid, sent invoices where the client has an email address on file. Emails are sent via your connected Gmail account (or SMTP if configured in Payments).
                 </p>
               </div>
             </CardContent>

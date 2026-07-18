@@ -44,6 +44,7 @@ async function processInvoiceReminders() {
         and(
           ne(invoicesTable.status, "paid"),
           ne(invoicesTable.status, "cancelled"),
+          ne(invoicesTable.status, "draft"),
           eq(clientsTable.reminderOptOut, false),
         )
       );
@@ -55,6 +56,10 @@ async function processInvoiceReminders() {
 
     for (const inv of invoices) {
       if (!inv.clientEmail) continue;
+      if (!inv.invoiceNumber) {
+        console.warn(`[invoice-reminders] Skipping invoice id=${inv.id} — no invoice number (draft not yet issued)`);
+        continue;
+      }
 
       const createdAt = inv.createdAt instanceof Date ? inv.createdAt : new Date(inv.createdAt);
 
@@ -105,7 +110,7 @@ async function processInvoiceReminders() {
 
       try {
         const reminderNum = needsDay2 && !hasDay2Reminder ? 2 : 1;
-        const subject = `Reminder: Invoice ${inv.invoiceNumber} — Payment Due (${companyName})`;
+        const subject = `Reminder: Invoice ${inv.invoiceNumber ?? "N/A"} — Payment Due (${companyName})`;
 
         // Template branching: Square link = "Pay Now" button; everything else = plain contact reminder
         const hasSquareLink = !!inv.squarePaymentLinkUrl;

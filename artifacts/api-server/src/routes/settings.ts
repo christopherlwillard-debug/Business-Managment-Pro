@@ -449,7 +449,7 @@ router.put("/", async (req, res) => {
         : (settings?.complianceEmailEnabled ?? 1),
       invoiceReminderEnabled: body.invoiceReminderEnabled !== undefined
         ? (body.invoiceReminderEnabled ? 1 : 0)
-        : (settings?.invoiceReminderEnabled ?? 1),
+        : (settings?.invoiceReminderEnabled ?? 0),
       invoiceReminderDay1: body.invoiceReminderDay1 !== undefined
         ? (parseInt(body.invoiceReminderDay1) || 7)
         : (settings?.invoiceReminderDay1 ?? 7),
