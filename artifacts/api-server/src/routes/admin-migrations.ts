@@ -1041,7 +1041,7 @@ router.post("/fix-dewayne-rate-snapshots", async (_req: Request, res: Response) 
       const currentRate = h.rateSnapshot != null ? parseFloat(String(h.rateSnapshot)) : null;
       if (currentRate !== correctRate) {
         await db.update(jobSubHoursTable)
-          .set({ rateSnapshot: correctRate })
+          .set({ rateSnapshot: correctRate.toString() })
           .where(eq(jobSubHoursTable.id, h.id));
         isTravel ? travelFixed++ : workFixed++;
       }

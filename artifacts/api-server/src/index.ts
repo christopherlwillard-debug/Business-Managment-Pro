@@ -391,6 +391,42 @@ async function deletePetersBoonvilleGhostInvoice(): Promise<void> {
   }
 }
 
+// One-time fix: rename Wil-1035 → Wil-1034 on the Martin job invoice (id=36).
+// Wil-1034 was consumed by the counter during a failed accept attempt, leaving
+// a gap. The accept flow is now transactional so this cannot recur. Idempotent.
+async function fixMartinInvoiceSequence(): Promise<void> {
+  try {
+    const [inv] = await db
+      .select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, 36));
+
+    if (!inv || inv.invoiceNumber !== "Wil-1035") {
+      console.log("[startup] fixMartinInvoiceSequence: nothing to do (already fixed or invoice not found).");
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(invoicesTable)
+        .set({ invoiceNumber: "Wil-1034" })
+        .where(eq(invoicesTable.id, 36));
+
+      const [s] = await tx.select().from(settingsTable).limit(1);
+      if (s && (s.invoiceNextNumber ?? 0) === 1036) {
+        await tx
+          .update(settingsTable)
+          .set({ invoiceNextNumber: 1035 })
+          .where(eq(settingsTable.id, s.id));
+      }
+    });
+
+    console.log("[startup] fixMartinInvoiceSequence: renamed Wil-1035 → Wil-1034, counter reset to 1035.");
+  } catch (err) {
+    console.error("[startup] fixMartinInvoiceSequence failed (non-fatal):", err);
+  }
+}
+
 async function recomputePartialSubPaymentStatuses(): Promise<void> {
   try {
     const partialRows = await db
@@ -478,6 +514,7 @@ async function start() {
   await fixInvoice1036Sequence();
   await fixDewayneAmountPaid();
   await deletePetersBoonvilleGhostInvoice();
+  await fixMartinInvoiceSequence();
   await recomputePartialSubPaymentStatuses();
   await seedDefaultBusinesses();
   await seedClaytonBillback();

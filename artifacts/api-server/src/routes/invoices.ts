@@ -367,25 +367,54 @@ router.put("/:id", async (req, res) => {
 });
 
 // ── Accept invoice: draft → approved (assigns invoice number) ─────────────────
+// Number assignment + status change are wrapped in a single transaction so a
+// mid-way failure can never leave a draft holding a consumed sequence number.
 router.post("/:id/accept", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const [current] = await db
-      .select({ status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber })
-      .from(invoicesTable)
-      .where(eq(invoicesTable.id, id));
-    if (!current) return res.status(404).json({ error: "Invoice not found" });
-    if (current.status !== "draft") {
-      return res.status(400).json({ error: `Only draft invoices can be accepted. This invoice is ${current.status}.` });
-    }
-    await assignInvoiceNumberIfNeeded(id);
-    await db.update(invoicesTable)
-      .set({ status: "approved", acceptedAt: new Date() })
-      .where(eq(invoicesTable.id, id));
+
+    await db.transaction(async (tx) => {
+      const [current] = await tx
+        .select({ status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber })
+        .from(invoicesTable)
+        .where(eq(invoicesTable.id, id));
+      if (!current) throw Object.assign(new Error("Invoice not found"), { code: 404 });
+      if (current.status !== "draft") {
+        throw Object.assign(
+          new Error(`Only draft invoices can be accepted. This invoice is ${current.status}.`),
+          { code: 400 },
+        );
+      }
+
+      // Assign next sequential number if one hasn't been given yet
+      if (!current.invoiceNumber) {
+        const [settings] = await tx.select().from(settingsTable).limit(1);
+        const prefix = settings?.invoicePrefix ?? "INV-2026-";
+        const num = settings?.invoiceNextNumber ?? 1001;
+        if (settings) {
+          await tx
+            .update(settingsTable)
+            .set({ invoiceNextNumber: num + 1 })
+            .where(eq(settingsTable.id, settings.id));
+        }
+        await tx
+          .update(invoicesTable)
+          .set({ invoiceNumber: `${prefix}${num}` })
+          .where(eq(invoicesTable.id, id));
+      }
+
+      await tx
+        .update(invoicesTable)
+        .set({ status: "approved", acceptedAt: new Date() })
+        .where(eq(invoicesTable.id, id));
+    });
+
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     if (!withJoins) return res.status(404).json({ error: "Invoice not found" });
     res.json(fmt(withJoins));
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 404) return res.status(404).json({ error: err.message });
+    if (err?.code === 400) return res.status(400).json({ error: err.message });
     console.error(err);
     res.status(500).json({ error: "Failed to accept invoice" });
   }
