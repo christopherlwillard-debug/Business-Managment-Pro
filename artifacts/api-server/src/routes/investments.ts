@@ -138,9 +138,16 @@ router.get("/accounts/summary", async (req, res) => {
     const activeWithSummaries = withSummaries.filter((a: any) => a.active);
 
     const totalInvested = activeWithSummaries.reduce((sum: number, a: any) => sum + a.totalInvested, 0);
-    const totalPortfolioValue = activeWithSummaries.reduce((sum: number, a: any) => sum + (a.portfolioValue ?? 0), 0);
-    const totalGainLoss = totalPortfolioValue - totalInvested;
-    const totalReturnPct = totalInvested > 0 ? totalGainLoss / totalInvested : null;
+
+    // Only aggregate portfolio value / gain-loss when at least one active account has a recorded valuation.
+    // Accounts without a valuation have portfolioValue === null — treating null as 0 would fabricate a 100% loss.
+    const accountsWithValuation = activeWithSummaries.filter((a: any) => a.portfolioValue != null);
+    const hasValuation = accountsWithValuation.length > 0;
+    const totalPortfolioValue = hasValuation
+      ? accountsWithValuation.reduce((sum: number, a: any) => sum + (a.portfolioValue as number), 0)
+      : null;
+    const totalGainLoss = hasValuation && totalPortfolioValue != null ? totalPortfolioValue - totalInvested : null;
+    const totalReturnPct = hasValuation && totalGainLoss != null && totalInvested > 0 ? totalGainLoss / totalInvested : null;
     const lastUpdate = activeWithSummaries
       .map((a: any) => a.lastValuationDate)
       .filter(Boolean)

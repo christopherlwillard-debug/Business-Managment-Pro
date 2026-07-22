@@ -50,8 +50,8 @@ interface AccountSummary {
 interface InvestmentSummary {
   accountCount: number;
   totalInvested: number;
-  totalPortfolioValue: number;
-  totalGainLoss: number;
+  totalPortfolioValue: number | null;
+  totalGainLoss: number | null;
   totalReturnPct: number | null;
   lastUpdate: string | null;
   largestAccount: { id: number; name: string } | null;
@@ -151,17 +151,26 @@ export default function InvestmentsTab() {
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
               <p className="text-xs text-muted-foreground font-medium">Portfolio Value</p>
-              <p className="text-xl font-bold text-foreground mt-1">{formatCurrency(summary.totalPortfolioValue)}</p>
+              {summary.totalPortfolioValue != null ? (
+                <p className="text-xl font-bold text-foreground mt-1">{formatCurrency(summary.totalPortfolioValue)}</p>
+              ) : (
+                <p className="text-base text-muted-foreground mt-1">No valuation yet</p>
+              )}
             </div>
             <div className={`rounded-xl border p-4 col-span-2 sm:col-span-1 ${
-              (summary.totalGainLoss ?? 0) >= 0
-                ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30"
-                : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30"
+              summary.totalGainLoss == null
+                ? "border-border bg-card"
+                : summary.totalGainLoss >= 0
+                  ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30"
+                  : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30"
             }`}>
               <p className="text-xs text-muted-foreground font-medium">Unrealized Gain/Loss</p>
+              {summary.totalGainLoss == null ? (
+                <p className="text-base text-muted-foreground mt-1">Enter a portfolio valuation to track performance</p>
+              ) : (
               <div className="flex items-baseline gap-2 mt-1">
                 <p className={`text-xl font-bold ${
-                  (summary.totalGainLoss ?? 0) >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                  summary.totalGainLoss >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"
                 }`}>
                   {formatCurrency(summary.totalGainLoss)}
                 </p>
@@ -173,6 +182,7 @@ export default function InvestmentsTab() {
                   </span>
                 )}
               </div>
+              )}
             </div>
           </div>
 
