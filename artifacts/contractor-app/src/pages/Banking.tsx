@@ -318,11 +318,14 @@ export default function Banking() {
     staleTime: 0,
   });
 
+  const investmentBizId = activeBusiness?.id ?? null;
   const { data: investmentAccounts } = useQuery<InvestmentAccountOption[]>({
-    queryKey: ["investment-accounts-picker"],
+    queryKey: ["investment-accounts-picker", investmentBizId],
     queryFn: async () => {
-      const res = await apiFetch<{ accounts: InvestmentAccountOption[] }>("/api/investments/accounts/summary");
-      return (res as any).accounts ?? [];
+      const qs = investmentBizId ? `?businessId=${investmentBizId}` : "";
+      const res = await apiFetch<{ accounts: InvestmentAccountOption[] }>(`/api/investments/accounts/summary${qs}`);
+      // Return only active accounts for the picker
+      return ((res as any).accounts ?? []).filter((a: any) => a.active);
     },
     enabled: !!investmentFilingTxn,
     staleTime: 60000,

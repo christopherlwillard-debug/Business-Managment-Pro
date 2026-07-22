@@ -18,6 +18,9 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     const data = await res.json().catch(() => ({}));
     throw new Error((data as { error?: string }).error ?? `Request failed: ${res.status}`);
   }
+  if (res.status === 204 || res.headers.get("content-length") === "0") {
+    return null as unknown as T;
+  }
   return res.json();
 }
 

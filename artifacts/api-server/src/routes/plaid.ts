@@ -456,13 +456,18 @@ router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) =
     return;
   }
 
+  if (txn.status === "investment_transfer") {
+    res.status(409).json({ error: "Transaction is already categorized as an investment transfer. Remove that categorization first." });
+    return;
+  }
+
   const result = await db.transaction(async (tx) => {
     const [fresh] = await tx
       .select({ status: bankTransactionsTable.status })
       .from(bankTransactionsTable)
       .where(eq(bankTransactionsTable.id, txnId));
 
-    if (fresh?.status === "matched") {
+    if (fresh?.status === "matched" || fresh?.status === "investment_transfer") {
       return { conflict: true } as const;
     }
 
@@ -525,6 +530,11 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
 
   if (txn.status === "matched") {
     res.status(409).json({ error: "Transaction is already filed" });
+    return;
+  }
+
+  if (txn.status === "investment_transfer") {
+    res.status(409).json({ error: "Transaction is already categorized as an investment transfer. Remove that categorization first." });
     return;
   }
 
@@ -690,6 +700,7 @@ router.post("/transactions/:txnId/match-expense", wrapAsync(async (req, res) => 
 
     if (!txn) return { notFound: true } as const;
     if (txn.status === "matched") return { conflict: true } as const;
+    if (txn.status === "investment_transfer") return { investmentTransfer: true } as const;
 
     const [expense] = await tx
       .select({ id: expensesTable.id })
@@ -720,6 +731,10 @@ router.post("/transactions/:txnId/match-expense", wrapAsync(async (req, res) => 
   }
   if ("conflict" in result) {
     res.status(409).json({ error: "Transaction is already matched" });
+    return;
+  }
+  if ("investmentTransfer" in result) {
+    res.status(409).json({ error: "Transaction is already categorized as an investment transfer. Remove that categorization first." });
     return;
   }
   if ("expenseNotFound" in result) {
