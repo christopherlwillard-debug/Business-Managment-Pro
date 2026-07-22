@@ -96,6 +96,11 @@ export default function InvestmentsTab() {
   const [showInactive, setShowInactive] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const today = new Date().toISOString().slice(0, 10);
+  const [showQuickVal, setShowQuickVal] = useState(false);
+  const [quickVal, setQuickVal] = useState({ accountId: "", value: "", date: today });
+  const [quickValError, setQuickValError] = useState<string | null>(null);
+
   const businessId = activeBusiness?.id ?? null;
 
   const { data: summary, isLoading } = useQuery<InvestmentSummary>({
@@ -115,6 +120,31 @@ export default function InvestmentsTab() {
     },
     onError: (err: Error) => setFormError(err.message),
   });
+
+  const quickValMutation = useMutation({
+    mutationFn: ({ accountId, value, date }: { accountId: number; value: string; date: string }) =>
+      apiFetch(`/api/investments/accounts/${accountId}/valuations`, {
+        method: "POST",
+        body: JSON.stringify({ portfolioValue: parseFloat(value), valuationDate: date }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["investments-summary", businessId] });
+      setShowQuickVal(false);
+      setQuickVal({ accountId: "", value: "", date: today });
+      setQuickValError(null);
+    },
+    onError: (err: Error) => setQuickValError(err.message),
+  });
+
+  function handleQuickValSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!quickVal.accountId) { setQuickValError("Please select an account"); return; }
+    const val = parseFloat(quickVal.value);
+    if (isNaN(val) || val < 0) { setQuickValError("Enter a valid portfolio value"); return; }
+    if (!quickVal.date) { setQuickValError("Date is required"); return; }
+    setQuickValError(null);
+    quickValMutation.mutate({ accountId: parseInt(quickVal.accountId), value: quickVal.value, date: quickVal.date });
+  }
 
   if (selectedAccountId !== null) {
     return (
@@ -166,7 +196,65 @@ export default function InvestmentsTab() {
             }`}>
               <p className="text-xs text-muted-foreground font-medium">Unrealized Gain/Loss</p>
               {summary.totalGainLoss == null ? (
-                <p className="text-base text-muted-foreground mt-1">Enter a portfolio valuation to track performance</p>
+                <div className="mt-1">
+                  {!showQuickVal ? (
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-sm text-muted-foreground">Enter a portfolio valuation to track performance</p>
+                      <button
+                        onClick={() => setShowQuickVal(true)}
+                        className="flex items-center gap-1 text-xs font-medium text-primary hover:underline w-fit"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Enter valuation
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleQuickValSubmit} className="space-y-2 mt-1">
+                      <select
+                        className="w-full text-xs border border-border rounded-md px-2 py-1.5 bg-background text-foreground"
+                        value={quickVal.accountId}
+                        onChange={e => setQuickVal(v => ({ ...v, accountId: e.target.value }))}
+                      >
+                        <option value="">Select account…</option>
+                        {activeAccounts.map(a => (
+                          <option key={a.id} value={String(a.id)}>{a.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Portfolio value ($)"
+                        className="w-full text-xs border border-border rounded-md px-2 py-1.5 bg-background text-foreground"
+                        value={quickVal.value}
+                        onChange={e => setQuickVal(v => ({ ...v, value: e.target.value }))}
+                      />
+                      <input
+                        type="date"
+                        className="w-full text-xs border border-border rounded-md px-2 py-1.5 bg-background text-foreground"
+                        value={quickVal.date}
+                        onChange={e => setQuickVal(v => ({ ...v, date: e.target.value }))}
+                      />
+                      {quickValError && <p className="text-xs text-red-500">{quickValError}</p>}
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          disabled={quickValMutation.isPending}
+                          className="flex-1 text-xs bg-primary text-primary-foreground rounded-md py-1.5 font-medium hover:opacity-90 disabled:opacity-50"
+                        >
+                          {quickValMutation.isPending ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setShowQuickVal(false); setQuickValError(null); }}
+                          className="text-xs text-muted-foreground hover:text-foreground px-2"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
               ) : (
               <div className="flex items-baseline gap-2 mt-1">
                 <p className={`text-xl font-bold ${
