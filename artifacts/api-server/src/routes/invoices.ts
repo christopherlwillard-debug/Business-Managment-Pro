@@ -832,6 +832,76 @@ router.post("/:id/send-reminder", async (req, res) => {
   }
 });
 
+// ── Revert an approved/sent invoice back to draft (no payments recorded) ──────
+router.post("/:id/revert-to-draft", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid invoice id" });
+
+    await db.transaction(async (tx) => {
+      const [inv] = await tx
+        .select({
+          status: invoicesTable.status,
+          invoiceNumber: invoicesTable.invoiceNumber,
+          amountPaid: invoicesTable.amountPaid,
+        })
+        .from(invoicesTable)
+        .where(eq(invoicesTable.id, id));
+
+      if (!inv) throw Object.assign(new Error("Invoice not found"), { code: 404 });
+
+      if (!["approved", "sent"].includes(inv.status)) {
+        throw Object.assign(
+          new Error(`Only approved or sent invoices can be reverted to draft. This invoice is ${inv.status}.`),
+          { code: 400 },
+        );
+      }
+
+      const paid = inv.amountPaid ? parseFloat(inv.amountPaid) : 0;
+      if (paid > 0) {
+        throw Object.assign(
+          new Error("Cannot revert an invoice that has recorded payments."),
+          { code: 400 },
+        );
+      }
+
+      // Decrement the counter if this was the most recently issued number so it can be reused
+      if (inv.invoiceNumber) {
+        const [settings] = await tx.select().from(settingsTable).limit(1);
+        if (settings) {
+          const prefix = settings.invoicePrefix ?? "INV-2026-";
+          const currentCounter = settings.invoiceNextNumber ?? 1001;
+          const lastIssuedNumber = `${prefix}${currentCounter - 1}`;
+          if (inv.invoiceNumber === lastIssuedNumber) {
+            await tx.update(settingsTable)
+              .set({ invoiceNextNumber: currentCounter - 1 })
+              .where(eq(settingsTable.id, settings.id));
+          }
+        }
+      }
+
+      await tx.update(invoicesTable)
+        .set({
+          status: "draft",
+          invoiceNumber: null,
+          sentAt: null,
+          acceptedAt: null,
+          sentMethod: null,
+        })
+        .where(eq(invoicesTable.id, id));
+    });
+
+    const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
+    if (!withJoins) return res.status(404).json({ error: "Invoice not found" });
+    res.json(fmt(withJoins));
+  } catch (err: any) {
+    if (err?.code === 404) return res.status(404).json({ error: err.message });
+    if (err?.code === 400) return res.status(400).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Failed to revert invoice to draft" });
+  }
+});
+
 router.post("/render-html-pdf", async (req, res) => {
   try {
     const { html } = req.body as { html: string };

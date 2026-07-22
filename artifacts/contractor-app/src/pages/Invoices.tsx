@@ -653,6 +653,7 @@ export default function Invoices() {
         onSaved={() => { setViewInvoice(null); queryClient.invalidateQueries(); }}
         onDelete={() => { setDeleteTarget(viewInvoice); setViewInvoice(null); }}
         onVoid={() => { setVoidTarget(viewInvoice); setViewInvoice(null); }}
+        onRevertToDraft={(draftInvoice) => { setViewInvoice(draftInvoice); queryClient.invalidateQueries(); }}
       />
 
       {/* Delete Confirmation Modal (drafts only) */}

@@ -34,22 +34,26 @@ vi.mock("@workspace/db", () => {
     where:     () => Promise.resolve(h.selectQueue.shift() ?? []),
     limit:     () => Promise.resolve(h.selectQueue.shift() ?? []),
   };
+  const dbOps = {
+    select:  () => chain,
+    update:  () => ({
+      set: (data: any) => {
+        h.updates.push(data);
+        return { where: () => Promise.resolve() };
+      },
+    }),
+    insert:  () => ({
+      values: () => ({
+        returning: () => Promise.resolve([{ id: 42 }]),
+      }),
+    }),
+    execute: () => Promise.resolve(),
+    delete:  () => ({ where: () => Promise.resolve() }),
+  };
   return {
     db: {
-      select:  () => chain,
-      update:  () => ({
-        set: (data: any) => {
-          h.updates.push(data);
-          return { where: () => Promise.resolve() };
-        },
-      }),
-      insert:  () => ({
-        values: () => ({
-          returning: () => Promise.resolve([{ id: 42 }]),
-        }),
-      }),
-      execute: () => Promise.resolve(),
-      delete:  () => ({ where: () => Promise.resolve() }),
+      ...dbOps,
+      transaction: async (callback: (tx: any) => Promise<any>) => callback(dbOps),
     },
   };
 });
@@ -329,13 +333,13 @@ describe("calcInvoice", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe("POST /:id/accept", () => {
   it("transitions a draft invoice to approved and assigns an invoice number", async () => {
-    // 1) get current invoice (status check)
-    // 2) get current invoice (assignInvoiceNumberIfNeeded check)
-    // 3) get settings (getNextInvoiceNumber)
-    // 4) get final invoice after update (buildInvoiceQuery)
+    // Inside the transaction:
+    // 1) tx.select status check (invoicesTable .where)
+    // 2) tx.select settings (settingsTable .limit)
+    // After transaction:
+    // 3) buildInvoiceQuery .where
     h.selectQueue.push(
       [{ status: "draft", invoiceNumber: null }],
-      [{ invoiceNumber: null }],
       [{ id: 1, invoicePrefix: "INV-", invoiceNextNumber: 1001 }],
       [fakeInvoice({ status: "approved", invoiceNumber: "INV-1001" })],
     );
@@ -661,6 +665,115 @@ describe("POST /:id/record-payment", () => {
     const res = await request(app)
       .post("/99/record-payment")
       .send({ amount: 100 });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /:id/revert-to-draft — approved/sent with no payments → draft
+// ─────────────────────────────────────────────────────────────────────────────
+describe("POST /:id/revert-to-draft", () => {
+  it("reverts an approved invoice to draft, clears number/sentAt/acceptedAt", async () => {
+    // transaction: 1) status check, 2) settings (for counter check), 3) buildInvoiceQuery after update
+    h.selectQueue.push(
+      [{ status: "approved", invoiceNumber: "INV-1001", amountPaid: null }],
+      [{ id: 1, invoicePrefix: "INV-", invoiceNextNumber: 1002 }],
+      [fakeInvoice({ status: "draft", invoiceNumber: null, sentAt: null, acceptedAt: null })],
+    );
+
+    const res = await request(app).post("/42/revert-to-draft").send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("draft");
+    expect(res.body.invoiceNumber).toBeNull();
+
+    const update = h.updates.find((u: any) => u.status === "draft");
+    expect(update).toBeTruthy();
+    expect(update.invoiceNumber).toBeNull();
+    expect(update.sentAt).toBeNull();
+    expect(update.acceptedAt).toBeNull();
+    expect(update.sentMethod).toBeNull();
+  });
+
+  it("decrements the counter when reverting the most recently issued number", async () => {
+    // INV-1001 is counter-1 (counter = 1002) → decrement to 1001
+    h.selectQueue.push(
+      [{ status: "sent", invoiceNumber: "INV-1001", amountPaid: null }],
+      [{ id: 1, invoicePrefix: "INV-", invoiceNextNumber: 1002 }],
+      [fakeInvoice({ status: "draft", invoiceNumber: null })],
+    );
+
+    await request(app).post("/42/revert-to-draft").send();
+
+    const settingsUpdate = h.updates.find((u: any) => u.invoiceNextNumber !== undefined);
+    expect(settingsUpdate).toBeTruthy();
+    expect(settingsUpdate.invoiceNextNumber).toBe(1001);
+  });
+
+  it("does NOT decrement the counter when reverting a non-latest number", async () => {
+    // INV-1000 is not counter-1 (counter = 1002, so last issued = INV-1001) → no decrement
+    h.selectQueue.push(
+      [{ status: "approved", invoiceNumber: "INV-1000", amountPaid: null }],
+      [{ id: 1, invoicePrefix: "INV-", invoiceNextNumber: 1002 }],
+      [fakeInvoice({ status: "draft", invoiceNumber: null })],
+    );
+
+    await request(app).post("/42/revert-to-draft").send();
+
+    const settingsUpdate = h.updates.find((u: any) => u.invoiceNextNumber !== undefined);
+    expect(settingsUpdate).toBeUndefined();
+  });
+
+  it("returns 400 when the invoice has recorded payments", async () => {
+    h.selectQueue.push(
+      [{ status: "sent", invoiceNumber: "INV-1001", amountPaid: "250.00" }],
+    );
+
+    const res = await request(app).post("/42/revert-to-draft").send();
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/payment/i);
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it("returns 400 when the invoice is already a draft", async () => {
+    h.selectQueue.push(
+      [{ status: "draft", invoiceNumber: null, amountPaid: null }],
+    );
+
+    const res = await request(app).post("/42/revert-to-draft").send();
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/approved or sent/i);
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it("returns 400 when the invoice is cancelled (voided)", async () => {
+    h.selectQueue.push(
+      [{ status: "cancelled", invoiceNumber: "INV-1001", amountPaid: null }],
+    );
+
+    const res = await request(app).post("/42/revert-to-draft").send();
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/approved or sent/i);
+  });
+
+  it("returns 400 when the invoice is paid", async () => {
+    h.selectQueue.push(
+      [{ status: "paid", invoiceNumber: "INV-1001", amountPaid: "1000.00" }],
+    );
+
+    const res = await request(app).post("/42/revert-to-draft").send();
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 when invoice does not exist", async () => {
+    h.selectQueue.push([]);
+
+    const res = await request(app).post("/99/revert-to-draft").send();
 
     expect(res.status).toBe(404);
   });

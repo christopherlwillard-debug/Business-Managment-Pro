@@ -17,7 +17,7 @@ import { useBusiness } from "@/contexts/BusinessContext";
 import {
   Building2, MapPin, Check, X, Plus, Trash2, Printer,
   Send, Mail, CreditCard, Copy, Eye, ChevronDown, ChevronUp, Paperclip, Upload,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, RotateCcw,
 } from "lucide-react";
 
 interface LineItem { description: string; quantity: number; unitPrice: number; }
@@ -53,10 +53,11 @@ export interface InvoicePanelProps {
   onSaved?: () => void;
   onDelete?: () => void;
   onVoid?: () => void;
+  onRevertToDraft?: (draftInvoice: Invoice) => void;
 }
 
 export function InvoicePanel({
-  open, onOpenChange, initialData, existingInvoice, onSaved, onDelete, onVoid,
+  open, onOpenChange, initialData, existingInvoice, onSaved, onDelete, onVoid, onRevertToDraft,
 }: InvoicePanelProps) {
   const queryClient = useQueryClient();
   const { data: clients = [] } = useListClients();
@@ -192,6 +193,8 @@ export function InvoicePanel({
   const [recordPaymentAmount, setRecordPaymentAmount] = useState("");
   const [recordPaymentDate, setRecordPaymentDate] = useState(() => localDateString(new Date()));
   const [recordingPayment, setRecordingPayment] = useState(false);
+  const [revertConfirm, setRevertConfirm] = useState(false);
+  const [reverting, setReverting] = useState(false);
 
   const clientRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -231,6 +234,7 @@ export function InvoicePanel({
       setGmailPreview(false);
       setGmailMessage("");
       setShowMoreOptions(false);
+      setRevertConfirm(false);
       const url = effectiveExistingInvoice?.squarePaymentLinkUrl ?? effectiveExistingInvoice?.stripePaymentLinkUrl ?? null;
       setPayUrl(url);
       if (effectiveExistingInvoice) {
@@ -792,6 +796,16 @@ export function InvoicePanel({
               </button>
             )}
 
+            {isEdit && !isVoided && isNumbered &&
+              (effectiveExistingInvoice?.status === "approved" || effectiveExistingInvoice?.status === "sent") &&
+              !effectiveExistingInvoice?.amountPaid && (
+              <button type="button" onClick={() => setRevertConfirm(true)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-violet-500 hover:bg-violet-50 transition-colors">
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Revert to Draft</span>
+              </button>
+            )}
+
             {isEdit && !isVoided && isNumbered && onVoid && (
               <button type="button" onClick={onVoid}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-orange-400 hover:bg-orange-50 transition-colors">
@@ -830,6 +844,62 @@ export function InvoicePanel({
           <div className="mx-4 mt-3 px-4 py-2.5 bg-orange-50 border border-orange-200 rounded-xl text-sm text-orange-700 flex items-center gap-2 flex-shrink-0">
             <X className="w-4 h-4 flex-shrink-0" />
             <span><span className="font-bold">Voided.</span> This invoice has been permanently voided and is kept for audit records. It cannot be edited or paid.</span>
+          </div>
+        )}
+
+        {/* Revert to Draft confirmation banner */}
+        {revertConfirm && (
+          <div className="mx-4 mt-3 px-4 py-3 bg-violet-50 border border-violet-200 rounded-xl flex-shrink-0">
+            <div className="flex items-start gap-3">
+              <RotateCcw className="w-4 h-4 text-violet-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-violet-900">Revert to Draft?</p>
+                <p className="text-xs text-violet-700 mt-0.5">
+                  The invoice number will be removed and the status reset to Draft so you can make corrections.
+                  {effectiveExistingInvoice?.invoiceNumber ? ` Number ${effectiveExistingInvoice.invoiceNumber} may be reused if it was the most recently issued.` : ""}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setRevertConfirm(false)}
+                  disabled={reverting}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={reverting}
+                  onClick={async () => {
+                    if (!effectiveExistingInvoice) return;
+                    setReverting(true);
+                    try {
+                      const res = await fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/revert-to-draft`, {
+                        method: "POST",
+                        credentials: "include",
+                      });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data.error || "Failed to revert");
+                      toast({ title: "Invoice reverted to draft", description: "You can now edit and re-issue it." });
+                      queryClient.invalidateQueries();
+                      setRevertConfirm(false);
+                      onRevertToDraft?.(data);
+                    } catch (err: any) {
+                      toast({ title: "Failed to revert invoice", description: err.message ?? "An error occurred.", variant: "destructive" });
+                    } finally {
+                      setReverting(false);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-violet-600 text-white hover:bg-violet-700 transition-colors shadow disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  {reverting
+                    ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    : <RotateCcw className="w-3 h-3" />}
+                  {reverting ? "Reverting…" : "Revert to Draft"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
