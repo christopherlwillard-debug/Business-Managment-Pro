@@ -27,7 +27,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X, Link2, ExternalLink, Trash2, FileText } from "lucide-react";
+import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X, Link2, ExternalLink, Trash2, FileText, PiggyBank } from "lucide-react";
 import { Link } from "wouter";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -109,6 +109,14 @@ interface PlaidTransaction {
   matchedExpenseVendor: string | null;
   matchedExpenseAmount: string | null;
   matchedExpenseJobId: number | null;
+  investmentTransferId: number | null;
+}
+
+interface InvestmentAccountOption {
+  id: number;
+  name: string;
+  institution: string | null;
+  accountType: string;
 }
 
 interface SyncResult {
@@ -243,6 +251,11 @@ export default function Banking() {
 
   // Delete confirmation (inline — tracks which txn ID is pending confirm)
   const [confirmDeleteTxnId, setConfirmDeleteTxnId] = useState<number | null>(null);
+
+  // Investment transfer filing
+  const [investmentFilingTxn, setInvestmentFilingTxn] = useState<PlaidTransaction | null>(null);
+  const [investmentAccountId, setInvestmentAccountId] = useState<string>("");
+  const [investmentNotes, setInvestmentNotes] = useState<string>("");
   const [incomeForm, setIncomeForm] = useState<FileIncomeForm>({
     mode: "other",
     invoiceId: "",
@@ -303,6 +316,16 @@ export default function Banking() {
     queryFn: () => apiFetch<UnmatchedExpense[]>(`/api/plaid/expenses/unmatched?dateRange=90`),
     enabled: !!matchingTxn,
     staleTime: 0,
+  });
+
+  const { data: investmentAccounts } = useQuery<InvestmentAccountOption[]>({
+    queryKey: ["investment-accounts-picker"],
+    queryFn: async () => {
+      const res = await apiFetch<{ accounts: InvestmentAccountOption[] }>("/api/investments/accounts/summary");
+      return (res as any).accounts ?? [];
+    },
+    enabled: !!investmentFilingTxn,
+    staleTime: 60000,
   });
 
   const getLinkTokenMutation = useMutation({
@@ -371,6 +394,23 @@ export default function Banking() {
       toast({ title: "Expense filed", description: "Transaction has been recorded as an expense." });
     },
     onError: (err: Error) => toast({ title: "Failed to file expense", description: err.message, variant: "destructive" }),
+  });
+
+  const fileAsInvestmentMutation = useMutation({
+    mutationFn: ({ txnId, body }: { txnId: number; body: object }) =>
+      apiFetch(`/api/investments/transactions/${txnId}/file-as-investment`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      qc.invalidateQueries({ queryKey: ["investments-summary"] });
+      setInvestmentFilingTxn(null);
+      setInvestmentAccountId("");
+      setInvestmentNotes("");
+      toast({ title: "Investment transfer recorded", description: "Transaction categorized as an investment transfer." });
+    },
+    onError: (err: Error) => toast({ title: "Failed to file investment transfer", description: err.message, variant: "destructive" }),
   });
 
   const matchExpenseMutation = useMutation({
@@ -785,7 +825,8 @@ export default function Banking() {
                     {[...transactions].reverse().map((txn) => {
                       const isCredit = txn.transactionType === "credit";
                       const amt = parseFloat(txn.amount);
-                      const isFiled = txn.status === "matched";
+                      const isInvestmentTransfer = txn.status === "investment_transfer";
+                      const isFiled = txn.status === "matched" || isInvestmentTransfer;
                       return (
                         <tr
                           key={txn.id}
@@ -803,7 +844,12 @@ export default function Banking() {
                           <td className="px-4 py-3 text-right">
                             {isFiled ? (
                               <div className="inline-flex items-center gap-2">
-                                {txn.matchedExpenseId && txn.matchedExpenseDescription ? (
+                                {isInvestmentTransfer ? (
+                                  <span className="inline-flex items-center gap-1 text-xs text-blue-700 dark:text-blue-400 font-medium">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                    Investment Transfer
+                                  </span>
+                                ) : txn.matchedExpenseId && txn.matchedExpenseDescription ? (
                                   <TooltipProvider delayDuration={200}>
                                     <Tooltip>
                                       <TooltipTrigger asChild>
@@ -841,7 +887,7 @@ export default function Banking() {
                                     Filed ✓
                                   </span>
                                 )}
-                                {txn.matchedExpenseJobId != null && isTravelCategory(txn.matchedExpenseCategory) && (
+                                {!isInvestmentTransfer && txn.matchedExpenseJobId != null && isTravelCategory(txn.matchedExpenseCategory) && (
                                   <Link
                                     href={`/trip-packet/${txn.matchedExpenseJobId}`}
                                     title="View trip documentation for this travel expense"
@@ -910,6 +956,19 @@ export default function Banking() {
                                 >
                                   <Link2 className="w-3 h-3 mr-1" />
                                   Match to Expense
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs px-2.5 text-purple-700 border-purple-300 hover:bg-purple-50"
+                                  onClick={() => {
+                                    setInvestmentFilingTxn(txn);
+                                    setInvestmentAccountId("");
+                                    setInvestmentNotes("");
+                                  }}
+                                >
+                                  <PiggyBank className="w-3 h-3 mr-1" />
+                                  Investment Transfer
                                 </Button>
                                 {confirmDeleteTxnId === txn.id ? (
                                   <span className="inline-flex items-center gap-1 text-xs text-destructive">
@@ -1454,6 +1513,88 @@ export default function Banking() {
               </Button>
             </SheetFooter>
           </form>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Investment Transfer Sheet ─────────────────────────────────────────── */}
+      <Sheet open={!!investmentFilingTxn} onOpenChange={(open) => { if (!open) setInvestmentFilingTxn(null); }}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <PiggyBank className="w-4 h-4 text-purple-600" />
+              Categorize as Investment Transfer
+            </SheetTitle>
+            <SheetDescription>
+              {investmentFilingTxn && (
+                <>
+                  {new Date(investmentFilingTxn.date + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  {" · "}
+                  <span className="font-medium">-{formatCurrency(parseFloat(investmentFilingTxn.amount))}</span>
+                  <br />
+                  This will be recorded as a deposit into the selected investment account. It will <strong>not</strong> appear on your P&amp;L or Schedule C.
+                </>
+              )}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-5 mt-6">
+            <div className="space-y-1.5">
+              <Label>Investment Account *</Label>
+              {!investmentAccounts || investmentAccounts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No investment accounts found. Go to{" "}
+                  <strong>Accounting → Investments</strong> to create one first.
+                </p>
+              ) : (
+                <select
+                  value={investmentAccountId}
+                  onChange={e => setInvestmentAccountId(e.target.value)}
+                  className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">Select account…</option>
+                  {investmentAccounts.map(a => (
+                    <option key={a.id} value={String(a.id)}>
+                      {a.name}{a.institution ? ` — ${a.institution}` : ""} ({a.accountType})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Notes (optional)</Label>
+              <Textarea
+                value={investmentNotes}
+                onChange={e => setInvestmentNotes(e.target.value)}
+                rows={2}
+                placeholder="e.g. Monthly brokerage contribution"
+              />
+            </div>
+
+            <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20 p-3 text-xs text-amber-800 dark:text-amber-300">
+              Investment transfers are asset movements — they stay on your balance sheet and are excluded from all expense and P&amp;L reports.
+            </div>
+          </div>
+
+          <SheetFooter className="mt-6">
+            <Button
+              onClick={() => {
+                if (!investmentFilingTxn || !investmentAccountId) return;
+                fileAsInvestmentMutation.mutate({
+                  txnId: investmentFilingTxn.id,
+                  body: {
+                    investmentAccountId: parseInt(investmentAccountId, 10),
+                    transferType: "deposit",
+                    notes: investmentNotes || undefined,
+                  },
+                });
+              }}
+              disabled={!investmentAccountId || fileAsInvestmentMutation.isPending}
+              className="w-full"
+            >
+              {fileAsInvestmentMutation.isPending ? "Recording…" : "Record Investment Transfer"}
+            </Button>
+          </SheetFooter>
         </SheetContent>
       </Sheet>
 

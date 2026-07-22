@@ -3,7 +3,7 @@ import { useBusiness } from "@/contexts/BusinessContext";
 import { useQuery } from "@tanstack/react-query";
 import {
   Printer, BarChart3, TrendingUp, FileText,
-  Calendar, FileSpreadsheet, FileCheck, BarChart2, Briefcase,
+  Calendar, FileSpreadsheet, FileCheck, BarChart2, Briefcase, PiggyBank,
 } from "lucide-react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -16,6 +16,7 @@ const ReconcileTab     = lazy(() => import("./accounting/ReconcileTab"));
 const YearEndReportTab = lazy(() => import("./accounting/YearEndReportTab"));
 const BenchmarksTab    = lazy(() => import("./accounting/BenchmarksTab"));
 const BusinessTripsTab = lazy(() => import("./accounting/BusinessTripsTab"));
+const InvestmentsTab   = lazy(() => import("./accounting/InvestmentsTab"));
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -27,12 +28,12 @@ async function fetchAccounting(year: number, businessLine?: string) {
   return res.json();
 }
 
-export type AccountingTab = "overview" | "profit-loss" | "schedule-c" | "tax-calendar" | "reconcile" | "year-end" | "benchmarks" | "business-trips";
+export type AccountingTab = "overview" | "profit-loss" | "schedule-c" | "tax-calendar" | "reconcile" | "year-end" | "benchmarks" | "business-trips" | "investments";
 
 function getInitialTab(): AccountingTab {
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
-  if (tab === "profit-loss" || tab === "schedule-c" || tab === "tax-calendar" || tab === "reconcile" || tab === "year-end" || tab === "benchmarks" || tab === "business-trips") return tab;
+  if (tab === "profit-loss" || tab === "schedule-c" || tab === "tax-calendar" || tab === "reconcile" || tab === "year-end" || tab === "benchmarks" || tab === "business-trips" || tab === "investments") return tab;
   return "overview";
 }
 
@@ -100,6 +101,7 @@ export default function Accounting() {
           { key: "schedule-c" as const,    label: "Schedule C + Home Office",     icon: FileText },
           { key: "tax-calendar" as const,  label: "Tax Calendar & Compliance",    icon: Calendar },
           { key: "business-trips" as const, label: "Business Trips",              icon: Briefcase },
+          { key: "investments" as const,   label: "Investments",                  icon: PiggyBank },
           { key: "benchmarks" as const,    label: "Benchmarks",                   icon: BarChart2 },
           ...(isOwner ? [{ key: "year-end" as const,   label: "Year-End Report",  icon: FileSpreadsheet }] : []),
           ...(isOwner ? [{ key: "reconcile" as const,  label: "Reconcile",        icon: FileCheck }] : []),
@@ -186,6 +188,14 @@ export default function Accounting() {
         <ErrorBoundary>
           <Suspense fallback={<TabSpinner />}>
             <BusinessTripsTab year={year} />
+          </Suspense>
+        </ErrorBoundary>
+      )}
+
+      {activeTab === "investments" && (
+        <ErrorBoundary>
+          <Suspense fallback={<TabSpinner />}>
+            <InvestmentsTab />
           </Suspense>
         </ErrorBoundary>
       )}

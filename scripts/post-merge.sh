@@ -906,3 +906,56 @@ pool.query(\`
 \`)).then(() => { console.log('DB check constraints applied'); pool.end(); })
   .catch(e => { console.error('constraint migration error:', e.message); pool.end(); });
 ")
+
+# Investment tracking tables (Task #1253)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\`
+  CREATE TABLE IF NOT EXISTS investment_accounts (
+    id SERIAL PRIMARY KEY,
+    business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    institution TEXT,
+    account_type TEXT NOT NULL DEFAULT 'Brokerage',
+    business_or_personal TEXT NOT NULL DEFAULT 'business',
+    active BOOLEAN NOT NULL DEFAULT true,
+    notes TEXT,
+    plaid_account_id TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS investment_transfers (
+    id SERIAL PRIMARY KEY,
+    investment_account_id INTEGER NOT NULL REFERENCES investment_accounts(id) ON DELETE CASCADE,
+    transfer_type TEXT NOT NULL DEFAULT 'deposit',
+    date DATE NOT NULL,
+    amount NUMERIC(14,2) NOT NULL,
+    source_bank_account TEXT,
+    notes TEXT,
+    bank_transaction_id INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS investment_account_valuations (
+    id SERIAL PRIMARY KEY,
+    investment_account_id INTEGER NOT NULL REFERENCES investment_accounts(id) ON DELETE CASCADE,
+    portfolio_value NUMERIC(14,2) NOT NULL,
+    valuation_date DATE NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS investment_tax_documents (
+    id SERIAL PRIMARY KEY,
+    investment_account_id INTEGER NOT NULL REFERENCES investment_accounts(id) ON DELETE CASCADE,
+    tax_year INTEGER NOT NULL,
+    document_type TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    object_path TEXT NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );
+  ALTER TABLE bank_transactions
+    ADD COLUMN IF NOT EXISTS investment_transfer_id INTEGER;
+\`).then(() => { console.log('Investment tables ensured'); pool.end(); })
+  .catch(e => { console.error('Investment migration error:', e.message); pool.end(); });
+")

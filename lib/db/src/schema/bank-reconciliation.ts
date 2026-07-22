@@ -26,6 +26,7 @@ export const bankTransactionsTable = pgTable("bank_transactions", {
   suggestedMatchType: text("suggested_match_type"),
   suggestedMatchId: integer("suggested_match_id"),
   plaidTransactionId: text("plaid_transaction_id"),
+  investmentTransferId: integer("investment_transfer_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
