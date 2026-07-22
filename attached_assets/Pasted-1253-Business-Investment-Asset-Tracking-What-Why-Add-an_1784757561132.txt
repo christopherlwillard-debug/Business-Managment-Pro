@@ -1,0 +1,344 @@
+1253 - Business Investment Asset Tracking
+
+What & Why
+
+Add an Investments module under Accounting & Tax that allows the business to track money transferred into brokerage and investment accounts without treating those transfers as business expenses.
+
+When business funds are moved from a checking or savings account into an investment account, the money has not been spent. It has simply been transferred from one business asset (cash) into another business asset (investments). Because of this, investment transfers must never reduce Profit & Loss, Net Income, or Job Profitability.
+
+The goal is to provide accurate accounting while allowing business investments to be tracked without requiring Plaid Investments or any other paid investment synchronization service.
+
+The system should work whether the investment account is connected through Plaid or managed manually.
+
+⸻
+
+Done Looks Like
+
+Investment Accounts
+
+Users can create, edit, archive, and manage multiple investment accounts.
+
+Each account includes:
+
+* Name
+* Institution
+* Account Type
+* Business or Personal designation
+* Notes
+* Active / Inactive status
+* Optional Plaid Account ID (nullable for future compatibility)
+* Portfolio Value
+* Portfolio Value Last Updated
+* Portfolio Value Notes
+
+Examples:
+
+* Business Brokerage
+* J.P. Morgan Self-Directed
+* Charles Schwab
+* Fidelity
+* Robinhood
+
+Multiple investment accounts are fully supported.
+
+⸻
+
+Investment Transfers
+
+Users can manually record transfers between business bank accounts and investment accounts.
+
+Each transfer contains:
+
+* Date
+* Amount
+* Source Bank Account
+* Destination Investment Account
+* Notes
+* Optional linked bank transaction
+
+Investment transfers:
+
+* Reduce the originating bank account balance.
+* Increase the investment account’s invested balance.
+* Do NOT create an expense.
+* Do NOT reduce Profit & Loss.
+* Do NOT reduce Net Income.
+* Do NOT affect Job Profitability.
+* Do NOT appear on Schedule C expense reports.
+* Do NOT appear in Vendor Spending.
+* Do NOT appear in Job Cost reports.
+
+Investment transfers represent movement between assets, not spending.
+
+⸻
+
+Bank Transaction Categorization
+
+On the Banking page, imported bank transactions gain a new category:
+
+Investment Transfer
+
+When selected:
+
+* User selects the destination investment account.
+* The imported bank transaction is linked to the investment transfer.
+* The transaction is removed from expense totals.
+* The investment account’s invested balance increases.
+* No duplicate expense is created.
+
+This allows free Plaid bank transaction imports to power investment tracking without requiring paid investment synchronization.
+
+⸻
+
+Portfolio Value
+
+Each investment account stores a manually maintained Portfolio Value.
+
+Fields include:
+
+* Portfolio Value
+* Last Updated
+* Notes
+
+The system automatically calculates:
+
+* Total Invested
+* Portfolio Gain/Loss
+* Return Percentage
+
+Calculations:
+
+Total Invested equals all investment deposits minus any withdrawals that are marked as Return of Principal.
+
+Portfolio Gain/Loss equals Portfolio Value minus Total Invested.
+
+Return Percentage equals Portfolio Gain/Loss divided by Total Invested.
+
+Portfolio Value is intentionally entered manually because live market synchronization is outside the scope of this feature.
+
+⸻
+
+Investment Dashboard
+
+Add an Investments dashboard under Accounting & Tax.
+
+Display:
+
+* Number of Investment Accounts
+* Total Invested
+* Total Portfolio Value
+* Unrealized Gain/Loss
+* Overall Return Percentage
+* Last Portfolio Update
+
+Each investment account displays:
+
+* Institution
+* Total Invested
+* Portfolio Value
+* Gain/Loss
+* Return Percentage
+* Last Updated
+
+⸻
+
+Tax Documents
+
+Each investment account includes a Tax Documents section.
+
+Users can upload PDF documents organized by tax year.
+
+Supported document types include:
+
+* Annual Statement
+* Quarterly Statement
+* 1099-DIV
+* 1099-B
+* 1099-INT
+* Other
+
+Documents reuse the existing object storage implementation.
+
+These files are stored for bookkeeping and tax preparation purposes only.
+
+⸻
+
+Accounting Rules
+
+Investment transfers are asset transfers.
+
+They must never be classified as:
+
+* Business Expenses
+* Job Costs
+* Operating Expenses
+* Vendor Spending
+
+Investment transfers only affect:
+
+* Bank Account Balances
+* Investment Account Balances
+* Investment Dashboard
+* Future Balance Sheet
+* Future Net Worth calculations
+
+⸻
+
+Out of Scope
+
+The following items are intentionally excluded from this feature:
+
+* Plaid Investments API synchronization
+* Automatic market value synchronization
+* Individual stock, ETF, mutual fund, or cryptocurrency holdings
+* Security-level position tracking
+* Dividend tracking
+* Interest tracking
+* Capital gains tracking
+* Balance Sheet implementation
+* Net Worth reporting
+* Automatic tax calculations
+
+The architecture should support these features in future releases without requiring database redesign.
+
+⸻
+
+Steps
+
+Database
+
+Create a new investment_accounts table.
+
+Fields:
+
+* id
+* businessId
+* name
+* institution
+* accountType
+* businessOrPersonal
+* notes
+* active
+* plaidAccountId (nullable)
+* portfolioValue
+* portfolioValueUpdatedAt
+* portfolioValueNotes
+
+Create a new investment_transfers table.
+
+Fields:
+
+* id
+* businessId
+* investmentAccountId
+* date
+* amount
+* sourceBankAccount
+* notes
+* bankTransactionId (nullable)
+
+⸻
+
+API
+
+Create CRUD endpoints for:
+
+* Investment Accounts
+* Investment Transfers
+
+Create a Banking endpoint that allows an imported transaction to be categorized as an Investment Transfer.
+
+When categorized:
+
+* Link the bank transaction to the investment transfer.
+* Associate the selected investment account.
+* Exclude the transaction from expense totals.
+* Prevent duplicate expense creation.
+
+⸻
+
+Investment Accounts UI
+
+Add a new Investments page under Accounting & Tax.
+
+Display all investment accounts.
+
+Each account displays:
+
+* Institution
+* Total Invested
+* Portfolio Value
+* Gain/Loss
+* Return Percentage
+* Last Updated
+
+Selecting an account opens a detail page containing:
+
+* Transfer History
+* Portfolio Value Editor
+* Tax Documents
+* Account Settings
+
+⸻
+
+Banking Integration
+
+On the Banking page, add a new transaction category:
+
+Investment Transfer
+
+When selected:
+
+* Display an Investment Account picker.
+* Save the relationship.
+* Create or update the Investment Transfer record.
+* Remove the transaction from expense calculations.
+* Update investment totals automatically.
+
+⸻
+
+Dashboard
+
+Add an Investments summary card to Accounting & Tax.
+
+Display:
+
+* Investment Accounts
+* Total Invested
+* Portfolio Value
+* Gain/Loss
+* Return Percentage
+* Last Updated
+
+⸻
+
+Tax Documents
+
+Within each investment account, add a Tax Documents section.
+
+Users can:
+
+* Upload PDF files.
+* Assign a tax year.
+* Assign a document type.
+* View previously uploaded documents.
+* Delete documents.
+
+Reuse the existing object storage implementation.
+
+⸻
+
+Future Compatibility
+
+This feature should be designed so future investment synchronization services can be added without requiring schema changes.
+
+If Plaid Investments or another provider is implemented later, synchronized portfolio values should simply replace manual Portfolio Value updates while preserving all existing Investment Accounts, Investment Transfers, reporting, and accounting behavior.
+
+The architecture should clearly separate:
+
+* Investment Accounts (where assets are held)
+* Investment Transfers (movement of cash)
+* Portfolio Valuation (current market value)
+* Future Investment Holdings (individual securities)
+
+This separation ensures the feature can grow into a complete investment management system without requiring major refactoring.

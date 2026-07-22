@@ -1,0 +1,66 @@
+This is where I’d separate bookkeeping from tax reporting. Trying to calculate taxes from bank transactions alone will eventually create problems.
+
+Here’s the approach I’d recommend:
+
+During the year
+
+Use the app to track:
+
+* Contributions to the investment account.
+* Withdrawals from the investment account.
+* Current portfolio value (manual or synced).
+* Dividend deposits that hit your bank account (if you want to track investment income).
+
+This gives you a good picture of your business investments throughout the year.
+
+At tax time
+
+Don’t rely on Plaid for tax reporting.
+
+Instead, import the official year-end tax documents from your brokerage, such as:
+
+* Annual brokerage statement.
+* Form 1099-DIV (dividends).
+* Form 1099-B (sales of investments).
+* Form 1099-INT (interest), if applicable.
+
+Those are the documents your tax preparer (or tax software) will use because they contain the official, reportable amounts.
+
+How I’d build it
+
+Create a Tax Documents section under each investment account.
+
+Allow users to upload:
+
+* Year-end statements (PDF).
+* 1099 forms (PDF).
+* Monthly or quarterly statements (optional).
+
+Then the app could:
+
+* Store the documents by tax year.
+* Let users retrieve them later.
+* Potentially extract key numbers with AI in the future (optional).
+
+Example
+
+Business Brokerage
+
+* 2026 Annual Statement.pdf
+* 2026 1099-DIV.pdf
+* 2026 1099-B.pdf
+
+Then, when preparing taxes, everything is already organized in one place.
+
+I would not try to replace the brokerage’s tax reporting
+
+Even if Plaid provides transaction data, it generally isn’t a substitute for the brokerage’s official tax forms. Things like cost basis adjustments, wash sales, qualified dividends, and other tax-specific reporting are determined by the brokerage and reported on the 1099s.
+
+My recommendation
+
+I would have the app do two things:
+
+1. Track investments throughout the year for management and reporting.
+2. Store the official brokerage tax documents at year-end for tax preparation.
+
+That gives you the best of both worlds: real-time visibility into your investments and accurate, official records when it’s time to file taxes. I think that’s a much more reliable long-term design than trying to have the app calculate every tax figure itself.

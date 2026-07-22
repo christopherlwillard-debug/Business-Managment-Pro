@@ -1,0 +1,197 @@
+Feature Request: Business Investment Asset Tracking
+
+Objective
+
+Add a Business Investment module that allows users to track money invested by the business without requiring Plaid Investment Sync or any other paid investment API.
+
+The system should leverage existing bank transaction imports whenever possible while also supporting manual tracking.
+
+This feature should function whether the investment account is connected through Plaid or not.
+
+⸻
+
+Purpose
+
+When business funds are transferred into an investment account, the transaction should not be treated as a business expense.
+
+Instead, it represents moving money from one business asset (cash) into another business asset (investments).
+
+The application must preserve accurate accounting by separating investments from expenses.
+
+⸻
+
+Investment Accounts Module
+
+Create a new module named Investment Accounts.
+
+Each account should include:
+
+* Account Name
+* Institution
+* Account Type
+* Business or Personal designation
+* Connected through Plaid (Yes / No)
+* Plaid Account ID (if applicable)
+* Active / Inactive
+* Notes
+
+Examples:
+
+* Business Brokerage
+* Business Investment Account
+* J.P. Morgan Self-Directed
+* Charles Schwab
+* Fidelity
+* Robinhood
+
+Multiple investment accounts must be supported.
+
+⸻
+
+Investment Transactions
+
+Whenever a bank transaction represents money being moved into an investment account, the user should be able to categorize the transaction as:
+
+Investment
+
+When categorized as Investment:
+
+* Decrease the originating bank account balance.
+* Increase the selected investment account balance.
+* Do not create an expense.
+* Do not reduce Profit & Loss.
+* Do not affect Net Income.
+* Exclude the transaction from expense reports and job costing.
+
+⸻
+
+Manual Investment Transactions
+
+If the investment account is not connected through Plaid, users must still be able to manually create Investment transactions.
+
+Required fields:
+
+* Date
+* Amount
+* Source Account
+* Investment Account
+* Notes
+
+The accounting behavior should be identical to imported bank transactions.
+
+⸻
+
+Plaid Support
+
+If an investment account is connected through Plaid and transaction data is available:
+
+* Import investment deposits and withdrawals as normal bank transactions.
+* Allow the user to categorize them as Investment if they are not automatically recognized.
+
+If no investment account is connected:
+
+* The feature must continue working through manual entries.
+
+No paid Plaid Investment API should be required.
+
+⸻
+
+Portfolio Value
+
+The system should track two separate values for every investment account.
+
+Total Invested
+
+Automatically calculated from all Investment transactions.
+
+Example:
+
+Investment Deposit
+
+$500
+
+Investment Deposit
+
+$1,000
+
+Investment Deposit
+
+$2,500
+
+Total Invested
+
+$4,000
+
+⸻
+
+Current Portfolio Value
+
+Maintained separately.
+
+Initially this should be manually entered by the user.
+
+Fields:
+
+* Current Portfolio Value
+* Last Updated
+* Notes
+
+The system should automatically calculate:
+
+* Unrealized Gain/Loss
+* Return Percentage
+
+⸻
+
+Dashboard
+
+Create a Business Investments dashboard displaying:
+
+* Total Invested
+* Current Portfolio Value
+* Unrealized Gain/Loss
+* Return Percentage
+* Number of Investment Accounts
+* Last Updated
+
+Each investment account should display:
+
+* Current Balance
+* Total Invested
+* Current Portfolio Value
+* Gain/Loss
+* Last Updated
+
+⸻
+
+Reporting
+
+Investment transactions are asset transfers.
+
+They must never appear as:
+
+* Business Expenses
+* Job Costs
+* Vendor Spending
+* Operating Expenses
+
+They should appear only within:
+
+* Investment Dashboard
+* Business Asset Reports
+* Balance Sheet (future implementation)
+* Net Worth calculations (future implementation)
+
+⸻
+
+Future Compatibility
+
+The architecture must support future automatic investment synchronization.
+
+If live investment data is added later through Plaid Investments or another provider, the manual Current Portfolio Value should simply be replaced by synchronized market values without requiring database changes or redesign.
+
+The transaction history and accounting logic should remain unchanged.
+
+⸻
+
+One additional recommendation: Instead of naming the feature just “Investments,” consider calling it “Assets → Investments.” As your app grows, you’ll likely want to track vehicles, equipment, real estate, and other business assets using the same framework. Designing it this way now gives you room to expand without rebuilding the feature later.
