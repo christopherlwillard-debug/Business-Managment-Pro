@@ -115,44 +115,51 @@ router.get("/accounts", async (req, res) => {
   }
 });
 
-router.get("/accounts/summary", async (_req, res) => {
+router.get("/accounts/summary", async (req, res) => {
   try {
-    const accounts = await db
-      .select()
-      .from(investmentAccountsTable)
-      .where(eq(investmentAccountsTable.active, true))
-      .orderBy(investmentAccountsTable.name);
+    const rawBid = req.query.businessId;
+    const businessId = rawBid != null && String(rawBid) !== "" ? parseInt(String(rawBid)) : null;
+
+    // Fetch ALL accounts (active + inactive) filtered by businessId when provided
+    let allAccountsQuery: any = db.select().from(investmentAccountsTable);
+    if (businessId != null && Number.isFinite(businessId)) {
+      allAccountsQuery = allAccountsQuery.where(eq(investmentAccountsTable.businessId, businessId));
+    }
+    const allAccounts = await allAccountsQuery.orderBy(investmentAccountsTable.name);
 
     const withSummaries = await Promise.all(
-      accounts.map(async (a: typeof investmentAccountsTable.$inferSelect) => {
+      allAccounts.map(async (a: typeof investmentAccountsTable.$inferSelect) => {
         const summary = await computeAccountSummary(a.id);
         return { ...formatAccount(a), ...summary };
       })
     );
 
-    const totalInvested = withSummaries.reduce((sum, a) => sum + a.totalInvested, 0);
-    const totalPortfolioValue = withSummaries.reduce((sum, a) => sum + (a.portfolioValue ?? 0), 0);
+    // Aggregates are computed over active accounts only
+    const activeWithSummaries = withSummaries.filter((a: any) => a.active);
+
+    const totalInvested = activeWithSummaries.reduce((sum: number, a: any) => sum + a.totalInvested, 0);
+    const totalPortfolioValue = activeWithSummaries.reduce((sum: number, a: any) => sum + (a.portfolioValue ?? 0), 0);
     const totalGainLoss = totalPortfolioValue - totalInvested;
     const totalReturnPct = totalInvested > 0 ? totalGainLoss / totalInvested : null;
-    const lastUpdate = withSummaries
-      .map(a => a.lastValuationDate)
+    const lastUpdate = activeWithSummaries
+      .map((a: any) => a.lastValuationDate)
       .filter(Boolean)
       .sort()
       .at(-1) ?? null;
 
-    const largest = withSummaries.length > 0
-      ? withSummaries.reduce((best, a) => (a.totalInvested > best.totalInvested ? a : best), withSummaries[0])
+    const largest = activeWithSummaries.length > 0
+      ? activeWithSummaries.reduce((best: any, a: any) => (a.totalInvested > best.totalInvested ? a : best), activeWithSummaries[0])
       : null;
-    const withPortfolio = withSummaries.filter(a => a.portfolioValue != null && a.totalInvested > 0);
+    const withPortfolio = activeWithSummaries.filter((a: any) => a.portfolioValue != null && a.totalInvested > 0);
     const best = withPortfolio.length > 0
-      ? withPortfolio.reduce((b, a) => ((a.returnPct ?? -Infinity) > (b.returnPct ?? -Infinity) ? a : b), withPortfolio[0])
+      ? withPortfolio.reduce((b: any, a: any) => ((a.returnPct ?? -Infinity) > (b.returnPct ?? -Infinity) ? a : b), withPortfolio[0])
       : null;
     const worst = withPortfolio.length > 0
-      ? withPortfolio.reduce((b, a) => ((a.returnPct ?? Infinity) < (b.returnPct ?? Infinity) ? a : b), withPortfolio[0])
+      ? withPortfolio.reduce((b: any, a: any) => ((a.returnPct ?? Infinity) < (b.returnPct ?? Infinity) ? a : b), withPortfolio[0])
       : null;
 
     res.json({
-      accountCount: accounts.length,
+      accountCount: activeWithSummaries.length,
       totalInvested,
       totalPortfolioValue,
       totalGainLoss,
@@ -161,7 +168,7 @@ router.get("/accounts/summary", async (_req, res) => {
       largestAccount: largest ? { id: largest.id, name: largest.name } : null,
       bestAccount: best ? { id: best.id, name: best.name, returnPct: best.returnPct } : null,
       worstAccount: worst ? { id: worst.id, name: worst.name, returnPct: worst.returnPct } : null,
-      accounts: withSummaries,
+      accounts: withSummaries, // includes both active and inactive
     });
   } catch (err) {
     console.error(err);

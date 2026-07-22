@@ -4,6 +4,7 @@ import {
   TrendingUp, TrendingDown, Plus, ChevronRight, Building2,
   PiggyBank, BarChart3, ArrowUpRight, AlertCircle, Star, Minus,
 } from "lucide-react";
+import { useBusiness } from "@/contexts/BusinessContext";
 import InvestmentAccountDetail from "./InvestmentAccountDetail";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -82,6 +83,7 @@ const ACCOUNT_TYPES = [
 
 export default function InvestmentsTab() {
   const qc = useQueryClient();
+  const { activeBusiness } = useBusiness();
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newForm, setNewForm] = useState<NewAccountForm>({
@@ -94,9 +96,11 @@ export default function InvestmentsTab() {
   const [showInactive, setShowInactive] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const businessId = activeBusiness?.id ?? null;
+
   const { data: summary, isLoading } = useQuery<InvestmentSummary>({
-    queryKey: ["investments-summary"],
-    queryFn: () => apiFetch("/api/investments/accounts/summary"),
+    queryKey: ["investments-summary", businessId],
+    queryFn: () => apiFetch(`/api/investments/accounts/summary${businessId ? `?businessId=${businessId}` : ""}`),
     staleTime: 1000 * 60,
   });
 
@@ -104,7 +108,7 @@ export default function InvestmentsTab() {
     mutationFn: (body: object) =>
       apiFetch("/api/investments/accounts", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["investments-summary"] });
+      qc.invalidateQueries({ queryKey: ["investments-summary", businessId] });
       setShowNewForm(false);
       setNewForm({ name: "", institution: "", accountType: "Brokerage", businessOrPersonal: "business", notes: "" });
       setFormError(null);
@@ -127,7 +131,7 @@ export default function InvestmentsTab() {
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!newForm.name.trim()) { setFormError("Account name is required"); return; }
-    createMutation.mutate(newForm);
+    createMutation.mutate({ ...newForm, businessId: businessId ?? undefined });
   }
 
   return (

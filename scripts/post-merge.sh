@@ -914,7 +914,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 pool.query(\`
   CREATE TABLE IF NOT EXISTS investment_accounts (
     id SERIAL PRIMARY KEY,
-    business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+    business_id INTEGER,
     name TEXT NOT NULL,
     institution TEXT,
     account_type TEXT NOT NULL DEFAULT 'Brokerage',
@@ -927,13 +927,14 @@ pool.query(\`
   );
   CREATE TABLE IF NOT EXISTS investment_transfers (
     id SERIAL PRIMARY KEY,
+    business_id INTEGER,
     investment_account_id INTEGER NOT NULL REFERENCES investment_accounts(id) ON DELETE CASCADE,
     transfer_type TEXT NOT NULL DEFAULT 'deposit',
     date DATE NOT NULL,
     amount NUMERIC(14,2) NOT NULL,
     source_bank_account TEXT,
     notes TEXT,
-    bank_transaction_id INTEGER,
+    bank_transaction_id INTEGER REFERENCES bank_transactions(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
   );
   CREATE TABLE IF NOT EXISTS investment_account_valuations (
@@ -955,7 +956,9 @@ pool.query(\`
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
   );
   ALTER TABLE bank_transactions
-    ADD COLUMN IF NOT EXISTS investment_transfer_id INTEGER;
+    ADD COLUMN IF NOT EXISTS investment_transfer_id INTEGER REFERENCES investment_transfers(id) ON DELETE SET NULL;
+  ALTER TABLE investment_accounts
+    ALTER COLUMN business_id DROP NOT NULL;
 \`).then(() => { console.log('Investment tables ensured'); pool.end(); })
   .catch(e => { console.error('Investment migration error:', e.message); pool.end(); });
 ")
