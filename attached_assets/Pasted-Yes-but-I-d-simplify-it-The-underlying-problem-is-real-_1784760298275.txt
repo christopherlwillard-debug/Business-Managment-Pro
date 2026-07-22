@@ -1,0 +1,43 @@
+Yes—but I'd simplify it.
+
+The underlying problem is real. If a user categorizes a bank transaction as an investment transfer, that classification becomes part of your accounting records. Losing it because Plaid disconnected or re-imported transactions would be a serious bug.
+
+However, I wouldn't make it a standalone feature request. I'd make it part of the core Investment feature (#1253).
+
+Instead of creating #1258, add an Accounting Integrity section to #1253.
+
+For example:
+
+Accounting Integrity
+
+Investment Transfers are accounting records and must remain stable regardless of Plaid connection state.
+
+The system must preserve investment transfer classifications when:
+
+A Plaid connection is disconnected and later reconnected.
+Bank transactions are re-imported.
+Existing transactions are re-matched.
+A user manually matches or unmatches transactions.
+
+If a bank transaction is already linked to an Investment Transfer, that relationship must not be removed automatically.
+
+If a user attempts to unmatch or delete a linked bank transaction, the application should warn the user that doing so will also remove the associated Investment Transfer and affect investment balances.
+
+Bank synchronization must never overwrite or remove existing Investment Transfer records.
+
+Investment Transfers should be treated as permanent accounting records rather than temporary bank categorizations.
+
+I actually think this is the cleaner architecture.
+
+The investment transfer should be the source of truth.
+
+The Plaid transaction is simply evidence that the transfer occurred.
+
+If the bank connection disappears tomorrow, your accounting records shouldn't change. The transfer should still exist because it's part of your books.
+
+So my recommendation would be:
+
+Don't create #1258 as a separate feature.
+Fold it into #1253 under an Accounting Integrity or Data Integrity section.
+
+That keeps all of the investment logic in one place and makes it clear that preserving investment transfers is a core requirement of the feature, not an afterthought.
