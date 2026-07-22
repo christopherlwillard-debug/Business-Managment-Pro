@@ -6,7 +6,7 @@ import {
   bankTransactionsTable,
 } from "@workspace/db";
 import { expensesTable, otherIncomeTable, invoicesTable } from "@workspace/db/schema";
-import { eq, like, isNotNull, and, gte, lte, notInArray, sql } from "drizzle-orm";
+import { eq, like, isNotNull, isNull, and, gte, lte, notInArray, sql } from "drizzle-orm";
 
 import { getPlaidClient, isPlaidConfigured, extractPlaidError } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
@@ -47,10 +47,17 @@ function plaidAccountLabel(connection: { institutionName: string | null; account
 }
 
 async function deletePlaidDataForConnection(connectionId: number): Promise<void> {
-  // Delete transactions that have no batch (new Plaid-direct transactions)
+  // Delete Plaid-sourced transactions EXCEPT those linked to an investment transfer.
+  // Investment transfer records are permanent accounting entries — the bank transaction
+  // is their audit trail and must be preserved even when the Plaid connection changes.
   await db
     .delete(bankTransactionsTable)
-    .where(isNotNull(bankTransactionsTable.plaidTransactionId));
+    .where(
+      and(
+        isNotNull(bankTransactionsTable.plaidTransactionId),
+        isNull(bankTransactionsTable.investmentTransferId),
+      )
+    );
 
   // Also clean up any legacy plaid-auto batches (and their transactions via cascade)
   const legacyBatches = await db
@@ -330,6 +337,9 @@ router.post("/sync", wrapAsync(async (req, res) => {
       .then((rows) => rows[0] ?? null);
 
     if (existing) {
+      // IMPORTANT (data integrity): only update fields on unmatched rows.
+      // Rows with status "matched", "investment_transfer", etc. are permanent
+      // accounting records and must never be overwritten during re-sync.
       if (existing.status === "unmatched") {
         await db
           .update(bankTransactionsTable)

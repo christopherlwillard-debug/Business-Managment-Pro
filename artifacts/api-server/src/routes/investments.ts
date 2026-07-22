@@ -323,6 +323,45 @@ router.delete("/transfers/:id", async (req, res) => {
   }
 });
 
+// Remove investment classification from a bank transaction.
+// This is an intentional, user-initiated action — it deletes the linked
+// investment_transfers record and resets the bank transaction to "unmatched".
+// The UI must warn the user before calling this endpoint.
+router.delete("/transactions/:txnId/investment-classification", async (req, res) => {
+  try {
+    const txnId = parseInt(req.params.txnId as string);
+    if (isNaN(txnId)) return res.status(400).json({ error: "Invalid transaction ID" });
+
+    const [txn] = await db
+      .select()
+      .from(bankTransactionsTable)
+      .where(eq(bankTransactionsTable.id, txnId));
+
+    if (!txn) return res.status(404).json({ error: "Transaction not found" });
+    if (txn.status !== "investment_transfer" || !txn.investmentTransferId) {
+      return res.status(409).json({ error: "Transaction is not classified as an investment transfer" });
+    }
+
+    await db.transaction(async (tx) => {
+      // Delete the investment transfer record (source of truth)
+      await tx
+        .delete(investmentTransfersTable)
+        .where(eq(investmentTransfersTable.id, txn.investmentTransferId!));
+
+      // Reset the bank transaction
+      await tx
+        .update(bankTransactionsTable)
+        .set({ status: "unmatched", investmentTransferId: null })
+        .where(eq(bankTransactionsTable.id, txnId));
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to remove investment classification" });
+  }
+});
+
 // Link a bank transaction to an investment account as a transfer
 router.post("/transactions/:txnId/file-as-investment", async (req, res) => {
   try {

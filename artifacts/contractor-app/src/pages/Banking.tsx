@@ -252,6 +252,9 @@ export default function Banking() {
   // Delete confirmation (inline — tracks which txn ID is pending confirm)
   const [confirmDeleteTxnId, setConfirmDeleteTxnId] = useState<number | null>(null);
 
+  // Remove investment classification confirmation
+  const [removeInvestmentConfirmTxnId, setRemoveInvestmentConfirmTxnId] = useState<number | null>(null);
+
   // Investment transfer filing
   const [investmentFilingTxn, setInvestmentFilingTxn] = useState<PlaidTransaction | null>(null);
   const [investmentAccountId, setInvestmentAccountId] = useState<string>("");
@@ -474,6 +477,21 @@ export default function Banking() {
     onError: (err: Error) => {
       setConfirmDeleteTxnId(null);
       toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const removeInvestmentMutation = useMutation({
+    mutationFn: (txnId: number) =>
+      apiFetch(`/api/investments/transactions/${txnId}/investment-classification`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      qc.invalidateQueries({ queryKey: ["investment-accounts-picker"] });
+      setRemoveInvestmentConfirmTxnId(null);
+      toast({ title: "Investment classification removed", description: "Transaction is available to file again." });
+    },
+    onError: (err: Error) => {
+      setRemoveInvestmentConfirmTxnId(null);
+      toast({ title: "Failed to remove classification", description: err.message, variant: "destructive" });
     },
   });
 
@@ -848,10 +866,33 @@ export default function Banking() {
                             {isFiled ? (
                               <div className="inline-flex items-center gap-2">
                                 {isInvestmentTransfer ? (
-                                  <span className="inline-flex items-center gap-1 text-xs text-blue-700 dark:text-blue-400 font-medium">
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                                    Investment Transfer
-                                  </span>
+                                  removeInvestmentConfirmTxnId === txn.id ? (
+                                    <span className="inline-flex items-center gap-1 text-xs text-destructive">
+                                      <span className="font-medium">Remove investment record?</span>
+                                      <button
+                                        className="font-semibold underline"
+                                        onClick={() => removeInvestmentMutation.mutate(txn.id)}
+                                        disabled={removeInvestmentMutation.isPending}
+                                      >Yes</button>
+                                      <span>/</span>
+                                      <button
+                                        className="text-muted-foreground"
+                                        onClick={() => setRemoveInvestmentConfirmTxnId(null)}
+                                      >No</button>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-xs text-blue-700 dark:text-blue-400 font-medium">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                      Investment Transfer
+                                      <button
+                                        title="Remove investment classification"
+                                        className="ml-0.5 p-0.5 rounded text-blue-400 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                        onClick={() => setRemoveInvestmentConfirmTxnId(txn.id)}
+                                      >
+                                        <Unlink className="w-3 h-3" />
+                                      </button>
+                                    </span>
+                                  )
                                 ) : txn.matchedExpenseId && txn.matchedExpenseDescription ? (
                                   <TooltipProvider delayDuration={200}>
                                     <Tooltip>
@@ -899,16 +940,18 @@ export default function Banking() {
                                     <FileText className="w-3 h-3" /> Trip docs
                                   </Link>
                                 )}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 text-xs px-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                  title="Remove link"
-                                  onClick={() => unmatchMutation.mutate(txn.id)}
-                                  disabled={unmatchMutation.isPending}
-                                >
-                                  <Unlink className="w-3 h-3" />
-                                </Button>
+                                {!isInvestmentTransfer && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 text-xs px-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                    title="Remove link"
+                                    onClick={() => unmatchMutation.mutate(txn.id)}
+                                    disabled={unmatchMutation.isPending}
+                                  >
+                                    <Unlink className="w-3 h-3" />
+                                  </Button>
+                                )}
                               </div>
                             ) : isCredit ? (
                               <div className="flex items-center justify-end gap-1">
