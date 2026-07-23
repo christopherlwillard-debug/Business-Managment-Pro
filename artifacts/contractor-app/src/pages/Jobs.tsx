@@ -6370,15 +6370,35 @@ export default function Jobs() {
         existingDraft = await draftRes.json();
       }
 
+      // Helper: merge job location into a draft invoice if the invoice's location fields are empty
+      function mergeJobLocation<T extends { locationName?: string | null; city?: string | null; state?: string | null }>(draft: T, j: Job): T {
+        const needsLocation = !draft.locationName && !draft.city && !draft.state;
+        if (!needsLocation) return draft;
+        return {
+          ...draft,
+          locationName: draft.locationName || j.locationName || null,
+          city: draft.city || j.city || null,
+          state: draft.state || j.state || null,
+        };
+      }
+
       if (existingDraft) {
         // For service billing jobs: always refresh line items from current worksheet data
         // so that changes to hours/rates/mileage are immediately reflected without
         // the user having to delete and recreate the draft.
         if (job.serviceBilling && existingDraft.status === "draft" && jobDraft?.lineItems?.length) {
+          const isMaterialLine = (li: any) => (li as { source?: string }).source === "material" || li.description === "Materials";
           const filteredJobDraftLines = (jobDraft!.lineItems as any[]).filter(
             (li: any) => li.source || (parseFloat(li.unitPrice) !== 0) || (parseFloat(li.quantity) !== 1)
           );
-          existingDraft = { ...existingDraft, lineItems: filteredJobDraftLines as any };
+          // Preserve manually-entered material lines from the saved invoice that aren't
+          // already covered by the auto-generated job draft lines (e.g. typed "Materials"
+          // line item the user added directly without a job material list).
+          const jobDraftDescriptions = new Set(filteredJobDraftLines.map((li: any) => li.description));
+          const existingMaterialLines = (Array.isArray(existingDraft.lineItems) ? existingDraft.lineItems as any[] : [])
+            .filter((li: any) => isMaterialLine(li) && !jobDraftDescriptions.has(li.description));
+          const mergedLines = [...filteredJobDraftLines, ...existingMaterialLines];
+          existingDraft = mergeJobLocation({ ...existingDraft, lineItems: mergedLines as any }, job);
           setInvoiceDraftData(null);
           setSelectedExistingInvoice(existingDraft);
           setInvoiceEditorOpen(true);
@@ -6435,6 +6455,9 @@ export default function Jobs() {
             existingDraft = await putRes.json();
           }
         }
+
+        // Back-fill job location into the draft if the invoice's location fields are blank
+        if (existingDraft) existingDraft = mergeJobLocation(existingDraft, job);
 
         setInvoiceDraftData(null);
         setSelectedExistingInvoice(existingDraft ?? null);

@@ -259,6 +259,22 @@ export function InvoicePanel({
       .catch(() => setLogoDataUri(null));
   }, [open, logoUrl, form.businessLine]);
 
+  // When a job is selected from the dropdown, auto-fill Work Location fields if they're blank.
+  useEffect(() => {
+    const jobId = form.jobId ? parseInt(form.jobId) : NaN;
+    if (!open || isNaN(jobId)) return;
+    // Only fetch if at least one location field is empty — don't overwrite manual entries
+    if (form.locationName || form.city) return;
+    fetch(`${base}/api/jobs/${jobId}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((job: { locationName?: string | null; city?: string | null; state?: string | null }) => {
+        if (job.locationName && !form.locationName) setField("locationName", job.locationName);
+        if (job.city && !form.city) setField("city", job.city);
+        if (job.state && !form.state) setField("state", job.state);
+      })
+      .catch(() => { /* non-fatal — location fields stay blank */ });
+  }, [open, form.jobId]); // intentionally exclude form.locationName/city to avoid re-running after fill
+
   useEffect(() => {
     const jobId = form.jobId ? parseInt(form.jobId) : NaN;
     if (!open || isNaN(jobId)) { setJobHasChecklist(false); setAttachChecklist(true); return; }
