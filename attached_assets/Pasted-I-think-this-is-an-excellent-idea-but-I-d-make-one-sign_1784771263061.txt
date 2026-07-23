@@ -1,0 +1,257 @@
+I think this is an excellent idea, but I'd make one significant architectural change.
+
+Don't let the user choose "Tax Treatment."
+
+The IRS doesn't let you arbitrarily choose it. It's determined by how the business is actually taxed (unless they've made an election). If you expose both fields as editable, you can create invalid combinations like:
+
+Entity Type: S Corporation
+Tax Treatment: Partnership
+
+That shouldn't be possible.
+
+Instead, I'd make the UI like this:
+
+Business Tax Profile
+Legal Entity
+Sole Proprietorship
+Single-Member LLC
+Multi-Member LLC
+Corporation
+Nonprofit (future)
+Federal Tax Election
+
+Available options change based on the Legal Entity.
+
+Sole Proprietorship
+
+Automatically:
+
+Taxed as Sole Proprietorship
+
+(No other options)
+
+Single-Member LLC
+
+Selectable:
+
+Sole Proprietorship (default)
+S Corporation
+C Corporation
+Multi-Member LLC
+
+Selectable:
+
+Partnership (default)
+S Corporation
+C Corporation
+Corporation
+
+Selectable:
+
+C Corporation (default)
+S Corporation
+
+Now you can never create an invalid combination.
+
+Change the accounting engine
+
+Instead of
+
+Entity Type
+
+driving accounting...
+
+I'd use
+
+Federal Tax Election
+
+because that's what actually changes the accounting rules.
+
+For example
+
+Single Member LLC
+
+↓
+
+S Corp Election
+
+↓
+
+Officer wages deductible
+
+Distributions excluded
+
+Whereas
+
+Single Member LLC
+
+↓
+
+Sole Proprietorship
+
+↓
+
+Owner Draws excluded
+
+No payroll required
+
+Future-proof even further
+
+Instead of hardcoding
+
+if Sole Prop
+
+if Partnership
+
+if S Corp
+
+I'd create a configuration object.
+
+Something like
+
+Tax Profile
+
+Exclude Draws
+
+true
+
+Exclude Contributions
+
+true
+
+Officer Payroll Deductible
+
+false
+
+Distribution Label
+
+Owner Draw
+
+Contribution Label
+
+Owner Contribution
+
+Activity Title
+
+Owner Activity
+
+Then every report simply asks the tax profile:
+
+"How should I treat this transaction?"
+
+rather than asking
+
+"Is this an S corp?"
+
+That makes the system much easier to extend.
+
+I would also rename the task
+
+Instead of
+
+Business Tax Profile
+
+I'd call it
+
+Business Entity & Tax Profile
+
+because those are actually two separate concepts.
+
+One thing I'd add
+
+I'd add a warning.
+
+Changing this setting affects:
+
+Accounting presentation
+Tax calculations
+Owner activity labels
+Payroll treatment
+
+Changing it does not automatically convert the business with the IRS.
+
+That prevents someone from thinking clicking "S Corporation" inside your app legally elects S-corp status.
+
+Overall
+
+I'd actually rate this 10/10 with those changes.
+
+This is no longer just fixing your business—it becomes the foundation for supporting almost every small-business tax structure in the U.S.
+
+The biggest improvement I'd make is simply:
+
+Separate the legal entity from the federal tax election.
+
+That's how accountants think about businesses, and it will make your software much more accurate and flexible over time.
+
+well someone can switch from sole to s corp
+
+Exactly—and that's why I would separate Legal Entity from Federal Tax Election.
+
+A business can change how it's taxed over time, but the legal entity usually stays the same.
+
+For example, your business today is:
+
+Legal Entity: Single-Member LLC
+Federal Tax Election: Sole Proprietorship (default/disregarded entity)
+
+If you file Form 2553 and the IRS accepts it, it becomes:
+
+Legal Entity: Single-Member LLC (unchanged)
+Federal Tax Election: S Corporation (changed)
+
+You didn't become a corporation—you remained an LLC that elected S corporation taxation.
+
+I'd design the settings like this:
+
+Business Settings → Tax Profile
+
+Legal Entity
+
+Sole Proprietorship
+Single-Member LLC
+Multi-Member LLC
+Corporation
+
+Federal Tax Election
+
+Sole Proprietorship
+Partnership
+S Corporation
+C Corporation
+
+When appropriate, the app can either:
+
+Automatically select the default tax election based on the entity, or
+Allow the user to change it to a valid election.
+
+For example:
+
+Legal Entity	Allowed Tax Elections
+Sole Proprietorship	Sole Proprietorship
+Single-Member LLC	Sole Proprietorship, S Corporation, C Corporation
+Multi-Member LLC	Partnership, S Corporation, C Corporation
+Corporation	C Corporation, S Corporation
+I would also add an Effective Date
+
+This is something many accounting apps overlook.
+
+Tax Profile
+
+Legal Entity:
+Single-Member LLC
+
+Federal Tax Election:
+S Corporation
+
+Effective Date:
+01/01/2027
+
+Then your accounting engine knows:
+
+2026 reports → Sole Proprietorship rules
+2027 reports → S Corporation rules
+
+That becomes important because businesses often elect S corporation status effective January 1 of a tax year. Historical reports should continue using the rules that were in effect at that time.
+
+I think adding an effective date now will save you from a much more difficult migration later and make your accounting reports historically accurate.

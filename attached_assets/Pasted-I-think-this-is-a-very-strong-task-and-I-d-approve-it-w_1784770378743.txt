@@ -1,0 +1,100 @@
+I think this is a very strong task, and I'd approve it with one architectural improvement.
+
+Don't call it "Owner Activity" inside the P&L.
+
+A Profit & Loss statement should only show items that affect profit. If you put "Owner Activity" on the P&L—even below Net Profit—you risk blurring that distinction.
+
+Instead, I'd structure it like this:
+
+Profit & Loss Statement
+
+Revenue
+
+Cost of Goods Sold
+
+Operating Expenses
+
+Net Operating Income
+
+Other Deductions
+
+    Mileage
+    Depreciation
+
+Net Profit (Loss)
+
+───────────────────────────────
+
+Owner Activity (Informational)
+
+Owner Contributions
+$X,XXX.XX
+
+Owner Draws
+$X,XXX.XX
+
+These transactions do not affect Profit & Loss or taxable income.
+
+This keeps the P&L technically correct while still giving you the information you want.
+
+Another improvement I'd make
+
+Since you're building accounting software, I'd also show Owner Contributions, not just draws.
+
+For example:
+
+Owner Activity (Informational)
+
+Beginning Capital
+
+Owner Contributions
+
+Owner Draws
+
+Ending Capital (future Balance Sheet)
+
+You don't have to calculate ending capital today, but tracking both contributions and draws now will make a future equity statement much easier to build.
+
+One wording change
+
+I would change:
+
+Owner draws are NOT a business expense...
+
+to:
+
+For businesses taxed as sole proprietorships (including single-member LLCs taxed as sole proprietorships), owner draws are distributions of owner equity and are not deductible business expenses. They reduce cash and owner equity but do not reduce taxable business income.
+
+That's a little more precise and also prepares your codebase for future tax structures.
+
+Tax Reserve wording
+
+I also agree with changing the subtitle, but I'd make it even clearer:
+
+Instead of:
+
+Cash-flow based · 5% growth, 50/50 split, 25% reserve
+
+I'd use:
+
+Cash-flow planning only · Not based on taxable income
+
+or
+
+Cash-flow recommendation · Separate from estimated taxes
+
+That removes any chance a user interprets it as an IRS calculation.
+
+Overall
+
+I'd rate this 10/10 after those tweaks.
+
+You're fixing the actual accounting bugs rather than hiding symptoms:
+
+✔ Owner draws no longer distort operating expenses.
+✔ Depreciation is consistently applied everywhere.
+✔ The Overview tax estimate matches the P&L and Year-End Report.
+✔ The cash-flow reserve is clearly distinguished from an actual tax estimate.
+✔ Owner draws remain visible without being mixed into the financial statements.
+
+That will make your accounting screens much more consistent and trustworthy.

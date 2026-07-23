@@ -1,0 +1,264 @@
+I went through the screenshots and compared them against the generated year-end report. Overall, the accounting engine is internally consistent, but I found a few places where the UI and reports disagree or where the math/logic should be tightened.
+
+✅ Profit & Loss math checks out
+
+From the Year-End Report:
+
+Gross Receipts: $22,005.80
+Other Income: $3,700.00
+Total Revenue: $25,705.80
+
+Expenses:
+
+Operating Expenses: $20,379.05
+Mileage: $2,562.43
+Depreciation: $2,900.00
+
+Net:
+
+25,705.80
+-20,379.05
+-----------
+ 5,326.75
+
+5,326.75
+-2,562.43
+-----------
+2,764.32
+
+2,764.32
+-2,900.00
+-----------
+-135.68
+
+That matches the report exactly.
+
+⚠️ The screenshots do NOT match the report
+
+Your PDF shows:
+
+Net Loss
+
+-$135.68
+
+But one screenshot shows:
+
+Net Loss
+-$1,954.83
+
+Those cannot both be correct.
+
+One of these is happening:
+
+the screenshots were generated before you fixed depreciation
+mileage is being deducted twice
+depreciation is being deducted twice
+one screen is using different filters than the report
+
+This is the first thing I'd investigate.
+
+⚠️ Estimated Tax screen doesn't match the report
+
+The tax dashboard shows:
+
+Estimated Tax Liability
+
+$624.87
+
+But the report shows
+
+Estimated Tax Liability
+
+$0
+
+because there is a loss.
+
+Those two screens should always agree.
+
+⚠️ Tax Reserve
+
+This one worries me more.
+
+It says
+
+Keep in Bank
+
+$3,082
+
+If your business actually has a tax loss...
+
+that reserve should probably not be recommending additional tax money.
+
+It appears the reserve card is using
+
+Paid Jobs
+
+↓
+
+Profit Share
+
+↓
+
+25% Tax
+
+
+instead of
+
+Actual Taxable Income
+
+Those are different calculations.
+
+If that reserve is intentionally based on cash flow instead of taxable income, I'd label it differently.
+
+Something like
+
+Recommended Cash Reserve
+
+instead of
+
+Tax Reserve
+
+Otherwise users will think that's their actual tax obligation.
+
+Mileage
+
+The report says
+
+3534 miles
+
+×
+
+$0.725
+
+=
+
+$2,562.43
+
+That is correct.
+
+Depreciation
+
+Trailer
+
+$29,000
+
+10 years
+
+=
+
+$2,900/year
+
+Book value
+
+29,000
+
+-
+
+8,700
+
+=
+
+20,300
+
+Perfect.
+
+Schedule C
+
+The Schedule C screenshot appears internally consistent.
+
+Expenses total
+
+22,878.91
+
+Plus
+
+Home Office
+
+1,500
+
+gives
+
+24,378.91
+
+Against
+
+Gross Income
+
+27,042.15
+
+Net
+
+2,663.24
+
+That math works.
+
+Biggest design suggestion
+
+I would make one source of truth.
+
+Right now it looks like
+
+Overview
+
+↓
+
+Profit & Loss
+
+↓
+
+Schedule C
+
+↓
+
+Estimated Tax
+
+
+are each calculating independently.
+
+Instead I'd create one tax calculation service.
+
+Transactions
+
+↓
+
+Expense Engine
+
+↓
+
+Profit Engine
+
+↓
+
+Schedule C
+
+↓
+
+Tax Estimate
+
+↓
+
+Dashboard
+
+Then every screen displays the same numbers.
+
+If Profit & Loss says
+
+-$135.68
+
+Estimated Tax should automatically become
+
+$0
+
+without having its own calculation.
+
+Overall
+
+I'd give the accounting system an 8.5–9/10 in its current state.
+
+The accounting math in the report is solid, and the depreciation and mileage calculations are consistent. The main issue is consistency across screens:
+
+Net Loss differs between the P&L screenshot and the generated report.
+Estimated Tax dashboard does not match the report.
+Tax Reserve appears to be based on a different formula than taxable income, but the UI doesn't make that distinction clear.
+
+Those aren't bookkeeping problems—they're synchronization or presentation problems. Once every screen is driven by the same underlying calculations, the application will feel much more trustworthy.

@@ -1,0 +1,56 @@
+Correct. As a single-member LLC taxed as a sole proprietorship, owner draws are not a business expense.
+
+Here's how it works:
+
+The business earns income.
+The business deducts legitimate business expenses.
+The remaining net profit is what is reported on your Schedule C.
+You pay income tax and self-employment tax on that net profit, whether you leave the money in the business or transfer it to yourself.
+An owner draw is simply moving money from one pocket (the business bank account) to another (your personal account). It doesn't change how much profit the business earned.
+Example
+
+Revenue: $100,000
+
+Business expenses: $60,000
+
+Net profit: $40,000
+
+If you take:
+
+$0 in owner draws → Taxed on $40,000
+$10,000 in owner draws → Taxed on $40,000
+$40,000 in owner draws → Taxed on $40,000
+$50,000 in owner draws (assuming you had prior retained cash) → Still taxed on $40,000 for the current year's profit
+
+The draw itself is not deductible.
+
+So your fix is correct
+
+The P&L should exclude Owner Draw because it is not an operating expense. Right now it's being incorrectly included in "Other Expenses," which understates your business profit. That aligns with the issue you've identified.
+
+One thing I would tweak in your app
+
+Since you're building accounting software, I'd avoid simply "skipping" Owner Draw. Instead, classify it separately.
+
+For example:
+
+Profit & Loss
+
+Revenue
+Cost of Goods Sold
+Operating Expenses
+Other Deductions
+Net Profit
+
+Owner Activity
+
+Owner Contributions
+Owner Draws
+
+That way users can still see how much they've taken out of the business without it affecting the P&L.
+
+Looking ahead
+
+If you later elect S corporation status, you'll still generally keep owner distributions off the P&L. The big change is that you'll also have officer wages, and those wages are a deductible business expense because they're payroll, not owner draws.
+
+So the architecture you're building now—keeping owner draws separate from expenses—is the right foundation for both your current sole proprietorship taxation and a future S corporation.

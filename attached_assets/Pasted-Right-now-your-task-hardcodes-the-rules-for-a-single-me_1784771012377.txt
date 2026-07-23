@@ -1,0 +1,101 @@
+Right now your task hardcodes the rules for a single-member LLC taxed as a sole proprietorship. That works for you today, but your app is clearly evolving into software other contractors could use. If someone is an S corp or partnership, the accounting treatment changes.
+
+I'd build a Business Tax Profile that drives the accounting rules instead of sprinkling tax-type logic throughout the code.
+
+For example:
+
+Business Tax Profile
+
+Under Business Settings → Tax Profile
+
+Entity Type
+Sole Proprietorship
+Single-Member LLC (Disregarded Entity)
+Multi-Member LLC (Partnership)
+S Corporation
+C Corporation
+Nonprofit (future)
+Tax Treatment
+Sole Proprietorship
+Partnership
+S Corporation
+C Corporation
+Accounting Engine
+
+Instead of hardcoding:
+
+if category == "Owner Draw"
+
+The shared computeNetProfit() function would use the business's tax profile.
+
+Example:
+
+switch (business.taxTreatment)
+
+Sole Proprietorship
+    Owner Draws excluded
+    Owner Contributions excluded
+
+Partnership
+    Member Draws excluded
+    Member Contributions excluded
+
+S Corporation
+    Owner Distributions excluded
+    Officer Payroll included as expense
+
+C Corporation
+    Dividends excluded
+    Officer Payroll included as expense
+
+Now the accounting engine automatically behaves correctly based on the business configuration.
+
+UI
+
+The informational card could even adapt automatically.
+
+For your business today:
+
+Owner Activity
+
+Owner Contributions
+
+Owner Draws
+
+Owner draws are distributions of owner equity.
+They do not affect business profit.
+
+If the business later elects S Corporation:
+
+Shareholder Activity
+
+Capital Contributions
+
+Distributions
+
+Shareholder distributions do not affect Profit & Loss.
+Officer wages are reported separately as payroll expense.
+
+No code changes—just different business settings.
+
+Future-proofing
+
+I'd even add this as a new section to your task:
+
+Business Tax Profile
+
+All accounting rules related to owner equity, draws, distributions, and payroll must be driven by the Business Tax Profile rather than hardcoded.
+
+The Business Tax Profile determines:
+
+Whether Owner Draws affect accounting (they generally should not).
+Whether Officer Payroll is deductible.
+Which informational labels are displayed (Owner Activity, Member Activity, Shareholder Activity, etc.).
+Future tax calculations and reporting behavior.
+
+The default profile for newly created businesses should be:
+
+Entity Type: Single-Member LLC
+Tax Treatment: Sole Proprietorship
+
+I think this is one of those architectural decisions that will pay off. Right now it's just you, but you've already built support for multiple businesses. If someone creates an S corporation in your app a year from now, you won't have to rewrite the accounting engine—you'll just add the appropriate rules to the tax profile. That separation between business configuration and accounting logic is a much more scalable foundation.

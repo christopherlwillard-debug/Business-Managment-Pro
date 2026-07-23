@@ -1,0 +1,97 @@
+I think this is excellent, but there is one thing I would not do.
+
+I would NOT put "Owner Activity" on the Profit & Loss page.
+
+Even though it's visually separated, a P&L should remain a true financial statement. If someone prints it or gives it to a CPA or banker, they shouldn't see owner equity activity mixed into the report.
+
+Instead, I'd make it a collapsible informational card immediately below the P&L statement, but outside the statement itself.
+
+For example:
+
+Profit & Loss Statement
+
+Revenue
+
+Cost of Goods Sold
+
+Operating Expenses
+
+Other Deductions
+   Mileage
+   Depreciation
+
+Net Profit (Loss)
+
+────────────────────────────
+
+Owner Activity (Informational)
+
+Owner Contributions
+$2,500.00
+
+Owner Draws
+$4,719.00
+
+These transactions affect owner equity only.
+They do not affect Profit & Loss or taxable income.
+
+That keeps the P&L technically correct while still giving the user the information.
+
+I would make one more improvement
+
+Right now your task says:
+
+Owner Draws (summed from expenses where category = 'Owner Draw')
+
+I actually wouldn't say that.
+
+Instead I'd say:
+
+Owner Draws (summed from transactions categorized as Owner Draw)
+
+Why?
+
+Because in the future you may stop storing draws in the expenses table altogether.
+
+If your task specifically says "expenses," you'll have to rewrite it later.
+
+Keep it implementation-neutral.
+
+I would also change the disclaimer slightly
+
+Current:
+
+For businesses taxed as sole proprietorships...
+
+I'd shorten it.
+
+Owner draws and owner contributions affect owner equity only.
+They are not business income or business expenses and do not change net profit.
+
+It's easier to read and it's also true for many business structures. If you later become an S corporation, that statement still holds true for distributions and capital contributions.
+
+One final suggestion
+
+Since this is becoming a professional accounting package, I'd add one acceptance criterion:
+
+Accounting Consistency
+
+For any selected tax year, the following values must always match:
+
+Net Profit shown on the Profit & Loss page
+Net Profit used by the Overview Estimated Tax calculation
+Net Profit shown in the Year-End Accountant Report
+
+All three calculations must originate from the same accounting calculation to eliminate drift between screens.
+
+Overall
+
+I'd approve this task after those small changes.
+
+The only thing I would change is:
+
+Keep Owner Activity outside the actual P&L statement.
+Don't tie the implementation to the expenses table.
+Add an explicit requirement that all reports share one source of truth for net profit.
+
+That last point is probably the most important improvement. It prevents this class of bug from happening again if another deduction (Section 179, home office, future investment deductions, etc.) is added later. Instead of fixing three screens, you'd update one calculation and every report would stay in sync.
