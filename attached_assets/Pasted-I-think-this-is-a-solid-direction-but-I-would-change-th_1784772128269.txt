@@ -1,0 +1,117 @@
+I think this is a solid direction, but I would change the data model now before you build it. Otherwise you'll paint yourself into a corner when someone changes their tax election.
+
+I would change the settings to this
+Business Tax Profile
+
+Legal Entity
+
+Sole Proprietorship
+Single-Member LLC
+Multi-Member LLC
+Corporation
+
+Federal Tax Election
+
+Sole Proprietorship
+Partnership
+S Corporation
+C Corporation
+
+Effective Date
+
+Date the tax election became effective
+
+For a new business:
+
+Legal Entity = Single-Member LLC
+Federal Tax Election = Sole Proprietorship
+Effective Date = Business start date (or today's date)
+
+When you elect S corp later, you would simply update:
+
+Legal Entity = Single-Member LLC (unchanged)
+Federal Tax Election = S Corporation
+Effective Date = 2027-01-01 (for example)
+
+Then reports automatically use the correct rules for each tax year.
+
+I would not derive Tax Treatment from Entity Type
+
+This is the only part of your proposal I disagree with.
+
+Right now you have:
+
+Tax Treatment: auto-derived from entity type (read-only)
+
+That isn't flexible enough.
+
+A Single-Member LLC can legitimately be taxed as:
+
+Sole Proprietorship
+S Corporation
+C Corporation
+
+A Multi-Member LLC can legitimately be taxed as:
+
+Partnership
+S Corporation
+C Corporation
+
+So "Tax Treatment" should be configurable within the valid choices for that entity—not permanently derived.
+
+I would also rename the accounting logic
+
+Instead of:
+
+computeNetProfit reads the tax profile
+
+I'd say:
+
+computeNetProfit reads the Federal Tax Election.
+
+That's what actually determines how owner draws, distributions, and payroll are treated.
+
+Add a validation rule
+
+Prevent invalid combinations.
+
+For example:
+
+Legal Entity	Allowed Federal Tax Elections
+Sole Proprietorship	Sole Proprietorship
+Single-Member LLC	Sole Proprietorship, S Corporation, C Corporation
+Multi-Member LLC	Partnership, S Corporation, C Corporation
+Corporation	C Corporation, S Corporation
+
+That keeps the UI simple while ensuring users can't select combinations that don't make sense.
+
+One more thing I'd add
+
+I would make the "Owner Activity" card completely data-driven.
+
+Instead of hardcoding labels like:
+
+Owner Draws
+Member Draws
+Shareholder Distributions
+
+Have the tax profile provide:
+
+Activity title
+Contribution label
+Distribution/Draw label
+Disclaimer
+
+Then the frontend simply renders whatever the profile supplies. That keeps business rules centralized and makes future changes much easier.
+
+Overall
+
+I'd rate this 9.8/10.
+
+The only significant change I'd make is:
+
+Separate Legal Entity from Federal Tax Election.
+Add an Effective Date so historical reports remain accurate after a tax election change.
+Validate allowed combinations instead of making tax treatment permanently read-only.
+
+Those additions will give your accounting engine a foundation that can support both your current single-member LLC and a future S corporation without requiring another architectural redesign.
