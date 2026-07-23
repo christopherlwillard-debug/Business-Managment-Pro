@@ -302,7 +302,7 @@ function ReserveCard({ year }: { year: number }) {
           <Wallet className="w-4 h-4 text-emerald-600" />
           <span className="font-bold text-sm text-emerald-900">Tax &amp; Growth Reserve</span>
         </div>
-        <span className="text-xs text-emerald-700/70">Take-home based · 5% growth, 50/50 split, 25% tax</span>
+        <span className="text-xs text-emerald-700/70">Cash-flow planning only · Not based on taxable income</span>
       </div>
       <div className="p-5 space-y-4">
         <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-center">

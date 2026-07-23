@@ -405,13 +405,13 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const totalMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const mileageDeduction = businessMiles.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
 
-    const subsWithYtdAcc = await Promise.all(subs.map(async s => ({
-      ...s,
-      _ytd: await computeYtd(s.id, year),
-    })));
+    const [subsWithYtdAcc, depreciationDeduction] = await Promise.all([
+      Promise.all(subs.map(async s => ({ ...s, _ytd: await computeYtd(s.id, year) }))),
+      computeDepreciationForYear(year),
+    ]);
     const totalSubPayments = subsWithYtdAcc.reduce((acc, s) => acc + s._ytd, 0);
-    // Net profit excludes owner draws (not a business expense for tax purposes)
-    const netProfit = paidRevenue - (totalExpenses - ownerDrawTotal) - mileageDeduction;
+    // Net profit excludes owner draws and deducts depreciation — matches P&L and Year-End Report
+    const netProfit = paidRevenue - (totalExpenses - ownerDrawTotal) - mileageDeduction - depreciationDeduction;
     const undrawnBalance = netProfit - ownerDrawTotal;
 
     // Income by city — estOccTax replaces taxCollected (Willard never charges sales tax)
@@ -694,6 +694,33 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
   }
 });
 
+// ─── Shared: Asset Depreciation for a Tax Year ────────────────────────────────
+// Used by /profit-loss and /accounting so every screen derives the same
+// depreciation number. calcAnnualDepreciation is a hoisted function declaration
+// (defined near the /year-end route below) and is accessible here at runtime.
+async function computeDepreciationForYear(year: number): Promise<number> {
+  const [assets, busUseRows] = await Promise.all([
+    db.select().from(assetsTable),
+    db.select().from(assetBusinessUseTable),
+  ]);
+  const busUseMap = new Map<number, Map<number, number>>();
+  for (const row of busUseRows) {
+    if (!busUseMap.has(row.assetId)) busUseMap.set(row.assetId, new Map());
+    busUseMap.get(row.assetId)!.set(row.year, row.businessUsePct);
+  }
+  const getDisposalYear = (a: typeof assets[number]): number | null => {
+    if ((a.status === "sold" || a.status === "retired") && a.saleDate)
+      return parseInt(a.saleDate.slice(0, 4));
+    return null;
+  };
+  return assets
+    .filter(a => { const dy = getDisposalYear(a); return dy === null || dy >= year; })
+    .reduce((sum, a) => {
+      const busUsePct = busUseMap.get(a.id)?.get(year) ?? 100;
+      return sum + calcAnnualDepreciation(a, year) * (busUsePct / 100);
+    }, 0);
+}
+
 const PL_CATEGORY_MAP: Record<string, "cogs" | "advertising" | "carTruck" | "contractLabor" | "insurance" | "professionalFees" | "officeExpense" | "rent" | "repairs" | "supplies" | "utilities" | "depreciation" | "other"> = {
   "Materials":             "cogs",
   "Advertising":           "advertising",
@@ -837,11 +864,16 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const otherIncome   = otherRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const grossRevenue  = grossReceipts + otherIncome;
 
-    // All expenses count toward P&L categories — the excludeFromNetProfit flag is only
-    // used by the per-job profit panel and does not affect the P&L statement.
+    // All expenses count toward P&L categories (excludeFromNetProfit only affects job panels).
+    // Owner Draw is excluded: it's a distribution of owner equity, not a deductible expense.
     const buckets: Record<string, number> = {};
+    let ownerDrawTotal = 0;
     for (const e of expRows) {
       const cat = e.category || "Other";
+      if (cat === "Owner Draw") {
+        ownerDrawTotal += parseFloat(e.amount ?? "0");
+        continue;
+      }
       const key = PL_CATEGORY_MAP[cat] ?? "other";
       buckets[key] = (buckets[key] ?? 0) + parseFloat(e.amount ?? "0");
     }
@@ -860,7 +892,17 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const totalMiles = mileRows[0]?.totalMiles ? parseFloat(mileRows[0].totalMiles as string) : 0;
     const mileageDeduction = mileRows[0]?.totalDed ? parseFloat(mileRows[0].totalDed as string) : 0;
     const mileageRate = getIrsMileageRate(year);
-    const netProfit = netOperatingIncome - mileageDeduction;
+
+    // Fetch depreciation and owner contributions in parallel — both are needed for the
+    // single-source-of-truth net profit and the Owner Activity informational card.
+    const [depreciationDeduction, ownerContribRows] = await Promise.all([
+      computeDepreciationForYear(year),
+      db.select({ amount: ownerCapitalEntriesTable.amount })
+        .from(ownerCapitalEntriesTable)
+        .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate))),
+    ]);
+    const ownerContributionsTotal = ownerContribRows.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
+    const netProfit = netOperatingIncome - mileageDeduction - depreciationDeduction;
 
     res.json({
       year,
@@ -870,8 +912,9 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       operatingExpenses,
       totalOperatingExpenses,
       netOperatingIncome,
-      deductions: { mileageDeduction, totalMiles, mileageRate },
+      deductions: { mileageDeduction, totalMiles, mileageRate, depreciationDeduction },
       netProfit,
+      ownerActivity: { ownerDrawTotal, ownerContributionsTotal },
       outstandingSubLiability,
       closedJobCount,
     });
