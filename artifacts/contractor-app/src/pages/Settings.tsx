@@ -41,7 +41,32 @@ const BOTTOM_NAV_OPTIONS = [
 
 const DEFAULT_BOTTOM_NAV_HREFS = ["/route-planner", "/people", "/accounting"];
 
-const ENTITY_TYPES = ["LLC", "Single-Member LLC", "Multi-Member LLC", "S Corporation", "C Corporation", "Sole Proprietor", "Partnership", "DBA"];
+const LEGAL_ENTITY_TYPES = ["Sole Proprietorship", "Single-Member LLC", "Multi-Member LLC", "Corporation"];
+
+const VALID_TAX_ELECTIONS: Record<string, { label: string; value: string }[]> = {
+  "Sole Proprietorship":  [{ label: "Sole Proprietorship (Schedule C)", value: "sole_prop" }],
+  "Single-Member LLC":    [
+    { label: "Sole Proprietorship / Disregarded Entity (Schedule C)", value: "sole_prop" },
+    { label: "S Corporation", value: "s_corp" },
+    { label: "C Corporation", value: "c_corp" },
+  ],
+  "Multi-Member LLC":     [
+    { label: "Partnership (Schedule K-1)", value: "partnership" },
+    { label: "S Corporation", value: "s_corp" },
+    { label: "C Corporation", value: "c_corp" },
+  ],
+  "Corporation":          [
+    { label: "C Corporation", value: "c_corp" },
+    { label: "S Corporation", value: "s_corp" },
+  ],
+};
+
+const DEFAULT_TAX_ELECTION_FOR_ENTITY: Record<string, string> = {
+  "Sole Proprietorship": "sole_prop",
+  "Single-Member LLC":   "sole_prop",
+  "Multi-Member LLC":    "partnership",
+  "Corporation":         "c_corp",
+};
 
 const LOGO_POSITIONS = [
   { key: "top-left", label: "Left", icon: AlignLeft },
@@ -1428,6 +1453,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState("profile");
   const [form, setForm] = useState({
     companyName: "", entityType: "", ein: "",
+    federalTaxElection: "sole_prop", taxElectionEffectiveDate: "",
     companyEmail: "", companyPhone: "",
     companyAddress: "", companyCity: "", companyState: "KY", companyZip: "",
     defaultTaxRate: "", invoicePrefix: "INV-2026-",
@@ -1474,6 +1500,8 @@ export default function Settings() {
         companyName: s.companyName ?? "",
         entityType: (s.entityType as string | undefined) ?? "",
         ein: (s.ein as string | undefined) ?? "",
+        federalTaxElection: (s as any).federalTaxElection ?? "sole_prop",
+        taxElectionEffectiveDate: (s as any).taxElectionEffectiveDate ?? "",
         companyEmail: s.companyEmail ?? "",
         companyPhone: s.companyPhone ?? "",
         companyAddress: (s.companyAddress as string | undefined) ?? "",
@@ -1567,6 +1595,8 @@ export default function Settings() {
           taxReservePct: parseFloat(form.taxReservePct) || 0,
           growthReservePct: parseFloat(form.growthReservePct) || 0,
           plStepOrder: JSON.stringify(plStepOrder),
+          federalTaxElection: form.federalTaxElection || "sole_prop",
+          taxElectionEffectiveDate: form.taxElectionEffectiveDate || null,
         } as any,
       });
       queryClient.invalidateQueries();
@@ -1758,9 +1788,22 @@ export default function Settings() {
                     </LF>
                   </div>
                   <LF label="Legal Entity Type">
-                    <select className={inp} value={form.entityType} onChange={e => setF("entityType", e.target.value)}>
+                    <select
+                      className={inp}
+                      value={form.entityType}
+                      onChange={e => {
+                        const entity = e.target.value;
+                        const defaultElection = DEFAULT_TAX_ELECTION_FOR_ENTITY[entity] ?? "sole_prop";
+                        const currentValid = (VALID_TAX_ELECTIONS[entity] ?? []).some(opt => opt.value === form.federalTaxElection);
+                        setForm(p => ({
+                          ...p,
+                          entityType: entity,
+                          federalTaxElection: currentValid ? p.federalTaxElection : defaultElection,
+                        }));
+                      }}
+                    >
                       <option value="">Select type…</option>
-                      {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      {LEGAL_ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </LF>
                   <LF label="EIN (Employer ID Number)" hint="Format: XX-XXXXXXX">
@@ -1813,6 +1856,88 @@ export default function Settings() {
                       </div>
                     </div>
                   </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Tax Profile — Federal Entity + Tax Election + Effective Date */}
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-primary" /> Federal Tax Profile
+                </CardTitle>
+                <CardDescription>
+                  How your business is taxed by the IRS. This controls how P&amp;L reports label owner draws, distributions, and contributions.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                {/* Warning banner */}
+                <div className="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+                  <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    <span className="font-semibold">Affects accounting presentation only.</span> Changing this does not file anything with the IRS — it changes how your P&amp;L report labels owner draws, distributions, and contributions.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Federal Tax Election */}
+                  <LF label="Federal Tax Election" hint="How the IRS taxes this entity">
+                    {form.entityType && (VALID_TAX_ELECTIONS[form.entityType] ?? []).length > 0 ? (
+                      <select
+                        className={inp}
+                        value={form.federalTaxElection}
+                        onChange={e => setF("federalTaxElection", e.target.value)}
+                      >
+                        {(VALID_TAX_ELECTIONS[form.entityType] ?? []).map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className={inp + " text-muted-foreground bg-muted/30"}>
+                        {form.entityType ? "No valid elections for this entity type" : "Select a Legal Entity Type above first"}
+                      </div>
+                    )}
+                  </LF>
+
+                  {/* Effective Date */}
+                  <LF label="Election Effective Date" hint="When this tax election took effect">
+                    <input
+                      className={inp}
+                      type="date"
+                      value={form.taxElectionEffectiveDate}
+                      onChange={e => setF("taxElectionEffectiveDate", e.target.value)}
+                    />
+                  </LF>
+                </div>
+
+                {/* What this affects */}
+                {form.federalTaxElection && (
+                  <div className="rounded-xl bg-muted/30 border border-border px-4 py-3 text-xs text-muted-foreground space-y-1">
+                    {form.federalTaxElection === "sole_prop" && (
+                      <>
+                        <p className="font-semibold text-foreground">Sole Proprietorship (Schedule C)</p>
+                        <p>Owner activity labeled as <span className="font-medium">Owner Draws</span> and <span className="font-medium">Owner Contributions</span>. These are informational only — they do not reduce net profit.</p>
+                      </>
+                    )}
+                    {form.federalTaxElection === "partnership" && (
+                      <>
+                        <p className="font-semibold text-foreground">Partnership (Schedule K-1)</p>
+                        <p>Owner activity labeled as <span className="font-medium">Member Draws</span> and <span className="font-medium">Member Contributions</span>. These affect member equity only.</p>
+                      </>
+                    )}
+                    {form.federalTaxElection === "s_corp" && (
+                      <>
+                        <p className="font-semibold text-foreground">S Corporation</p>
+                        <p>Owner activity labeled as <span className="font-medium">Shareholder Distributions</span> and <span className="font-medium">Capital Contributions</span>. Note: officer salaries should be recorded in Expenses as a deductible expense.</p>
+                      </>
+                    )}
+                    {form.federalTaxElection === "c_corp" && (
+                      <>
+                        <p className="font-semibold text-foreground">C Corporation</p>
+                        <p>Owner activity labeled as <span className="font-medium">Dividends / Distributions</span> and <span className="font-medium">Capital Contributions</span>. Note: officer salaries should be recorded in Expenses as a deductible expense.</p>
+                      </>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>

@@ -58,6 +58,9 @@ export const settingsTable = pgTable("settings", {
   taxReservePct: numeric("tax_reserve_pct", { precision: 5, scale: 2 }),
   growthReservePct: numeric("growth_reserve_pct", { precision: 5, scale: 2 }),
   plStepOrder: text("pl_step_order"),
+  // Tax Profile: legal entity structure + IRS federal tax election + election effective date
+  federalTaxElection: text("federal_tax_election").default("sole_prop"),
+  taxElectionEffectiveDate: text("tax_election_effective_date"),
   // Team access
   ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

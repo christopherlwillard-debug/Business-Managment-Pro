@@ -694,6 +694,54 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
   }
 });
 
+// ─── Shared: Tax Profile Config ───────────────────────────────────────────────
+// Drives Owner Activity card labels and accounting disclaimers.
+// All tax-treatment rules live here — never branch on election name elsewhere.
+export interface TaxProfile {
+  taxElection: string;
+  activitySectionTitle: string;  // "Owner Activity" | "Member Activity" | "Shareholder Activity"
+  contributionLabel: string;     // "Owner Contributions" | "Member Contributions" | "Capital Contributions"
+  distributionLabel: string;     // "Owner Draws" | "Member Draws" | "Shareholder Distributions"
+  activityDisclaimer: string;
+}
+
+export function getTaxProfile(taxElection: string | null | undefined): TaxProfile {
+  switch (taxElection || "sole_prop") {
+    case "partnership":
+      return {
+        taxElection: "partnership",
+        activitySectionTitle: "Member Activity",
+        contributionLabel: "Member Contributions",
+        distributionLabel: "Member Draws",
+        activityDisclaimer: "Member draws and contributions affect member equity only. They are not business income or deductible expenses and do not change the partnership's net profit.",
+      };
+    case "s_corp":
+      return {
+        taxElection: "s_corp",
+        activitySectionTitle: "Shareholder Activity",
+        contributionLabel: "Capital Contributions",
+        distributionLabel: "Shareholder Distributions",
+        activityDisclaimer: "Shareholder distributions and capital contributions affect equity only, not net profit. Note: S Corporation officer salaries are deductible business expenses — ensure they are recorded in Expenses.",
+      };
+    case "c_corp":
+      return {
+        taxElection: "c_corp",
+        activitySectionTitle: "Shareholder Activity",
+        contributionLabel: "Capital Contributions",
+        distributionLabel: "Dividends / Distributions",
+        activityDisclaimer: "Dividends and capital contributions affect equity only, not net profit. Note: C Corporation officer salaries are deductible business expenses — ensure they are recorded in Expenses.",
+      };
+    default: // sole_prop
+      return {
+        taxElection: "sole_prop",
+        activitySectionTitle: "Owner Activity",
+        contributionLabel: "Owner Contributions",
+        distributionLabel: "Owner Draws",
+        activityDisclaimer: "Owner draws and owner contributions affect owner equity only. They are not business income or business expenses and do not change net profit.",
+      };
+  }
+}
+
 // ─── Shared: Asset Depreciation for a Tax Year ────────────────────────────────
 // Used by /profit-loss and /accounting so every screen derives the same
 // depreciation number. calcAnnualDepreciation is a hoisted function declaration
@@ -893,16 +941,19 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const mileageDeduction = mileRows[0]?.totalDed ? parseFloat(mileRows[0].totalDed as string) : 0;
     const mileageRate = getIrsMileageRate(year);
 
-    // Fetch depreciation and owner contributions in parallel — both are needed for the
-    // single-source-of-truth net profit and the Owner Activity informational card.
-    const [depreciationDeduction, ownerContribRows] = await Promise.all([
+    // Fetch depreciation, owner contributions, and settings in parallel.
+    const [depreciationDeduction, ownerContribRows, settingsRows] = await Promise.all([
       computeDepreciationForYear(year),
       db.select({ amount: ownerCapitalEntriesTable.amount })
         .from(ownerCapitalEntriesTable)
         .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate))),
+      db.select({ federalTaxElection: settingsTable.federalTaxElection })
+        .from(settingsTable)
+        .limit(1),
     ]);
     const ownerContributionsTotal = ownerContribRows.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
     const netProfit = netOperatingIncome - mileageDeduction - depreciationDeduction;
+    const taxProfile = getTaxProfile(settingsRows[0]?.federalTaxElection);
 
     res.json({
       year,
@@ -914,6 +965,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       netOperatingIncome,
       deductions: { mileageDeduction, totalMiles, mileageRate, depreciationDeduction },
       netProfit,
+      taxProfile,
       ownerActivity: { ownerDrawTotal, ownerContributionsTotal },
       outstandingSubLiability,
       closedJobCount,

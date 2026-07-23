@@ -251,6 +251,9 @@ const DEFAULT_SETTINGS = {
   taxReservePct: "25",
   growthReservePct: "5",
   plStepOrder: '["growth","labor","expenses"]',
+  // Tax Profile defaults: single-member LLC taxed as sole proprietorship
+  federalTaxElection: "sole_prop",
+  taxElectionEffectiveDate: null,
   calculatorDefaults: {
     plumbing: { baseCharge: 1000, dropRate: 125 },
     flooring: {
@@ -318,6 +321,9 @@ function format(s: any) {
     taxReservePct: s.taxReservePct != null ? parseFloat(String(s.taxReservePct)) : 25,
     growthReservePct: s.growthReservePct != null ? parseFloat(String(s.growthReservePct)) : 5,
     plStepOrder: s.plStepOrder ?? '["growth","labor","expenses"]',
+    // Tax Profile
+    federalTaxElection: s.federalTaxElection ?? "sole_prop",
+    taxElectionEffectiveDate: s.taxElectionEffectiveDate ?? null,
   };
 }
 
@@ -470,6 +476,9 @@ router.put("/", async (req, res) => {
       taxReservePct: body.taxReservePct != null ? String(parseFloat(body.taxReservePct)) : settings?.taxReservePct,
       growthReservePct: body.growthReservePct != null ? String(parseFloat(body.growthReservePct)) : settings?.growthReservePct,
       plStepOrder: body.plStepOrder !== undefined ? body.plStepOrder : settings?.plStepOrder,
+      // Tax Profile
+      federalTaxElection: body.federalTaxElection !== undefined ? (body.federalTaxElection || "sole_prop") : (settings?.federalTaxElection ?? "sole_prop"),
+      taxElectionEffectiveDate: body.taxElectionEffectiveDate !== undefined ? (body.taxElectionEffectiveDate || null) : (settings?.taxElectionEffectiveDate ?? null),
       updatedAt: new Date(),
     };
 

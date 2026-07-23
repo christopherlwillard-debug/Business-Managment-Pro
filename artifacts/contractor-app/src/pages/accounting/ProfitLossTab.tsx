@@ -7,6 +7,22 @@ import { useBusiness } from "@/contexts/BusinessContext";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+interface TaxProfile {
+  taxElection: string;
+  activitySectionTitle: string;
+  contributionLabel: string;
+  distributionLabel: string;
+  activityDisclaimer: string;
+}
+
+const DEFAULT_TAX_PROFILE: TaxProfile = {
+  taxElection: "sole_prop",
+  activitySectionTitle: "Owner Activity",
+  contributionLabel: "Owner Contributions",
+  distributionLabel: "Owner Draws",
+  activityDisclaimer: "Owner draws and owner contributions affect owner equity only. They are not business income or business expenses and do not change net profit.",
+};
+
 interface ProfitLossReport {
   year: number;
   revenue: { grossReceipts: number; otherIncome: number; grossRevenue: number };
@@ -17,6 +33,7 @@ interface ProfitLossReport {
   netOperatingIncome: number;
   deductions: { mileageDeduction: number; totalMiles: number; mileageRate: number; depreciationDeduction: number };
   netProfit: number;
+  taxProfile?: TaxProfile;
   ownerActivity?: { ownerDrawTotal: number; ownerContributionsTotal: number };
   closedJobCount?: number;
 }
@@ -67,7 +84,13 @@ function PLSection({ title }: { title: string }) {
   );
 }
 
-function OwnerActivityCard({ ownerActivity }: { ownerActivity: { ownerDrawTotal: number; ownerContributionsTotal: number } }) {
+function OwnerActivityCard({
+  ownerActivity,
+  taxProfile,
+}: {
+  ownerActivity: { ownerDrawTotal: number; ownerContributionsTotal: number };
+  taxProfile: TaxProfile;
+}) {
   const [open, setOpen] = useState(true);
   return (
     <div className="border border-border rounded-2xl overflow-hidden shadow-sm">
@@ -76,26 +99,32 @@ function OwnerActivityCard({ ownerActivity }: { ownerActivity: { ownerDrawTotal:
         className="w-full flex items-center justify-between px-6 py-3 bg-muted/30 border-b border-border hover:bg-muted/50 transition-colors"
       >
         <div className="flex items-center gap-2">
-          <div className="bg-muted text-muted-foreground text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">Owner Activity (Informational)</div>
+          <div className="bg-muted text-muted-foreground text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">
+            {taxProfile.activitySectionTitle} (Informational)
+          </div>
         </div>
         <span className="text-xs text-muted-foreground">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
         <div className="px-6 py-4 space-y-1">
           <div className="flex items-center justify-between py-2 border-b border-border/30">
-            <span className="text-sm pl-6 text-muted-foreground">Owner Contributions</span>
+            <span className="text-sm pl-6 text-muted-foreground">{taxProfile.contributionLabel}</span>
             <span className="tabular-nums text-sm font-medium text-foreground">
-              {ownerActivity.ownerContributionsTotal === 0 ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(ownerActivity.ownerContributionsTotal)}
+              {ownerActivity.ownerContributionsTotal === 0
+                ? "—"
+                : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(ownerActivity.ownerContributionsTotal)}
             </span>
           </div>
           <div className="flex items-center justify-between py-2 border-b border-border/30">
-            <span className="text-sm pl-6 text-muted-foreground">Owner Draws</span>
+            <span className="text-sm pl-6 text-muted-foreground">{taxProfile.distributionLabel}</span>
             <span className="tabular-nums text-sm font-medium text-foreground">
-              {ownerActivity.ownerDrawTotal === 0 ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(ownerActivity.ownerDrawTotal)}
+              {ownerActivity.ownerDrawTotal === 0
+                ? "—"
+                : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(ownerActivity.ownerDrawTotal)}
             </span>
           </div>
           <p className="text-xs text-muted-foreground pt-2 leading-relaxed">
-            Owner draws and owner contributions affect owner equity only. They are not business income or business expenses and do not change net profit.
+            {taxProfile.activityDisclaimer}
           </p>
         </div>
       )}
@@ -106,6 +135,7 @@ function OwnerActivityCard({ ownerActivity }: { ownerActivity: { ownerDrawTotal:
 function ProfitLossTab({ year }: { year: number }) {
   const { activeBusiness } = useBusiness();
   const { data: report, isLoading, error } = useProfitLoss(year, activeBusiness?.slug);
+  const taxProfile = report?.taxProfile ?? DEFAULT_TAX_PROFILE;
 
   function handlePrint() {
     if (!report) return;
@@ -234,9 +264,9 @@ function ProfitLossTab({ year }: { year: number }) {
             </div>
           </div>
 
-          {/* Owner Activity — informational only, outside the financial statement */}
+          {/* Owner / Member / Shareholder Activity — informational only, outside the financial statement */}
           {report.ownerActivity && (report.ownerActivity.ownerDrawTotal > 0 || report.ownerActivity.ownerContributionsTotal > 0) && (
-            <OwnerActivityCard ownerActivity={report.ownerActivity} />
+            <OwnerActivityCard ownerActivity={report.ownerActivity} taxProfile={taxProfile} />
           )}
         </>
       )}
