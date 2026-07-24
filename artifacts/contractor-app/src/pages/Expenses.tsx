@@ -14,7 +14,7 @@ import {
   ExternalLink, Store, ChevronDown, Eye, Trash2, AlertTriangle,
   Calendar, Tag, Briefcase, DollarSign, StickyNote, HardHat,
   RotateCcw, Pause, Play, ChevronUp, Pencil, Maximize2, Download, EyeOff, Search, Archive,
-  Link2, Unlink2, Navigation,
+  Link2, Unlink2, Navigation, Camera,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link } from "wouter";
@@ -2273,7 +2273,11 @@ export default function Expenses() {
   const [prefillAmount, setPrefillAmount]             = useState("");
   const [prefillDate,   setPrefillDate]               = useState("");
   const [prefillDesc,   setPrefillDesc]               = useState("");
+  const [prefillNotes,  setPrefillNotes]              = useState("");
   const [prefillKey,    setPrefillKey]                = useState(0);
+  const [scanningReceipt, setScanningReceipt]         = useState(false);
+  const [dialogMode, setDialogMode]                   = useState<"manual" | "scan">("manual");
+  const scanReceiptInputRef                           = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -2486,6 +2490,85 @@ export default function Expenses() {
     setReceiptStatus("uploaded");
     setReceiptMissingExpl("");
     setMealNumPeople("");
+    setPrefillAmount("");
+    setPrefillDate("");
+    setPrefillDesc("");
+    setPrefillNotes("");
+    setDialogMode("manual");
+    setPrefillKey(k => k + 1);
+  }
+
+  async function handleReceiptScan(file: File) {
+    setScanningReceipt(true);
+    try {
+      const processed = await processReceiptFile(file);
+
+      // Reset all form state first
+      setVendor("");
+      setCategory(CATEGORIES[0]);
+      setSubcontractorId("");
+      setExcludeFromNetProfit(false);
+      setCountsTowardJobProfit(true);
+      setFormJobId("");
+      setBusinessLine(activeBusiness?.slug ?? undefined);
+      setPrefillTripId(null);
+      setPaidBy("");
+      setReceiptStatus("uploaded");
+      setReceiptMissingExpl("");
+      setMealNumPeople("");
+      setOvernightTravel(null);
+      setTipAmount("");
+      setTaxAmount("");
+
+      // Call AI parse endpoint
+      const fd = new FormData();
+      fd.append("file", processed);
+      const res = await fetch(`${API}/expense-import/parse-receipt`, {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+
+      const data: { description?: string; vendor?: string; amount?: number; date?: string; category?: string; notes?: string } =
+        res.ok ? await res.json() : {};
+
+      // Pre-fill form with AI-extracted values
+      setPrefillAmount(data.amount != null ? String(data.amount) : "");
+      setPrefillDate(data.date || localDateString());
+      setPrefillDesc(data.description || "");
+      setPrefillNotes(data.notes || "");
+      if (data.vendor) setVendor(data.vendor);
+      if (data.category && CATEGORIES.includes(data.category)) setCategory(data.category);
+      setPrefillKey(k => k + 1);
+
+      if (!res.ok) {
+        toast({ title: "Could not read receipt", description: "Fill in the details manually.", variant: "destructive" });
+      }
+
+      setReceiptFile(processed);
+      setUploadError("");
+      setDialogMode("scan");
+      setIsDialogOpen(true);
+    } catch {
+      toast({ title: "Could not read receipt", description: "Fill in the details manually.", variant: "destructive" });
+      try {
+        const processed = await processReceiptFile(file);
+        setReceiptFile(processed);
+      } catch {
+        setReceiptFile(file);
+      }
+      setPrefillAmount("");
+      setPrefillDate("");
+      setPrefillDesc("");
+      setPrefillNotes("");
+      setPrefillKey(k => k + 1);
+      setUploadError("");
+      setDialogMode("scan");
+      setIsDialogOpen(true);
+    } finally {
+      setScanningReceipt(false);
+      if (scanReceiptInputRef.current) scanReceiptInputRef.current.value = "";
+    }
   }
 
   function openDialogForTrip(tripId: number, tripPurpose: string, tripJobId: number | null) {
@@ -2664,6 +2747,22 @@ export default function Expenses() {
             >
               <Upload className="w-4 h-4 mr-2" /> Import
             </button>
+            <button
+              onClick={() => scanReceiptInputRef.current?.click()}
+              disabled={scanningReceipt}
+              className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border disabled:opacity-60"
+            >
+              {scanningReceipt
+                ? <><span className="w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />Reading…</>
+                : <><Camera className="w-4 h-4 mr-2" />Scan Receipt</>}
+            </button>
+            <input
+              ref={scanReceiptInputRef}
+              type="file"
+              accept="image/*,application/pdf,.heic,.heif"
+              className="sr-only"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptScan(f); }}
+            />
             <button
               onClick={openDialog}
               className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:shadow-lg active:scale-95"
@@ -3209,13 +3308,23 @@ export default function Expenses() {
           setPrefillAmount("");
           setPrefillDate("");
           setPrefillDesc("");
+          setPrefillNotes("");
+          setDialogMode("manual");
         }
       }}>
         <DialogContent className="max-w-md bg-card border-border shadow-2xl p-6 rounded-2xl flex flex-col max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-display">Log Expense</DialogTitle>
+            <DialogTitle className="text-2xl font-display">
+              {dialogMode === "scan" ? "Review Scanned Receipt" : "Log Expense"}
+            </DialogTitle>
           </DialogHeader>
           <form key={prefillKey} id="expense-form" onSubmit={handleSubmit} className="space-y-4 mt-4 overflow-y-auto flex-1">
+            {dialogMode === "scan" && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
+                <Camera className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                AI read your receipt — review and correct the fields below before saving.
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Amount *</label>
@@ -3315,6 +3424,7 @@ export default function Expenses() {
               </label>
               <input
                 name="notes"
+                defaultValue={prefillNotes}
                 className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder={isTravelCategory(category) ? "Business purpose (required for IRS — e.g. client meeting, site inspection)" : "Optional notes"}
               />
