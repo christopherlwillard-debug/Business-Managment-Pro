@@ -10,7 +10,7 @@ import { startBidSyncJob } from "./jobs/bidSync.js";
 import { startComplianceReminderJob } from "./jobs/complianceReminders.js";
 import { db } from "@workspace/db";
 import { businessesTable, mileageLogsTable, expensesTable, clientsTable, clientBillingProfilesTable } from "@workspace/db/schema";
-import { invoicesTable, settingsTable, jobSubcontractorsTable, subPaymentRecordsTable } from "@workspace/db/schema";
+import { invoicesTable, jobSubcontractorsTable, subPaymentRecordsTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, asc, sql, ilike, eq } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
@@ -109,54 +109,6 @@ async function seedDefaultBusinesses(): Promise<void> {
   }
 }
 
-async function ensureInvoiceLifecycleColumns(): Promise<void> {
-  try {
-    await db.execute(sql`
-      ALTER TABLE invoices
-        ADD COLUMN IF NOT EXISTS accepted_at  TIMESTAMPTZ,
-        ADD COLUMN IF NOT EXISTS sent_at      TIMESTAMPTZ,
-        ADD COLUMN IF NOT EXISTS sent_method  TEXT;
-    `);
-    console.log("[startup] Invoice lifecycle columns ensured.");
-  } catch (err) {
-    console.error("[startup] ensureInvoiceLifecycleColumns failed (non-fatal):", err);
-  }
-}
-
-async function ensureJobsManHours(): Promise<void> {
-  try {
-    await db.execute(sql`
-      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS man_hours NUMERIC(8,2);
-    `);
-    console.log("[startup] jobs.man_hours column ensured.");
-  } catch (err) {
-    console.error("[startup] ensureJobsManHours failed (non-fatal):", err);
-  }
-}
-
-async function ensureSubPayDualRateColumns(): Promise<void> {
-  try {
-    await db.execute(sql`
-      ALTER TABLE sub_payment_records
-        ADD COLUMN IF NOT EXISTS work_hours    NUMERIC(8,2),
-        ADD COLUMN IF NOT EXISTS work_rate     NUMERIC(10,2),
-        ADD COLUMN IF NOT EXISTS travel_hours  NUMERIC(8,2),
-        ADD COLUMN IF NOT EXISTS travel_rate   NUMERIC(10,2),
-        ADD COLUMN IF NOT EXISTS bonus_amount  NUMERIC(10,2),
-        ADD COLUMN IF NOT EXISTS bonus_note    TEXT,
-        ADD COLUMN IF NOT EXISTS advance_amount NUMERIC(10,2),
-        ADD COLUMN IF NOT EXISTS advance_note  TEXT,
-        ADD COLUMN IF NOT EXISTS net_paid      NUMERIC(10,2);
-      ALTER TABLE subcontractors
-        ADD COLUMN IF NOT EXISTS travel_pay_rate NUMERIC(10,2);
-      ALTER TABLE job_subcontractors
-        ADD COLUMN IF NOT EXISTS travel_rate NUMERIC(10,2);
-    `);
-    console.log("[startup] Sub pay dual-rate columns ensured.");
-  } catch (err) {
-    console.error("[startup] ensureSubPayDualRateColumns failed (non-fatal):", err);
-  }
-}
 
 // Idempotent: creates Clayton Homes of Evansville client (if missing) and
 // inserts the Factory Billback billing profile. Safe to run on every boot.
@@ -213,17 +165,6 @@ async function seedClaytonBillback(): Promise<void> {
   }
 }
 
-async function ensureSubHoursHourType(): Promise<void> {
-  try {
-    await db.execute(sql`
-      ALTER TABLE job_sub_hours ADD COLUMN IF NOT EXISTS hour_type TEXT
-        CHECK (hour_type IN ('work', 'travel'));
-    `);
-    console.log("[startup] job_sub_hours.hour_type column ensured.");
-  } catch (err) {
-    console.error("[startup] ensureSubHoursHourType failed (non-fatal):", err);
-  }
-}
 
 // One-time startup migration: drop NOT NULL on invoice_number (if still present)
 // and clear any numbers from draft invoices so they receive sequential numbers
@@ -260,62 +201,6 @@ async function clearDraftInvoiceNumbers(): Promise<void> {
   }
 }
 
-
-async function ensurePlLayoutColumns(): Promise<void> {
-  try {
-    await db.execute(sql`
-      ALTER TABLE settings
-        ADD COLUMN IF NOT EXISTS owner_split_pct   NUMERIC(5,2),
-        ADD COLUMN IF NOT EXISTS tax_reserve_pct   NUMERIC(5,2),
-        ADD COLUMN IF NOT EXISTS growth_reserve_pct NUMERIC(5,2),
-        ADD COLUMN IF NOT EXISTS pl_step_order     TEXT;
-    `);
-    console.log("[startup] P&L layout columns ensured.");
-  } catch (err) {
-    console.error("[startup] ensurePlLayoutColumns failed (non-fatal):", err);
-  }
-}
-
-async function ensureSubAdvancesTable(): Promise<void> {
-  try {
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS sub_advances (
-        id SERIAL PRIMARY KEY,
-        job_id INTEGER NOT NULL REFERENCES jobs(id),
-        subcontractor_id INTEGER NOT NULL REFERENCES subcontractors(id),
-        amount NUMERIC(10,2) NOT NULL,
-        description TEXT NOT NULL,
-        advance_date DATE NOT NULL,
-        applied_payment_id INTEGER REFERENCES sub_payment_records(id),
-        created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
-      )
-    `);
-    await db.execute(sql`
-      ALTER TABLE sub_advances ADD COLUMN IF NOT EXISTS applied_at TIMESTAMPTZ;
-    `);
-    await db.execute(sql`
-      ALTER TABLE sub_advances ADD COLUMN IF NOT EXISTS expense_id INTEGER REFERENCES expenses(id) ON DELETE SET NULL;
-    `);
-    console.log("[startup] sub_advances table ensured.");
-  } catch (err) {
-    console.error("[startup] ensureSubAdvancesTable failed (non-fatal):", err);
-  }
-}
-
-// Ensures a partial unique index on invoices(invoice_number) so duplicate
-// invoice numbers are rejected at the database level. Idempotent.
-async function ensureInvoiceNumberUniqueIndex(): Promise<void> {
-  try {
-    await db.execute(sql`
-      CREATE UNIQUE INDEX IF NOT EXISTS invoices_invoice_number_unique
-        ON invoices(invoice_number)
-        WHERE invoice_number IS NOT NULL
-    `);
-    console.log("[startup] ensureInvoiceNumberUniqueIndex: unique index ensured.");
-  } catch (err) {
-    console.error("[startup] ensureInvoiceNumberUniqueIndex failed (non-fatal):", err);
-  }
-}
 
 async function recomputePartialSubPaymentStatuses(): Promise<void> {
   try {
@@ -394,14 +279,7 @@ async function recomputePartialSubPaymentStatuses(): Promise<void> {
 }
 
 async function start() {
-  await ensurePlLayoutColumns();
-  await ensureInvoiceLifecycleColumns();
-  await ensureJobsManHours();
-  await ensureSubPayDualRateColumns();
-  await ensureSubHoursHourType();
-  await ensureSubAdvancesTable();
   await clearDraftInvoiceNumbers();
-  await ensureInvoiceNumberUniqueIndex();
   await recomputePartialSubPaymentStatuses();
   await seedDefaultBusinesses();
   await seedClaytonBillback();
