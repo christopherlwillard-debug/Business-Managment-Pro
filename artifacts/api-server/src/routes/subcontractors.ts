@@ -118,46 +118,79 @@ router.get("/1099-report", async (req, res) => {
   }
 });
 
+/** All-time multi-source paid total — mirrors computeYtd but without year/date filtering. */
+async function computeAllTimePaid(subcontractorId: number): Promise<number> {
+  // sub_payment_records: pay-worker payments (new path). Exclude reversals.
+  const [sprRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), 0)` })
+    .from(subPaymentRecordsTable)
+    .where(
+      and(
+        eq(subPaymentRecordsTable.subcontractorId, subcontractorId),
+        sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+      )
+    );
+
+  // expenses (category=Subcontractor, jobSubHoursId IS NULL): manually-entered old-path payments.
+  // Rows where jobSubHoursId IS NOT NULL are sub-hours auto-expenses already in sub_payment_records.
+  const [expRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${expensesTable.amount}), 0)` })
+    .from(expensesTable)
+    .where(
+      and(
+        eq(expensesTable.subcontractorId, subcontractorId),
+        sql`LOWER(${expensesTable.category}) = 'subcontractor'`,
+        sql`${expensesTable.jobSubHoursId} IS NULL`,
+      )
+    );
+
+  // paymentsTable: direct/manual payments recorded via the payments flow.
+  const [payRow] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${paymentsTable.amount}), 0)` })
+    .from(paymentsTable)
+    .where(eq(paymentsTable.subcontractorId, subcontractorId));
+
+  return (
+    parseFloat(sprRow?.total ?? "0") +
+    parseFloat(expRow?.total ?? "0") +
+    parseFloat(payRow?.total ?? "0")
+  );
+}
+
 async function computeSubAggregates(subcontractorId: number) {
-  const [hoursRow] = await db
-    .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)` })
-    .from(jobSubHoursTable)
-    .where(eq(jobSubHoursTable.subcontractorId, subcontractorId));
+  const [hoursRows, totalPaid, owedRows] = await Promise.all([
+    db
+      .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)` })
+      .from(jobSubHoursTable)
+      .where(eq(jobSubHoursTable.subcontractorId, subcontractorId)),
+    computeAllTimePaid(subcontractorId),
+    db
+      .select({
+        amountOwed: jobSubcontractorsTable.amountOwed,
+        computedOwed: sql<string>`COALESCE((
+          SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
+          FROM job_sub_hours h
+          WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+            AND h.subcontractor_id = ${subcontractorId}
+        ), 0)`,
+      })
+      .from(jobSubcontractorsTable)
+      .where(eq(jobSubcontractorsTable.subcontractorId, subcontractorId)),
+  ]);
 
-  // totalOwed: for each job link, use manual amountOwed if set, otherwise sum hours×rate_snapshot.
-  // Jobs marked "paid" contribute 0 to the balance (owed = amountPaid) so stale overrides don't inflate totals.
-  const owedRows = await db
-    .select({
-      jobId: jobSubcontractorsTable.jobId,
-      amountOwed: jobSubcontractorsTable.amountOwed,
-      amountPaid: jobSubcontractorsTable.amountPaid,
-      paymentStatus: jobSubcontractorsTable.paymentStatus,
-      computedOwed: sql<string>`COALESCE((
-        SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
-        FROM job_sub_hours h
-        WHERE h.job_id = ${jobSubcontractorsTable.jobId}
-          AND h.subcontractor_id = ${subcontractorId}
-      ), 0)`,
-    })
-    .from(jobSubcontractorsTable)
-    .where(eq(jobSubcontractorsTable.subcontractorId, subcontractorId));
-
+  // totalOwed: use manual amountOwed override if set, else computed hours×rate_snapshot.
+  // No special-casing for "paid" status — totalPaid (multi-source) is now the ground truth,
+  // so if totalPaid >= totalOwed the balance will correctly be 0.
   let totalOwed = 0;
-  let totalPaid = 0;
   for (const row of owedRows) {
-    const paid = row.amountPaid != null ? parseFloat(row.amountPaid) : 0;
-    totalPaid += paid;
-    if (row.paymentStatus === "paid") {
-      // Job is fully settled — treat owed = paid so it contributes 0 to outstanding balance
-      totalOwed += paid;
-    } else {
-      const owed = row.amountOwed != null ? parseFloat(row.amountOwed) : parseFloat(row.computedOwed ?? "0");
-      totalOwed += owed;
-    }
+    const owed = row.amountOwed != null
+      ? parseFloat(row.amountOwed)
+      : parseFloat(row.computedOwed ?? "0");
+    totalOwed += owed;
   }
 
   return {
-    totalHours: parseFloat(hoursRow?.total ?? "0"),
+    totalHours: parseFloat(hoursRows[0]?.total ?? "0"),
     totalOwed,
     totalPaid,
   };
@@ -178,7 +211,7 @@ router.get("/", async (req, res) => {
         totalTrackedHours: agg.totalHours,
         totalOwed: agg.totalOwed,
         totalPaid: agg.totalPaid,
-        balance: agg.totalOwed - agg.totalPaid,
+        balance: Math.max(0, agg.totalOwed - agg.totalPaid),
         payRate: s.payRate != null ? parseFloat(s.payRate) : null,
         payType: s.payType,
         role: s.role ?? "hourly",
