@@ -116,3 +116,15 @@ channel = "stable-25_05"
 PUPPETEER_CACHE_DIR = "/home/runner/workspace/.puppeteer-cache"
 
 [userenv.production]
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 18167
+externalPort = 80

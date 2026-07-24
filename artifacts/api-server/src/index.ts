@@ -302,60 +302,6 @@ async function ensureSubAdvancesTable(): Promise<void> {
   }
 }
 
-async function fixDewayneAmountPaid(): Promise<void> {
-  try {
-    const result = await db.execute(sql`
-      SELECT amount_paid FROM job_subcontractors
-      WHERE job_id = 42 AND subcontractor_id = 6
-    `);
-    const row = result.rows[0];
-    const current = row ? parseFloat(String((row as any).amount_paid ?? "0")) : null;
-    if (current === null) {
-      console.log("[startup] fixDewayneAmountPaid: sub not found — skipped.");
-      return;
-    }
-    // Only fix the one specific bad value (100.00) that resulted from the drift bug.
-    // Any other value means either already fixed or a legitimate payment was recorded — leave it alone.
-    const isBadValue = Math.abs(current - 100.0) < 0.005;
-    if (!isBadValue) {
-      console.log(`[startup] fixDewayneAmountPaid: amount_paid=${current} — not the expected bad value, skipped.`);
-      return;
-    }
-    await db.execute(sql`
-      UPDATE job_subcontractors
-      SET amount_paid = 890.00, payment_status = 'partial'
-      WHERE job_id = 42 AND subcontractor_id = 6 AND ABS(amount_paid - 100.00) < 0.005
-    `);
-    console.log("[startup] fixDewayneAmountPaid: set amount_paid=890.00, payment_status=partial.");
-  } catch (err) {
-    console.error("[startup] fixDewayneAmountPaid failed (non-fatal):", err);
-  }
-}
-
-// One-time fix: delete the ghost draft invoice (id=34, $99.53, Peters Booneville)
-// that was auto-saved when the invoice builder was opened but never completed.
-// Wil-1031 is the real paid invoice for that job. This ghost triggered an incorrect
-// reminder email before the draft-filter fix. Idempotent — skips if already gone.
-async function deletePetersBoonvilleGhostInvoice(): Promise<void> {
-  try {
-    const [inv] = await db
-      .select({ id: invoicesTable.id, status: invoicesTable.status })
-      .from(invoicesTable)
-      .where(and(eq(invoicesTable.id, 34), isNull(invoicesTable.invoiceNumber)));
-
-    if (!inv) {
-      console.log("[startup] deletePetersBoonvilleGhostInvoice: ghost already gone — skipped.");
-      return;
-    }
-
-    await db.delete(invoicesTable).where(and(eq(invoicesTable.id, 34), isNull(invoicesTable.invoiceNumber)));
-    console.log("[startup] deletePetersBoonvilleGhostInvoice: deleted ghost draft invoice id=34 (Peters Booneville $99.53).");
-  } catch (err) {
-    console.error("[startup] deletePetersBoonvilleGhostInvoice failed (non-fatal):", err);
-  }
-}
-
-
 // Ensures a partial unique index on invoices(invoice_number) so duplicate
 // invoice numbers are rejected at the database level. Idempotent.
 async function ensureInvoiceNumberUniqueIndex(): Promise<void> {
@@ -368,39 +314,6 @@ async function ensureInvoiceNumberUniqueIndex(): Promise<void> {
     console.log("[startup] ensureInvoiceNumberUniqueIndex: unique index ensured.");
   } catch (err) {
     console.error("[startup] ensureInvoiceNumberUniqueIndex failed (non-fatal):", err);
-  }
-}
-
-// One-time fix: rename the invoice currently numbered Wil-1038 to Wil-1036
-// (filling the gap left by two numbers that were consumed without a surviving
-// invoice record), then reset the counter to 1037 so the next accepted invoice
-// continues the sequence cleanly. Idempotent.
-async function fixInvoice1038Sequence(): Promise<void> {
-  try {
-    const [inv] = await db
-      .select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber })
-      .from(invoicesTable)
-      .where(eq(invoicesTable.invoiceNumber, "Wil-1038"));
-
-    if (!inv) {
-      console.log("[startup] fixInvoice1038Sequence: nothing to do (Wil-1038 not found or already renamed).");
-      return;
-    }
-
-    await db.transaction(async (tx) => {
-      await tx
-        .update(invoicesTable)
-        .set({ invoiceNumber: "Wil-1036" })
-        .where(eq(invoicesTable.id, inv.id));
-
-      await tx.execute(sql`
-        UPDATE settings SET invoice_next_number = 1037
-      `);
-    });
-
-    console.log(`[startup] fixInvoice1038Sequence: renamed Wil-1038 → Wil-1036 (invoice id=${inv.id}), counter reset to 1037.`);
-  } catch (err) {
-    console.error("[startup] fixInvoice1038Sequence failed (non-fatal):", err);
   }
 }
 
@@ -488,10 +401,7 @@ async function start() {
   await ensureSubHoursHourType();
   await ensureSubAdvancesTable();
   await clearDraftInvoiceNumbers();
-  await fixDewayneAmountPaid();
-  await deletePetersBoonvilleGhostInvoice();
   await ensureInvoiceNumberUniqueIndex();
-  await fixInvoice1038Sequence();
   await recomputePartialSubPaymentStatuses();
   await seedDefaultBusinesses();
   await seedClaytonBillback();
