@@ -34,6 +34,8 @@ export default function Clients() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [deleteLinkCounts, setDeleteLinkCounts] = useState<{ jobCount: number; invoiceCount: number; estimateCount: number } | null>(null);
+  const [isCheckingDelete, setIsCheckingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
 
@@ -77,6 +79,25 @@ export default function Clients() {
     setEditingClient(null);
   };
 
+  const handleDeleteClick = async (client: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsCheckingDelete(true);
+    setDeleteTarget(client);
+    try {
+      const res = await fetch(`${BASE}/api/clients/${client.id}/link-counts`, { credentials: "include" });
+      if (res.ok) {
+        const counts = await res.json();
+        setDeleteLinkCounts(counts);
+      } else {
+        setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0 });
+      }
+    } catch {
+      setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0 });
+    } finally {
+      setIsCheckingDelete(false);
+    }
+  };
+
   const handleDeleteConfirmed = async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
@@ -86,7 +107,13 @@ export default function Clients() {
     } finally {
       setIsDeleting(false);
       setDeleteTarget(null);
+      setDeleteLinkCounts(null);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteTarget(null);
+    setDeleteLinkCounts(null);
   };
 
   return (
@@ -146,7 +173,7 @@ export default function Clients() {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={e => { e.stopPropagation(); setDeleteTarget(client); }}
+                        onClick={e => handleDeleteClick(client, e)}
                         className="p-2 rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors"
                         title="Delete client"
                       >
@@ -297,7 +324,7 @@ export default function Clients() {
 
       {deleteTarget && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={handleDeleteCancel} />
           <div className="relative w-full max-w-sm bg-card rounded-2xl shadow-2xl border border-red-100 p-6 space-y-4">
             <div className="flex items-start gap-4">
               <div className="w-11 h-11 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
@@ -312,9 +339,29 @@ export default function Clients() {
                 </p>
               </div>
             </div>
+            {isCheckingDelete && (
+              <div className="text-sm text-muted-foreground animate-pulse px-1">Checking linked records…</div>
+            )}
+            {!isCheckingDelete && deleteLinkCounts && (deleteLinkCounts.jobCount > 0 || deleteLinkCounts.invoiceCount > 0 || deleteLinkCounts.estimateCount > 0) && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-1">
+                <p className="text-sm font-semibold text-amber-800">This client has linked records:</p>
+                <ul className="text-sm text-amber-700 list-disc list-inside space-y-0.5">
+                  {deleteLinkCounts.jobCount > 0 && (
+                    <li>{deleteLinkCounts.jobCount} {deleteLinkCounts.jobCount === 1 ? "job" : "jobs"}</li>
+                  )}
+                  {deleteLinkCounts.invoiceCount > 0 && (
+                    <li>{deleteLinkCounts.invoiceCount} {deleteLinkCounts.invoiceCount === 1 ? "invoice" : "invoices"}</li>
+                  )}
+                  {deleteLinkCounts.estimateCount > 0 && (
+                    <li>{deleteLinkCounts.estimateCount} {deleteLinkCounts.estimateCount === 1 ? "estimate" : "estimates"}</li>
+                  )}
+                </ul>
+                <p className="text-xs text-amber-600 mt-1">These records will remain but will no longer be associated with any client.</p>
+              </div>
+            )}
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50">Cancel</button>
-              <button onClick={handleDeleteConfirmed} disabled={isDeleting} className="px-4 py-2 rounded-xl font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2">
+              <button onClick={handleDeleteCancel} disabled={isDeleting} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50">Cancel</button>
+              <button onClick={handleDeleteConfirmed} disabled={isDeleting || isCheckingDelete} className="px-4 py-2 rounded-xl font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2">
                 {isDeleting ? "Deleting…" : <><Trash2 className="w-4 h-4" /> Delete</>}
               </button>
             </div>

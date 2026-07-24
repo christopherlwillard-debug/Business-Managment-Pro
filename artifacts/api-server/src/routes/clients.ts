@@ -178,6 +178,22 @@ router.patch("/:id/business-line", async (req, res) => {
   }
 });
 
+router.get("/:id/link-counts", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
+    const [jobs, invoices, estimates] = await Promise.all([
+      db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.clientId, id)),
+      db.select({ id: invoicesTable.id }).from(invoicesTable).where(eq(invoicesTable.clientId, id)),
+      db.select({ id: estimatesTable.id }).from(estimatesTable).where(eq(estimatesTable.clientId, id)),
+    ]);
+    res.json({ jobCount: jobs.length, invoiceCount: invoices.length, estimateCount: estimates.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch link counts" });
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
