@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import {
@@ -2278,6 +2279,8 @@ export default function Expenses() {
   const [scanningReceipt, setScanningReceipt]         = useState(false);
   const [dialogMode, setDialogMode]                   = useState<"manual" | "scan">("manual");
   const scanReceiptInputRef                           = useRef<HTMLInputElement>(null);
+  const cameraInputRef                                = useRef<HTMLInputElement>(null);
+  const isMobile                                      = useIsMobile();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -2747,15 +2750,44 @@ export default function Expenses() {
             >
               <Upload className="w-4 h-4 mr-2" /> Import
             </button>
-            <button
-              onClick={() => scanReceiptInputRef.current?.click()}
-              disabled={scanningReceipt}
-              className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border disabled:opacity-60"
-            >
-              {scanningReceipt
-                ? <><span className="w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />Reading…</>
-                : <><Camera className="w-4 h-4 mr-2" />Scan Receipt</>}
-            </button>
+            {isMobile ? (
+              <>
+                <button
+                  onClick={() => cameraInputRef.current?.click()}
+                  disabled={scanningReceipt}
+                  className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border disabled:opacity-60"
+                >
+                  {scanningReceipt
+                    ? <><span className="w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />Reading…</>
+                    : <><Camera className="w-4 h-4 mr-2" />Take Photo</>}
+                </button>
+                <button
+                  onClick={() => scanReceiptInputRef.current?.click()}
+                  disabled={scanningReceipt}
+                  className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border disabled:opacity-60"
+                >
+                  <Upload className="w-4 h-4 mr-2" />Choose File
+                </button>
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="sr-only"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptScan(f); e.target.value = ""; }}
+                />
+              </>
+            ) : (
+              <button
+                onClick={() => scanReceiptInputRef.current?.click()}
+                disabled={scanningReceipt}
+                className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border disabled:opacity-60"
+              >
+                {scanningReceipt
+                  ? <><span className="w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />Reading…</>
+                  : <><Camera className="w-4 h-4 mr-2" />Scan Receipt</>}
+              </button>
+            )}
             <input
               ref={scanReceiptInputRef}
               type="file"
