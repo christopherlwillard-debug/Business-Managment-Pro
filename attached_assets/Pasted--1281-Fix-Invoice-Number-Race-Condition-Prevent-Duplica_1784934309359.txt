@@ -1,0 +1,49 @@
+⸻
+
+#1281 - Fix Invoice Number Race Condition & Prevent Duplicate Invoice Numbers
+
+What & Why
+
+Invoice numbers must be unique, sequential, and assigned exactly once. The current implementation generates invoice numbers using a non-atomic read-then-write pattern. Both the /accept endpoint and the getNextInvoiceNumber() helper first read the current invoice counter, then update it in a separate database statement.
+
+Under concurrent requests, two transactions can read the same counter value before either transaction updates it. This can result in duplicate invoice numbers or an inconsistent counter. Because there is currently no database-level uniqueness constraint on invoice_number, duplicate invoice numbers can be written without error.
+
+Invoice numbering should be atomic and protected at both the application and database levels.
+
+In Scope
+
+* Replace the read-then-write pattern with a single atomic UPDATE ... RETURNING statement.
+* Add a partial UNIQUE index on invoice_number to prevent duplicate numbered invoices.
+* Reconcile the invoice counter so future numbers always continue after the highest existing invoice number.
+* Apply the same atomic numbering logic everywhere invoice numbers are generated.
+
+Out of Scope
+
+* Renumbering existing invoices.
+* Changing invoice list sorting.
+* Modifying invoice number prefixes or formatting.
+
+Implementation Plan
+
+1. Create a new migration (artifacts/api-server/src/migrations/0005-invoice-number-unique.sql) that:
+    * Adds a partial UNIQUE index on invoice_number where the value is not NULL.
+    * Updates the stored invoice counter to be at least one greater than the highest existing invoice number so future numbers never collide with historical invoices.
+2. Replace the existing read-then-update logic in getNextInvoiceNumber() with a single atomic UPDATE ... RETURNING statement that increments the counter and returns the assigned number and prefix in one database operation.
+3. Replace the inline settings lookup and counter update inside the /accept endpoint with the same atomic UPDATE ... RETURNING pattern so invoice numbers are generated safely within the transaction.
+4. Deploy the migration and verify it runs successfully in all environments.
+
+Done Looks Like
+
+* Invoice numbers are assigned atomically and cannot be duplicated under concurrent requests.
+* A database-level UNIQUE constraint prevents duplicate invoice numbers even if application logic fails.
+* The invoice counter always advances from the highest existing invoice number.
+* All invoice number generation uses the same atomic implementation.
+* Existing invoice numbering format and prefixes remain unchanged.
+
+Verification
+
+* Run the existing API test suite and confirm all invoice tests pass.
+* Simultaneously approve two different draft invoices and verify each receives a unique, sequential invoice number.
+* Verify the UNIQUE index exists on invoice_number.
+* Confirm the settings.invoice_next_number value equals the next available invoice number after the current maximum.
+* Attempting to assign a duplicate invoice number now fails with a database constraint violation instead of silently creating duplicate invoice numbers.
