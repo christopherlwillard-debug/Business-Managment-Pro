@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { clientsTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable } from "@workspace/db/schema";
+import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable } from "@workspace/db/schema";
 import { eq, desc, or } from "drizzle-orm";
 
 const router = Router();
@@ -188,6 +188,8 @@ router.delete("/:id", async (req, res) => {
       db.update(estimatesTable).set({ clientId: null }).where(eq(estimatesTable.clientId, id)),
       db.update(invoicesTable).set({ clientId: null }).where(eq(invoicesTable.clientId, id)),
       db.update(jobsTable).set({ clientId: null }).where(eq(jobsTable.clientId, id)),
+      // client_billing_profiles.client_id is NOT NULL so it cannot be nullified — delete the rows
+      db.delete(clientBillingProfilesTable).where(eq(clientBillingProfilesTable.clientId, id)),
     ]);
     await db.delete(clientsTable).where(eq(clientsTable.id, id));
     res.status(204).send();
