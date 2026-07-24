@@ -157,7 +157,7 @@ async function computeAllTimePaid(subcontractorId: number): Promise<number> {
   );
 }
 
-async function computeSubAggregates(subcontractorId: number) {
+async function computeSubAggregates(subcontractorId: number, balanceSettledAt?: Date | null) {
   const [hoursRows, totalPaid, owedRows] = await Promise.all([
     db
       .select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)` })
@@ -178,9 +178,18 @@ async function computeSubAggregates(subcontractorId: number) {
       .where(eq(jobSubcontractorsTable.subcontractorId, subcontractorId)),
   ]);
 
+  // If the sub is manually settled, treat totalOwed = totalPaid so balance = 0.
+  // This handles subs paid via bonuses/flat expenses where hours×rate doesn't match reality.
+  if (balanceSettledAt) {
+    return {
+      totalHours: parseFloat(hoursRows[0]?.total ?? "0"),
+      totalOwed: totalPaid,
+      totalPaid,
+      balanceSettled: true,
+    };
+  }
+
   // totalOwed: use manual amountOwed override if set, else computed hours×rate_snapshot.
-  // No special-casing for "paid" status — totalPaid (multi-source) is now the ground truth,
-  // so if totalPaid >= totalOwed the balance will correctly be 0.
   let totalOwed = 0;
   for (const row of owedRows) {
     const owed = row.amountOwed != null
@@ -193,6 +202,7 @@ async function computeSubAggregates(subcontractorId: number) {
     totalHours: parseFloat(hoursRows[0]?.total ?? "0"),
     totalOwed,
     totalPaid,
+    balanceSettled: false,
   };
 }
 
@@ -204,7 +214,7 @@ router.get("/", async (req, res) => {
       const [ytd, hasLinkedRecords, agg] = await Promise.all([
         computeYtd(s.id, year),
         computeHasLinkedRecords(s.id),
-        computeSubAggregates(s.id),
+        computeSubAggregates(s.id, s.balanceSettledAt),
       ]);
       return {
         ...format(s, ytd), hasLinkedRecords,
@@ -212,6 +222,7 @@ router.get("/", async (req, res) => {
         totalOwed: agg.totalOwed,
         totalPaid: agg.totalPaid,
         balance: Math.max(0, agg.totalOwed - agg.totalPaid),
+        balanceSettled: agg.balanceSettled,
         payRate: s.payRate != null ? parseFloat(s.payRate) : null,
         payType: s.payType,
         role: s.role ?? "hourly",
@@ -433,6 +444,42 @@ router.put("/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update subcontractor" });
+  }
+});
+
+// POST /api/subcontractors/:id/settle — mark balance as settled
+router.post("/:id/settle", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    const [sub] = await db
+      .update(subcontractorsTable)
+      .set({ balanceSettledAt: new Date() })
+      .where(eq(subcontractorsTable.id, id))
+      .returning();
+    if (!sub) return res.status(404).json({ error: "Subcontractor not found" });
+    res.json({ balanceSettled: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to settle balance" });
+  }
+});
+
+// DELETE /api/subcontractors/:id/settle — reopen balance
+router.delete("/:id/settle", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    const [sub] = await db
+      .update(subcontractorsTable)
+      .set({ balanceSettledAt: null })
+      .where(eq(subcontractorsTable.id, id))
+      .returning();
+    if (!sub) return res.status(404).json({ error: "Subcontractor not found" });
+    res.json({ balanceSettled: false });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to reopen balance" });
   }
 });
 

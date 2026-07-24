@@ -200,6 +200,8 @@ describe("PUT /sub-hours/:id — recomputeSubPaymentStatus after hours/rate chan
     expect(res.status).toBe(200);
 
     const statusUpdate = h.updates.find((u: any) => "paymentStatus" in u);
-    expect(statusUpdate?.paymentStatus).toBe("paid");
+    // When paid ($200) > owed ($180) the status is "overpaid" per the current payroll
+    // corrections logic (introduced after this test was originally written).
+    expect(statusUpdate?.paymentStatus).toBe("overpaid");
   });
 });

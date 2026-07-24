@@ -53,7 +53,25 @@ export default function Subcontractors() {
   const [historyBusinessLine, setHistoryBusinessLine] = useState<string>("");
   const [pageTab, setPageTab] = useState<"directory" | "balances">("directory");
   const [showSettled, setShowSettled] = useState(false);
+  const [settleConfirm, setSettleConfirm] = useState<{ id: number; name: string; reopen: boolean } | null>(null);
+  const [settlingId, setSettlingId] = useState<number | null>(null);
   const [, navigate] = useLocation();
+
+  async function handleSettle(id: number, reopen: boolean) {
+    setSettlingId(id);
+    try {
+      const url = `${BASE}/api/subcontractors/${id}/settle`;
+      const res = await fetch(url, { method: reopen ? "DELETE" : "POST", credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      refetch();
+      toast({ title: reopen ? "Balance reopened" : "Balance marked as settled" });
+    } catch {
+      toast({ title: "Error", description: "Could not update settlement status.", variant: "destructive" });
+    } finally {
+      setSettlingId(null);
+      setSettleConfirm(null);
+    }
+  }
 
   useEffect(() => {
     const subIdParam = searchParams.get("subId");
@@ -719,8 +737,30 @@ export default function Subcontractors() {
                         ) : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-4 py-4 text-right text-sm">
-                        {(sub as any).balance > 0.01 ? (
-                          <span className="font-bold text-red-600">{formatCurrency((sub as any).balance)}</span>
+                        {(sub as any).balanceSettled ? (
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="inline-flex items-center gap-0.5 text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                              <CheckCircle2 className="w-2.5 h-2.5" /> Settled
+                            </span>
+                            <button
+                              onClick={() => setSettleConfirm({ id: sub.id, name: sub.name, reopen: true })}
+                              className="text-[10px] text-muted-foreground hover:text-foreground underline transition-colors"
+                            >
+                              Reopen
+                            </button>
+                          </div>
+                        ) : (sub as any).balance > 0.01 ? (
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="font-bold text-red-600">{formatCurrency((sub as any).balance)}</span>
+                            {canEdit("subcontractors") && (
+                              <button
+                                onClick={() => setSettleConfirm({ id: sub.id, name: sub.name, reopen: false })}
+                                className="text-[10px] text-emerald-700 hover:text-emerald-900 underline transition-colors"
+                              >
+                                Mark Settled
+                              </button>
+                            )}
+                          </div>
                         ) : (sub as any).totalOwed > 0 ? (
                           <span className="text-emerald-600 font-medium">✓</span>
                         ) : <span className="text-muted-foreground">—</span>}
@@ -1533,6 +1573,43 @@ export default function Subcontractors() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* ── Settle / Reopen confirmation dialog ── */}
+      <Dialog open={!!settleConfirm} onOpenChange={() => setSettleConfirm(null)}>
+        <DialogContent className="max-w-sm bg-card border-border shadow-2xl p-6 rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-display flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              {settleConfirm?.reopen ? "Reopen Balance?" : "Mark Balance as Settled?"}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground mt-2">
+            {settleConfirm?.reopen
+              ? <><strong className="text-foreground">{settleConfirm.name}</strong>'s balance will calculate normally again.</>
+              : <>This marks <strong className="text-foreground">{settleConfirm?.name}</strong>'s balance as fully settled — OWED and PAID will both reflect the actual expense total, and the balance will show $0.</>
+            }
+          </p>
+          <div className="flex justify-end gap-2 mt-4">
+            <button
+              onClick={() => setSettleConfirm(null)}
+              className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => settleConfirm && handleSettle(settleConfirm.id, settleConfirm.reopen)}
+              disabled={settlingId === settleConfirm?.id}
+              className={`px-4 py-2 rounded-xl font-semibold text-sm transition-colors ${
+                settleConfirm?.reopen
+                  ? "bg-muted text-foreground hover:bg-muted/80"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              }`}
+            >
+              {settlingId === settleConfirm?.id ? "Saving…" : settleConfirm?.reopen ? "Yes, Reopen" : "Yes, Mark Settled"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

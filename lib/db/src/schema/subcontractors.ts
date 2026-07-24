@@ -43,6 +43,8 @@ export const subcontractorsTable = pgTable("subcontractors", {
   // Member vs hourly worker role + equity growth %
   role: text("role").notNull().default("hourly"),
   growthPct: numeric("growth_pct", { precision: 5, scale: 4 }).notNull().default("0"),
+  // When set, the sub's balance is considered settled regardless of hours×rate calculation
+  balanceSettledAt: timestamp("balance_settled_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
