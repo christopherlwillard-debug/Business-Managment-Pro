@@ -260,42 +260,6 @@ async function clearDraftInvoiceNumbers(): Promise<void> {
   }
 }
 
-// One-time fix: invoice id=33 was assigned Wil-1036 due to draft invoices
-// consuming numbers 1032-1035 from the counter before being cleared.
-// Renames it to Wil-1032 (correct sequential position) and resets the counter
-// to 1033 so the two pending drafts get 1033/1034. Idempotent.
-async function fixInvoice1036Sequence(): Promise<void> {
-  try {
-    const [inv] = await db
-      .select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber })
-      .from(invoicesTable)
-      .where(eq(invoicesTable.id, 33));
-
-    if (!inv || inv.invoiceNumber !== "Wil-1036") {
-      console.log("[startup] fixInvoice1036Sequence: nothing to do (already fixed or invoice not found).");
-      return;
-    }
-
-    await db.transaction(async (tx) => {
-      await tx
-        .update(invoicesTable)
-        .set({ invoiceNumber: "Wil-1032" })
-        .where(eq(invoicesTable.id, 33));
-
-      const [s] = await tx.select().from(settingsTable).limit(1);
-      if (s) {
-        await tx
-          .update(settingsTable)
-          .set({ invoiceNextNumber: 1033 })
-          .where(eq(settingsTable.id, s.id));
-      }
-    });
-
-    console.log("[startup] fixInvoice1036Sequence: renamed Wil-1036 → Wil-1032, counter reset to 1033.");
-  } catch (err) {
-    console.error("[startup] fixInvoice1036Sequence failed (non-fatal):", err);
-  }
-}
 
 async function ensurePlLayoutColumns(): Promise<void> {
   try {
@@ -391,41 +355,6 @@ async function deletePetersBoonvilleGhostInvoice(): Promise<void> {
   }
 }
 
-// One-time fix: rename Wil-1035 → Wil-1034 on the Martin job invoice (id=36).
-// Wil-1034 was consumed by the counter during a failed accept attempt, leaving
-// a gap. The accept flow is now transactional so this cannot recur. Idempotent.
-async function fixMartinInvoiceSequence(): Promise<void> {
-  try {
-    const [inv] = await db
-      .select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber })
-      .from(invoicesTable)
-      .where(eq(invoicesTable.id, 36));
-
-    if (!inv || inv.invoiceNumber !== "Wil-1035") {
-      console.log("[startup] fixMartinInvoiceSequence: nothing to do (already fixed or invoice not found).");
-      return;
-    }
-
-    await db.transaction(async (tx) => {
-      await tx
-        .update(invoicesTable)
-        .set({ invoiceNumber: "Wil-1034" })
-        .where(eq(invoicesTable.id, 36));
-
-      const [s] = await tx.select().from(settingsTable).limit(1);
-      if (s && (s.invoiceNextNumber ?? 0) === 1036) {
-        await tx
-          .update(settingsTable)
-          .set({ invoiceNextNumber: 1035 })
-          .where(eq(settingsTable.id, s.id));
-      }
-    });
-
-    console.log("[startup] fixMartinInvoiceSequence: renamed Wil-1035 → Wil-1034, counter reset to 1035.");
-  } catch (err) {
-    console.error("[startup] fixMartinInvoiceSequence failed (non-fatal):", err);
-  }
-}
 
 // Ensures a partial unique index on invoices(invoice_number) so duplicate
 // invoice numbers are rejected at the database level. Idempotent.
@@ -559,10 +488,8 @@ async function start() {
   await ensureSubHoursHourType();
   await ensureSubAdvancesTable();
   await clearDraftInvoiceNumbers();
-  await fixInvoice1036Sequence();
   await fixDewayneAmountPaid();
   await deletePetersBoonvilleGhostInvoice();
-  await fixMartinInvoiceSequence();
   await ensureInvoiceNumberUniqueIndex();
   await fixInvoice1038Sequence();
   await recomputePartialSubPaymentStatuses();
