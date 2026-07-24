@@ -17,6 +17,9 @@ import express from "express";
 const h = vi.hoisted(() => ({
   // Queue of result arrays. Each .where() / .limit() call shifts one off.
   selectQueue: [] as any[][],
+  // Queue for db.execute() calls that return rows (e.g. UPDATE … RETURNING).
+  // Each element is the rows array for one execute call.
+  executeQueue: [] as any[][],
   // Record of every .set(data) call (for asserting what was written to DB).
   updates: [] as any[],
   // Controls whether isSquareConfigured() returns true in a given test.
@@ -47,7 +50,7 @@ vi.mock("@workspace/db", () => {
         returning: () => Promise.resolve([{ id: 42 }]),
       }),
     }),
-    execute: () => Promise.resolve(),
+    execute: () => Promise.resolve({ rows: h.executeQueue.shift() ?? [] }),
     delete:  () => ({ where: () => Promise.resolve() }),
   };
   return {
@@ -139,6 +142,7 @@ function fakeInvoice(overrides: Record<string, any> = {}): Record<string, any> {
 // ── Reset mock state between tests ────────────────────────────────────────────
 beforeEach(() => {
   h.selectQueue.length = 0;
+  h.executeQueue.length = 0;
   h.updates.length = 0;
   h.squareConfigured = false;
   deleteSquarePaymentLink.mockClear();
@@ -335,14 +339,15 @@ describe("POST /:id/accept", () => {
   it("transitions a draft invoice to approved and assigns an invoice number", async () => {
     // Inside the transaction:
     // 1) tx.select status check (invoicesTable .where)
-    // 2) tx.select settings (settingsTable .limit)
+    // 2) tx.execute atomic UPDATE … RETURNING (settings counter)
     // After transaction:
     // 3) buildInvoiceQuery .where
     h.selectQueue.push(
       [{ status: "draft", invoiceNumber: null }],
-      [{ id: 1, invoicePrefix: "INV-", invoiceNextNumber: 1001 }],
       [fakeInvoice({ status: "approved", invoiceNumber: "INV-1001" })],
     );
+    // The atomic counter UPDATE RETURNING resolves to { rows: [{ num, prefix }] }
+    h.executeQueue.push([{ num: 1001, prefix: "INV-" }]);
 
     const res = await request(app).post("/42/accept").send();
 

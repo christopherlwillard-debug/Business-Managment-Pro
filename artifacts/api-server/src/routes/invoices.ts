@@ -9,7 +9,7 @@ import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
 import { generateMaterialsPdfBuffer } from "../lib/generateMaterialsPdf.js";
 import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, jobsTable, settingsTable, businessesTable, type Business } from "@workspace/db/schema";
-import { eq, and, gte, lte, desc, inArray, ne, getTableColumns } from "drizzle-orm";
+import { eq, and, gte, lte, desc, inArray, ne, getTableColumns, sql } from "drizzle-orm";
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 
@@ -39,13 +39,18 @@ export function calcInvoice(lineItems: any[], taxRate: number | null) {
   return { subtotal, taxAmount, total };
 }
 
-export async function getNextInvoiceNumber() {
-  const [settings] = await db.select().from(settingsTable).limit(1);
-  const prefix = settings?.invoicePrefix ?? "INV-2026-";
-  const num = settings?.invoiceNextNumber ?? 1001;
-  if (settings) {
-    await db.update(settingsTable).set({ invoiceNextNumber: num + 1 }).where(eq(settingsTable.id, settings.id));
-  }
+export async function getNextInvoiceNumber(): Promise<string> {
+  // Atomic increment: locks the settings row, advances the counter, and returns
+  // the assigned value in one statement — no race condition possible.
+  const result = await db.execute(
+    sql`UPDATE settings
+        SET invoice_next_number = invoice_next_number + 1
+        WHERE id = (SELECT id FROM settings LIMIT 1)
+        RETURNING invoice_next_number - 1 AS num, invoice_prefix AS prefix`
+  );
+  const row = result.rows[0] as { num: number; prefix: string | null } | undefined;
+  const prefix = row?.prefix ?? "INV-2026-";
+  const num = row?.num ?? 1001;
   return `${prefix}${num}`;
 }
 
@@ -386,20 +391,21 @@ router.post("/:id/accept", async (req, res) => {
         );
       }
 
-      // Assign next sequential number if one hasn't been given yet
+      // Assign next sequential number if one hasn't been given yet.
+      // Uses a single atomic UPDATE … RETURNING so concurrent accepts on
+      // different invoices can never read the same counter value.
       if (!current.invoiceNumber) {
-        const [settings] = await tx.select().from(settingsTable).limit(1);
-        const prefix = settings?.invoicePrefix ?? "INV-2026-";
-        const num = settings?.invoiceNextNumber ?? 1001;
-        if (settings) {
-          await tx
-            .update(settingsTable)
-            .set({ invoiceNextNumber: num + 1 })
-            .where(eq(settingsTable.id, settings.id));
-        }
+        const result = await tx.execute(
+          sql`UPDATE settings
+              SET invoice_next_number = invoice_next_number + 1
+              WHERE id = (SELECT id FROM settings LIMIT 1)
+              RETURNING invoice_next_number - 1 AS num, invoice_prefix AS prefix`
+        );
+        const row = result.rows[0] as { num: number; prefix: string | null } | undefined;
+        const invoiceNumber = `${row?.prefix ?? "INV-2026-"}${row?.num ?? 1001}`;
         await tx
           .update(invoicesTable)
-          .set({ invoiceNumber: `${prefix}${num}` })
+          .set({ invoiceNumber })
           .where(eq(invoicesTable.id, id));
       }
 

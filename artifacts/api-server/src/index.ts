@@ -427,6 +427,54 @@ async function fixMartinInvoiceSequence(): Promise<void> {
   }
 }
 
+// Ensures a partial unique index on invoices(invoice_number) so duplicate
+// invoice numbers are rejected at the database level. Idempotent.
+async function ensureInvoiceNumberUniqueIndex(): Promise<void> {
+  try {
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS invoices_invoice_number_unique
+        ON invoices(invoice_number)
+        WHERE invoice_number IS NOT NULL
+    `);
+    console.log("[startup] ensureInvoiceNumberUniqueIndex: unique index ensured.");
+  } catch (err) {
+    console.error("[startup] ensureInvoiceNumberUniqueIndex failed (non-fatal):", err);
+  }
+}
+
+// One-time fix: rename the invoice currently numbered Wil-1038 to Wil-1036
+// (filling the gap left by two numbers that were consumed without a surviving
+// invoice record), then reset the counter to 1037 so the next accepted invoice
+// continues the sequence cleanly. Idempotent.
+async function fixInvoice1038Sequence(): Promise<void> {
+  try {
+    const [inv] = await db
+      .select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.invoiceNumber, "Wil-1038"));
+
+    if (!inv) {
+      console.log("[startup] fixInvoice1038Sequence: nothing to do (Wil-1038 not found or already renamed).");
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(invoicesTable)
+        .set({ invoiceNumber: "Wil-1036" })
+        .where(eq(invoicesTable.id, inv.id));
+
+      await tx.execute(sql`
+        UPDATE settings SET invoice_next_number = 1037
+      `);
+    });
+
+    console.log(`[startup] fixInvoice1038Sequence: renamed Wil-1038 → Wil-1036 (invoice id=${inv.id}), counter reset to 1037.`);
+  } catch (err) {
+    console.error("[startup] fixInvoice1038Sequence failed (non-fatal):", err);
+  }
+}
+
 async function recomputePartialSubPaymentStatuses(): Promise<void> {
   try {
     const partialRows = await db
@@ -515,6 +563,8 @@ async function start() {
   await fixDewayneAmountPaid();
   await deletePetersBoonvilleGhostInvoice();
   await fixMartinInvoiceSequence();
+  await ensureInvoiceNumberUniqueIndex();
+  await fixInvoice1038Sequence();
   await recomputePartialSubPaymentStatuses();
   await seedDefaultBusinesses();
   await seedClaytonBillback();
