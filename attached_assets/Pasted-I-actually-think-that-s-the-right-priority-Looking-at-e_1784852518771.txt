@@ -1,0 +1,643 @@
+I actually think that's the right priority. Looking at everything you've built so far, automatic expense creation is one of the biggest time savers you can add. Every other feature (job photos, archiving, NAS integration) builds on top of it.
+
+This is the order I would build it
+Phase 1 - AI Receipt Inbox ⭐ (Highest Priority)
+
+This becomes a brand-new page.
+
+Accounting
+    Expenses
+    Banking
+    Receipt Inbox   ← NEW
+
+Every receipt, no matter where it comes from, lands here.
+
+Sources:
+
+Upload
+Drag & Drop
+Phone
+Google Drive (later)
+NAS (later)
+Email (future)
+Phase 2 - AI Processing
+
+When a receipt arrives:
+
+Receipt Uploaded
+
+↓
+
+AI reads receipt
+
+↓
+
+Extract:
+
+Vendor
+
+Date
+
+Amount
+
+Tax
+
+Items
+
+Category
+
+↓
+
+Confidence Score
+
+↓
+
+Draft Expense
+
+Nothing posts to your books automatically until it has been processed.
+
+Phase 3 - Bank Matching
+
+Since your banking page already imports transactions daily, this is where your app starts feeling like an intelligent bookkeeper.
+
+Receipt
+
+↓
+
+Lowe's
+
+↓
+
+$82.17
+
+↓
+
+Search Bank Feed
+
+↓
+
+Found
+
+↓
+
+Matched
+
+↓
+
+Verified
+
+Now your expense already has:
+
+Receipt attached
+Bank transaction attached
+Amount verified
+
+No manual typing.
+
+Phase 4 - One Click Approval
+
+The Receipt Inbox might show:
+
+🟢 14 Ready to Import
+
+🟡 2 Need Review
+
+🔴 1 Possible Duplicate
+
+For a typical Lowe's receipt, the user clicks Approve and the app:
+
+Creates the expense
+Attaches the receipt
+Links the bank transaction
+Marks the receipt as imported
+
+Done.
+
+Don't worry about Google Drive or the NAS yet
+
+One thing I would actually change from our earlier discussion:
+
+I wouldn't build Google Drive integration first.
+
+I'd build the receipt pipeline first.
+
+Imagine your code looking like this:
+
+Upload Receipt
+
+↓
+
+Receipt Queue
+
+↓
+
+AI Extractor
+
+↓
+
+Expense Generator
+
+↓
+
+Bank Matcher
+
+↓
+
+Accounting
+
+Notice what's missing?
+
+There is no mention of Google Drive.
+
+That's intentional.
+
+Later...
+
+Google Drive simply becomes:
+
+Google Drive
+
+↓
+
+Receipt Queue
+
+And your NAS becomes:
+
+NAS
+
+↓
+
+Receipt Queue
+
+Nothing else changes.
+
+Think in terms of "providers"
+
+Instead of coding:
+
+Google Drive Receipt Import
+
+Create:
+
+Receipt Source
+
+↓
+
+Receipt Queue
+
+Then you can plug in:
+
+Upload
+Drag & Drop
+Google Drive
+NAS
+Email
+Scanner
+
+without changing the accounting logic.
+
+Here's one idea I think would really differentiate your app
+
+Since you already have a banking page, don't create expenses immediately.
+
+Create an AI Review Queue.
+
+For example:
+
+Receipt	AI Found	Bank Match	Status
+Lowe's	$82.17	✅	Ready
+Shell	$54.23	✅	Ready
+Walmart	$18.43	❌	Waiting
+Harbor Freight	$412.00	⚠️	Review
+
+Then add an Approve All Ready button.
+
+That means most days your workflow becomes:
+
+Upload receipts (or let them sync in).
+Open the Receipt Inbox.
+Click Approve All Ready.
+Everything is posted to Expenses with receipts attached.
+
+For a contractor, that's a much better experience than manually creating dozens of expense entries.
+
+If this were my project, this would be the next feature I'd build
+
+I'd actually call it "AI Receipt Inbox" rather than "Receipt Upload."
+
+Internally, I'd break it into these milestones:
+
+Receipt Queue – Accept uploads and store the original file.
+AI Extraction – Read the receipt and return structured data.
+Expense Draft – Create a draft expense with the receipt attached.
+Bank Reconciliation – Match the draft to imported bank transactions.
+Approval Workflow – One-click (or bulk) approval into your accounting records.
+Storage Providers – Add Google Drive, NAS, OneDrive, etc., as additional input sources.
+
+That sequence keeps each step focused, gives you usable functionality after every milestone, and avoids locking yourself into any one storage solution while still setting you up for the NAS integration you ultimately want.
+
+Ad
+#1274 - Receipt Scan → Auto-Create Expense
+What & Why
+Willard wants to snap a photo of a receipt and have the app automatically create the expense — no manual entry. The AI parsing backend already exists (POST /api/expense-import/parse-receipt handles images and PDFs and returns vendor, amount, date, category, description). What's missing is a dedicated UI flow that lets Willard upload a receipt first and have the expense form pre-filled from it, rather than creating the expense manually and then attaching a receipt as a second step.
+
+Done looks like
+A prominent "Scan Receipt" button on the Expenses page (top of the page, near the existing "Add Expense" button)
+Clicking it opens a file picker (camera on mobile, file browser on desktop) — accepts JPG, PNG, HEIC, PDF
+While the AI reads the receipt, a loading state ("Reading receipt…") is shown
+The expense creation form opens pre-filled with extracted fields: vendor, amount, date, category, description
+The receipt image is already attached to the form (user can see a thumbnail)
+User can review and correct any field, optionally link to a job, then save
+On save, the expense is created and the receipt is uploaded and stored in one action — the expense opens with receiptStatus = "uploaded" and the receipt thumbnail visible
+If AI extraction fails (bad photo, unreadable receipt), the form still opens blank so the user can fill it in manually
+Out of scope
+NAS or Google Drive integration (future)
+Batch scanning multiple receipts at once
+Auto-matching receipts to bank transactions (future)
+Work photos / job photos (separate feature)
+Steps
+"Scan Receipt" button on Expenses page — Add a "Scan Receipt" button next to the existing "Add Expense" button at the top of Expenses.tsx. Use a camera/receipt icon. The button triggers a hidden <input type="file" accept="image/*,application/pdf" capture="environment"> so mobile users get the camera and desktop users get a file browser.
+
+AI parsing call and loading state — When a file is selected, POST it as multipart/form-data to /api/expense-import/parse-receipt. Show a loading overlay or spinner ("Reading receipt…") while the request is in flight. On success, proceed to step 3. On failure, proceed to the blank form (step 3) with a toast warning that extraction failed.
+
+Pre-fill the expense form — Open the standard new-expense form (the existing modal/drawer already used for "Add Expense") with the AI-returned fields pre-populated: description, vendor, amount, date, category, notes. Also store the selected file in state so it can be uploaded on save. Show a receipt thumbnail preview inside the form.
+
+Save with receipt in one action — On form submit, create the expense via the existing POST /api/expenses route (with all fields including receiptStatus: "uploaded"), then immediately upload the receipt file to POST /api/expenses/:id/receipt. If the receipt upload fails after a successful expense save, show a non-blocking toast ("Expense saved — receipt upload failed, open it to retry") rather than rolling back.
+
+Job linking — Ensure the job selector in the pre-filled form is visible (it already exists in the expense form) so Willard can link the receipt to a specific job before saving.
+
+Relevant files
+artifacts/contractor-app/src/pages/Expenses.tsx — main expenses page; add the Scan Receipt button and wire up the flow
+artifacts/api-server/src/routes/expense-import.ts:98-198 — existing parse-receipt AI endpoint
+artifacts/api-server/src/routes/expenses.ts:395-432 — existing receipt upload route (POST /expenses/:id/receipt)
+
+I actually think this is very well scoped. If I were reviewing this as a product owner, I'd approve it with just a few changes to make it future-proof without adding much complexity.
+
+Overall: 9.8/10
+
+This is exactly the right size feature.
+
+It doesn't try to solve:
+
+Google Drive
+NAS
+Bank matching
+OCR history
+Bulk scanning
+
+It solves one problem extremely well:
+
+"I have a receipt. Make me an expense."
+
+That's the right MVP.
+
+I'd change just a few things
+1. Don't call it "Scan Receipt"
+
+I'd actually rename it
+
+New Expense from Receipt
+
+or
+
+Import Receipt
+
+Why?
+
+Because later the receipt won't always come from a scan.
+
+It could come from:
+
+Phone
+Drag & Drop
+Email
+Google Drive
+NAS
+OneDrive
+
+Calling it Scan Receipt becomes misleading.
+
+Internally I'd still call the feature:
+
+Receipt Import
+2. Don't tie it to the button
+
+Instead of
+
+Scan Receipt Button
+
+↓
+
+AI
+
+↓
+
+Expense Form
+
+Think
+
+Receipt Import Pipeline
+
+↓
+
+Expense Form
+
+Then the button simply feeds the pipeline.
+
+Later
+
+Google Drive
+
+↓
+
+Pipeline
+
+NAS
+
+↓
+
+Pipeline
+
+Everything reuses the same code.
+
+3. Add a Confidence Score
+
+Your AI endpoint already extracts fields.
+
+Have it also return
+
+{
+  "confidence": 98
+}
+
+or
+
+{
+  "vendorConfidence":99,
+  "amountConfidence":100,
+  "dateConfidence":96,
+  "categoryConfidence":82
+}
+
+Then the UI can say
+
+AI Confidence
+
+98%
+
+✔ Vendor
+
+✔ Amount
+
+✔ Date
+
+⚠ Category
+
+That becomes really valuable later.
+
+4. Save the raw AI output
+
+This is something most apps don't do.
+
+When GPT returns
+
+{
+  ...
+}
+
+Store it.
+
+Later if you improve prompts you can compare.
+
+I'd add
+
+ai_receipt_result
+
+JSON
+
+to the receipt.
+
+5. Store the original receipt immediately
+
+Right now your flow is
+
+Expense
+
+↓
+
+Upload receipt
+
+I'd reverse it.
+
+Receipt Uploaded
+
+↓
+
+Temporary Receipt
+
+↓
+
+AI Reads
+
+↓
+
+Expense Created
+
+↓
+
+Receipt Linked
+
+Why?
+
+If the user closes the browser halfway through...
+
+The receipt isn't lost.
+
+6. Think about retries
+
+Suppose OpenAI is down.
+
+Don't lose the receipt.
+
+Show
+
+Receipt Uploaded
+
+AI Failed
+
+Retry Later
+
+That becomes important once you're processing hundreds of receipts.
+
+One thing I'd add
+
+I'd create a new table.
+
+receipt_imports
+
+id
+
+status
+
+uploaded
+
+processing
+
+failed
+
+completed
+
+source
+
+upload
+
+google_drive
+
+nas
+
+email
+
+manual
+
+expense_id
+
+receipt_path
+
+ai_json
+
+confidence
+
+created_at
+
+Right now you'll probably think
+
+"I don't need another table."
+
+I think you do.
+
+Because later it becomes:
+
+Receipt Inbox
+Failed Imports
+AI Retries
+Duplicate Detection
+Bank Matching
+
+without redesigning anything.
+
+I would slightly modify your flow
+
+Current
+
+Upload
+
+↓
+
+AI
+
+↓
+
+Expense Form
+
+↓
+
+Save
+
+↓
+
+Upload Receipt
+
+I'd recommend
+
+Upload
+
+↓
+
+Receipt Queue
+
+↓
+
+AI
+
+↓
+
+Expense Form
+
+↓
+
+Save
+
+↓
+
+Expense
+
+Notice the receipt always exists first.
+
+Future proofing
+
+This is why I like the receipt queue.
+
+Later
+
+Google Drive
+
+↓
+
+Receipt Queue
+
+↓
+
+AI
+
+NAS
+
+NAS Watcher
+
+↓
+
+Receipt Queue
+
+↓
+
+AI
+
+Email
+
+Email
+
+↓
+
+Receipt Queue
+
+↓
+
+AI
+
+Nothing changes.
+
+One last thing I'd absolutely add
+
+Since your business app already has a Banking page that imports transactions every day, I would not build bank matching yet—but I would prepare for it.
+
+I'd add these nullable columns to the expense (or receipt import) now:
+
+matched_bank_transaction_id NULL
+bank_match_status
+
+pending
+matched
+none
+manual
+
+You won't use them immediately, but six months from now when you build automatic reconciliation, you won't need another database migration or redesign of your receipt workflow.
+
+My final verdict
+
+I'd move this into development almost exactly as written, with one architectural tweak:
+
+Introduce a lightweight Receipt Import object (or receipt_imports table) as the entry point for every uploaded receipt.
+Have the "Import Receipt" button create one of these records, run AI, and then launch the pre-filled expense form.
+Keep the expense form exactly as you've designed it.
+Defer Google Drive, NAS, and bank matching until later, but make sure they can all feed into the same import pipeline.
+
+That gives you a feature that's immediately useful today while laying the foundation for the AI Receipt Inbox we've been discussing, without overengineering the first version. Given the direction you've been taking with your accounting engine, I think this strikes the right balance between simplicity and long-term flexibility.
