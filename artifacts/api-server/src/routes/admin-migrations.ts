@@ -1215,4 +1215,30 @@ router.post("/rename-invoice-1038-to-1036", async (_req: Request, res: Response)
   }
 });
 
+// One-time fix: delete the ghost draft invoice (id=38) created by the materials sync bug.
+// It has no invoice number and was never issued. Safe to delete.
+// Idempotent: if already deleted, returns { ok: true, alreadyDone: true }.
+router.post("/delete-drywall-ghost-invoice", async (_req: Request, res: Response) => {
+  try {
+    const [existing] = await db.select({ id: invoicesTable.id })
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.id, 38), eq(invoicesTable.status, "draft"), isNull(invoicesTable.invoiceNumber)))
+      .limit(1);
+
+    if (!existing) {
+      return res.json({ ok: true, alreadyDone: true });
+    }
+
+    await db.delete(invoicesTable)
+      .where(and(eq(invoicesTable.id, 38), eq(invoicesTable.status, "draft"), isNull(invoicesTable.invoiceNumber)));
+
+    console.log("[admin/migrations] delete-drywall-ghost-invoice: deleted invoice id=38");
+    res.json({ ok: true, deleted: true, invoiceId: 38 });
+  } catch (err) {
+    console.error("[admin/migrations] delete-drywall-ghost-invoice failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;
+
