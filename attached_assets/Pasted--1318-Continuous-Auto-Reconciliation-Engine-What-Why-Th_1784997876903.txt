@@ -1,0 +1,264 @@
+#1318 - Continuous Auto-Reconciliation Engine
+
+What & Why
+
+The current Smart Bank Transaction Matching Engine only runs during Plaid sync. That means if a receipt is scanned after the bank transaction has already downloaded (or vice versa), the user still has to manually reconcile them.
+
+The reconciliation engine should become event-driven instead of sync-driven. Whenever either side of the equation changes (a new expense, a new receipt, a new bank transaction, an edited expense, etc.), the system should immediately attempt to reconcile automatically.
+
+The goal is to make reconciliation happen continuously in the background so users rarely need to manually match transactions.
+
+Done looks like
+
+• When a receipt is scanned with OpenAI and an expense is created, the system immediately searches for matching unmatched bank transactions.
+• When a manual expense is created, the system immediately searches for matching unmatched bank transactions.
+• When a new Plaid transaction is imported, the system immediately searches for matching expenses.
+• When an expense is edited (vendor, amount, or date), matching is re-evaluated automatically.
+• When a bank transaction is edited or refreshed, matching is re-evaluated automatically.
+• When a transaction is manually unmatched, the reconciliation engine immediately checks whether another expense is now a better match.
+• Users no longer need to remember whether they scanned the receipt first or the bank transaction arrived first—the system automatically links them whenever both exist.
+
+Out of scope
+
+• Changes to the scoring algorithm (covered in Task #1316)
+• Banking Inbox UI (covered in Task #1317)
+• Receipt scanning improvements
+• Bulk reconciliation
+
+Steps
+
+1. Create a shared reconciliation service
+Build a shared reconciliation service that can be called from anywhere in the application instead of only during Plaid sync.
+
+Example:
+
+reconcileExpense(expenseId)
+
+reconcileTransaction(transactionId)
+
+This prevents duplicate matching logic throughout the application.
+
+2. Trigger reconciliation after expense creation
+
+Whenever an expense is created:
+
+• Manual expense
+• AI receipt scan
+• Imported expense
+
+Immediately search unmatched bank transactions using the existing scoring engine.
+
+If exactly one transaction exceeds the confidence threshold, automatically match it.
+
+3. Trigger reconciliation after Plaid sync
+
+After every newly imported transaction:
+
+Search unmatched expenses.
+
+If exactly one expense exceeds the confidence threshold, automatically match it.
+
+(This extends the existing behavior from Task #1316.)
+
+4. Trigger reconciliation after expense edits
+
+Whenever these fields change:
+
+• Vendor
+• Amount
+• Date
+
+Automatically re-run the matching engine.
+
+If a better match now exists, update the reconciliation automatically.
+
+5. Trigger reconciliation after transaction edits
+
+Whenever transaction information changes:
+
+• Description
+• Amount
+• Date
+
+Automatically re-run reconciliation.
+
+6. Trigger reconciliation after manual unmatch
+
+If a user manually removes a match:
+
+• Reset both records to unmatched.
+• Immediately search for another possible match.
+• If another high-confidence candidate exists, suggest it automatically.
+
+7. Prevent duplicate matching
+
+A bank transaction may only match one expense.
+
+An expense may only match one bank transaction.
+
+The reconciliation service should always verify that neither record is already linked before creating a match.
+
+8. Match locking
+
+Once a user manually confirms or rejects a match:
+
+Do not automatically override their decision.
+
+Future automatic matching should respect manual decisions unless the user explicitly requests re-matching.
+
+Relevant files
+
+artifacts/api-server/src/routes/plaid.ts
+
+artifacts/api-server/src/routes/expenses.ts
+
+artifacts/api-server/src/services/reconciliation.ts (new)
+
+artifacts/contractor-app/src/pages/Banking.tsx
+
+------------------------------------------------------------
+
+Additional Improvements to Task #1316
+
+## 1. Do not store reconciliation_status directly
+
+Instead of treating reconciliation_status as a manually maintained field, derive it whenever possible from the relationship between expenses and bank transactions.
+
+Derived statuses:
+
+Matched
+- Expense has a linked bank transaction.
+
+Waiting for Bank Transaction
+- Expense exists but has no linked bank transaction.
+
+Needs Review
+- A bank transaction has this expense as a suggested match but confidence was below the auto-match threshold.
+
+Unmatched
+- Draft expense or manually created expense with no reconciliation activity.
+
+This reduces synchronization bugs and ensures statuses always reflect the current data.
+
+------------------------------------------------------------
+
+## 2. Improve the scoring algorithm
+
+Current:
+
+Amount = 50
+
+Date = 25
+
+Vendor = 25
+
+Recommended:
+
+Amount = 45
+
+Vendor = 25
+
+Date = 20
+
+Historical Match = 5
+
+Category Hint = 5
+
+Total = 100
+
+Historical Match
+
+If the user has previously matched:
+
+LOWES #1842
+
+to
+
+Lowes
+
+multiple times, increase confidence automatically.
+
+The application should learn the user's vendor naming patterns over time.
+
+Category Hint
+
+If the expense category is Materials and previous Lowe's purchases were also categorized as Materials, increase confidence slightly.
+
+------------------------------------------------------------
+
+## 3. Improve Auto-Match Safety
+
+Instead of automatically matching whenever:
+
+Top Score >= 95
+
+Require both:
+
+Top Score >= 95
+
+AND
+
+Second Highest Score <= 85
+
+Example:
+
+Expense A = 97%
+
+Expense B = 96%
+
+These are too close together to safely auto-match.
+
+Instead, send the transaction to Needs Review.
+
+This prevents incorrect automatic reconciliation.
+
+------------------------------------------------------------
+
+## 4. Improve Suggestions API
+
+Instead of returning only a confidence score:
+
+Current:
+
+Expense ID
+
+Score
+
+Return additional explanation data.
+
+Example:
+
+Score: 98%
+
+Reasons:
+
+• Exact Amount
+• Same Date
+• Vendor Match
+
+The frontend can display:
+
+98%
+
+✓ Exact Amount
+
+✓ Same Date
+
+✓ Vendor Match
+
+This gives users confidence in why a recommendation was made.
+
+------------------------------------------------------------
+
+## 5. Exclude already matched expenses
+
+The matching engine should never search expenses that are already linked to a bank transaction.
+
+Only unmatched expenses should be considered.
+
+Benefits:
+
+• Faster searches
+• Cleaner suggestions
+• Prevents duplicate matches
+• Improves performance as the database grows
