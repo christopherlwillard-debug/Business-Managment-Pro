@@ -1,0 +1,57 @@
+This is a solid feature request. I would make one small change to better reflect the accounting model.
+
+Instead of saying:
+
+“Update job profitability calculation — ensure that a saved bonus (even without a recorded payment) contributes to the job’s labor cost…”
+
+I’d word it like this:
+
+Update accrued labor cost calculation — Saved hours, travel pay, bonuses, and advancement deductions should immediately update the worker’s accrued earnings (Gross Earned) and Outstanding Pay. The Job Card’s Labor Cost and projected job profitability should use these accrued earnings, regardless of whether a payment has been recorded. Recording a payment only affects cash movement, payroll history, and the Outstanding balance—it must not change the job’s labor cost.
+
+That distinction is important because labor cost is incurred when the work is performed, not when the cash is paid.
+
+⸻
+
+One additional acceptance criterion I’d add
+
+Payment Status
+
+Display a payment status badge on the worker card.
+
+Examples:
+
+* 🟡 Draft – Changes saved, no payment recorded.
+* 🟠 Partially Paid – Some payments recorded, balance remains.
+* 🟢 Paid in Full – Outstanding = $0.
+
+This makes it immediately obvious whether someone has simply logged time or has actually been paid.
+
+⸻
+
+I’d also add one more step
+
+Prevent losing unsaved changes
+
+If the user edits:
+
+* hours
+* bonus
+* advancement
+* payment notes
+
+and attempts to leave the page without pressing Save Changes, show:
+
+You have unsaved payroll changes.
+
+Save Changes | Discard | Cancel
+
+This prevents accidentally losing edits.
+
+⸻
+
+Overall, I think this is the correct direction. It separates the two business events that should never have been tied together:
+
+1. Accrue labor (save hours, bonuses, adjustments) → affects job costing and projected profitability.
+2. Pay labor (record payment) → affects cash, the ledger, and payroll history.
+
+That mirrors how construction accounting works in practice and will make the Job Card’s financials much more accurate throughout the life of a project.
