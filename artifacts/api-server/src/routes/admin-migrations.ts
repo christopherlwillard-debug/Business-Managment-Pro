@@ -1191,7 +1191,7 @@ router.post("/rename-invoice-1038-to-1036", async (_req: Request, res: Response)
     const [target] = await db.select({ id: invoicesTable.id, status: invoicesTable.status })
       .from(invoicesTable)
       .where(and(eq(invoicesTable.status, "draft"), isNull(invoicesTable.invoiceNumber)))
-      .orderBy(desc(invoicesTable.id))
+      .orderBy(sql`${invoicesTable.id} DESC`)
       .limit(1);
     if (!target) return res.status(404).json({ error: "No unnumbered draft invoice found." });
 
