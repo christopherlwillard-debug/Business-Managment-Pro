@@ -6086,7 +6086,7 @@ export default function Jobs() {
   useEffect(() => {
     if (visibleJobIds.length === 0) { setInvoiceSummaryMap(new Map()); return; }
     const controller = new AbortController();
-    fetch(`${BASE}/api/invoices/summaries?jobIds=${visibleJobIds.join(",")}`, { signal: controller.signal })
+    fetch(`${BASE}/api/invoices/summaries?jobIds=${visibleJobIds.join(",")}`, { signal: controller.signal, credentials: "include" })
       .then(r => r.ok ? r.json() as Promise<Record<string, InvoiceWithSquare | null>> : Promise.reject())
       .then(summaryObj => {
         if (controller.signal.aborted) return;
