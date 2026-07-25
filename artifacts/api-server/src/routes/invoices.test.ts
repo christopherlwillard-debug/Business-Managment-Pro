@@ -868,3 +868,138 @@ describe("POST /:id/void", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT /:id — field preservation guards (Task #1297 / #1298 regression)
+//
+// The PUT handler must never silently null out clientId / jobId when those
+// fields are simply absent from the request body, and must never touch
+// amountPaid (payment recording has its own endpoint).
+// ─────────────────────────────────────────────────────────────────────────────
+describe("PUT /:id — field preservation guards", () => {
+  it("does NOT write clientId when omitted from the body (preserves existing client link)", async () => {
+    h.selectQueue.push(
+      [{ status: "draft", invoiceNumber: null }],          // voided-guard check
+      [fakeInvoice({ status: "draft", clientId: 7 })],     // buildInvoiceQuery after update
+    );
+
+    await request(app).put("/42").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "Labor", quantity: 1, unitPrice: 500 }],
+      // clientId intentionally absent — should not appear in the DB write
+    });
+
+    expect(h.updates).toHaveLength(1);
+    expect("clientId" in h.updates[0]).toBe(false);
+  });
+
+  it("does NOT write jobId when omitted from the body (preserves existing job link)", async () => {
+    h.selectQueue.push(
+      [{ status: "draft", invoiceNumber: null }],
+      [fakeInvoice({ status: "draft", jobId: 3 })],
+    );
+
+    await request(app).put("/42").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "Materials", quantity: 2, unitPrice: 200 }],
+      // jobId intentionally absent
+    });
+
+    expect(h.updates).toHaveLength(1);
+    expect("jobId" in h.updates[0]).toBe(false);
+  });
+
+  it("writes clientId when explicitly provided as a positive integer", async () => {
+    h.selectQueue.push(
+      [{ status: "draft", invoiceNumber: null }],
+      [fakeInvoice({ status: "draft", clientId: 5 })],
+    );
+
+    await request(app).put("/42").send({
+      issueDate: "2026-07-10",
+      clientId: 5,
+      lineItems: [{ description: "Labor", quantity: 1, unitPrice: 500 }],
+    });
+
+    expect(h.updates).toHaveLength(1);
+    expect("clientId" in h.updates[0]).toBe(true);
+    expect(h.updates[0].clientId).toBe(5);
+  });
+
+  it("sets clientId to null when explicitly sent as null (intentional detach)", async () => {
+    h.selectQueue.push(
+      [{ status: "draft", invoiceNumber: null }],
+      [fakeInvoice({ status: "draft", clientId: null })],
+    );
+
+    await request(app).put("/42").send({
+      issueDate: "2026-07-10",
+      clientId: null,
+      lineItems: [{ description: "Labor", quantity: 1, unitPrice: 500 }],
+    });
+
+    expect(h.updates).toHaveLength(1);
+    expect("clientId" in h.updates[0]).toBe(true);
+    expect(h.updates[0].clientId).toBeNull();
+  });
+
+  it("sets jobId to null when explicitly sent as null (intentional detach)", async () => {
+    h.selectQueue.push(
+      [{ status: "draft", invoiceNumber: null }],
+      [fakeInvoice({ status: "draft", jobId: null })],
+    );
+
+    await request(app).put("/42").send({
+      issueDate: "2026-07-10",
+      jobId: null,
+      lineItems: [{ description: "Labor", quantity: 1, unitPrice: 500 }],
+    });
+
+    expect(h.updates).toHaveLength(1);
+    expect("jobId" in h.updates[0]).toBe(true);
+    expect(h.updates[0].jobId).toBeNull();
+  });
+
+  it("never includes amountPaid in the update set regardless of what the body sends", async () => {
+    // A stale or malicious payload carrying amountPaid: 0 must not wipe a
+    // recorded payment — amountPaid is managed exclusively via /record-payment.
+    h.selectQueue.push(
+      [{ status: "partiallyPaid", invoiceNumber: "INV-1001" }],
+      [fakeInvoice({ status: "partiallyPaid", amountPaid: "500.00" })],
+    );
+
+    await request(app).put("/42").send({
+      issueDate: "2026-07-10",
+      amountPaid: 0,   // body attempts to wipe the payment
+      lineItems: [{ description: "Labor", quantity: 1, unitPrice: 1000 }],
+    });
+
+    expect(h.updates).toHaveLength(1);
+    expect("amountPaid" in h.updates[0]).toBe(false);
+  });
+
+  it("returns 400 when trying to edit a voided invoice", async () => {
+    h.selectQueue.push([{ status: "cancelled", invoiceNumber: "INV-1001" }]);
+
+    const res = await request(app).put("/42").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "Labor", quantity: 1, unitPrice: 500 }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/voided/i);
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it("returns 404 when invoice does not exist", async () => {
+    h.selectQueue.push([]);
+
+    const res = await request(app).put("/99").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "Labor", quantity: 1, unitPrice: 500 }],
+    });
+
+    expect(res.status).toBe(404);
+    expect(h.updates).toHaveLength(0);
+  });
+});
