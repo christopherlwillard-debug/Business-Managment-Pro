@@ -86,9 +86,12 @@ async function getListWithItems(id: number, userId?: string) {
  * Expands all material list items for a job into individual invoice line items,
  * each priced at unitCostSnapshot × qty × (1 + markup%). Each line carries
  * source: "material" so subsequent syncs can cleanly replace them without
- * touching labor/service lines. If no draft invoice exists yet, one is created
- * automatically. If there are no material items, all material-sourced lines are
- * removed from the invoice (or no invoice is created).
+ * touching labor/service lines.
+ *
+ * IMPORTANT: This function never creates a new invoice. It only updates an
+ * existing draft invoice that was already created by the user on the job card.
+ * If no draft invoice exists, the sync returns silently. This prevents ghost
+ * (orphaned) draft invoices from being auto-created by material list activity.
  */
 export async function syncMaterialsToJobInvoice(jobId: number) {
   // Fetch all material lists for this job

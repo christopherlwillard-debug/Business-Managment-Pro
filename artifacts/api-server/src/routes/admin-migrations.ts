@@ -1215,6 +1215,70 @@ router.post("/rename-invoice-1038-to-1036", async (_req: Request, res: Response)
   }
 });
 
+// ── Bulk delete all ghost draft invoices (status=draft, invoice_number IS NULL) ──
+// A ghost invoice is an unnumbered draft that has no corresponding active/issued invoice
+// on its job — it was never shown to the customer and can be safely deleted.
+// Invoices whose job already has a real (numbered or non-draft) invoice are left alone.
+// Idempotent: safe to call multiple times.
+router.post("/delete-ghost-draft-invoices", async (_req: Request, res: Response) => {
+  try {
+    // Find all unnumbered draft invoices
+    const ghosts = await db
+      .select({
+        id: invoicesTable.id,
+        jobId: invoicesTable.jobId,
+        clientId: invoicesTable.clientId,
+        total: invoicesTable.total,
+        createdAt: invoicesTable.createdAt,
+      })
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.status, "draft"), isNull(invoicesTable.invoiceNumber)));
+
+    if (ghosts.length === 0) {
+      return res.json({ ok: true, deleted: 0, skipped: 0, details: [] });
+    }
+
+    const deleted: number[] = [];
+    const skipped: { id: number; reason: string }[] = [];
+
+    for (const ghost of ghosts) {
+      if (!ghost.jobId) {
+        // No job link — definitely orphaned
+        await db.delete(invoicesTable).where(eq(invoicesTable.id, ghost.id));
+        deleted.push(ghost.id);
+        continue;
+      }
+
+      // Check whether this job has any other non-draft, non-cancelled invoices
+      const [realInvoice] = await db
+        .select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber })
+        .from(invoicesTable)
+        .where(and(
+          eq(invoicesTable.jobId, ghost.jobId),
+          ne(invoicesTable.id, ghost.id),
+          ne(invoicesTable.status, "draft"),
+          ne(invoicesTable.status, "cancelled"),
+        ))
+        .limit(1);
+
+      if (realInvoice) {
+        // Job has a real invoice — the draft is a ghost; delete it
+        await db.delete(invoicesTable).where(eq(invoicesTable.id, ghost.id));
+        deleted.push(ghost.id);
+      } else {
+        // This unnumbered draft is the only invoice on the job — it may be intentional
+        skipped.push({ id: ghost.id, reason: `Only invoice on job ${ghost.jobId} — kept` });
+      }
+    }
+
+    console.log(`[admin/migrations] delete-ghost-draft-invoices: deleted=${deleted.length}, skipped=${skipped.length}`);
+    res.json({ ok: true, deleted: deleted.length, skipped: skipped.length, deletedIds: deleted, details: skipped });
+  } catch (err) {
+    console.error("[admin/migrations] delete-ghost-draft-invoices failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 // One-time fix: delete the ghost draft invoice (id=38) created by the materials sync bug.
 // It has no invoice number and was never issued. Safe to delete.
 // Idempotent: if already deleted, returns { ok: true, alreadyDone: true }.
