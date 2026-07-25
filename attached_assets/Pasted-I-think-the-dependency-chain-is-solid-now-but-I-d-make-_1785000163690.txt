@@ -1,0 +1,134 @@
+I think the dependency chain is solid now, but I'd make one architectural change that will make the system even more scalable.
+
+I would merge the recurring transaction detection into the Unified Reconciliation Engine instead of making it its own feature.
+
+Recurring subscriptions (electric, insurance, Adobe, phone bill, etc.) are really just another type of accounting record that the reconciliation engine should recognize.
+
+Instead of the engine checking:
+
+Expense
+↓
+Payroll
+↓
+Investment
+↓
+Invoice
+↓
+Transfer
+↓
+Owner Activity
+↓
+Unknown
+
+It should check:
+
+Expense
+↓
+Payroll
+↓
+Investment
+↓
+Invoice
+↓
+Transfer
+↓
+Owner Activity
+↓
+Recurring Transaction
+↓
+Unknown
+
+That keeps all reconciliation logic in one engine instead of creating a separate workflow.
+
+I would also add another phase after the Unified Reconciliation Engine:
+
+#1322 - Learning & Reconciliation Rules Engine
+
+What & Why
+
+Every time a user manually classifies or corrects a transaction, the system should remember that decision and become smarter over time.
+
+Examples:
+
+NETFLIX.COM
+→ Software Subscription
+
+LOWES
+→ Materials
+
+HARBOR FREIGHT
+→ Tools/Supplies
+
+SHELL
+→ Fuel
+
+FIDELITY
+→ Investment Transfer
+
+After the user makes that decision once or twice, future transactions from the same vendor should automatically receive much higher confidence scores and often require no user interaction.
+
+The engine should also begin creating reusable reconciliation rules.
+
+Example Rule
+
+Vendor Contains:
+LOWES
+
+Preferred Vendor:
+Lowe's
+
+Default Category:
+Materials
+
+Require Receipt:
+Yes
+
+Or
+
+Vendor:
+FIDELITY
+
+Transaction Type:
+Investment Transfer
+
+Destination:
+Business Brokerage
+
+Auto Approve:
+Yes
+
+These rules should be editable by the user but automatically created and refined from real usage.
+
+Benefits
+
+• The reconciliation engine becomes personalized to each business.
+• Accuracy continually improves over time.
+• Reduces manual bookkeeping every month.
+• Makes the system smarter with every correction instead of asking the same questions repeatedly.
+
+I think the final roadmap becomes:
+
+#1316 - Smart Matching Engine
+
+↓
+
+#1318 - Event-Driven Reconciliation Service
+
+↓
+
+#1317 - Banking Inbox & Settings
+
+↓
+
+#1320 - Unified Reconciliation Engine
+(Expenses, Payroll, Investments, Income, Transfers, Owner Activity, Recurring Transactions)
+
+↓
+
+#1322 - Learning & Reconciliation Rules Engine
+
+↓
+
+#1323 - Month-End Bank Reconciliation
+
+This keeps all reconciliation logic inside one engine while allowing the application to continuously learn how each individual business categorizes transactions. Instead of becoming more complicated as new accounting features are added, the reconciliation engine simply gains additional providers and becomes more intelligent over time.
