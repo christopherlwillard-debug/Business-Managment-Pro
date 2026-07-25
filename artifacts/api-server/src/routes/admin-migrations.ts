@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, expensesTable, subPaymentRecordsTable, productionServiceTypesTable } from "@workspace/db";
 import { jobSubcontractorsTable, invoicesTable, materialListsTable, materialListItemsTable, clientBillingProfilesTable, settingsTable, jobSubHoursTable, subcontractorsTable } from "@workspace/db/schema";
-import { isNull, isNotNull, and, inArray, or, like, asc, sql, ilike, eq, ne } from "drizzle-orm";
+import { isNull, isNotNull, and, inArray, or, like, asc, desc, sql, ilike, eq, ne } from "drizzle-orm";
 import { recalcImportExpenses } from "./mileage";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 
