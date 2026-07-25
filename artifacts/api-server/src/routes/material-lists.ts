@@ -5,7 +5,6 @@ import {
   materialListItemsTable,
   jobsTable,
   invoicesTable,
-  settingsTable,
 } from "@workspace/db/schema";
 import { eq, and, inArray, desc, SQL } from "drizzle-orm";
 
@@ -79,18 +78,6 @@ async function getListWithItems(id: number, userId?: string) {
   };
 }
 
-async function getNextInvoiceNumber() {
-  const [settings] = await db.select().from(settingsTable).limit(1);
-  const prefix = settings?.invoicePrefix ?? "INV-2026-";
-  const num = settings?.invoiceNextNumber ?? 1001;
-  if (settings) {
-    await db
-      .update(settingsTable)
-      .set({ invoiceNextNumber: num + 1 })
-      .where(eq(settingsTable.id, settings.id));
-  }
-  return `${prefix}${num}`;
-}
 
 /**
  * Exported so other route handlers (e.g. jobs.ts) can trigger a sync
@@ -188,52 +175,9 @@ export async function syncMaterialsToJobInvoice(jobId: number) {
     .orderBy(desc(invoicesTable.id))
     .limit(1);
 
-  if (!existingInvoice) {
-    if (!hasMaterialItems) return; // nothing to do — don't create an empty invoice
-
-    // Get full job info to build the labor/service line alongside materials
-    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
-
-    // Build a placeholder labor/service line — price is $0 since the estimate
-    // tool handles pricing; user can adjust in the invoice editor.
-    const locationParts = [job?.locationName, job?.address, job?.city, job?.state].filter(Boolean);
-    const locationSuffix = locationParts.length ? ` — ${locationParts.join(", ")}` : "";
-    const laborDesc = job ? `${job.title}${locationSuffix}` : "Labor / Services";
-
-    const laborLineItem: LineItem = {
-      id: 1,
-      description: laborDesc,
-      quantity: 1,
-      unitPrice: 0,
-      total: 0,
-    };
-
-    // Assign sequential IDs to material lines starting after the labor line
-    const materialLines = newMaterialLines.map((li, i) => ({ ...li, id: i + 2 }));
-    const lineItems = [laborLineItem, ...materialLines];
-
-    const today = new Date().toISOString().split("T")[0];
-    const invoiceNumber = await getNextInvoiceNumber();
-    const subtotal = lineItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
-
-    await db.insert(invoicesTable).values({
-      invoiceNumber,
-      jobId,
-      clientId: job?.clientId ?? null,
-      status: "draft",
-      issueDate: today,
-      subtotal: subtotal.toFixed(2),
-      taxAmount: "0",
-      total: subtotal.toFixed(2),
-      lineItems,
-      attachments: [],
-      // Carry location fields from the job so the invoice Work Location is populated
-      locationName: job?.locationName ?? null,
-      city: job?.city ?? null,
-      state: job?.state ?? null,
-    });
-    return;
-  }
+  // Materials only attach to an existing job-card draft — never create their own invoice.
+  // If no draft exists yet, wait silently; the user will create one from the job card.
+  if (!existingInvoice) return;
 
   // Strip all existing material-sourced lines (handles both old aggregate line and new per-item lines)
   const rawItems = Array.isArray(existingInvoice.lineItems) ? existingInvoice.lineItems : [];
