@@ -3868,7 +3868,7 @@ function JobCard({
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
 
-  type OutstandingSubRow = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null; amountPaid?: number; paymentStatus?: string };
+  type OutstandingSubRow = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null; amountPaid?: number; paymentStatus?: string; totalHours?: number | null; accruedBonus?: number | null };
   const [unpaidSubs, setUnpaidSubs] = useState<OutstandingSubRow[] | null>(null);
   const [markingSubId, setMarkingSubId] = useState<number | null>(null);
   const hasSubs = Array.isArray(job.subcontractorIds) && (job.subcontractorIds as number[]).length > 0;
@@ -4423,57 +4423,87 @@ function JobCard({
 
         {/* Sent/overdue invoice — legacy view button removed; handled by summary panel above */}
 
-        {/* Worker Pay Due banner — fixed/allocation subs not yet paid */}
-        {unpaidSubs && unpaidSubs.length > 0 && (
-          <div className="mt-1 rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-amber-200/60">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-              <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Worker Pay Due</span>
-            </div>
-            <div className="divide-y divide-amber-100">
-              {unpaidSubs.map(sub => {
-                const amt = outstandingAmount(sub);
-                const isAllocationNoData = sub.compensationType === "allocation" && amt === 0;
-                return (
-                  <div key={sub.subcontractorId} className="flex items-center gap-2 px-3 py-2">
-                    <HardHat className="w-3 h-3 text-amber-500 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-amber-900 truncate">{sub.subName}</p>
-                      <p className="text-[10px] text-amber-700">
-                        {sub.compensationType === "allocation"
-                          ? isAllocationNoData
-                            ? `${sub.allocationPct ?? 0}% allocation — invoice to compute`
-                            : `${sub.allocationPct ?? 0}% → ${formatCurrency(amt)}`
-                          : formatCurrency(amt)
-                        }
-                      </p>
+        {/* Worker Pay Due banner — all unpaid subs (fixed/allocation inline; hourly → payroll screen) */}
+        {unpaidSubs && unpaidSubs.length > 0 && (() => {
+          const hourlySubs    = unpaidSubs.filter(s => s.compensationType === "hourly");
+          const fixedAllocSubs = unpaidSubs.filter(s => s.compensationType !== "hourly");
+          return (
+            <div className="mt-1 rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-amber-200/60">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Worker Pay Due</span>
+                <span className="ml-auto text-[10px] font-semibold text-amber-600">{unpaidSubs.length} sub{unpaidSubs.length !== 1 ? "s" : ""}</span>
+              </div>
+              <div className="divide-y divide-amber-100">
+                {/* Fixed / allocation subs — can be settled inline */}
+                {fixedAllocSubs.map(sub => {
+                  const amt = outstandingAmount(sub);
+                  const isAllocationNoData = sub.compensationType === "allocation" && amt === 0;
+                  return (
+                    <div key={sub.subcontractorId} className="flex items-center gap-2 px-3 py-2">
+                      <HardHat className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-amber-900 truncate">{sub.subName}</p>
+                        <p className="text-[10px] text-amber-700">
+                          {sub.compensationType === "allocation"
+                            ? isAllocationNoData
+                              ? `${sub.allocationPct ?? 0}% allocation — invoice to compute`
+                              : `${sub.allocationPct ?? 0}% → ${formatCurrency(amt)}`
+                            : formatCurrency(amt)
+                          }
+                        </p>
+                      </div>
+                      {canEdit("jobs") && !isAllocationNoData && (
+                        <button
+                          onClick={() => handleMarkSubPaidInline(sub)}
+                          disabled={markingSubId === sub.subcontractorId}
+                          className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500 text-white text-[10px] font-bold hover:bg-amber-600 transition-colors disabled:opacity-50">
+                          {markingSubId === sub.subcontractorId
+                            ? <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                            : <Check className="w-3 h-3" />
+                          }
+                          Mark Paid
+                        </button>
+                      )}
+                      {canEdit("jobs") && isAllocationNoData && (
+                        <button
+                          onClick={() => { setFinancialsInitialTab("breakdown"); setFinancialsPanelOpen(true); }}
+                          className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 text-amber-700 text-[10px] font-bold hover:bg-amber-200 transition-colors border border-amber-300">
+                          <PieChart className="w-3 h-3" />
+                          Pay Breakdown
+                        </button>
+                      )}
                     </div>
-                    {canEdit("jobs") && !isAllocationNoData && (
-                      <button
-                        onClick={() => handleMarkSubPaidInline(sub)}
-                        disabled={markingSubId === sub.subcontractorId}
-                        className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500 text-white text-[10px] font-bold hover:bg-amber-600 transition-colors disabled:opacity-50">
-                        {markingSubId === sub.subcontractorId
-                          ? <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
-                          : <Check className="w-3 h-3" />
-                        }
-                        Mark Paid
-                      </button>
-                    )}
-                    {canEdit("jobs") && isAllocationNoData && (
-                      <button
-                        onClick={() => { setFinancialsInitialTab("breakdown"); setFinancialsPanelOpen(true); }}
-                        className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 text-amber-700 text-[10px] font-bold hover:bg-amber-200 transition-colors border border-amber-300">
-                        <PieChart className="w-3 h-3" />
-                        Pay Breakdown
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })}
+                {/* Hourly subs with pending hours / accrued bonus — must use payroll screen */}
+                {hourlySubs.map(sub => {
+                  const hrs   = sub.totalHours ?? 0;
+                  const bonus = sub.accruedBonus ?? 0;
+                  const detail = [
+                    hrs > 0   ? `${hrs.toFixed(1)} hrs` : "",
+                    bonus > 0 ? `+${formatCurrency(bonus)} bonus` : "",
+                  ].filter(Boolean).join(" · ") || "Hours pending";
+                  return (
+                    <div key={sub.subcontractorId} className="flex items-center gap-2 px-3 py-2">
+                      <Timer className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-amber-900 truncate">{sub.subName}</p>
+                        <p className="text-[10px] text-amber-700">{detail}</p>
+                      </div>
+                      <Link
+                        href={`/jobs/${job.id}/payroll`}
+                        className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500 text-white text-[10px] font-bold hover:bg-amber-600 transition-colors">
+                        <ArrowRight className="w-3 h-3" />
+                        Payroll
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Mark Completed — for scheduled jobs with no invoice yet */}
         {!isCompleted && canEdit("jobs") && (

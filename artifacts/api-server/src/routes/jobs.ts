@@ -2094,24 +2094,60 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
-    const rows = await db.select({
-      subcontractorId: jobSubcontractorsTable.subcontractorId,
-      subName: subcontractorsTable.name,
-      compensationType: jobSubcontractorsTable.compensationType,
-      fixedAmount: jobSubcontractorsTable.fixedAmount,
-      allocationPct: jobSubcontractorsTable.allocationPct,
-      amountOwed: jobSubcontractorsTable.amountOwed,
-      amountPaid: jobSubcontractorsTable.amountPaid,
-      paymentStatus: jobSubcontractorsTable.paymentStatus,
-    })
-      .from(jobSubcontractorsTable)
-      .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
-      .where(and(
-        eq(jobSubcontractorsTable.jobId, id),
-        inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]),
-        inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
-      ));
-    res.json(rows.map(r => ({
+
+    // Run both queries in parallel: fixed/allocation subs (inline pay) and
+    // hourly subs that have logged hours or a saved accrued bonus (payroll screen).
+    const [fixedAllocRows, hourlyRows] = await Promise.all([
+      db.select({
+        subcontractorId: jobSubcontractorsTable.subcontractorId,
+        subName: subcontractorsTable.name,
+        compensationType: jobSubcontractorsTable.compensationType,
+        fixedAmount: jobSubcontractorsTable.fixedAmount,
+        allocationPct: jobSubcontractorsTable.allocationPct,
+        amountOwed: jobSubcontractorsTable.amountOwed,
+        amountPaid: jobSubcontractorsTable.amountPaid,
+        paymentStatus: jobSubcontractorsTable.paymentStatus,
+      })
+        .from(jobSubcontractorsTable)
+        .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
+        .where(and(
+          eq(jobSubcontractorsTable.jobId, id),
+          inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]),
+          inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+        )),
+
+      // Hourly subs with real labor: they need the payroll screen, not inline pay.
+      // Include only when they have accrued bonus OR at least one hours entry.
+      db.select({
+        subcontractorId: jobSubcontractorsTable.subcontractorId,
+        subName: subcontractorsTable.name,
+        compensationType: jobSubcontractorsTable.compensationType,
+        amountOwed: jobSubcontractorsTable.amountOwed,
+        amountPaid: jobSubcontractorsTable.amountPaid,
+        paymentStatus: jobSubcontractorsTable.paymentStatus,
+        accruedBonus: jobSubcontractorsTable.accruedBonus,
+        totalHours: sql<string>`COALESCE((
+          SELECT SUM(h.hours) FROM job_sub_hours h
+          WHERE h.job_id = ${id} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+        ), 0)`,
+      })
+        .from(jobSubcontractorsTable)
+        .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
+        .where(and(
+          eq(jobSubcontractorsTable.jobId, id),
+          inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]),
+          eq(jobSubcontractorsTable.compensationType, "hourly"),
+          sql`(
+            COALESCE(${jobSubcontractorsTable.accruedBonus}, 0) > 0
+            OR EXISTS (
+              SELECT 1 FROM job_sub_hours h
+              WHERE h.job_id = ${id} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+            )
+          )`,
+        )),
+    ]);
+
+    const fixedAllocResult = fixedAllocRows.map(r => ({
       subcontractorId: r.subcontractorId,
       subName: r.subName ?? `Sub #${r.subcontractorId}`,
       compensationType: r.compensationType ?? "fixed",
@@ -2120,7 +2156,24 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
       amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
       amountPaid: r.amountPaid != null ? parseFloat(r.amountPaid) : 0,
       paymentStatus: r.paymentStatus ?? "unpaid",
-    })));
+      totalHours: null as number | null,
+      accruedBonus: null as number | null,
+    }));
+
+    const hourlyResult = hourlyRows.map(r => ({
+      subcontractorId: r.subcontractorId,
+      subName: r.subName ?? `Sub #${r.subcontractorId}`,
+      compensationType: "hourly" as const,
+      fixedAmount: null as number | null,
+      allocationPct: null as number | null,
+      amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
+      amountPaid: r.amountPaid != null ? parseFloat(r.amountPaid) : 0,
+      paymentStatus: r.paymentStatus ?? "unpaid",
+      totalHours: parseFloat(r.totalHours ?? "0"),
+      accruedBonus: r.accruedBonus != null ? parseFloat(r.accruedBonus) : null,
+    }));
+
+    res.json([...fixedAllocResult, ...hourlyResult]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch outstanding sub payments" });
