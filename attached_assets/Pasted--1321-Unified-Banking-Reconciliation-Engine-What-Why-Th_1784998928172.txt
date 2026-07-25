@@ -1,0 +1,440 @@
+#1321 - Unified Banking Reconciliation Engine
+
+## What & Why
+
+The Banking page should not be an expense management page. It should be the central reconciliation hub for the entire accounting system.
+
+Every downloaded bank transaction represents one financial event. The system's job is to automatically determine what that event represents and link it to the correct accounting record.
+
+Rather than only matching transactions to expenses, the reconciliation engine should attempt to match every transaction against all supported accounting record types.
+
+This creates a single intelligent workflow that scales as new accounting features are added.
+
+The objective is that 90-95% of downloaded bank transactions require zero user interaction.
+
+---
+
+## Design Philosophy
+
+Expenses remain the accounting ledger.
+
+The Banking page becomes an inbox that verifies and reconciles financial activity.
+
+Instead of asking:
+
+"What expense does this belong to?"
+
+The system asks:
+
+"What accounting event does this transaction represent?"
+
+---
+
+## Reconciliation Flow
+
+Every new bank transaction follows the same process.
+
+New Bank Transaction
+
+↓
+
+Attempt Automatic Reconciliation
+
+↓
+
+Search supported accounting records
+
+↓
+
+Highest confidence match found?
+
+YES
+
+↓
+
+Automatically Link
+
+↓
+
+Mark Reconciled
+
+NO
+
+↓
+
+Needs Attention
+
+---
+
+## Reconciliation Priority
+
+The engine should search in this order.
+
+1. Existing Expense
+    • AI receipt scanned
+    • Manual expense
+    • Imported expense
+
+2. Subcontractor Payment
+    • Outstanding subcontractor payment
+    • Payroll payment
+    • Advance repayment
+
+3. Investment Transfer
+    • Brokerage transfer
+    • Investment contribution
+
+4. Customer Payment (Income)
+    • Invoice payment
+    • Customer deposit
+
+5. Internal Bank Transfer
+    • Checking to Savings
+    • Savings to Checking
+    • Business account transfers
+
+6. Owner Activity
+    • Owner Draw
+    • Owner Contribution
+
+7. Personal Transaction
+
+8. Unknown
+
+The first high-confidence match wins.
+
+If no match exceeds the confidence threshold, the transaction moves to Needs Attention.
+
+---
+
+## Example Workflows
+
+### Expense
+
+Downloaded
+
+LOWES
+
+-$84.23
+
+↓
+
+Expense found
+
+↓
+
+Automatically linked
+
+↓
+
+✓ Expense Reconciled
+
+---
+
+### Payroll
+
+Downloaded
+
+ACH DEWAYNE LAMB
+
+-$850.00
+
+↓
+
+Outstanding subcontractor payment found
+
+↓
+
+Automatically linked
+
+↓
+
+✓ Payroll Reconciled
+
+---
+
+### Investment
+
+Downloaded
+
+FIDELITY
+
+-$500.00
+
+↓
+
+Investment transfer found
+
+↓
+
+Automatically linked
+
+↓
+
+✓ Investment Transfer Reconciled
+
+---
+
+### Income
+
+Downloaded
+
+ACH PAYMENT
+
++$2,450.00
+
+↓
+
+Outstanding customer invoice found
+
+↓
+
+Automatically linked
+
+↓
+
+✓ Invoice Paid
+
+---
+
+### Internal Transfer
+
+Downloaded
+
+CHASE TRANSFER
+
+-$1,000.00
+
+↓
+
+Matching deposit found in another connected account
+
+↓
+
+Automatically linked
+
+↓
+
+✓ Internal Transfer
+
+---
+
+### Unknown
+
+Downloaded
+
+TRACTOR SUPPLY
+
+-$58.14
+
+↓
+
+No matching accounting record found
+
+↓
+
+Needs Attention
+
+User can:
+
+• Create Expense
+• Mark Personal
+• Mark Owner Draw
+• Ignore
+• Categorize Manually
+
+---
+
+## Intelligent Routing
+
+Before running the scoring engine, inspect the transaction description.
+
+Examples:
+
+Contains:
+
+PAYROLL
+
+ACH DEWAYNE
+
+VENMO DEWAYNE
+
+↓
+
+Search Payroll first.
+
+Contains:
+
+FIDELITY
+
+SCHWAB
+
+VANGUARD
+
+ROBINHOOD
+
+↓
+
+Search Investment Transfers first.
+
+Contains:
+
+LOWES
+
+HOME DEPOT
+
+AMAZON
+
+TRACTOR SUPPLY
+
+↓
+
+Search Expenses first.
+
+Contains:
+
+TRANSFER
+
+ONLINE TRANSFER
+
+ACH TRANSFER
+
+↓
+
+Search Internal Transfers first.
+
+Contains:
+
+PAYMENT
+
+SQUARE
+
+STRIPE
+
+ACH CREDIT
+
+↓
+
+Search Customer Payments first.
+
+Routing first improves both speed and matching accuracy.
+
+---
+
+## Banking Page
+
+The Banking page should become an inbox instead of a transaction manager.
+
+Example
+
+Today's Sync
+
+34 Transactions Downloaded
+
+✓ 22 Expenses Reconciled
+
+✓ 4 Payroll Payments Reconciled
+
+✓ 2 Investment Transfers Reconciled
+
+✓ 3 Customer Payments Reconciled
+
+⚠️ 3 Need Attention
+
+The user focuses only on exceptions.
+
+---
+
+## Transaction Cards
+
+Automatically reconciled transactions no longer display action buttons.
+
+Example
+
+✓ Expense
+
+Lowe's
+
+Receipt Attached
+
+Materials
+
+Reconciled
+
+or
+
+✓ Payroll
+
+Dewayne Lamb
+
+Job #42
+
+Paid
+
+or
+
+✓ Investment Transfer
+
+Fidelity Brokerage
+
+Completed
+
+Only transactions requiring user input display action buttons.
+
+Example
+
+Needs Attention
+
+Create Expense
+
+Mark Personal
+
+Owner Draw
+
+Ignore
+
+More...
+
+---
+
+## Future Extensibility
+
+The reconciliation engine should be designed so additional accounting record types can easily be added later.
+
+Future examples include:
+
+• Credit Card Payments
+
+• Loan Payments
+
+• Tax Payments
+
+• Equipment Financing
+
+• Vehicle Loans
+
+• Asset Purchases
+
+• Depreciation Assets
+
+• Insurance Payments
+
+Each new feature simply registers another reconciliation provider without changing the Banking page workflow.
+
+---
+
+## Benefits
+
+• One intelligent reconciliation engine for the entire accounting system.
+
+• Eliminates separate matching logic for expenses, payroll, investments, transfers, and income.
+
+• Greatly reduces manual bookkeeping.
+
+• Allows AI receipt scanning, payroll, invoicing, investments, and banking to work together seamlessly.
+
+• Creates a Banking page that serves as a true accounting inbox instead of a manual matching screen.
+
+• Scales naturally as additional accounting features are added in the future.
+
+• Makes reconciliation simple: the system automatically identifies what each transaction represents and only asks the user for help when confidence is too low.
