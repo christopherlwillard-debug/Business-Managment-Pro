@@ -176,6 +176,7 @@ function WorkerPayCard({
 
   // Saving draft state
   const [savingChanges, setSavingChanges] = useState(false);
+  const [clearingDraft, setClearingDraft] = useState(false);
 
   // Payroll correction credit (from prior overpayment on other jobs)
   const [correctionBalance, setCorrectionBalance] = useState(0);
@@ -312,6 +313,45 @@ function WorkerPayCard({
       toast({ title: "Failed to save changes", description: e?.message, variant: "destructive" });
     } finally {
       setSavingChanges(false);
+    }
+  }
+
+  // ── Clear Draft (reset all draft fields to null) ─────────────────────────────
+  async function handleClearDraft() {
+    if (!window.confirm("Clear all saved draft values (bonus, advancement, payment method)? This cannot be undone.")) return;
+    setClearingDraft(true);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${jobId}/sub-payment-draft/${p.subcontractorId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          bonusAmount: null,
+          bonusNote: null,
+          advancementAmt: null,
+          paymentMethod: null,
+          paymentReference: null,
+        }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      // Reset local state to empty
+      setBonus("");
+      setBonusNote("");
+      setAdvancementAmt("");
+      setPaymentMethod("");
+      setPaymentReference("");
+      // Reset initial refs so dirty clears
+      initialBonus.current     = "";
+      initialBonusNote.current = "";
+      initialAdvance.current   = "";
+      initialMethod.current    = "";
+      initialRef.current       = "";
+      await onRefresh();
+      toast({ title: "Draft cleared", description: "Payroll draft has been reset to zero." });
+    } catch (e: any) {
+      toast({ title: "Failed to clear draft", description: e?.message, variant: "destructive" });
+    } finally {
+      setClearingDraft(false);
     }
   }
 
@@ -633,7 +673,7 @@ function WorkerPayCard({
                 {dirty && (
                   <button
                     onClick={handleSaveChanges}
-                    disabled={savingChanges}
+                    disabled={savingChanges || clearingDraft}
                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-sm font-bold transition-colors disabled:opacity-50"
                   >
                     {savingChanges ? (
@@ -647,6 +687,16 @@ function WorkerPayCard({
                         Save Changes
                       </>
                     )}
+                  </button>
+                )}
+                {/* ── Clear draft link — visible when any draft field has a value ── */}
+                {(bonus !== "" || bonusNote !== "" || advancementAmt !== "" || paymentMethod !== "" || paymentReference !== "") && (
+                  <button
+                    onClick={handleClearDraft}
+                    disabled={clearingDraft || savingChanges}
+                    className="w-full text-center text-xs text-muted-foreground/70 hover:text-red-500 disabled:opacity-40 transition-colors py-1"
+                  >
+                    {clearingDraft ? "Clearing…" : "Reset draft"}
                   </button>
                 )}
               </div>
