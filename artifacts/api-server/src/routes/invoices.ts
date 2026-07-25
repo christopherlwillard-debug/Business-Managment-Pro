@@ -346,8 +346,11 @@ router.put("/:id", async (req, res) => {
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
 
     await db.update(invoicesTable).set({
-      clientId: clientId || null,
-      jobId: jobId || null,
+      // Only write clientId / jobId when they are explicitly present in the body.
+      // Using `|| null` on an absent field (undefined) would silently detach the
+      // invoice from its client or job — guard with an undefined check instead.
+      ...(clientId !== undefined ? { clientId: clientId || null } : {}),
+      ...(jobId !== undefined ? { jobId: jobId || null } : {}),
       issueDate, dueDate,
       subtotal: subtotal.toString(),
       taxRate: taxRate?.toString() ?? null,

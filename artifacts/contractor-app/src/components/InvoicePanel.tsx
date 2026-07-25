@@ -428,7 +428,9 @@ export function InvoicePanel({
       };
       if (isEdit) {
         await updateInvoice.mutateAsync({ id: effectiveExistingInvoice!.id, data: payload });
-        queryClient.invalidateQueries();
+        // Await the refetch so the list is already fresh when the panel closes.
+        // Scoping to ["/api/invoices"] keeps this fast (one endpoint, not everything).
+        await queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
         onOpenChange(false);
         onSaved?.();
       } else {
