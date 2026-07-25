@@ -1166,15 +1166,18 @@ router.delete("/cleanup-draft-invoice/:id", async (req: Request, res: Response) 
   }
 });
 
-// One-time fix: assign WIL-1036 to the current pending draft invoice (id=70)
-// and reset the counter to 1037 so the next issued invoice is WIL-1037.
-// Idempotent: if WIL-1036 is already assigned, reports success and does nothing.
+// One-time fix: assign <prefix>1036 to the current unnumbered draft invoice
+// and reset the counter to 1037 so the next issued invoice is <prefix>1037.
+// Reads the prefix from settings so it works in any environment.
+// Idempotent: if <prefix>1036 is already assigned, reports success and does nothing.
 router.post("/rename-invoice-1038-to-1036", async (_req: Request, res: Response) => {
-  const TARGET_ID = 70;
-  const TARGET_NUMBER = "WIL-1036";
   const NEW_COUNTER = 1037;
 
   try {
+    const [s] = await db.select().from(settingsTable).limit(1);
+    const prefix = s?.invoicePrefix ?? "INV-";
+    const TARGET_NUMBER = `${prefix}1036`;
+
     // Idempotent: already done
     const [already] = await db.select({ id: invoicesTable.id, status: invoicesTable.status })
       .from(invoicesTable)
@@ -1184,24 +1187,19 @@ router.post("/rename-invoice-1038-to-1036", async (_req: Request, res: Response)
       return res.json({ ok: true, alreadyDone: true, invoiceId: already.id, invoiceNumber: TARGET_NUMBER });
     }
 
-    // Confirm the target draft exists and has no number yet
-    const [target] = await db.select({ id: invoicesTable.id, status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber })
+    // Find the most recent unnumbered draft invoice
+    const [target] = await db.select({ id: invoicesTable.id, status: invoicesTable.status })
       .from(invoicesTable)
-      .where(eq(invoicesTable.id, TARGET_ID))
+      .where(and(eq(invoicesTable.status, "draft"), isNull(invoicesTable.invoiceNumber)))
+      .orderBy(desc(invoicesTable.id))
       .limit(1);
-    if (!target) return res.status(404).json({ error: `Invoice id=${TARGET_ID} not found.` });
-    if (target.invoiceNumber) {
-      return res.status(409).json({ error: `Invoice id=${TARGET_ID} already has number ${target.invoiceNumber}.` });
-    }
+    if (!target) return res.status(404).json({ error: "No unnumbered draft invoice found." });
 
     await db.transaction(async (tx) => {
-      // Assign WIL-1036 and accept the invoice
       await tx.update(invoicesTable)
         .set({ invoiceNumber: TARGET_NUMBER, status: "approved", acceptedAt: new Date() })
-        .where(eq(invoicesTable.id, TARGET_ID));
+        .where(eq(invoicesTable.id, target.id));
 
-      // Reset counter to 1037
-      const [s] = await tx.select().from(settingsTable).limit(1);
       if (s) {
         await tx.update(settingsTable)
           .set({ invoiceNextNumber: NEW_COUNTER })
@@ -1209,8 +1207,8 @@ router.post("/rename-invoice-1038-to-1036", async (_req: Request, res: Response)
       }
     });
 
-    console.log(`[admin/migrations] rename-invoice-1038-to-1036: id=${TARGET_ID} assigned ${TARGET_NUMBER}, accepted, counter→${NEW_COUNTER}`);
-    res.json({ ok: true, invoiceId: TARGET_ID, invoiceNumber: TARGET_NUMBER, counterResetTo: NEW_COUNTER });
+    console.log(`[admin/migrations] rename-invoice-1038-to-1036: id=${target.id} assigned ${TARGET_NUMBER}, counter→${NEW_COUNTER}`);
+    res.json({ ok: true, invoiceId: target.id, invoiceNumber: TARGET_NUMBER, counterResetTo: NEW_COUNTER });
   } catch (err) {
     console.error("[admin/migrations] rename-invoice-1038-to-1036 failed:", err);
     res.status(500).json({ error: "Migration failed", detail: String(err) });
