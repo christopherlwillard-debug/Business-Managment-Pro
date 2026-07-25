@@ -1,0 +1,131 @@
+I actually think this exposed a bigger UX problem than just the sticky button.
+
+Right now “Review & Record” is doing two different jobs:
+
+1. Saving changes to the payment form (hours, bonus, notes, advancement, etc.)
+2. Actually recording a payment (creating the ledger entry and marking money as paid)
+
+Those are not the same action.
+
+What happened in your screenshots
+
+* You logged 24 hours @ $25 = $600.
+* That entry was saved.
+* You then decided to add a $200 performance bonus.
+* The only action available became Review & Record — $800.
+* But clicking that tells the system “I have paid Dewayne $800.”
+
+If you’re still working on the job and just want the job profitability to reflect the expected labor cost, that’s the wrong action.
+
+⸻
+
+I’d change the workflow
+
+While editing
+
+The form should always have:
+
+Save Changes
+
+This saves:
+
+* Hours
+* Travel
+* Bonus
+* Bonus note
+* Advancement
+* Payment method draft
+* Reference number draft
+
+without creating any payment.
+
+Think of it like editing an invoice draft.
+
+⸻
+
+Then when you’re actually handing him money
+
+You press
+
+Review & Record Payment
+
+That opens the confirmation.
+
+After confirming:
+
+* Creates ledger transaction
+* Marks amount paid
+* Updates balance
+* Changes payroll status
+
+⸻
+
+Even better
+
+At the top of the card show:
+
+Gross Earned
+$800
+
+Already Paid
+$0
+
+Outstanding
+$800
+
+Now the financial side of the job is always correct even before payroll is processed.
+
+⸻
+
+I would actually replace Task #1287 with this
+
+#1287 - Separate “Save Changes” from “Record Payment”
+
+What & Why
+
+The current Sub Payment screen conflates editing payroll information with recording an actual payment.
+
+After logging hours, users often return later to:
+
+* add bonuses
+* adjust hours
+* edit notes
+* add advancement deductions
+
+Currently these edits cannot be saved without pressing Review & Record, which immediately records a payment in the accounting ledger.
+
+This forces users to either:
+
+* record payroll before they’ve actually paid the worker, or
+* avoid tracking labor costs until payday.
+
+For contractors, labor should be visible in the job immediately, while actual cash payments should only occur when money changes hands.
+
+Done Looks Like
+
+* Add a primary Save Changes button that saves the WorkerPayCard draft without recording payment.
+* Saving updates:
+    * logged hours
+    * travel
+    * bonus
+    * bonus note
+    * advancement deduction
+    * payment draft fields
+* Saving recalculates Gross Earned and Outstanding Pay immediately.
+* Job profitability reflects the updated labor cost after Save.
+* No accounting transaction or payment ledger entry is created.
+* The sticky bottom action becomes Review & Record Payment — $X and is only used when actually paying the subcontractor.
+* Review & Record creates the payment ledger entry and marks the amount as paid.
+
+Benefits
+
+* Hours can be logged daily.
+* Bonuses can be added later.
+* Labor cost appears on the Job Card immediately.
+* Cash isn’t recorded until payday.
+* Eliminates accidental payroll recordings.
+* Matches how contractors actually manage jobs in the field.
+
+⸻
+
+I actually think this is a much stronger design than simply making the Review & Record button sticky. The sticky button is still a good improvement, but separating Save Changes from Record Payment solves the underlying workflow problem instead of just making the wrong button easier to reach.

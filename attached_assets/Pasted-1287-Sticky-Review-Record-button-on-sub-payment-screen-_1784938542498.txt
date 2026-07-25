@@ -1,0 +1,27 @@
+1287 - Sticky "Review & Record" button on sub payment screen
+
+What & Why
+
+On the Sub Payment screen (JobPayroll.tsx, WorkerPayCard), the "Review & Record — $X" button lives at the very bottom of a long scrollable card. Once a sub has logged entries the card grows tall (Earnings → Logged Entries → Bonus → Advancement → Payment Info → button). Entering a bonus makes the card even taller, pushing the button completely off-screen with no visual hint that it exists. The user stops at the bonus fields and thinks there is no way to save the payment.
+
+Done looks like
+
+A sticky action bar appears fixed to the bottom of the viewport whenever the hourly payment form is open (hours > 0, not fully paid, not in the Log Hours sub-panel). It shows "Review & Record — $X" exactly as the existing button does.
+The button is disabled (greyed out) when netToPay <= 0, matching current behaviour.
+The original button at the bottom of the card is removed (or hidden) so there is no duplicate.
+Scrolling the card still works normally; only the button is pinned.
+On larger screens the sticky bar still renders (it doesn't hurt desktop layout and keeps the UX consistent).
+Out of scope
+
+Changing how the Review panel itself works.
+Adding a sticky bar for Fixed / Allocation subs (those are one-field forms, short enough to see the button).
+Steps
+
+Add a sticky bottom bar — render a fixed bottom-0 left-0 right-0 bar (with safe-area inset padding for iOS) that contains the "Review & Record" button. Gate it on isHourly && !isFullyPaid && !showLogHours && (parseFloat(workHours) || 0) > 0.
+Remove the inline button — delete (or conditionally hide with isHourly) the existing "Review & Record" button at the bottom of the card to avoid duplication; keep the "+ Log Hours" secondary link where it is.
+Ensure the sticky bar clears the last card — add pb-24 (or equivalent) bottom padding to the page's scroll container so the last card's content isn't hidden behind the sticky bar.
+Relevant files
+
+artifacts/contractor-app/src/pages/JobPayroll.tsx:686-704
+
+Right now I only can log hours and it saves. Then when I go to add bonus it doesn't allow me to save only to review and record but I don't want to record it because that means it pays him in the system and I just want to log what I'm paying him in the job card so I can see the financial side of my job
