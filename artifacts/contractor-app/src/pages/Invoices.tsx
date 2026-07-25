@@ -303,6 +303,18 @@ export default function Invoices() {
     }
   }, [invoices]);
 
+  // Keep the open panel's invoice in sync with background refetches.
+  // The InvoicePanel effect only resets form state when the invoice *id* changes,
+  // so updating the object reference here refreshes read-only fields (status badge,
+  // toolbar buttons, amountPaid) without wiping the user's draft edits.
+  useEffect(() => {
+    if (!viewInvoice || !invoices) return;
+    const fresh = invoices.find(inv => inv.id === viewInvoice.id);
+    if (fresh && fresh !== viewInvoice) {
+      setViewInvoice(fresh);
+    }
+  }, [invoices]);
+
 
   async function handleStatusChange(id: number, status: string) {
     await updateStatus.mutateAsync({ id, data: { status: status as any } });

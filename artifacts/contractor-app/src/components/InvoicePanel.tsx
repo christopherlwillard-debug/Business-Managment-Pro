@@ -195,6 +195,14 @@ export function InvoicePanel({
   const [recordingPayment, setRecordingPayment] = useState(false);
   const [revertConfirm, setRevertConfirm] = useState(false);
   const [reverting, setReverting] = useState(false);
+  const [serverUpdatedBanner, setServerUpdatedBanner] = useState(false);
+
+  // Tracks the last-seen server-side values so we can detect background changes.
+  const prevServerDataRef = useRef<{
+    status: string;
+    amountPaid: number | null | undefined;
+    payUrl: string | null;
+  } | null>(null);
 
   const clientRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -235,8 +243,13 @@ export function InvoicePanel({
       setGmailMessage("");
       setShowMoreOptions(false);
       setRevertConfirm(false);
+      setServerUpdatedBanner(false);
       const url = effectiveExistingInvoice?.squarePaymentLinkUrl ?? effectiveExistingInvoice?.stripePaymentLinkUrl ?? null;
       setPayUrl(url);
+      // Record baseline server values so the background-sync effect can diff against them.
+      prevServerDataRef.current = effectiveExistingInvoice
+        ? { status: effectiveExistingInvoice.status, amountPaid: effectiveExistingInvoice.amountPaid, payUrl: url }
+        : null;
       if (effectiveExistingInvoice) {
         setGmailTo(effectiveExistingInvoice.clientEmail ?? "");
         setGmailSubject(`Invoice ${effectiveExistingInvoice.invoiceNumber} from ${s?.companyName || "us"}`);
@@ -247,8 +260,40 @@ export function InvoicePanel({
     } else {
       setSavedInvoice(null);
       setLogoDataUri(null);
+      prevServerDataRef.current = null;
+      setServerUpdatedBanner(false);
     }
   }, [open, effectiveExistingInvoice?.id, savedInvoice?.id, initialData?.jobId]);
+
+  // Detect background changes to an already-open invoice (e.g. Square webhook
+  // or another tab saving). Updates payUrl silently and shows a non-intrusive
+  // banner when status or amountPaid change — never touches the user's draft.
+  useEffect(() => {
+    if (!open || !effectiveExistingInvoice || !prevServerDataRef.current) return;
+
+    const freshUrl = effectiveExistingInvoice.squarePaymentLinkUrl ?? effectiveExistingInvoice.stripePaymentLinkUrl ?? null;
+    const prev = prevServerDataRef.current;
+
+    // Silently sync the payment link URL so Copy/Remove buttons stay accurate.
+    if (freshUrl !== prev.payUrl) {
+      setPayUrl(freshUrl);
+    }
+
+    // Surface a banner if the invoice was updated externally.
+    const statusChanged = effectiveExistingInvoice.status !== prev.status;
+    const amountChanged = effectiveExistingInvoice.amountPaid !== prev.amountPaid;
+    if (statusChanged || amountChanged) {
+      setServerUpdatedBanner(true);
+    }
+
+    // Advance the baseline so the next refetch diffs against the newest data.
+    prevServerDataRef.current = {
+      status: effectiveExistingInvoice.status,
+      amountPaid: effectiveExistingInvoice.amountPaid,
+      payUrl: freshUrl,
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveExistingInvoice]);
 
   useEffect(() => {
     if (!open || !logoUrl) { setLogoDataUri(null); return; }
@@ -862,6 +907,27 @@ export function InvoicePanel({
           <div className="mx-4 mt-3 px-4 py-2.5 bg-orange-50 border border-orange-200 rounded-xl text-sm text-orange-700 flex items-center gap-2 flex-shrink-0">
             <X className="w-4 h-4 flex-shrink-0" />
             <span><span className="font-bold">Voided.</span> This invoice has been permanently voided and is kept for audit records. It cannot be edited or paid.</span>
+          </div>
+        )}
+
+        {/* Background-update banner — shown when another tab or webhook changed the invoice */}
+        {serverUpdatedBanner && !isVoided && (
+          <div className="mx-4 mt-3 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800 flex items-center justify-between gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <RotateCcw className="w-4 h-4 flex-shrink-0 text-amber-600" />
+              <span>
+                <span className="font-semibold">This invoice was updated</span> (status or payment changed on another tab or device).
+                The status badge above reflects the latest data. Your draft edits are unchanged — save to apply them, or close and reopen to start fresh.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setServerUpdatedBanner(false)}
+              className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-md text-amber-600 hover:bg-amber-100 transition-colors"
+              title="Dismiss"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 
