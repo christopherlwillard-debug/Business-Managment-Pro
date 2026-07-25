@@ -1,0 +1,319 @@
+# Feature Request - Intelligent Automatic Bank Transaction Matching
+
+## What & Why
+
+The current Banking page requires the user to manually match downloaded bank transactions to expenses. This works, but it becomes time-consuming as the number of expenses grows. The goal is to make reconciliation almost automatic by intelligently matching transactions based on multiple factors instead of requiring the user to search through a long list.
+
+The philosophy should be:
+
+"The expense is the source of truth. The bank transaction simply confirms that the expense was actually paid."
+
+This is similar to how QuickBooks reconciles receipts with downloaded bank transactions.
+
+---
+
+## New Matching Engine
+
+Whenever a bank transaction is imported, automatically search for existing expenses that have not yet been matched.
+
+Instead of returning every expense, calculate a confidence score using multiple criteria.
+
+Suggested scoring:
+
+• Amount (highest weight)
+    - Exact amount = very high score
+    - Small tolerance only if enabled
+
+• Date
+    - Exact date preferred
+    - Within ±3-5 days receives slightly lower score
+
+• Vendor Similarity
+    - Normalize vendor names before comparing.
+
+Examples:
+
+LOWES
+LOWE'S
+LOWES #1842
+LOWES HOME CENTER
+
+should all normalize to:
+
+LOWES
+
+Examples:
+
+HOME DEPOT #3821
+THE HOME DEPOT
+HOMEDEPOT
+
+normalize to:
+
+HOME DEPOT
+
+Use fuzzy matching for vendor names.
+
+• Receipt metadata (if available)
+    - Store number
+    - Receipt number
+    - Invoice number
+    - Card last four digits
+    - Tax amount
+    - Total amount
+
+These should increase confidence when available.
+
+---
+
+## Automatic Matching
+
+If exactly one expense exceeds the confidence threshold (ex: 95%), automatically link the transaction without user interaction.
+
+Example:
+
+Expense
+Vendor: Lowe's
+Amount: $30.52
+Date: July 22
+
+Downloaded Bank Transaction
+LOWES #1842
+-$30.52
+July 22
+
+Result:
+
+Automatically matched.
+
+No user interaction required.
+
+---
+
+## Manual Review Only When Necessary
+
+If confidence is below the threshold, show the user only the likely matches instead of every expense.
+
+Current behavior:
+
+Shows 44 expenses.
+
+Desired behavior:
+
+Show only the top 3-5 candidates sorted by confidence.
+
+Example:
+
+98% - Lowe's - July 22 - $30.52
+
+84% - Home Depot - July 23 - $30.52
+
+62% - Walmart - July 22 - $30.52
+
+The user simply taps the correct one.
+
+---
+
+## Expense Status
+
+Each expense should have a reconciliation status.
+
+Statuses:
+
+Waiting for Bank Transaction
+
+Matched
+
+Needs Review
+
+Unmatched
+
+This allows users to quickly see which expenses have not yet cleared the bank.
+
+---
+
+## Banking Page Improvements
+
+Current Actions
+
+• File as Expense
+• Match to Expense
+• Investment Transfer
+
+New Behavior
+
+If a transaction is automatically matched:
+
+Display:
+
+✓ Matched to Expense
+
+Lowe's
+
+Receipt Attached
+
+Category: Materials
+
+Allow tapping the card to view or edit the linked expense if needed.
+
+The "Match to Expense" button should only appear when no high-confidence match exists.
+
+---
+
+## Expense Workflow
+
+### Receipt First Workflow
+
+1. User scans a receipt with OpenAI.
+2. AI extracts:
+    • Vendor
+    • Amount
+    • Date
+    • Category
+    • Description
+    • Tax
+    • Store Number
+    • Receipt Number
+3. Expense is created immediately.
+4. Status becomes:
+    Waiting for Bank Transaction.
+5. When the bank transaction downloads later, the system automatically matches it.
+6. Status changes to:
+    Matched.
+
+No manual reconciliation required.
+
+---
+
+### Bank First Workflow
+
+Sometimes the user forgets to scan a receipt.
+
+Workflow:
+
+1. Bank transaction downloads.
+2. No matching expense exists.
+3. User taps:
+    File as Expense.
+4. User takes a picture of the receipt.
+5. OpenAI extracts all receipt information.
+6. Expense is created already linked to that bank transaction.
+7. No additional matching step is required.
+
+---
+
+## Vendor Normalization
+
+Create a vendor normalization table.
+
+Examples:
+
+LOWES #1842
+LOWE'S
+LOWES
+
+→ LOWES
+
+HOME DEPOT #3821
+THE HOME DEPOT
+
+→ HOME DEPOT
+
+WAL-MART
+WALMART SUPERCENTER
+
+→ WALMART
+
+AMZN
+AMAZON MARKETPLACE
+
+→ AMAZON
+
+This dramatically improves automatic matching.
+
+---
+
+## Duplicate Purchase Handling
+
+If multiple purchases have the same amount, use additional data to determine the correct expense.
+
+Priority:
+
+1. Amount
+2. Date
+3. Vendor
+4. Store Number
+5. Receipt Number
+6. Card Last Four Digits
+7. Transaction Time (if available)
+
+Example:
+
+Lowe's
+
+$19.98
+
+July 4
+
+and
+
+Lowe's
+
+$19.98
+
+July 28
+
+The date alone should separate these correctly.
+
+If two identical purchases occur on the same day, use receipt metadata and transaction time.
+
+---
+
+## Automatic Matching Settings
+
+Add a Banking Settings section.
+
+Automatic Matching
+
+☑ Enable Automatic Matching
+
+Confidence Threshold
+
+95%
+
+If confidence exceeds the threshold:
+
+Automatically reconcile.
+
+If below:
+
+Move the transaction into a "Needs Review" queue.
+
+---
+
+## Banking Inbox
+
+Instead of requiring users to search through all transactions, add a reconciliation inbox.
+
+Inbox
+
+Receipt Waiting for Bank Transaction (2)
+
+Bank Transaction Waiting for Receipt (1)
+
+Needs Review (3)
+
+AI Suggested Matches (4)
+
+The Banking page should primarily show exceptions instead of requiring manual work on every transaction.
+
+---
+
+## Benefits
+
+• Eliminates the majority of manual reconciliation.
+• Greatly reduces the time spent matching transactions.
+• Makes the app behave more like QuickBooks while remaining simpler.
+• Allows OpenAI receipt scanning and bank syncing to work together seamlessly.
+• Users only review exceptions instead of every transaction.
+• Provides a faster, cleaner workflow for contractors and small business owners.
