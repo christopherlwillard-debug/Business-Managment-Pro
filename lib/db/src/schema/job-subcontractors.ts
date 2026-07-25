@@ -18,4 +18,10 @@ export const jobSubcontractorsTable = pgTable("job_subcontractors", {
   paymentStatus: text("payment_status").notNull().default("unpaid"),
   paidAt: timestamp("paid_at", { mode: "string" }),       // first payment date — never overwritten
   lastPaidAt: timestamp("last_paid_at", { mode: "string" }), // most recent payment date — updated every call
+  // Draft payroll fields — saved without recording a payment (accrued but not yet paid)
+  accruedBonus: numeric("accrued_bonus", { precision: 12, scale: 2 }),
+  accruedBonusNote: text("accrued_bonus_note"),
+  accruedAdvancement: numeric("accrued_advancement", { precision: 12, scale: 2 }),
+  paymentMethodDraft: text("payment_method_draft"),
+  paymentReferenceDraft: text("payment_reference_draft"),
 }, (table) => [primaryKey({ columns: [table.jobId, table.subcontractorId] })]);

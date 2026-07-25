@@ -331,7 +331,7 @@ router.get("/:id/profit", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
 
-    const [invRows, expRows, sprRows, subHoursRow, subHoursSum] = await Promise.all([
+    const [invRows, expRows, sprRows, subHoursRow, subHoursSum, accruedBonusRow] = await Promise.all([
       db.select({ total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(eq(invoicesTable.jobId, id)),
       // Fetch all expenses not auto-linked to a sub-hours row.
@@ -364,6 +364,9 @@ router.get("/:id/profit", async (req, res) => {
         .from(jobSubHoursTable).where(eq(jobSubHoursTable.jobId, id)),
       db.select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)` })
         .from(jobSubHoursTable).where(eq(jobSubHoursTable.jobId, id)),
+      // Accrued bonuses saved via Save Changes — counted as labor cost even before payment
+      db.select({ total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.accruedBonus}), 0)` })
+        .from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, id)),
     ]);
 
     let grossInvoiced = 0;
@@ -398,6 +401,8 @@ router.get("/:id/profit", async (req, res) => {
 
     const hoursLaborCost = parseFloat(subHoursRow?.[0]?.total ?? "0");
     const totalSubHours = parseFloat(subHoursSum?.[0]?.total ?? "0");
+    // Accrued bonuses saved without recording payment — always count as labor cost
+    const accruedBonusTotal = parseFloat(accruedBonusRow?.[0]?.total ?? "0");
     // Fixed sub cost: prefer sub_payment_records (new ledger),
     // fall back to flat Subcontractor expenses for legacy data pre-Task #892.
     const sprFixedCost = parseFloat(sprRows.find(r => r.compType === "fixed")?.total ?? "0");
@@ -408,8 +413,8 @@ router.get("/:id/profit", async (req, res) => {
     // tracked hours AND no fixed-sub payment records — otherwise the expense
     // was recorded alongside hours and would double-count the labor cost.
     const nonHoursCost = sprFixedCost > 0 ? sprFixedCost : (hoursLaborCost > 0 ? 0 : flatSubCost);
-    // Sub labor: hourly (hours × rate) + fixed (cash paid)
-    const subLaborCost = hoursLaborCost + nonHoursCost;
+    // Sub labor: hourly (hours × rate + accrued bonus) + fixed (cash paid)
+    const subLaborCost = hoursLaborCost + nonHoursCost + accruedBonusTotal;
 
     res.json({ grossInvoiced, collected, jobExpenses, auditTrailTotal, tripTravelTotal, tripMealsDeductible, subLaborCost, allocPaid, totalSubHours, netProfit: collected - jobExpenses - subLaborCost - allocPaid });
   } catch (err) {
@@ -426,7 +431,7 @@ router.get("/profit-summary", async (req, res) => {
     const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
 
-    const [invRows, expRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows] = await Promise.all([
+    const [invRows, expRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows] = await Promise.all([
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
       // Exclude auto-linked sub-hour expenses; Subcontractor category goes into sub labor bucket
@@ -469,6 +474,14 @@ router.get("/profit-summary", async (req, res) => {
           sql`${jobSubcontractorsTable.compensationType} IN ('fixed', 'allocation')`,
         ))
         .groupBy(subPaymentRecordsTable.jobId, jobSubcontractorsTable.compensationType),
+      // Accrued bonuses (saved without payment) — always count as labor cost on all job views
+      db.select({
+        jobId: jobSubcontractorsTable.jobId,
+        total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.accruedBonus}), 0)`,
+      })
+        .from(jobSubcontractorsTable)
+        .where(inArray(jobSubcontractorsTable.jobId, jobIds))
+        .groupBy(jobSubcontractorsTable.jobId),
     ]);
 
     const hoursMap = new Map(hoursRows.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
@@ -482,6 +495,7 @@ router.get("/profit-summary", async (req, res) => {
       if (r.compType === "fixed") sprFixedMap.set(r.jobId, (sprFixedMap.get(r.jobId) ?? 0) + total);
       else if (r.compType === "allocation") sprAllocMap.set(r.jobId, (sprAllocMap.get(r.jobId) ?? 0) + total);
     }
+    const accruedBonusMap = new Map(accruedBonusRows.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
     const flatSubCostMap: Record<number, number> = {};
     for (const id of jobIds) flatSubCostMap[id] = 0;
 
@@ -511,11 +525,13 @@ router.get("/profit-summary", async (req, res) => {
     for (const id of jobIds) {
       const hoursLaborCost = hoursMap.get(id) ?? 0;
       const sprFixedCost = sprFixedMap.get(id) ?? 0;
+      const accruedBonusTotal = accruedBonusMap.get(id) ?? 0;
       // Prefer sub_payment_records (new ledger); fall back to flat Subcontractor expenses
       // ONLY when there are no tracked hours — if hours exist, those capture the labor cost
       // and the flat expense would be a double-count.
       const nonHoursCost = sprFixedCost > 0 ? sprFixedCost : (hoursLaborCost > 0 ? 0 : (flatSubCostMap[id] ?? 0));
-      result[id].subLaborCost = hoursLaborCost + nonHoursCost;
+      // Accrued bonuses count immediately as labor cost (even before payment is recorded)
+      result[id].subLaborCost = hoursLaborCost + nonHoursCost + accruedBonusTotal;
       // Allocation payouts are real cash out — subtracted from net profit,
       // but kept out of subLaborCost so Pay Breakdown math stays unchanged.
       result[id].allocPaid = sprAllocMap.get(id) ?? 0;
@@ -1306,6 +1322,11 @@ router.get("/:id/sub-payments", async (req, res) => {
         paymentStatus: jobSubcontractorsTable.paymentStatus,
         paidAt: jobSubcontractorsTable.paidAt,
         lastPaidAt: jobSubcontractorsTable.lastPaidAt,
+        accruedBonus: jobSubcontractorsTable.accruedBonus,
+        accruedBonusNote: jobSubcontractorsTable.accruedBonusNote,
+        accruedAdvancement: jobSubcontractorsTable.accruedAdvancement,
+        paymentMethodDraft: jobSubcontractorsTable.paymentMethodDraft,
+        paymentReferenceDraft: jobSubcontractorsTable.paymentReferenceDraft,
         computedOwed: sql<string>`COALESCE((
           SELECT SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0))
           FROM ${jobSubHoursTable}
@@ -1444,6 +1465,11 @@ router.get("/:id/sub-payments", async (req, res) => {
         totalWorkHours: parseFloat((r as any).totalWorkHours ?? "0"),
         totalTravelHours: parseFloat((r as any).totalTravelHours ?? "0"),
         avgTravelRateSnapshot: parseFloat((r as any).avgTravelRateSnapshot ?? "0"),
+        accruedBonus: r.accruedBonus != null ? parseFloat(r.accruedBonus) : null,
+        accruedBonusNote: r.accruedBonusNote ?? null,
+        accruedAdvancement: r.accruedAdvancement != null ? parseFloat(r.accruedAdvancement) : null,
+        paymentMethodDraft: r.paymentMethodDraft ?? null,
+        paymentReferenceDraft: r.paymentReferenceDraft ?? null,
         paymentHistory: historyMap[r.subcontractorId ?? -1] ?? [],
       };
     }));
@@ -2019,6 +2045,47 @@ router.patch("/:id/sub-payments/:subId", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update agreed owed" });
+  }
+});
+
+// PATCH /:jobId/sub-payment-draft/:subId
+// Save draft payroll fields (bonus, advancement, payment info) WITHOUT recording a payment.
+// This allows accruing labor cost on the job card before cash changes hands.
+router.patch("/:jobId/sub-payment-draft/:subId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    const subId = parseInt(req.params.subId);
+    if (isNaN(jobId) || isNaN(subId)) return res.status(400).json({ error: "Invalid ids" });
+
+    const { bonusAmount, bonusNote, advancementAmt, paymentMethod, paymentReference } = req.body;
+
+    const bonusVal   = bonusAmount  != null && bonusAmount  !== "" ? parseFloat(String(bonusAmount))  : null;
+    const advanceVal = advancementAmt != null && advancementAmt !== "" ? parseFloat(String(advancementAmt)) : null;
+
+    if (bonusVal   != null && (isNaN(bonusVal)   || bonusVal   < 0)) return res.status(400).json({ error: "bonusAmount must be non-negative" });
+    if (advanceVal != null && (isNaN(advanceVal) || advanceVal < 0)) return res.status(400).json({ error: "advancementAmt must be non-negative" });
+
+    const [existing] = await db
+      .select({ jobId: jobSubcontractorsTable.jobId })
+      .from(jobSubcontractorsTable)
+      .where(and(eq(jobSubcontractorsTable.jobId, jobId), eq(jobSubcontractorsTable.subcontractorId, subId)));
+    if (!existing) return res.status(404).json({ error: "Sub not found on this job" });
+
+    await db.update(jobSubcontractorsTable).set({
+      accruedBonus:          bonusVal   != null ? String(bonusVal.toFixed(2))   : null,
+      accruedBonusNote:      bonusNote  != null ? String(bonusNote)  : null,
+      accruedAdvancement:    advanceVal != null ? String(advanceVal.toFixed(2)) : null,
+      paymentMethodDraft:    paymentMethod    != null ? String(paymentMethod)    : null,
+      paymentReferenceDraft: paymentReference != null ? String(paymentReference) : null,
+    }).where(and(
+      eq(jobSubcontractorsTable.jobId, jobId),
+      eq(jobSubcontractorsTable.subcontractorId, subId),
+    ));
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to save payroll draft" });
   }
 });
 

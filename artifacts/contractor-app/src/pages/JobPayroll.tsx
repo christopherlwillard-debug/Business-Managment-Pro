@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useLocation } from "wouter";
-import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCircle2, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCircle2, Pencil, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
@@ -53,6 +53,12 @@ type SubPaymentRow = {
   fixedAmount: number | null;
   allocationPct: number | null;
   paymentStatus: string;
+  // Draft payroll fields — saved without recording a payment
+  accruedBonus?: number | null;
+  accruedBonusNote?: string | null;
+  accruedAdvancement?: number | null;
+  paymentMethodDraft?: string | null;
+  paymentReferenceDraft?: string | null;
   paymentHistory?: SubPayHistoryEntry[];
 };
 
@@ -88,13 +94,14 @@ const PAYMENT_METHODS = ["Zelle", "Cash App", "Cash", "Check", "Venmo", "ACH / B
 
 // ── Worker Card ──────────────────────────────────────────────────────────────────
 function WorkerPayCard({
-  p, jobId, splitPool, subHours, onRefresh,
+  p, jobId, splitPool, subHours, onRefresh, onDirtyChange,
 }: {
   p: SubPaymentRow;
   jobId: number;
   splitPool: number;
   subHours: SubHourEntry[];
   onRefresh: () => Promise<void>;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) {
   const { toast } = useToast();
   const isHourly = p.compensationType === "hourly";
@@ -110,10 +117,11 @@ function WorkerPayCard({
   const isFullyPaid = p.paymentStatus === "paid" || p.paymentStatus === "overpaid";
   const isOvpd      = p.paymentStatus === "overpaid";
   const isPartial   = p.paymentStatus === "partial";
+  const isDraft     = !isFullyPaid && !isPartial && (p.totalHours > 0 || (p.accruedBonus ?? 0) > 0 || (p.computedOwed ?? 0) > 0);
 
-  // Payment method / reference
-  const [paymentMethod,    setPaymentMethod]    = useState("");
-  const [paymentReference, setPaymentReference] = useState("");
+  // Payment method / reference — initialized from saved draft
+  const [paymentMethod,    setPaymentMethod]    = useState(() => p.paymentMethodDraft ?? "");
+  const [paymentReference, setPaymentReference] = useState(() => p.paymentReferenceDraft ?? "");
 
   // Hourly form — initialized from props; synced via effects so onRefresh() updates unlock the payment button
   const [workHours,   setWorkHours]   = useState(() => {
@@ -126,14 +134,13 @@ function WorkerPayCard({
     return th > 0 ? th.toFixed(2) : "";
   });
   const [travelRate,  setTravelRate]  = useState(() => {
-    // Prefer job-level override → profile rate → average rate_snapshot from logged travel hours
     const explicit = p.travelRate ?? p.travelPayRate ?? null;
     if (explicit != null && explicit > 0) return String(explicit);
     if ((p.avgTravelRateSnapshot ?? 0) > 0) return String(p.avgTravelRateSnapshot);
     return "";
   });
 
-  // Sync read-only hours from refreshed props (so "Review & Record" unlocks after inline log)
+  // Sync read-only hours from refreshed props
   useEffect(() => {
     const wh = p.totalWorkHours ?? 0;
     setWorkHours(wh > 0 ? wh.toFixed(2) : p.totalHours > 0 ? p.totalHours.toFixed(2) : "");
@@ -142,14 +149,36 @@ function WorkerPayCard({
     const th = p.totalTravelHours ?? 0;
     setTravelHours(th > 0 ? th.toFixed(2) : "");
   }, [p.totalTravelHours]);
-  const [bonus,       setBonus]       = useState("");
-  const [bonusNote,   setBonusNote]   = useState("");
-  // Advancement = a deduction from the sub's pay (money already given to them personally)
-  const [advancementAmt, setAdvancementAmt] = useState("");
+
+  // Bonus / advancement — initialized from saved draft
+  const [bonus,          setBonus]          = useState(() => p.accruedBonus != null && p.accruedBonus > 0 ? String(p.accruedBonus) : "");
+  const [bonusNote,      setBonusNote]      = useState(() => p.accruedBonusNote ?? "");
+  const [advancementAmt, setAdvancementAmt] = useState(() => p.accruedAdvancement != null && p.accruedAdvancement > 0 ? String(p.accruedAdvancement) : "");
+
+  // Track initial server values to detect dirty state
+  const initialBonus     = useRef(p.accruedBonus != null && p.accruedBonus > 0 ? String(p.accruedBonus) : "");
+  const initialBonusNote = useRef(p.accruedBonusNote ?? "");
+  const initialAdvance   = useRef(p.accruedAdvancement != null && p.accruedAdvancement > 0 ? String(p.accruedAdvancement) : "");
+  const initialMethod    = useRef(p.paymentMethodDraft ?? "");
+  const initialRef       = useRef(p.paymentReferenceDraft ?? "");
+
+  const dirty =
+    bonus          !== initialBonus.current     ||
+    bonusNote      !== initialBonusNote.current ||
+    advancementAmt !== initialAdvance.current   ||
+    paymentMethod  !== initialMethod.current    ||
+    paymentReference !== initialRef.current;
+
+  // Notify page of dirty state
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Saving draft state
+  const [savingChanges, setSavingChanges] = useState(false);
 
   // Payroll correction credit (from prior overpayment on other jobs)
   const [correctionBalance, setCorrectionBalance] = useState(0);
-  const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
   useEffect(() => {
     if (isFullyPaid) return;
     fetch(`${BASE}/api/jobs/payroll-correction/${p.subcontractorId}`, { credentials: "include" })
@@ -172,17 +201,22 @@ function WorkerPayCard({
   const grossPay = isHourly ? workPay + travelPay + bonusAmt : parseFloat(simpleAmount) || 0;
   const netToPay = Math.max(0, grossPay - advancementDeduction);
 
+  // Earnings summary figures (for the 3-column summary strip)
+  // Gross Earned = computed hours earnings (from DB snapshots) + accrued bonus as saved
+  const savedBonusAmt = p.accruedBonus ?? 0;
+  const grossEarned   = isHourly ? (p.computedOwed ?? 0) + savedBonusAmt : (owed > 0 ? owed : 0);
+
   const [historyOpen, setHistoryOpen] = useState(() => (p.paymentHistory?.length ?? 0) > 0);
   const [paying,      setPaying]      = useState(false);
   const [deletingPayId, setDeletingPayId] = useState<number | null>(null);
 
-  // Auto-open the history accordion whenever a new payment appears (e.g. right after recording one)
+  // Auto-open history accordion whenever a new payment appears
   const historyLen = p.paymentHistory?.length ?? 0;
   useEffect(() => {
     if (historyLen > 0) setHistoryOpen(true);
   }, [historyLen]);
 
-  // Inline hours entry (shown when hourly sub has no hours logged)
+  // Inline hours entry
   const [showLogHours,   setShowLogHours]   = useState(false);
   const [logDate,        setLogDate]        = useState(() => new Date().toISOString().split("T")[0]);
   const [logHours,       setLogHours]       = useState("");
@@ -190,7 +224,6 @@ function WorkerPayCard({
   const [logRate,        setLogRate]        = useState(() => String(p.hourlyRate ?? p.payRate ?? ""));
   const [savingLogHours, setSavingLogHours] = useState(false);
 
-  // Swap rate default when user switches hour type
   function handleLogHourTypeChange(type: "work" | "travel") {
     setLogHourType(type);
     if (type === "travel") {
@@ -250,9 +283,39 @@ function WorkerPayCard({
     }
   }
 
-  // Review-sheet draft — captured from card state when the sheet opens;
-  // edits inside the sheet only mutate this draft, NOT the card state.
-  // Cancelling discards the draft; confirming passes it to submitPayment.
+  // ── Save Changes (draft save — no ledger entry) ───────────────────────────────
+  async function handleSaveChanges() {
+    setSavingChanges(true);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${jobId}/sub-payment-draft/${p.subcontractorId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          bonusAmount:     bonus          !== "" ? parseFloat(bonus)          : null,
+          bonusNote:       bonusNote      !== "" ? bonusNote                   : null,
+          advancementAmt:  advancementAmt !== "" ? parseFloat(advancementAmt) : null,
+          paymentMethod:   paymentMethod  !== "" ? paymentMethod               : null,
+          paymentReference: paymentReference !== "" ? paymentReference         : null,
+        }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      // Reset initial refs so dirty clears
+      initialBonus.current     = bonus;
+      initialBonusNote.current = bonusNote;
+      initialAdvance.current   = advancementAmt;
+      initialMethod.current    = paymentMethod;
+      initialRef.current       = paymentReference;
+      await onRefresh();
+      toast({ title: "Changes saved", description: "Payroll draft updated — job profitability reflects the latest labor cost." });
+    } catch (e: any) {
+      toast({ title: "Failed to save changes", description: e?.message, variant: "destructive" });
+    } finally {
+      setSavingChanges(false);
+    }
+  }
+
+  // Review-sheet draft
   type ReviewDraft = { bonus: string; bonusNote: string; paymentMethod: string; paymentReference: string };
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft | null>(null);
   const reviewOpen = reviewDraft !== null;
@@ -350,7 +413,12 @@ function WorkerPayCard({
       if (!r.ok) throw new Error();
       await onRefresh();
       closeReview();
-      setAdvancementAmt("");
+      // Reset draft refs after payment so dirty clears
+      initialBonus.current     = bonus;
+      initialBonusNote.current = bonusNote;
+      initialAdvance.current   = advancementAmt;
+      initialMethod.current    = paymentMethod;
+      initialRef.current       = paymentReference;
       toast({ title: "Payment recorded", description: `${p.subName ?? "Sub"}: $${fmt(draftNet)} paid` });
     } catch { toast({ title: "Failed to record payment", variant: "destructive" }); }
     finally { setPaying(false); }
@@ -364,17 +432,25 @@ function WorkerPayCard({
       : "text-purple-700 bg-purple-50 border-purple-200";
   const badgeLabel  = isHourly ? "Hourly" : isFixed ? "Fixed" : "%Alloc";
 
+  // Whether to show the sticky "Review & Record" action bar
+  const hasHours = (parseFloat(workHours) || 0) > 0;
+  const canReview = !isFullyPaid && (isHourly ? hasHours : true) && netToPay > 0;
+
   return (
-    <div className={`bg-white rounded-2xl shadow-sm border border-border overflow-hidden border-l-4 ${borderColor}`}>
+    // NOTE: no overflow-hidden so the sticky action bar can escape the card's clip
+    <div className={`bg-white rounded-2xl shadow-sm border border-border border-l-4 ${borderColor}`}>
       {/* Header row */}
       <div className="px-5 pt-5 pb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center flex-wrap gap-2 mb-0.5">
             <span className="text-base font-bold text-foreground">{p.subName ?? "Sub"}</span>
             <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${badgeCls}`}>{badgeLabel}</span>
-            {isFullyPaid && !isOvpd && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">✓ Paid</span>}
-            {isOvpd && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">⚠ Payroll Correction</span>}
-            {isPartial   && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Partial</span>}
+            {isFullyPaid && !isOvpd && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">✓ Paid in Full</span>}
+            {isOvpd      && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">⚠ Payroll Correction</span>}
+            {isPartial   && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Partially Paid</span>}
+            {isDraft && !isPartial && !isFullyPaid && (
+              <span className="text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full">Draft</span>
+            )}
           </div>
           {isAlloc   && <p className="text-xs text-purple-600">{(p.allocationPct ?? 0).toFixed(1)}% of split pool</p>}
           {isPartial && <p className="text-xs text-muted-foreground">Paid ${fmt(paid)} · Balance ${fmt(balance)}</p>}
@@ -386,6 +462,26 @@ function WorkerPayCard({
           {isPartial && balance > 0 && <p className="text-xs text-orange-500">Due: ${fmt(balance)}</p>}
         </div>
       </div>
+
+      {/* ── Earnings Summary Strip (Gross / Paid / Outstanding) — hourly subs with labor ── */}
+      {isHourly && grossEarned > 0 && (
+        <div className="mx-5 mb-3 grid grid-cols-3 divide-x divide-border/50 rounded-xl border border-border/60 bg-muted/10 overflow-hidden">
+          <div className="px-3 py-2.5 text-center">
+            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide mb-0.5">Gross Earned</p>
+            <p className="text-sm font-black text-foreground">${fmt(grossEarned)}</p>
+          </div>
+          <div className="px-3 py-2.5 text-center">
+            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide mb-0.5">Already Paid</p>
+            <p className="text-sm font-black text-emerald-700">${fmt(paid)}</p>
+          </div>
+          <div className="px-3 py-2.5 text-center">
+            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide mb-0.5">Outstanding</p>
+            <p className={`text-sm font-black ${Math.max(0, grossEarned - paid) > 0.01 ? "text-orange-600" : "text-muted-foreground"}`}>
+              ${fmt(Math.max(0, grossEarned - paid))}
+            </p>
+          </div>
+        </div>
+      )}
 
       {!isFullyPaid && (
         <>
@@ -512,15 +608,16 @@ function WorkerPayCard({
                   </div>
                 )}
 
+                {/* Bonus */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-muted-foreground block mb-1">Bonus <span className="opacity-50">(opt)</span></label>
-                    <input type="number" value={bonus} onChange={e => setBonus(e.target.value)}
+                    <input type="number" value={bonus} onChange={e => { setBonus(e.target.value); }}
                       className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="0.00" />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground block mb-1">Bonus Note</label>
-                    <input type="text" value={bonusNote} onChange={e => setBonusNote(e.target.value)}
+                    <input type="text" value={bonusNote} onChange={e => { setBonusNote(e.target.value); }}
                       className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="reason..." />
                   </div>
                 </div>
@@ -530,6 +627,27 @@ function WorkerPayCard({
                     <span className="text-xs font-semibold text-blue-700">Gross Earned</span>
                     <span className="text-sm font-bold text-blue-700">${fmt(grossPay)}</span>
                   </div>
+                )}
+
+                {/* ── Save Changes button — persists bonus/advancement/payment info without recording payment ── */}
+                {dirty && (
+                  <button
+                    onClick={handleSaveChanges}
+                    disabled={savingChanges}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-sm font-bold transition-colors disabled:opacity-50"
+                  >
+                    {savingChanges ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-blue-500/50 border-t-blue-600 rounded-full animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-3.5 h-3.5" />
+                        Save Changes
+                      </>
+                    )}
+                  </button>
                 )}
               </div>
             ) : (
@@ -685,13 +803,16 @@ function WorkerPayCard({
               </div>
             ) : (
               <div className="space-y-2">
-                <button
-                  onClick={openReview}
-                  disabled={netToPay <= 0}
-                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted text-white font-bold rounded-2xl text-base transition-colors disabled:opacity-50 shadow-sm"
-                >
-                  Review &amp; Record — ${fmt(netToPay)}
-                </button>
+                {/* Sticky "Review & Record Payment" bar */}
+                <div className={`${canReview ? "sticky bottom-0 z-10" : ""} -mx-5 px-5 pb-1 pt-1 bg-white`}>
+                  <button
+                    onClick={openReview}
+                    disabled={netToPay <= 0}
+                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted text-white font-bold rounded-2xl text-base transition-colors disabled:opacity-50 shadow-sm"
+                  >
+                    Review &amp; Record Payment — ${fmt(netToPay)}
+                  </button>
+                </div>
                 {isHourly && (
                   <button
                     onClick={() => setShowLogHours(true)}
@@ -969,6 +1090,15 @@ export default function JobPayroll() {
   const [plStepOrder,      setPlStepOrder]      = useState<string[]>(["expenses", "labor", "growth"]);
   const [recordingDraw,    setRecordingDraw]    = useState(false);
 
+  // Track whether any card has unsaved changes for back-navigation guard
+  const dirtyCountRef = useRef(0);
+  const [anyDirty, setAnyDirty] = useState(false);
+
+  function handleCardDirtyChange(isDirty: boolean) {
+    dirtyCountRef.current = Math.max(0, dirtyCountRef.current + (isDirty ? 1 : -1));
+    setAnyDirty(dirtyCountRef.current > 0);
+  }
+
   const refreshAll = useCallback(async () => {
     const [pRes, profRes, hoursRes] = await Promise.allSettled([
       fetch(`${BASE}/api/jobs/${jobId}/sub-payments`,  { credentials: "include" }).then(r => r.ok ? r.json() : []),
@@ -1026,6 +1156,14 @@ export default function JobPayroll() {
   const taxReserve     = ownerShare * (taxReservePct / 100);
   const ownerTakeHome  = ownerShare - taxReserve;
 
+  function handleBack() {
+    if (anyDirty) {
+      const ok = window.confirm("You have unsaved payroll changes.\n\nLeave without saving?");
+      if (!ok) return;
+    }
+    if (window.history.length > 1) window.history.back(); else navigate("/jobs");
+  }
+
   async function handleOwnerDraw() {
     if (ownerTakeHome <= 0.01) return;
     setRecordingDraw(true);
@@ -1045,17 +1183,22 @@ export default function JobPayroll() {
       {/* Sticky header */}
       <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-border/50 px-4 py-3 flex items-center gap-3">
         <button
-          onClick={() => { if (window.history.length > 1) window.history.back(); else navigate("/jobs"); }}
+          onClick={handleBack}
           className="w-9 h-9 flex items-center justify-center rounded-xl bg-muted/40 hover:bg-muted/70 transition-colors flex-shrink-0"
         >
           <ArrowLeft className="w-4.5 h-4.5 text-foreground" />
         </button>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-xs text-muted-foreground leading-none mb-0.5">Sub Payment</p>
           <h1 className="text-base font-bold text-foreground truncate leading-tight">
             {loading ? "Loading…" : job?.title ?? `Job #${jobId}`}
           </h1>
         </div>
+        {anyDirty && (
+          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full flex-shrink-0">
+            Unsaved
+          </span>
+        )}
       </div>
 
       {loading ? (
@@ -1063,7 +1206,7 @@ export default function JobPayroll() {
           <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="max-w-2xl mx-auto px-4 py-6 space-y-5 pb-24">
+        <div className="max-w-2xl mx-auto px-4 py-6 space-y-5 pb-36">
 
           {/* ── Job Summary (P&L Waterfall) ── */}
           {profit != null && (
@@ -1080,7 +1223,7 @@ export default function JobPayroll() {
                 </div>
               </div>
 
-              {/* Configurable deduction steps — order from Settings P&L Layout */}
+              {/* Configurable deduction steps */}
               <div className="divide-y divide-border/30">
                 {(() => {
                   const stepDefs: Record<string, { label: string; amount: number }> = {
@@ -1148,6 +1291,7 @@ export default function JobPayroll() {
                 splitPool={toSplit}
                 subHours={subHours.filter(h => h.subcontractorId === p.subcontractorId)}
                 onRefresh={refreshAll}
+                onDirtyChange={handleCardDirtyChange}
               />
             ))
           )}
