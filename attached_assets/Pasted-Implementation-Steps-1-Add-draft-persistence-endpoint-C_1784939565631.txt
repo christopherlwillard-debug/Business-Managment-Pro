@@ -1,0 +1,174 @@
+Implementation Steps
+
+1. Add draft persistence endpoint.
+
+Create or extend a PATCH endpoint (for example:
+/api/jobs/:jobId/sub-payment-draft/:subId)
+
+Persist the following payroll draft fields:
+
+- Work Hours
+- Travel Hours
+- Work Rate
+- Travel Rate
+- Bonus
+- Bonus Note
+- Advancement Deduction
+- Payment Method
+- Payment Reference
+
+If Work Hours and Travel Hours are already stored as Logged Entries, update those existing records instead of creating duplicate values on the job_subcontractors row. The application must maintain a single source of truth for hours while still allowing Save Changes to persist all payroll edits without recording a payment.
+
+Saving draft data must:
+- NOT create a ledger entry.
+- NOT create a payment record.
+- NOT change payroll status.
+- Only save payroll edits.
+
+2. Add Save Changes button.
+
+Place a primary "Save Changes" button below the Earnings / Bonus / Advancement section.
+
+On click:
+
+- Save all payroll draft data.
+- Update any existing Logged Entries if hours or rates were changed.
+- Recalculate Gross Earned.
+- Recalculate Outstanding.
+- Show a success toast.
+- Remain on the page.
+- Do not advance payroll status.
+- Do not create any payment transaction.
+
+3. Compute accrued earnings.
+
+Immediately recompute:
+
+Gross Earned =
+(Work Hours × Work Rate)
++ (Travel Hours × Travel Rate)
++ Bonus
+− Advancement Deduction
+
+Then update:
+
+- Already Paid
+- Outstanding
+- Labor Cost
+- Total Job Cost
+- Projected Profit
+- Projected Profit Margin
+
+The Job Card must always use accrued labor, regardless of whether a payment has been recorded.
+
+Recording a payment must only affect:
+
+- Cash Movement
+- Payment Ledger
+- Payroll History
+- Already Paid
+- Outstanding Balance
+
+Recording a payment must NEVER change Labor Cost or Job Profitability.
+
+4. Add worker earnings summary.
+
+Display near the top of each hourly worker card:
+
+Gross Earned
+Already Paid
+Outstanding
+
+These values should update immediately after Save Changes.
+
+5. Add payment status badge.
+
+Display one of the following:
+
+🟡 Draft
+Saved labor exists but no payment has been recorded.
+
+🟠 Partially Paid
+Some payments have been recorded and Outstanding > $0.
+
+🟢 Paid in Full
+Outstanding = $0.
+
+6. Add sticky payment action.
+
+Rename the existing button:
+
+Review & Record Payment — $X
+
+Move it into a fixed sticky bottom action bar with iOS safe-area padding.
+
+Remove the existing inline Review & Record button.
+
+Only display when:
+
+- Hourly subcontractor
+- Not fully paid
+- Log Hours panel is closed
+- Outstanding balance is greater than $0
+
+Selecting the button opens the existing confirmation workflow unchanged.
+
+After confirmation:
+
+- Create payment ledger entry.
+- Record payment.
+- Update Already Paid.
+- Update Outstanding.
+- Update payroll status.
+
+7. Add dirty-state protection.
+
+Track whether payroll fields have unsaved edits.
+
+Fields include:
+
+- Work Hours
+- Travel Hours
+- Work Rate
+- Travel Rate
+- Bonus
+- Bonus Note
+- Advancement Deduction
+- Payment Method
+- Payment Reference
+
+If the user attempts to leave the page before saving, display:
+
+"You have unsaved payroll changes."
+
+Options:
+
+- Save Changes
+- Discard
+- Cancel
+
+Clear the dirty flag after Save Changes completes successfully.
+
+8. Keep accounting concepts separate.
+
+Maintain two independent accounting concepts throughout the payroll system.
+
+Accrued Labor
+- Labor Cost
+- Gross Earned
+- Outstanding Balance
+- Job Costing
+- Projected Profitability
+
+Recorded Payments
+- Cash Movement
+- Payment Ledger
+- Payroll History
+- Already Paid
+- Bank Reconciliation
+
+Never derive Accrued Labor from Recorded Payments.
+
+Never change Labor Cost or Job Profitability when recording a payment.
+
+If payroll calculations currently exist in multiple places, create a shared payroll calculation service so Gross Earned, Outstanding, Labor Cost, Payment Status, and Job Profitability are always calculated from a single source of truth.
