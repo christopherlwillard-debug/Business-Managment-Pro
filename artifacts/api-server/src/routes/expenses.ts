@@ -5,6 +5,7 @@ import { eq, and, gte, lte, sql, isNull, or, desc, getTableColumns } from "drizz
 import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { reconcileExpense } from "../lib/matchingEngine.js";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
@@ -230,6 +231,9 @@ router.post("/", async (req, res) => {
       await syncJobSubPayment(expense.jobId, expense.subcontractorId);
     }
 
+    // Attempt auto-link to a bank transaction (fire-and-forget — never delays response)
+    reconcileExpense(expense.id).catch(() => {});
+
     // Client derives jobTitle/subcontractorName from its own loaded lists — skip the JOIN
     res.status(201).json(formatExpense(expense, null, null));
   } catch (err) {
@@ -357,6 +361,9 @@ router.put("/:id", async (req, res) => {
       const [jId, sId] = pair.split(":").map(Number);
       await syncJobSubPayment(jId, sId);
     }
+
+    // Attempt auto-link to a bank transaction (fire-and-forget — never delays response)
+    reconcileExpense(updated.id).catch(() => {});
 
     const [joined] = await buildExpenseQuery().where(eq(expensesTable.id, updated.id));
     res.json(formatExpense(joined ?? updated, joined?.jobTitle, joined?.subcontractorName));

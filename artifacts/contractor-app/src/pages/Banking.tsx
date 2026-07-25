@@ -27,9 +27,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X, Link2, ExternalLink, Trash2, FileText, PiggyBank } from "lucide-react";
+import { Landmark, RefreshCw, Unlink, AlertCircle, DollarSign, CheckCircle2, Receipt, TrendingUp, Settings, Info, X, Link2, ExternalLink, Trash2, FileText, PiggyBank, Zap } from "lucide-react";
 import { Link } from "wouter";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -191,6 +193,36 @@ interface UnmatchedExpense {
   jobId: number | null;
 }
 
+type MatchType = "expense" | "invoice" | "sub_payment" | "recurring";
+
+interface MatchSuggestion {
+  score: number;
+  reasons: string[];
+  matchType: MatchType;
+  // expense fields
+  expense?: {
+    id: number;
+    date: string;
+    description: string;
+    category: string;
+    amount: string;
+    vendor: string | null;
+    jobId: number | null;
+  };
+  // invoice fields
+  invoiceId?: number;
+  invoiceNumber?: string | null;
+  invoiceDescription?: string;
+  clientName?: string | null;
+  // recurring fields
+  recurringCategory?: string;
+  recurringLabel?: string;
+  // sub payment fields
+  subPaymentId?: number;
+  subPaymentDescription?: string;
+  subcontractorId?: number | null;
+}
+
 function formatCurrency(amount: number | string | null | undefined, currency = "USD") {
   if (amount == null) return "—";
   const n = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -236,7 +268,7 @@ export default function Banking() {
   const [form, setForm] = useState<FileExpenseForm>({
     description: "",
     vendor: "",
-    category: "Materials",
+    category: "Tools/Equipment",
     jobId: "",
     businessLine: "",
     notes: "",
@@ -245,6 +277,58 @@ export default function Banking() {
   // Match to existing expense
   const [matchingTxn, setMatchingTxn] = useState<PlaidTransaction | null>(null);
   const [matchExpenseSearch, setMatchExpenseSearch] = useState("");
+  const [showAllExpenses, setShowAllExpenses] = useState(false);
+
+  // Banking settings (#1317)
+  const [showBankingSettings, setShowBankingSettings] = useState(false);
+  const [autoMatchEnabled, setAutoMatchEnabled] = useState(() =>
+    localStorage.getItem("banking-auto-match") !== "false"
+  );
+  const [confidenceThreshold, setConfidenceThreshold] = useState(() =>
+    parseInt(localStorage.getItem("banking-confidence-threshold") ?? "95", 10)
+  );
+
+  function saveAutoMatch(val: boolean) {
+    setAutoMatchEnabled(val);
+    localStorage.setItem("banking-auto-match", String(val));
+  }
+  function saveConfidenceThreshold(val: number) {
+    setConfidenceThreshold(val);
+    localStorage.setItem("banking-confidence-threshold", String(val));
+  }
+
+  // #1322 — Vendor learning rules (localStorage)
+  interface VendorRule { normalizedVendor: string; category: string; count: number; updatedAt: string; }
+  const [vendorRules, setVendorRules] = useState<VendorRule[]>(() => {
+    try { return JSON.parse(localStorage.getItem("banking-vendor-rules") ?? "[]"); } catch { return []; }
+  });
+
+  function learnVendorRule(rawDescription: string, category: string) {
+    const key = rawDescription.toUpperCase().trim().replace(/[^A-Z0-9\s]/g, "").replace(/\s+/g, " ").slice(0, 40);
+    if (!key || !category) return;
+    setVendorRules(prev => {
+      const existing = prev.find(r => r.normalizedVendor === key);
+      const updated: VendorRule[] = existing
+        ? prev.map(r => r.normalizedVendor === key
+            ? { ...r, category, count: r.count + 1, updatedAt: new Date().toISOString().slice(0, 10) }
+            : r)
+        : [...prev, { normalizedVendor: key, category, count: 1, updatedAt: new Date().toISOString().slice(0, 10) }];
+      localStorage.setItem("banking-vendor-rules", JSON.stringify(updated));
+      return updated;
+    });
+  }
+
+  function deleteVendorRule(normalizedVendor: string) {
+    setVendorRules(prev => {
+      const updated = prev.filter(r => r.normalizedVendor !== normalizedVendor);
+      localStorage.setItem("banking-vendor-rules", JSON.stringify(updated));
+      return updated;
+    });
+  }
+
+  // #1323 — Month-end reconciliation wizard
+  const [showReconcileWizard, setShowReconcileWizard] = useState(false);
+  const [statementBalance, setStatementBalance] = useState("");
 
   // Income filing
   const [incomeFilingTxn, setIncomeFilingTxn] = useState<PlaidTransaction | null>(null);
@@ -314,10 +398,17 @@ export default function Banking() {
     staleTime: 60_000,
   });
 
+  const { data: suggestions, isLoading: suggestionsLoading } = useQuery<MatchSuggestion[]>({
+    queryKey: ["match-suggestions", matchingTxn?.id],
+    queryFn: () => apiFetch<MatchSuggestion[]>(`/api/plaid/transactions/${matchingTxn!.id}/suggestions`),
+    enabled: !!matchingTxn,
+    staleTime: 0,
+  });
+
   const { data: unmatchedExpenses, isLoading: unmatchedExpensesLoading } = useQuery<UnmatchedExpense[]>({
     queryKey: ["unmatched-expenses"],
     queryFn: () => apiFetch<UnmatchedExpense[]>(`/api/plaid/expenses/unmatched?dateRange=90`),
-    enabled: !!matchingTxn,
+    enabled: !!matchingTxn && showAllExpenses,
     staleTime: 0,
   });
 
@@ -396,6 +487,10 @@ export default function Banking() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
       qc.invalidateQueries({ queryKey: ["expenses"] });
+      // #1322: learn vendor→category from manual filing
+      if (filingTxn && form.category) {
+        learnVendorRule(filingTxn.description, form.category);
+      }
       setFilingTxn(null);
       toast({ title: "Expense filed", description: "Transaction has been recorded as an expense." });
     },
@@ -523,7 +618,7 @@ export default function Banking() {
     setForm({
       description: txn.description,
       vendor: "",
-      category: "Materials",
+      category: "Tools/Equipment",
       jobId: "",
       businessLine: activeBusiness?.slug ?? "",
       notes: "",
@@ -679,19 +774,29 @@ export default function Banking() {
         </div>
         <div className="flex items-center gap-2">
           <div className="flex flex-col items-end gap-0.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => syncMutation.mutate()}
-              disabled={syncMutation.isPending}
-            >
-              {syncMutation.isPending ? (
-                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
-              ) : (
-                <RefreshCw className="w-4 h-4 mr-2" />
-              )}
-              Sync Transactions
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setStatementBalance(""); setShowReconcileWizard(true); }}
+              >
+                <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                Reconcile
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => syncMutation.mutate()}
+                disabled={syncMutation.isPending}
+              >
+                {syncMutation.isPending ? (
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                )}
+                Sync Transactions
+              </Button>
+            </div>
             {connection.lastSyncedAt && (
               <span className="text-xs text-muted-foreground">
                 Last synced:{" "}
@@ -816,12 +921,62 @@ export default function Banking() {
         </Card>
       ) : (
         <Card>
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-base">Recent Transactions (Last 30 Days)</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Synced {new Date(connection.lastSyncedAt).toLocaleString()}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground">
+                Synced {new Date(connection.lastSyncedAt).toLocaleString()}
+              </p>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => setShowBankingSettings(true)}
+                      className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                    >
+                      <Settings className="w-4 h-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Reconciliation settings</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           </CardHeader>
+          {/* Inbox summary bar */}
+          {transactions && transactions.length > 0 && (() => {
+            const unmatchedDebits = transactions.filter(t => t.transactionType === "debit" && t.status === "unmatched").length;
+            const matched = transactions.filter(t => t.status === "matched").length;
+            const investmentTransfers = transactions.filter(t => t.status === "investment_transfer").length;
+            const totalFiled = matched + investmentTransfers;
+            return (
+              <div className="px-6 pb-2 flex items-center gap-4 text-xs text-muted-foreground border-b">
+                {unmatchedDebits > 0 ? (
+                  <span className="flex items-center gap-1.5 text-amber-700 font-medium">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    {unmatchedDebits} unmatched debit{unmatchedDebits !== 1 ? "s" : ""}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-emerald-700 font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    All debits reconciled
+                  </span>
+                )}
+                {totalFiled > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    {totalFiled} filed
+                  </span>
+                )}
+                {autoMatchEnabled && (
+                  <span className="flex items-center gap-1.5 ml-auto text-blue-600">
+                    <Zap className="w-3 h-3" />
+                    Auto-match on
+                  </span>
+                )}
+              </div>
+            );
+          })()}
           <CardContent className="p-0">
             {txnsLoading ? (
               <div className="space-y-2 p-4">
@@ -954,7 +1109,8 @@ export default function Banking() {
                                 )}
                               </div>
                             ) : isCredit ? (
-                              <div className="flex items-center justify-end gap-1">
+                              <div className="flex flex-col items-end gap-1">
+                                <div className="flex items-center gap-1">
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -964,6 +1120,20 @@ export default function Banking() {
                                   <TrendingUp className="w-3 h-3 mr-1" />
                                   File as Income
                                 </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs px-2.5 text-blue-700 border-blue-300 hover:bg-blue-50"
+                                  onClick={() => {
+                                    setMatchingTxn(txn);
+                                    setMatchExpenseSearch("");
+                                    setShowAllExpenses(false);
+                                  }}
+                                >
+                                  <Link2 className="w-3 h-3 mr-1" />
+                                  Match to Invoice
+                                </Button>
+                                </div>
                                 {confirmDeleteTxnId === txn.id ? (
                                   <span className="inline-flex items-center gap-1 text-xs text-destructive">
                                     <button className="font-semibold underline" onClick={() => deleteTxnMutation.mutate(txn.id)} disabled={deleteTxnMutation.isPending}>Yes</button>
@@ -1226,13 +1396,252 @@ export default function Banking() {
         </SheetContent>
       </Sheet>
 
+      {/* ── Banking Settings Sheet ──────────────────────────────────────────── */}
+      <Sheet open={showBankingSettings} onOpenChange={setShowBankingSettings}>
+        <SheetContent className="w-full sm:max-w-sm overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              Reconciliation Settings
+            </SheetTitle>
+            <SheetDescription>
+              Configure how bank transactions are automatically matched to expenses.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-6 space-y-6">
+            {/* Auto-match toggle */}
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Auto-match on sync</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  When syncing bank transactions, automatically link them to expenses
+                  that are a near-certain match (score ≥ {confidenceThreshold}%).
+                </p>
+              </div>
+              <Switch
+                checked={autoMatchEnabled}
+                onCheckedChange={saveAutoMatch}
+              />
+            </div>
+
+            {/* Confidence threshold */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Confidence threshold</p>
+                <span className="text-sm font-bold tabular-nums">{confidenceThreshold}%</span>
+              </div>
+              <Slider
+                min={70}
+                max={99}
+                step={1}
+                value={[confidenceThreshold]}
+                onValueChange={([v]) => saveConfidenceThreshold(v)}
+                disabled={!autoMatchEnabled}
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>More matches</span>
+                <span>Higher certainty</span>
+              </div>
+              <p className="text-xs text-muted-foreground bg-muted/60 rounded-md px-3 py-2">
+                <span className="font-medium">Recommended: 95%</span> — Only auto-links transactions where
+                the amount, vendor name, and date all align tightly and there's no competing match.
+                Lower values increase matches but may require more manual review.
+              </p>
+            </div>
+
+            {/* How scoring works */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">How confidence is calculated</p>
+              <div className="space-y-1.5 text-xs text-muted-foreground">
+                <div className="flex justify-between">
+                  <span>Amount match</span><span className="font-medium">45 pts</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Vendor / description</span><span className="font-medium">25 pts</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Date proximity</span><span className="font-medium">20 pts</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Category hint</span><span className="font-medium">5 pts</span>
+                </div>
+                <div className="flex justify-between border-t pt-1.5 font-medium text-foreground">
+                  <span>Max score</span><span>95 pts</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+            {/* Learned Rules (#1322) */}
+            {vendorRules.length > 0 && (
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Learned vendor rules ({vendorRules.length})</p>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-destructive"
+                    onClick={() => { setVendorRules([]); localStorage.removeItem("banking-vendor-rules"); }}
+                  >
+                    Clear all
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">Rules learned from how you categorize transactions.</p>
+                <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                  {vendorRules.sort((a, b) => b.count - a.count).map((rule) => (
+                    <div key={rule.normalizedVendor} className="flex items-center justify-between gap-2 text-xs py-1 border-b last:border-0">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{rule.normalizedVendor}</p>
+                        <p className="text-muted-foreground">{rule.category} · used {rule.count}×</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => deleteVendorRule(rule.normalizedVendor)}
+                        className="p-0.5 rounded text-muted-foreground hover:text-destructive shrink-0"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          <SheetFooter className="mt-6">
+            <Button variant="outline" className="w-full" onClick={() => setShowBankingSettings(false)}>
+              Done
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Month-End Reconciliation Wizard (#1323) ─────────────────────────── */}
+      <Sheet open={showReconcileWizard} onOpenChange={setShowReconcileWizard}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              Month-End Reconciliation
+            </SheetTitle>
+            <SheetDescription>
+              Verify that your bank statement matches your recorded transactions.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-5 space-y-5">
+            {/* Step 1: Enter statement balance */}
+            <div className="space-y-2">
+              <Label htmlFor="stmt-balance">Bank statement ending balance</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  id="stmt-balance"
+                  className="pl-7"
+                  placeholder="0.00"
+                  value={statementBalance}
+                  onChange={(e) => setStatementBalance(e.target.value.replace(/[^0-9.]/g, ""))}
+                />
+              </div>
+            </div>
+
+            {/* Transaction summary */}
+            {transactions && transactions.length > 0 && (() => {
+              const debits = transactions.filter(t => t.transactionType === "debit");
+              const credits = transactions.filter(t => t.transactionType === "credit");
+              const totalDebits = debits.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+              const totalCredits = credits.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+              const unmatchedDebits = debits.filter(t => t.status === "unmatched");
+              const unmatchedCredits = credits.filter(t => t.status === "unmatched");
+              const stmtAmt = parseFloat(statementBalance || "0");
+              const netFromTxns = totalCredits - totalDebits;
+
+              return (
+                <div className="space-y-4">
+                  {/* Balance comparison */}
+                  <div className="rounded-lg border p-4 space-y-2">
+                    <p className="text-sm font-medium">Period summary (Last 30 days)</p>
+                    <div className="space-y-1.5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total credits (in)</span>
+                        <span className="text-emerald-700 font-medium">+{formatCurrency(totalCredits)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total debits (out)</span>
+                        <span className="text-destructive font-medium">−{formatCurrency(totalDebits)}</span>
+                      </div>
+                      <div className="flex justify-between border-t pt-1.5 font-semibold">
+                        <span>Net change</span>
+                        <span className={netFromTxns >= 0 ? "text-emerald-700" : "text-destructive"}>
+                          {netFromTxns >= 0 ? "+" : ""}{formatCurrency(netFromTxns)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {statementBalance && !isNaN(stmtAmt) && (
+                      <div className={`mt-3 rounded px-3 py-2 text-sm ${Math.abs(stmtAmt - netFromTxns) < 0.01
+                        ? "bg-emerald-50 text-emerald-800"
+                        : "bg-amber-50 text-amber-800"
+                      }`}>
+                        {Math.abs(stmtAmt - netFromTxns) < 0.01
+                          ? "✓ Statement balance matches your records."
+                          : `Difference: ${formatCurrency(Math.abs(stmtAmt - netFromTxns))} — check for missing transactions.`}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Unmatched transactions */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">
+                      {unmatchedDebits.length + unmatchedCredits.length > 0
+                        ? `${unmatchedDebits.length + unmatchedCredits.length} transactions need attention`
+                        : "All transactions reconciled ✓"}
+                    </p>
+                    {(unmatchedDebits.length > 0 || unmatchedCredits.length > 0) && (
+                      <div className="space-y-1 max-h-52 overflow-y-auto">
+                        {[...unmatchedDebits, ...unmatchedCredits].map(t => (
+                          <div key={t.id} className="flex items-center justify-between text-xs py-1.5 border-b last:border-0 gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium truncate">{t.description}</p>
+                              <p className="text-muted-foreground">
+                                {new Date(t.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                {" · "}{t.transactionType === "credit" ? "Credit" : "Debit"}
+                              </p>
+                            </div>
+                            <span className={`font-semibold tabular-nums shrink-0 ${t.transactionType === "credit" ? "text-emerald-700" : "text-foreground"}`}>
+                              {t.transactionType === "credit" ? "+" : "−"}{formatCurrency(parseFloat(t.amount))}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {unmatchedDebits.length === 0 && unmatchedCredits.length === 0 && (
+                    <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800">
+                      <p className="font-semibold">Ready to close the month</p>
+                      <p className="text-xs mt-0.5">All transactions are matched. Your books are reconciled for this period.</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+
+          <SheetFooter className="mt-6">
+            <Button variant="outline" className="w-full" onClick={() => setShowReconcileWizard(false)}>
+              Done
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
       {/* ── Match to Expense Sheet ───────────────────────────────────────────── */}
-      <Sheet open={!!matchingTxn} onOpenChange={(open) => { if (!open) { setMatchingTxn(null); setMatchExpenseSearch(""); } }}>
+      <Sheet open={!!matchingTxn} onOpenChange={(open) => { if (!open) { setMatchingTxn(null); setMatchExpenseSearch(""); setShowAllExpenses(false); } }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <Link2 className="w-4 h-4 text-blue-600" />
-              Match to Expense
+              {matchingTxn?.transactionType === "credit" ? "Match to Invoice" : "Match to Expense"}
             </SheetTitle>
             <SheetDescription>
               {matchingTxn && (
@@ -1248,81 +1657,241 @@ export default function Banking() {
           </SheetHeader>
 
           <div className="mt-5 space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="me-search">Search expenses</Label>
-              <Input
-                id="me-search"
-                placeholder="Name, category, vendor…"
-                value={matchExpenseSearch}
-                onChange={(e) => setMatchExpenseSearch(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
-
-            {unmatchedExpensesLoading ? (
-              <div className="space-y-2">
-                {[...Array(4)].map((_, i) => (
-                  <div key={i} className="h-14 bg-muted rounded animate-pulse" />
-                ))}
-              </div>
-            ) : !unmatchedExpenses || unmatchedExpenses.length === 0 ? (
-              <div className="text-sm text-muted-foreground py-6 text-center">
-                No unmatched expenses found near this amount.
-                <br />
-                <span className="text-xs mt-1 block">Try "File as Expense" to create a new one.</span>
-              </div>
-            ) : (
-              (() => {
-                const search = matchExpenseSearch.toLowerCase();
-                const filtered = unmatchedExpenses.filter((exp) =>
-                  !search ||
-                  exp.description.toLowerCase().includes(search) ||
-                  exp.category.toLowerCase().includes(search) ||
-                  (exp.vendor ?? "").toLowerCase().includes(search)
-                );
-                return filtered.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">No results for "{matchExpenseSearch}"</p>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      Showing {filtered.length} expense{filtered.length !== 1 ? "s" : ""}
-                      {matchingTxn && ` near ${formatCurrency(parseFloat(matchingTxn.amount))}`}
-                    </p>
-                    {filtered.map((exp) => (
-                      <button
-                        key={exp.id}
-                        type="button"
-                        disabled={matchExpenseMutation.isPending}
-                        onClick={() => {
-                          if (!matchingTxn) return;
-                          matchExpenseMutation.mutate({ txnId: matchingTxn.id, expenseId: exp.id });
-                        }}
-                        className="w-full text-left rounded-lg border border-input px-4 py-3 hover:bg-blue-50 hover:border-blue-300 transition-colors disabled:opacity-50 group"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium truncate">{exp.description}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {new Date(exp.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                              {" · "}{exp.category}
-                              {exp.vendor ? ` · ${exp.vendor}` : ""}
-                            </p>
-                          </div>
-                          <span className="text-sm font-semibold tabular-nums shrink-0 group-hover:text-blue-700">
-                            {formatCurrency(parseFloat(exp.amount))}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                );
-              })()
-            )}
-
             {matchExpenseMutation.isPending && (
               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
                 <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 Linking…
+              </div>
+            )}
+
+            {!showAllExpenses ? (
+              /* ── Smart suggestions view ── */
+              <div className="space-y-3">
+                {suggestionsLoading ? (
+                  <div className="space-y-2">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
+                    ))}
+                  </div>
+                ) : !suggestions || suggestions.length === 0 ? (
+                  <div className="text-sm text-muted-foreground py-6 text-center">
+                    <p className="font-medium">No close matches found</p>
+                    <p className="text-xs mt-1">Browse all expenses below to find the right one.</p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Best matches</p>
+                    {suggestions.map((s, idx) => {
+                      const badgeColor = s.score >= 90
+                        ? "bg-emerald-100 text-emerald-800"
+                        : s.score >= 70
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-muted text-muted-foreground";
+
+                      const isInfoOnly = s.matchType === "sub_payment";
+                      const key = s.matchType === "expense"
+                        ? `exp-${s.expense?.id}`
+                        : s.matchType === "invoice"
+                        ? `inv-${s.invoiceId}`
+                        : s.matchType === "sub_payment"
+                        ? `spr-${s.subPaymentId}`
+                        : `rec-${idx}`;
+
+                      // Derive display fields per matchType
+                      const displayDesc = s.matchType === "expense"
+                        ? s.expense?.description
+                        : s.matchType === "invoice"
+                        ? s.invoiceDescription
+                        : s.matchType === "recurring"
+                        ? s.recurringLabel
+                        : s.subPaymentDescription;
+
+                      const displaySub = s.matchType === "expense"
+                        ? `${s.expense?.date ? new Date(s.expense.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}  · ${s.expense?.category ?? ""}${s.expense?.vendor ? ` · ${s.expense.vendor}` : ""}`
+                        : s.matchType === "invoice"
+                        ? `Invoice · ${s.clientName ?? "Client"}`
+                        : s.matchType === "recurring"
+                        ? `Suggested category: ${s.recurringCategory ?? "Office/Admin"}`
+                        : `Sub payment record`;
+
+                      const displayAmt = s.matchType === "expense" && s.expense?.amount
+                        ? formatCurrency(parseFloat(s.expense.amount))
+                        : null;
+
+                      const typeLabel = s.matchType === "invoice"
+                        ? { text: "Invoice", color: "bg-emerald-100 text-emerald-800" }
+                        : s.matchType === "recurring"
+                        ? { text: "Recurring", color: "bg-purple-100 text-purple-800" }
+                        : s.matchType === "sub_payment"
+                        ? { text: "Sub Pay", color: "bg-orange-100 text-orange-800" }
+                        : null;
+
+                      function handleClick() {
+                        if (!matchingTxn) return;
+                        if (s.matchType === "expense" && s.expense) {
+                          matchExpenseMutation.mutate({ txnId: matchingTxn.id, expenseId: s.expense.id });
+                        } else if (s.matchType === "invoice" && s.invoiceId) {
+                          setMatchingTxn(null);
+                          fileAsIncomeMutation.mutate({
+                            txnId: matchingTxn.id,
+                            body: { invoiceId: s.invoiceId, source: "invoice", description: s.invoiceDescription ?? "", notes: null, businessLine: null, jobId: null },
+                          });
+                        } else if (s.matchType === "recurring" && s.recurringCategory) {
+                          // Pre-fill the filing sheet with the recurring category
+                          setMatchingTxn(null);
+                          setForm({
+                            description: matchingTxn.description,
+                            vendor: "",
+                            category: s.recurringCategory,
+                            jobId: "",
+                            businessLine: activeBusiness?.slug ?? "",
+                            notes: `Recurring: ${s.recurringLabel ?? ""}`,
+                          });
+                          setFilingTxn(matchingTxn);
+                        }
+                        // sub_payment: informational only for now
+                      }
+
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          disabled={matchExpenseMutation.isPending || fileAsIncomeMutation.isPending || isInfoOnly}
+                          onClick={handleClick}
+                          className={`w-full text-left rounded-lg border px-4 py-3 transition-colors group ${
+                            isInfoOnly
+                              ? "border-dashed border-muted-foreground/30 cursor-default"
+                              : "border-input hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className={`text-xs font-bold px-1.5 py-0.5 rounded tabular-nums shrink-0 ${badgeColor}`}>
+                                  {s.score}%
+                                </span>
+                                {typeLabel && (
+                                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${typeLabel.color}`}>
+                                    {typeLabel.text}
+                                  </span>
+                                )}
+                                <p className="text-sm font-medium truncate">{displayDesc}</p>
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">{displaySub}</p>
+                              {s.reasons.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {s.reasons.map((r) => (
+                                    <span key={r} className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5">
+                                      ✓ {r}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {isInfoOnly && (
+                                <p className="text-[10px] text-muted-foreground italic mt-1">View sub payments to link this record.</p>
+                              )}
+                            </div>
+                            {displayAmt && (
+                              <span className="text-sm font-semibold tabular-nums shrink-0 group-hover:text-blue-700">
+                                {displayAmt}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  className="w-full text-sm text-muted-foreground hover:text-foreground py-2 border border-dashed rounded-lg hover:border-input transition-colors"
+                  onClick={() => setShowAllExpenses(true)}
+                >
+                  Browse all unmatched expenses
+                </button>
+              </div>
+            ) : (
+              /* ── Browse all expenses view ── */
+              <div className="space-y-3">
+                {suggestions && suggestions.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                    onClick={() => setShowAllExpenses(false)}
+                  >
+                    ← Back to suggestions
+                  </button>
+                )}
+                <div className="space-y-1.5">
+                  <Label htmlFor="me-search">Search expenses</Label>
+                  <Input
+                    id="me-search"
+                    placeholder="Name, category, vendor…"
+                    value={matchExpenseSearch}
+                    onChange={(e) => setMatchExpenseSearch(e.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+
+                {unmatchedExpensesLoading ? (
+                  <div className="space-y-2">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="h-14 bg-muted rounded animate-pulse" />
+                    ))}
+                  </div>
+                ) : !unmatchedExpenses || unmatchedExpenses.length === 0 ? (
+                  <div className="text-sm text-muted-foreground py-6 text-center">
+                    No unmatched expenses found.
+                    <br />
+                    <span className="text-xs mt-1 block">Try "File as Expense" to create a new one.</span>
+                  </div>
+                ) : (
+                  (() => {
+                    const search = matchExpenseSearch.toLowerCase();
+                    const filtered = unmatchedExpenses.filter((exp) =>
+                      !search ||
+                      exp.description.toLowerCase().includes(search) ||
+                      exp.category.toLowerCase().includes(search) ||
+                      (exp.vendor ?? "").toLowerCase().includes(search)
+                    );
+                    return filtered.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">No results for "{matchExpenseSearch}"</p>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          {filtered.length} expense{filtered.length !== 1 ? "s" : ""}
+                        </p>
+                        {filtered.map((exp) => (
+                          <button
+                            key={exp.id}
+                            type="button"
+                            disabled={matchExpenseMutation.isPending}
+                            onClick={() => {
+                              if (!matchingTxn) return;
+                              matchExpenseMutation.mutate({ txnId: matchingTxn.id, expenseId: exp.id });
+                            }}
+                            className="w-full text-left rounded-lg border border-input px-4 py-3 hover:bg-blue-50 hover:border-blue-300 transition-colors disabled:opacity-50 group"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{exp.description}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {new Date(exp.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                  {" · "}{exp.category}
+                                  {exp.vendor ? ` · ${exp.vendor}` : ""}
+                                </p>
+                              </div>
+                              <span className="text-sm font-semibold tabular-nums shrink-0 group-hover:text-blue-700">
+                                {formatCurrency(parseFloat(exp.amount))}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()
+                )}
               </div>
             )}
           </div>

@@ -1300,7 +1300,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
   });
 
   const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState({ description: "", amount: "", category: "Materials", date: localDateString(), vendor: "", jobId: "" });
+  const [form, setForm] = useState({ description: "", amount: "", category: "Tools/Supplies", date: localDateString(), vendor: "", jobId: "" });
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const receiptInputRef = useRef<HTMLInputElement>(null);
@@ -1318,7 +1318,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
   }, []);
 
   function resetForm() {
-    setForm({ description: "", amount: "", category: "Materials", date: localDateString(), vendor: "", jobId: "" });
+    setForm({ description: "", amount: "", category: "Tools/Supplies", date: localDateString(), vendor: "", jobId: "" });
     setReceiptFile(null);
     setReceiptPreview(null);
     if (receiptInputRef.current) receiptInputRef.current.value = "";

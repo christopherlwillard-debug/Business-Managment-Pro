@@ -7,6 +7,7 @@ import {
 } from "@workspace/db";
 import { expensesTable, otherIncomeTable, invoicesTable } from "@workspace/db/schema";
 import { eq, like, isNotNull, isNull, and, gte, lte, notInArray, sql } from "drizzle-orm";
+import { getSuggestions, attemptAutoMatch } from "../lib/matchingEngine.js";
 
 import { getPlaidClient, isPlaidConfigured, extractPlaidError } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
@@ -361,11 +362,20 @@ router.post("/sync", wrapAsync(async (req, res) => {
           .where(eq(bankTransactionsTable.id, pendingRow.id));
         updatedCount++;
       } else {
-        await db.insert(bankTransactionsTable).values({
+        const [pendingInserted] = await db.insert(bankTransactionsTable).values({
           importBatchId: null, date: t.date, description, amount: absAmount,
           transactionType: txnType, status: "unmatched", plaidTransactionId: t.transaction_id,
-        });
+        }).returning({ id: bankTransactionsTable.id });
         insertedCount++;
+        // Attempt auto-match for debit transactions only
+        if (txnType === "debit" && pendingInserted) {
+          const matchedExpenseId = await attemptAutoMatch(pendingInserted.id);
+          if (matchedExpenseId !== null) {
+            await db.update(bankTransactionsTable)
+              .set({ status: "matched", matchedExpenseId })
+              .where(eq(bankTransactionsTable.id, pendingInserted.id));
+          }
+        }
       }
     } else {
       // Fuzzy dedup fallback: Plaid's transactionsGet sometimes omits
@@ -398,7 +408,7 @@ router.post("/sync", wrapAsync(async (req, res) => {
           .where(eq(bankTransactionsTable.id, fuzzyRow.id));
         updatedCount++;
       } else {
-        await db.insert(bankTransactionsTable).values({
+        const [fuzzyInserted] = await db.insert(bankTransactionsTable).values({
           importBatchId: null,
           date: t.date,
           description,
@@ -406,8 +416,17 @@ router.post("/sync", wrapAsync(async (req, res) => {
           transactionType: txnType,
           status: "unmatched",
           plaidTransactionId: t.transaction_id,
-        });
+        }).returning({ id: bankTransactionsTable.id });
         insertedCount++;
+        // Attempt auto-match for debit transactions only
+        if (txnType === "debit" && fuzzyInserted) {
+          const matchedExpenseId = await attemptAutoMatch(fuzzyInserted.id);
+          if (matchedExpenseId !== null) {
+            await db.update(bankTransactionsTable)
+              .set({ status: "matched", matchedExpenseId })
+              .where(eq(bankTransactionsTable.id, fuzzyInserted.id));
+          }
+        }
       }
     }
   }
@@ -687,6 +706,13 @@ router.get("/expenses/unmatched", wrapAsync(async (req, res) => {
     .orderBy(expensesTable.date);
 
   res.json(expenses);
+}));
+
+router.get("/transactions/:txnId/suggestions", wrapAsync(async (req, res) => {
+  const txnId = parseInt(String(req.params.txnId), 10);
+  if (isNaN(txnId)) { res.status(400).json({ error: "Invalid transaction ID" }); return; }
+  const suggestions = await getSuggestions(txnId);
+  res.json(suggestions);
 }));
 
 router.post("/transactions/:txnId/match-expense", wrapAsync(async (req, res) => {
