@@ -1166,4 +1166,55 @@ router.delete("/cleanup-draft-invoice/:id", async (req: Request, res: Response) 
   }
 });
 
+// One-time fix: assign WIL-1036 to the current pending draft invoice (id=70)
+// and reset the counter to 1037 so the next issued invoice is WIL-1037.
+// Idempotent: if WIL-1036 is already assigned, reports success and does nothing.
+router.post("/rename-invoice-1038-to-1036", async (_req: Request, res: Response) => {
+  const TARGET_ID = 70;
+  const TARGET_NUMBER = "WIL-1036";
+  const NEW_COUNTER = 1037;
+
+  try {
+    // Idempotent: already done
+    const [already] = await db.select({ id: invoicesTable.id, status: invoicesTable.status })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.invoiceNumber, TARGET_NUMBER))
+      .limit(1);
+    if (already) {
+      return res.json({ ok: true, alreadyDone: true, invoiceId: already.id, invoiceNumber: TARGET_NUMBER });
+    }
+
+    // Confirm the target draft exists and has no number yet
+    const [target] = await db.select({ id: invoicesTable.id, status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, TARGET_ID))
+      .limit(1);
+    if (!target) return res.status(404).json({ error: `Invoice id=${TARGET_ID} not found.` });
+    if (target.invoiceNumber) {
+      return res.status(409).json({ error: `Invoice id=${TARGET_ID} already has number ${target.invoiceNumber}.` });
+    }
+
+    await db.transaction(async (tx) => {
+      // Assign WIL-1036 and accept the invoice
+      await tx.update(invoicesTable)
+        .set({ invoiceNumber: TARGET_NUMBER, status: "approved", acceptedAt: new Date() })
+        .where(eq(invoicesTable.id, TARGET_ID));
+
+      // Reset counter to 1037
+      const [s] = await tx.select().from(settingsTable).limit(1);
+      if (s) {
+        await tx.update(settingsTable)
+          .set({ invoiceNextNumber: NEW_COUNTER })
+          .where(eq(settingsTable.id, s.id));
+      }
+    });
+
+    console.log(`[admin/migrations] rename-invoice-1038-to-1036: id=${TARGET_ID} assigned ${TARGET_NUMBER}, accepted, counter→${NEW_COUNTER}`);
+    res.json({ ok: true, invoiceId: TARGET_ID, invoiceNumber: TARGET_NUMBER, counterResetTo: NEW_COUNTER });
+  } catch (err) {
+    console.error("[admin/migrations] rename-invoice-1038-to-1036 failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;
