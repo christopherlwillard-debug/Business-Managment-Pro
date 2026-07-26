@@ -1,0 +1,96 @@
+I think the Business Reserve Dashboard needs to become the primary cash planning widget and consolidate the other reserve cards.
+
+1. Business Overhead should be Year-to-Date, not upcoming
+
+The reserve dashboard should show Business Overhead (YTD) instead of “Recurring expenses due in the next 30 days.”
+
+The goal of this dashboard is to answer:
+
+“How much money from this year’s business activity should still remain in my checking account?”
+
+So it should include:
+
+* Estimated Taxes (YTD)
+* Business Overhead (YTD)
+* Operating Reserve (user configurable)
+* Growth Fund (available amount)
+
+The “next 30 days” recurring expense calculation belongs somewhere else, not in this dashboard.
+
+⸻
+
+2. Move Estimated Tax Liability into the Business Reserve Dashboard
+
+The large standalone Estimated Tax Owed card is taking up a lot of space.
+
+Instead, move those numbers into the Business Reserve Dashboard.
+
+When I expand the Estimated Taxes section, show:
+
+* Federal SE Tax
+* Kentucky State Tax
+* Owensboro Occupational Tax
+* Total Estimated Tax Liability
+
+That way everything affecting my required reserve is in one place.
+
+⸻
+
+3. Move Tax & Growth Reserve into the Business Reserve Dashboard
+
+The current Tax & Growth Reserve card should also be merged into the Business Reserve Dashboard.
+
+Inside the dashboard I still want to see:
+
+Growth Fund
+
+* Accumulated
+* Invested
+* Available
+* Investment history
+* Log Investment
+
+Then, at the bottom, show the Tax Reserve information for reference.
+
+⸻
+
+4. Do NOT use Tax Reserve in the Required Reserve calculation
+
+This is the important part.
+
+The Required Reserve calculation should use the actual accounting-based Estimated Tax Liability, not the Tax Reserve percentage.
+
+The Tax Reserve is simply a cash-flow planning tool based on paid jobs.
+
+The accounting tax estimate is the real number.
+
+So:
+
+Required Reserve =
+
+* Estimated Taxes (accounting)
+* Business Overhead (YTD)
+* Operating Reserve
+* Growth Fund (toggle on/off)
+
+Do NOT add the Tax Reserve percentage into this calculation.
+
+⸻
+
+5. Keep the Tax Reserve visible
+
+I still want to see the Tax Reserve because it’s useful for comparing how much I’ve set aside versus what I actually owe.
+
+Just move it to the bottom of the Business Reserve Dashboard as an informational section.
+
+Example:
+
+* Tax Reserve (25% of owner share)
+* Estimated Tax Liability
+* Difference (Over/Under Reserved)
+
+That gives me an immediate comparison without affecting the Required Reserve calculation.
+
+⸻
+
+I think this will simplify the Accounting page a lot by replacing three separate cards (Estimated Taxes, Tax & Growth Reserve, and Business Reserve Dashboard) with one unified dashboard that contains everything needed for cash planning while still exposing the detailed breakdowns when expanded.
