@@ -1479,7 +1479,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     const includeGrowthFund = settings?.includeGrowthFundInReserve === 1;
 
     // 2. Growth fund YTD + data needed for estimated taxes
-    const [invoices, expenses, mileageLogs] = await Promise.all([
+    const [invoices, expenses, mileageLogs, otherIncomeRows] = await Promise.all([
       db.select({
         id: invoicesTable.id,
         jobId: invoicesTable.jobId,
@@ -1493,6 +1493,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
         .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), ne(invoicesTable.status, "draft"))),
       db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
       db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))),
+      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
     ]);
 
     const jobIds = [...new Set(invoices.map(i => i.jobId).filter((id): id is number => id != null))];
@@ -1513,9 +1514,11 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     }
 
     // Compute YTD net profit (matches accounting route logic) for estimated taxes
-    const paidRevenue = invoices
+    const invoicePaidRevenue = invoices
       .filter(i => i.status === "paid")
       .reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const otherIncomeSum = otherIncomeRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+    const paidRevenue = invoicePaidRevenue + otherIncomeSum;
     const nonMileageExpenses = expenses.filter(e => e.category !== "mileage");
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const ownerDrawTotal = nonMileageExpenses
@@ -1527,10 +1530,13 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     const depreciationDeduction = await computeDepreciationForYear(year);
     const netProfit = paidRevenue - (totalExpenses - ownerDrawTotal) - businessMileageDeduction - depreciationDeduction;
 
-    // Owensboro gross for OCC tax
+    // Owensboro gross for OCC tax — invoices + other income rows with city = owensboro
     const owensboroGross = invoices
       .filter(i => (i.invoiceCity || i.jobCity || "").trim().toLowerCase() === "owensboro")
-      .reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+      .reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
+      + otherIncomeRows
+        .filter(o => (o.city ?? "").trim().toLowerCase() === "owensboro")
+        .reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
 
     // Estimated tax breakdown (same formulas as /api/reports/accounting)
     const federalSE = Math.max(0, netProfit * 0.9235 * 0.153);
