@@ -199,11 +199,8 @@ async function runPlaidSync(): Promise<void> {
     } catch (err) {
       console.error(`[plaid-sync] Transaction sync failed for connection #${connection.id}:`, err);
     }
-    try {
-      await refreshBalanceIfStale(connection);
-    } catch (err) {
-      console.error(`[plaid-sync] Balance refresh failed for connection #${connection.id}:`, err);
-    }
+    // Balance is manual-only — not auto-refreshed here to avoid Plaid API charges.
+    // Use GET /api/plaid/balance?force=true to pull a fresh balance on demand.
   }
 }
 

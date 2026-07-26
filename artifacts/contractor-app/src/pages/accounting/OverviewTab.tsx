@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, MapPin, AlertCircle, CheckCircle2,
   AlertTriangle, Calendar, ExternalLink, ChevronDown, CheckCircle,
   Plus, Pencil, Trash2, X, PieChart, ChevronRight, Upload, Eye, EyeOff, Wallet,
-  PiggyBank, Shield,
+  PiggyBank, Shield, RefreshCw,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -257,6 +257,7 @@ interface BusinessReserveData {
   operatingReserveCustom: number | null;
   requiredReserve: number;
   checkingBalance: number | null;
+  balanceCachedAt: string | null;
   availableToSpend: number | null;
   reserveHealth: "funded" | "low" | "below" | null;
   overheadCoverageDays: number | null;
@@ -280,6 +281,18 @@ function BusinessReserveDashboard() {
   const [localMode, setLocalMode] = useState<string | null>(null);
   const [operatingCustom, setOperatingCustom] = useState("");
   const [saving, setSaving] = useState(false);
+  const [refreshingBalance, setRefreshingBalance] = useState(false);
+
+  async function refreshBalance() {
+    setRefreshingBalance(true);
+    try {
+      await fetch(`${BASE}/api/plaid/balance?force=true`, { credentials: "include" });
+      await qc.invalidateQueries({ queryKey: ["plaid-balance"] });
+      await qc.invalidateQueries({ queryKey: ["business-reserve"] });
+    } finally {
+      setRefreshingBalance(false);
+    }
+  }
 
   async function saveSettings(patch: Record<string, unknown>) {
     setSaving(true);
@@ -308,7 +321,7 @@ function BusinessReserveDashboard() {
     estimatedTaxes, taxBreakdown, growthFundAvailable, growthFundIncluded,
     recurring30DayReserve, monthlyRecurring, operatingReserve,
     operatingReserveMode, operatingReserveCustom,
-    requiredReserve, checkingBalance, availableToSpend,
+    requiredReserve, checkingBalance, balanceCachedAt, availableToSpend,
     reserveHealth, overheadCoverageDays, overheadCoverageMonths,
     plaidConnected,
   } = data;
@@ -490,10 +503,25 @@ function BusinessReserveDashboard() {
               <div>
                 <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">Checking Balance</p>
                 <p className="font-bold text-foreground">{formatCurrency(checkingBalance)}</p>
+                {balanceCachedAt && (
+                  <p className="text-[9px] text-muted-foreground mt-0.5">
+                    Updated {new Date(balanceCachedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    {" "}{new Date(balanceCachedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                  </p>
+                )}
               </div>
               <div className="text-right">
                 <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">Required Reserve</p>
                 <p className="font-bold text-foreground">− {formatCurrency(requiredReserve)}</p>
+                <button
+                  onClick={refreshBalance}
+                  disabled={refreshingBalance}
+                  className="mt-1 flex items-center gap-1 text-[9px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 ml-auto"
+                  title="Refresh balance from bank (uses 1 Plaid call)"
+                >
+                  <RefreshCw className={`w-2.5 h-2.5 ${refreshingBalance ? "animate-spin" : ""}`} />
+                  Refresh
+                </button>
               </div>
             </div>
             <div className={`border-t pt-2 flex items-center justify-between ${(availableToSpend ?? 0) >= 0 ? "border-emerald-300" : "border-red-300"}`}>

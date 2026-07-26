@@ -1585,8 +1585,10 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     const plaidConns = await db.select().from(plaidConnectionsTable).limit(1);
     const plaidConnected = plaidConns.length > 0;
     let checkingBalance: number | null = null;
+    let balanceCachedAt: string | null = null;
     if (plaidConnected && plaidConns[0].cachedBalanceCurrent != null) {
       checkingBalance = parseFloat(plaidConns[0].cachedBalanceCurrent);
+      balanceCachedAt = plaidConns[0].balanceCachedAt ? plaidConns[0].balanceCachedAt.toISOString() : null;
     }
 
     // 8. Available to spend + health
@@ -1607,6 +1609,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
       estimatedTaxes,
       taxBreakdown,
       growthFundAvailable,
+      balanceCachedAt,
       growthFundIncluded: includeGrowthFund,
       recurring30DayReserve,
       monthlyRecurring,
