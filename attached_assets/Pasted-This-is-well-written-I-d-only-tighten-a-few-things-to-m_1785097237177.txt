@@ -1,0 +1,324 @@
+This is well written. I’d only tighten a few things to make the implementation even clearer and avoid ambiguity for the developer.
+
+⸻
+
+1341 - Redesign Accounting Overview — 3 Clean Sections
+
+What & Why
+
+The Accounting & Tax Overview currently repeats the same financial information across multiple cards (Business Reserve, Overhead Coverage, Tax & Growth Reserve, Net Profit hero, and summary metrics). The goal is to simplify the page into three clear sections, each answering one specific question while reducing visual clutter by approximately 40–50%.
+
+Each section should have a single responsibility:
+
+* Business Reserve Dashboard → “How much cash should stay in my business checking account?”
+* Take-Home Pay → “How much money have I actually taken home?”
+* Business Performance → “How is the business performing overall?”
+
+All existing calculations remain unchanged. This is a UI/UX redesign only.
+
+⸻
+
+Done Looks Like
+
+1. Business Reserve Dashboard
+
+The dashboard becomes the dedicated cash planning section.
+
+Header Layout
+
+Two-column hero row:
+
+Left (primary hero)
+
+* Keep in Business Checking
+* Large reserve amount
+* Helper text:
+    Minimum that should remain in your checking account today
+
+Right
+
+* Checking Balance
+* Reserve Difference
+* Healthy / Short Reserve badge
+* Last updated timestamp
+
+⸻
+
+Reserve Breakdown
+
+Display four equal cards (2×2 grid on desktop / horizontal scroll on mobile):
+
+* Estimated Taxes
+* Annual Business Overhead
+* Operating Buffer
+* Growth Fund
+
+Each card displays:
+
+* icon
+* title
+* current value
+* expand chevron
+
+No duplicated summary information.
+
+⸻
+
+Expanded Panels
+
+Estimated Taxes
+
+Expands inline to show:
+
+* Federal Self Employment
+* Kentucky State
+* Occupational Tax
+* Total Estimated Liability
+
+Also move the existing:
+
+Tax Reserve vs Actual Liability
+
+comparison into this expanded panel.
+
+Remove the standalone comparison card.
+
+⸻
+
+Annual Business Overhead
+
+Expands to show:
+
+* Annual recurring overhead
+* Reserve covers approximately X months of expenses
+
+This replaces the standalone Overhead Coverage card.
+
+⸻
+
+Operating Buffer
+
+Expands to existing editor:
+
+* None
+* 1 Month
+* 2 Months
+* 3 Months
+* Custom
+
+No behavioral changes.
+
+⸻
+
+Growth Fund
+
+Expands to show:
+
+* Accumulated
+* Invested
+* Available
+
+Below that:
+
+Investment log
+
+* investment history
+* Log Investment action
+
+Reuse the existing Growth Fund UI currently inside Tax & Growth Reserve.
+
+⸻
+
+Remove
+
+Delete entirely:
+
+* Overhead Coverage card
+* Tax & Growth Reserve section
+
+Their information now lives inside the expanded Reserve Breakdown cards.
+
+⸻
+
+2. Take-Home Pay
+
+Create a new standalone card immediately below Business Reserve.
+
+Header:
+
+Take-Home Pay
+
+Subtitle:
+
+Your income from the business
+
+⸻
+
+Hero Stats
+
+Three summary metrics across the top:
+
+* Take-Home YTD (primary hero)
+* Average Monthly Take-Home
+* Last Month Take-Home
+
+⸻
+
+Monthly History
+
+Render existing history table:
+
+| Month | Revenue | Tax Set Aside | Take Home |
+
+Reuse current calculations from:
+
+useReserveSummary(year)
+
+No backend changes.
+
+⸻
+
+Footer note:
+
+Adjust percentages per job in Job Financials → Pay Breakdown.
+
+⸻
+
+3. Business Performance
+
+Replace the current:
+
+* Net Profit hero
+* Three summary cards
+
+with one unified dashboard.
+
+Header:
+
+Business Performance
+
+Subtitle:
+
+Year to date overview
+
+Year selector on the right.
+
+⸻
+
+Metric Grid
+
+Render one responsive grid containing:
+
+* Estimated Net Profit
+* Collected
+* Total Invoiced
+* Expenses
+* Outstanding Invoices
+* Profit Margin
+
+Suggested layout:
+
+* 2×3 on phones
+* 3×2 on tablets/desktop
+
+⸻
+
+Tile Details
+
+Estimated Net Profit
+
+Sub-label:
+
+XX.X% margin
+
+⸻
+
+Collected
+
+If year-over-year data already exists:
+
++X.X% vs last year
+
+Otherwise omit.
+
+⸻
+
+Total Invoiced
+
+Sub-label:
+
+Outstanding amount.
+
+⸻
+
+Expenses
+
+Sub-label:
+
+Mileage deduction amount.
+
+⸻
+
+Outstanding Invoices
+
+Sub-label:
+
+Percentage of invoices outstanding (if already available).
+
+⸻
+
+Profit Margin
+
+Standard percentage tile.
+
+⸻
+
+There is no standalone Net Profit hero card anymore.
+
+⸻
+
+Everything below Business Performance remains unchanged.
+
+Examples:
+
+* Owner Capital
+* Other Income
+* Ledgers
+* Existing accounting components
+
+⸻
+
+Out of Scope
+
+* No backend changes
+* No API changes
+* No calculation changes
+* No tax logic changes
+* No reserve percentage changes
+* No changes to other Accounting tabs
+* No modifications to Business Settings
+* Year-over-year collected comparison is optional if existing data is unavailable
+
+⸻
+
+Implementation Steps
+
+1. Redesign the Business Reserve Dashboard header into a two-column hero layout.
+2. Replace the current reserve list with four expandable Reserve Breakdown tiles.
+3. Move Tax Reserve comparison into Estimated Taxes expansion.
+4. Move Overhead Coverage into Annual Overhead expansion.
+5. Move Growth Fund details and investment log into Growth Fund expansion.
+6. Remove the standalone Overhead Coverage card.
+7. Remove the standalone Tax & Growth Reserve section.
+8. Add the new Take-Home Pay card using useReserveSummary(year).
+9. Replace the Net Profit hero and summary cards with a unified Business Performance dashboard.
+10. Leave all remaining Accounting Overview sections unchanged.
+
+⸻
+
+Relevant Files
+
+* artifacts/contractor-app/src/pages/accounting/OverviewTab.tsx (lines 268–813)
+* artifacts/contractor-app/src/pages/accounting/OverviewTab.tsx (lines 956–1007)
+
+This version makes the intent much clearer, separates layout requirements from implementation details, and gives the developer a straightforward checklist without changing any of your desired functionality.
