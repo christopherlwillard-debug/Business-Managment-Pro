@@ -1,0 +1,262 @@
+# Business Reserve Dashboard (Master Reserve Card)
+
+## Goal
+
+Create a new "Business Reserve Dashboard" card at the top of the Accounting page that combines all required business reserves into one place. Instead of making the owner mentally add multiple sections together, the app should answer one simple question:
+
+"How much money in my business checking account is already spoken for?"
+
+This should become the primary cash planning dashboard for the business.
+
+---
+
+## Main Card
+
+Title:
+Business Reserve Dashboard
+
+Large Display:
+
+KEEP IN BUSINESS CHECKING
+
+$X,XXX.XX
+
+Subtitle:
+
+Minimum amount that should remain in your business checking account today.
+
+---
+
+## Reserve Breakdown
+
+The required reserve is calculated from four separate sections that already exist in the app.
+
+1. Tax Reserve
+- Uses the existing Tax Reserve value.
+- This is actual cash intentionally set aside.
+- This is NOT the Estimated Tax Liability.
+
+2. Growth Fund
+- Uses the available Growth Fund balance.
+- (Accumulated - Invested)
+
+3. Business Overhead Reserve
+- Uses active recurring expenses.
+- Display next 30 days of recurring business expenses.
+- Future enhancement: Allow owner to keep 1, 2, or 3 months of overhead.
+
+4. Optional Operating Reserve
+- User configurable.
+- Example:
+  - Keep 1 month of overhead
+  - Keep 2 months
+  - Keep 3 months
+  - Custom amount
+
+---
+
+## Formula
+
+Required Business Reserve =
+
+Tax Reserve
+
++ Available Growth Fund
+
++ Next 30 Days Recurring Expenses
+
++ Operating Reserve (if enabled)
+
+=
+
+Minimum Checking Balance
+
+---
+
+## Available Cash
+
+If a business bank account is connected through Plaid, automatically calculate:
+
+Available to Spend
+
+Business Bank Balance
+-
+Required Business Reserve
+
+Example:
+
+Checking Balance
+$8,700.00
+
+Required Reserve
+$3,115.74
+
+Available to Spend
+
+$5,584.26
+
+Display this in green.
+
+If the checking balance falls below the reserve:
+
+Short Reserve
+
+-$215.74
+
+Display in red.
+
+---
+
+## Reserve Breakdown Cards
+
+Each section should be clickable.
+
+Tax Reserve
+Opens:
+- Federal estimate
+- Kentucky estimate
+- Occupational tax
+- Quarterly payment planning
+- Calculation details
+
+Growth Fund
+Opens:
+- Accumulated
+- Invested
+- Available
+- Investment history
+
+Business Overhead
+Opens:
+- Active recurring expenses
+- Monthly total
+- Upcoming due dates
+- Insurance
+- Google Workspace
+- MileIQ
+- Loan payments
+- Any recurring subscriptions
+
+Operating Reserve
+Opens:
+- Reserve settings
+- Months of coverage
+- Custom reserve amount
+
+---
+
+## Reserve Health
+
+Display a reserve health indicator.
+
+Green
+Fully Funded
+
+Yellow
+Reserve Getting Low
+
+Red
+Below Required Reserve
+
+This should be based on:
+
+Business Checking Balance
+versus
+Required Business Reserve
+
+---
+
+## Overhead Coverage
+
+Calculate:
+
+Business Overhead Coverage
+
+Examples:
+
+115 Days
+
+or
+
+3.8 Months
+
+Formula:
+
+Business Reserve Available for Overhead
+
+÷
+
+Monthly Recurring Expenses
+
+This gives the owner an immediate understanding of how long the business could continue operating without new income.
+
+---
+
+## Separate Tax Estimate from Tax Reserve
+
+These should remain completely separate.
+
+Estimated Tax Liability
+
+Purpose:
+Accounting estimate based on current taxable profit.
+
+Example:
+
+Estimated Taxes Owed
+
+$208.36
+
+Tax Reserve
+
+Purpose:
+Actual cash intentionally reserved for taxes.
+
+Example:
+
+Tax Reserve
+
+$2,320.29
+
+The dashboard should clearly communicate:
+
+Estimated Tax Liability = What you are expected to owe.
+
+Tax Reserve = Cash you have already protected.
+
+These are different numbers and should never be combined.
+
+---
+
+## Existing Data
+
+This feature should reuse existing calculations already present in the app.
+
+Use:
+
+- Estimated Tax Liability
+- Tax Reserve
+- Growth Fund
+- Recurring Expenses
+- Connected Business Bank Balance (Plaid)
+- Investment Tracking
+- Business Settings
+
+No duplicate calculations should be created.
+
+---
+
+## Primary Goal
+
+The Business Reserve Dashboard should provide one trustworthy number that answers:
+
+"How much money must remain in my business checking account today?"
+
+Everything above that amount is safe to use for:
+- Owner draws
+- Equipment purchases
+- Investments
+- Expansion
+- Other discretionary spending
+
+This creates a true cash planning dashboard rather than simply displaying accounting data.

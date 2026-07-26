@@ -1,0 +1,200 @@
+I actually think this should become one of the most important cards on the entire Accounting page.
+
+Right now the information exists in several places:
+
+* Estimated Tax Owed (actual accounting estimate)
+* Tax Reserve (cash-flow planning)
+* Growth Fund (5%)
+* Recurring Expenses (monthly overhead)
+* Pending invoices
+
+As a business owner, the question you really want answered is:
+
+“How much money in my checking account is already spoken for?”
+
+I’d create one master card at the very top of Accounting.
+
+⸻
+
+Business Reserve Dashboard
+
+KEEP IN BUSINESS CHECKING
+
+$X,XXX.XX
+
+Minimum amount that should stay in your account today
+
+⸻
+
+Breakdown
+
+🟧 Taxes Reserved
+$2,320.29
+
+🟦 Growth Fund
+$695.95
+
+🟪 Upcoming Overhead (Next 30 Days)
+$99.50
+
+🟩 Total Required Reserve
+
+$3,115.74
+
+⸻
+
+Then underneath:
+
+If Bank Balance = $8,700
+
+Display
+
+Available to Spend
+
+$5,584.26
+
+Green
+
+or
+
+If bank balance is only $2,900
+
+Display
+
+Short Reserve
+
+-$215.74
+
+Red
+
+⸻
+
+Make every number clickable
+
+Tap Taxes →
+
+Shows
+
+Federal
+KY
+Occupational
+Quarterly payments
+How calculated
+
+⸻
+
+Tap Growth Fund →
+
+Shows
+
+Accumulated
+
+Invested
+
+Available
+
+Investment history
+
+⸻
+
+Tap Overhead →
+
+Shows
+
+Upcoming recurring expenses
+
+Insurance
+
+Google Workspace
+
+MileIQ
+
+Loan payments
+
+Truck payment
+
+Anything recurring
+
+⸻
+
+Add a Reserve Health meter
+
+🟢 Fully Funded
+
+100%
+
+Business is covered.
+
+⸻
+
+🟡 82%
+
+Reserve is getting low.
+
+⸻
+
+🔴 51%
+
+Deposit money before spending.
+
+⸻
+
+Also show “Days of Overhead”
+
+Example
+
+Recurring Expenses
+
+$1,250/month
+
+Reserve
+
+$4,800
+
+Displays
+
+Business Overhead Coverage
+
+115 Days
+
+or
+
+3.8 Months
+
+Banks actually look at this when evaluating businesses.
+
+⸻
+
+Separate estimated taxes from reserved cash
+
+This distinction is important.
+
+Accounting Tax Liability
+
+“This is what you’ll likely owe based on profit.”
+
+Example
+
+Estimated Taxes
+
+$208.36
+
+⸻
+
+Cash Reserved
+
+“This is how much you’ve actually set aside.”
+
+Example
+
+Tax Reserve
+
+$2,320.29
+
+If the reserve is less than the estimate:
+
+⚠ Underfunded
+
+If greater:
+
+✓ Fully Covered
