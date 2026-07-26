@@ -554,56 +554,59 @@ function BusinessReserveDashboard() {
           </div>
         </div>
 
-        {/* Reserve Breakdown — four expandable tiles */}
+        {/* Reserve Breakdown — single-column accordion */}
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Reserve Breakdown</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-2">
 
             {/* ── Estimated Taxes ── */}
             <div className="rounded-xl border border-border overflow-hidden">
-              <button onClick={() => toggle("taxes")} className="w-full p-3 text-left hover:bg-muted/40 transition-colors">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
-                    <DollarSign className="w-4 h-4 text-amber-600" />
-                  </div>
-                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform mt-1 ${expanded === "taxes" ? "rotate-180" : ""}`} />
+              <button
+                onClick={() => toggle("taxes")}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
+              >
+                <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                  <DollarSign className="w-4 h-4 text-amber-600" />
                 </div>
-                <p className="text-xs font-semibold text-foreground">Estimated Taxes</p>
-                <p className="text-[10px] text-muted-foreground leading-tight">YTD · SE + KY + OCC</p>
-                <p className="text-base font-bold text-amber-700 mt-1">{formatCurrency(estimatedTaxes)}</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground leading-tight">Estimated Taxes</p>
+                  <p className="text-[10px] text-muted-foreground">YTD estimated liability</p>
+                </div>
+                <span className="text-sm font-bold text-amber-700 shrink-0">{formatCurrency(estimatedTaxes)}</span>
+                <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${expanded === "taxes" ? "rotate-180" : ""}`} />
               </button>
               {expanded === "taxes" && (
-                <div className="border-t border-border p-3 bg-amber-50/40 space-y-2.5">
-                  <div className="grid grid-cols-3 gap-1">
-                    <div className="rounded-lg bg-white border border-amber-200 p-1.5 text-center">
-                      <p className="text-[8px] uppercase font-semibold text-amber-700">Federal SE</p>
+                <div className="border-t border-border p-4 bg-amber-50/40 space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
+                      <p className="text-[9px] uppercase font-semibold text-amber-700">Federal SE</p>
                       <p className="text-xs font-bold text-amber-800">{formatCurrency(taxBreakdown.federalSE)}</p>
-                      <p className="text-[8px] text-amber-600">15.3%×92.35%</p>
+                      <p className="text-[9px] text-amber-600">15.3% × 92.35%</p>
                     </div>
-                    <div className="rounded-lg bg-white border border-amber-200 p-1.5 text-center">
-                      <p className="text-[8px] uppercase font-semibold text-amber-700">KY State</p>
+                    <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
+                      <p className="text-[9px] uppercase font-semibold text-amber-700">KY State</p>
                       <p className="text-xs font-bold text-amber-800">{formatCurrency(taxBreakdown.kyState)}</p>
-                      <p className="text-[8px] text-amber-600">4.0% flat</p>
+                      <p className="text-[9px] text-amber-600">4.0% flat</p>
                     </div>
-                    <div className="rounded-lg bg-white border border-amber-200 p-1.5 text-center">
-                      <p className="text-[8px] uppercase font-semibold text-amber-700">OCC Tax</p>
+                    <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
+                      <p className="text-[9px] uppercase font-semibold text-amber-700">OCC Tax</p>
                       <p className="text-xs font-bold text-amber-800">{formatCurrency(taxBreakdown.occ)}</p>
-                      <p className="text-[8px] text-amber-600">1.39% Owens.</p>
+                      <p className="text-[9px] text-amber-600">1.39% Owensboro</p>
                     </div>
                   </div>
                   <div>
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Tax Reserve vs. Liability</p>
-                    <div className="grid grid-cols-3 gap-1">
-                      <div className="rounded-lg bg-amber-50 border border-amber-200 p-1.5 text-center">
-                        <p className="text-[8px] uppercase font-semibold text-amber-700">Reserved (25%)</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Tax Reserve vs. Liability</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-lg bg-amber-50 border border-amber-200 p-2 text-center">
+                        <p className="text-[9px] uppercase font-semibold text-amber-700">Reserved (25%)</p>
                         <p className="text-xs font-bold text-amber-800">{formatCurrency(ytd.taxReserve)}</p>
                       </div>
-                      <div className="rounded-lg bg-blue-50 border border-blue-200 p-1.5 text-center">
-                        <p className="text-[8px] uppercase font-semibold text-blue-700">Est. Liability</p>
+                      <div className="rounded-lg bg-blue-50 border border-blue-200 p-2 text-center">
+                        <p className="text-[9px] uppercase font-semibold text-blue-700">Est. Liability</p>
                         <p className="text-xs font-bold text-blue-800">{formatCurrency(estimatedTaxes)}</p>
                       </div>
-                      <div className={`rounded-lg p-1.5 text-center border ${overUnder >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-                        <p className={`text-[8px] uppercase font-semibold ${overUnder >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                      <div className={`rounded-lg p-2 text-center border ${overUnder >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                        <p className={`text-[9px] uppercase font-semibold ${overUnder >= 0 ? "text-emerald-700" : "text-red-700"}`}>
                           {overUnder >= 0 ? "Over" : "Under"}
                         </p>
                         <p className={`text-xs font-bold ${overUnder >= 0 ? "text-emerald-800" : "text-red-800"}`}>
@@ -618,20 +621,23 @@ function BusinessReserveDashboard() {
 
             {/* ── Business Overhead ── */}
             <div className="rounded-xl border border-border overflow-hidden">
-              <button onClick={() => toggle("overhead")} className="w-full p-3 text-left hover:bg-muted/40 transition-colors">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-                    <Calendar className="w-4 h-4 text-purple-600" />
-                  </div>
-                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform mt-1 ${expanded === "overhead" ? "rotate-180" : ""}`} />
+              <button
+                onClick={() => toggle("overhead")}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
+              >
+                <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
+                  <Calendar className="w-4 h-4 text-purple-600" />
                 </div>
-                <p className="text-xs font-semibold text-foreground">Business Overhead</p>
-                <p className="text-[10px] text-muted-foreground leading-tight">Est. annual · recurring</p>
-                <p className="text-base font-bold text-purple-700 mt-1">{formatCurrency(annualOverhead)}</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground leading-tight">Business Overhead</p>
+                  <p className="text-[10px] text-muted-foreground">Estimated annual recurring expenses</p>
+                </div>
+                <span className="text-sm font-bold text-purple-700 shrink-0">{formatCurrency(annualOverhead)}</span>
+                <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${expanded === "overhead" ? "rotate-180" : ""}`} />
               </button>
               {expanded === "overhead" && (
-                <div className="border-t border-border p-3 bg-purple-50/40 space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
+                <div className="border-t border-border p-4 bg-purple-50/40 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
                     <span className="text-purple-700">Annual overhead</span>
                     <span className="font-semibold text-purple-800">{formatCurrency(annualOverhead)}</span>
                   </div>
@@ -646,25 +652,152 @@ function BusinessReserveDashboard() {
               )}
             </div>
 
+            {/* ── Growth Fund ── */}
+            <div className={`rounded-xl border overflow-hidden ${growthFundIncluded ? "border-border" : "border-dashed border-muted-foreground/40"}`}>
+              <button
+                onClick={() => toggle("growth")}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
+              >
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${growthFundIncluded ? "bg-emerald-100" : "bg-muted/40"}`}>
+                  <TrendingUp className={`w-4 h-4 ${growthFundIncluded ? "text-emerald-600" : "text-muted-foreground"}`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-semibold leading-tight ${growthFundIncluded ? "text-foreground" : "text-muted-foreground"}`}>Growth Fund</p>
+                  <p className="text-[10px] text-muted-foreground">5% investment reserve</p>
+                </div>
+                <span className={`text-sm font-bold shrink-0 ${growthFundIncluded ? "text-emerald-700" : "text-muted-foreground"}`}>{formatCurrency(growthFundAvailable)}</span>
+                {/* Inline include-in-reserve toggle */}
+                <button
+                  disabled={saving}
+                  onClick={e => { e.stopPropagation(); saveSettings({ includeGrowthFundInReserve: !growthFundIncluded }); }}
+                  className={`relative w-8 h-4 rounded-full transition-colors shrink-0 disabled:opacity-50 ${growthFundIncluded ? "bg-emerald-500" : "bg-muted"}`}
+                  title={growthFundIncluded ? "Remove from reserve" : "Include in reserve"}
+                >
+                  <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${growthFundIncluded ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+                </button>
+                <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${expanded === "growth" ? "rotate-180" : ""}`} />
+              </button>
+              {expanded === "growth" && (
+                <div className="border-t border-border p-4 space-y-3">
+                  {/* Accumulated / Invested / Available */}
+                  <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-blue-600">Accumulated (5% of revenue)</span>
+                      <span className="text-xs font-semibold text-blue-800">{formatCurrency(ytd.growthFund)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-blue-600">Invested</span>
+                      <span className="text-xs font-semibold text-blue-700">− {formatCurrency(totalInvested)}</span>
+                    </div>
+                    <div className="border-t border-blue-200 pt-1.5 flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-blue-700">Available in Reserve</span>
+                      <span className="text-sm font-black text-blue-900">{formatCurrency(growthAvailable)}</span>
+                    </div>
+                  </div>
+                  {/* Investment log */}
+                  <div className="rounded-lg border border-blue-200 bg-blue-50/40 overflow-hidden">
+                    <div className="px-3 py-2 bg-blue-100/60 border-b border-blue-200 flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Investments Made</span>
+                      {!showInvestmentForm && (
+                        <button onClick={() => setShowInvestmentForm(true)}
+                          className="flex items-center gap-1 text-[10px] font-semibold text-blue-700 hover:text-blue-900">
+                          <Plus className="w-3 h-3" /> Add Investment
+                        </button>
+                      )}
+                    </div>
+                    {showInvestmentForm && (
+                      <div className="p-3 border-b border-blue-200 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] text-muted-foreground block mb-0.5">Date</label>
+                            <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)}
+                              className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-muted-foreground block mb-0.5">Amount ($)</label>
+                            <input type="number" min="0.01" step="0.01" placeholder="0.00" value={formAmount}
+                              onChange={e => setFormAmount(e.target.value)}
+                              className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted-foreground block mb-0.5">Description</label>
+                          <input type="text" placeholder="e.g. New pressure washer" value={formDesc}
+                            onChange={e => setFormDesc(e.target.value)}
+                            className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted-foreground block mb-0.5">Notes <span className="text-muted-foreground/60">(optional)</span></label>
+                          <textarea placeholder="e.g. Invoice #1042" value={formNotes}
+                            onChange={e => setFormNotes(e.target.value)} rows={2}
+                            className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background resize-none" />
+                        </div>
+                        {formError && <p className="text-[10px] text-red-600 font-medium">{formError}</p>}
+                        <div className="flex gap-2">
+                          <button onClick={handleSaveInvestment} disabled={createDeployment.isPending}
+                            className="flex-1 text-xs font-semibold bg-blue-600 text-white rounded-md py-1.5 hover:bg-blue-700 disabled:opacity-50">
+                            {createDeployment.isPending ? "Saving…" : "Save"}
+                          </button>
+                          <button onClick={() => { setShowInvestmentForm(false); setFormError(null); setFormDesc(""); setFormAmount(""); setFormNotes(""); }}
+                            className="flex-1 text-xs font-semibold border border-border rounded-md py-1.5 text-muted-foreground hover:bg-muted/40">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {deployments.length === 0 && !showInvestmentForm && (
+                      <p className="text-[10px] text-muted-foreground text-center py-3 px-3">
+                        No investments logged yet. Tap "Add Investment" when you deploy growth fund money.
+                      </p>
+                    )}
+                    {deployments.length > 0 && (
+                      <div className="divide-y divide-blue-100">
+                        {deployments.map(d => {
+                          const label = new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
+                          return (
+                            <div key={d.id} className="px-3 py-2 flex items-center gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-foreground truncate">{d.description}</p>
+                                <p className="text-[10px] text-muted-foreground">{label}</p>
+                                {d.notes && <p className="text-[10px] text-muted-foreground/80 italic truncate">{d.notes}</p>}
+                              </div>
+                              <span className="text-xs font-semibold text-blue-800 shrink-0">{formatCurrency(d.amount)}</span>
+                              <button onClick={() => deleteDeployment.mutate(d.id)} disabled={deleteDeployment.isPending}
+                                className="shrink-0 text-muted-foreground hover:text-red-600 disabled:opacity-40" title="Remove investment">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* ── Operating Buffer ── */}
             <div className="rounded-xl border border-border overflow-hidden">
-              <button onClick={() => toggle("buffer")} className="w-full p-3 text-left hover:bg-muted/40 transition-colors">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                    <Shield className="w-4 h-4 text-blue-600" />
-                  </div>
-                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform mt-1 ${expanded === "buffer" ? "rotate-180" : ""}`} />
+              <button
+                onClick={() => toggle("buffer")}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
+              >
+                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                  <Shield className="w-4 h-4 text-blue-600" />
                 </div>
-                <p className="text-xs font-semibold text-foreground">Operating Buffer</p>
-                <p className="text-[10px] text-muted-foreground leading-tight">
-                  {operatingReserveMode === "0" ? "Tap to add a buffer"
-                    : operatingReserveMode === "custom" ? "Custom amount"
-                    : `${operatingReserveMode}mo of overhead`}
-                </p>
-                <p className="text-base font-bold text-blue-700 mt-1">{formatCurrency(operatingReserve)}</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground leading-tight">Operating Buffer</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {operatingReserveMode === "0" ? "Emergency cash reserve"
+                      : operatingReserveMode === "custom" ? "Custom amount"
+                      : `${operatingReserveMode} month${operatingReserveMode !== "1" ? "s" : ""} of overhead`}
+                  </p>
+                </div>
+                <span className="text-sm font-bold text-blue-700 shrink-0">{formatCurrency(operatingReserve)}</span>
+                <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${expanded === "buffer" ? "rotate-180" : ""}`} />
               </button>
               {expanded === "buffer" && (
-                <div className="border-t border-border px-3 py-3 bg-muted/30 space-y-2.5">
+                <div className="border-t border-border px-4 py-4 bg-muted/30 space-y-3">
                   <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Buffer amount</p>
                   <div className="grid grid-cols-5 gap-1.5">
                     {(["0", "1", "2", "3", "custom"] as const).map(opt => (
@@ -712,131 +845,6 @@ function BusinessReserveDashboard() {
                       </button>
                     </div>
                   )}
-                </div>
-              )}
-            </div>
-
-            {/* ── Growth Fund ── */}
-            <div className={`rounded-xl border overflow-hidden ${growthFundIncluded ? "border-border" : "border-dashed border-muted-foreground/40"}`}>
-              <button onClick={() => toggle("growth")} className="w-full p-3 text-left hover:bg-muted/40 transition-colors">
-                <div className="flex items-start justify-between mb-2">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${growthFundIncluded ? "bg-emerald-100" : "bg-muted/40"}`}>
-                    <TrendingUp className={`w-4 h-4 ${growthFundIncluded ? "text-emerald-600" : "text-muted-foreground"}`} />
-                  </div>
-                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform mt-1 ${expanded === "growth" ? "rotate-180" : ""}`} />
-                </div>
-                <p className={`text-xs font-semibold ${growthFundIncluded ? "text-foreground" : "text-muted-foreground"}`}>Growth Fund</p>
-                <p className="text-[10px] text-muted-foreground leading-tight">
-                  {growthFundIncluded ? "Included in reserve" : "Excluded from reserve"}
-                </p>
-                <p className={`text-base font-bold mt-1 ${growthFundIncluded ? "text-emerald-700" : "text-muted-foreground"}`}>{formatCurrency(growthFundAvailable)}</p>
-              </button>
-              {/* Toggle inline */}
-              <div className="px-3 pb-2.5 flex items-center justify-between">
-                <span className="text-[9px] text-muted-foreground">Include in reserve</span>
-                <button
-                  disabled={saving}
-                  onClick={e => { e.stopPropagation(); saveSettings({ includeGrowthFundInReserve: !growthFundIncluded }); }}
-                  className={`relative w-8 h-4 rounded-full transition-colors shrink-0 disabled:opacity-50 ${growthFundIncluded ? "bg-emerald-500" : "bg-muted"}`}
-                >
-                  <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${growthFundIncluded ? "translate-x-[18px]" : "translate-x-0.5"}`} />
-                </button>
-              </div>
-              {expanded === "growth" && (
-                <div className="border-t border-border p-3 space-y-2">
-                  {/* Accumulated / Invested / Available */}
-                  <div className="rounded-lg bg-blue-50 border border-blue-200 p-2.5 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-blue-600">Accumulated (5% of revenue)</span>
-                      <span className="text-xs font-semibold text-blue-800">{formatCurrency(ytd.growthFund)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-blue-600">Invested</span>
-                      <span className="text-xs font-semibold text-blue-700">− {formatCurrency(totalInvested)}</span>
-                    </div>
-                    <div className="border-t border-blue-200 pt-1 flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-blue-700">Available</span>
-                      <span className="text-sm font-black text-blue-900">{formatCurrency(growthAvailable)}</span>
-                    </div>
-                  </div>
-                  {/* Investment log */}
-                  <div className="rounded-lg border border-blue-200 bg-blue-50/40 overflow-hidden">
-                    <div className="px-3 py-2 bg-blue-100/60 border-b border-blue-200 flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Investments Made</span>
-                      {!showInvestmentForm && (
-                        <button onClick={() => setShowInvestmentForm(true)}
-                          className="flex items-center gap-1 text-[10px] font-semibold text-blue-700 hover:text-blue-900">
-                          <Plus className="w-3 h-3" /> Log Investment
-                        </button>
-                      )}
-                    </div>
-                    {showInvestmentForm && (
-                      <div className="p-3 border-b border-blue-200 space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-[10px] text-muted-foreground block mb-0.5">Date</label>
-                            <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)}
-                              className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
-                          </div>
-                          <div>
-                            <label className="text-[10px] text-muted-foreground block mb-0.5">Amount ($)</label>
-                            <input type="number" min="0.01" step="0.01" placeholder="0.00" value={formAmount}
-                              onChange={e => setFormAmount(e.target.value)}
-                              className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-muted-foreground block mb-0.5">Description</label>
-                          <input type="text" placeholder="e.g. New pressure washer" value={formDesc}
-                            onChange={e => setFormDesc(e.target.value)}
-                            className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-muted-foreground block mb-0.5">Notes <span className="text-muted-foreground/60">(optional)</span></label>
-                          <textarea placeholder="e.g. Invoice #1042" value={formNotes}
-                            onChange={e => setFormNotes(e.target.value)} rows={2}
-                            className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background resize-none" />
-                        </div>
-                        {formError && <p className="text-[10px] text-red-600 font-medium">{formError}</p>}
-                        <div className="flex gap-2">
-                          <button onClick={handleSaveInvestment} disabled={createDeployment.isPending}
-                            className="flex-1 text-xs font-semibold bg-blue-600 text-white rounded-md py-1.5 hover:bg-blue-700 disabled:opacity-50">
-                            {createDeployment.isPending ? "Saving…" : "Save"}
-                          </button>
-                          <button onClick={() => { setShowInvestmentForm(false); setFormError(null); setFormDesc(""); setFormAmount(""); setFormNotes(""); }}
-                            className="flex-1 text-xs font-semibold border border-border rounded-md py-1.5 text-muted-foreground hover:bg-muted/40">
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {deployments.length === 0 && !showInvestmentForm && (
-                      <p className="text-[10px] text-muted-foreground text-center py-3 px-3">
-                        No investments logged yet. Tap "Log Investment" when you deploy growth fund money.
-                      </p>
-                    )}
-                    {deployments.length > 0 && (
-                      <div className="divide-y divide-blue-100">
-                        {deployments.map(d => {
-                          const label = new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
-                          return (
-                            <div key={d.id} className="px-3 py-2 flex items-center gap-2">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium text-foreground truncate">{d.description}</p>
-                                <p className="text-[10px] text-muted-foreground">{label}</p>
-                                {d.notes && <p className="text-[10px] text-muted-foreground/80 italic truncate">{d.notes}</p>}
-                              </div>
-                              <span className="text-xs font-semibold text-blue-800 shrink-0">{formatCurrency(d.amount)}</span>
-                              <button onClick={() => deleteDeployment.mutate(d.id)} disabled={deleteDeployment.isPending}
-                                className="shrink-0 text-muted-foreground hover:text-red-600 disabled:opacity-40" title="Remove investment">
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
             </div>
