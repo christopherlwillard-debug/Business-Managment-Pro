@@ -1,0 +1,45 @@
+1343 - Fix Owner Draw Accounting Logic
+
+What & Why
+
+Owner Draw transactions are incorrectly affecting the Owner Capital account. Owner Draws represent distributions of business equity to the owner and should never reduce the owner's invested capital.
+
+Currently, recording take-home pay from the Job Financials → Pay Breakdown screen appears to decrease the Owner Capital balance instead of only reducing Owner Equity. This results in incorrect accounting and causes the Owner Capital dashboard to understate the owner's actual investment in the business.
+
+Required Accounting Logic
+
+Owner Capital
+• Increases only from Capital Contributions.
+• Decreases only from Return of Capital transactions.
+• Must never be affected by Owner Draw transactions.
+
+Owner Draw
+• Represents a distribution of business profits/equity.
+• Reduces cash.
+• Reduces Owner Equity.
+• Does NOT reduce Owner Capital.
+
+Correct Accounting Formula
+
+Owner Capital
++ Business Net Profit
+= Total Equity
+
+Total Equity
+− Owner Draws
+= Current Owner Equity
+
+Required Changes
+
+• Audit every workflow in the application that creates an Owner Draw transaction.
+• Verify that "Record Owner Draw" from Job Financials → Pay Breakdown creates an Owner Draw transaction only.
+• Ensure Owner Draw transactions never post against the Owner Capital ledger.
+• Ensure Owner Draw transactions never decrease Net Capital Invested.
+• Ensure Net Capital Invested is calculated strictly from Capital Contributions minus Return of Capital transactions.
+• Recalculate all historical Owner Capital balances using the corrected accounting rules.
+• Verify that Owner Draws reduce Current Owner Equity only.
+• Confirm that Job Financials, Accounting Dashboard, Owner Capital, Business Overview, and all financial reports display consistent balances after the correction.
+
+Expected Result
+
+Recording owner take-home pay from a completed job should reduce Current Owner Equity while leaving Net Capital Invested unchanged. Owner Capital should always represent the owner's actual investment in the business, while Owner Draws should only reduce available equity. The Owner Capital page should clearly separate invested capital from owner distributions and follow standard accounting principles.
