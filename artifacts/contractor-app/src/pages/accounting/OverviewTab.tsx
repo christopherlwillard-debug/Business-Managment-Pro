@@ -250,7 +250,7 @@ interface BusinessReserveData {
   taxBreakdown: { federalSE: number; kyState: number; occ: number };
   growthFundAvailable: number;
   growthFundIncluded: boolean;
-  recurring30DayReserve: number;
+  annualOverhead: number;
   monthlyRecurring: number;
   operatingReserve: number;
   operatingReserveMode: string;
@@ -266,7 +266,9 @@ interface BusinessReserveData {
 }
 
 function BusinessReserveDashboard() {
+  const year = new Date().getFullYear();
   const qc = useQueryClient();
+  const { toast } = useToast();
 
   const { data, isLoading } = useQuery<BusinessReserveData>({
     queryKey: ["business-reserve"],
@@ -277,11 +279,24 @@ function BusinessReserveDashboard() {
     },
   });
 
+  const { data: reserveSummary } = useReserveSummary(year);
+  const { data: deployments = [] } = useGrowthFundDeployments(year);
+  const createDeployment = useCreateGrowthFundDeployment(year);
+  const deleteDeployment = useDeleteGrowthFundDeployment(year);
+
   const [showOperatingEditor, setShowOperatingEditor] = useState(false);
   const [localMode, setLocalMode] = useState<string | null>(null);
   const [operatingCustom, setOperatingCustom] = useState("");
   const [saving, setSaving] = useState(false);
   const [refreshingBalance, setRefreshingBalance] = useState(false);
+  const [showTaxBreakdown, setShowTaxBreakdown] = useState(false);
+  const [showTaxGrowthSection, setShowTaxGrowthSection] = useState(false);
+  const [showInvestmentForm, setShowInvestmentForm] = useState(false);
+  const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [formDesc, setFormDesc] = useState("");
+  const [formAmount, setFormAmount] = useState("");
+  const [formNotes, setFormNotes] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
 
   async function refreshBalance() {
     setRefreshingBalance(true);
@@ -302,16 +317,24 @@ function BusinessReserveDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-      if (!res.ok) {
-        console.error("[business-reserve] saveSettings failed", res.status);
-        return;
-      }
+      if (!res.ok) return;
       await qc.invalidateQueries({ queryKey: ["business-reserve"] });
     } finally { setSaving(false); }
   }
 
-  function scrollTo(id: string) {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  async function handleSaveInvestment() {
+    setFormError(null);
+    if (!formDate || !formDesc.trim() || !formAmount) { setFormError("All fields are required."); return; }
+    const amt = parseFloat(formAmount);
+    if (isNaN(amt) || amt <= 0) { setFormError("Enter a valid amount greater than $0."); return; }
+    try {
+      await createDeployment.mutateAsync({ date: formDate, description: formDesc.trim(), amount: formAmount, notes: formNotes.trim() || undefined });
+      setShowInvestmentForm(false);
+      setFormDesc(""); setFormAmount(""); setFormNotes(""); setFormError(null);
+      toast({ title: "Investment logged" });
+    } catch (err: any) {
+      setFormError(err.message ?? "Failed to save investment");
+    }
   }
 
   if (isLoading) return <div className="h-36 rounded-2xl bg-muted/40 animate-pulse" />;
@@ -319,7 +342,7 @@ function BusinessReserveDashboard() {
 
   const {
     estimatedTaxes, taxBreakdown, growthFundAvailable, growthFundIncluded,
-    recurring30DayReserve, monthlyRecurring, operatingReserve,
+    annualOverhead, monthlyRecurring, operatingReserve,
     operatingReserveMode, operatingReserveCustom,
     requiredReserve, checkingBalance, balanceCachedAt, availableToSpend,
     reserveHealth, overheadCoverageDays, overheadCoverageMonths,
@@ -334,6 +357,13 @@ function BusinessReserveDashboard() {
     below:  { label: "Below Reserve", cls: "bg-red-100 text-red-800" },
   };
   const health = reserveHealth ? healthConfig[reserveHealth] : null;
+
+  // Tax & Growth section data
+  const ytd = reserveSummary?.ytd ?? { taxReserve: 0, growthFund: 0, ownerShare: 0, takeHome: 0, revenue: 0, subLaborCost: 0 };
+  const months = reserveSummary?.months ?? [];
+  const totalInvested = deployments.reduce((s, d) => s + d.amount, 0);
+  const growthAvailable = Math.max(0, ytd.growthFund - totalInvested);
+  const overUnder = ytd.taxReserve - estimatedTaxes;
 
   return (
     <div id="business-reserve-dashboard" className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
@@ -363,28 +393,55 @@ function BusinessReserveDashboard() {
         {/* Breakdown rows */}
         <div className="space-y-2">
 
-          {/* Estimated Taxes */}
-          <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-foreground">Estimated Taxes</p>
-                <p className="text-[10px] text-muted-foreground">YTD estimate · federal SE + KY state + OCC</p>
+          {/* Estimated Taxes — expandable */}
+          <div className="rounded-xl border border-border overflow-hidden">
+            <button
+              onClick={() => setShowTaxBreakdown(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors group text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Estimated Taxes</p>
+                  <p className="text-[10px] text-muted-foreground">YTD estimate · federal SE + KY state + OCC</p>
+                </div>
               </div>
-            </div>
-            <span className="text-sm font-bold text-amber-700">{formatCurrency(estimatedTaxes)}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-bold text-amber-700">{formatCurrency(estimatedTaxes)}</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${showTaxBreakdown ? "rotate-180" : ""}`} />
+              </div>
+            </button>
+            {showTaxBreakdown && (
+              <div className="border-t border-border px-4 py-3 bg-amber-50/40 grid grid-cols-3 gap-2">
+                <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
+                  <p className="text-[9px] uppercase font-semibold text-amber-700 mb-0.5">Federal SE</p>
+                  <p className="text-sm font-bold text-amber-800">{formatCurrency(taxBreakdown.federalSE)}</p>
+                  <p className="text-[9px] text-amber-600">15.3% × 92.35%</p>
+                </div>
+                <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
+                  <p className="text-[9px] uppercase font-semibold text-amber-700 mb-0.5">KY State</p>
+                  <p className="text-sm font-bold text-amber-800">{formatCurrency(taxBreakdown.kyState)}</p>
+                  <p className="text-[9px] text-amber-600">4.0% flat rate</p>
+                </div>
+                <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
+                  <p className="text-[9px] uppercase font-semibold text-amber-700 mb-0.5">OCC Tax</p>
+                  <p className="text-sm font-bold text-amber-800">{formatCurrency(taxBreakdown.occ)}</p>
+                  <p className="text-[9px] text-amber-600">1.39% Owensboro</p>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Business Overhead */}
+          {/* Business Overhead — annual */}
           <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-purple-500 shrink-0" />
               <div>
                 <p className="text-sm font-semibold text-foreground">Business Overhead</p>
-                <p className="text-[10px] text-muted-foreground">Recurring expenses due in the next 30 days</p>
+                <p className="text-[10px] text-muted-foreground">Est. annual · active recurring templates</p>
               </div>
             </div>
-            <span className="text-sm font-bold text-purple-700">{formatCurrency(recurring30DayReserve)}</span>
+            <span className="text-sm font-bold text-purple-700">{formatCurrency(annualOverhead)}</span>
           </div>
 
           {/* Operating Reserve (expandable inline editor) */}
@@ -463,13 +520,10 @@ function BusinessReserveDashboard() {
             )}
           </div>
 
-          {/* Growth Fund (optional toggle) */}
-          <div
-            className={`flex items-center justify-between rounded-xl border px-4 py-3 transition-colors ${
-              growthFundIncluded ? "border-border cursor-pointer hover:bg-muted/40" : "border-dashed border-muted-foreground/30 cursor-pointer hover:bg-muted/20"
-            }`}
-            onClick={() => scrollTo("tax-growth-reserve-card")}
-          >
+          {/* Growth Fund (toggle) */}
+          <div className={`flex items-center justify-between rounded-xl border px-4 py-3 transition-colors ${
+            growthFundIncluded ? "border-border" : "border-dashed border-muted-foreground/30"
+          }`}>
             <div className="flex items-center gap-3">
               <div className={`w-2 h-2 rounded-full shrink-0 ${growthFundIncluded ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
               <div>
@@ -481,7 +535,7 @@ function BusinessReserveDashboard() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
               <span className={`text-sm font-bold ${growthFundIncluded ? "text-emerald-700" : "text-muted-foreground"}`}>
                 {formatCurrency(growthFundAvailable)}
               </span>
@@ -564,6 +618,192 @@ function BusinessReserveDashboard() {
         <p className="text-[11px] text-muted-foreground italic">
           Cash-flow planning only · Not based on taxable income · Reserve amounts come from paid jobs this year.
         </p>
+
+        {/* ── Tax & Growth Reserve — informational section ── */}
+        <div className="rounded-xl border border-emerald-200 overflow-hidden">
+          <button
+            onClick={() => setShowTaxGrowthSection(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-emerald-50/80 hover:bg-emerald-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="text-sm font-bold text-emerald-900">Tax &amp; Growth Reserve</span>
+              <span className="text-[10px] text-emerald-600">· cash-flow view</span>
+            </div>
+            <ChevronDown className={`w-3.5 h-3.5 text-emerald-700 transition-transform ${showTaxGrowthSection ? "rotate-180" : ""}`} />
+          </button>
+
+          {showTaxGrowthSection && (
+            <div className="border-t border-emerald-200 p-4 space-y-3 bg-white/60">
+
+              {/* Tax Reserve vs Estimated Tax comparison */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Tax Reserve vs. Actual Liability</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 p-2 text-center">
+                    <p className="text-[9px] uppercase font-semibold text-amber-700 mb-0.5">Tax Reserve (25%)</p>
+                    <p className="text-sm font-bold text-amber-800">{formatCurrency(ytd.taxReserve)}</p>
+                    <p className="text-[9px] text-amber-600">of owner share</p>
+                  </div>
+                  <div className="rounded-lg bg-blue-50 border border-blue-200 p-2 text-center">
+                    <p className="text-[9px] uppercase font-semibold text-blue-700 mb-0.5">Est. Tax Liability</p>
+                    <p className="text-sm font-bold text-blue-800">{formatCurrency(estimatedTaxes)}</p>
+                    <p className="text-[9px] text-blue-600">accounting-based</p>
+                  </div>
+                  <div className={`rounded-lg p-2 text-center border ${overUnder >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                    <p className={`text-[9px] uppercase font-semibold mb-0.5 ${overUnder >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                      {overUnder >= 0 ? "Over Reserved" : "Under Reserved"}
+                    </p>
+                    <p className={`text-sm font-bold ${overUnder >= 0 ? "text-emerald-800" : "text-red-800"}`}>
+                      {overUnder >= 0 ? "+" : "−"}{formatCurrency(Math.abs(overUnder))}
+                    </p>
+                    <p className={`text-[9px] ${overUnder >= 0 ? "text-emerald-600" : "text-red-600"}`}>difference</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Growth Fund detail */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Growth Fund (5% of revenue after subs)</p>
+                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-blue-600">Accumulated</span>
+                    <span className="text-xs font-semibold text-blue-800">{formatCurrency(ytd.growthFund)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-blue-600">Invested</span>
+                    <span className="text-xs font-semibold text-blue-700">− {formatCurrency(totalInvested)}</span>
+                  </div>
+                  <div className="border-t border-blue-200 pt-1 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-blue-700">Available</span>
+                    <span className="text-sm font-black text-blue-900">{formatCurrency(growthAvailable)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Investment log */}
+              <div className="rounded-lg border border-blue-200 bg-blue-50/40 overflow-hidden">
+                <div className="px-3 py-2 bg-blue-100/60 border-b border-blue-200 flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Investments Made</span>
+                  {!showInvestmentForm && (
+                    <button onClick={() => setShowInvestmentForm(true)}
+                      className="flex items-center gap-1 text-[10px] font-semibold text-blue-700 hover:text-blue-900">
+                      <Plus className="w-3 h-3" /> Log Investment
+                    </button>
+                  )}
+                </div>
+
+                {showInvestmentForm && (
+                  <div className="p-3 border-b border-blue-200 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-muted-foreground block mb-0.5">Date</label>
+                        <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)}
+                          className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-muted-foreground block mb-0.5">Amount ($)</label>
+                        <input type="number" min="0.01" step="0.01" placeholder="0.00" value={formAmount}
+                          onChange={e => setFormAmount(e.target.value)}
+                          className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground block mb-0.5">Description</label>
+                      <input type="text" placeholder="e.g. New pressure washer" value={formDesc}
+                        onChange={e => setFormDesc(e.target.value)}
+                        className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground block mb-0.5">Notes <span className="text-muted-foreground/60">(optional)</span></label>
+                      <textarea placeholder="e.g. Invoice #1042" value={formNotes}
+                        onChange={e => setFormNotes(e.target.value)} rows={2}
+                        className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background resize-none" />
+                    </div>
+                    {formError && <p className="text-[10px] text-red-600 font-medium">{formError}</p>}
+                    <div className="flex gap-2">
+                      <button onClick={handleSaveInvestment} disabled={createDeployment.isPending}
+                        className="flex-1 text-xs font-semibold bg-blue-600 text-white rounded-md py-1.5 hover:bg-blue-700 disabled:opacity-50">
+                        {createDeployment.isPending ? "Saving…" : "Save"}
+                      </button>
+                      <button onClick={() => { setShowInvestmentForm(false); setFormError(null); setFormDesc(""); setFormAmount(""); setFormNotes(""); }}
+                        className="flex-1 text-xs font-semibold border border-border rounded-md py-1.5 text-muted-foreground hover:bg-muted/40">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {deployments.length === 0 && !showInvestmentForm && (
+                  <p className="text-[10px] text-muted-foreground text-center py-3 px-3">
+                    No investments logged yet. Tap "Log Investment" when you deploy growth fund money.
+                  </p>
+                )}
+
+                {deployments.length > 0 && (
+                  <div className="divide-y divide-blue-100">
+                    {deployments.map(d => {
+                      const label = new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
+                      return (
+                        <div key={d.id} className="px-3 py-2 flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-foreground truncate">{d.description}</p>
+                            <p className="text-[10px] text-muted-foreground">{label}</p>
+                            {d.notes && <p className="text-[10px] text-muted-foreground/80 italic truncate">{d.notes}</p>}
+                          </div>
+                          <span className="text-xs font-semibold text-blue-800 shrink-0">{formatCurrency(d.amount)}</span>
+                          <button onClick={() => deleteDeployment.mutate(d.id)} disabled={deleteDeployment.isPending}
+                            className="shrink-0 text-muted-foreground hover:text-red-600 disabled:opacity-40" title="Remove investment">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Take-home + monthly table */}
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-emerald-700">Your Take-Home YTD</p>
+                  <p className="text-[10px] text-emerald-600">After subs, growth fund &amp; tax reserve</p>
+                </div>
+                <p className="text-xl font-bold text-emerald-700">{formatCurrency(ytd.takeHome)}</p>
+              </div>
+
+              {months.length > 0 && (
+                <div className="rounded-lg border border-border/50 overflow-hidden">
+                  <div className="bg-muted/30 px-4 py-2 border-b border-border/50 grid grid-cols-4 gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    <span>Month</span>
+                    <span className="text-right">Revenue</span>
+                    <span className="text-right">Tax Set-Aside</span>
+                    <span className="text-right">Take-Home</span>
+                  </div>
+                  <div className="divide-y divide-border/30">
+                    {months.map(m => {
+                      const label = new Date(m.month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+                      return (
+                        <div key={m.month} className="px-4 py-2 grid grid-cols-4 gap-1 text-xs">
+                          <span className="font-semibold text-foreground">{label}</span>
+                          <span className="text-right text-muted-foreground">{formatCurrency(m.revenue)}</span>
+                          <span className="text-right text-amber-700">{formatCurrency(m.taxReserve)}</span>
+                          <span className="text-right text-emerald-700 font-semibold">{formatCurrency(m.takeHome)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {months.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-2">No paid invoices yet for {year}. Numbers appear once jobs are collected.</p>
+              )}
+
+              <p className="text-[11px] text-muted-foreground italic">Adjust percentages per job in Job Financials → Pay Breakdown tab.</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -966,50 +1206,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
         </div>
       )}
 
-      {/* ── Estimated Tax Owed — hero card ── */}
-      {data.estimatedTaxes && (
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl overflow-hidden shadow-md">
-          <div className="px-5 py-3 bg-amber-100 border-b border-amber-300 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0" />
-              <span className="font-bold text-sm text-amber-900">Estimated Tax Owed — {year} YTD</span>
-            </div>
-            <span className="text-xs text-amber-700/80">Accounting-based · net profit after all deductible expenses &amp; mileage</span>
-          </div>
-          <div className="p-5 space-y-4">
-            <div className="text-center">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 mb-1">Total Estimated Tax Liability</p>
-              <p className="text-5xl font-black text-amber-800 leading-none">{formatCurrency(data.estimatedTaxes.totalEstimated)}</p>
-            </div>
-            <div className={`grid gap-3 ${data.estimatedTaxes.owensboroOccTax > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
-              <div className="bg-white/80 rounded-xl p-3 text-center border border-amber-200 shadow-sm">
-                <p className="text-[10px] uppercase font-semibold text-amber-700 mb-1">Federal SE Tax</p>
-                <p className="text-xl font-bold text-amber-800">{formatCurrency(data.estimatedTaxes.federalSETax)}</p>
-                <p className="text-[10px] text-amber-600 mt-0.5">15.3% × 92.35% of net profit</p>
-              </div>
-              <div className="bg-white/80 rounded-xl p-3 text-center border border-amber-200 shadow-sm">
-                <p className="text-[10px] uppercase font-semibold text-amber-700 mb-1">KY State Tax</p>
-                <p className="text-xl font-bold text-amber-800">{formatCurrency(data.estimatedTaxes.kyStateTax)}</p>
-                <p className="text-[10px] text-amber-600 mt-0.5">4.0% flat rate on net profit</p>
-              </div>
-              {data.estimatedTaxes.owensboroOccTax > 0 && (
-                <div className="bg-white/80 rounded-xl p-3 text-center border border-amber-200 shadow-sm">
-                  <p className="text-[10px] uppercase font-semibold text-amber-700 mb-1">Owensboro Occ Tax</p>
-                  <p className="text-xl font-bold text-amber-800">{formatCurrency(data.estimatedTaxes.owensboroOccTax)}</p>
-                  <p className="text-[10px] text-amber-600 mt-0.5">{((data.estimatedTaxes.owensboroOccRate ?? 0.0139) * 100).toFixed(2)}% of Owensboro gross</p>
-                </div>
-              )}
-            </div>
-            <p className="text-[11px] text-amber-700/70 italic text-center">Estimates only — consult a tax professional for your exact figures before filing.</p>
-          </div>
-        </div>
-      )}
-
       <BusinessReserveDashboard />
-
-      <div id="tax-growth-reserve-card">
-        <ReserveCard year={year} />
-      </div>
 
       {/* ── Net Profit hero + secondary stat tiles ── */}
       <div className="space-y-3">

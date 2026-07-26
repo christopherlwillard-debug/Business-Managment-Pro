@@ -1549,10 +1549,8 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     const totalInvested = deployments.reduce((s, d) => s + parseFloat(d.amount ?? "0"), 0);
     const growthFundAvailable = Math.max(0, growthFundAccumulated - totalInvested);
 
-    // 4. Recurring expenses: next 30 days due + monthly equivalent
+    // 4. Recurring expenses: annual equivalent of all active templates
     const recurringRows = await db.select().from(recurringExpensesTable).where(eq(recurringExpensesTable.active, true));
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const thirtyDaysStr = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
     function toMonthlyAmount(amount: number, frequency: string): number {
       switch (frequency) {
@@ -1564,10 +1562,8 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
         default: return amount;
       }
     }
-    const recurring30DayReserve = recurringRows
-      .filter(r => r.nextDueDate >= todayStr && r.nextDueDate <= thirtyDaysStr)
-      .reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
     const monthlyRecurring = recurringRows.reduce((s, r) => s + toMonthlyAmount(parseFloat(r.amount ?? "0"), r.frequency), 0);
+    const annualOverhead = monthlyRecurring * 12;
 
     // 5. Operating reserve from settings
     let operatingReserve = 0;
@@ -1579,7 +1575,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     }
 
     // 6. Required reserve total
-    const requiredReserve = estimatedTaxes + recurring30DayReserve + operatingReserve + (includeGrowthFund ? growthFundAvailable : 0);
+    const requiredReserve = estimatedTaxes + annualOverhead + operatingReserve + (includeGrowthFund ? growthFundAvailable : 0);
 
     // 7. Plaid checking balance (from cache)
     const plaidConns = await db.select().from(plaidConnectionsTable).limit(1);
@@ -1601,7 +1597,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     }
 
     // 9. Overhead coverage: how many days/months the overhead-portion of reserve covers
-    const overheadReserve = recurring30DayReserve + operatingReserve;
+    const overheadReserve = annualOverhead + operatingReserve;
     const overheadCoverageDays = monthlyRecurring > 0 ? Math.round(overheadReserve / (monthlyRecurring / 30)) : null;
     const overheadCoverageMonths = monthlyRecurring > 0 ? Math.round((overheadReserve / monthlyRecurring) * 10) / 10 : null;
 
@@ -1611,7 +1607,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
       growthFundAvailable,
       balanceCachedAt,
       growthFundIncluded: includeGrowthFund,
-      recurring30DayReserve,
+      annualOverhead,
       monthlyRecurring,
       operatingReserve,
       operatingReserveMode,
