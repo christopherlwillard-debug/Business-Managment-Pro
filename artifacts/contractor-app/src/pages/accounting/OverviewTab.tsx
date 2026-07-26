@@ -1124,8 +1124,8 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-semibold text-foreground">− Owner Draws Taken</p>
-                    <p className="text-[10px] text-muted-foreground">Logged under "Owner Draw" in expenses</p>
+                    <p className="text-sm font-semibold text-foreground">− Job Pay &amp; Owner Draws</p>
+                    <p className="text-[10px] text-muted-foreground">Profit distributions taken from jobs — does not reduce Net Capital Invested</p>
                   </div>
                   <span className="text-sm font-bold text-foreground">−{formatCurrency(ownerDraws)}</span>
                 </div>

@@ -110,16 +110,13 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const mileageForNetProfit = validBl ? 0 : periodMileageDeduction;
     const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfitFormula) - mileageForNetProfit;
     // Owner draws — tracked separately, never reduce taxable profit.
-    // Draws can come from two sources:
-    //   1. Legacy: expenses with category "Owner Draw" (excludeFromNetProfit=true)
-    //   2. New: owner_capital_entries with negative amount (posted via Record Draw dialog)
-    const ownerDrawFromExpenses = nonMileageExpenses
+    // Only expense-category "Owner Draw" records count here.
+    // Negative owner_capital_entries are "Return of Capital" — they already
+    // reduce netCapitalInvested in the frontend ledger and must NOT be added
+    // to ownerDrawTotal, which would deduct them a second time from equity.
+    const ownerDrawTotal = nonMileageExpenses
       .filter(e => e.category === "Owner Draw")
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    const ownerDrawFromCapital = kpiOwnerCapital
-      .filter(e => parseFloat(e.amount as string) < 0)
-      .reduce((s, e) => s + Math.abs(parseFloat(e.amount as string)), 0);
-    const ownerDrawTotal = ownerDrawFromExpenses + ownerDrawFromCapital;
     const ytdMiles = ytdMileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const ytdMileageRate = getIrsMileageRate(now.getFullYear());
 
@@ -1708,18 +1705,16 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
       };
     });
 
-    // Withdrawals: expenses "Owner Draw" + negative owner capital entries
-    const [withdrawalExpenses, ocEntries] = await Promise.all([
-      db.select({ id: expensesTable.id, date: expensesTable.date, amount: expensesTable.amount, description: expensesTable.description })
-        .from(expensesTable).where(eq(expensesTable.category, "Owner Draw")).orderBy(desc(expensesTable.date)),
-      db.select({ id: ownerCapitalEntriesTable.id, date: ownerCapitalEntriesTable.date, amount: ownerCapitalEntriesTable.amount, description: ownerCapitalEntriesTable.description })
-        .from(ownerCapitalEntriesTable).where(sql`CAST(${ownerCapitalEntriesTable.amount} AS numeric) < 0`).orderBy(desc(ownerCapitalEntriesTable.date)),
-    ]);
+    // Owner draw expenses — job take-home pay recorded via Pay Breakdown.
+    // Kept separate from capital withdrawals (Return of Capital) so neither
+    // double-counts the other in totalWithdrawn or equity calculations.
+    const withdrawalExpenses = await db
+      .select({ id: expensesTable.id, date: expensesTable.date, amount: expensesTable.amount, description: expensesTable.description })
+      .from(expensesTable).where(eq(expensesTable.category, "Owner Draw")).orderBy(desc(expensesTable.date));
 
-    const withdrawals = [
-      ...withdrawalExpenses.map(e => ({ id: `exp-${e.id}`, date: e.date, amount: parseFloat(e.amount ?? "0"), description: e.description ?? "Withdrawal" })),
-      ...ocEntries.map(e => ({ id: `oc-${e.id}`, date: e.date, amount: Math.abs(parseFloat(String(e.amount ?? "0"))), description: e.description ?? "Withdrawal" })),
-    ].sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+    const withdrawals = withdrawalExpenses
+      .map(e => ({ id: `exp-${e.id}`, date: e.date, amount: parseFloat(e.amount ?? "0"), description: e.description ?? "Owner Draw" }))
+      .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
 
     const totalWithdrawn = withdrawals.reduce((s, w) => s + w.amount, 0);
 
