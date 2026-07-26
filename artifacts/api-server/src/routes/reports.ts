@@ -1473,7 +1473,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
 
     const GROWTH_PCT = 0.05;
     const OWNER_PCT = 0.50;
-    const TAX_PCT = 0.25;
+    const OWENSBORO_OCC_RATE = 0.0139;
 
     // 1. Settings for rates and reserve preferences
     const [settings] = await db.select().from(settingsTable).limit(1);
@@ -1481,18 +1481,24 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     const operatingReserveCustom = settings?.operatingReserveCustom != null ? parseFloat(String(settings.operatingReserveCustom)) : null;
     const includeGrowthFund = settings?.includeGrowthFundInReserve === 1;
 
-    // 2. Tax reserve + growth fund YTD (same waterfall as reserve-summary)
-    const invoices = await db.select({
-      id: invoicesTable.id,
-      jobId: invoicesTable.jobId,
-      total: invoicesTable.total,
-      status: invoicesTable.status,
-      issueDate: invoicesTable.issueDate,
-    }).from(invoicesTable)
-      .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), ne(invoicesTable.status, "draft")));
+    // 2. Growth fund YTD + data needed for estimated taxes
+    const [invoices, expenses, mileageLogs] = await Promise.all([
+      db.select({
+        id: invoicesTable.id,
+        jobId: invoicesTable.jobId,
+        total: invoicesTable.total,
+        status: invoicesTable.status,
+        issueDate: invoicesTable.issueDate,
+        invoiceCity: invoicesTable.city,
+        jobCity: jobsTable.city,
+      }).from(invoicesTable)
+        .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
+        .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), ne(invoicesTable.status, "draft"))),
+      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
+      db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))),
+    ]);
 
     const jobIds = [...new Set(invoices.map(i => i.jobId).filter((id): id is number => id != null))];
-    let taxReserve = 0;
     let growthFundAccumulated = 0;
     if (jobIds.length > 0) {
       const subHoursRows = await db.select({
@@ -1505,13 +1511,36 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
         const revenue = parseFloat(inv.total ?? "0");
         const subLaborCost = hoursCostByJob.get(inv.jobId) ?? 0;
         const afterSubs = Math.max(0, revenue - subLaborCost);
-        const gf = afterSubs * GROWTH_PCT;
-        const toSplit = afterSubs - gf;
-        const ownerShare = toSplit * OWNER_PCT;
-        taxReserve += ownerShare * TAX_PCT;
-        growthFundAccumulated += gf;
+        growthFundAccumulated += afterSubs * GROWTH_PCT;
       }
     }
+
+    // Compute YTD net profit (matches accounting route logic) for estimated taxes
+    const paidRevenue = invoices
+      .filter(i => i.status === "paid")
+      .reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const nonMileageExpenses = expenses.filter(e => e.category !== "mileage");
+    const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const ownerDrawTotal = nonMileageExpenses
+      .filter(e => e.category === "Owner Draw")
+      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const businessMileageDeduction = mileageLogs
+      .filter(m => m.classification === "business")
+      .reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+    const depreciationDeduction = await computeDepreciationForYear(year);
+    const netProfit = paidRevenue - (totalExpenses - ownerDrawTotal) - businessMileageDeduction - depreciationDeduction;
+
+    // Owensboro gross for OCC tax
+    const owensboroGross = invoices
+      .filter(i => (i.invoiceCity || i.jobCity || "").trim().toLowerCase() === "owensboro")
+      .reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+
+    // Estimated tax breakdown (same formulas as /api/reports/accounting)
+    const federalSE = Math.max(0, netProfit * 0.9235 * 0.153);
+    const kyState = Math.max(0, netProfit * 0.04);
+    const occ = Math.max(0, owensboroGross * OWENSBORO_OCC_RATE);
+    const estimatedTaxes = federalSE + kyState + occ;
+    const taxBreakdown = { federalSE, kyState, occ };
 
     // 3. Growth fund invested this year → available balance
     const deployments = await db.select({ amount: growthFundDeploymentsTable.amount })
@@ -1550,7 +1579,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     }
 
     // 6. Required reserve total
-    const requiredReserve = taxReserve + recurring30DayReserve + operatingReserve + (includeGrowthFund ? growthFundAvailable : 0);
+    const requiredReserve = estimatedTaxes + recurring30DayReserve + operatingReserve + (includeGrowthFund ? growthFundAvailable : 0);
 
     // 7. Plaid checking balance (from cache)
     const plaidConns = await db.select().from(plaidConnectionsTable).limit(1);
@@ -1575,7 +1604,8 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     const overheadCoverageMonths = monthlyRecurring > 0 ? Math.round((overheadReserve / monthlyRecurring) * 10) / 10 : null;
 
     res.json({
-      taxReserve,
+      estimatedTaxes,
+      taxBreakdown,
       growthFundAvailable,
       growthFundIncluded: includeGrowthFund,
       recurring30DayReserve,

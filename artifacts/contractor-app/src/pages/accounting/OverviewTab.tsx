@@ -246,7 +246,8 @@ function useDeleteGrowthFundDeployment(year: number) {
 
 // ─── Business Reserve Dashboard ──────────────────────────────────────────────
 interface BusinessReserveData {
-  taxReserve: number;
+  estimatedTaxes: number;
+  taxBreakdown: { federalSE: number; kyState: number; occ: number };
   growthFundAvailable: number;
   growthFundIncluded: boolean;
   recurring30DayReserve: number;
@@ -304,7 +305,7 @@ function BusinessReserveDashboard() {
   if (!data) return null;
 
   const {
-    taxReserve, growthFundAvailable, growthFundIncluded,
+    estimatedTaxes, taxBreakdown, growthFundAvailable, growthFundIncluded,
     recurring30DayReserve, monthlyRecurring, operatingReserve,
     operatingReserveMode, operatingReserveCustom,
     requiredReserve, checkingBalance, availableToSpend,
@@ -349,23 +350,17 @@ function BusinessReserveDashboard() {
         {/* Breakdown rows */}
         <div className="space-y-2">
 
-          {/* Tax Reserve */}
-          <button
-            onClick={() => scrollTo("tax-growth-reserve-card")}
-            className="w-full flex items-center justify-between rounded-xl border border-border px-4 py-3 hover:bg-muted/40 transition-colors group text-left"
-          >
+          {/* Estimated Taxes */}
+          <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
               <div>
-                <p className="text-sm font-semibold text-foreground">Tax Reserve</p>
-                <p className="text-[10px] text-muted-foreground">Actual cash set aside from paid jobs this year</p>
+                <p className="text-sm font-semibold text-foreground">Estimated Taxes</p>
+                <p className="text-[10px] text-muted-foreground">YTD estimate · federal SE + KY state + OCC</p>
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold text-amber-700">{formatCurrency(taxReserve)}</span>
-              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground" />
-            </div>
-          </button>
+            <span className="text-sm font-bold text-amber-700">{formatCurrency(estimatedTaxes)}</span>
+          </div>
 
           {/* Business Overhead */}
           <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
