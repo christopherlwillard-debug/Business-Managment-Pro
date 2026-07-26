@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable, growthFundDeploymentsTable } from "@workspace/db/schema";
+import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable, growthFundDeploymentsTable, recurringExpensesTable } from "@workspace/db/schema";
+import { plaidConnectionsTable } from "@workspace/db";
 import { eq, and, gte, lte, desc, sum, ne, inArray, sql, count, isNull } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
@@ -1457,6 +1458,142 @@ router.get("/reserve-summary", sectionGuard("jobs"), async (req, res) => {
   } catch (err) {
     console.error("[reserve-summary]", err);
     res.status(500).json({ error: "Failed to compute reserve summary" });
+  }
+});
+
+// ─── Business Reserve Dashboard ──────────────────────────────────────────────
+// Single source of truth for all cash planning throughout the application.
+// Any feature needing Required Reserve, Available to Spend, Reserve Health, or
+// Business Cash Position must consume this endpoint rather than reimplementing.
+router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
+  try {
+    const year = new Date().getFullYear();
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    const GROWTH_PCT = 0.05;
+    const OWNER_PCT = 0.50;
+    const TAX_PCT = 0.25;
+
+    // 1. Settings for rates and reserve preferences
+    const [settings] = await db.select().from(settingsTable).limit(1);
+    const operatingReserveMode = settings?.operatingReserveMode ?? "0";
+    const operatingReserveCustom = settings?.operatingReserveCustom != null ? parseFloat(String(settings.operatingReserveCustom)) : null;
+    const includeGrowthFund = settings?.includeGrowthFundInReserve === 1;
+
+    // 2. Tax reserve + growth fund YTD (same waterfall as reserve-summary)
+    const invoices = await db.select({
+      id: invoicesTable.id,
+      jobId: invoicesTable.jobId,
+      total: invoicesTable.total,
+      status: invoicesTable.status,
+      issueDate: invoicesTable.issueDate,
+    }).from(invoicesTable)
+      .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), ne(invoicesTable.status, "draft")));
+
+    const jobIds = [...new Set(invoices.map(i => i.jobId).filter((id): id is number => id != null))];
+    let taxReserve = 0;
+    let growthFundAccumulated = 0;
+    if (jobIds.length > 0) {
+      const subHoursRows = await db.select({
+        jobId: jobSubHoursTable.jobId,
+        cost: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
+      }).from(jobSubHoursTable).where(inArray(jobSubHoursTable.jobId, jobIds)).groupBy(jobSubHoursTable.jobId);
+      const hoursCostByJob = new Map(subHoursRows.map(r => [r.jobId, parseFloat(r.cost ?? "0")]));
+      for (const inv of invoices) {
+        if (!inv.jobId || inv.status !== "paid") continue;
+        const revenue = parseFloat(inv.total ?? "0");
+        const subLaborCost = hoursCostByJob.get(inv.jobId) ?? 0;
+        const afterSubs = Math.max(0, revenue - subLaborCost);
+        const gf = afterSubs * GROWTH_PCT;
+        const toSplit = afterSubs - gf;
+        const ownerShare = toSplit * OWNER_PCT;
+        taxReserve += ownerShare * TAX_PCT;
+        growthFundAccumulated += gf;
+      }
+    }
+
+    // 3. Growth fund invested this year → available balance
+    const deployments = await db.select({ amount: growthFundDeploymentsTable.amount })
+      .from(growthFundDeploymentsTable)
+      .where(and(gte(growthFundDeploymentsTable.date, startDate), lte(growthFundDeploymentsTable.date, endDate)));
+    const totalInvested = deployments.reduce((s, d) => s + parseFloat(d.amount ?? "0"), 0);
+    const growthFundAvailable = Math.max(0, growthFundAccumulated - totalInvested);
+
+    // 4. Recurring expenses: next 30 days due + monthly equivalent
+    const recurringRows = await db.select().from(recurringExpensesTable).where(eq(recurringExpensesTable.active, true));
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const thirtyDaysStr = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    function toMonthlyAmount(amount: number, frequency: string): number {
+      switch (frequency) {
+        case "weekly": return amount * 52 / 12;
+        case "biweekly": return amount * 26 / 12;
+        case "monthly": return amount;
+        case "quarterly": return amount / 3;
+        case "yearly": return amount / 12;
+        default: return amount;
+      }
+    }
+    const recurring30DayReserve = recurringRows
+      .filter(r => r.nextDueDate >= todayStr && r.nextDueDate <= thirtyDaysStr)
+      .reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
+    const monthlyRecurring = recurringRows.reduce((s, r) => s + toMonthlyAmount(parseFloat(r.amount ?? "0"), r.frequency), 0);
+
+    // 5. Operating reserve from settings
+    let operatingReserve = 0;
+    if (operatingReserveMode === "custom") {
+      operatingReserve = operatingReserveCustom ?? 0;
+    } else {
+      const months = parseInt(operatingReserveMode) || 0;
+      operatingReserve = months * monthlyRecurring;
+    }
+
+    // 6. Required reserve total
+    const requiredReserve = taxReserve + recurring30DayReserve + operatingReserve + (includeGrowthFund ? growthFundAvailable : 0);
+
+    // 7. Plaid checking balance (from cache)
+    const plaidConns = await db.select().from(plaidConnectionsTable).limit(1);
+    const plaidConnected = plaidConns.length > 0;
+    let checkingBalance: number | null = null;
+    if (plaidConnected && plaidConns[0].cachedBalanceCurrent != null) {
+      checkingBalance = parseFloat(plaidConns[0].cachedBalanceCurrent);
+    }
+
+    // 8. Available to spend + health
+    const availableToSpend = checkingBalance != null ? checkingBalance - requiredReserve : null;
+    let reserveHealth: "funded" | "low" | "below" | null = null;
+    if (checkingBalance != null) {
+      if (checkingBalance >= requiredReserve) reserveHealth = "funded";
+      else if (checkingBalance >= requiredReserve * 0.8) reserveHealth = "low";
+      else reserveHealth = "below";
+    }
+
+    // 9. Overhead coverage: how many days/months the overhead-portion of reserve covers
+    const overheadReserve = recurring30DayReserve + operatingReserve;
+    const overheadCoverageDays = monthlyRecurring > 0 ? Math.round(overheadReserve / (monthlyRecurring / 30)) : null;
+    const overheadCoverageMonths = monthlyRecurring > 0 ? Math.round((overheadReserve / monthlyRecurring) * 10) / 10 : null;
+
+    res.json({
+      taxReserve,
+      growthFundAvailable,
+      growthFundIncluded: includeGrowthFund,
+      recurring30DayReserve,
+      monthlyRecurring,
+      operatingReserve,
+      operatingReserveMode,
+      operatingReserveCustom,
+      requiredReserve,
+      checkingBalance,
+      availableToSpend,
+      reserveHealth,
+      overheadCoverageDays,
+      overheadCoverageMonths,
+      plaidConnected,
+    });
+  } catch (err) {
+    console.error("[business-reserve]", err);
+    res.status(500).json({ error: "Failed to compute business reserve" });
   }
 });
 

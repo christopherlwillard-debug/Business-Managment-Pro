@@ -61,6 +61,10 @@ export const settingsTable = pgTable("settings", {
   // Tax Profile: legal entity structure + IRS federal tax election + election effective date
   federalTaxElection: text("federal_tax_election").default("sole_prop"),
   taxElectionEffectiveDate: text("tax_election_effective_date"),
+  // Business Reserve Dashboard: operating reserve setting and growth fund toggle
+  operatingReserveMode: text("operating_reserve_mode").default("0"),
+  operatingReserveCustom: numeric("operating_reserve_custom", { precision: 10, scale: 2 }),
+  includeGrowthFundInReserve: integer("include_growth_fund_in_reserve").default(0),
   // Team access
   ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

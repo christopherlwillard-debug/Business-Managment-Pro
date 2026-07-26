@@ -324,6 +324,10 @@ function format(s: any) {
     // Tax Profile
     federalTaxElection: s.federalTaxElection ?? "sole_prop",
     taxElectionEffectiveDate: s.taxElectionEffectiveDate ?? null,
+    // Business Reserve Dashboard
+    operatingReserveMode: s.operatingReserveMode ?? "0",
+    operatingReserveCustom: s.operatingReserveCustom != null ? parseFloat(String(s.operatingReserveCustom)) : null,
+    includeGrowthFundInReserve: s.includeGrowthFundInReserve === 1 || s.includeGrowthFundInReserve === true,
   };
 }
 
@@ -479,6 +483,10 @@ router.put("/", async (req, res) => {
       // Tax Profile
       federalTaxElection: body.federalTaxElection !== undefined ? (body.federalTaxElection || "sole_prop") : (settings?.federalTaxElection ?? "sole_prop"),
       taxElectionEffectiveDate: body.taxElectionEffectiveDate !== undefined ? (body.taxElectionEffectiveDate || null) : (settings?.taxElectionEffectiveDate ?? null),
+      // Business Reserve Dashboard
+      operatingReserveMode: body.operatingReserveMode !== undefined ? String(body.operatingReserveMode) : (settings?.operatingReserveMode ?? "0"),
+      operatingReserveCustom: body.operatingReserveCustom !== undefined ? (body.operatingReserveCustom != null ? String(parseFloat(body.operatingReserveCustom)) : null) : (settings?.operatingReserveCustom ?? null),
+      includeGrowthFundInReserve: body.includeGrowthFundInReserve !== undefined ? (body.includeGrowthFundInReserve ? 1 : 0) : (settings?.includeGrowthFundInReserve ?? 0),
       updatedAt: new Date(),
     };
 

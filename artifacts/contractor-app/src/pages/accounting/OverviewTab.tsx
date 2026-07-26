@@ -5,6 +5,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, MapPin, AlertCircle, CheckCircle2,
   AlertTriangle, Calendar, ExternalLink, ChevronDown, CheckCircle,
   Plus, Pencil, Trash2, X, PieChart, ChevronRight, Upload, Eye, EyeOff, Wallet,
+  PiggyBank, Shield,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -241,6 +242,308 @@ function useDeleteGrowthFundDeployment(year: number) {
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["growth-fund-deployments", year] }); },
   });
+}
+
+// ─── Business Reserve Dashboard ──────────────────────────────────────────────
+interface BusinessReserveData {
+  taxReserve: number;
+  growthFundAvailable: number;
+  growthFundIncluded: boolean;
+  recurring30DayReserve: number;
+  monthlyRecurring: number;
+  operatingReserve: number;
+  operatingReserveMode: string;
+  operatingReserveCustom: number | null;
+  requiredReserve: number;
+  checkingBalance: number | null;
+  availableToSpend: number | null;
+  reserveHealth: "funded" | "low" | "below" | null;
+  overheadCoverageDays: number | null;
+  overheadCoverageMonths: number | null;
+  plaidConnected: boolean;
+}
+
+function BusinessReserveDashboard() {
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery<BusinessReserveData>({
+    queryKey: ["business-reserve"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/reports/business-reserve`);
+      if (!res.ok) throw new Error("Failed to load business reserve");
+      return res.json();
+    },
+  });
+
+  const [showOperatingEditor, setShowOperatingEditor] = useState(false);
+  const [localMode, setLocalMode] = useState<string | null>(null);
+  const [operatingCustom, setOperatingCustom] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function saveSettings(patch: Record<string, unknown>) {
+    setSaving(true);
+    try {
+      const res = await fetch(`${BASE}/api/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        console.error("[business-reserve] saveSettings failed", res.status);
+        return;
+      }
+      await qc.invalidateQueries({ queryKey: ["business-reserve"] });
+    } finally { setSaving(false); }
+  }
+
+  function scrollTo(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  if (isLoading) return <div className="h-36 rounded-2xl bg-muted/40 animate-pulse" />;
+  if (!data) return null;
+
+  const {
+    taxReserve, growthFundAvailable, growthFundIncluded,
+    recurring30DayReserve, monthlyRecurring, operatingReserve,
+    operatingReserveMode, operatingReserveCustom,
+    requiredReserve, checkingBalance, availableToSpend,
+    reserveHealth, overheadCoverageDays, overheadCoverageMonths,
+    plaidConnected,
+  } = data;
+
+  const effectiveMode = localMode ?? operatingReserveMode;
+
+  const healthConfig = {
+    funded: { label: "Fully Funded", cls: "bg-emerald-100 text-emerald-800" },
+    low:    { label: "Getting Low",  cls: "bg-amber-100 text-amber-800" },
+    below:  { label: "Below Reserve", cls: "bg-red-100 text-red-800" },
+  };
+  const health = reserveHealth ? healthConfig[reserveHealth] : null;
+
+  return (
+    <div id="business-reserve-dashboard" className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+      {/* Header */}
+      <div className="px-5 py-3 bg-slate-800 flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <PiggyBank className="w-4 h-4 text-slate-300" />
+          <span className="font-bold text-sm text-white">Business Reserve Dashboard</span>
+        </div>
+        {health ? (
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${health.cls}`}>
+            {health.label}
+          </span>
+        ) : (
+          <span className="text-[10px] text-slate-400">Connect bank to see health</span>
+        )}
+      </div>
+
+      <div className="p-5 space-y-4">
+        {/* Main total */}
+        <div className="rounded-xl bg-slate-900 p-5 text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Keep in Business Checking</p>
+          <p className="text-4xl font-black text-white leading-none">{formatCurrency(requiredReserve)}</p>
+          <p className="text-xs text-slate-400 mt-1.5">Minimum that should remain in your checking account today</p>
+        </div>
+
+        {/* Breakdown rows */}
+        <div className="space-y-2">
+
+          {/* Tax Reserve */}
+          <button
+            onClick={() => scrollTo("tax-growth-reserve-card")}
+            className="w-full flex items-center justify-between rounded-xl border border-border px-4 py-3 hover:bg-muted/40 transition-colors group text-left"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">Tax Reserve</p>
+                <p className="text-[10px] text-muted-foreground">Actual cash set aside from paid jobs this year</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-bold text-amber-700">{formatCurrency(taxReserve)}</span>
+              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground" />
+            </div>
+          </button>
+
+          {/* Business Overhead */}
+          <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-purple-500 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">Business Overhead</p>
+                <p className="text-[10px] text-muted-foreground">Recurring expenses due in the next 30 days</p>
+              </div>
+            </div>
+            <span className="text-sm font-bold text-purple-700">{formatCurrency(recurring30DayReserve)}</span>
+          </div>
+
+          {/* Operating Reserve (expandable inline editor) */}
+          <div className="rounded-xl border border-border overflow-hidden">
+            <button
+              onClick={() => setShowOperatingEditor(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors group text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Operating Reserve</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {operatingReserveMode === "0" ? "None — tap to add a buffer"
+                      : operatingReserveMode === "custom" ? `Custom: ${formatCurrency(operatingReserveCustom ?? 0)}`
+                      : `${operatingReserveMode} month${operatingReserveMode !== "1" ? "s" : ""} of overhead`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-bold text-blue-700">{formatCurrency(operatingReserve)}</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-transform ${showOperatingEditor ? "rotate-180" : ""}`} />
+              </div>
+            </button>
+
+            {showOperatingEditor && (
+              <div className="border-t border-border px-4 py-3 bg-muted/30 space-y-2.5">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Buffer amount</p>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {(["0", "1", "2", "3", "custom"] as const).map(opt => (
+                    <button
+                      key={opt}
+                      disabled={saving}
+                      onClick={() => {
+                        setLocalMode(opt);
+                        if (opt !== "custom") {
+                          saveSettings({ operatingReserveMode: opt, operatingReserveCustom: null });
+                        }
+                      }}
+                      className={`text-xs font-semibold py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
+                        effectiveMode === opt ? "bg-blue-600 text-white border-blue-600" : "border-border hover:bg-muted/60"
+                      }`}
+                    >
+                      {opt === "0" ? "None" : opt === "custom" ? "Custom" : `${opt}mo`}
+                    </button>
+                  ))}
+                </div>
+                {effectiveMode === "custom" && (
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                      <input
+                        type="number" min="0" step="1" placeholder="0.00"
+                        value={operatingCustom || (operatingReserveCustom != null ? String(operatingReserveCustom) : "")}
+                        onChange={e => setOperatingCustom(e.target.value)}
+                        className="w-full pl-6 pr-3 py-1.5 border border-border rounded-lg text-xs bg-background focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                    </div>
+                    <button
+                      disabled={saving}
+                      onClick={() => {
+                        const rawValue = operatingCustom !== ""
+                          ? operatingCustom
+                          : operatingReserveCustom != null ? String(operatingReserveCustom) : "";
+                        const parsed = parseFloat(rawValue);
+                        if (!rawValue || isNaN(parsed)) return;
+                        saveSettings({ operatingReserveMode: "custom", operatingReserveCustom: parsed });
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Growth Fund (optional toggle) */}
+          <div
+            className={`flex items-center justify-between rounded-xl border px-4 py-3 transition-colors ${
+              growthFundIncluded ? "border-border cursor-pointer hover:bg-muted/40" : "border-dashed border-muted-foreground/30 cursor-pointer hover:bg-muted/20"
+            }`}
+            onClick={() => scrollTo("tax-growth-reserve-card")}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-2 h-2 rounded-full shrink-0 ${growthFundIncluded ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
+              <div>
+                <p className={`text-sm font-semibold ${growthFundIncluded ? "text-foreground" : "text-muted-foreground"}`}>
+                  Growth Fund
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {growthFundIncluded ? "Included in required reserve" : "Not included — toggle to add if kept in checking"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+              <span className={`text-sm font-bold ${growthFundIncluded ? "text-emerald-700" : "text-muted-foreground"}`}>
+                {formatCurrency(growthFundAvailable)}
+              </span>
+              <button
+                disabled={saving}
+                onClick={() => saveSettings({ includeGrowthFundInReserve: !growthFundIncluded })}
+                className={`relative w-8 h-4 rounded-full transition-colors shrink-0 disabled:opacity-50 ${growthFundIncluded ? "bg-emerald-500" : "bg-muted"}`}
+              >
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${growthFundIncluded ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Available to Spend / Bank balance */}
+        {plaidConnected && checkingBalance != null ? (
+          <div className={`rounded-xl p-4 ${(availableToSpend ?? 0) >= 0 ? "bg-emerald-50 border border-emerald-200" : "bg-red-50 border border-red-200"}`}>
+            <div className="flex items-center justify-between mb-2 text-sm">
+              <div>
+                <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">Checking Balance</p>
+                <p className="font-bold text-foreground">{formatCurrency(checkingBalance)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">Required Reserve</p>
+                <p className="font-bold text-foreground">− {formatCurrency(requiredReserve)}</p>
+              </div>
+            </div>
+            <div className={`border-t pt-2 flex items-center justify-between ${(availableToSpend ?? 0) >= 0 ? "border-emerald-300" : "border-red-300"}`}>
+              <p className={`text-sm font-bold ${(availableToSpend ?? 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                {(availableToSpend ?? 0) >= 0 ? "Available to Spend" : "Short Reserve"}
+              </p>
+              <p className={`text-xl font-black ${(availableToSpend ?? 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                {availableToSpend != null
+                  ? availableToSpend >= 0
+                    ? formatCurrency(availableToSpend)
+                    : `−${formatCurrency(Math.abs(availableToSpend))}`
+                  : "—"}
+              </p>
+            </div>
+          </div>
+        ) : !plaidConnected ? (
+          <div className="rounded-xl bg-muted/30 border border-dashed border-muted-foreground/30 px-4 py-3 text-center">
+            <p className="text-xs text-muted-foreground">Connect your business bank account to calculate available cash.</p>
+          </div>
+        ) : null}
+
+        {/* Overhead Coverage */}
+        {monthlyRecurring > 0 && overheadCoverageDays != null && (
+          <div className="rounded-xl bg-blue-50/50 border border-blue-100 px-4 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-blue-800">Overhead Coverage</p>
+              <p className="text-[10px] text-blue-600">Current reserve covers expenses for</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xl font-black text-blue-800">
+                {overheadCoverageDays} <span className="text-sm font-semibold">days</span>
+              </p>
+              {overheadCoverageMonths != null && (
+                <p className="text-[10px] text-blue-600">{overheadCoverageMonths} months</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <p className="text-[11px] text-muted-foreground italic">
+          Cash-flow planning only · Not based on taxable income · Reserve amounts come from paid jobs this year.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 // ─── Tax & Growth Reserve Card ────────────────────────────────────────────────
@@ -679,7 +982,11 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
         </div>
       )}
 
-      <ReserveCard year={year} />
+      <BusinessReserveDashboard />
+
+      <div id="tax-growth-reserve-card">
+        <ReserveCard year={year} />
+      </div>
 
       {/* ── Net Profit hero + secondary stat tiles ── */}
       <div className="space-y-3">
