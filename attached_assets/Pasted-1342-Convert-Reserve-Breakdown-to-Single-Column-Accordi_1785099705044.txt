@@ -1,0 +1,86 @@
+1342 - Convert Reserve Breakdown to Single-Column Accordion List
+
+What & Why
+
+The current Reserve Breakdown uses a 2×2 grid of expandable cards (Estimated Taxes, Business Overhead, Growth Fund, and Operating Buffer). While this looks good when collapsed, it creates a poor mobile experience once a card expands. Cards become uneven heights, large blank areas appear, and the expanded content feels cramped because each card only has half of the screen width.
+
+Instead, convert this section into a full-width vertical accordion list where each reserve category occupies its own row. Expanding a section uses the entire width of the screen and pushes the remaining sections downward, eliminating wasted space and making detailed information much easier to read.
+
+Goals
+
+• Replace the 2×2 card layout with a single-column list.
+• Each reserve category appears as a compact row when collapsed.
+• Only one accordion section can be expanded at a time.
+• Expanding a section automatically collapses any previously opened section.
+• Use the full screen width for expanded content.
+
+Collapsed Row Layout
+
+Each row should display:
+
+• Icon
+• Reserve name
+• Short subtitle
+• Current reserve amount
+• Expand/collapse chevron
+
+Example:
+
+Business Overhead
+Estimated annual recurring expenses
+$1,193.98
+
+Estimated Taxes
+YTD estimated liability
+$108.42
+
+Growth Fund
+5% investment reserve
+$695.95
+
+Operating Buffer
+Emergency cash reserve
+$0.00
+
+Expanded Content
+
+Business Overhead
+• Annual overhead total
+• Monthly equivalent
+• Overhead breakdown table
+• Recurring expense details
+
+Estimated Taxes
+• Federal SE Tax
+• Kentucky State Tax
+• Occupational Tax
+• Estimated liability
+• Tax reserve amount
+• Reserve vs. liability comparison
+
+Growth Fund
+• Include in reserve toggle
+• Accumulated amount
+• Invested amount
+• Available balance
+• Investment history
+• Add investment button
+
+Operating Buffer
+• Include in reserve toggle
+• Target buffer
+• Current buffer
+• Progress toward target
+
+Benefits
+
+• Eliminates large blank spaces created by uneven card heights.
+• Uses the full screen width for tables and detailed information.
+• Reduces scrolling caused by awkward card expansion.
+• Creates a cleaner, more natural mobile experience similar to iOS Settings.
+• Makes Reserve Breakdown feel like one organized section instead of four separate widgets.
+• Keeps focus on one reserve category at a time.
+
+Expected Result
+
+Reserve Breakdown becomes a clean vertical accordion where users can quickly scan reserve categories and expand only the information they need. The interface is significantly easier to navigate on mobile devices, removes wasted whitespace, and aligns with the overall redesign goal of simplifying the Accounting page into fewer, clearer sections.
