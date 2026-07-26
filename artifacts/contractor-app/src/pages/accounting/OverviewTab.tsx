@@ -265,6 +265,133 @@ interface BusinessReserveData {
   plaidConnected: boolean;
 }
 
+// ─── Take-Home Dashboard ─────────────────────────────────────────────────────
+function TakeHomeDashboard() {
+  const year = new Date().getFullYear();
+  const { data: reserveSummary, isLoading } = useReserveSummary(year);
+
+  if (isLoading) return <div className="h-48 rounded-2xl bg-muted/40 animate-pulse" />;
+  if (!reserveSummary) return null;
+
+  const { ytd, months } = reserveSummary;
+  const avgMonthly = months.length > 0 ? ytd.takeHome / months.length : 0;
+  const lastMonth = months.length > 0 ? months[months.length - 1].takeHome : 0;
+
+  return (
+    <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+      <div className="px-5 py-3 bg-emerald-700 flex items-center gap-3">
+        <Wallet className="w-4 h-4 text-emerald-200 flex-shrink-0" />
+        <span className="font-bold text-sm text-white">Take-Home Dashboard</span>
+        <span className="text-[10px] text-emerald-200">Your income from the business</span>
+      </div>
+      <div className="p-4 space-y-4">
+        {/* Three summary stats */}
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Take-Home YTD</p>
+            <p className="text-2xl font-black text-emerald-700">{formatCurrency(ytd.takeHome)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Avg Monthly</p>
+            <p className="text-xl font-bold text-foreground">{months.length > 0 ? formatCurrency(avgMonthly) : "—"}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Last Month</p>
+            <p className="text-xl font-bold text-foreground">{months.length > 0 ? formatCurrency(lastMonth) : "—"}</p>
+          </div>
+        </div>
+
+        {/* Monthly history table */}
+        {months.length > 0 ? (
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="bg-muted/30 px-4 py-2 border-b border-border grid grid-cols-4 gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span>Month</span>
+              <span className="text-right">Revenue</span>
+              <span className="text-right">Tax Set-Aside</span>
+              <span className="text-right">Take-Home</span>
+            </div>
+            <div className="divide-y divide-border/30">
+              {[...months].reverse().map(m => {
+                const label = new Date(m.month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+                return (
+                  <div key={m.month} className="px-4 py-2 grid grid-cols-4 gap-1 text-xs">
+                    <span className="font-semibold text-foreground">{label}</span>
+                    <span className="text-right text-muted-foreground">{formatCurrency(m.revenue)}</span>
+                    <span className="text-right text-amber-700">{formatCurrency(m.taxReserve)}</span>
+                    <span className="text-right text-emerald-700 font-semibold">{formatCurrency(m.takeHome)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground text-center py-2">No paid invoices yet for {year}. Numbers appear once jobs are collected.</p>
+        )}
+
+        <p className="text-[11px] text-muted-foreground italic">Adjust percentages per job in Job Financials → Pay Breakdown tab.</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Business Overview ────────────────────────────────────────────────────────
+function BusinessOverview({ s, year, netProfit, otherIncomeTotal }: { s: any; year: number; netProfit: number; otherIncomeTotal: number }) {
+  const pendingAmt = (s.grossRevenue ?? 0) - (s.paidRevenue ?? 0);
+  const profitMargin = (s.paidRevenue ?? 0) > 0 ? (netProfit / (s.paidRevenue as number)) * 100 : 0;
+  const outstandingPct = (s.grossRevenue ?? 0) > 0 ? (pendingAmt / (s.grossRevenue as number)) * 100 : 0;
+
+  return (
+    <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+      <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-blue-600 flex-shrink-0" />
+          <span className="font-semibold text-sm text-foreground">Business Overview</span>
+          <span className="text-xs text-muted-foreground">Year to date overview</span>
+        </div>
+        <span className="text-[11px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{year} YTD</span>
+      </div>
+      <div className="p-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {/* Est. Net Profit */}
+        <div className={`rounded-xl border p-3 ${netProfit >= 0 ? "border-emerald-200 bg-emerald-50/40" : "border-red-200 bg-red-50/40"}`}>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Est. Net Profit</p>
+          <p className={`text-xl font-bold mt-0.5 leading-tight ${netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>{formatCurrency(netProfit)}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{profitMargin.toFixed(1)}% margin</p>
+        </div>
+        {/* Collected */}
+        <div className="rounded-xl border border-border p-3">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Collected</p>
+          <p className="text-xl font-bold mt-0.5 leading-tight text-foreground">{formatCurrency(s.paidRevenue ?? 0)}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{otherIncomeTotal > 0 ? "Invoices + other income" : "Paid invoices only"}</p>
+        </div>
+        {/* Total Invoiced */}
+        <div className="rounded-xl border border-border p-3">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Total Invoiced</p>
+          <p className="text-xl font-bold mt-0.5 leading-tight text-foreground">{formatCurrency(s.grossRevenue ?? 0)}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{pendingAmt > 0 ? `${formatCurrency(pendingAmt)} outstanding` : "All collected"}</p>
+        </div>
+        {/* Expenses */}
+        <div className="rounded-xl border border-border p-3">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Expenses</p>
+          <p className="text-xl font-bold mt-0.5 leading-tight text-red-600">{formatCurrency(s.businessExpenses ?? s.totalExpenses ?? 0)}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">+{formatCurrency(s.mileageDeduction ?? 0)} mileage</p>
+        </div>
+        {/* Outstanding */}
+        <div className={`rounded-xl border p-3 ${pendingAmt > 0 ? "border-amber-200 bg-amber-50/40" : "border-border"}`}>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Outstanding</p>
+          <p className={`text-xl font-bold mt-0.5 leading-tight ${pendingAmt > 0 ? "text-amber-700" : "text-muted-foreground"}`}>{formatCurrency(pendingAmt)}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{outstandingPct > 0 ? `${outstandingPct.toFixed(1)}% of invoiced` : "All collected"}</p>
+        </div>
+        {/* Profit Margin */}
+        <div className={`rounded-xl border p-3 ${profitMargin >= 0 ? "border-emerald-200 bg-emerald-50/40" : "border-red-200 bg-red-50/40"}`}>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Profit Margin</p>
+          <p className={`text-xl font-bold mt-0.5 leading-tight ${profitMargin >= 0 ? "text-emerald-700" : "text-red-600"}`}>{profitMargin.toFixed(1)}%</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">of collected revenue</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BusinessReserveDashboard() {
   const year = new Date().getFullYear();
   const qc = useQueryClient();
@@ -284,13 +411,11 @@ function BusinessReserveDashboard() {
   const createDeployment = useCreateGrowthFundDeployment(year);
   const deleteDeployment = useDeleteGrowthFundDeployment(year);
 
-  const [showOperatingEditor, setShowOperatingEditor] = useState(false);
+  const [expanded, setExpanded] = useState<"taxes" | "overhead" | "buffer" | "growth" | null>(null);
   const [localMode, setLocalMode] = useState<string | null>(null);
   const [operatingCustom, setOperatingCustom] = useState("");
   const [saving, setSaving] = useState(false);
   const [refreshingBalance, setRefreshingBalance] = useState(false);
-  const [showTaxBreakdown, setShowTaxBreakdown] = useState(false);
-  const [showTaxGrowthSection, setShowTaxGrowthSection] = useState(false);
   const [showInvestmentForm, setShowInvestmentForm] = useState(false);
   const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [formDesc, setFormDesc] = useState("");
@@ -337,7 +462,7 @@ function BusinessReserveDashboard() {
     }
   }
 
-  if (isLoading) return <div className="h-36 rounded-2xl bg-muted/40 animate-pulse" />;
+  if (isLoading) return <div className="h-48 rounded-2xl bg-muted/40 animate-pulse" />;
   if (!data) return null;
 
   const {
@@ -345,25 +470,26 @@ function BusinessReserveDashboard() {
     annualOverhead, monthlyRecurring, operatingReserve,
     operatingReserveMode, operatingReserveCustom,
     requiredReserve, checkingBalance, balanceCachedAt, availableToSpend,
-    reserveHealth, overheadCoverageDays, overheadCoverageMonths,
+    reserveHealth, overheadCoverageMonths,
     plaidConnected,
   } = data;
 
   const effectiveMode = localMode ?? operatingReserveMode;
 
-  const healthConfig = {
-    funded: { label: "Fully Funded", cls: "bg-emerald-100 text-emerald-800" },
-    low:    { label: "Getting Low",  cls: "bg-amber-100 text-amber-800" },
-    below:  { label: "Below Reserve", cls: "bg-red-100 text-red-800" },
-  };
-  const health = reserveHealth ? healthConfig[reserveHealth] : null;
-
-  // Tax & Growth section data
   const ytd = reserveSummary?.ytd ?? { taxReserve: 0, growthFund: 0, ownerShare: 0, takeHome: 0, revenue: 0, subLaborCost: 0 };
-  const months = reserveSummary?.months ?? [];
   const totalInvested = deployments.reduce((s, d) => s + d.amount, 0);
   const growthAvailable = Math.max(0, ytd.growthFund - totalInvested);
   const overUnder = ytd.taxReserve - estimatedTaxes;
+
+  const toggle = (key: "taxes" | "overhead" | "buffer" | "growth") =>
+    setExpanded(v => v === key ? null : key);
+
+  const healthConfig = {
+    funded: { label: "Fully Funded", badgeCls: "bg-emerald-100 text-emerald-800" },
+    low:    { label: "Getting Low",  badgeCls: "bg-amber-100 text-amber-800" },
+    below:  { label: "Below Reserve", badgeCls: "bg-red-100 text-red-800" },
+  };
+  const health = reserveHealth ? healthConfig[reserveHealth] : null;
 
   return (
     <div id="business-reserve-dashboard" className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
@@ -372,438 +498,355 @@ function BusinessReserveDashboard() {
         <div className="flex items-center gap-2">
           <PiggyBank className="w-4 h-4 text-slate-300" />
           <span className="font-bold text-sm text-white">Business Reserve Dashboard</span>
+          <span className="text-[10px] text-slate-400 hidden sm:inline">Cash planning at a glance</span>
         </div>
-        {health ? (
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${health.cls}`}>
-            {health.label}
-          </span>
-        ) : (
-          <span className="text-[10px] text-slate-400">Connect bank to see health</span>
-        )}
+        <div className="flex items-center gap-2">
+          {balanceCachedAt && (
+            <span className="text-[10px] text-slate-400">
+              Updated {new Date(balanceCachedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })},{" "}
+              {new Date(balanceCachedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+            </span>
+          )}
+          <button
+            onClick={refreshBalance}
+            disabled={refreshingBalance}
+            className="text-slate-400 hover:text-white disabled:opacity-40 transition-colors"
+            title="Refresh balance from bank"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshingBalance ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
-      <div className="p-5 space-y-4">
-        {/* Main total */}
-        <div className="rounded-xl bg-slate-900 p-5 text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Keep in Business Checking</p>
-          <p className="text-4xl font-black text-white leading-none">{formatCurrency(requiredReserve)}</p>
-          <p className="text-xs text-slate-400 mt-1.5">Minimum that should remain in your checking account today</p>
-        </div>
-
-        {/* Breakdown rows */}
-        <div className="space-y-2">
-
-          {/* Estimated Taxes — expandable */}
-          <div className="rounded-xl border border-border overflow-hidden">
-            <button
-              onClick={() => setShowTaxBreakdown(v => !v)}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors group text-left"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Estimated Taxes</p>
-                  <p className="text-[10px] text-muted-foreground">YTD estimate · federal SE + KY state + OCC</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-bold text-amber-700">{formatCurrency(estimatedTaxes)}</span>
-                <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${showTaxBreakdown ? "rotate-180" : ""}`} />
-              </div>
-            </button>
-            {showTaxBreakdown && (
-              <div className="border-t border-border px-4 py-3 bg-amber-50/40 grid grid-cols-3 gap-2">
-                <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
-                  <p className="text-[9px] uppercase font-semibold text-amber-700 mb-0.5">Federal SE</p>
-                  <p className="text-sm font-bold text-amber-800">{formatCurrency(taxBreakdown.federalSE)}</p>
-                  <p className="text-[9px] text-amber-600">15.3% × 92.35%</p>
-                </div>
-                <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
-                  <p className="text-[9px] uppercase font-semibold text-amber-700 mb-0.5">KY State</p>
-                  <p className="text-sm font-bold text-amber-800">{formatCurrency(taxBreakdown.kyState)}</p>
-                  <p className="text-[9px] text-amber-600">4.0% flat rate</p>
-                </div>
-                <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
-                  <p className="text-[9px] uppercase font-semibold text-amber-700 mb-0.5">OCC Tax</p>
-                  <p className="text-sm font-bold text-amber-800">{formatCurrency(taxBreakdown.occ)}</p>
-                  <p className="text-[9px] text-amber-600">1.39% Owensboro</p>
-                </div>
-              </div>
-            )}
+      <div className="p-4 space-y-4">
+        {/* Two-column hero */}
+        <div className="grid grid-cols-[1fr_auto] gap-3">
+          {/* Left — Keep in Checking */}
+          <div className="rounded-xl bg-slate-900 p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Keep in Business Checking</p>
+            <p className="text-3xl font-black text-white leading-none">{formatCurrency(requiredReserve)}</p>
+            <p className="text-[10px] text-slate-400 mt-1.5">Minimum that should remain in your checking account today</p>
           </div>
 
-          {/* Business Overhead — annual */}
-          <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-purple-500 shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-foreground">Business Overhead</p>
-                <p className="text-[10px] text-muted-foreground">Est. annual · active recurring templates</p>
-              </div>
-            </div>
-            <span className="text-sm font-bold text-purple-700">{formatCurrency(annualOverhead)}</span>
-          </div>
-
-          {/* Operating Reserve (expandable inline editor) */}
-          <div className="rounded-xl border border-border overflow-hidden">
-            <button
-              onClick={() => setShowOperatingEditor(v => !v)}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors group text-left"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Operating Reserve</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {operatingReserveMode === "0" ? "None — tap to add a buffer"
-                      : operatingReserveMode === "custom" ? `Custom: ${formatCurrency(operatingReserveCustom ?? 0)}`
-                      : `${operatingReserveMode} month${operatingReserveMode !== "1" ? "s" : ""} of overhead`}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-bold text-blue-700">{formatCurrency(operatingReserve)}</span>
-                <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-transform ${showOperatingEditor ? "rotate-180" : ""}`} />
-              </div>
-            </button>
-
-            {showOperatingEditor && (
-              <div className="border-t border-border px-4 py-3 bg-muted/30 space-y-2.5">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Buffer amount</p>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {(["0", "1", "2", "3", "custom"] as const).map(opt => (
-                    <button
-                      key={opt}
-                      disabled={saving}
-                      onClick={() => {
-                        setLocalMode(opt);
-                        if (opt !== "custom") {
-                          saveSettings({ operatingReserveMode: opt, operatingReserveCustom: null });
-                        }
-                      }}
-                      className={`text-xs font-semibold py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
-                        effectiveMode === opt ? "bg-blue-600 text-white border-blue-600" : "border-border hover:bg-muted/60"
-                      }`}
-                    >
-                      {opt === "0" ? "None" : opt === "custom" ? "Custom" : `${opt}mo`}
-                    </button>
-                  ))}
-                </div>
-                {effectiveMode === "custom" && (
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
-                      <input
-                        type="number" min="0" step="1" placeholder="0.00"
-                        value={operatingCustom || (operatingReserveCustom != null ? String(operatingReserveCustom) : "")}
-                        onChange={e => setOperatingCustom(e.target.value)}
-                        className="w-full pl-6 pr-3 py-1.5 border border-border rounded-lg text-xs bg-background focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      />
-                    </div>
-                    <button
-                      disabled={saving}
-                      onClick={() => {
-                        const rawValue = operatingCustom !== ""
-                          ? operatingCustom
-                          : operatingReserveCustom != null ? String(operatingReserveCustom) : "";
-                        const parsed = parseFloat(rawValue);
-                        if (!rawValue || isNaN(parsed)) return;
-                        saveSettings({ operatingReserveMode: "custom", operatingReserveCustom: parsed });
-                      }}
-                      className="px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      Save
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Growth Fund (toggle) */}
-          <div className={`flex items-center justify-between rounded-xl border px-4 py-3 transition-colors ${
-            growthFundIncluded ? "border-border" : "border-dashed border-muted-foreground/30"
-          }`}>
-            <div className="flex items-center gap-3">
-              <div className={`w-2 h-2 rounded-full shrink-0 ${growthFundIncluded ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
-              <div>
-                <p className={`text-sm font-semibold ${growthFundIncluded ? "text-foreground" : "text-muted-foreground"}`}>
-                  Growth Fund
-                </p>
-                <p className="text-[10px] text-muted-foreground">
-                  {growthFundIncluded ? "Included in required reserve" : "Not included — toggle to add if kept in checking"}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`text-sm font-bold ${growthFundIncluded ? "text-emerald-700" : "text-muted-foreground"}`}>
-                {formatCurrency(growthFundAvailable)}
-              </span>
-              <button
-                disabled={saving}
-                onClick={() => saveSettings({ includeGrowthFundInReserve: !growthFundIncluded })}
-                className={`relative w-8 h-4 rounded-full transition-colors shrink-0 disabled:opacity-50 ${growthFundIncluded ? "bg-emerald-500" : "bg-muted"}`}
-              >
-                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${growthFundIncluded ? "translate-x-[18px]" : "translate-x-0.5"}`} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Available to Spend / Bank balance */}
-        {plaidConnected && checkingBalance != null ? (
-          <div className={`rounded-xl p-4 ${(availableToSpend ?? 0) >= 0 ? "bg-emerald-50 border border-emerald-200" : "bg-red-50 border border-red-200"}`}>
-            <div className="flex items-center justify-between mb-2 text-sm">
-              <div>
-                <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">Checking Balance</p>
-                <p className="font-bold text-foreground">{formatCurrency(checkingBalance)}</p>
-                {balanceCachedAt && (
-                  <p className="text-[9px] text-muted-foreground mt-0.5">
-                    Updated {new Date(balanceCachedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                    {" "}{new Date(balanceCachedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                  </p>
-                )}
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wide">Required Reserve</p>
-                <p className="font-bold text-foreground">− {formatCurrency(requiredReserve)}</p>
-                <button
-                  onClick={refreshBalance}
-                  disabled={refreshingBalance}
-                  className="mt-1 flex items-center gap-1 text-[9px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 ml-auto"
-                  title="Refresh balance from bank (uses 1 Plaid call)"
-                >
-                  <RefreshCw className={`w-2.5 h-2.5 ${refreshingBalance ? "animate-spin" : ""}`} />
-                  Refresh
-                </button>
-              </div>
-            </div>
-            <div className={`border-t pt-2 flex items-center justify-between ${(availableToSpend ?? 0) >= 0 ? "border-emerald-300" : "border-red-300"}`}>
-              <p className={`text-sm font-bold ${(availableToSpend ?? 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>
-                {(availableToSpend ?? 0) >= 0 ? "Available to Spend" : "Short Reserve"}
-              </p>
-              <p className={`text-xl font-black ${(availableToSpend ?? 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>
-                {availableToSpend != null
-                  ? availableToSpend >= 0
-                    ? formatCurrency(availableToSpend)
-                    : `−${formatCurrency(Math.abs(availableToSpend))}`
-                  : "—"}
-              </p>
-            </div>
-          </div>
-        ) : !plaidConnected ? (
-          <div className="rounded-xl bg-muted/30 border border-dashed border-muted-foreground/30 px-4 py-3 text-center">
-            <p className="text-xs text-muted-foreground">Connect your business bank account to calculate available cash.</p>
-          </div>
-        ) : null}
-
-        {/* Overhead Coverage */}
-        {monthlyRecurring > 0 && overheadCoverageDays != null && (
-          <div className="rounded-xl bg-blue-50/50 border border-blue-100 px-4 py-3 flex items-center justify-between">
+          {/* Right — Balance + Difference */}
+          <div className="rounded-xl border border-border p-3 min-w-[140px] space-y-2.5 flex flex-col justify-between">
             <div>
-              <p className="text-xs font-semibold text-blue-800">Overhead Coverage</p>
-              <p className="text-[10px] text-blue-600">Current reserve covers expenses for</p>
-            </div>
-            <div className="text-right">
-              <p className="text-xl font-black text-blue-800">
-                {overheadCoverageDays} <span className="text-sm font-semibold">days</span>
-              </p>
-              {overheadCoverageMonths != null && (
-                <p className="text-[10px] text-blue-600">{overheadCoverageMonths} months</p>
+              <p className="text-[9px] text-muted-foreground uppercase font-semibold tracking-wide">Current Checking Balance</p>
+              {plaidConnected && checkingBalance != null ? (
+                <p className="font-bold text-foreground text-sm mt-0.5">{formatCurrency(checkingBalance)}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground mt-0.5 italic text-xs">Connect bank</p>
               )}
             </div>
+            {availableToSpend != null ? (
+              <div>
+                <p className="text-[9px] text-muted-foreground uppercase font-semibold tracking-wide">Reserve Difference</p>
+                <p className={`font-bold text-sm mt-0.5 ${availableToSpend >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                  {availableToSpend >= 0 ? formatCurrency(availableToSpend) : `−${formatCurrency(Math.abs(availableToSpend))}`}
+                </p>
+                <span className={`inline-block mt-1 text-[9px] font-bold px-2 py-0.5 rounded-full ${availableToSpend >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                  {availableToSpend >= 0 ? (health?.label ?? "Healthy") : "Short Reserve"}
+                </span>
+              </div>
+            ) : health ? (
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${health.badgeCls}`}>{health.label}</span>
+            ) : null}
           </div>
-        )}
+        </div>
+
+        {/* Reserve Breakdown — four expandable tiles */}
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Reserve Breakdown</p>
+          <div className="grid grid-cols-2 gap-2">
+
+            {/* ── Estimated Taxes ── */}
+            <div className="rounded-xl border border-border overflow-hidden">
+              <button onClick={() => toggle("taxes")} className="w-full p-3 text-left hover:bg-muted/40 transition-colors">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                    <DollarSign className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform mt-1 ${expanded === "taxes" ? "rotate-180" : ""}`} />
+                </div>
+                <p className="text-xs font-semibold text-foreground">Estimated Taxes</p>
+                <p className="text-[10px] text-muted-foreground leading-tight">YTD · SE + KY + OCC</p>
+                <p className="text-base font-bold text-amber-700 mt-1">{formatCurrency(estimatedTaxes)}</p>
+              </button>
+              {expanded === "taxes" && (
+                <div className="border-t border-border p-3 bg-amber-50/40 space-y-2.5">
+                  <div className="grid grid-cols-3 gap-1">
+                    <div className="rounded-lg bg-white border border-amber-200 p-1.5 text-center">
+                      <p className="text-[8px] uppercase font-semibold text-amber-700">Federal SE</p>
+                      <p className="text-xs font-bold text-amber-800">{formatCurrency(taxBreakdown.federalSE)}</p>
+                      <p className="text-[8px] text-amber-600">15.3%×92.35%</p>
+                    </div>
+                    <div className="rounded-lg bg-white border border-amber-200 p-1.5 text-center">
+                      <p className="text-[8px] uppercase font-semibold text-amber-700">KY State</p>
+                      <p className="text-xs font-bold text-amber-800">{formatCurrency(taxBreakdown.kyState)}</p>
+                      <p className="text-[8px] text-amber-600">4.0% flat</p>
+                    </div>
+                    <div className="rounded-lg bg-white border border-amber-200 p-1.5 text-center">
+                      <p className="text-[8px] uppercase font-semibold text-amber-700">OCC Tax</p>
+                      <p className="text-xs font-bold text-amber-800">{formatCurrency(taxBreakdown.occ)}</p>
+                      <p className="text-[8px] text-amber-600">1.39% Owens.</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Tax Reserve vs. Liability</p>
+                    <div className="grid grid-cols-3 gap-1">
+                      <div className="rounded-lg bg-amber-50 border border-amber-200 p-1.5 text-center">
+                        <p className="text-[8px] uppercase font-semibold text-amber-700">Reserved (25%)</p>
+                        <p className="text-xs font-bold text-amber-800">{formatCurrency(ytd.taxReserve)}</p>
+                      </div>
+                      <div className="rounded-lg bg-blue-50 border border-blue-200 p-1.5 text-center">
+                        <p className="text-[8px] uppercase font-semibold text-blue-700">Est. Liability</p>
+                        <p className="text-xs font-bold text-blue-800">{formatCurrency(estimatedTaxes)}</p>
+                      </div>
+                      <div className={`rounded-lg p-1.5 text-center border ${overUnder >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                        <p className={`text-[8px] uppercase font-semibold ${overUnder >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                          {overUnder >= 0 ? "Over" : "Under"}
+                        </p>
+                        <p className={`text-xs font-bold ${overUnder >= 0 ? "text-emerald-800" : "text-red-800"}`}>
+                          {overUnder >= 0 ? "+" : "−"}{formatCurrency(Math.abs(overUnder))}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Business Overhead ── */}
+            <div className="rounded-xl border border-border overflow-hidden">
+              <button onClick={() => toggle("overhead")} className="w-full p-3 text-left hover:bg-muted/40 transition-colors">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
+                    <Calendar className="w-4 h-4 text-purple-600" />
+                  </div>
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform mt-1 ${expanded === "overhead" ? "rotate-180" : ""}`} />
+                </div>
+                <p className="text-xs font-semibold text-foreground">Business Overhead</p>
+                <p className="text-[10px] text-muted-foreground leading-tight">Est. annual · recurring</p>
+                <p className="text-base font-bold text-purple-700 mt-1">{formatCurrency(annualOverhead)}</p>
+              </button>
+              {expanded === "overhead" && (
+                <div className="border-t border-border p-3 bg-purple-50/40 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-purple-700">Annual overhead</span>
+                    <span className="font-semibold text-purple-800">{formatCurrency(annualOverhead)}</span>
+                  </div>
+                  {overheadCoverageMonths != null && overheadCoverageMonths > 0 ? (
+                    <p className="text-[10px] text-purple-600">
+                      Reserve covers approximately {overheadCoverageMonths} month{overheadCoverageMonths !== 1 ? "s" : ""} of expenses
+                    </p>
+                  ) : monthlyRecurring === 0 ? (
+                    <p className="text-[10px] text-muted-foreground">No active recurring expenses configured yet.</p>
+                  ) : null}
+                </div>
+              )}
+            </div>
+
+            {/* ── Operating Buffer ── */}
+            <div className="rounded-xl border border-border overflow-hidden">
+              <button onClick={() => toggle("buffer")} className="w-full p-3 text-left hover:bg-muted/40 transition-colors">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                    <Shield className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform mt-1 ${expanded === "buffer" ? "rotate-180" : ""}`} />
+                </div>
+                <p className="text-xs font-semibold text-foreground">Operating Buffer</p>
+                <p className="text-[10px] text-muted-foreground leading-tight">
+                  {operatingReserveMode === "0" ? "Tap to add a buffer"
+                    : operatingReserveMode === "custom" ? "Custom amount"
+                    : `${operatingReserveMode}mo of overhead`}
+                </p>
+                <p className="text-base font-bold text-blue-700 mt-1">{formatCurrency(operatingReserve)}</p>
+              </button>
+              {expanded === "buffer" && (
+                <div className="border-t border-border px-3 py-3 bg-muted/30 space-y-2.5">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Buffer amount</p>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {(["0", "1", "2", "3", "custom"] as const).map(opt => (
+                      <button
+                        key={opt}
+                        disabled={saving}
+                        onClick={() => {
+                          setLocalMode(opt);
+                          if (opt !== "custom") {
+                            saveSettings({ operatingReserveMode: opt, operatingReserveCustom: null });
+                          }
+                        }}
+                        className={`text-xs font-semibold py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
+                          effectiveMode === opt ? "bg-blue-600 text-white border-blue-600" : "border-border hover:bg-muted/60"
+                        }`}
+                      >
+                        {opt === "0" ? "None" : opt === "custom" ? "Custom" : `${opt}mo`}
+                      </button>
+                    ))}
+                  </div>
+                  {effectiveMode === "custom" && (
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                        <input
+                          type="number" min="0" step="1" placeholder="0.00"
+                          value={operatingCustom || (operatingReserveCustom != null ? String(operatingReserveCustom) : "")}
+                          onChange={e => setOperatingCustom(e.target.value)}
+                          className="w-full pl-6 pr-3 py-1.5 border border-border rounded-lg text-xs bg-background focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        />
+                      </div>
+                      <button
+                        disabled={saving}
+                        onClick={() => {
+                          const rawValue = operatingCustom !== ""
+                            ? operatingCustom
+                            : operatingReserveCustom != null ? String(operatingReserveCustom) : "";
+                          const parsed = parseFloat(rawValue);
+                          if (!rawValue || isNaN(parsed)) return;
+                          saveSettings({ operatingReserveMode: "custom", operatingReserveCustom: parsed });
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Growth Fund ── */}
+            <div className={`rounded-xl border overflow-hidden ${growthFundIncluded ? "border-border" : "border-dashed border-muted-foreground/40"}`}>
+              <button onClick={() => toggle("growth")} className="w-full p-3 text-left hover:bg-muted/40 transition-colors">
+                <div className="flex items-start justify-between mb-2">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${growthFundIncluded ? "bg-emerald-100" : "bg-muted/40"}`}>
+                    <TrendingUp className={`w-4 h-4 ${growthFundIncluded ? "text-emerald-600" : "text-muted-foreground"}`} />
+                  </div>
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform mt-1 ${expanded === "growth" ? "rotate-180" : ""}`} />
+                </div>
+                <p className={`text-xs font-semibold ${growthFundIncluded ? "text-foreground" : "text-muted-foreground"}`}>Growth Fund</p>
+                <p className="text-[10px] text-muted-foreground leading-tight">
+                  {growthFundIncluded ? "Included in reserve" : "Excluded from reserve"}
+                </p>
+                <p className={`text-base font-bold mt-1 ${growthFundIncluded ? "text-emerald-700" : "text-muted-foreground"}`}>{formatCurrency(growthFundAvailable)}</p>
+              </button>
+              {/* Toggle inline */}
+              <div className="px-3 pb-2.5 flex items-center justify-between">
+                <span className="text-[9px] text-muted-foreground">Include in reserve</span>
+                <button
+                  disabled={saving}
+                  onClick={e => { e.stopPropagation(); saveSettings({ includeGrowthFundInReserve: !growthFundIncluded }); }}
+                  className={`relative w-8 h-4 rounded-full transition-colors shrink-0 disabled:opacity-50 ${growthFundIncluded ? "bg-emerald-500" : "bg-muted"}`}
+                >
+                  <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${growthFundIncluded ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+              {expanded === "growth" && (
+                <div className="border-t border-border p-3 space-y-2">
+                  {/* Accumulated / Invested / Available */}
+                  <div className="rounded-lg bg-blue-50 border border-blue-200 p-2.5 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-blue-600">Accumulated (5% of revenue)</span>
+                      <span className="text-xs font-semibold text-blue-800">{formatCurrency(ytd.growthFund)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-blue-600">Invested</span>
+                      <span className="text-xs font-semibold text-blue-700">− {formatCurrency(totalInvested)}</span>
+                    </div>
+                    <div className="border-t border-blue-200 pt-1 flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-blue-700">Available</span>
+                      <span className="text-sm font-black text-blue-900">{formatCurrency(growthAvailable)}</span>
+                    </div>
+                  </div>
+                  {/* Investment log */}
+                  <div className="rounded-lg border border-blue-200 bg-blue-50/40 overflow-hidden">
+                    <div className="px-3 py-2 bg-blue-100/60 border-b border-blue-200 flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Investments Made</span>
+                      {!showInvestmentForm && (
+                        <button onClick={() => setShowInvestmentForm(true)}
+                          className="flex items-center gap-1 text-[10px] font-semibold text-blue-700 hover:text-blue-900">
+                          <Plus className="w-3 h-3" /> Log Investment
+                        </button>
+                      )}
+                    </div>
+                    {showInvestmentForm && (
+                      <div className="p-3 border-b border-blue-200 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] text-muted-foreground block mb-0.5">Date</label>
+                            <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)}
+                              className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-muted-foreground block mb-0.5">Amount ($)</label>
+                            <input type="number" min="0.01" step="0.01" placeholder="0.00" value={formAmount}
+                              onChange={e => setFormAmount(e.target.value)}
+                              className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted-foreground block mb-0.5">Description</label>
+                          <input type="text" placeholder="e.g. New pressure washer" value={formDesc}
+                            onChange={e => setFormDesc(e.target.value)}
+                            className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted-foreground block mb-0.5">Notes <span className="text-muted-foreground/60">(optional)</span></label>
+                          <textarea placeholder="e.g. Invoice #1042" value={formNotes}
+                            onChange={e => setFormNotes(e.target.value)} rows={2}
+                            className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background resize-none" />
+                        </div>
+                        {formError && <p className="text-[10px] text-red-600 font-medium">{formError}</p>}
+                        <div className="flex gap-2">
+                          <button onClick={handleSaveInvestment} disabled={createDeployment.isPending}
+                            className="flex-1 text-xs font-semibold bg-blue-600 text-white rounded-md py-1.5 hover:bg-blue-700 disabled:opacity-50">
+                            {createDeployment.isPending ? "Saving…" : "Save"}
+                          </button>
+                          <button onClick={() => { setShowInvestmentForm(false); setFormError(null); setFormDesc(""); setFormAmount(""); setFormNotes(""); }}
+                            className="flex-1 text-xs font-semibold border border-border rounded-md py-1.5 text-muted-foreground hover:bg-muted/40">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {deployments.length === 0 && !showInvestmentForm && (
+                      <p className="text-[10px] text-muted-foreground text-center py-3 px-3">
+                        No investments logged yet. Tap "Log Investment" when you deploy growth fund money.
+                      </p>
+                    )}
+                    {deployments.length > 0 && (
+                      <div className="divide-y divide-blue-100">
+                        {deployments.map(d => {
+                          const label = new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
+                          return (
+                            <div key={d.id} className="px-3 py-2 flex items-center gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-foreground truncate">{d.description}</p>
+                                <p className="text-[10px] text-muted-foreground">{label}</p>
+                                {d.notes && <p className="text-[10px] text-muted-foreground/80 italic truncate">{d.notes}</p>}
+                              </div>
+                              <span className="text-xs font-semibold text-blue-800 shrink-0">{formatCurrency(d.amount)}</span>
+                              <button onClick={() => deleteDeployment.mutate(d.id)} disabled={deleteDeployment.isPending}
+                                className="shrink-0 text-muted-foreground hover:text-red-600 disabled:opacity-40" title="Remove investment">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
 
         <p className="text-[11px] text-muted-foreground italic">
           Cash-flow planning only · Not based on taxable income · Reserve amounts come from paid jobs this year.
         </p>
-
-        {/* ── Tax & Growth Reserve — informational section ── */}
-        <div className="rounded-xl border border-emerald-200 overflow-hidden">
-          <button
-            onClick={() => setShowTaxGrowthSection(v => !v)}
-            className="w-full flex items-center justify-between px-4 py-3 bg-emerald-50/80 hover:bg-emerald-50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Wallet className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="text-sm font-bold text-emerald-900">Tax &amp; Growth Reserve</span>
-              <span className="text-[10px] text-emerald-600">· cash-flow view</span>
-            </div>
-            <ChevronDown className={`w-3.5 h-3.5 text-emerald-700 transition-transform ${showTaxGrowthSection ? "rotate-180" : ""}`} />
-          </button>
-
-          {showTaxGrowthSection && (
-            <div className="border-t border-emerald-200 p-4 space-y-3 bg-white/60">
-
-              {/* Tax Reserve vs Estimated Tax comparison */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Tax Reserve vs. Actual Liability</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-lg bg-amber-50 border border-amber-200 p-2 text-center">
-                    <p className="text-[9px] uppercase font-semibold text-amber-700 mb-0.5">Tax Reserve (25%)</p>
-                    <p className="text-sm font-bold text-amber-800">{formatCurrency(ytd.taxReserve)}</p>
-                    <p className="text-[9px] text-amber-600">of owner share</p>
-                  </div>
-                  <div className="rounded-lg bg-blue-50 border border-blue-200 p-2 text-center">
-                    <p className="text-[9px] uppercase font-semibold text-blue-700 mb-0.5">Est. Tax Liability</p>
-                    <p className="text-sm font-bold text-blue-800">{formatCurrency(estimatedTaxes)}</p>
-                    <p className="text-[9px] text-blue-600">accounting-based</p>
-                  </div>
-                  <div className={`rounded-lg p-2 text-center border ${overUnder >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-                    <p className={`text-[9px] uppercase font-semibold mb-0.5 ${overUnder >= 0 ? "text-emerald-700" : "text-red-700"}`}>
-                      {overUnder >= 0 ? "Over Reserved" : "Under Reserved"}
-                    </p>
-                    <p className={`text-sm font-bold ${overUnder >= 0 ? "text-emerald-800" : "text-red-800"}`}>
-                      {overUnder >= 0 ? "+" : "−"}{formatCurrency(Math.abs(overUnder))}
-                    </p>
-                    <p className={`text-[9px] ${overUnder >= 0 ? "text-emerald-600" : "text-red-600"}`}>difference</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Growth Fund detail */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Growth Fund (5% of revenue after subs)</p>
-                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-blue-600">Accumulated</span>
-                    <span className="text-xs font-semibold text-blue-800">{formatCurrency(ytd.growthFund)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-blue-600">Invested</span>
-                    <span className="text-xs font-semibold text-blue-700">− {formatCurrency(totalInvested)}</span>
-                  </div>
-                  <div className="border-t border-blue-200 pt-1 flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-blue-700">Available</span>
-                    <span className="text-sm font-black text-blue-900">{formatCurrency(growthAvailable)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Investment log */}
-              <div className="rounded-lg border border-blue-200 bg-blue-50/40 overflow-hidden">
-                <div className="px-3 py-2 bg-blue-100/60 border-b border-blue-200 flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Investments Made</span>
-                  {!showInvestmentForm && (
-                    <button onClick={() => setShowInvestmentForm(true)}
-                      className="flex items-center gap-1 text-[10px] font-semibold text-blue-700 hover:text-blue-900">
-                      <Plus className="w-3 h-3" /> Log Investment
-                    </button>
-                  )}
-                </div>
-
-                {showInvestmentForm && (
-                  <div className="p-3 border-b border-blue-200 space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] text-muted-foreground block mb-0.5">Date</label>
-                        <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)}
-                          className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-muted-foreground block mb-0.5">Amount ($)</label>
-                        <input type="number" min="0.01" step="0.01" placeholder="0.00" value={formAmount}
-                          onChange={e => setFormAmount(e.target.value)}
-                          className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-muted-foreground block mb-0.5">Description</label>
-                      <input type="text" placeholder="e.g. New pressure washer" value={formDesc}
-                        onChange={e => setFormDesc(e.target.value)}
-                        className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-muted-foreground block mb-0.5">Notes <span className="text-muted-foreground/60">(optional)</span></label>
-                      <textarea placeholder="e.g. Invoice #1042" value={formNotes}
-                        onChange={e => setFormNotes(e.target.value)} rows={2}
-                        className="w-full text-xs border border-border rounded-md px-2 py-1 bg-background resize-none" />
-                    </div>
-                    {formError && <p className="text-[10px] text-red-600 font-medium">{formError}</p>}
-                    <div className="flex gap-2">
-                      <button onClick={handleSaveInvestment} disabled={createDeployment.isPending}
-                        className="flex-1 text-xs font-semibold bg-blue-600 text-white rounded-md py-1.5 hover:bg-blue-700 disabled:opacity-50">
-                        {createDeployment.isPending ? "Saving…" : "Save"}
-                      </button>
-                      <button onClick={() => { setShowInvestmentForm(false); setFormError(null); setFormDesc(""); setFormAmount(""); setFormNotes(""); }}
-                        className="flex-1 text-xs font-semibold border border-border rounded-md py-1.5 text-muted-foreground hover:bg-muted/40">
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {deployments.length === 0 && !showInvestmentForm && (
-                  <p className="text-[10px] text-muted-foreground text-center py-3 px-3">
-                    No investments logged yet. Tap "Log Investment" when you deploy growth fund money.
-                  </p>
-                )}
-
-                {deployments.length > 0 && (
-                  <div className="divide-y divide-blue-100">
-                    {deployments.map(d => {
-                      const label = new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
-                      return (
-                        <div key={d.id} className="px-3 py-2 flex items-center gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-foreground truncate">{d.description}</p>
-                            <p className="text-[10px] text-muted-foreground">{label}</p>
-                            {d.notes && <p className="text-[10px] text-muted-foreground/80 italic truncate">{d.notes}</p>}
-                          </div>
-                          <span className="text-xs font-semibold text-blue-800 shrink-0">{formatCurrency(d.amount)}</span>
-                          <button onClick={() => deleteDeployment.mutate(d.id)} disabled={deleteDeployment.isPending}
-                            className="shrink-0 text-muted-foreground hover:text-red-600 disabled:opacity-40" title="Remove investment">
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Take-home + monthly table */}
-              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-emerald-700">Your Take-Home YTD</p>
-                  <p className="text-[10px] text-emerald-600">After subs, growth fund &amp; tax reserve</p>
-                </div>
-                <p className="text-xl font-bold text-emerald-700">{formatCurrency(ytd.takeHome)}</p>
-              </div>
-
-              {months.length > 0 && (
-                <div className="rounded-lg border border-border/50 overflow-hidden">
-                  <div className="bg-muted/30 px-4 py-2 border-b border-border/50 grid grid-cols-4 gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                    <span>Month</span>
-                    <span className="text-right">Revenue</span>
-                    <span className="text-right">Tax Set-Aside</span>
-                    <span className="text-right">Take-Home</span>
-                  </div>
-                  <div className="divide-y divide-border/30">
-                    {months.map(m => {
-                      const label = new Date(m.month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" });
-                      return (
-                        <div key={m.month} className="px-4 py-2 grid grid-cols-4 gap-1 text-xs">
-                          <span className="font-semibold text-foreground">{label}</span>
-                          <span className="text-right text-muted-foreground">{formatCurrency(m.revenue)}</span>
-                          <span className="text-right text-amber-700">{formatCurrency(m.taxReserve)}</span>
-                          <span className="text-right text-emerald-700 font-semibold">{formatCurrency(m.takeHome)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {months.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-2">No paid invoices yet for {year}. Numbers appear once jobs are collected.</p>
-              )}
-
-              <p className="text-[11px] text-muted-foreground italic">Adjust percentages per job in Job Financials → Pay Breakdown tab.</p>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -951,8 +994,6 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
     await deleteOI.mutateAsync(id);
   }
 
-  const pendingAmt = (s.grossRevenue ?? 0) - (s.paidRevenue ?? 0);
-
   return (
     <div className="space-y-6">
       {s.pendingRevenue > 0 && (
@@ -964,47 +1005,9 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
 
       <BusinessReserveDashboard />
 
-      {/* ── Net Profit hero + secondary stat tiles ── */}
-      <div className="space-y-3">
-        <div className={`rounded-2xl p-5 border-l-4 shadow-sm border border-border ${netProfit >= 0 ? "bg-emerald-50 border-l-emerald-500" : "bg-red-50 border-l-red-500"}`}>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Est. Net Profit — {year}</p>
-              <p className={`text-4xl font-display font-black leading-none ${netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>{formatCurrency(netProfit)}</p>
-              <p className="text-xs text-muted-foreground mt-1.5">Collected − Business Expenses − Mileage Deduction</p>
-            </div>
-            {netProfit >= 0
-              ? <TrendingUp className="w-12 h-12 text-emerald-300 flex-shrink-0" />
-              : <TrendingDown className="w-12 h-12 text-red-300 flex-shrink-0" />}
-          </div>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-card border border-border border-l-4 border-l-emerald-500 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0"><DollarSign className="w-3.5 h-3.5" /></div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Collected</p>
-            </div>
-            <p className="text-xl font-display font-bold text-foreground">{formatCurrency(s.paidRevenue)}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">{otherIncomeTotal > 0 ? "Invoices + other income" : "Paid invoices only"}</p>
-          </div>
-          <div className="bg-card border border-border border-l-4 border-l-blue-500 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0"><TrendingUp className="w-3.5 h-3.5" /></div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Invoiced</p>
-            </div>
-            <p className="text-xl font-display font-bold text-foreground">{formatCurrency(s.grossRevenue)}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">{pendingAmt > 0 ? `${formatCurrency(pendingAmt)} outstanding` : "All collected"}</p>
-          </div>
-          <div className="bg-card border border-border border-l-4 border-l-red-500 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="w-6 h-6 rounded-lg bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0"><TrendingDown className="w-3.5 h-3.5" /></div>
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Expenses</p>
-            </div>
-            <p className="text-xl font-display font-bold text-foreground">{formatCurrency(s.businessExpenses ?? s.totalExpenses)}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">+{formatCurrency(s.mileageDeduction ?? 0)} mileage</p>
-          </div>
-        </div>
-      </div>
+      <TakeHomeDashboard />
+
+      <BusinessOverview s={s} year={year} netProfit={netProfit} otherIncomeTotal={otherIncomeTotal} />
 
       {/* ── Owner Capital Recovery ── */}
       {(() => {
