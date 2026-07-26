@@ -1,0 +1,259 @@
+#1327 - Business Reserve Dashboard
+
+## What & Why
+
+Willard wants one number on his Accounting page that answers:
+
+"How much money in my business checking account is already spoken for?"
+
+Today the information already exists throughout the Accounting module:
+
+• Tax Reserve
+• Growth Fund
+• Recurring Expenses
+• Plaid Bank Balance
+• Estimated Tax Liability
+
+This feature combines those existing calculations into a single Business Reserve Dashboard that becomes the primary cash planning widget for the Accounting Overview page.
+
+The dashboard is intended for cash management—not accounting—and should clearly separate actual reserved cash from estimated tax liability.
+
+---
+
+## Done Looks Like
+
+A new "Business Reserve Dashboard" card appears at the top of Accounting → Overview above the existing Tax & Growth Reserve section.
+
+The dashboard displays:
+
+KEEP IN BUSINESS CHECKING
+
+$X,XXX.XX
+
+This number represents the minimum amount that should remain in the business checking account today.
+
+The total is calculated as:
+
+Required Reserve =
+Tax Reserve
++ Available Growth Fund
++ Next 30 Days of Recurring Expenses
++ Operating Reserve
+
+The dashboard displays four clickable breakdown cards:
+
+• Tax Reserve
+• Growth Fund
+• Business Overhead (30 Days)
+• Operating Reserve
+
+Each card shows its contribution to the Required Reserve and navigates or scrolls to the existing detail section already in the Accounting page.
+
+If a Plaid checking account is connected, the dashboard also displays:
+
+Available to Spend
+
+Business Checking Balance
+− Required Reserve
+
+If positive:
+
+Display in green.
+
+If negative:
+
+Display:
+
+Short Reserve
+
+in red.
+
+A Reserve Health badge is shown.
+
+Green
+Fully Funded
+
+Yellow
+Reserve Getting Low
+
+Red
+Below Required Reserve
+
+If no Plaid account exists:
+
+Hide the health indicator and instead display:
+
+"Connect your business bank account to calculate available cash."
+
+Display an Overhead Coverage statistic showing:
+
+Days of Overhead
+
+or
+
+Months of Overhead
+
+Formula:
+
+Required Reserve Available For Overhead
+÷
+Monthly Recurring Expenses
+
+The Operating Reserve allows selecting:
+
+• None
+• 1 Month
+• 2 Months
+• 3 Months
+• Custom Dollar Amount
+
+The setting is persisted per business.
+
+The dashboard must clearly distinguish:
+
+Estimated Tax Liability
+
+vs
+
+Tax Reserve
+
+Estimated Tax Liability is accounting information only.
+
+Tax Reserve represents actual cash intentionally set aside.
+
+Only Tax Reserve contributes to the Required Reserve calculation.
+
+---
+
+## Out of Scope
+
+Changing Tax Reserve calculations
+
+Changing Growth Fund calculations
+
+Changing recurring expense calculations
+
+Historical reserve graphs
+
+Multi-business consolidation
+
+Reserve enforcement or spending locks
+
+---
+
+## Backend
+
+Create:
+
+GET /api/reports/business-reserve
+
+Return a fully calculated object:
+
+{
+  taxReserve,
+  growthFundAvailable,
+  recurring30DayReserve,
+  monthlyRecurring,
+  operatingReserve,
+  requiredReserve,
+  checkingBalance,
+  availableToSpend,
+  reserveHealth,
+  overheadCoverageDays,
+  overheadCoverageMonths,
+  plaidConnected
+}
+
+The backend should calculate the final Required Reserve instead of requiring the frontend to add values together.
+
+This ensures one source of truth for every future screen.
+
+---
+
+## Operating Reserve Settings
+
+Extend settings with:
+
+operatingReserveMode
+
+Values:
+
+0
+1
+2
+3
+custom
+
+operatingReserveCustom
+
+Nullable numeric
+
+Expose on:
+
+GET /api/settings
+
+PUT /api/settings
+
+Regenerate DB types.
+
+---
+
+## Frontend
+
+OverviewTab.tsx
+
+Insert the Business Reserve Dashboard above the current Tax & Growth Reserve section.
+
+Display:
+
+• Required Reserve (large total)
+• Four breakdown cards
+• Available to Spend
+• Reserve Health
+• Overhead Coverage
+
+The Operating Reserve row expands inline for editing.
+
+No separate settings page.
+
+---
+
+## Navigation
+
+Tax Reserve
+→ Scroll to existing Tax Reserve section
+
+Growth Fund
+→ Scroll to existing Growth Fund section
+
+Business Overhead
+→ Scroll to Recurring Expenses
+
+Operating Reserve
+→ Expand inline editor
+
+---
+
+## Relevant Files
+
+artifacts/contractor-app/src/pages/accounting/OverviewTab.tsx
+
+artifacts/api-server/src/routes/reports.ts
+
+artifacts/api-server/src/routes/settings.ts
+
+artifacts/api-server/src/routes/plaid.ts
+
+artifacts/api-server/src/routes/recurring-expenses.ts
+
+lib/db/src/schema
+
+---
+
+## Design Principles
+
+• One source of truth for business cash planning.
+• Cash management and accounting remain separate concepts.
+• Estimated Tax Liability is informational only.
+• Required Reserve always represents actual dollars that should remain in the checking account.
+• Every value displayed on the dashboard comes from existing accounting calculations—no duplicate business logic should exist in the frontend.
