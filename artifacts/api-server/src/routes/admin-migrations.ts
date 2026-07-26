@@ -1304,5 +1304,20 @@ router.post("/delete-drywall-ghost-invoice", async (_req: Request, res: Response
   }
 });
 
+// Assign investment accounts with no business to General Contracting (id=1)
+router.post("/assign-null-business-investments", async (_req: Request, res: Response) => {
+  try {
+    const updated = await db.execute(
+      sql`UPDATE investment_accounts SET business_id = 1 WHERE business_id IS NULL RETURNING id, name`
+    );
+    const rows = updated.rows as { id: number; name: string }[];
+    console.log(`[admin/migrations] assign-null-business-investments: updated ${rows.length} row(s)`, rows);
+    res.json({ ok: true, updated: rows.length, rows });
+  } catch (err) {
+    console.error("[admin/migrations] assign-null-business-investments failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;
 

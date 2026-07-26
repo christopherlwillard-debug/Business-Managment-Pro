@@ -7,7 +7,7 @@ import {
   investmentTaxDocumentsTable,
   bankTransactionsTable,
 } from "@workspace/db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, or, isNull } from "drizzle-orm";
 import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage";
 
@@ -120,10 +120,14 @@ router.get("/accounts/summary", async (req, res) => {
     const rawBid = req.query.businessId;
     const businessId = rawBid != null && String(rawBid) !== "" ? parseInt(String(rawBid)) : null;
 
-    // Fetch ALL accounts (active + inactive) filtered by businessId when provided
+    // Fetch ALL accounts (active + inactive) filtered by businessId when provided.
+    // Accounts with business_id = NULL are always included so legacy accounts
+    // created before multi-business support was added remain visible.
     let allAccountsQuery: any = db.select().from(investmentAccountsTable);
     if (businessId != null && Number.isFinite(businessId)) {
-      allAccountsQuery = allAccountsQuery.where(eq(investmentAccountsTable.businessId, businessId));
+      allAccountsQuery = allAccountsQuery.where(
+        or(eq(investmentAccountsTable.businessId, businessId), isNull(investmentAccountsTable.businessId))
+      );
     }
     const allAccounts = await allAccountsQuery.orderBy(investmentAccountsTable.name);
 
