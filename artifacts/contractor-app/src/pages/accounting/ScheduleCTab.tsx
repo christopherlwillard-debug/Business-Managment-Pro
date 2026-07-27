@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Receipt, AlertCircle, Download, FileText, AlertTriangle,
@@ -13,15 +13,21 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const cl = "block text-xs font-semibold text-gray-500 mb-1";
 const ci = "w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-1 focus:ring-primary/50 transition-colors";
 
-function loadHomeOffice(year: number) {
+/** Migrate any localStorage data to the server (one-time, best-effort). */
+async function migrateLocalHomeOffice(year: number): Promise<Record<string, string> | null> {
   try {
     const raw = localStorage.getItem(`home-office-${year}`);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
-}
-
-function saveHomeOffice(year: number, data: Record<string, string>) {
-  try { localStorage.setItem(`home-office-${year}`, JSON.stringify(data)); } catch {}
+    if (!raw) return null;
+    const data = JSON.parse(raw) as Record<string, string>;
+    await fetch(`${BASE}/api/tax-reports/home-office/${year}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(data),
+    });
+    localStorage.removeItem(`home-office-${year}`);
+    return data;
+  } catch { return null; }
 }
 
 interface ProfitLossReport {
@@ -42,15 +48,62 @@ function ScheduleCTab({ year }: { year: number }) {
   const { activeBusiness } = useBusiness();
   const { data: report, isLoading: reportLoading } = useScheduleCReport(year, activeBusiness?.slug);
   const [showHomeOffice, setShowHomeOffice] = useState(false);
+  const queryClient = useQueryClient();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [ho, setHo] = useState<Record<string, string>>(() => loadHomeOffice(year));
+  // Fetch home office settings from the server
+  const { data: serverHo, isSuccess: hoLoaded } = useQuery<Record<string, string> | null>({
+    queryKey: ["home-office", year],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/tax-reports/home-office/${year}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load home office settings");
+      return res.json();
+    },
+  });
 
-  useEffect(() => { setHo(loadHomeOffice(year)); }, [year, activeBusiness?.slug]);
+  const [ho, setHo] = useState<Record<string, string>>({});
+
+  // Once server data loads: use it, or migrate from localStorage if server has nothing
+  useEffect(() => {
+    if (!hoLoaded) return;
+    if (serverHo && Object.keys(serverHo).length > 0) {
+      setHo(serverHo);
+    } else {
+      // No server record yet — migrate localStorage if present
+      migrateLocalHomeOffice(year).then(migrated => {
+        if (migrated) {
+          setHo(migrated);
+          queryClient.invalidateQueries({ queryKey: ["home-office", year] });
+        }
+      });
+    }
+  }, [hoLoaded, serverHo, year]);
+
+  // Reset when year changes
+  useEffect(() => { setHo({}); }, [year]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (fields: Record<string, string>) => {
+      const res = await fetch(`${BASE}/api/tax-reports/home-office/${year}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(fields),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["home-office", year], data);
+    },
+  });
 
   function setHoField(k: string, v: string) {
     setHo(prev => {
       const next = { ...prev, [k]: v };
-      saveHomeOffice(year, next);
+      // Debounce server save 500ms so typing stays instant
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => saveMutation.mutate(next), 500);
       return next;
     });
   }

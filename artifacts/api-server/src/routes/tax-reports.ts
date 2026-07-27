@@ -2,7 +2,8 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import {
   invoicesTable, expensesTable, mileageLogsTable,
-  paymentsTable, subcontractorsTable, clientsTable, otherIncomeTable, businessesTable
+  paymentsTable, subcontractorsTable, clientsTable, otherIncomeTable, businessesTable,
+  settingsTable
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, sum, desc, count, ne, or, isNull, sql } from "drizzle-orm";
 
@@ -460,6 +461,39 @@ router.get("/schedule-c", async (req, res) => {
   } catch (err) {
     console.error("Error generating Schedule C report:", err);
     res.status(500).json({ error: "Failed to generate Schedule C report" });
+  }
+});
+
+// ─── Home Office Settings ─────────────────────────────────────────────────────
+// GET /api/tax-reports/home-office/:year — fetch stored home office fields for a year
+router.get("/home-office/:year", async (req, res) => {
+  try {
+    const year = parseInt(req.params.year as string);
+    const [settings] = await db.select({ homeOfficeSettings: settingsTable.homeOfficeSettings }).from(settingsTable).limit(1);
+    const all = (settings?.homeOfficeSettings as Record<string, Record<string, string>> | null) ?? {};
+    res.json(all[String(year)] ?? null);
+  } catch (err) {
+    console.error("[home-office GET]", err);
+    res.status(500).json({ error: "Failed to load home office settings" });
+  }
+});
+
+// PATCH /api/tax-reports/home-office/:year — upsert home office fields for a year
+router.patch("/home-office/:year", async (req, res) => {
+  try {
+    const year = parseInt(req.params.year as string);
+    const fields = req.body as Record<string, string>;
+    const [existing] = await db.select({ id: settingsTable.id, homeOfficeSettings: settingsTable.homeOfficeSettings }).from(settingsTable).limit(1);
+    if (!existing) {
+      return res.status(404).json({ error: "Settings not found" });
+    }
+    const all = (existing.homeOfficeSettings as Record<string, Record<string, string>> | null) ?? {};
+    all[String(year)] = { ...(all[String(year)] ?? {}), ...fields };
+    await db.update(settingsTable).set({ homeOfficeSettings: all }).where(eq(settingsTable.id, existing.id));
+    res.json(all[String(year)]);
+  } catch (err) {
+    console.error("[home-office PATCH]", err);
+    res.status(500).json({ error: "Failed to save home office settings" });
   }
 });
 

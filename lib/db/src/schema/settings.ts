@@ -65,6 +65,8 @@ export const settingsTable = pgTable("settings", {
   operatingReserveMode: text("operating_reserve_mode").default("0"),
   operatingReserveCustom: numeric("operating_reserve_custom", { precision: 10, scale: 2 }),
   includeGrowthFundInReserve: integer("include_growth_fund_in_reserve").default(0),
+  // Home office deduction settings — JSON object keyed by year string, e.g. {"2026": {...}}
+  homeOfficeSettings: jsonb("home_office_settings"),
   // Team access
   ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
