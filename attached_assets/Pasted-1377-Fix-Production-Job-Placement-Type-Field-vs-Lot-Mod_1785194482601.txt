@@ -1,0 +1,194 @@
+1377 - Fix Production Job Placement Type (Field vs Lot Model)
+
+What & Why
+
+The current Manufactured Home section only asks for the home's Construction Type (VOG, Hybrid, or Drywall). This is incomplete because there are actually two separate characteristics that determine production pricing:
+
+1. Where the work is being performed.
+2. How the home is constructed.
+
+Today, the system incorrectly treats "Lot" as if it were a construction type. It is not.
+
+A Lot Model is simply a home that is being finished on a dealer or manufacturer lot before delivery. It can still be built as a VOG, Hybrid, or Drywall home.
+
+Likewise, a Field Job is a home being finished after delivery to the customer's property, and it can also be VOG, Hybrid, or Drywall.
+
+Because of this, pricing cannot be determined from only one selection.
+
+The user must first choose:
+
+• Field
+• Lot Model
+
+Then choose:
+
+• VOG
+• Hybrid
+• Drywall
+
+This creates six valid pricing combinations instead of four.
+
+Business Logic
+
+Every Production job has two independent attributes.
+
+Placement Type
+
+• Field
+• Lot Model
+
+Construction Type
+
+• VOG
+• Hybrid
+• Drywall
+
+These combine into the following pricing matrix.
+
+Field + VOG
+→ priceVog
+
+Field + Hybrid
+→ priceHybrid
+
+Field + Drywall
+→ priceDrywall
+
+Lot Model + VOG
+→ priceLotVog
+
+Lot Model + Hybrid
+→ priceLotHybrid
+
+Lot Model + Drywall
+→ priceLotDrywall
+
+The previous implementation of a single "Lot" price column is incorrect because it assumes every lot model home has the same construction type.
+
+UI Changes
+
+Keep the existing Construction Type buttons exactly as they are.
+
+Add another segmented button row directly above them using the exact same visual style.
+
+Current
+
+Construction Type
+
+[ VOG ]   [ Hybrid ]   [ Drywall ]
+
+New
+
+Placement Type
+
+[ Field ]   [ Lot Model ]
+
+Construction Type
+
+[ VOG ]   [ Hybrid ]   [ Drywall ]
+
+The new Placement Type buttons should match the existing segmented button styling exactly so the interface feels consistent.
+
+Behavior
+
+Builder
+Model
+Model Year
+
+remain unchanged.
+
+The user should now make two selections.
+
+Step 1
+
+Placement Type
+
+○ Field
+
+○ Lot Model
+
+Step 2
+
+Construction Type
+
+○ VOG
+
+○ Hybrid
+
+○ Drywall
+
+Both selections should be required before Production pricing can be applied.
+
+Stored Value
+
+Internally the application should combine both selections into one stored value.
+
+Examples
+
+Field + VOG
+FIELD_VOG
+
+Field + Hybrid
+FIELD_HYBRID
+
+Field + Drywall
+FIELD_DRYWALL
+
+Lot Model + VOG
+LOT_VOG
+
+Lot Model + Hybrid
+LOT_HYBRID
+
+Lot Model + Drywall
+LOT_DRYWALL
+
+Billing Engine Mapping
+
+FIELD_VOG
+→ priceVog
+
+FIELD_HYBRID
+→ priceHybrid
+
+FIELD_DRYWALL
+→ priceDrywall
+
+LOT_VOG
+→ priceLotVog
+
+LOT_HYBRID
+→ priceLotHybrid
+
+LOT_DRYWALL
+→ priceLotDrywall
+
+Pricing Matrix
+
+                    VOG         Hybrid         Drywall
+
+Field           priceVog     priceHybrid     priceDrywall
+
+Lot Model       priceLotVog  priceLotHybrid  priceLotDrywall
+
+Why This Design
+
+The placement type answers:
+
+"Where is the work being performed?"
+
+The construction type answers:
+
+"How is the home built?"
+
+These are two completely different pieces of information and should never be combined into a single selection.
+
+A Lot Model is not a construction type.
+
+A VOG home can be a Field Job or a Lot Model.
+
+A Hybrid home can be a Field Job or a Lot Model.
+
+A Drywall home can be a Field Job or a Lot Model.
+
+Separating these selections makes the interface much easier to understand, accurately reflects how manufactured home work is performed, and allows the billing engine to select the correct one of the six available pricing columns.
