@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Plus, Pencil, Trash2, X, Loader2, Check, Save, RotateCcw, Package, Users2, AlertTriangle,
+  ChevronUp, ChevronDown,
 } from "lucide-react";
 import {
   useListProductionServiceTypes,
@@ -231,6 +232,14 @@ function ServiceTypeEditorModal({
 }
 
 // ── Master catalog card ───────────────────────────────────────────────────────
+type PriceDraft = { price: string; priceVog: string; priceHybrid: string; priceDrywall: string };
+function emptyPriceDraft(): PriceDraft {
+  return { price: "", priceVog: "", priceHybrid: "", priceDrywall: "" };
+}
+function isPerType(d: PriceDraft) {
+  return !!(d.priceVog || d.priceHybrid || d.priceDrywall);
+}
+
 function CatalogCard({ businessId }: { businessId?: number | null }) {
   const { toast } = useToast();
   const { data: serviceTypes = [], isLoading } = useListProductionServiceTypes(businessId, true);
@@ -251,6 +260,87 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
     () => [...serviceTypes].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)),
     [serviceTypes],
   );
+
+  // ── Inline price editing ──────────────────────────────────────────────────
+  const [draftPrices, setDraftPrices] = useState<Record<number, PriceDraft>>({});
+  const [savingPriceId, setSavingPriceId] = useState<number | null>(null);
+
+  useEffect(() => {
+    setDraftPrices(prev => {
+      const next: Record<number, PriceDraft> = {};
+      for (const st of sorted) {
+        // Only seed from DB if the row isn't already being edited
+        next[st.id] = prev[st.id] ?? {
+          price: st.price ?? "",
+          priceVog: st.priceVog ?? "",
+          priceHybrid: st.priceHybrid ?? "",
+          priceDrywall: st.priceDrywall ?? "",
+        };
+      }
+      return next;
+    });
+  }, [sorted]);
+
+  function setDraftField(stId: number, field: keyof PriceDraft, value: string) {
+    setDraftPrices(prev => ({
+      ...prev,
+      [stId]: { ...(prev[stId] ?? emptyPriceDraft()), [field]: value },
+    }));
+  }
+
+  function switchToPerType(stId: number) {
+    setDraftPrices(prev => {
+      const cur = prev[stId] ?? emptyPriceDraft();
+      // Move the existing flat price into VOG as a starting point
+      return { ...prev, [stId]: { price: "", priceVog: cur.price, priceHybrid: "", priceDrywall: "" } };
+    });
+  }
+
+  function switchToFlat(stId: number) {
+    setDraftPrices(prev => {
+      const cur = prev[stId] ?? emptyPriceDraft();
+      // Move the first non-empty per-type price to flat
+      const flat = cur.priceVog || cur.priceHybrid || cur.priceDrywall || "";
+      return { ...prev, [stId]: { price: flat, priceVog: "", priceHybrid: "", priceDrywall: "" } };
+    });
+  }
+
+  async function savePrices(st: ProductionServiceType) {
+    const d = draftPrices[st.id];
+    if (!d) return;
+    setSavingPriceId(st.id);
+    try {
+      await updateMut.mutateAsync({
+        id: st.id,
+        price: d.price !== "" ? d.price : null,
+        priceVog: d.priceVog !== "" ? d.priceVog : null,
+        priceHybrid: d.priceHybrid !== "" ? d.priceHybrid : null,
+        priceDrywall: d.priceDrywall !== "" ? d.priceDrywall : null,
+      });
+      toast({ title: "Price saved" });
+    } catch (e) {
+      toast({ title: "Could not save price", description: e instanceof Error ? e.message : "Try again.", variant: "destructive" });
+    } finally {
+      setSavingPriceId(null);
+    }
+  }
+
+  // ── Sort order controls ───────────────────────────────────────────────────
+  async function moveSort(st: ProductionServiceType, direction: "up" | "down") {
+    const idx = sorted.findIndex(s => s.id === st.id);
+    const neighbor = direction === "up" ? sorted[idx - 1] : sorted[idx + 1];
+    if (!neighbor) return;
+    const myOrder = st.sortOrder ?? 0;
+    const neighborOrder = neighbor.sortOrder ?? 0;
+    try {
+      await Promise.all([
+        updateMut.mutateAsync({ id: st.id, sortOrder: neighborOrder }),
+        updateMut.mutateAsync({ id: neighbor.id, sortOrder: myOrder }),
+      ]);
+    } catch (e) {
+      toast({ title: "Could not reorder", description: e instanceof Error ? e.message : "Try again.", variant: "destructive" });
+    }
+  }
 
   async function toggleActive(st: ProductionServiceType) {
     try {
@@ -280,7 +370,7 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
               <Package className="w-5 h-5 text-amber-500" />
               Production Billing Catalog
             </CardTitle>
-            <CardDescription>Master production billing items and pricing used to build MH Production invoices.</CardDescription>
+            <CardDescription>Master pricing for each production service. Changes take effect on new invoices.</CardDescription>
           </div>
           <button
             onClick={() => { setEditing(null); setModalOpen(true); }}
@@ -307,7 +397,7 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
           </div>
         )}
         {isLoading ? (
-          <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-14 rounded-xl bg-muted animate-pulse" />)}</div>
+          <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />)}</div>
         ) : sorted.length === 0 ? (
           <p className="text-sm text-muted-foreground py-6 text-center">
             {seedFailed
@@ -316,32 +406,112 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
           </p>
         ) : (
           <ul className="space-y-2">
-            {sorted.map(st => (
-              <li key={st.id} className={`flex items-center gap-3 rounded-xl border border-border px-3 py-2.5 ${st.active ? "bg-background" : "bg-muted/40 opacity-70"}`}>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-foreground truncate">{st.name}</p>
-                    {st.category && <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground flex-shrink-0">{st.category}</span>}
-                    {st.appliesTo === "service" && <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-700 flex-shrink-0">Service only</span>}
+            {sorted.map((st, idx) => {
+              const d = draftPrices[st.id] ?? emptyPriceDraft();
+              const perType = isPerType(d);
+              const saving = savingPriceId === st.id;
+              return (
+                <li key={st.id} className={`rounded-xl border border-border ${st.active ? "bg-background" : "bg-muted/40 opacity-70"}`}>
+                  {/* Top row: name + action controls */}
+                  <div className="flex items-center gap-2 px-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-foreground truncate">{st.name}</p>
+                        {st.category && <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground flex-shrink-0">{st.category}</span>}
+                        {st.appliesTo === "service" && <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-700 flex-shrink-0">Service only</span>}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">{st.billingType}{st.taxable ? " · taxable" : ""}</p>
+                    </div>
+                    {/* Sort arrows */}
+                    <div className="flex flex-col gap-0 flex-shrink-0">
+                      <button
+                        onClick={() => moveSort(st, "up")}
+                        disabled={idx === 0 || updateMut.isPending}
+                        className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-20"
+                        title="Move up">
+                        <ChevronUp className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => moveSort(st, "down")}
+                        disabled={idx === sorted.length - 1 || updateMut.isPending}
+                        className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-20"
+                        title="Move down">
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => toggleActive(st)}
+                      title={st.active ? "Active — click to deactivate" : "Inactive — click to activate"}
+                      className={`text-[10px] font-semibold px-2 py-1 rounded-lg flex-shrink-0 ${st.active ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
+                      {st.active ? "Active" : "Inactive"}
+                    </button>
+                    <button onClick={() => { setEditing(st); setModalOpen(true); }} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted flex-shrink-0" title="Edit details">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setConfirmDelete(st)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 flex-shrink-0" title="Remove">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    {st.billingType} · base {fmtPrice(st.price)}{st.taxable ? " · taxable" : ""}
-                  </p>
-                </div>
-                <button
-                  onClick={() => toggleActive(st)}
-                  title={st.active ? "Active — click to deactivate" : "Inactive — click to activate"}
-                  className={`text-[10px] font-semibold px-2 py-1 rounded-lg flex-shrink-0 ${st.active ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
-                  {st.active ? "Active" : "Inactive"}
-                </button>
-                <button onClick={() => { setEditing(st); setModalOpen(true); }} className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted flex-shrink-0">
-                  <Pencil className="w-4 h-4" />
-                </button>
-                <button onClick={() => setConfirmDelete(st)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 flex-shrink-0">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </li>
-            ))}
+
+                  {/* Inline price editor */}
+                  <div className="px-3 pb-3 border-t border-border/40 pt-2.5">
+                    {perType ? (
+                      <>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Price by construction type</p>
+                          <button
+                            type="button"
+                            onClick={() => switchToFlat(st.id)}
+                            className="text-[10px] text-amber-600 hover:underline">
+                            Use flat rate instead
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {([ ["priceVog", "VOG"], ["priceHybrid", "Hybrid"], ["priceDrywall", "Drywall"] ] as const).map(([field, label]) => (
+                            <div key={field}>
+                              <label className="block text-[10px] text-muted-foreground mb-0.5">{label}</label>
+                              <input
+                                className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-xs text-foreground focus:border-amber-400 focus:ring-1 focus:ring-amber-200 outline-none"
+                                value={d[field]}
+                                onChange={e => setDraftField(st.id, field, e.target.value)}
+                                onBlur={() => savePrices(st)}
+                                placeholder="—"
+                                inputMode="decimal"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex items-end gap-3">
+                        <div className="flex-1">
+                          <label className="block text-[10px] text-muted-foreground mb-0.5">Flat rate</label>
+                          <input
+                            className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-xs text-foreground focus:border-amber-400 focus:ring-1 focus:ring-amber-200 outline-none"
+                            value={d.price}
+                            onChange={e => setDraftField(st.id, "price", e.target.value)}
+                            onBlur={() => savePrices(st)}
+                            placeholder="—"
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => switchToPerType(st.id)}
+                          className="text-[10px] text-amber-600 hover:underline pb-2 flex-shrink-0 whitespace-nowrap">
+                          Per construction type →
+                        </button>
+                      </div>
+                    )}
+                    {saving && (
+                      <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-1">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin" /> Saving…
+                      </p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </CardContent>

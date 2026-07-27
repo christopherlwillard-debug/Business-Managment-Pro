@@ -940,7 +940,7 @@ function ProductionPricingSection({ clientId, canEdit }: { clientId: number; can
   const [drafts, setDrafts] = useState<Record<number, Partial<PriceDraft>>>({});
 
   const overrideMap = new Map<number, MfhOverride>(
-    (overrides as MfhOverride[]).map(o => [o.serviceTypeId, o])
+    (overrides as unknown as MfhOverride[]).map(o => [o.serviceTypeId, o])
   );
 
   function getValue(svcId: number, field: keyof PriceDraft): string {
