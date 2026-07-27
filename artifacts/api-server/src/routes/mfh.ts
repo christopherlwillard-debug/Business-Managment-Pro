@@ -32,7 +32,7 @@ async function ensureSeeded() {
   if (existing.length > 0) { seeded = true; return; }
 
   await db.insert(mfhConstructionTypesTable).values([
-    { name: "VOG" }, { name: "Hybrid" }, { name: "Drywall" },
+    { name: "VOG" }, { name: "Hybrid" }, { name: "Drywall" }, { name: "Lot" },
   ]).onConflictDoNothing();
 
   // Seed builders (manufacturers) correctly — each builder brand is its own entry
@@ -78,6 +78,14 @@ async function buildMfhLines(
   return lines;
 }
 
+// ── Lot type backfill — runs once per server start, safe on existing DBs ──────
+let lotTypeEnsured = false;
+async function ensureLotConstructionType() {
+  if (lotTypeEnsured) return;
+  await db.insert(mfhConstructionTypesTable).values({ name: "Lot" }).onConflictDoNothing();
+  lotTypeEnsured = true;
+}
+
 // ── Library router (requireOwner) ─────────────────────────────────────────────
 export const mfhLibraryRouter = Router();
 
@@ -85,6 +93,7 @@ export const mfhLibraryRouter = Router();
 mfhLibraryRouter.get("/construction-types", async (_req, res) => {
   try {
     await ensureSeeded();
+    await ensureLotConstructionType();
     res.json(await db.select().from(mfhConstructionTypesTable).orderBy(asc(mfhConstructionTypesTable.name)));
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });

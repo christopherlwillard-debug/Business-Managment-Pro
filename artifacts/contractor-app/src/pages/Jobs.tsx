@@ -5421,7 +5421,7 @@ function JobFormDialog({
                 <div>
                   <label className="block text-xs text-muted-foreground mb-1">Construction Type</label>
                   <div className="flex gap-1">
-                    {["VOG", "Hybrid", "Drywall"].map(ct => (
+                    {["VOG", "Hybrid", "Drywall", "Lot"].map(ct => (
                       <button key={ct} type="button"
                         onClick={() => setMfhConstructionType(mfhConstructionType === ct ? "" : ct)}
                         className={`flex-1 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
