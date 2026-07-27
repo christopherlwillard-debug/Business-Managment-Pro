@@ -694,7 +694,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
         amount: remaining,
         businessLine: r.businessLine,
       };
-    });
+    // Only show rows with a real positive balance — skip $0 and uncomputable (TBD) entries
+    }).filter(i => i.amount != null && !Number.isNaN(i.amount) && i.amount > 0);
     const outstandingSubTotal = outstandingSubPayments.reduce((s, i) => s + (i.amount ?? 0), 0);
 
     res.json({
@@ -919,7 +920,8 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
         compensationType: r.compensationType,
         amount: remaining,
       };
-    });
+    // Only show rows with a real positive balance — skip $0 and uncomputable entries
+    }).filter(i => i.amount != null && !Number.isNaN(i.amount) && i.amount > 0);
     const outstandingSubTotal = outstandingSubItems.reduce((s, i) => s + (i.amount ?? 0), 0);
     const outstandingSubLiability = { total: outstandingSubTotal, items: outstandingSubItems };
 
