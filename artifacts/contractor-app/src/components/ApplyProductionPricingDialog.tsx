@@ -3,9 +3,12 @@ import { X, Loader2, Receipt, AlertTriangle, Info } from "lucide-react";
 import {
   useProductionBillingTypes,
   useApplyProductionPricing,
+  useProductionPriceOverrides,
   type ProductionServiceType,
+  type ProductionPriceOverride,
   type ApplyProductionPricingResult,
 } from "@workspace/api-client-react";
+import { formatCurrency } from "@/lib/utils";
 
 export interface ApplyProductionPricingDialogProps {
   open: boolean;
@@ -16,6 +19,8 @@ export interface ApplyProductionPricingDialogProps {
   /** The job's home/construction type (job.mfhConstructionType), used for home-type pricing. */
   homeType?: string | null;
   clientName?: string | null;
+  /** Client id — used to load per-client price overrides. */
+  clientId?: number | null;
   /** Master Production Billing Catalog (used only to label items and detect quantity-based ones). */
   catalog: ProductionServiceType[];
   /** Called with the persisted draft invoice once pricing is applied. */
@@ -27,6 +32,41 @@ export interface ApplyProductionPricingDialogProps {
   onKeepExisting: () => void;
 }
 
+/** Map a construction-type string to the per-type price field key on a service/override row. */
+function homeTypeToPriceField(homeType?: string | null): "priceVog" | "priceHybrid" | "priceDrywall" | null {
+  if (!homeType) return null;
+  const t = homeType.toLowerCase();
+  if (t.includes("vog")) return "priceVog";
+  if (t.includes("hybrid")) return "priceHybrid";
+  if (t.includes("drywall")) return "priceDrywall";
+  return null;
+}
+
+/** Resolve the display price for a catalog item given the job's home type and optional client overrides. */
+function resolvePrice(
+  item: ProductionServiceType,
+  homeType: string | null | undefined,
+  overrideMap: Map<number, ProductionPriceOverride>,
+): number | null {
+  const override = overrideMap.get(item.id);
+  const field = homeTypeToPriceField(homeType);
+
+  // Per-type price: check override first, then master per-type, then fall back to base price
+  if (field) {
+    const overridePerType = override?.[field];
+    if (overridePerType != null && overridePerType !== "") return parseFloat(overridePerType);
+    const masterPerType = item[field];
+    if (masterPerType != null && masterPerType !== "") return parseFloat(masterPerType);
+  }
+
+  // Flat / base price
+  const overrideBase = override?.price;
+  if (overrideBase != null && overrideBase !== "") return parseFloat(overrideBase);
+  if (item.price != null && item.price !== "") return parseFloat(item.price);
+
+  return null;
+}
+
 export function ApplyProductionPricingDialog({
   open,
   onOpenChange,
@@ -34,12 +74,20 @@ export function ApplyProductionPricingDialog({
   checkedServiceIds,
   homeType,
   clientName,
+  clientId,
   catalog,
   onApplied,
   onKeepExisting,
 }: ApplyProductionPricingDialogProps) {
   const { data: billingTypes = [] } = useProductionBillingTypes();
+  const { data: overrides = [] } = useProductionPriceOverrides(clientId);
   const applyPricing = useApplyProductionPricing();
+
+  /** keyed by serviceTypeId for O(1) lookup */
+  const overrideMap = useMemo(
+    () => new Map(overrides.map(o => [o.serviceTypeId, o])),
+    [overrides],
+  );
 
   const quantityBasedTypes = useMemo(
     () => new Set(billingTypes.filter(bt => bt.quantityBased).map(bt => bt.value)),
@@ -161,6 +209,8 @@ export function ApplyProductionPricingDialog({
               <ul className="space-y-2">
                 {checkedItems.map(item => {
                   const isQty = quantityBasedTypes.has(item.billingType);
+                  const resolvedPrice = resolvePrice(item, homeType, overrideMap);
+                  const hasOverride = overrideMap.has(item.id);
                   return (
                     <li
                       key={item.id}
@@ -171,21 +221,32 @@ export function ApplyProductionPricingDialog({
                         </p>
                         <p className="text-[11px] text-gray-500">{item.billingType}</p>
                       </div>
-                      {isQty ? (
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <label className="text-[11px] text-gray-500">Qty</label>
-                          <input
-                            type="number"
-                            min={1}
-                            step={1}
-                            value={qtyFor(item.id)}
-                            onChange={e => setQty(item.id, parseInt(e.target.value) || 1)}
-                            className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-400"
-                          />
-                        </div>
-                      ) : (
-                        <span className="text-[11px] font-medium text-gray-400 flex-shrink-0">Flat</span>
-                      )}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {resolvedPrice != null && (
+                          <span className={`text-sm font-semibold ${hasOverride ? "text-blue-600" : "text-amber-600"}`}>
+                            {isQty
+                              ? `${formatCurrency(resolvedPrice)} / unit`
+                              : formatCurrency(resolvedPrice)}
+                          </span>
+                        )}
+                        {isQty ? (
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-[11px] text-gray-500">Qty</label>
+                            <input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={qtyFor(item.id)}
+                              onChange={e => setQty(item.id, parseInt(e.target.value) || 1)}
+                              className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+                          </div>
+                        ) : (
+                          resolvedPrice == null && (
+                            <span className="text-[11px] font-medium text-gray-400">Flat</span>
+                          )
+                        )}
+                      </div>
                     </li>
                   );
                 })}

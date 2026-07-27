@@ -7110,6 +7110,7 @@ export default function Jobs() {
           checkedServiceIds={((productionPricingJob as unknown as Record<string, unknown>).mhProductionServices as number[] | null) ?? []}
           homeType={((productionPricingJob as unknown as Record<string, unknown>).mfhConstructionType as string | null) ?? null}
           clientName={((productionPricingJob as unknown as Record<string, unknown>).clientName as string | null) ?? null}
+          clientId={productionPricingJob.clientId ?? null}
           catalog={allProductionServiceTypes}
           onApplied={(invoice, meta) => {
             setInvoiceDraftData(null);
