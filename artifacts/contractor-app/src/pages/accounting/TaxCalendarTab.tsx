@@ -305,6 +305,7 @@ interface KyFilingSetting {
   filingId: string;
   enabled: boolean;
   documents: ComplianceDoc[];
+  completions?: Record<string, string>; // keyed by year string, value: "filed" | "na" | "not-filed"
 }
 
 const COMPLIANCE_CATEGORIES = [
@@ -393,6 +394,21 @@ function useUpdateKyFilingSetting() {
         body: JSON.stringify({ enabled }),
       });
       if (!res.ok) throw new Error("Failed to update");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ky-filing-settings"] }),
+  });
+}
+
+function useToggleKyFilingStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ filingId, year, status }: { filingId: string; year: number; status: string }) => {
+      const res = await fetch(`${KY_SETTINGS_API}/${filingId}/status/${year}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error("Failed to update filing status");
       return res.json();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ky-filing-settings"] }),
@@ -936,10 +952,6 @@ function TaxCalendarTab({ year }: { year: number }) {
   const annualOnly = taxFilingFrequency === "annual";
   const { isConfigured: googleConfigured, isConnected: googleConnected, getToken, signIn: googleSignIn } = useGoogleAuth();
   const { toast } = useToast();
-  const storageKey = `ky-filing-statuses-${year}`;
-  const [statuses, setStatuses] = useState<Record<string, FilingStatus>>(() => {
-    try { const raw = localStorage.getItem(storageKey); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
-  });
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [statusFilter, setStatusFilter] = useState<"all" | "overdue" | "due-soon" | "filed" | "na">("all");
   const [showManage, setShowManage] = useState(false);
@@ -947,11 +959,12 @@ function TaxCalendarTab({ year }: { year: number }) {
   const [drivePickingFor, setDrivePickingFor] = useState<string | null>(null);
 
   const { data: items = [], isLoading: loadingItems } = useComplianceItems();
-  const { data: kySettings = [] } = useKyFilingSettings();
+  const { data: kySettings = [], isSuccess: kySettingsLoaded } = useKyFilingSettings();
   const createItem = useCreateComplianceItem();
   const updateItem = useUpdateComplianceItem();
   const deleteItem = useDeleteComplianceItem();
   const updateKyFilingSetting = useUpdateKyFilingSetting();
+  const toggleKyFilingStatus = useToggleKyFilingStatus();
   const uploadKyDoc = useUploadKyFilingDocument();
   const deleteKyDoc = useDeleteKyFilingDocument();
   const uploadCiDoc = useUploadComplianceItemDocument();
@@ -964,17 +977,41 @@ function TaxCalendarTab({ year }: { year: number }) {
 
   const kySettingsMap = Object.fromEntries(kySettings.map(s => [s.filingId, s]));
 
-  const getFilingStatus = useCallback((id: string): FilingStatus => statuses[id] ?? "not-filed", [statuses]);
+  // Migrate any localStorage statuses to the server on first successful load (one-time)
+  const migrationDoneRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!kySettingsLoaded || migrationDoneRef.current) return;
+    migrationDoneRef.current = true;
+    const storageKey = `ky-filing-statuses-${year}`;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Record<string, FilingStatus>;
+      for (const [filingId, status] of Object.entries(saved)) {
+        // Only migrate if the server has no status for this filing+year yet
+        const setting = kySettingsMap[filingId];
+        const serverStatus = (setting?.completions ?? {})[String(year)];
+        if (!serverStatus || serverStatus === "not-filed") {
+          toggleKyFilingStatus.mutate({ filingId, year, status });
+        }
+      }
+      localStorage.removeItem(storageKey);
+    } catch {}
+  }, [kySettingsLoaded, year]);
+
+  // Derive filing status from server data (kySettings completions) for the current year
+  const getFilingStatus = useCallback((id: string): FilingStatus => {
+    const setting = kySettingsMap[id];
+    const status = (setting?.completions ?? {})[String(year)] as FilingStatus | undefined;
+    return status ?? "not-filed";
+  }, [kySettingsMap, year]);
+
   const cycleFilingStatus = useCallback((id: string) => {
-    setStatuses(prev => {
-      const current = prev[id] ?? "not-filed";
-      const idx = STATUS_CYCLE.indexOf(current);
-      const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
-      const updated = { ...prev, [id]: next };
-      try { localStorage.setItem(storageKey, JSON.stringify(updated)); } catch {}
-      return updated;
-    });
-  }, [storageKey]);
+    const current = getFilingStatus(id);
+    const idx = STATUS_CYCLE.indexOf(current);
+    const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
+    toggleKyFilingStatus.mutate({ filingId: id, year, status: next });
+  }, [getFilingStatus, toggleKyFilingStatus, year]);
 
   async function handleFileUpload(entityKey: string, file: File) {
     setUploadingFor(entityKey);

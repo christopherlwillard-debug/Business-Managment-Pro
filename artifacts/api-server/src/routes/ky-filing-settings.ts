@@ -62,6 +62,39 @@ router.get("/", async (_req, res) => {
   }
 });
 
+// PATCH /:filingId/status/:year — toggle filed/na/not-filed for a specific year
+router.patch("/:filingId/status/:year", async (req, res) => {
+  try {
+    const filingId = req.params.filingId as string;
+    const year = req.params.year as string;
+    const { status } = req.body as { status: string };
+    if (!["not-filed", "filed", "na"].includes(status)) {
+      return res.status(400).json({ error: "status must be not-filed, filed, or na" });
+    }
+
+    const [existing] = await db.select().from(kyFilingSettingsTable).where(eq(kyFilingSettingsTable.filingId, filingId));
+    if (!existing) {
+      // Auto-create the row
+      const [inserted] = await db
+        .insert(kyFilingSettingsTable)
+        .values({ filingId, enabled: !DEFAULT_DISABLED.has(filingId), documents: [], completions: { [year]: status } })
+        .returning();
+      return res.json(formatSetting(inserted));
+    }
+
+    const completions = { ...((existing.completions as Record<string, string>) ?? {}), [year]: status };
+    const [updated] = await db
+      .update(kyFilingSettingsTable)
+      .set({ completions, updatedAt: new Date() })
+      .where(eq(kyFilingSettingsTable.filingId, filingId))
+      .returning();
+    return res.json(formatSetting(updated));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update filing status" });
+  }
+});
+
 router.put("/:filingId", async (req, res) => {
   try {
     const filingId = req.params.filingId as string;

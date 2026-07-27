@@ -26,6 +26,8 @@ export const kyFilingSettingsTable = pgTable("ky_filing_settings", {
   filingId: text("filing_id").primaryKey(),
   enabled: boolean("enabled").notNull().default(true),
   documents: jsonb("documents").$type<ComplianceDocument[]>().notNull().default([]),
+  // Completion status keyed by year string, e.g. {"2025": "filed", "2026": "not-filed"}
+  completions: jsonb("completions").$type<Record<string, string>>().default({}),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
