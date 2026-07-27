@@ -5338,7 +5338,18 @@ function JobFormDialog({
                     ))}
                     {showBuilderCreate && (
                       <button type="button"
-                        onMouseDown={async e => { e.preventDefault(); const c = await createMfhManufacturer.mutateAsync({ name: builderQuery.trim() }); setMfhMfgId(c.id); setBuilderDropOpen(false); }}
+                        onMouseDown={async e => {
+                          e.preventDefault();
+                          try {
+                            const c = await createMfhManufacturer.mutateAsync({ name: builderQuery.trim() });
+                            setMfhMfgId(c.id);
+                            setBuilderQuery(builderQuery.trim());
+                            setBuilderDropOpen(false);
+                          } catch (err: unknown) {
+                            const msg = err instanceof Error ? err.message : "Failed to add builder";
+                            toast({ title: "Could not add builder", description: msg, variant: "destructive" });
+                          }
+                        }}
                         className="w-full text-left px-3 py-2 text-xs text-amber-600 hover:bg-amber-50 border-t border-border font-medium flex items-center gap-1.5">
                         <Plus className="w-3 h-3" /> Add "{builderQuery.trim()}"
                       </button>
