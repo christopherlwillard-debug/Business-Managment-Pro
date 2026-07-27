@@ -144,6 +144,7 @@ export const productionServiceTypesTable = pgTable("production_service_types", {
   priceVog: numeric("price_vog", { precision: 12, scale: 2 }),
   priceHybrid: numeric("price_hybrid", { precision: 12, scale: 2 }),
   priceDrywall: numeric("price_drywall", { precision: 12, scale: 2 }),
+  priceLot: numeric("price_lot", { precision: 12, scale: 2 }),
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -162,6 +163,7 @@ export const productionPriceOverridesTable = pgTable("production_price_overrides
   priceVog: numeric("price_vog", { precision: 12, scale: 2 }),
   priceHybrid: numeric("price_hybrid", { precision: 12, scale: 2 }),
   priceDrywall: numeric("price_drywall", { precision: 12, scale: 2 }),
+  priceLot: numeric("price_lot", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => ({

@@ -55,7 +55,7 @@ export function billingTypeOptions(): { value: string; quantityBased: boolean }[
 
 // ── Home-type pricing ─────────────────────────────────────────────────────────
 // jobs.mfhConstructionType is the home type ("VOG" | "Hybrid" | "Drywall").
-type HomeTypeColumn = "priceVog" | "priceHybrid" | "priceDrywall";
+type HomeTypeColumn = "priceVog" | "priceHybrid" | "priceDrywall" | "priceLot";
 
 function homeTypeColumn(homeType: string | null | undefined): HomeTypeColumn | null {
   switch ((homeType ?? "").trim().toLowerCase()) {
@@ -65,6 +65,8 @@ function homeTypeColumn(homeType: string | null | undefined): HomeTypeColumn | n
       return "priceHybrid";
     case "drywall":
       return "priceDrywall";
+    case "lot":
+      return "priceLot";
     default:
       return null;
   }
@@ -72,7 +74,7 @@ function homeTypeColumn(homeType: string | null | undefined): HomeTypeColumn | n
 
 type PriceSource = Pick<
   ProductionServiceType,
-  "price" | "priceVog" | "priceHybrid" | "priceDrywall"
+  "price" | "priceVog" | "priceHybrid" | "priceDrywall" | "priceLot"
 >;
 
 function parsePrice(v: string | null): number | null {
@@ -95,7 +97,8 @@ function hasHomeTypeVariant(source: PriceSource): boolean {
   return (
     parsePrice(source.priceVog) != null ||
     parsePrice(source.priceHybrid) != null ||
-    parsePrice(source.priceDrywall) != null
+    parsePrice(source.priceDrywall) != null ||
+    parsePrice(source.priceLot) != null
   );
 }
 

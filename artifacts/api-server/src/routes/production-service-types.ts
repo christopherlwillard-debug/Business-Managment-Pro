@@ -75,13 +75,14 @@ router.get("/overrides", wrapAsync(async (req, res) => {
 
 // Upsert a single client override. Any null price* column falls back to master.
 router.put("/overrides", wrapAsync(async (req, res) => {
-  const { clientId, serviceTypeId, price, priceVog, priceHybrid, priceDrywall } = req.body as {
+  const { clientId, serviceTypeId, price, priceVog, priceHybrid, priceDrywall, priceLot } = req.body as {
     clientId?: number;
     serviceTypeId?: number;
     price?: unknown;
     priceVog?: unknown;
     priceHybrid?: unknown;
     priceDrywall?: unknown;
+    priceLot?: unknown;
   };
   if (!clientId || !serviceTypeId) {
     return res.status(400).json({ error: "clientId and serviceTypeId are required" });
@@ -91,6 +92,7 @@ router.put("/overrides", wrapAsync(async (req, res) => {
     priceVog: priceOrNull(priceVog),
     priceHybrid: priceOrNull(priceHybrid),
     priceDrywall: priceOrNull(priceDrywall),
+    priceLot: priceOrNull(priceLot),
   };
   const [row] = await db
     .insert(productionPriceOverridesTable)
@@ -157,6 +159,7 @@ router.post("/", wrapAsync(async (req, res) => {
       priceVog: priceOrNull(b.priceVog),
       priceHybrid: priceOrNull(b.priceHybrid),
       priceDrywall: priceOrNull(b.priceDrywall),
+      priceLot: priceOrNull(b.priceLot),
       sortOrder: typeof b.sortOrder === "number" ? b.sortOrder : 0,
       businessId: typeof b.businessId === "number" ? b.businessId : null,
     })
@@ -184,6 +187,7 @@ router.put("/:id", wrapAsync(async (req, res) => {
   if ("priceVog" in b) set.priceVog = priceOrNull(b.priceVog);
   if ("priceHybrid" in b) set.priceHybrid = priceOrNull(b.priceHybrid);
   if ("priceDrywall" in b) set.priceDrywall = priceOrNull(b.priceDrywall);
+  if ("priceLot" in b) set.priceLot = priceOrNull(b.priceLot);
   if (typeof b.sortOrder === "number") set.sortOrder = b.sortOrder;
   if ("active" in b) set.active = b.active === true;
   if (Object.keys(set).length === 0) return res.status(400).json({ error: "No fields to update" });

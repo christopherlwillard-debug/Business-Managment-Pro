@@ -33,12 +33,13 @@ export interface ApplyProductionPricingDialogProps {
 }
 
 /** Map a construction-type string to the per-type price field key on a service/override row. */
-function homeTypeToPriceField(homeType?: string | null): "priceVog" | "priceHybrid" | "priceDrywall" | null {
+function homeTypeToPriceField(homeType?: string | null): "priceVog" | "priceHybrid" | "priceDrywall" | "priceLot" | null {
   if (!homeType) return null;
   const t = homeType.toLowerCase();
   if (t.includes("vog")) return "priceVog";
   if (t.includes("hybrid")) return "priceHybrid";
   if (t.includes("drywall")) return "priceDrywall";
+  if (t.includes("lot")) return "priceLot";
   return null;
 }
 

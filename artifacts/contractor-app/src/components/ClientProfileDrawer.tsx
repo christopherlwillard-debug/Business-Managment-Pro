@@ -915,8 +915,8 @@ function fmtRate(n: number | null | undefined): string {
 }
 
 // ── Per-client Production Pricing ─────────────────────────────────────────────
-type PriceDraft = { price: string; priceVog: string; priceHybrid: string; priceDrywall: string };
-const EMPTY_DRAFT: PriceDraft = { price: "", priceVog: "", priceHybrid: "", priceDrywall: "" };
+type PriceDraft = { price: string; priceVog: string; priceHybrid: string; priceDrywall: string; priceLot: string };
+const EMPTY_DRAFT: PriceDraft = { price: "", priceVog: "", priceHybrid: "", priceDrywall: "", priceLot: "" };
 
 function fmtMasterPrice(v: string | number | null | undefined): string {
   if (v == null) return "";
@@ -924,11 +924,11 @@ function fmtMasterPrice(v: string | number | null | undefined): string {
   return isNaN(n) ? "" : n.toFixed(2);
 }
 
-function isVariableSvc(svc: { priceVog?: string | null; priceHybrid?: string | null; priceDrywall?: string | null }): boolean {
-  return svc.priceVog != null || svc.priceHybrid != null || svc.priceDrywall != null;
+function isVariableSvc(svc: { priceVog?: string | null; priceHybrid?: string | null; priceDrywall?: string | null; priceLot?: string | null }): boolean {
+  return svc.priceVog != null || svc.priceHybrid != null || svc.priceDrywall != null || svc.priceLot != null;
 }
 
-type MfhSvc = { id: number; name: string; price?: string | null; priceVog?: string | null; priceHybrid?: string | null; priceDrywall?: string | null };
+type MfhSvc = { id: number; name: string; price?: string | null; priceVog?: string | null; priceHybrid?: string | null; priceDrywall?: string | null; priceLot?: string | null };
 type MfhOverride = { serviceTypeId: number } & Record<string, unknown>;
 
 function ProductionPricingSection({ clientId, canEdit }: { clientId: number; canEdit: boolean }) {
@@ -965,7 +965,7 @@ function ProductionPricingSection({ clientId, canEdit }: { clientId: number; can
     }
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await upsert.mutateAsync({ clientId, serviceTypeId: svcId, price: pick("price"), priceVog: pick("priceVog"), priceHybrid: pick("priceHybrid"), priceDrywall: pick("priceDrywall") } as any);
+      await upsert.mutateAsync({ clientId, serviceTypeId: svcId, price: pick("price"), priceVog: pick("priceVog"), priceHybrid: pick("priceHybrid"), priceDrywall: pick("priceDrywall"), priceLot: pick("priceLot") } as any);
     } catch {
       toast({ title: "Couldn't save price override", variant: "destructive" });
     }
@@ -996,11 +996,12 @@ function ProductionPricingSection({ clientId, canEdit }: { clientId: number; can
                 <div key={svc.id} className="rounded-xl border border-border bg-muted/20 p-3 space-y-2">
                   <p className="text-xs font-semibold text-foreground">{svc.name}</p>
                   {variable ? (
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                       {([
                         { f: "priceVog"     as const, label: "VOG",    master: svc.priceVog },
                         { f: "priceHybrid"  as const, label: "Hybrid", master: svc.priceHybrid },
                         { f: "priceDrywall" as const, label: "Drywall",master: svc.priceDrywall },
+                        { f: "priceLot"     as const, label: "Lot",    master: svc.priceLot },
                       ]).map(({ f, label, master }) => (
                         <div key={f}>
                           <label className={lblCls}>{label}</label>

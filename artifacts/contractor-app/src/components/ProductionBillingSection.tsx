@@ -65,6 +65,7 @@ function ServiceTypeEditorModal({
   const [priceVog, setPriceVog] = useState("");
   const [priceHybrid, setPriceHybrid] = useState("");
   const [priceDrywall, setPriceDrywall] = useState("");
+  const [priceLot, setPriceLot] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -79,6 +80,7 @@ function ServiceTypeEditorModal({
     setPriceVog(editing?.priceVog ?? "");
     setPriceHybrid(editing?.priceHybrid ?? "");
     setPriceDrywall(editing?.priceDrywall ?? "");
+    setPriceLot(editing?.priceLot ?? "");
   }, [open, editing, billingTypeOptions]);
 
   if (!open) return null;
@@ -101,6 +103,7 @@ function ServiceTypeEditorModal({
       priceVog: priceOrNull(priceVog),
       priceHybrid: priceOrNull(priceHybrid),
       priceDrywall: priceOrNull(priceDrywall),
+      priceLot: priceOrNull(priceLot),
       sortOrder: parseInt(sortOrder) || 0,
       businessId: businessId ?? null,
     };
@@ -211,6 +214,10 @@ function ServiceTypeEditorModal({
                 <label className="block text-[11px] text-muted-foreground mb-1">Drywall price</label>
                 <input className={inp} value={priceDrywall} onChange={e => setPriceDrywall(e.target.value)} placeholder="(uses base)" inputMode="decimal" />
               </div>
+              <div>
+                <label className="block text-[11px] text-muted-foreground mb-1">Lot price</label>
+                <input className={inp} value={priceLot} onChange={e => setPriceLot(e.target.value)} placeholder="(uses base)" inputMode="decimal" />
+              </div>
             </div>
             <p className="text-[11px] text-muted-foreground mt-2">
               Leave a home-type price blank to fall back to the base price.
@@ -232,12 +239,12 @@ function ServiceTypeEditorModal({
 }
 
 // ── Master catalog card ───────────────────────────────────────────────────────
-type PriceDraft = { price: string; priceVog: string; priceHybrid: string; priceDrywall: string };
+type PriceDraft = { price: string; priceVog: string; priceHybrid: string; priceDrywall: string; priceLot: string };
 function emptyPriceDraft(): PriceDraft {
-  return { price: "", priceVog: "", priceHybrid: "", priceDrywall: "" };
+  return { price: "", priceVog: "", priceHybrid: "", priceDrywall: "", priceLot: "" };
 }
 function isPerType(d: PriceDraft) {
-  return !!(d.priceVog || d.priceHybrid || d.priceDrywall);
+  return !!(d.priceVog || d.priceHybrid || d.priceDrywall || d.priceLot);
 }
 
 function CatalogCard({ businessId }: { businessId?: number | null }) {
@@ -275,6 +282,7 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
           priceVog: st.priceVog ?? "",
           priceHybrid: st.priceHybrid ?? "",
           priceDrywall: st.priceDrywall ?? "",
+          priceLot: st.priceLot ?? "",
         };
       }
       return next;
@@ -292,7 +300,7 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
     setDraftPrices(prev => {
       const cur = prev[stId] ?? emptyPriceDraft();
       // Move the existing flat price into VOG as a starting point
-      return { ...prev, [stId]: { price: "", priceVog: cur.price, priceHybrid: "", priceDrywall: "" } };
+      return { ...prev, [stId]: { price: "", priceVog: cur.price, priceHybrid: "", priceDrywall: "", priceLot: "" } };
     });
   }
 
@@ -300,8 +308,8 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
     setDraftPrices(prev => {
       const cur = prev[stId] ?? emptyPriceDraft();
       // Move the first non-empty per-type price to flat
-      const flat = cur.priceVog || cur.priceHybrid || cur.priceDrywall || "";
-      return { ...prev, [stId]: { price: flat, priceVog: "", priceHybrid: "", priceDrywall: "" } };
+      const flat = cur.priceVog || cur.priceHybrid || cur.priceDrywall || cur.priceLot || "";
+      return { ...prev, [stId]: { price: flat, priceVog: "", priceHybrid: "", priceDrywall: "", priceLot: "" } };
     });
   }
 
@@ -316,6 +324,7 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
         priceVog: d.priceVog !== "" ? d.priceVog : null,
         priceHybrid: d.priceHybrid !== "" ? d.priceHybrid : null,
         priceDrywall: d.priceDrywall !== "" ? d.priceDrywall : null,
+        priceLot: d.priceLot !== "" ? d.priceLot : null,
       });
       toast({ title: "Price saved" });
     } catch (e) {
@@ -466,8 +475,8 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
                             Use flat rate instead
                           </button>
                         </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          {([ ["priceVog", "VOG"], ["priceHybrid", "Hybrid"], ["priceDrywall", "Drywall"] ] as const).map(([field, label]) => (
+                        <div className="grid grid-cols-2 gap-2">
+                          {([ ["priceVog", "VOG"], ["priceHybrid", "Hybrid"], ["priceDrywall", "Drywall"], ["priceLot", "Lot"] ] as const).map(([field, label]) => (
                             <div key={field}>
                               <label className="block text-[10px] text-muted-foreground mb-0.5">{label}</label>
                               <input
@@ -547,10 +556,10 @@ function CatalogCard({ businessId }: { businessId?: number | null }) {
 }
 
 // ── Per-client Pricing Profiles card ──────────────────────────────────────────
-type Draft = { price: string; priceVog: string; priceHybrid: string; priceDrywall: string };
+type Draft = { price: string; priceVog: string; priceHybrid: string; priceDrywall: string; priceLot: string };
 
 function emptyDraft(): Draft {
-  return { price: "", priceVog: "", priceHybrid: "", priceDrywall: "" };
+  return { price: "", priceVog: "", priceHybrid: "", priceDrywall: "", priceLot: "" };
 }
 
 function PricingProfilesCard({ businessId }: { businessId?: number | null }) {
@@ -587,6 +596,7 @@ function PricingProfilesCard({ businessId }: { businessId?: number | null }) {
         priceVog: o?.priceVog ?? "",
         priceHybrid: o?.priceHybrid ?? "",
         priceDrywall: o?.priceDrywall ?? "",
+        priceLot: o?.priceLot ?? "",
       };
     }
     setDrafts(next);
@@ -608,6 +618,7 @@ function PricingProfilesCard({ businessId }: { businessId?: number | null }) {
         priceVog: priceOrNull(d.priceVog),
         priceHybrid: priceOrNull(d.priceHybrid),
         priceDrywall: priceOrNull(d.priceDrywall),
+        priceLot: priceOrNull(d.priceLot),
       });
       toast({ title: "Override saved" });
     } catch (e) {
@@ -673,7 +684,7 @@ function PricingProfilesCard({ businessId }: { businessId?: number | null }) {
                       ? <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 flex-shrink-0">Override</span>
                       : <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground flex-shrink-0">Master {fmtPrice(st.price)}</span>}
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                     <div>
                       <label className="block text-[10px] text-muted-foreground mb-0.5">Base</label>
                       <input className={inp} value={d.price} onChange={e => setField(st.id, "price", e.target.value)} placeholder={fmtPrice(st.price)} inputMode="decimal" />
@@ -690,11 +701,15 @@ function PricingProfilesCard({ businessId }: { businessId?: number | null }) {
                       <label className="block text-[10px] text-muted-foreground mb-0.5">Drywall</label>
                       <input className={inp} value={d.priceDrywall} onChange={e => setField(st.id, "priceDrywall", e.target.value)} placeholder={fmtPrice(st.priceDrywall)} inputMode="decimal" />
                     </div>
+                    <div>
+                      <label className="block text-[10px] text-muted-foreground mb-0.5">Lot</label>
+                      <input className={inp} value={d.priceLot} onChange={e => setField(st.id, "priceLot", e.target.value)} placeholder={fmtPrice(st.priceLot)} inputMode="decimal" />
+                    </div>
                   </div>
                   <div className="flex gap-2 mt-2 justify-end">
                     <button
                       onClick={() => clearRow(st.id)}
-                      disabled={saving || (!hasOverride && !d.price && !d.priceVog && !d.priceHybrid && !d.priceDrywall)}
+                      disabled={saving || (!hasOverride && !d.price && !d.priceVog && !d.priceHybrid && !d.priceDrywall && !d.priceLot)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-muted-foreground text-xs font-medium hover:bg-muted disabled:opacity-40">
                       <RotateCcw className="w-3.5 h-3.5" /> Clear
                     </button>
