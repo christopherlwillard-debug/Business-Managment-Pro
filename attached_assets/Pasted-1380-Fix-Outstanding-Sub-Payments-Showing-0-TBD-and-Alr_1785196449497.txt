@@ -1,0 +1,215 @@
+1380 - Fix Outstanding Sub Payments Showing $0, TBD, and Already-Paid Workers
+
+What & Why
+
+The Outstanding Sub Payments widget is currently displaying subcontractors that should not appear in the list, causing the Outstanding total to be inflated and inaccurate.
+
+There are three separate issues:
+
+1. $0.00 rows
+Hourly subcontractors with no payable balance are still included because their paymentStatus remains "unpaid" even though there are no logged hours or no remaining balance.
+
+Example:
+• James Willard — "Lot Home"
+
+These records should never appear because there is nothing to pay.
+
+---
+
+2. "TBD" rows
+
+Some hourly subcontractors have no computable amount because either:
+
+• No work hours have been entered
+or
+• Logged hours have no rateSnapshot
+
+These rows currently render as "TBD" and are counted as outstanding even though no payment amount exists yet.
+
+Examples:
+• James Willard — "Martin Water Heater"
+• Audrey Willard — "Drywall Repair"
+
+A payment cannot be outstanding if no amount can be calculated.
+
+---
+
+3. Already-paid subcontractors
+
+Some subcontractors continue appearing after payment because recording a payment inserts a record into sub_payment_records but never updates the corresponding job_subcontractors.paymentStatus.
+
+Example:
+• Audrey Willard — "Drywall Repair"
+
+The payment exists.
+
+The job_subcontractors row still says:
+
+paymentStatus = "unpaid"
+
+so the Accounting page incorrectly believes money is still owed.
+
+This causes duplicate outstanding balances and an incorrect Outstanding Sub Payments total.
+
+---
+
+Done Looks Like
+
+Backend Filtering
+
+File:
+artifacts/api-server/src/routes/reports.ts
+
+Locate the outstandingSubPayments query and mapping (approximately lines 621–698).
+
+After computing the remaining amount, filter the final collection so only actionable balances remain.
+
+Remove any rows where:
+
+remaining === null
+remaining === undefined
+remaining <= 0
+isNaN(remaining)
+
+Example:
+
+return outstandingSubPayments.filter(payment =>
+  payment.remaining != null &&
+  !Number.isNaN(payment.remaining) &&
+  payment.remaining > 0
+);
+
+Only subcontractors with a real positive balance should be returned.
+
+---
+
+Outstanding Total
+
+The Outstanding Sub Payments total should be calculated only from filtered records.
+
+This means the summary only includes:
+
+• Positive remaining balance
+• Computable amount
+• Payment actually owed
+
+Do not include:
+
+• $0.00
+• TBD
+• Negative balances
+• Fully-paid workers
+
+---
+
+Fix Pay Worker Route
+
+Locate the POST pay-worker endpoint.
+
+Search for:
+
+pay-worker
+
+Likely located in:
+
+artifacts/api-server/src/routes/jobs.ts
+
+or
+
+artifacts/api-server/src/routes/subcontractors.ts
+
+Current behavior:
+
+1. Inserts payment into:
+
+sub_payment_records
+
+2. Returns success
+
+3. Leaves
+
+job_subcontractors.paymentStatus
+
+unchanged.
+
+After every successful payment, recalculate the remaining balance for that subcontractor.
+
+Update paymentStatus automatically.
+
+Logic:
+
+remaining <= 0
+
+→ paymentStatus = "paid"
+
+remaining > 0
+
+→ paymentStatus = "partial"
+
+remaining == total owed
+
+→ paymentStatus = "unpaid"
+
+This update must execute for hourly subcontractors as well as fixed-rate subcontractors.
+
+The payment record should never be written without synchronizing the parent job_subcontractors record.
+
+---
+
+Data Fix
+
+After deploying the code fix, correct the existing bad data.
+
+Update Audrey Willard's subcontractor assignment on the "Drywall Repair" job.
+
+Set:
+
+paymentStatus = "paid"
+
+This removes the stale outstanding record immediately.
+
+---
+
+Expected Result
+
+Outstanding Sub Payments should only display workers who:
+
+• Have a real calculable balance
+• Still owe money
+• Have remaining > $0.00
+
+The following should disappear automatically:
+
+❌ James Willard — Lot Home ($0.00)
+
+❌ James Willard — Martin Water Heater (TBD)
+
+❌ Audrey Willard — Drywall Repair (already paid)
+
+The Outstanding total should immediately decrease and accurately reflect only unpaid subcontractor liabilities.
+
+Relevant Files
+
+Backend
+
+• artifacts/api-server/src/routes/reports.ts
+  - Outstanding Sub Payments query
+  - Filter non-actionable rows
+  - Recalculate Outstanding total
+
+• artifacts/api-server/src/routes/jobs.ts
+  or
+  artifacts/api-server/src/routes/subcontractors.ts
+  - POST pay-worker
+  - Update job_subcontractors.paymentStatus after payment
+
+Database
+
+• lib/db/src/schema/jobs.ts
+  - job_subcontractors.paymentStatus
+
+Frontend
+
+• artifacts/contractor-app/src/pages/accounting/OverviewTab.tsx
+  - Outstanding Sub Payments list
+  - No UI changes expected; it should automatically render the cleaned backend data.
