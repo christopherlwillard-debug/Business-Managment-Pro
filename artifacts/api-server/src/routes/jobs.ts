@@ -732,6 +732,7 @@ router.post("/:id/apply-production-pricing", async (req, res) => {
 router.get("/:id/invoice-draft", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
     const job = await getJobWithSubs(id);
     if (!job) return res.status(404).json({ error: "Job not found" });
 
@@ -1112,6 +1113,7 @@ router.get("/closed/export", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
     const job = await getJobWithSubs(id);
     if (!job) return res.status(404).json({ error: "Job not found" });
     res.json(job);
@@ -1124,6 +1126,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
     const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours } = req.body;
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });

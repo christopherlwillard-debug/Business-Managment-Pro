@@ -502,6 +502,7 @@ router.get("/subcontractor/:id", async (req, res) => {
   try {
     const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
     const subId = parseInt(req.params.id);
+    if (isNaN(subId)) return res.status(400).json({ error: "Invalid subcontractor id" });
 
     const payments = await db
       .select()
