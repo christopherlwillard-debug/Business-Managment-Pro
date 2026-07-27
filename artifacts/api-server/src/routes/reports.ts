@@ -614,13 +614,15 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       .map(e => ({ id: e.id, date: e.date, amount: parseFloat(e.amount ?? "0"), description: e.description, notes: e.notes ?? null, vendor: e.vendor ?? null }))
       .sort((a, b) => b.date.localeCompare(a.date));
 
-    // Outstanding fixed/allocation sub payments — unpaid subs that haven't yet had
-    // Mark Paid clicked (which would create an expense record). Hourly subs are excluded
-    // because their hours auto-create expenses and are already in totalExpenses.
+    // Outstanding sub payments — unpaid subs that haven't yet had Mark Paid clicked.
+    // Includes fixed, allocation, and hourly types. For hourly subs the amount owed
+    // is computed from job_sub_hours (hours × rateSnapshot); their hours also auto-
+    // create expense records, so they appear in both totalExpenses and here.
     const outstandingSubRows = await db.select({
       subName: subcontractorsTable.name,
       jobTitle: jobsTable.title,
       jobId: jobSubcontractorsTable.jobId,
+      subcontractorId: jobSubcontractorsTable.subcontractorId,
       amountOwed: jobSubcontractorsTable.amountOwed,
       fixedAmount: jobSubcontractorsTable.fixedAmount,
       amountPaid: jobSubcontractorsTable.amountPaid,
@@ -633,7 +635,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       .innerJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
       .where(and(
         inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]),
-        inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+        inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation", "hourly"]),
         blFilter ? eq(jobsTable.businessLine, blFilter) : undefined,
       ));
 
@@ -644,6 +646,30 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     )];
     const outstandingPoolMap = await computeAllocationSplitPools(outstandingAllocJobIds);
 
+    // For hourly subs, compute amount owed from logged hours × rate snapshot
+    const hourlyRows = outstandingSubRows.filter(r => r.compensationType === "hourly" && r.jobId != null && r.subcontractorId != null);
+    const hourlyHoursMap = new Map<string, number>();
+    if (hourlyRows.length > 0) {
+      const hourlyJobIds = [...new Set(hourlyRows.map(r => r.jobId as number))];
+      const hourlySubIds = [...new Set(hourlyRows.map(r => r.subcontractorId as number))];
+      const hoursCostRows = await db.select({
+        jobId: jobSubHoursTable.jobId,
+        subcontractorId: jobSubHoursTable.subcontractorId,
+        cost: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
+      })
+        .from(jobSubHoursTable)
+        .where(and(
+          inArray(jobSubHoursTable.jobId, hourlyJobIds),
+          inArray(jobSubHoursTable.subcontractorId, hourlySubIds),
+        ))
+        .groupBy(jobSubHoursTable.jobId, jobSubHoursTable.subcontractorId);
+      for (const row of hoursCostRows) {
+        if (hourlyRows.some(r => r.jobId === row.jobId && r.subcontractorId === row.subcontractorId)) {
+          hourlyHoursMap.set(`${row.jobId}:${row.subcontractorId}`, parseFloat(row.cost));
+        }
+      }
+    }
+
     const outstandingSubPayments = outstandingSubRows.map(r => {
       let fullOwed: number | null;
       if (r.amountOwed != null) {
@@ -651,6 +677,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       } else if (r.compensationType === "allocation" && r.allocationPct != null && r.jobId != null) {
         const pool = outstandingPoolMap.get(r.jobId)?.splitPool ?? 0;
         fullOwed = pool * (parseFloat(r.allocationPct) / 100);
+      } else if (r.compensationType === "hourly" && r.jobId != null && r.subcontractorId != null) {
+        fullOwed = hourlyHoursMap.get(`${r.jobId}:${r.subcontractorId}`) ?? null;
       } else if (r.fixedAmount != null) {
         fullOwed = parseFloat(r.fixedAmount);
       } else {

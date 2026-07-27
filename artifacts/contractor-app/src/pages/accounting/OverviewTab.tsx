@@ -1873,7 +1873,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                 <span className="font-semibold text-sm text-amber-900">Outstanding Sub Payments</span>
                 <span className="text-sm font-bold text-amber-700">{formatCurrency(total)}</span>
               </div>
-              <span className="text-xs text-amber-700/80">Fixed &amp; allocation subs not yet marked paid — not yet counted in expenses</span>
+              <span className="text-xs text-amber-700/80">Subs not yet marked paid</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
