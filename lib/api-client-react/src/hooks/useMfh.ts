@@ -570,7 +570,9 @@ export interface ProductionServiceType {
   priceVog?: string | null;
   priceHybrid?: string | null;
   priceDrywall?: string | null;
-  priceLot?: string | null;
+  priceLotVog?: string | null;
+  priceLotHybrid?: string | null;
+  priceLotDrywall?: string | null;
   sortOrder: number;
   active: boolean;
   createdAt: string;
@@ -586,7 +588,9 @@ export interface ProductionPriceOverride {
   priceVog?: string | null;
   priceHybrid?: string | null;
   priceDrywall?: string | null;
-  priceLot?: string | null;
+  priceLotVog?: string | null;
+  priceLotHybrid?: string | null;
+  priceLotDrywall?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -607,7 +611,9 @@ export interface ProductionServiceTypeInput {
   priceVog?: number | string | null;
   priceHybrid?: number | string | null;
   priceDrywall?: number | string | null;
-  priceLot?: number | string | null;
+  priceLotVog?: number | string | null;
+  priceLotHybrid?: number | string | null;
+  priceLotDrywall?: number | string | null;
   sortOrder?: number;
   businessId?: number | null;
 }
@@ -718,7 +724,9 @@ export function useUpsertProductionPriceOverride() {
       priceVog?: number | string | null;
       priceHybrid?: number | string | null;
       priceDrywall?: number | string | null;
-      priceLot?: number | string | null;
+      priceLotVog?: number | string | null;
+      priceLotHybrid?: number | string | null;
+      priceLotDrywall?: number | string | null;
     }) =>
       customFetch<ProductionPriceOverride>("/api/production-service-types/overrides", {
         method: "PUT",

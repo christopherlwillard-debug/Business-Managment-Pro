@@ -75,14 +75,16 @@ router.get("/overrides", wrapAsync(async (req, res) => {
 
 // Upsert a single client override. Any null price* column falls back to master.
 router.put("/overrides", wrapAsync(async (req, res) => {
-  const { clientId, serviceTypeId, price, priceVog, priceHybrid, priceDrywall, priceLot } = req.body as {
+  const { clientId, serviceTypeId, price, priceVog, priceHybrid, priceDrywall, priceLotVog, priceLotHybrid, priceLotDrywall } = req.body as {
     clientId?: number;
     serviceTypeId?: number;
     price?: unknown;
     priceVog?: unknown;
     priceHybrid?: unknown;
     priceDrywall?: unknown;
-    priceLot?: unknown;
+    priceLotVog?: unknown;
+    priceLotHybrid?: unknown;
+    priceLotDrywall?: unknown;
   };
   if (!clientId || !serviceTypeId) {
     return res.status(400).json({ error: "clientId and serviceTypeId are required" });
@@ -92,7 +94,9 @@ router.put("/overrides", wrapAsync(async (req, res) => {
     priceVog: priceOrNull(priceVog),
     priceHybrid: priceOrNull(priceHybrid),
     priceDrywall: priceOrNull(priceDrywall),
-    priceLot: priceOrNull(priceLot),
+    priceLotVog: priceOrNull(priceLotVog),
+    priceLotHybrid: priceOrNull(priceLotHybrid),
+    priceLotDrywall: priceOrNull(priceLotDrywall),
   };
   const [row] = await db
     .insert(productionPriceOverridesTable)
@@ -159,7 +163,9 @@ router.post("/", wrapAsync(async (req, res) => {
       priceVog: priceOrNull(b.priceVog),
       priceHybrid: priceOrNull(b.priceHybrid),
       priceDrywall: priceOrNull(b.priceDrywall),
-      priceLot: priceOrNull(b.priceLot),
+      priceLotVog: priceOrNull(b.priceLotVog),
+      priceLotHybrid: priceOrNull(b.priceLotHybrid),
+      priceLotDrywall: priceOrNull(b.priceLotDrywall),
       sortOrder: typeof b.sortOrder === "number" ? b.sortOrder : 0,
       businessId: typeof b.businessId === "number" ? b.businessId : null,
     })
@@ -187,7 +193,9 @@ router.put("/:id", wrapAsync(async (req, res) => {
   if ("priceVog" in b) set.priceVog = priceOrNull(b.priceVog);
   if ("priceHybrid" in b) set.priceHybrid = priceOrNull(b.priceHybrid);
   if ("priceDrywall" in b) set.priceDrywall = priceOrNull(b.priceDrywall);
-  if ("priceLot" in b) set.priceLot = priceOrNull(b.priceLot);
+  if ("priceLotVog" in b) set.priceLotVog = priceOrNull(b.priceLotVog);
+  if ("priceLotHybrid" in b) set.priceLotHybrid = priceOrNull(b.priceLotHybrid);
+  if ("priceLotDrywall" in b) set.priceLotDrywall = priceOrNull(b.priceLotDrywall);
   if (typeof b.sortOrder === "number") set.sortOrder = b.sortOrder;
   if ("active" in b) set.active = b.active === true;
   if (Object.keys(set).length === 0) return res.status(400).json({ error: "No fields to update" });

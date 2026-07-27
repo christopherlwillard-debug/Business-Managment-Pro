@@ -32,15 +32,30 @@ export interface ApplyProductionPricingDialogProps {
   onKeepExisting: () => void;
 }
 
-/** Map a construction-type string to the per-type price field key on a service/override row. */
-function homeTypeToPriceField(homeType?: string | null): "priceVog" | "priceHybrid" | "priceDrywall" | "priceLot" | null {
+/** Map a combined placement_construction string to the per-type price field key on a service/override row.
+ *  New format:  "FIELD_VOG" | "FIELD_HYBRID" | "FIELD_DRYWALL"
+ *               "LOT_VOG"   | "LOT_HYBRID"   | "LOT_DRYWALL"
+ *  Legacy bare: "VOG" | "Hybrid" | "Drywall" → treated as FIELD_*
+ */
+function homeTypeToPriceField(homeType?: string | null):
+  | "priceVog" | "priceHybrid" | "priceDrywall"
+  | "priceLotVog" | "priceLotHybrid" | "priceLotDrywall"
+  | null {
   if (!homeType) return null;
-  const t = homeType.toLowerCase();
-  if (t.includes("vog")) return "priceVog";
-  if (t.includes("hybrid")) return "priceHybrid";
-  if (t.includes("drywall")) return "priceDrywall";
-  if (t.includes("lot")) return "priceLot";
-  return null;
+  const t = homeType.toUpperCase();
+  switch (t) {
+    case "FIELD_VOG":    return "priceVog";
+    case "FIELD_HYBRID": return "priceHybrid";
+    case "FIELD_DRYWALL": return "priceDrywall";
+    case "LOT_VOG":    return "priceLotVog";
+    case "LOT_HYBRID": return "priceLotHybrid";
+    case "LOT_DRYWALL": return "priceLotDrywall";
+    // Legacy bare values
+    case "VOG":    return "priceVog";
+    case "HYBRID": return "priceHybrid";
+    case "DRYWALL": return "priceDrywall";
+    default: return null;
+  }
 }
 
 /** Resolve the display price for a catalog item given the job's home type and optional client overrides. */

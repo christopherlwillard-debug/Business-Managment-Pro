@@ -54,27 +54,36 @@ export function billingTypeOptions(): { value: string; quantityBased: boolean }[
 }
 
 // ── Home-type pricing ─────────────────────────────────────────────────────────
-// jobs.mfhConstructionType is the home type ("VOG" | "Hybrid" | "Drywall").
-type HomeTypeColumn = "priceVog" | "priceHybrid" | "priceDrywall" | "priceLot";
+// jobs.mfhConstructionType encodes BOTH placement and construction type.
+// New format:  "FIELD_VOG" | "FIELD_HYBRID" | "FIELD_DRYWALL"
+//              "LOT_VOG"   | "LOT_HYBRID"   | "LOT_DRYWALL"
+// Legacy bare: "VOG" | "Hybrid" | "Drywall"  (treated as FIELD_*)
+type HomeTypeColumn =
+  | "priceVog" | "priceHybrid" | "priceDrywall"
+  | "priceLotVog" | "priceLotHybrid" | "priceLotDrywall";
 
 function homeTypeColumn(homeType: string | null | undefined): HomeTypeColumn | null {
-  switch ((homeType ?? "").trim().toLowerCase()) {
-    case "vog":
-      return "priceVog";
-    case "hybrid":
-      return "priceHybrid";
-    case "drywall":
-      return "priceDrywall";
-    case "lot":
-      return "priceLot";
-    default:
-      return null;
+  const t = (homeType ?? "").trim().toUpperCase();
+  switch (t) {
+    // New combined format
+    case "FIELD_VOG":   return "priceVog";
+    case "FIELD_HYBRID": return "priceHybrid";
+    case "FIELD_DRYWALL": return "priceDrywall";
+    case "LOT_VOG":    return "priceLotVog";
+    case "LOT_HYBRID": return "priceLotHybrid";
+    case "LOT_DRYWALL": return "priceLotDrywall";
+    // Legacy bare values — treated as Field
+    case "VOG":    return "priceVog";
+    case "HYBRID": return "priceHybrid";
+    case "DRYWALL": return "priceDrywall";
+    default: return null;
   }
 }
 
 type PriceSource = Pick<
   ProductionServiceType,
-  "price" | "priceVog" | "priceHybrid" | "priceDrywall" | "priceLot"
+  "price" | "priceVog" | "priceHybrid" | "priceDrywall"
+  | "priceLotVog" | "priceLotHybrid" | "priceLotDrywall"
 >;
 
 function parsePrice(v: string | null): number | null {
@@ -98,7 +107,9 @@ function hasHomeTypeVariant(source: PriceSource): boolean {
     parsePrice(source.priceVog) != null ||
     parsePrice(source.priceHybrid) != null ||
     parsePrice(source.priceDrywall) != null ||
-    parsePrice(source.priceLot) != null
+    parsePrice(source.priceLotVog) != null ||
+    parsePrice(source.priceLotHybrid) != null ||
+    parsePrice(source.priceLotDrywall) != null
   );
 }
 

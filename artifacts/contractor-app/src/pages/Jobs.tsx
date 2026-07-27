@@ -3958,7 +3958,13 @@ function JobCard({
               )}
               {jobWorkflow === "mh_production" && (job as unknown as Record<string, unknown>).mfhConstructionType ? (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-300 text-amber-700 bg-transparent">
-                  {(job as unknown as Record<string, unknown>).mfhConstructionType as string}
+                  {(() => {
+                    const ct = (job as unknown as Record<string, unknown>).mfhConstructionType as string;
+                    const up = ct.toUpperCase();
+                    if (up.startsWith("FIELD_")) return `Field · ${ct.split("_")[1]}`;
+                    if (up.startsWith("LOT_")) return `Lot · ${ct.split("_")[1]}`;
+                    return ct; // legacy bare value
+                  })()}
                 </span>
               ) : null}
               {jobWorkflow === "mh_production" && Array.isArray((job as unknown as Record<string, unknown>).mhProductionServices) &&
@@ -5418,22 +5424,51 @@ function JobFormDialog({
                   onChange={e => setMfhYear(e.target.value)} />
               </div>
               {selectedWorkflow === "mh_production" ? (
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">Construction Type</label>
-                  <div className="flex gap-1">
-                    {["VOG", "Hybrid", "Drywall", "Lot"].map(ct => (
-                      <button key={ct} type="button"
-                        onClick={() => setMfhConstructionType(mfhConstructionType === ct ? "" : ct)}
-                        className={`flex-1 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
-                          mfhConstructionType === ct
-                            ? "bg-amber-500 border-amber-500 text-white"
-                            : "border-border text-muted-foreground hover:border-amber-300 hover:text-amber-600"
-                        }`}>
-                        {ct}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                (() => {
+                  const ctUp = (mfhConstructionType ?? "").toUpperCase();
+                  const isLegacy = ["VOG", "HYBRID", "DRYWALL"].includes(ctUp);
+                  const activePl = isLegacy ? "FIELD" : (ctUp.startsWith("FIELD_") ? "FIELD" : ctUp.startsWith("LOT_") ? "LOT" : ctUp === "FIELD" || ctUp === "LOT" ? ctUp : "");
+                  const activeCt = isLegacy ? ctUp : (ctUp.includes("_") ? ctUp.split("_").slice(1).join("_") : "");
+                  const btnCls = (active: boolean) =>
+                    `flex-1 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${active ? "bg-amber-500 border-amber-500 text-white" : "border-border text-muted-foreground hover:border-amber-300 hover:text-amber-600"}`;
+                  return (
+                    <div className="space-y-1.5">
+                      <div>
+                        <label className="block text-xs text-muted-foreground mb-1">Placement</label>
+                        <div className="flex gap-1">
+                          {(["Field", "Lot Model"] as const).map(pl => {
+                            const token = pl === "Field" ? "FIELD" : "LOT";
+                            return (
+                              <button key={pl} type="button"
+                                onClick={() => {
+                                  if (activeCt) setMfhConstructionType(`${token}_${activeCt}`);
+                                  else setMfhConstructionType(activePl === token ? "" : token);
+                                }}
+                                className={btnCls(activePl === token)}>
+                                {pl}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-muted-foreground mb-1">Construction</label>
+                        <div className="flex gap-1">
+                          {(["VOG", "Hybrid", "Drywall"] as const).map(ct => (
+                            <button key={ct} type="button"
+                              onClick={() => {
+                                const p = activePl || "FIELD";
+                                setMfhConstructionType(`${p}_${ct.toUpperCase()}`);
+                              }}
+                              className={btnCls(activeCt === ct.toUpperCase())}>
+                              {ct}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()
               ) : mfhModelId ? (
                 <div className="flex items-end pb-0.5">
                   <div>

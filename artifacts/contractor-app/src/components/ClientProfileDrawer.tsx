@@ -955,8 +955,8 @@ function fmtRate(n: number | null | undefined): string {
 }
 
 // ── Per-client Production Pricing ─────────────────────────────────────────────
-type PriceDraft = { price: string; priceVog: string; priceHybrid: string; priceDrywall: string; priceLot: string };
-const EMPTY_DRAFT: PriceDraft = { price: "", priceVog: "", priceHybrid: "", priceDrywall: "", priceLot: "" };
+type PriceDraft = { price: string; priceVog: string; priceHybrid: string; priceDrywall: string; priceLotVog: string; priceLotHybrid: string; priceLotDrywall: string };
+const EMPTY_DRAFT: PriceDraft = { price: "", priceVog: "", priceHybrid: "", priceDrywall: "", priceLotVog: "", priceLotHybrid: "", priceLotDrywall: "" };
 
 function fmtMasterPrice(v: string | number | null | undefined): string {
   if (v == null) return "";
@@ -964,11 +964,11 @@ function fmtMasterPrice(v: string | number | null | undefined): string {
   return isNaN(n) ? "" : n.toFixed(2);
 }
 
-function isVariableSvc(svc: { priceVog?: string | null; priceHybrid?: string | null; priceDrywall?: string | null; priceLot?: string | null }): boolean {
-  return svc.priceVog != null || svc.priceHybrid != null || svc.priceDrywall != null || svc.priceLot != null;
+function isVariableSvc(svc: { priceVog?: string | null; priceHybrid?: string | null; priceDrywall?: string | null; priceLotVog?: string | null; priceLotHybrid?: string | null; priceLotDrywall?: string | null }): boolean {
+  return svc.priceVog != null || svc.priceHybrid != null || svc.priceDrywall != null || svc.priceLotVog != null || svc.priceLotHybrid != null || svc.priceLotDrywall != null;
 }
 
-type MfhSvc = { id: number; name: string; price?: string | null; priceVog?: string | null; priceHybrid?: string | null; priceDrywall?: string | null; priceLot?: string | null };
+type MfhSvc = { id: number; name: string; price?: string | null; priceVog?: string | null; priceHybrid?: string | null; priceDrywall?: string | null; priceLotVog?: string | null; priceLotHybrid?: string | null; priceLotDrywall?: string | null };
 type MfhOverride = { serviceTypeId: number } & Record<string, unknown>;
 
 function ProductionPricingSection({ clientId, canEdit }: { clientId: number; canEdit: boolean }) {
@@ -1005,7 +1005,7 @@ function ProductionPricingSection({ clientId, canEdit }: { clientId: number; can
     }
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await upsert.mutateAsync({ clientId, serviceTypeId: svcId, price: pick("price"), priceVog: pick("priceVog"), priceHybrid: pick("priceHybrid"), priceDrywall: pick("priceDrywall"), priceLot: pick("priceLot") } as any);
+      await upsert.mutateAsync({ clientId, serviceTypeId: svcId, price: pick("price"), priceVog: pick("priceVog"), priceHybrid: pick("priceHybrid"), priceDrywall: pick("priceDrywall"), priceLotVog: pick("priceLotVog"), priceLotHybrid: pick("priceLotHybrid"), priceLotDrywall: pick("priceLotDrywall") } as any);
     } catch {
       toast({ title: "Couldn't save price override", variant: "destructive" });
     }
@@ -1036,26 +1036,31 @@ function ProductionPricingSection({ clientId, canEdit }: { clientId: number; can
                 <div key={svc.id} className="rounded-xl border border-border bg-muted/20 p-3 space-y-2">
                   <p className="text-xs font-semibold text-foreground">{svc.name}</p>
                   {variable ? (
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
                       {([
-                        { f: "priceVog"     as const, label: "VOG",    master: svc.priceVog },
-                        { f: "priceHybrid"  as const, label: "Hybrid", master: svc.priceHybrid },
-                        { f: "priceDrywall" as const, label: "Drywall",master: svc.priceDrywall },
-                        { f: "priceLot"     as const, label: "Lot",    master: svc.priceLot },
-                      ]).map(({ f, label, master }) => (
-                        <div key={f}>
-                          <label className={lblCls}>{label}</label>
-                          <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            disabled={!canEdit}
-                            value={getValue(svc.id, f)}
-                            onChange={e => setField(svc.id, f, e.target.value)}
-                            onBlur={() => save(svc.id)}
-                            placeholder={fmtMasterPrice(master) || "—"}
-                            className={inputCls}
-                          />
+                        { grp: "Field", items: [{ f: "priceVog" as const, label: "VOG", master: svc.priceVog }, { f: "priceHybrid" as const, label: "Hybrid", master: svc.priceHybrid }, { f: "priceDrywall" as const, label: "Drywall", master: svc.priceDrywall }] },
+                        { grp: "Lot Model", items: [{ f: "priceLotVog" as const, label: "VOG", master: svc.priceLotVog }, { f: "priceLotHybrid" as const, label: "Hybrid", master: svc.priceLotHybrid }, { f: "priceLotDrywall" as const, label: "Drywall", master: svc.priceLotDrywall }] },
+                      ]).map(({ grp, items }) => (
+                        <div key={grp}>
+                          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-1">{grp}</p>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {items.map(({ f, label, master }) => (
+                              <div key={f}>
+                                <label className={lblCls}>{label}</label>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min="0"
+                                  disabled={!canEdit}
+                                  value={getValue(svc.id, f)}
+                                  onChange={e => setField(svc.id, f, e.target.value)}
+                                  onBlur={() => save(svc.id)}
+                                  placeholder={fmtMasterPrice(master) || "—"}
+                                  className={inputCls}
+                                />
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       ))}
                     </div>
