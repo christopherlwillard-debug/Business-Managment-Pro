@@ -58,6 +58,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
   const [oiDescription, setOiDescription] = useState("");
   const [oiSaving, setOiSaving] = useState(false);
   const [oiError, setOiError] = useState<string | null>(null);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<number | null>(null);
 
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
@@ -72,6 +73,30 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
 
   const client = data?.client;
   const summary = data?.summary;
+
+  async function handleDeleteDraftInvoice(invoiceId: number, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeletingInvoiceId(invoiceId);
+    try {
+      const res = await fetch(`${BASE}/api/invoices/${invoiceId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let msg = "Failed to delete invoice";
+        try { const b = await res.json(); if (b?.error) msg = b.error; } catch { /* ignore */ }
+        toast({ title: msg, variant: "destructive" });
+        return;
+      }
+      await refetch();
+      toast({ title: "Draft invoice deleted" });
+    } catch {
+      toast({ title: "Network error deleting invoice", variant: "destructive" });
+    } finally {
+      setDeletingInvoiceId(null);
+    }
+  }
 
   function handleServiceDateSave() {
     if (!clientId) return;
@@ -544,6 +569,8 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
                     data!.invoices.map(inv => {
                       const lineItems = Array.isArray(inv.lineItems) ? inv.lineItems as Array<{ quantity: number; unitPrice: number; description: string }> : [];
                       const total = lineItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
+                      const isDeletableDraft = inv.status === "draft" && !inv.invoiceNumber;
+                      const isDeleting = deletingInvoiceId === inv.id;
                       return (
                         <Link
                           key={inv.id}
@@ -553,7 +580,9 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <p className="text-sm font-medium">#{inv.invoiceNumber}</p>
+                              <p className="text-sm font-medium">
+                                {inv.invoiceNumber ? `#${inv.invoiceNumber}` : <span className="text-muted-foreground italic">Unnumbered draft</span>}
+                              </p>
                               {inv.issueDate && <p className="text-xs text-muted-foreground">{formatDate(inv.issueDate)}</p>}
                             </div>
                             <div className="flex items-center gap-1.5">
@@ -568,7 +597,18 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
                                   {inv.status}
                                 </span>
                               </div>
-                              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 group-hover:text-primary transition-colors flex-shrink-0" />
+                              {isDeletableDraft ? (
+                                <button
+                                  onClick={e => handleDeleteDraftInvoice(inv.id, e)}
+                                  disabled={isDeleting}
+                                  className="p-1 rounded-lg text-red-500 hover:bg-red-50 disabled:opacity-40 flex-shrink-0"
+                                  title="Delete draft invoice"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 group-hover:text-primary transition-colors flex-shrink-0" />
+                              )}
                             </div>
                           </div>
                         </Link>
