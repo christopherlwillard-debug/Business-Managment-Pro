@@ -5836,6 +5836,7 @@ export default function Jobs() {
   }, {});
 
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
+  const [profileClientInitialTab, setProfileClientInitialTab] = useState<"overview" | "jobs" | "invoices" | "payments" | "route" | "billing" | undefined>(undefined);
 
   const { activeBusiness, businesses } = useBusiness();
   // Include inactive so archived service names still resolve on existing job cards
@@ -7303,9 +7304,11 @@ export default function Jobs() {
       {profileClientId !== null && (
         <ClientProfileDrawer
           clientId={profileClientId}
-          onClose={() => setProfileClientId(null)}
+          initialTab={profileClientInitialTab}
+          onClose={() => { setProfileClientId(null); setProfileClientInitialTab(undefined); }}
           onAddToRoute={(id) => {
             setProfileClientId(null);
+            setProfileClientInitialTab(undefined);
             navigate(`${BASE}/route-planner?clientId=${id}`);
           }}
         />

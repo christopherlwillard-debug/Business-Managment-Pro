@@ -3,6 +3,7 @@ import {
   useClientProfile, useUpdateClientServiceDate, useSquareStatus,
   useListClientBillingProfiles, useCreateClientBillingProfile,
   useUpdateClientBillingProfile, useDeleteClientBillingProfile,
+  useListProductionServiceTypes, useProductionPriceOverrides, useUpsertProductionPriceOverride,
   type ClientBillingProfile,
 } from "@workspace/api-client-react";
 import {
@@ -42,10 +43,11 @@ interface Props {
   clientId: number | null;
   onClose: () => void;
   onAddToRoute?: (clientId: number) => void;
+  initialTab?: Tab;
 }
 
-export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) {
-  const [tab, setTab] = useState<Tab>("overview");
+export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTab }: Props) {
+  const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
   const [editingServiceDate, setEditingServiceDate] = useState(false);
   const [serviceDateVal, setServiceDateVal] = useState("");
   const [serviceIntervalVal, setServiceIntervalVal] = useState("");
@@ -525,7 +527,10 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute }: Props) 
               )}
 
               {tab === "billing" && (
-                <BillingProfilesTab clientId={client.id} canEdit={canEdit("clients")} />
+                <>
+                  <BillingProfilesTab clientId={client.id} canEdit={canEdit("clients")} />
+                  <ProductionPricingSection clientId={client.id} canEdit={canEdit("clients")} />
+                </>
               )}
 
               {tab === "invoices" && (
@@ -907,6 +912,136 @@ function rateStr(n: number | null | undefined): string {
 function fmtRate(n: number | null | undefined): string {
   if (n == null) return "—";
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// ── Per-client Production Pricing ─────────────────────────────────────────────
+type PriceDraft = { price: string; priceVog: string; priceHybrid: string; priceDrywall: string };
+const EMPTY_DRAFT: PriceDraft = { price: "", priceVog: "", priceHybrid: "", priceDrywall: "" };
+
+function fmtMasterPrice(v: string | number | null | undefined): string {
+  if (v == null) return "";
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  return isNaN(n) ? "" : n.toFixed(2);
+}
+
+function isVariableSvc(svc: { priceVog?: string | null; priceHybrid?: string | null; priceDrywall?: string | null }): boolean {
+  return svc.priceVog != null || svc.priceHybrid != null || svc.priceDrywall != null;
+}
+
+type MfhSvc = { id: number; name: string; price?: string | null; priceVog?: string | null; priceHybrid?: string | null; priceDrywall?: string | null };
+type MfhOverride = { serviceTypeId: number } & Record<string, unknown>;
+
+function ProductionPricingSection({ clientId, canEdit }: { clientId: number; canEdit: boolean }) {
+  const { toast } = useToast();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: services = [] } = useListProductionServiceTypes(null as any, false, "production" as never);
+  const { data: overrides = [] } = useProductionPriceOverrides(clientId);
+  const upsert = useUpsertProductionPriceOverride();
+  const [drafts, setDrafts] = useState<Record<number, Partial<PriceDraft>>>({});
+
+  const overrideMap = new Map<number, MfhOverride>(
+    (overrides as MfhOverride[]).map(o => [o.serviceTypeId, o])
+  );
+
+  function getValue(svcId: number, field: keyof PriceDraft): string {
+    const d = drafts[svcId];
+    if (d && field in d) return d[field] as string;
+    const ov = overrideMap.get(svcId);
+    if (!ov) return "";
+    const raw = ov[field];
+    return raw != null ? String(raw) : "";
+  }
+
+  function setField(svcId: number, field: keyof PriceDraft, value: string) {
+    setDrafts(prev => ({ ...prev, [svcId]: { ...EMPTY_DRAFT, ...prev[svcId], [field]: value } }));
+  }
+
+  async function save(svcId: number) {
+    const d = drafts[svcId] ?? {};
+    const ov = overrideMap.get(svcId);
+    function pick(f: keyof PriceDraft): string | null {
+      const v = f in d ? (d[f] as string) : (ov?.[f] != null ? String(ov[f]) : "");
+      return v !== "" ? v : null;
+    }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await upsert.mutateAsync({ clientId, serviceTypeId: svcId, price: pick("price"), priceVog: pick("priceVog"), priceHybrid: pick("priceHybrid"), priceDrywall: pick("priceDrywall") } as any);
+    } catch {
+      toast({ title: "Couldn't save price override", variant: "destructive" });
+    }
+  }
+
+  const inputCls =
+    "w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-amber-400 disabled:opacity-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+  const lblCls = "text-[10px] text-muted-foreground font-medium block mb-0.5";
+  const svcList = services as MfhSvc[];
+
+  return (
+    <div className="border-t border-border mt-2">
+      <div className="px-5 py-4 space-y-3">
+        <div className="flex items-center gap-1.5">
+          <DollarSign className="w-3.5 h-3.5 text-amber-500" />
+          <p className="text-sm font-bold text-foreground">Production Pricing</p>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Override prices for this client's production jobs. Leave blank to use the catalog default (shown as placeholder).
+        </p>
+        {svcList.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-4 text-center">No production services configured.</p>
+        ) : (
+          <div className="space-y-3">
+            {svcList.map(svc => {
+              const variable = isVariableSvc(svc);
+              return (
+                <div key={svc.id} className="rounded-xl border border-border bg-muted/20 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-foreground">{svc.name}</p>
+                  {variable ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { f: "priceVog"     as const, label: "VOG",    master: svc.priceVog },
+                        { f: "priceHybrid"  as const, label: "Hybrid", master: svc.priceHybrid },
+                        { f: "priceDrywall" as const, label: "Drywall",master: svc.priceDrywall },
+                      ]).map(({ f, label, master }) => (
+                        <div key={f}>
+                          <label className={lblCls}>{label}</label>
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            disabled={!canEdit}
+                            value={getValue(svc.id, f)}
+                            onChange={e => setField(svc.id, f, e.target.value)}
+                            onBlur={() => save(svc.id)}
+                            placeholder={fmtMasterPrice(master) || "—"}
+                            className={inputCls}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div>
+                      <label className={lblCls}>Flat Rate</label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        disabled={!canEdit}
+                        value={getValue(svc.id, "price")}
+                        onChange={e => setField(svc.id, "price", e.target.value)}
+                        onBlur={() => save(svc.id)}
+                        placeholder={fmtMasterPrice(svc.price) || "—"}
+                        className={inputCls}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function BillingProfilesTab({ clientId, canEdit }: { clientId: number; canEdit: boolean }) {
