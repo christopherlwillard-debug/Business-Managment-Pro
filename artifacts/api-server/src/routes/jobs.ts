@@ -1780,13 +1780,20 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
       const newPaidAt = subRow.paidAt ?? today;
 
       // Lock the agreed owed amount on first payment so future revenue changes
-      // cannot shift the balance. Only set when no override exists yet and the
-      // client supplied an agreedOwed value. Hourly subs don't send agreedOwed
+      // cannot shift the balance. For allocation subs the client may not send
+      // agreedOwed (e.g. "Mark All Paid Now" flow), so fall back to computing
+      // the split pool right now and locking that value. Hourly subs don't lock
       // — their obligation is hours × rate and doesn't drift.
-      const lockAmountOwed =
+      let lockAmountOwed: string | undefined =
         dbOwedOverride == null && clientAgreedOwed != null && clientAgreedOwed > 0
           ? clientAgreedOwed.toFixed(2)
           : undefined;
+
+      if (lockAmountOwed === undefined && dbOwedOverride == null && compType === "allocation" && subRow.allocationPct != null) {
+        const { splitPool: currentSplitPool } = await computeAllocationSplitPool(jobId);
+        const computed = currentSplitPool * (parseFloat(subRow.allocationPct) / 100);
+        if (computed > 0) lockAmountOwed = computed.toFixed(2);
+      }
 
       // 1. Insert the payment record first
       const [spr] = await tx.insert(subPaymentRecordsTable).values({
@@ -2151,6 +2158,11 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
           SELECT SUM(h.hours) FROM job_sub_hours h
           WHERE h.job_id = ${id} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
         ), 0)`,
+        // hours×rate total — used to determine whether ledger covers the obligation
+        computedOwed: sql<string>`COALESCE((
+          SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0)) FROM job_sub_hours h
+          WHERE h.job_id = ${id} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+        ), '0')`,
       })
         .from(jobSubcontractorsTable)
         .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
@@ -2179,12 +2191,30 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
       );
     }
 
-    // Track stale-status subs so we can repair them in the background
-    const staleSubIds: number[] = [];
+    // Track subs needing background repair: [subcontractorId, lockAmountOwed | null]
+    // lockAmountOwed set means we also need to write amountOwed back to the DB.
+    const repairItems: { subId: number; lockOwed: string | null }[] = [];
 
     const fixedAllocResult = fixedAllocRows
       .map(r => {
         const paid = effectivePaid(r.amountPaid, r.ledgerPaid);
+        const ledger = parseFloat(r.ledgerPaid ?? "0");
+
+        // Legacy repair: allocation sub paid before amountOwed locking was introduced.
+        // amountOwed is null so computeSubOwed recomputes from the live pool on every
+        // check — if the pool grew since the payment the sub re-appears as outstanding.
+        // Treat ledgerPaid as the locked owed amount: whatever was paid is what was owed.
+        if (
+          r.compensationType === "allocation" &&
+          r.amountOwed == null &&
+          ledger > 0
+        ) {
+          const subId = r.subcontractorId;
+          if (subId != null) repairItems.push({ subId, lockOwed: ledger.toFixed(2) });
+          // Not outstanding — the ledger covers the (now-locked) obligation
+          return { row: r, paid, outstanding: false };
+        }
+
         const owed = computeSubOwed({
           amountOwed: r.amountOwed, compensationType: r.compensationType,
           fixedAmount: r.fixedAmount, allocationPct: r.allocationPct, computedOwed: "0",
@@ -2192,7 +2222,7 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
         // Truly outstanding = owed is known, positive, and not yet covered
         const outstanding = owed == null || owed <= 0 ? false : paid < owed - 0.005;
         if (!outstanding && (r.paymentStatus === "unpaid" || r.paymentStatus === "partial")) {
-          if (r.subcontractorId != null) staleSubIds.push(r.subcontractorId);
+          if (r.subcontractorId != null) repairItems.push({ subId: r.subcontractorId, lockOwed: null });
         }
         return { row: r, paid, outstanding };
       })
@@ -2215,10 +2245,11 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
         const paid = effectivePaid(r.amountPaid, r.ledgerPaid);
         const hours = parseFloat(r.totalHours ?? "0");
         const bonus = r.accruedBonus != null ? parseFloat(r.accruedBonus) : 0;
-        // Hourly: outstanding if has hours or bonus (payroll screen needed)
-        const outstanding = hours > 0 || bonus > 0;
+        const owedFromHours = parseFloat(r.computedOwed ?? "0");
+        // Truly outstanding only when the ledger hasn't covered hours×rate + bonus yet
+        const outstanding = (owedFromHours + bonus) > (paid + 0.005);
         if (!outstanding && (r.paymentStatus === "unpaid" || r.paymentStatus === "partial")) {
-          if (r.subcontractorId != null) staleSubIds.push(r.subcontractorId);
+          if (r.subcontractorId != null) repairItems.push({ subId: r.subcontractorId, lockOwed: null });
         }
         return { row: r, paid, hours, bonus, outstanding };
       })
@@ -2236,9 +2267,26 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
         accruedBonus: bonus || null,
       }));
 
-    // Background repair: if any subs had stale paymentStatus, re-sync the job
-    if (staleSubIds.length > 0) {
-      setImmediate(() => recomputeSubPaid(id).catch(console.error));
+    // Background repair: fix stale paymentStatus and lock amountOwed for legacy allocation subs
+    if (repairItems.length > 0) {
+      setImmediate(async () => {
+        try {
+          await Promise.all(repairItems.map(({ subId, lockOwed }) => {
+            const updates: Record<string, unknown> = { paymentStatus: "paid" };
+            if (lockOwed != null) {
+              updates.amountOwed = lockOwed;
+              updates.amountPaid = lockOwed;
+            }
+            return db.update(jobSubcontractorsTable).set(updates as any).where(and(
+              eq(jobSubcontractorsTable.jobId, id),
+              eq(jobSubcontractorsTable.subcontractorId, subId),
+            ));
+          }));
+          await recomputeSubPaid(id);
+        } catch (e) {
+          console.error("[outstanding-sub-repair]", e);
+        }
+      });
     }
 
     res.json([...fixedAllocResult, ...hourlyResult]);
