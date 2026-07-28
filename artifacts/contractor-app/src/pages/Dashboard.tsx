@@ -8,7 +8,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import {
   Briefcase, DollarSign, Receipt, AlertTriangle, ArrowRight, ShieldAlert,
   CheckCircle2, Clock, TrendingUp, TrendingDown, CalendarClock, MapPin,
-  Navigation, Phone, FileText, Sparkles, HardHat, Wallet, Plus,
+  Navigation, Phone, FileText, Sparkles, HardHat, Wallet, Plus, Camera,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
@@ -105,6 +105,173 @@ function useTaxAlerts() {
   });
 }
 
+// ─── Section Header ───────────────────────────────────────────────────────────
+function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="mb-3">
+      <h2 className="text-lg font-display font-bold text-foreground">{title}</h2>
+      {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+    </div>
+  );
+}
+
+// ─── Quick Actions ────────────────────────────────────────────────────────────
+interface QuickAction {
+  icon: React.ElementType;
+  label: string;
+  description: string;
+  onClick: () => void;
+  color: string;
+  iconBg: string;
+}
+
+function QuickActions({ onRecordOwnerPay, onNavigate }: {
+  onRecordOwnerPay: () => void;
+  onNavigate: (path: string) => void;
+}) {
+  const actions: QuickAction[] = [
+    {
+      icon: Camera,
+      label: "Scan Receipt",
+      description: "AI scans & logs the expense",
+      onClick: () => onNavigate("/expenses"),
+      color: "border-violet-200/70 hover:border-violet-300 hover:bg-violet-50/60",
+      iconBg: "bg-violet-100 text-violet-700",
+    },
+    {
+      icon: Receipt,
+      label: "Add Expense",
+      description: "Manually record an expense",
+      onClick: () => onNavigate("/expenses"),
+      color: "border-blue-200/70 hover:border-blue-300 hover:bg-blue-50/60",
+      iconBg: "bg-blue-100 text-blue-700",
+    },
+    {
+      icon: Briefcase,
+      label: "New Job",
+      description: "Create a new job",
+      onClick: () => onNavigate("/jobs"),
+      color: "border-amber-200/70 hover:border-amber-300 hover:bg-amber-50/60",
+      iconBg: "bg-amber-100 text-amber-700",
+    },
+    {
+      icon: Wallet,
+      label: "Record Owner Pay",
+      description: "Log a pay draw or compensation",
+      onClick: onRecordOwnerPay,
+      color: "border-emerald-200/70 hover:border-emerald-300 hover:bg-emerald-50/60",
+      iconBg: "bg-emerald-100 text-emerald-700",
+    },
+  ];
+
+  return (
+    <div>
+      <SectionHeader title="Quick Actions" />
+      <div className="grid grid-cols-2 gap-3">
+        {actions.map(action => (
+          <button
+            key={action.label}
+            onClick={action.onClick}
+            className={cn(
+              "flex flex-col items-start gap-2 rounded-2xl border bg-card p-4 text-left transition-all active:scale-[0.98] shadow-sm",
+              action.color,
+            )}
+          >
+            <div className={cn("p-2.5 rounded-xl", action.iconBg)}>
+              <action.icon className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground leading-tight">{action.label}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{action.description}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Combined Profit Card ─────────────────────────────────────────────────────
+function CombinedProfitCard({ operationalNetProfit, subContractorRemaining, ownerProfit, excludedFromProfit, formulaExcludedFromProfit, excludedCount, periodLabel }: {
+  operationalNetProfit: number;
+  subContractorRemaining: number;
+  ownerProfit?: number;
+  excludedFromProfit: number;
+  formulaExcludedFromProfit: number;
+  excludedCount: number;
+  periodLabel: string;
+}) {
+  const isPositive = operationalNetProfit >= 0;
+  const actualPositive = (ownerProfit ?? operationalNetProfit) >= 0;
+
+  return (
+    <Card className={`shadow-md border-border/50 border-l-4 ${isPositive ? "border-l-emerald-500" : "border-l-red-500"}`}>
+      <CardContent className="p-6 space-y-4">
+
+        {/* Operational Profit row */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-muted-foreground">Operational Profit ({periodLabel})</p>
+            <p className={cn("text-3xl font-display font-bold tracking-tight mt-1", isPositive ? "text-emerald-600" : "text-red-600")}>
+              {formatCurrency(operationalNetProfit)}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Revenue minus operational expenses
+              {excludedCount > 0 ? (
+                <span className="ml-1 text-amber-600 font-medium">
+                  · {excludedCount} write-off{excludedCount !== 1 ? "s" : ""} excluded ({formatCurrency(excludedFromProfit)})
+                </span>
+              ) : (
+                <span className="ml-1 text-muted-foreground/70">· Before mileage &amp; tax write-offs — see Tax page for adjusted figure</span>
+              )}
+            </p>
+            {formulaExcludedFromProfit > 0 && (
+              <p className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border/50">
+                Including write-offs would be <span className="font-semibold">{formatCurrency(operationalNetProfit - formulaExcludedFromProfit)}</span>
+              </p>
+            )}
+          </div>
+          <div className={cn("p-3 rounded-xl flex-shrink-0", isPositive ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
+            {isPositive ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
+          </div>
+        </div>
+
+        {/* Actual Profit breakdown — only when ownerProfit is available */}
+        {ownerProfit !== undefined && (
+          <>
+            {/* Less Sub Payments row */}
+            <div className="flex items-center justify-between py-2 px-3 rounded-xl bg-muted/30">
+              <p className="text-xs font-medium text-muted-foreground">Less Outstanding Subcontractor Payments</p>
+              <p className={cn("text-sm font-bold flex-shrink-0 ml-4", subContractorRemaining > 0 ? "text-amber-600" : "text-muted-foreground")}>
+                {subContractorRemaining > 0 ? `-${formatCurrency(subContractorRemaining)}` : formatCurrency(0)}
+              </p>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-border/60" />
+
+            {/* Actual Profit row */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-muted-foreground">Actual Profit ({periodLabel})</p>
+                <p className={cn("text-2xl font-display font-bold tracking-tight mt-1", actualPositive ? "text-emerald-600" : "text-red-600")}>
+                  {formatCurrency(ownerProfit)}
+                </p>
+                <p className="text-xs text-muted-foreground/70 mt-1.5 italic">
+                  Actual Profit represents Operational Profit after all unpaid subcontractor obligations have been paid.
+                </p>
+              </div>
+              <div className={cn("p-3 rounded-xl flex-shrink-0", actualPositive ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
+                <Wallet className="w-5 h-5" />
+              </div>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const [period, setPeriod] = useState<"week" | "month" | "quarter" | "year">("month");
   const { activeBusiness, hasSelection, businesses } = useBusiness();
@@ -165,6 +332,8 @@ export default function Dashboard() {
     urgentComplianceItems.length === 0 &&
     (annualOnly || taxAlerts.length === 0);
 
+  const [ownerPayDialogOpen, setOwnerPayDialogOpen] = useState(false);
+
   if (isLoading) {
     return <div className="flex items-center justify-center h-full animate-pulse text-muted-foreground">Loading dashboard...</div>;
   }
@@ -172,16 +341,17 @@ export default function Dashboard() {
   if (!stats) return null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
 
-      {/* ── TODAY COMMAND CENTER ── */}
+      {/* ── 1. QUICK ACTIONS ── */}
+      <QuickActions
+        onRecordOwnerPay={() => setOwnerPayDialogOpen(true)}
+        onNavigate={navigate}
+      />
+
+      {/* ── 2. TODAY'S ALERTS ── */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h1 className="text-2xl font-display font-bold text-foreground">Today</h1>
-            <p className="text-sm text-muted-foreground">{todayFormatted}</p>
-          </div>
-        </div>
+        <SectionHeader title="Today's Alerts" subtitle={todayFormatted} />
 
         {allClear ? (
           <div className="flex items-center gap-3 px-5 py-4 rounded-2xl bg-emerald-50 border border-emerald-200">
@@ -447,13 +617,132 @@ export default function Dashboard() {
 
           </div>
         )}
+
+        {/* Compliance Summary Widget */}
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("/accounting?tab=tax-calendar")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/accounting?tab=tax-calendar"); }}
+          className={`mt-3 shadow-md border-border/50 cursor-pointer transition-shadow hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            todayLoading ? "border-l-4 border-l-muted-foreground/40" :
+            hasComplianceIssues ? "border-l-4 border-l-amber-400" :
+            "border-l-4 border-l-emerald-400"
+          }`}
+        >
+          <CardContent className="p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-xl ${
+                  todayLoading ? "bg-muted text-muted-foreground" :
+                  hasComplianceIssues ? "bg-amber-100 text-amber-700" :
+                  "bg-emerald-100 text-emerald-700"
+                }`}>
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground text-sm">Compliance Status</p>
+                  {todayLoading ? (
+                    <p className="text-xs text-muted-foreground mt-0.5 animate-pulse">Loading…</p>
+                  ) : hasComplianceIssues ? (
+                    <p className="text-xs text-muted-foreground mt-0.5">Action needed — check your compliance items</p>
+                  ) : (
+                    <p className="text-xs text-emerald-600 font-medium mt-0.5">All clear — no issues requiring attention</p>
+                  )}
+                </div>
+              </div>
+              {!todayLoading && (
+                <div className="flex items-center gap-3 flex-wrap">
+                  {overdueCount > 0 && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 border border-red-200">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                      <span className="text-xs font-bold text-red-700">{overdueCount} Overdue</span>
+                    </div>
+                  )}
+                  {dueSoonCount > 0 && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 border border-amber-200">
+                      <Clock className="w-3.5 h-3.5 text-amber-600" />
+                      <span className="text-xs font-bold text-amber-700">{dueSoonCount} Due Soon</span>
+                    </div>
+                  )}
+                  {!hasComplianceIssues && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-100 border border-emerald-200">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-xs font-bold text-emerald-700">
+                        {completeCount > 0 ? `${completeCount} Complete` : "No issues"}
+                      </span>
+                    </div>
+                  )}
+                  <span className="flex items-center gap-1 text-xs font-semibold text-primary ml-1">
+                    View All <ArrowRight className="w-3.5 h-3.5" />
+                  </span>
+                </div>
+              )}
+              {todayLoading && (
+                <span className="flex items-center gap-1 text-xs font-semibold text-primary">
+                  View All <ArrowRight className="w-3.5 h-3.5" />
+                </span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Due for Revisit widget */}
+        {dueSoonClients.length > 0 && (
+          <Card className="mt-3 shadow-md border-border/50 border-l-4 border-l-amber-400">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
+                    <CalendarClock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground text-sm">Due for Revisit</p>
+                    <p className="text-xs text-muted-foreground">{dueSoonClients.length} client{dueSoonClients.length !== 1 ? "s" : ""} due within 90 days</p>
+                  </div>
+                </div>
+                <Link href={`${BASE}/clients`} className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+                  View All <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+              <div className="space-y-2">
+                {dueSoonClients.map(c => (
+                  <div key={c.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{c.name}</p>
+                      {(c.address || c.city) && (
+                        <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                          <MapPin className="w-3 h-3 flex-shrink-0" />
+                          {[c.address, c.city, c.state].filter(Boolean).join(", ")}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right ml-3 flex-shrink-0">
+                      <p className={cn(
+                        "text-xs font-semibold",
+                        c._dueDate < now ? "text-red-600" :
+                        Math.round((c._dueDate.getTime() - now.getTime()) / 86400000) <= 14 ? "text-amber-600" :
+                        "text-muted-foreground"
+                      )}>
+                        {formatDueDate(c._dueDate)}
+                      </p>
+                      {c.serviceIntervalMonths && (
+                        <p className="text-[10px] text-muted-foreground">every {c.serviceIntervalMonths}mo</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {/* ── BUSINESS OVERVIEW ── */}
+      {/* ── 3. BUSINESS OVERVIEW ── */}
       <div>
         <div className="flex flex-col gap-3 mb-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h2 className="text-lg font-display font-bold text-foreground">Business Overview</h2>
+            <SectionHeader title="Business Overview" />
             <div className="flex gap-2 bg-muted/40 rounded-lg p-1">
               {(["week", "month", "quarter", "year"] as const).map(p => (
                 <button
@@ -503,38 +792,168 @@ export default function Dashboard() {
           <MetricCard title="Active Jobs" value={stats.activeJobs.toString()} icon={Briefcase} href="/jobs" />
           <MetricCard title="Overdue Invoices" value={stats.overdueInvoices.toString()} icon={AlertTriangle} isAlert={stats.overdueInvoices > 0} href="/accounting" />
         </div>
+
+        {/* Business comparison grid — visible only in All Businesses mode */}
+        {hasSelection && !activeBusiness && businesses.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-base font-display font-bold text-foreground mb-3">By Business</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {businesses.map(b => (
+                <BusinessStatsCard key={b.id} business={b} period={period} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Profit by Business panel — only shown when viewing "All" */}
+        {!businessLine && stats.byBusinessLine && stats.byBusinessLine.length > 0 && (
+          <Card className="mt-4 shadow-md border-border/50">
+            <CardHeader className="pb-3 pt-5 px-5">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-primary/10">
+                  <TrendingUp className="w-4 h-4 text-primary" />
+                </div>
+                <CardTitle className="text-sm font-bold text-foreground">Profit by Business ({periodLabel})</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-5 space-y-3">
+              {stats.byBusinessLine.map(bl => {
+                const isAsphalt = bl.businessLine === "asphalt_sealing";
+                const isUnattributed = bl.businessLine === "unattributed";
+                const profitPositive = bl.operationalNetProfit >= 0;
+                const rowStyle = isUnattributed
+                  ? "bg-muted/30 border-border/50"
+                  : isAsphalt
+                    ? "bg-amber-50/60 border-amber-200/70"
+                    : "bg-primary/5 border-primary/15";
+                const badgeStyle = isUnattributed
+                  ? "bg-muted text-muted-foreground"
+                  : isAsphalt
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-primary/10 text-primary";
+                return (
+                  <div key={bl.businessLine} className={`rounded-xl border p-4 ${rowStyle}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${badgeStyle}`}>
+                        {bl.label}
+                      </span>
+                      {!isUnattributed && (
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${bl.activeJobs > 0 ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"}`}>
+                          {bl.activeJobs} active job{bl.activeJobs !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Revenue</p>
+                        <p className="text-sm font-bold text-foreground mt-0.5">{formatCurrency(bl.totalRevenue)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Expenses</p>
+                        <p className="text-sm font-bold text-foreground mt-0.5">{formatCurrency((bl as any).businessExpenses ?? bl.totalExpenses)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Net Profit</p>
+                        <p className={`text-sm font-bold mt-0.5 ${profitPositive ? "text-emerald-600" : "text-red-500"}`}>
+                          {formatCurrency(bl.operationalNetProfit)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Mileage deduction reconciliation row */}
+              {(stats.periodMileageDeduction ?? 0) > 0 && (
+                <div className="rounded-xl border border-dashed border-border/60 px-4 py-3 flex items-center justify-between bg-muted/10">
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground">Mileage Deduction ({periodLabel})</p>
+                    <p className="text-[10px] text-muted-foreground/70 mt-0.5">Deducted from Operating Profit · not tied to a single business line</p>
+                  </div>
+                  <p className="text-sm font-bold text-red-500 flex-shrink-0">-{formatCurrency(stats.periodMileageDeduction ?? 0)}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {/* Business comparison grid — visible only in All Businesses mode */}
-      {hasSelection && !activeBusiness && businesses.length > 0 && (
+      {/* ── 4. REVENUE VS EXPENSES ── */}
+      <div>
+        <SectionHeader title="Revenue vs Expenses" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2 shadow-md border-border/50">
+            <CardHeader>
+              <CardTitle className="font-display">Revenue vs Expenses (6 Months)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stats.monthlyRevenue} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(val) => `$${val/1000}k`} />
+                    <Tooltip
+                      cursor={{ fill: 'hsl(var(--muted)/0.4)' }}
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: 'var(--shadow-md)' }}
+                      formatter={(value: number) => formatCurrency(value)}
+                    />
+                    <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+                    <Bar dataKey="revenue" name="Revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                    <Bar dataKey="expenses" name="Expenses" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Link href="/mileage" className="block group">
+            <Card className="shadow-md border-border/50 bg-accent/5 border-accent/20 hover:shadow-lg transition-all duration-300 cursor-pointer hover:border-accent/40">
+              <CardHeader className="pb-2">
+                <CardTitle className="font-display text-lg text-accent-foreground">Tax Deductions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-0.5">YTD Mileage Deduction</p>
+                <p className="text-2xl font-bold text-foreground">{formatCurrency(stats.mileageDeduction)}</p>
+                <div className="mt-3 pt-3 border-t border-accent/20 grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Business Miles</p>
+                    <p className="text-base font-semibold text-foreground">{(stats.ytdMiles ?? 0).toFixed(0)} mi</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">IRS Rate</p>
+                    <p className="text-base font-semibold text-foreground">${(stats.ytdMileageRate ?? 0.70).toFixed(2)}/mi</p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">Mileage deduction only — Schedule C Line 9 may include additional car/truck expenses.</p>
+                <div className="mt-3 flex items-center text-xs font-semibold text-accent-foreground/60 group-hover:text-accent-foreground transition-colors">
+                  View details <ArrowRight className="w-3 h-3 ml-1" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+      </div>
+
+      {/* ── 5. PROFIT ── */}
+      {stats.operationalNetProfit !== undefined && (
         <div>
-          <h2 className="text-base font-display font-bold text-foreground mb-3">By Business</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {businesses.map(b => (
-              <BusinessStatsCard key={b.id} business={b} period={period} />
-            ))}
-          </div>
+          <SectionHeader title="Profit" />
+          <CombinedProfitCard
+            operationalNetProfit={stats.operationalNetProfit}
+            subContractorRemaining={stats.subContractorRemaining ?? 0}
+            ownerProfit={stats.ownerProfit}
+            excludedFromProfit={stats.excludedFromProfit ?? 0}
+            formulaExcludedFromProfit={stats.formulaExcludedFromProfit ?? stats.excludedFromProfit ?? 0}
+            excludedCount={stats.excludedExpenseCount ?? 0}
+            periodLabel={periodLabel}
+          />
         </div>
       )}
 
-      {/* Operational Net Profit card */}
-      {stats.operationalNetProfit !== undefined && (
-        <NetProfitCard
-          operationalNetProfit={stats.operationalNetProfit}
-          excludedFromProfit={stats.excludedFromProfit ?? 0}
-          formulaExcludedFromProfit={stats.formulaExcludedFromProfit ?? stats.excludedFromProfit ?? 0}
-          excludedCount={stats.excludedExpenseCount ?? 0}
-          periodLabel={periodLabel}
-        />
-      )}
-
-      {/* My Pay running balance */}
-      <MyPayCard />
-
-      {/* Subcontractor Pay section — only shown when there are sub expenses */}
+      {/* ── 6. SUBCONTRACTOR PAYMENTS ── */}
       {((stats.subContractorOwed ?? 0) > 0 || (stats.subContractorPaid ?? 0) > 0) && (
-        <div className="space-y-3">
-          {/* Three compact sub metric cards */}
+        <div>
+          <SectionHeader title="Subcontractor Payments" />
           <div className="grid grid-cols-3 gap-3">
             <Card className="shadow-sm border-amber-200/60 bg-amber-50/40">
               <CardContent className="p-4">
@@ -579,278 +998,18 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </div>
-
-          {/* Your Actual Profit */}
-          {stats.ownerProfit !== undefined && (
-            <Card className={`shadow-md border-border/50 border-l-4 ${(stats.ownerProfit ?? 0) >= 0 ? "border-l-emerald-500" : "border-l-red-500"}`}>
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-muted-foreground">Your Actual Profit ({periodLabel})</p>
-                    <p className={cn("text-3xl font-display font-bold tracking-tight mt-1", (stats.ownerProfit ?? 0) >= 0 ? "text-emerald-600" : "text-red-600")}>
-                      {formatCurrency(stats.ownerProfit!)}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1.5">
-                      Net Profit minus unpaid sub obligations
-                      {(stats.subContractorRemaining ?? 0) > 0 && (
-                        <span className="ml-1 text-amber-600 font-medium">
-                          · {formatCurrency(stats.subContractorRemaining!)} still owed to subs
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <div className={cn("p-3 rounded-xl flex-shrink-0", (stats.ownerProfit ?? 0) >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
-                    <Wallet className="w-5 h-5" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
       )}
 
-      {/* Profit by Business panel — only shown when viewing "All" */}
-      {!businessLine && stats.byBusinessLine && stats.byBusinessLine.length > 0 && (
-        <Card className="shadow-md border-border/50">
-          <CardHeader className="pb-3 pt-5 px-5">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-primary/10">
-                <TrendingUp className="w-4 h-4 text-primary" />
-              </div>
-              <CardTitle className="text-sm font-bold text-foreground">Profit by Business ({periodLabel})</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="px-5 pb-5 space-y-3">
-            {stats.byBusinessLine.map(bl => {
-              const isAsphalt = bl.businessLine === "asphalt_sealing";
-              const isUnattributed = bl.businessLine === "unattributed";
-              const profitPositive = bl.operationalNetProfit >= 0;
-              const rowStyle = isUnattributed
-                ? "bg-muted/30 border-border/50"
-                : isAsphalt
-                  ? "bg-amber-50/60 border-amber-200/70"
-                  : "bg-primary/5 border-primary/15";
-              const badgeStyle = isUnattributed
-                ? "bg-muted text-muted-foreground"
-                : isAsphalt
-                  ? "bg-amber-100 text-amber-700"
-                  : "bg-primary/10 text-primary";
-              return (
-                <div key={bl.businessLine} className={`rounded-xl border p-4 ${rowStyle}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${badgeStyle}`}>
-                      {bl.label}
-                    </span>
-                    {!isUnattributed && (
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${bl.activeJobs > 0 ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"}`}>
-                        {bl.activeJobs} active job{bl.activeJobs !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-3 gap-3 text-center">
-                    <div>
-                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Revenue</p>
-                      <p className="text-sm font-bold text-foreground mt-0.5">{formatCurrency(bl.totalRevenue)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Expenses</p>
-                      <p className="text-sm font-bold text-foreground mt-0.5">{formatCurrency((bl as any).businessExpenses ?? bl.totalExpenses)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Net Profit</p>
-                      <p className={`text-sm font-bold mt-0.5 ${profitPositive ? "text-emerald-600" : "text-red-500"}`}>
-                        {formatCurrency(bl.operationalNetProfit)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            {/* Mileage deduction reconciliation row — shows why total ≠ sum of business lines */}
-            {(stats.periodMileageDeduction ?? 0) > 0 && (
-              <div className="rounded-xl border border-dashed border-border/60 px-4 py-3 flex items-center justify-between bg-muted/10">
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground">Mileage Deduction ({periodLabel})</p>
-                  <p className="text-[10px] text-muted-foreground/70 mt-0.5">Deducted from Operating Profit · not tied to a single business line</p>
-                </div>
-                <p className="text-sm font-bold text-red-500 flex-shrink-0">-{formatCurrency(stats.periodMileageDeduction ?? 0)}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Compliance Summary Widget */}
-      <Card
-        role="button"
-        tabIndex={0}
-        onClick={() => navigate("/accounting?tab=tax-calendar")}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/accounting?tab=tax-calendar"); }}
-        className={`shadow-md border-border/50 cursor-pointer transition-shadow hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-          todayLoading ? "border-l-4 border-l-muted-foreground/40" :
-          hasComplianceIssues ? "border-l-4 border-l-amber-400" :
-          "border-l-4 border-l-emerald-400"
-        }`}
-      >
-        <CardContent className="p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className={`p-2.5 rounded-xl ${
-                todayLoading ? "bg-muted text-muted-foreground" :
-                hasComplianceIssues ? "bg-amber-100 text-amber-700" :
-                "bg-emerald-100 text-emerald-700"
-              }`}>
-                <ShieldAlert className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="font-semibold text-foreground text-sm">Compliance Status</p>
-                {todayLoading ? (
-                  <p className="text-xs text-muted-foreground mt-0.5 animate-pulse">Loading…</p>
-                ) : hasComplianceIssues ? (
-                  <p className="text-xs text-muted-foreground mt-0.5">Action needed — check your compliance items</p>
-                ) : (
-                  <p className="text-xs text-emerald-600 font-medium mt-0.5">All clear — no issues requiring attention</p>
-                )}
-              </div>
-            </div>
-            {!todayLoading && (
-              <div className="flex items-center gap-3 flex-wrap">
-                {overdueCount > 0 && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 border border-red-200">
-                    <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
-                    <span className="text-xs font-bold text-red-700">{overdueCount} Overdue</span>
-                  </div>
-                )}
-                {dueSoonCount > 0 && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 border border-amber-200">
-                    <Clock className="w-3.5 h-3.5 text-amber-600" />
-                    <span className="text-xs font-bold text-amber-700">{dueSoonCount} Due Soon</span>
-                  </div>
-                )}
-                {!hasComplianceIssues && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-100 border border-emerald-200">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span className="text-xs font-bold text-emerald-700">
-                      {completeCount > 0 ? `${completeCount} Complete` : "No issues"}
-                    </span>
-                  </div>
-                )}
-                <span className="flex items-center gap-1 text-xs font-semibold text-primary ml-1">
-                  View All <ArrowRight className="w-3.5 h-3.5" />
-                </span>
-              </div>
-            )}
-            {todayLoading && (
-              <span className="flex items-center gap-1 text-xs font-semibold text-primary">
-                View All <ArrowRight className="w-3.5 h-3.5" />
-              </span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Due for Revisit widget */}
-      {dueSoonClients.length > 0 && (
-        <Card className="shadow-md border-border/50 border-l-4 border-l-amber-400">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
-                  <CalendarClock className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="font-semibold text-foreground text-sm">Due for Revisit</p>
-                  <p className="text-xs text-muted-foreground">{dueSoonClients.length} client{dueSoonClients.length !== 1 ? "s" : ""} due within 90 days</p>
-                </div>
-              </div>
-              <Link href={`${BASE}/clients`} className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
-                View All <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-            <div className="space-y-2">
-              {dueSoonClients.map(c => (
-                <div key={c.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{c.name}</p>
-                    {(c.address || c.city) && (
-                      <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
-                        <MapPin className="w-3 h-3 flex-shrink-0" />
-                        {[c.address, c.city, c.state].filter(Boolean).join(", ")}
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right ml-3 flex-shrink-0">
-                    <p className={cn(
-                      "text-xs font-semibold",
-                      c._dueDate < now ? "text-red-600" :
-                      Math.round((c._dueDate.getTime() - now.getTime()) / 86400000) <= 14 ? "text-amber-600" :
-                      "text-muted-foreground"
-                    )}>
-                      {formatDueDate(c._dueDate)}
-                    </p>
-                    {c.serviceIntervalMonths && (
-                      <p className="text-[10px] text-muted-foreground">every {c.serviceIntervalMonths}mo</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 shadow-md border-border/50">
-          <CardHeader>
-            <CardTitle className="font-display">Revenue vs Expenses (6 Months)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.monthlyRevenue} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(val) => `$${val/1000}k`} />
-                  <Tooltip
-                    cursor={{ fill: 'hsl(var(--muted)/0.4)' }}
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: 'var(--shadow-md)' }}
-                    formatter={(value: number) => formatCurrency(value)}
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
-                  <Bar dataKey="revenue" name="Revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                  <Bar dataKey="expenses" name="Expenses" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Link href="/mileage" className="block group">
-          <Card className="shadow-md border-border/50 bg-accent/5 border-accent/20 hover:shadow-lg transition-all duration-300 cursor-pointer hover:border-accent/40">
-            <CardHeader className="pb-2">
-              <CardTitle className="font-display text-lg text-accent-foreground">Tax Deductions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-0.5">YTD Mileage Deduction</p>
-              <p className="text-2xl font-bold text-foreground">{formatCurrency(stats.mileageDeduction)}</p>
-              <div className="mt-3 pt-3 border-t border-accent/20 grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Business Miles</p>
-                  <p className="text-base font-semibold text-foreground">{(stats.ytdMiles ?? 0).toFixed(0)} mi</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">IRS Rate</p>
-                  <p className="text-base font-semibold text-foreground">${(stats.ytdMileageRate ?? 0.70).toFixed(2)}/mi</p>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">Mileage deduction only — Schedule C Line 9 may include additional car/truck expenses.</p>
-              <div className="mt-3 flex items-center text-xs font-semibold text-accent-foreground/60 group-hover:text-accent-foreground transition-colors">
-                View details <ArrowRight className="w-3 h-3 ml-1" />
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
+      {/* ── 7. MY PAY ── */}
+      <div>
+        <SectionHeader title="My Pay" />
+        <MyPayCard
+          externalDialogOpen={ownerPayDialogOpen}
+          onExternalDialogChange={setOwnerPayDialogOpen}
+        />
       </div>
+
     </div>
   );
 }
@@ -1109,9 +1268,17 @@ function MetricCard({ title, value, icon: Icon, isAlert, href }: {
 // ─── My Pay Card ─────────────────────────────────────────────────────────────
 type PayJob = { jobId: number; jobNumber: number | null; title: string; status: string; ownerPayIncluded: boolean; revenue: number; takeHome: number };
 
-function MyPayCard() {
+function MyPayCard({ externalDialogOpen, onExternalDialogChange }: {
+  externalDialogOpen?: boolean;
+  onExternalDialogChange?: (open: boolean) => void;
+}) {
   const qc = useQueryClient();
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [internalDialogOpen, setInternalDialogOpen] = useState(false);
+  const dialogOpen = externalDialogOpen ?? internalDialogOpen;
+  function setDialogOpen(open: boolean) {
+    if (onExternalDialogChange) onExternalDialogChange(open);
+    else setInternalDialogOpen(open);
+  }
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(getTodayStr());
   const [saving, setSaving] = useState(false);
@@ -1307,23 +1474,12 @@ function MyPayCard() {
             </div>
           )}
 
-          {/* Recent withdrawals */}
-          {withdrawals.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-border/60">
-              <p className="text-xs font-semibold text-muted-foreground mb-2">Recent Owner Pay</p>
-              <div className="space-y-1.5">
-                {withdrawals.slice(0, 3).map(w => (
-                  <div key={w.id} className="flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground w-16 shrink-0">
-                      {w.date ? new Date(w.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
-                    </span>
-                    <span className="text-foreground flex-1 px-2 truncate">{w.description}</span>
-                    <span className="font-semibold text-foreground shrink-0">{formatCurrency(w.amount)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* View Full History link */}
+          <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-end">
+            <Link href="/accounting" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+              View Full History <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
         </CardContent>
       </Card>
 
