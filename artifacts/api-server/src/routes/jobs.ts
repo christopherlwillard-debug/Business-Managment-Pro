@@ -14,6 +14,7 @@ const router = Router();
 // Call this any time sub_hours or sub_payments change for a job.
 export async function recomputeSubPaid(jobId: number): Promise<boolean> {
   const allRows = await db.select({
+    subcontractorId: jobSubcontractorsTable.subcontractorId,
     compensationType: jobSubcontractorsTable.compensationType,
     fixedAmount: jobSubcontractorsTable.fixedAmount,
     allocationPct: jobSubcontractorsTable.allocationPct,
@@ -25,6 +26,13 @@ export async function recomputeSubPaid(jobId: number): Promise<boolean> {
       FROM job_sub_hours h
       WHERE h.job_id = ${jobId} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
     ), 0)`,
+    // Authoritative ledger total — avoids relying on potentially-stale amountPaid column
+    ledgerPaid: sql<string>`COALESCE((
+      SELECT SUM(spr.amount) FROM sub_payment_records spr
+      WHERE spr.job_id = ${jobId}
+        AND spr.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+        AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+    ), '0')`,
   }).from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, jobId));
 
   // Fetch split pool once if any allocation sub needs it
@@ -34,9 +42,10 @@ export async function recomputeSubPaid(jobId: number): Promise<boolean> {
   const allPaid = allRows.length > 0 && allRows.every(r => {
     // paymentStatus='paid'/'overpaid' is authoritative — set by pay-worker endpoint
     if (r.paymentStatus === "paid" || r.paymentStatus === "overpaid") return true;
-    // partial is explicitly not paid
-    if (r.paymentStatus === "partial") return false;
-    const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+    // Use the ledger total as authoritative paid amount — amountPaid column can be stale
+    const ledger = parseFloat(r.ledgerPaid ?? "0");
+    const columnPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+    const paid = Math.max(ledger, columnPaid);
     const owed = computeSubOwed(r, splitPool);
     if (owed === null) return false; // owed unknown → treat as unpaid
     return owed <= 0 || paid >= owed - 0.01;
@@ -2098,8 +2107,16 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
 
-    // Run both queries in parallel: fixed/allocation subs (inline pay) and
-    // hourly subs that have logged hours or a saved accrued bonus (payroll screen).
+    // Ledger subquery — authoritative total paid per sub from sub_payment_records
+    const ledgerSubquery = (jobId: number) => sql<string>`COALESCE((
+      SELECT SUM(spr.amount) FROM sub_payment_records spr
+      WHERE spr.job_id = ${jobId}
+        AND spr.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+        AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+    ), '0')`;
+
+    // Fetch all subs (no paymentStatus pre-filter) — we'll derive outstanding status
+    // from the ledger so stale paymentStatus columns don't produce false alerts.
     const [fixedAllocRows, hourlyRows] = await Promise.all([
       db.select({
         subcontractorId: jobSubcontractorsTable.subcontractorId,
@@ -2110,12 +2127,12 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
         amountOwed: jobSubcontractorsTable.amountOwed,
         amountPaid: jobSubcontractorsTable.amountPaid,
         paymentStatus: jobSubcontractorsTable.paymentStatus,
+        ledgerPaid: ledgerSubquery(id),
       })
         .from(jobSubcontractorsTable)
         .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
         .where(and(
           eq(jobSubcontractorsTable.jobId, id),
-          inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]),
           inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
         )),
 
@@ -2129,6 +2146,7 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
         amountPaid: jobSubcontractorsTable.amountPaid,
         paymentStatus: jobSubcontractorsTable.paymentStatus,
         accruedBonus: jobSubcontractorsTable.accruedBonus,
+        ledgerPaid: ledgerSubquery(id),
         totalHours: sql<string>`COALESCE((
           SELECT SUM(h.hours) FROM job_sub_hours h
           WHERE h.job_id = ${id} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
@@ -2138,7 +2156,6 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
         .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
         .where(and(
           eq(jobSubcontractorsTable.jobId, id),
-          inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]),
           eq(jobSubcontractorsTable.compensationType, "hourly"),
           sql`(
             COALESCE(${jobSubcontractorsTable.accruedBonus}, 0) > 0
@@ -2150,31 +2167,79 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
         )),
     ]);
 
-    const fixedAllocResult = fixedAllocRows.map(r => ({
-      subcontractorId: r.subcontractorId,
-      subName: r.subName ?? `Sub #${r.subcontractorId}`,
-      compensationType: r.compensationType ?? "fixed",
-      fixedAmount: r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
-      allocationPct: r.allocationPct != null ? parseFloat(r.allocationPct) : null,
-      amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
-      amountPaid: r.amountPaid != null ? parseFloat(r.amountPaid) : 0,
-      paymentStatus: r.paymentStatus ?? "unpaid",
-      totalHours: null as number | null,
-      accruedBonus: null as number | null,
-    }));
+    // Compute split pool for allocation subs
+    const hasAlloc = fixedAllocRows.some(r => r.compensationType === "allocation");
+    const splitPool = hasAlloc ? (await computeAllocationSplitPool(id)).splitPool : 0;
 
-    const hourlyResult = hourlyRows.map(r => ({
-      subcontractorId: r.subcontractorId,
-      subName: r.subName ?? `Sub #${r.subcontractorId}`,
-      compensationType: "hourly" as const,
-      fixedAmount: null as number | null,
-      allocationPct: null as number | null,
-      amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
-      amountPaid: r.amountPaid != null ? parseFloat(r.amountPaid) : 0,
-      paymentStatus: r.paymentStatus ?? "unpaid",
-      totalHours: parseFloat(r.totalHours ?? "0"),
-      accruedBonus: r.accruedBonus != null ? parseFloat(r.accruedBonus) : null,
-    }));
+    // Helper: pick the higher of ledger total vs stale amountPaid column
+    function effectivePaid(amountPaid: string | null, ledgerPaid: string): number {
+      return Math.max(
+        amountPaid != null ? parseFloat(amountPaid) : 0,
+        parseFloat(ledgerPaid ?? "0"),
+      );
+    }
+
+    // Track stale-status subs so we can repair them in the background
+    const staleSubIds: number[] = [];
+
+    const fixedAllocResult = fixedAllocRows
+      .map(r => {
+        const paid = effectivePaid(r.amountPaid, r.ledgerPaid);
+        const owed = computeSubOwed({
+          amountOwed: r.amountOwed, compensationType: r.compensationType,
+          fixedAmount: r.fixedAmount, allocationPct: r.allocationPct, computedOwed: "0",
+        }, splitPool);
+        // Truly outstanding = owed is known, positive, and not yet covered
+        const outstanding = owed == null || owed <= 0 ? false : paid < owed - 0.005;
+        if (!outstanding && (r.paymentStatus === "unpaid" || r.paymentStatus === "partial")) {
+          if (r.subcontractorId != null) staleSubIds.push(r.subcontractorId);
+        }
+        return { row: r, paid, outstanding };
+      })
+      .filter(({ outstanding }) => outstanding)
+      .map(({ row: r, paid }) => ({
+        subcontractorId: r.subcontractorId,
+        subName: r.subName ?? `Sub #${r.subcontractorId}`,
+        compensationType: r.compensationType ?? "fixed",
+        fixedAmount: r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
+        allocationPct: r.allocationPct != null ? parseFloat(r.allocationPct) : null,
+        amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
+        amountPaid: paid,
+        paymentStatus: r.paymentStatus ?? "unpaid",
+        totalHours: null as number | null,
+        accruedBonus: null as number | null,
+      }));
+
+    const hourlyResult = hourlyRows
+      .map(r => {
+        const paid = effectivePaid(r.amountPaid, r.ledgerPaid);
+        const hours = parseFloat(r.totalHours ?? "0");
+        const bonus = r.accruedBonus != null ? parseFloat(r.accruedBonus) : 0;
+        // Hourly: outstanding if has hours or bonus (payroll screen needed)
+        const outstanding = hours > 0 || bonus > 0;
+        if (!outstanding && (r.paymentStatus === "unpaid" || r.paymentStatus === "partial")) {
+          if (r.subcontractorId != null) staleSubIds.push(r.subcontractorId);
+        }
+        return { row: r, paid, hours, bonus, outstanding };
+      })
+      .filter(({ outstanding }) => outstanding)
+      .map(({ row: r, paid, hours, bonus }) => ({
+        subcontractorId: r.subcontractorId,
+        subName: r.subName ?? `Sub #${r.subcontractorId}`,
+        compensationType: "hourly" as const,
+        fixedAmount: null as number | null,
+        allocationPct: null as number | null,
+        amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
+        amountPaid: paid,
+        paymentStatus: r.paymentStatus ?? "unpaid",
+        totalHours: hours,
+        accruedBonus: bonus || null,
+      }));
+
+    // Background repair: if any subs had stale paymentStatus, re-sync the job
+    if (staleSubIds.length > 0) {
+      setImmediate(() => recomputeSubPaid(id).catch(console.error));
+    }
 
     res.json([...fixedAllocResult, ...hourlyResult]);
   } catch (err) {
