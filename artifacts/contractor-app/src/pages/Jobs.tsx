@@ -3871,7 +3871,7 @@ function JobCard({
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
 
-  type OutstandingSubRow = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null; amountPaid?: number; paymentStatus?: string; totalHours?: number | null; accruedBonus?: number | null };
+  type OutstandingSubRow = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null; computedOwed?: number; amountPaid?: number; paymentStatus?: string; totalHours?: number | null; accruedBonus?: number | null };
   const [unpaidSubs, setUnpaidSubs] = useState<OutstandingSubRow[] | null>(null);
   const [markingSubId, setMarkingSubId] = useState<number | null>(null);
   const hasSubs = Array.isArray(job.subcontractorIds) && (job.subcontractorIds as number[]).length > 0;
@@ -3896,6 +3896,7 @@ function JobCard({
     const fullOwed = sub.amountOwed != null ? sub.amountOwed
       : sub.compensationType === "fixed" ? (sub.fixedAmount ?? 0)
       : sub.compensationType === "allocation" ? toSplit * ((sub.allocationPct ?? 0) / 100)
+      : sub.compensationType === "hourly" ? (sub.computedOwed ?? 0)
       : 0;
     const alreadyPaid = sub.amountPaid ?? 0;
     return Math.max(0, fullOwed - alreadyPaid);
@@ -3905,6 +3906,7 @@ function JobCard({
     if (sub.amountOwed != null) return sub.amountOwed;
     if (sub.compensationType === "fixed") return sub.fixedAmount ?? 0;
     if (sub.compensationType === "allocation") return toSplit * ((sub.allocationPct ?? 0) / 100);
+    if (sub.compensationType === "hourly") return sub.computedOwed ?? 0;
     return 0;
   }
 
@@ -4485,14 +4487,17 @@ function JobCard({
                     </div>
                   );
                 })}
-                {/* Hourly subs with pending hours / accrued bonus — must use payroll screen */}
+                {/* Hourly subs — show dollar amount + Mark Paid when computedOwed is known; fall back to Payroll for bonus-only */}
                 {hourlySubs.map(sub => {
                   const hrs   = sub.totalHours ?? 0;
                   const bonus = sub.accruedBonus ?? 0;
+                  const amt   = outstandingAmount(sub);
+                  const hasComputedOwed = (sub.computedOwed ?? 0) > 0;
                   const detail = [
                     hrs > 0   ? `${hrs.toFixed(1)} hrs` : "",
                     bonus > 0 ? `+${formatCurrency(bonus)} bonus` : "",
-                  ].filter(Boolean).join(" · ") || "Hours pending";
+                    hasComputedOwed ? `· ${formatCurrency(amt)}` : "",
+                  ].filter(Boolean).join(" ") || "Hours pending";
                   return (
                     <div key={sub.subcontractorId} className="flex items-center gap-2 px-3 py-2">
                       <Timer className="w-3 h-3 text-amber-500 flex-shrink-0" />
@@ -4500,12 +4505,24 @@ function JobCard({
                         <p className="text-xs font-semibold text-amber-900 truncate">{sub.subName}</p>
                         <p className="text-[10px] text-amber-700">{detail}</p>
                       </div>
-                      <Link
-                        href={`/jobs/${job.id}/payroll`}
-                        className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500 text-white text-[10px] font-bold hover:bg-amber-600 transition-colors">
-                        <ArrowRight className="w-3 h-3" />
-                        Payroll
-                      </Link>
+                      {canEdit("jobs") && hasComputedOwed && amt > 0 ? (
+                        <button
+                          onClick={() => handleMarkSubPaidInline(sub)}
+                          disabled={markingSubId === sub.subcontractorId}
+                          className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500 text-white text-[10px] font-bold hover:bg-amber-600 transition-colors disabled:opacity-50">
+                          {markingSubId === sub.subcontractorId
+                            ? <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                            : <Check className="w-3 h-3" />}
+                          Mark Paid
+                        </button>
+                      ) : (
+                        <Link
+                          href={`/jobs/${job.id}/payroll`}
+                          className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500 text-white text-[10px] font-bold hover:bg-amber-600 transition-colors">
+                          <ArrowRight className="w-3 h-3" />
+                          Payroll
+                        </Link>
+                      )}
                     </div>
                   );
                 })}

@@ -2290,6 +2290,7 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
         fixedAmount: null as number | null,
         allocationPct: null as number | null,
         amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
+        computedOwed: parseFloat(r.computedOwed ?? "0"),
         amountPaid: paid,
         paymentStatus: r.paymentStatus ?? "unpaid",
         totalHours: hours,
