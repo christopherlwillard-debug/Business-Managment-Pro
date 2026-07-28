@@ -1,0 +1,250 @@
+Current Problem
+
+The accounting engine is automatically converting my calculated Take-Home into an Owner Withdrawal / Owner Draw.
+
+That is incorrect.
+
+My Take-Home is compensation earned by working the completed job.
+
+It is not an equity withdrawal.
+
+Because of this, the same money is being represented multiple times throughout the Accounting & Tax section.
+
+Currently I have:
+
+* Owner Capital
+* Take-Home Dashboard
+* My Pay
+* Owner Withdrawals
+
+These screens overlap and create duplicate accounting.
+
+⸻
+
+The Job Financials Should Remain Exactly As They Are
+
+No changes are needed to the Job Financials calculation.
+
+It already correctly calculates:
+
+Revenue
+
+↓
+
+Expenses
+
+↓
+
+5% Business Growth
+
+↓
+
+Hourly Labor
+
+↓
+
+50/50 Profit Split
+
+↓
+
+My Share
+
+↓
+
+Tax Set-Aside
+
+↓
+
+My Take-Home
+
+This workflow should remain unchanged.
+
+⸻
+
+What Needs To Change
+
+The accounting engine needs to change what happens after the job is finalized.
+
+Instead of creating:
+
+Owner Draw
+
+it should create:
+
+Owner Compensation
+
+or
+
+Owner Job Pay
+
+Those are two completely different accounting transactions.
+
+⸻
+
+Owner Capital
+
+Owner Capital should ONLY track money that I personally invest into the business.
+
+Examples:
+
+• Startup money
+
+• Personal money used to buy equipment
+
+• Personal cash deposited into the business
+
+Job payments should never change Owner Capital.
+
+Owner Capital should only increase or decrease from actual capital contributions or capital returns.
+
+⸻
+
+My Pay
+
+The My Pay screen should become the primary source of truth for owner compensation.
+
+It already tracks:
+
+Earned
+
+Paid
+
+Remaining Owed
+
+That is exactly what it should do.
+
+However, these transactions should no longer be labeled as Owner Withdrawals.
+
+They should be labeled:
+
+Owner Compensation
+
+Owner Pay
+
+Owner Job Pay
+
+or
+
+Job Compensation
+
+because they were earned through completed jobs.
+
+⸻
+
+Take-Home Dashboard
+
+The Take-Home Dashboard should not be a completely separate accounting calculation.
+
+Instead, it should simply summarize the My Pay ledger by month.
+
+For example:
+
+January
+
+$1,240
+
+February
+
+$2,110
+
+March
+
+$819
+
+April
+
+$1,531
+
+May
+
+$1,905
+
+June
+
+$2,703
+
+This dashboard should read from the exact same Owner Compensation data already stored in My Pay.
+
+There should only be one source of truth.
+
+⸻
+
+Owner Withdrawals
+
+Owner Withdrawals should become a manual accounting transaction.
+
+They should only be used when I intentionally remove business equity that was NOT earned from a completed job.
+
+Example:
+
+Business has accumulated cash.
+
+I decide to take an extra $5,000 from the business that was not tied to any completed job.
+
+That is an Owner Withdrawal.
+
+This should be rare.
+
+Completed jobs should never automatically generate Owner Withdrawal transactions.
+
+⸻
+
+Record Withdrawal Button
+
+The current “Record Withdrawal” button is misleading because it is used for owner compensation.
+
+Rename this button to something such as:
+
+Record Owner Pay
+
+Pay Myself
+
+Record Payment
+
+Transfer to Personal
+
+Only use the word “Withdrawal” when recording a true equity withdrawal.
+
+⸻
+
+Desired Accounting Flow
+
+Job Finalized
+
+↓
+
+Job Financials calculates My Take-Home
+
+↓
+
+Accounting creates an Owner Compensation record
+
+↓
+
+Owner Compensation updates:
+
+• My Pay
+
+• Monthly Take-Home Dashboard
+
+↓
+
+Owner Capital remains unchanged
+
+↓
+
+Owner Withdrawals remain at $0 unless I manually record a true equity withdrawal.
+
+⸻
+
+Expected Result
+
+After this change:
+
+* Job Financials will continue calculating compensation exactly as they do today.
+* My Take-Home will no longer be posted as an Owner Draw.
+* My Pay and Take-Home Dashboard will use the same underlying Owner Compensation data.
+* Owner Capital will only reflect personal investments into the business.
+* Owner Withdrawals will only represent true equity withdrawals and will no longer be created automatically from completed jobs.
+
+This preserves the existing Job Financials system while correcting the accounting logic so that owner compensation, owner equity, and owner withdrawals are treated as three separate accounting concepts.

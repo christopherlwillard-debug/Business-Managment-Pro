@@ -1,0 +1,259 @@
+1410 - Fix Owner Compensation vs. Owner Withdrawal Accounting
+
+What & Why
+
+The Job Financials engine already calculates my compensation correctly. Every completed job follows my established workflow:
+
+Revenue
+→ Expenses
+→ 5% Business Growth
+→ Hourly Employee/Subcontractor Pay
+→ 50/50 Profit Split
+→ My Share
+→ Tax Set-Aside
+→ My Take-Home
+
+This calculation is correct and should not be changed.
+
+The problem occurs after the job is finalized. The accounting engine is currently posting my earned Take-Home as an "Owner Draw" expense. This incorrectly treats compensation earned from working a completed job as an equity withdrawal and causes the same money to appear in multiple places throughout the application (Owner Capital, Take-Home Dashboard, My Pay, and Owner Withdrawals).
+
+The accounting system must distinguish between two completely different concepts:
+
+• Owner Job Pay (Owner Compensation) – Money earned by completing jobs and working in the business.
+• Owner Withdrawal – A manual equity withdrawal that is not connected to any completed job.
+
+These should never be treated as the same accounting transaction.
+
+Business Rules
+
+The Job Financials calculation must remain exactly as it works today.
+
+No changes should be made to:
+
+• Revenue
+• Expenses
+• 5% Business Growth
+• Hourly Employee/Subcontractor Pay
+• Profit Split
+• Tax Reserve
+• My Take-Home calculation
+
+Only the accounting transaction created after the job is finalized should change.
+
+New Accounting Behavior
+
+When a completed job calculates My Take-Home, the accounting engine should create an Owner Compensation (Owner Job Pay) transaction instead of an Owner Draw.
+
+Owner Compensation represents compensation earned from working completed jobs.
+
+Owner Withdrawal represents a manual equity withdrawal unrelated to job compensation.
+
+These are separate accounting events.
+
+Accounting Integrity Rules
+
+Owner Compensation must NEVER:
+
+• Reduce Gross Profit a second time.
+• Reduce Net Profit a second time.
+• Reduce Business Equity.
+• Reduce Owner Capital.
+• Be treated as an operating expense on the Profit & Loss statement.
+
+Owner Compensation exists only to track:
+
+• Earned
+• Paid
+• Remaining Owed
+
+It is simply a payment-tracking transaction for owner compensation.
+
+Owner Capital Rules
+
+Owner Capital must remain completely independent from owner compensation.
+
+Owner Capital should only read from owner_capital_entries.
+
+Owner Capital should only change from:
+
+• Capital Contributions
+• Capital Returns
+
+Owner Capital must never be affected by:
+
+• Owner Compensation
+• Owner Withdrawals
+• Revenue
+• Job Profit
+• Take-Home
+• My Pay calculations
+
+Owner Compensation Rules
+
+Every completed job should automatically create an Owner Compensation record.
+
+Each record should contain:
+
+• Job Number
+• Job Name
+• Completion Date
+• Earned Amount
+• Amount Paid
+• Remaining Balance
+• Payment Date
+• Notes
+
+The Owner Compensation ledger becomes the single source of truth for owner pay.
+
+Payment Status
+
+Each Owner Compensation entry should support:
+
+• Earned
+• Partially Paid
+• Paid
+
+Example
+
+Earned:
+$1,125
+
+Paid:
+$700
+
+Remaining Owed:
+$425
+
+The unpaid balance remains money owed to the owner.
+
+It is not an Owner Withdrawal.
+
+Owner Withdrawals
+
+Owner Withdrawals become a completely separate manual accounting feature.
+
+Purpose:
+
+Manual removal of business equity that is NOT connected to a completed job.
+
+Example:
+
+The business has accumulated excess cash and I intentionally transfer $5,000 to myself outside of the normal job compensation process.
+
+That is an Owner Withdrawal.
+
+Completed jobs should NEVER automatically create Owner Withdrawal transactions.
+
+UI Changes
+
+Rename all "Record Owner Draw" buttons to:
+
+Record Owner Pay
+
+Rename the Dashboard "Record Withdrawal" button to:
+
+Record Owner Pay
+
+Add a separate secondary button or link:
+
+Record Equity Withdrawal
+
+This action should clearly state that it is for manual equity withdrawals only and is expected to be used rarely.
+
+Rename UI Labels
+
+Current:
+
+Recent Withdrawals
+
+New:
+
+Recent Owner Pay
+
+or
+
+Recent Owner Payments
+
+The wording should accurately reflect that these are payments earned from completed jobs, not equity withdrawals.
+
+Owner Pay Summary API
+
+Update the owner-pay-summary endpoint to include both:
+
+Owner Compensation
+Owner Draw
+
+This maintains backward compatibility with historical data while allowing all new records to use the new category.
+
+Filter:
+
+category IN ('Owner Compensation', 'Owner Draw')
+
+No data migration is required.
+
+Take-Home Dashboard
+
+Rewrite the Take-Home Dashboard so it no longer performs an independent calculation.
+
+Instead, it should summarize the Owner Compensation ledger by month.
+
+Example:
+
+January
+$1,240
+
+February
+$2,105
+
+March
+$819
+
+April
+$1,531
+
+May
+$1,905
+
+June
+$2,703
+
+The My Pay ledger becomes the single source of truth.
+
+The Take-Home Dashboard simply groups the same data by month.
+
+This removes duplicate calculations and ensures both screens always match.
+
+Done Looks Like
+
+✓ Job Financials remain unchanged.
+
+✓ Completed jobs create Owner Compensation instead of Owner Draw.
+
+✓ Owner Compensation tracks only Earned, Paid, and Remaining Owed.
+
+✓ Owner Compensation never reduces profit or owner capital a second time.
+
+✓ Owner Capital continues reading only from owner_capital_entries.
+
+✓ My Pay becomes the single source of truth for owner compensation.
+
+✓ The Take-Home Dashboard summarizes the My Pay ledger by month instead of performing a separate calculation.
+
+✓ Record Owner Draw buttons become Record Owner Pay.
+
+✓ Record Withdrawal becomes Record Owner Pay.
+
+✓ Record Equity Withdrawal is available as a separate manual action.
+
+✓ Recent Withdrawals becomes Recent Owner Pay.
+
+✓ Existing historical Owner Draw records continue working through backward-compatible queries.
+
+✓ Future Owner Compensation and Owner Withdrawals are tracked as two completely separate accounting concepts.
+
+Out of Scope
+
+• Changing the Job Financials waterfall.
+• Changing Revenue, Expenses, Growth Reserve, Profit Split, or Tax calculations.
+• Migrating historical Owner Draw records.
+• Changing reserve-summary or tax reserve calculations.
