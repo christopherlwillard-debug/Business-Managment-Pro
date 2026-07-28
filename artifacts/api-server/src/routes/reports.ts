@@ -1741,18 +1741,31 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
       };
     });
 
-    // Owner draw expenses — job take-home pay recorded via Pay Breakdown.
-    // Kept separate from capital withdrawals (Return of Capital) so neither
-    // double-counts the other in totalWithdrawn or equity calculations.
+    // Owner Compensation expenses — job take-home pay recorded via Pay Breakdown.
+    // Accepts both 'Owner Compensation' (new) and legacy 'Owner Draw' category for
+    // backward compatibility during/after the one-time migration.
     const withdrawalExpenses = await db
       .select({ id: expensesTable.id, date: expensesTable.date, amount: expensesTable.amount, description: expensesTable.description })
-      .from(expensesTable).where(eq(expensesTable.category, "Owner Draw")).orderBy(desc(expensesTable.date));
+      .from(expensesTable)
+      .where(inArray(expensesTable.category, ["Owner Compensation", "Owner Draw"]))
+      .orderBy(desc(expensesTable.date));
 
     const withdrawals = withdrawalExpenses
-      .map(e => ({ id: `exp-${e.id}`, date: e.date, amount: parseFloat(e.amount ?? "0"), description: e.description ?? "Owner Draw" }))
+      .map(e => ({ id: `exp-${e.id}`, date: e.date, amount: parseFloat(e.amount ?? "0"), description: e.description ?? "Owner Pay" }))
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
 
     const totalWithdrawn = withdrawals.reduce((s, w) => s + w.amount, 0);
+
+    // Monthly paid — group Owner Compensation payments by YYYY-MM for the Take-Home Dashboard
+    const monthlyPaidMap = new Map<string, number>();
+    for (const e of withdrawalExpenses) {
+      if (!e.date) continue;
+      const month = e.date.slice(0, 7);
+      monthlyPaidMap.set(month, (monthlyPaidMap.get(month) ?? 0) + parseFloat(e.amount ?? "0"));
+    }
+    const monthlyPaid = Array.from(monthlyPaidMap.entries())
+      .map(([month, paid]) => ({ month, paid }))
+      .sort((a, b) => a.month.localeCompare(b.month));
 
     res.json({
       totalEarned:    Math.max(0, totalEarned),
@@ -1760,6 +1773,7 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
       remaining:      Math.max(0, totalEarned - totalWithdrawn),
       jobs,
       withdrawals,
+      monthlyPaid,
     });
   } catch (err) {
     console.error("[owner-pay-summary]", err);

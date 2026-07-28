@@ -1319,5 +1319,132 @@ router.post("/assign-null-business-investments", async (_req: Request, res: Resp
   }
 });
 
+// ─── Owner Compensation Migration ────────────────────────────────────────────
+// One-time migration: rename 'Owner Draw' → 'Owner Compensation' for all
+// expense records that are linked to a job (i.e. job compensation, not true
+// equity withdrawals). Safe to run multiple times (idempotent).
+router.post("/migrate-owner-draw-to-compensation", async (_req: Request, res: Response) => {
+  try {
+    const result = await db.execute(
+      sql`UPDATE expenses SET category = 'Owner Compensation' WHERE category = 'Owner Draw' AND job_id IS NOT NULL`
+    );
+    const migrated = result.rowCount ?? 0;
+    console.log(`[admin/migrations] migrate-owner-draw-to-compensation: migrated=${migrated}`);
+    res.json({ ok: true, migrated });
+  } catch (err) {
+    console.error("[admin/migrations] migrate-owner-draw-to-compensation failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
+// Validate migrated Owner Compensation records against Job Financials.
+// For each completed job, recalculates expected take-home and compares it
+// to the recorded Owner Compensation amount. Returns verified count + mismatch log.
+router.post("/validate-owner-compensation", async (_req: Request, res: Response) => {
+  try {
+    const GROWTH_PCT = 0.05;
+    const TAX_PCT    = 0.25;
+
+    const completedJobs = await db.select({
+      id: jobsTable.id, title: jobsTable.title, jobNumber: jobsTable.jobNumber,
+    }).from(jobsTable).where(eq(jobsTable.status, "closed"));
+
+    if (completedJobs.length === 0) {
+      return res.json({ ok: true, validated: 0, verified: 0, mismatches: [] });
+    }
+    const jobIds = completedJobs.map(j => j.id);
+
+    // Revenue per job
+    const invoiceRows = await db.select({
+      jobId: invoicesTable.jobId, total: invoicesTable.total,
+    }).from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds));
+    const revenueByJob = new Map<number, number>();
+    for (const r of invoiceRows) {
+      if (!r.jobId) continue;
+      revenueByJob.set(r.jobId, (revenueByJob.get(r.jobId) ?? 0) + parseFloat(r.total ?? "0"));
+    }
+
+    // Hourly sub cost per job
+    const hoursCostRows = await db.select({
+      jobId: jobSubHoursTable.jobId,
+      cost: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
+    }).from(jobSubHoursTable).where(inArray(jobSubHoursTable.jobId, jobIds)).groupBy(jobSubHoursTable.jobId);
+    const hoursCostByJob = new Map(hoursCostRows.map(r => [r.jobId, parseFloat(r.cost ?? "0")]));
+
+    // Fixed sub cost per job
+    const fixedSubRows = await db.select({
+      jobId: jobSubcontractorsTable.jobId,
+      cost: sql<string>`COALESCE(SUM(COALESCE(${jobSubcontractorsTable.fixedAmount}, 0)), 0)`,
+    }).from(jobSubcontractorsTable)
+      .where(and(inArray(jobSubcontractorsTable.jobId, jobIds), eq(jobSubcontractorsTable.compensationType, "fixed")))
+      .groupBy(jobSubcontractorsTable.jobId);
+    const fixedCostByJob = new Map(fixedSubRows.map(r => [r.jobId, parseFloat(r.cost ?? "0")]));
+
+    // Allocation pct per job
+    const allocRows = await db.select({
+      jobId: jobSubcontractorsTable.jobId,
+      totalAllocPct: sql<string>`COALESCE(SUM(COALESCE(${jobSubcontractorsTable.allocationPct}, 0)), 0)`,
+    }).from(jobSubcontractorsTable)
+      .where(and(inArray(jobSubcontractorsTable.jobId, jobIds), eq(jobSubcontractorsTable.compensationType, "allocation")))
+      .groupBy(jobSubcontractorsTable.jobId);
+    const allocPctByJob = new Map(allocRows.map(r => [r.jobId, parseFloat(r.totalAllocPct ?? "0")]));
+
+    // Owner Compensation expenses per job (both categories during transition window)
+    const ownerCompRows = await db.select({
+      jobId: expensesTable.jobId, amount: expensesTable.amount, id: expensesTable.id,
+    }).from(expensesTable).where(and(
+      inArray(expensesTable.jobId as any, jobIds),
+      inArray(expensesTable.category, ["Owner Compensation", "Owner Draw"]),
+    ));
+    const ownerCompByJob = new Map<number, { amount: number; id: number }[]>();
+    for (const r of ownerCompRows) {
+      if (!r.jobId) continue;
+      const list = ownerCompByJob.get(r.jobId) ?? [];
+      list.push({ amount: parseFloat(r.amount ?? "0"), id: r.id });
+      ownerCompByJob.set(r.jobId, list);
+    }
+
+    const mismatches: any[] = [];
+    const verified: any[] = [];
+
+    for (const job of completedJobs) {
+      const revenue = revenueByJob.get(job.id) ?? 0;
+      if (revenue < 0.01) continue; // skip jobs with no revenue
+      const hourlyCost    = hoursCostByJob.get(job.id) ?? 0;
+      const fixedCost     = fixedCostByJob.get(job.id) ?? 0;
+      const afterWorkers  = Math.max(0, revenue - hourlyCost - fixedCost);
+      const growthReserve = afterWorkers * GROWTH_PCT;
+      const toSplit       = afterWorkers - growthReserve;
+      const totalAllocPct = allocPctByJob.get(job.id) ?? 0;
+      const ownerPct      = totalAllocPct > 0 ? Math.max(0, 100 - totalAllocPct) : 100;
+      const ownerShare    = toSplit * (ownerPct / 100);
+      const expectedTakeHome = ownerShare * (1 - TAX_PCT);
+
+      const records      = ownerCompByJob.get(job.id) ?? [];
+      const totalRecorded = records.reduce((s, r) => s + r.amount, 0);
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+
+      if (records.length === 0) {
+        if (expectedTakeHome > 0.01) {
+          mismatches.push({ jobId: job.id, jobNumber: job.jobNumber, title: job.title, issue: "no_record", expectedAmount: round2(expectedTakeHome), migratedAmount: 0, variance: round2(expectedTakeHome) });
+        }
+      } else {
+        const variance = Math.abs(totalRecorded - expectedTakeHome);
+        if (variance > 0.05) {
+          mismatches.push({ jobId: job.id, jobNumber: job.jobNumber, title: job.title, issue: "amount_mismatch", expectedAmount: round2(expectedTakeHome), migratedAmount: round2(totalRecorded), variance: round2(variance) });
+        } else {
+          verified.push({ jobId: job.id, jobNumber: job.jobNumber, title: job.title });
+        }
+      }
+    }
+
+    console.log(`[admin/migrations] validate-owner-compensation: verified=${verified.length}, mismatches=${mismatches.length}`);
+    res.json({ ok: true, validated: completedJobs.length, verified: verified.length, mismatches });
+  } catch (err) {
+    console.error("[admin/migrations] validate-owner-compensation failed:", err);
+    res.status(500).json({ error: "Validation failed", detail: String(err) });
+  }
+});
+
 export default router;
 

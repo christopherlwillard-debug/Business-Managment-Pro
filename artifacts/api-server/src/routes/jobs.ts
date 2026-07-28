@@ -1906,21 +1906,20 @@ router.post("/:id/record-owner-draw", async (req, res) => {
     const today = new Date().toISOString().split("T")[0];
     const description = String(req.body.description ?? `Owner Draw — Job ${jobId}`);
 
-    // Idempotency: return existing draw if same job/description/date/amount already recorded
+    // Idempotency: return existing record if owner pay already recorded for this job today
     const [existing] = await db.select({ id: expensesTable.id })
       .from(expensesTable)
       .where(and(
         eq(expensesTable.jobId, jobId),
-        eq(expensesTable.category, "Owner Draw"),
+        inArray(expensesTable.category, ["Owner Compensation", "Owner Draw"]),
         eq(expensesTable.date, today),
-        eq(expensesTable.description, description),
       ));
     if (existing) return res.json({ ok: true, expenseId: existing.id, alreadyExists: true });
 
     const [exp] = await db.insert(expensesTable).values({
       description,
       amount: String(amount),
-      category: "Owner Draw",
+      category: "Owner Compensation",
       date: today,
       jobId,
       businessLine: job?.businessLine,

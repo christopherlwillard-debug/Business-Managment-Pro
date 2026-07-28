@@ -266,69 +266,73 @@ interface BusinessReserveData {
 }
 
 // ─── Take-Home Dashboard ─────────────────────────────────────────────────────
+// Reads from owner-pay-summary (the My Pay ledger) so it always matches the
+// My Pay card on the Dashboard — one source of truth, no duplicate calculations.
 function TakeHomeDashboard() {
-  const year = new Date().getFullYear();
-  const { data: reserveSummary, isLoading } = useReserveSummary(year);
+  const { data, isLoading } = useQuery<{
+    totalWithdrawn: number;
+    monthlyPaid: { month: string; paid: number }[];
+  }>({
+    queryKey: ["owner-pay-summary"],
+    queryFn: () => fetch(`${BASE}/api/reports/owner-pay-summary`, { credentials: "include" }).then(r => r.json()),
+  });
 
   if (isLoading) return <div className="h-48 rounded-2xl bg-muted/40 animate-pulse" />;
-  if (!reserveSummary) return null;
+  if (!data) return null;
 
-  const { ytd, months } = reserveSummary;
-  const avgMonthly = months.length > 0 ? ytd.takeHome / months.length : 0;
-  const lastMonth = months.length > 0 ? months[months.length - 1].takeHome : 0;
+  const monthlyPaid = data.monthlyPaid ?? [];
+  const totalPaid   = data.totalWithdrawn ?? 0;
+  const avgMonthly  = monthlyPaid.length > 0 ? totalPaid / monthlyPaid.length : 0;
+  const lastMonth   = monthlyPaid.length > 0 ? monthlyPaid[monthlyPaid.length - 1].paid : 0;
 
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
       <div className="px-5 py-3 bg-emerald-700 flex items-center gap-3">
         <Wallet className="w-4 h-4 text-emerald-200 flex-shrink-0" />
-        <span className="font-bold text-sm text-white">Take-Home Dashboard</span>
-        <span className="text-[10px] text-emerald-200">Your income from the business</span>
+        <span className="font-bold text-sm text-white">Owner Pay Dashboard</span>
+        <span className="text-[10px] text-emerald-200">Actual payments from the business to you</span>
       </div>
       <div className="p-4 space-y-4">
         {/* Three summary stats */}
         <div className="grid grid-cols-3 gap-3 text-center">
           <div>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Take-Home YTD</p>
-            <p className="text-2xl font-black text-emerald-700">{formatCurrency(ytd.takeHome)}</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Paid YTD</p>
+            <p className="text-2xl font-black text-emerald-700">{formatCurrency(totalPaid)}</p>
           </div>
           <div>
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Avg Monthly</p>
-            <p className="text-xl font-bold text-foreground">{months.length > 0 ? formatCurrency(avgMonthly) : "—"}</p>
+            <p className="text-xl font-bold text-foreground">{monthlyPaid.length > 0 ? formatCurrency(avgMonthly) : "—"}</p>
           </div>
           <div>
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Last Month</p>
-            <p className="text-xl font-bold text-foreground">{months.length > 0 ? formatCurrency(lastMonth) : "—"}</p>
+            <p className="text-xl font-bold text-foreground">{monthlyPaid.length > 0 ? formatCurrency(lastMonth) : "—"}</p>
           </div>
         </div>
 
         {/* Monthly history table */}
-        {months.length > 0 ? (
+        {monthlyPaid.length > 0 ? (
           <div className="rounded-xl border border-border overflow-hidden">
-            <div className="bg-muted/30 px-4 py-2 border-b border-border grid grid-cols-4 gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <div className="bg-muted/30 px-4 py-2 border-b border-border grid grid-cols-2 gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               <span>Month</span>
-              <span className="text-right">Revenue</span>
-              <span className="text-right">Tax Set-Aside</span>
-              <span className="text-right">Take-Home</span>
+              <span className="text-right">Paid to You</span>
             </div>
             <div className="divide-y divide-border/30">
-              {[...months].reverse().map(m => {
+              {[...monthlyPaid].reverse().map(m => {
                 const label = new Date(m.month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" });
                 return (
-                  <div key={m.month} className="px-4 py-2 grid grid-cols-4 gap-1 text-xs">
+                  <div key={m.month} className="px-4 py-2 grid grid-cols-2 gap-1 text-xs">
                     <span className="font-semibold text-foreground">{label}</span>
-                    <span className="text-right text-muted-foreground">{formatCurrency(m.revenue)}</span>
-                    <span className="text-right text-amber-700">{formatCurrency(m.taxReserve)}</span>
-                    <span className="text-right text-emerald-700 font-semibold">{formatCurrency(m.takeHome)}</span>
+                    <span className="text-right text-emerald-700 font-semibold">{formatCurrency(m.paid)}</span>
                   </div>
                 );
               })}
             </div>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground text-center py-2">No paid invoices yet for {year}. Numbers appear once jobs are collected.</p>
+          <p className="text-xs text-muted-foreground text-center py-2">No owner pay recorded yet. Use "Record Owner Pay" on the Dashboard or on any job card.</p>
         )}
 
-        <p className="text-[11px] text-muted-foreground italic">Adjust percentages per job in Job Financials → Pay Breakdown tab.</p>
+        <p className="text-[11px] text-muted-foreground italic">These are actual payments made to you — same data as My Pay on the Dashboard.</p>
       </div>
     </div>
   );

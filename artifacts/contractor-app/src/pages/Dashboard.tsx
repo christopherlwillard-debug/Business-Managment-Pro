@@ -1119,6 +1119,11 @@ function MyPayCard() {
   // Optimistic toggle state: jobId → override value while saving
   const [toggling, setToggling] = useState<Record<number, boolean>>({});
   const [jobsOpen, setJobsOpen] = useState(false);
+  const [equityDialogOpen, setEquityDialogOpen] = useState(false);
+  const [equityAmount, setEquityAmount] = useState("");
+  const [equityDate, setEquityDate] = useState(getTodayStr());
+  const [equitySaving, setEquitySaving] = useState(false);
+  const [equityErr, setEquityErr] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["owner-pay-summary"],
@@ -1150,7 +1155,7 @@ function MyPayCard() {
       const res = await fetch(`${BASE}/api/expenses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: "Owner Withdrawal", amount: amt, category: "Owner Draw", date, excludeFromNetProfit: true }),
+        body: JSON.stringify({ description: "Owner Pay", amount: amt, category: "Owner Compensation", date, excludeFromNetProfit: true }),
       });
       if (!res.ok) throw new Error("Failed");
       setDialogOpen(false);
@@ -1163,6 +1168,32 @@ function MyPayCard() {
       setErr("Failed to save. Try again.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleEquityWithdraw(e: React.FormEvent) {
+    e.preventDefault();
+    const amt = parseFloat(equityAmount);
+    if (!amt || amt <= 0) { setEquityErr("Enter a valid amount"); return; }
+    setEquitySaving(true);
+    setEquityErr("");
+    try {
+      const res = await fetch(`${BASE}/api/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: "Owner Withdrawal", amount: amt, category: "Owner Withdrawal", date: equityDate, excludeFromNetProfit: true }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setEquityDialogOpen(false);
+      setEquityAmount("");
+      setEquityDate(getTodayStr());
+      setEquityErr("");
+      qc.invalidateQueries({ queryKey: ["owner-pay-summary"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    } catch {
+      setEquityErr("Failed to save. Try again.");
+    } finally {
+      setEquitySaving(false);
     }
   }
 
@@ -1193,7 +1224,7 @@ function MyPayCard() {
               onClick={() => setDialogOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
             >
-              <Plus className="w-3.5 h-3.5" /> Record Withdrawal
+              <Plus className="w-3.5 h-3.5" /> Record Owner Pay
             </button>
           </div>
 
@@ -1279,7 +1310,7 @@ function MyPayCard() {
           {/* Recent withdrawals */}
           {withdrawals.length > 0 && (
             <div className="mt-3 pt-3 border-t border-border/60">
-              <p className="text-xs font-semibold text-muted-foreground mb-2">Recent Withdrawals</p>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">Recent Owner Pay</p>
               <div className="space-y-1.5">
                 {withdrawals.slice(0, 3).map(w => (
                   <div key={w.id} className="flex justify-between items-center text-xs">
@@ -1296,17 +1327,27 @@ function MyPayCard() {
         </CardContent>
       </Card>
 
-      {/* Withdrawal dialog */}
+      {/* Equity withdrawal link — rare manual action, de-emphasized */}
+      <div className="mt-2 text-center">
+        <button
+          onClick={() => setEquityDialogOpen(true)}
+          className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+        >
+          Record equity withdrawal (rare — not from a job)
+        </button>
+      </div>
+
+      {/* Record Owner Pay dialog */}
       {dialogOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40" onClick={() => { setDialogOpen(false); setAmount(""); setDate(getTodayStr()); setErr(""); }}>
           <div className="bg-card rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-border" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-4">
               <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700"><Wallet className="w-4 h-4" /></div>
-              <h2 className="text-base font-bold text-foreground">Record Withdrawal</h2>
+              <h2 className="text-base font-bold text-foreground">Record Owner Pay</h2>
               <button className="ml-auto text-muted-foreground hover:text-foreground" onClick={() => { setDialogOpen(false); setAmount(""); setDate(getTodayStr()); setErr(""); }}>✕</button>
             </div>
             <p className="text-xs text-muted-foreground mb-4">
-              Log money you've taken out of the business.{" "}
+              Log a payment from the business to you for completed job work.{" "}
               <span className="font-semibold text-emerald-700">{formatCurrency(remaining)}</span> still owed to you.
             </p>
             <form onSubmit={handleWithdraw} className="space-y-3">
@@ -1333,6 +1374,49 @@ function MyPayCard() {
                 <button type="submit" disabled={saving}
                   className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 transition-colors">
                   {saving ? "Saving…" : "Record"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Equity Withdrawal dialog — for manual equity pulls not tied to a job */}
+      {equityDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40" onClick={() => { setEquityDialogOpen(false); setEquityAmount(""); setEquityDate(getTodayStr()); setEquityErr(""); }}>
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-border" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="p-2 rounded-xl bg-orange-100 text-orange-700"><Wallet className="w-4 h-4" /></div>
+              <h2 className="text-base font-bold text-foreground">Record Equity Withdrawal</h2>
+              <button className="ml-auto text-muted-foreground hover:text-foreground" onClick={() => { setEquityDialogOpen(false); setEquityAmount(""); setEquityDate(getTodayStr()); setEquityErr(""); }}>✕</button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">
+              For manually pulling business equity <span className="font-semibold">not connected to any completed job</span> — this is rare. For normal job pay, use "Record Owner Pay" instead.
+            </p>
+            <form onSubmit={handleEquityWithdraw} className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">Amount *</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">$</span>
+                  <input type="number" step="0.01" min="0.01" required autoFocus
+                    value={equityAmount} onChange={e => setEquityAmount(e.target.value)} placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-orange-300" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Date *</label>
+                <input type="date" required value={equityDate} onChange={e => setEquityDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-orange-300" />
+              </div>
+              {equityErr && <p className="text-xs text-destructive">{equityErr}</p>}
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => { setEquityDialogOpen(false); setEquityAmount(""); setEquityDate(getTodayStr()); setEquityErr(""); }}
+                  className="flex-1 px-4 py-2 rounded-xl text-sm font-medium text-muted-foreground border border-border hover:bg-muted transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={equitySaving}
+                  className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-60 transition-colors">
+                  {equitySaving ? "Saving…" : "Record Withdrawal"}
                 </button>
               </div>
             </form>

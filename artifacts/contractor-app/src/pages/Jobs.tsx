@@ -1619,15 +1619,15 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                     try {
                       await fetch(`${BASE}/api/jobs/${job.id}/record-owner-draw`, {
                         method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ amount: ownerTakeHome, description: `Owner Draw — ${job.title}` }),
+                        body: JSON.stringify({ amount: ownerTakeHome, description: `Owner Pay — ${job.title}` }),
                       });
-                      toast({ title: "Owner draw recorded", description: `${formatCurrency(ownerTakeHome)} logged as draw` });
-                    } catch { toast({ title: "Failed to record draw", variant: "destructive" }); }
+                      toast({ title: "Owner pay recorded", description: `${formatCurrency(ownerTakeHome)} logged` });
+                    } catch { toast({ title: "Failed to record owner pay", variant: "destructive" }); }
                   }}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 text-xs font-semibold hover:bg-emerald-100 transition-colors"
                 >
                   <DollarSign className="w-3.5 h-3.5" />
-                  Record Owner Draw ({formatCurrency(ownerTakeHome)})
+                  Record Owner Pay ({formatCurrency(ownerTakeHome)})
                 </button>
               )}
               {revenue === 0 && <p className="text-center text-xs text-muted-foreground py-4">Add an invoice to this job to see the breakdown.</p>}
