@@ -208,11 +208,24 @@ const RECURRING_PATTERNS: [RegExp, string, string][] = [
   [/\bSQUARESPACE\b|\bWIX\b|\bWEBFLOW\b/i, "Office/Admin",    "Website Hosting"],
 ];
 
+/**
+ * Extracts invoice-number-like tokens from a bank description.
+ * Matches patterns like WIL1033, INV001, CMH4567 — 2–6 letters followed by 3+ digits.
+ * ACH remittance strings often embed invoice numbers in segments like RMR*IV*WIL1033**2950.
+ */
+function extractInvoiceTokens(description: string): string[] {
+  const matches = description.toUpperCase().match(/\b([A-Z]{2,6}\d{3,})\b/g);
+  return matches ? [...new Set(matches)] : [];
+}
+
 async function invoiceProvider(txn: { id: number; date: string; description: string; amount: string; transactionType: string }): Promise<ScoredMatch[]> {
   // Invoice matching is only for credit (income) transactions
   if (txn.transactionType !== "credit") return [];
 
   const txnAmt = Math.abs(parseFloat(txn.amount));
+
+  // Extract any invoice-number tokens embedded in the bank description (e.g. "WIL1033" from ACH remittance)
+  const descTokens = extractInvoiceTokens(txn.description);
 
   // Fetch sent/accepted invoices not yet fully matched to bank transactions
   const invoices = await db
@@ -238,6 +251,15 @@ async function invoiceProvider(txn: { id: number; date: string; description: str
   for (const inv of invoices) {
     let score = 0;
     const reasons: string[] = [];
+
+    // ── Invoice number in description (40 pts) — highest-confidence signal ──
+    // ACH remittance strings often embed the invoice number; this beats amount/date.
+    if (inv.invoiceNumber) {
+      const normalizedInvNum = inv.invoiceNumber.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (descTokens.some(t => t.replace(/[^A-Z0-9]/g, "") === normalizedInvNum)) {
+        score += 40; reasons.push("Invoice # in Description");
+      }
+    }
 
     // Amount (45 pts)
     const invAmt = Math.abs(parseFloat(inv.total ?? "0"));
@@ -272,6 +294,8 @@ async function invoiceProvider(txn: { id: number; date: string; description: str
       }
     }
 
+    // Include if score >= 20, OR if the invoice number was found in the description
+    // (number-in-desc alone scores 40, so this threshold is always met in that case)
     if (score >= 20) {
       results.push({
         score,
