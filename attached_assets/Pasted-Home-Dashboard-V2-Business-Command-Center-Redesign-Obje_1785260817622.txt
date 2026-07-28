@@ -1,0 +1,710 @@
+Home Dashboard V2 — Business Command Center Redesign
+
+Objective
+
+Completely redesign the Home Dashboard into a modern, App Store quality Business Command Center.
+
+This is not a minimalist dashboard. The goal is to create a premium, information-rich experience that allows the owner to scroll through the health of the entire business while maintaining excellent visual hierarchy.
+
+The dashboard should feel like a hybrid of:
+
+* Apple Human Interface Guidelines
+* Stripe Dashboard
+* Linear
+* Garmin Aviation Displays
+* Ford Digital Instrument Cluster
+
+NOT QuickBooks.
+NOT Apple Wallet.
+NOT Bootstrap cards stacked vertically.
+
+The experience should feel like operating a business, not reading reports.
+
+⸻
+
+Design Principles
+
+The dashboard must answer four questions immediately.
+
+What should I do first?
+
+What job am I currently working on?
+
+What requires my attention?
+
+How is my business performing?
+
+Everything on the Home screen should support one of those questions.
+
+⸻
+
+Visual Design System
+
+Build a reusable design system before rebuilding screens.
+
+Every component should use the exact same spacing and styling.
+
+Cards
+
+* 20px border radius
+* Soft shadow
+* White background
+* 24px padding
+* Consistent spacing
+* Consistent typography
+* Consistent icon size
+* Large touch targets
+
+No colored headers.
+
+Instead use small accent colors only for icons, badges and important values.
+
+⸻
+
+Typography
+
+Large hierarchy.
+
+Heading
+
+32px
+
+Section Title
+
+22px
+
+Card Title
+
+18px
+
+Large Number
+
+34-42px
+
+Supporting Text
+
+15px
+
+Caption
+
+13px
+
+⸻
+
+Colors
+
+Background
+
+Very light gray
+
+Cards
+
+White
+
+Primary
+
+Willard Blue
+
+Success
+
+Green
+
+Warning
+
+Orange
+
+Danger
+
+Red
+
+Neutral
+
+Gray
+
+Avoid rainbow dashboards.
+
+Use color only when it communicates meaning.
+
+⸻
+
+Home Screen Layout
+
+Everything below should appear in this order.
+
+⸻
+
+HEADER
+
+Display
+
+Good Morning, Chris
+
+Current Date
+
+Business Selector
+
+Notification Button
+
+Profile
+
+Example
+
+Good Morning, Chris
+
+Tuesday, July 28
+
+General Contracting
+
+⸻
+
+SECTION 1
+
+Hero Action
+
+This becomes the signature feature of Willard.
+
+One full width premium card.
+
+Title
+
+Scan Receipt
+
+Subtitle
+
+Snap a receipt.
+
+Willard AI automatically
+
+• Reads it
+
+• Creates the expense
+
+• Categorizes it
+
+• Suggests the linked job
+
+• Matches the bank transaction
+
+• Updates accounting
+
+Large primary button
+
+Scan Receipt
+
+This should be the most visually important card on the dashboard.
+
+Do NOT include an Add Expense button.
+
+Receipt scanning replaces manual expense entry whenever possible.
+
+⸻
+
+SECTION 2
+
+Quick Actions
+
+These should only include actions that occur outside Job Cards.
+
+Grid
+
+New Job
+
+Route Planner
+
+Record Owner Pay
+
+Open Jobs
+
+Do NOT include
+
+Estimate
+
+Quote
+
+Invoice
+
+Checklist
+
+Knowledge Base
+
+Photos
+
+Materials
+
+Those all belong inside Job Cards.
+
+⸻
+
+SECTION 3
+
+Continue Working
+
+Automatically remember the last active Job Card.
+
+Display
+
+Job Photo
+
+Customer
+
+Progress
+
+Checklist
+
+Photos
+
+Crew
+
+Current Status
+
+Large Continue button
+
+Example
+
+Continue Working
+
+Peters Booneville
+
+60% Complete
+
+Photos Complete
+
+Checklist 9 of 12
+
+Invoice Ready
+
+Crew
+
+Chris
+
+Dewayne
+
+Continue
+
+This should return directly to the Job Card.
+
+⸻
+
+SECTION 4
+
+Today’s Schedule
+
+Display today’s jobs.
+
+Show
+
+Time
+
+Customer
+
+Status
+
+Example
+
+8:00
+
+Martin Trim
+
+In Progress
+
+9:30
+
+Peters Booneville
+
+Waiting on Materials
+
+1:00
+
+Myers Trim
+
+Ready to Invoice
+
+View Calendar
+
+Do not display only
+
+3 Active Jobs
+
+Actually display today’s schedule.
+
+⸻
+
+SECTION 5
+
+Needs Attention
+
+One compact card.
+
+Display
+
+Outstanding Subs
+
+Outstanding Invoices
+
+Compliance
+
+Receipts Missing
+
+Missing Categories
+
+Waiting Bank Matches
+
+Each row opens directly into that feature.
+
+Example
+
+Outstanding Subs
+
+2
+
+Outstanding Invoices
+
+3
+
+Compliance Items
+
+1
+
+Receipts Missing
+
+4
+
+⸻
+
+SECTION 6
+
+Business Health
+
+Completely redesign this section.
+
+Remove all separate KPI cards.
+
+Instead create one premium Business Health card.
+
+Layout
+
+Business Health
+
+Underneath
+
+Revenue
+
+Expenses
+
+Net Profit
+
+Outstanding
+
+Below that
+
+One large full width trend graph.
+
+NOT four mini charts.
+
+The graph should show
+
+Revenue
+
+Expenses
+
+Profit
+
+Outstanding
+
+All together.
+
+Below graph
+
+Business Score
+
+94%
+
+Excellent
+
+This card should visually tell the story of the business instead of forcing users to compare multiple cards.
+
+⸻
+
+SECTION 7
+
+Cash Flow
+
+Separate card.
+
+Display
+
+Checking
+
+Reserve Target
+
+Tax Reserve
+
+Growth Fund
+
+Operating Buffer
+
+Available Cash
+
+View Details
+
+⸻
+
+SECTION 8
+
+Owner
+
+Separate section.
+
+Display
+
+Earned
+
+Taken
+
+Still Owed
+
+Available
+
+Record Owner Pay
+
+This replaces multiple owner pay cards.
+
+⸻
+
+SECTION 9
+
+Analytics
+
+Display larger charts.
+
+Examples
+
+Revenue Trend
+
+Expense Trend
+
+Profit Trend
+
+Margin
+
+Revenue by Builder
+
+Revenue by City
+
+Crew Productivity
+
+Average Job Profit
+
+No tiny KPI cards.
+
+Use fewer larger visualizations.
+
+⸻
+
+SECTION 10
+
+Recent Activity
+
+Timeline
+
+Receipt Scanned
+
+Invoice Paid
+
+Checklist Updated
+
+Owner Draw Recorded
+
+Subcontractor Paid
+
+Expense Imported
+
+Newest first.
+
+⸻
+
+Job Card Philosophy
+
+Everything happens inside Job Cards.
+
+Job Cards remain the center of the application.
+
+Inside Job Cards
+
+Estimate
+
+Quote
+
+Invoice
+
+Knowledge Base
+
+Photos
+
+Daily Logs
+
+Checklist
+
+Materials
+
+Crew
+
+Customer
+
+Payments
+
+Warranty
+
+Notes
+
+Do NOT duplicate these features on the Home screen.
+
+The Home screen launches work.
+
+The Job Card completes work.
+
+⸻
+
+Bottom Navigation
+
+Replace current navigation.
+
+Home
+
+Jobs
+
+Route Planner
+
+Accounting
+
+People
+
+The Jobs tab becomes the primary work area.
+
+⸻
+
+Accounting
+
+Accounting remains separate.
+
+Accounting is financial management.
+
+Home is business operations.
+
+Accounting navigation
+
+Overview
+
+Transactions
+
+Expenses
+
+Payroll
+
+Taxes
+
+Reports
+
+Owner Equity
+
+Each page has one responsibility.
+
+Avoid creating another dashboard inside Accounting.
+
+⸻
+
+Animation
+
+Use subtle animations throughout the application.
+
+Cards fade upward.
+
+Charts animate.
+
+Numbers count upward.
+
+Buttons ripple.
+
+Large buttons gently scale when tapped.
+
+Scrolling should feel smooth.
+
+⸻
+
+Consistency
+
+Every screen should use
+
+Same shadows
+
+Same spacing
+
+Same typography
+
+Same buttons
+
+Same cards
+
+Same icons
+
+No screen should feel like it belongs to another application.
+
+⸻
+
+Long-Term Product Direction
+
+Willard is no longer just a contractor management application.
+
+It is a Construction Business Operating System.
+
+The Home screen should function as a Business Command Center that allows the owner to immediately:
+
+• Capture receipts with AI
+
+• Resume work on active jobs
+
+• See today’s schedule
+
+• Identify business issues
+
+• Monitor financial health
+
+• Review cash flow
+
+• Manage owner pay
+
+• View analytics
+
+• Review recent activity
+
+without duplicating functionality that belongs inside Job Cards.
+
+⸻
+
+Future Enhancements
+
+Implement support for customizable dashboards.
+
+Users should be able to:
+
+• Collapse sections
+
+• Expand sections
+
+• Reorder sections with drag-and-drop
+
+• Pin favorite sections
+
+• Hide unused sections
+
+• Customize quick actions
+
+• Save multiple dashboard layouts
+
+This allows every business owner to build a personalized Command Center while keeping a consistent overall design.
+
+⸻
+
+Final Vision
+
+The finished product should feel like a premium native iPhone application that could compete visually with the best productivity apps on the App Store. It should preserve Willard’s depth and powerful features while dramatically improving organization, readability, and usability through a consistent design system and a dashboard centered on real daily workflows rather than duplicated summaries.
