@@ -1772,7 +1772,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
 
       // Agreed owed: DB override → client-supplied → fixedAmount (fixed only)
       const dbOwedOverride = subRow.amountOwed != null ? parseFloat(subRow.amountOwed) : null;
-      const agreedOwed = dbOwedOverride
+      let agreedOwed = dbOwedOverride
         ?? clientAgreedOwed
         ?? (compType === "fixed" ? parseFloat(subRow.fixedAmount ?? "0") : null);
 
@@ -1793,6 +1793,21 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         const { splitPool: currentSplitPool } = await computeAllocationSplitPool(jobId);
         const computed = currentSplitPool * (parseFloat(subRow.allocationPct) / 100);
         if (computed > 0) lockAmountOwed = computed.toFixed(2);
+      }
+
+      // For hourly subs, agreedOwed is not sent by the client (it varies with hours logged).
+      // Derive it from job_sub_hours so partial payments get the right "partial"/"paid" status
+      // instead of always being marked "paid" regardless of coverage.
+      if (compType === "hourly" && agreedOwed == null) {
+        const [hoursRow] = await tx
+          .select({ total: sql<string>`COALESCE(SUM(hours * COALESCE(rate_snapshot, 0)), '0')` })
+          .from(jobSubHoursTable)
+          .where(and(
+            eq(jobSubHoursTable.jobId, jobId),
+            eq(jobSubHoursTable.subcontractorId, subId),
+          ));
+        const hoursOwed = parseFloat(hoursRow?.total ?? "0");
+        if (hoursOwed > 0) agreedOwed = hoursOwed;
       }
 
       // 1. Insert the payment record first

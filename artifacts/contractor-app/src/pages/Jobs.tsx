@@ -1694,8 +1694,11 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                     const appliedAdvances = (p.paymentHistory ?? []).reduce((s, h) => s + (h.advanceAmount ?? 0), 0);
                     const bal = Math.max(0, owed - paid - appliedAdvances);
                     const isOverpaidRow = p.paymentStatus === 'overpaid';
-                    const settled = p.paymentStatus === 'paid' || isOverpaidRow;
-                    const isPartial = p.paymentStatus === 'partial';
+                    // Gate "Settled" on balance math, not just paymentStatus.
+                    // paymentStatus can be stale (e.g. hourly subs always get "paid"
+                    // from pay-worker regardless of hours×rate coverage).
+                    const settled = (p.paymentStatus === 'paid' || isOverpaidRow) && bal <= 0.005;
+                    const isPartial = !settled && (p.paymentStatus === 'partial' || bal > 0.005);
                     const overpaidAmt = isOverpaidRow ? Math.max(0, paid - owed) : 0;
                     const borderCls = isOverpaidRow ? "border-amber-200 bg-amber-50/60" : settled ? "border-emerald-200 bg-emerald-50/60" : isPartial ? "border-amber-200 bg-amber-50/60" : "border-orange-200 bg-orange-50/60";
                     const iconCls = isOverpaidRow ? "text-amber-500" : settled ? "text-emerald-600" : isPartial ? "text-amber-500" : "text-orange-500";
