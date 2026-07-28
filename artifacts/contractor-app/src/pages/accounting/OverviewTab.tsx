@@ -269,72 +269,332 @@ interface BusinessReserveData {
 // Reads from owner-pay-summary (the My Pay ledger) so it always matches the
 // My Pay card on the Dashboard — one source of truth, no duplicate calculations.
 function TakeHomeDashboard() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const currentYear = new Date().getFullYear();
+
+  // Full summary including individual withdrawal records for edit/delete
   const { data, isLoading } = useQuery<{
+    totalEarned: number;
     totalWithdrawn: number;
+    remaining: number;
     monthlyPaid: { month: string; paid: number }[];
+    withdrawals: { id: string; date: string | null; amount: number; description: string }[];
   }>({
     queryKey: ["owner-pay-summary"],
     queryFn: () => fetch(`${BASE}/api/reports/owner-pay-summary`, { credentials: "include" }).then(r => r.json()),
   });
 
+  // Dialog state — used for both new entries and edits
+  const [dialog, setDialog] = useState<{
+    open: boolean;
+    editId: string | null; // "exp-123" or null for new
+    amount: string;
+    date: string;
+    description: string;
+    saving: boolean;
+    error: string;
+  }>({ open: false, editId: null, amount: "", date: "", description: "", saving: false, error: "" });
+
+  // Month that's expanded to show individual entries (YYYY-MM key)
+  const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
+
+  function openNew() {
+    const today = new Date();
+    const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    setDialog({ open: true, editId: null, amount: "", date: defaultDate, description: "Owner Pay", saving: false, error: "" });
+  }
+
+  function openEdit(w: { id: string; date: string | null; amount: number; description: string }) {
+    setDialog({
+      open: true,
+      editId: w.id,
+      amount: String(w.amount),
+      date: w.date ?? new Date().toISOString().slice(0, 10),
+      description: w.description ?? "Owner Pay",
+      saving: false,
+      error: "",
+    });
+  }
+
+  function closeDialog() {
+    setDialog(d => ({ ...d, open: false, error: "" }));
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    const amt = parseFloat(dialog.amount);
+    if (!amt || amt <= 0) { setDialog(d => ({ ...d, error: "Enter a valid amount" })); return; }
+    setDialog(d => ({ ...d, saving: true, error: "" }));
+
+    try {
+      if (dialog.editId) {
+        // Edit existing expense
+        const expenseId = dialog.editId.replace("exp-", "");
+        const res = await fetch(`${BASE}/api/expenses/${expenseId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ amount: amt, date: dialog.date, description: dialog.description, category: "Owner Compensation" }),
+        });
+        if (!res.ok) throw new Error();
+        toast({ title: "Entry updated" });
+      } else {
+        // New entry
+        const res = await fetch(`${BASE}/api/expenses`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ description: dialog.description || "Owner Pay", amount: amt, category: "Owner Compensation", date: dialog.date, excludeFromNetProfit: true }),
+        });
+        if (!res.ok) throw new Error();
+        toast({ title: "Owner pay recorded", description: `${formatCurrency(amt)} logged` });
+      }
+      qc.invalidateQueries({ queryKey: ["owner-pay-summary"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      closeDialog();
+    } catch {
+      setDialog(d => ({ ...d, error: "Failed to save. Try again.", saving: false }));
+      return;
+    }
+    setDialog(d => ({ ...d, saving: false }));
+  }
+
+  async function handleDelete(w: { id: string; amount: number }) {
+    if (!confirm(`Delete this $${w.amount.toFixed(2)} owner pay entry?`)) return;
+    const expenseId = w.id.replace("exp-", "");
+    try {
+      const res = await fetch(`${BASE}/api/expenses/${expenseId}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error();
+      qc.invalidateQueries({ queryKey: ["owner-pay-summary"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      toast({ title: "Entry deleted" });
+    } catch {
+      toast({ title: "Failed to delete", variant: "destructive" });
+    }
+  }
+
   if (isLoading) return <div className="h-48 rounded-2xl bg-muted/40 animate-pulse" />;
   if (!data) return null;
 
-  const monthlyPaid = data.monthlyPaid ?? [];
-  const totalPaid   = data.totalWithdrawn ?? 0;
-  const avgMonthly  = monthlyPaid.length > 0 ? totalPaid / monthlyPaid.length : 0;
-  const lastMonth   = monthlyPaid.length > 0 ? monthlyPaid[monthlyPaid.length - 1].paid : 0;
+  const monthlyPaid    = data.monthlyPaid ?? [];
+  const withdrawals    = data.withdrawals ?? [];
+  const totalPaid      = data.totalWithdrawn ?? 0;
+  const paidMonths     = monthlyPaid.filter(m => m.paid > 0).length;
+  const avgMonthly     = paidMonths > 0 ? totalPaid / paidMonths : 0;
+
+  // Build full 12-month grid for current year, newest first
+  const allMonths: { month: string; paid: number }[] = [];
+  for (let mo = 12; mo >= 1; mo--) {
+    const key = `${currentYear}-${String(mo).padStart(2, "0")}`;
+    const found = monthlyPaid.find(m => m.month === key);
+    allMonths.push({ month: key, paid: found?.paid ?? 0 });
+  }
+
+  // Index withdrawals by YYYY-MM for the expanded row
+  const withdrawalsByMonth = new Map<string, typeof withdrawals>();
+  for (const w of withdrawals) {
+    if (!w.date) continue;
+    const key = w.date.slice(0, 7);
+    if (!withdrawalsByMonth.has(key)) withdrawalsByMonth.set(key, []);
+    withdrawalsByMonth.get(key)!.push(w);
+  }
+
+  // Last month that has a payment (for "Last Month" stat)
+  const lastPaidMonth = [...monthlyPaid].sort((a, b) => b.month.localeCompare(a.month)).find(m => m.paid > 0);
 
   return (
-    <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-      <div className="px-5 py-3 bg-emerald-700 flex items-center gap-3">
-        <Wallet className="w-4 h-4 text-emerald-200 flex-shrink-0" />
-        <span className="font-bold text-sm text-white">Owner Pay Dashboard</span>
-        <span className="text-[10px] text-emerald-200">Actual payments from the business to you</span>
-      </div>
-      <div className="p-4 space-y-4">
-        {/* Three summary stats */}
-        <div className="grid grid-cols-3 gap-3 text-center">
-          <div>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Paid YTD</p>
-            <p className="text-2xl font-black text-emerald-700">{formatCurrency(totalPaid)}</p>
+    <>
+      <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+        {/* Header */}
+        <div className="px-5 py-3 bg-emerald-700 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Wallet className="w-4 h-4 text-emerald-200 flex-shrink-0" />
+            <span className="font-bold text-sm text-white">Owner Pay Dashboard</span>
+            <span className="hidden sm:inline text-[10px] text-emerald-200">Actual payments from the business to you</span>
           </div>
-          <div>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Avg Monthly</p>
-            <p className="text-xl font-bold text-foreground">{monthlyPaid.length > 0 ? formatCurrency(avgMonthly) : "—"}</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Last Month</p>
-            <p className="text-xl font-bold text-foreground">{monthlyPaid.length > 0 ? formatCurrency(lastMonth) : "—"}</p>
-          </div>
+          <button
+            onClick={openNew}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-semibold rounded-lg transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Record Pay
+          </button>
         </div>
 
-        {/* Monthly history table */}
-        {monthlyPaid.length > 0 ? (
+        <div className="p-4 space-y-4">
+          {/* Three summary stats */}
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Paid YTD</p>
+              <p className="text-2xl font-black text-emerald-700">{formatCurrency(totalPaid)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Avg / Month</p>
+              <p className="text-xl font-bold text-foreground">{paidMonths > 0 ? formatCurrency(avgMonthly) : "—"}</p>
+              {paidMonths > 0 && <p className="text-[10px] text-muted-foreground">across {paidMonths} month{paidMonths !== 1 ? "s" : ""}</p>}
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Last Paid</p>
+              <p className="text-xl font-bold text-foreground">
+                {lastPaidMonth
+                  ? new Date(lastPaidMonth.month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" })
+                  : "—"}
+              </p>
+              {lastPaidMonth && <p className="text-[10px] text-emerald-700 font-semibold">{formatCurrency(lastPaidMonth.paid)}</p>}
+            </div>
+          </div>
+
+          {/* Full 12-month grid */}
           <div className="rounded-xl border border-border overflow-hidden">
-            <div className="bg-muted/30 px-4 py-2 border-b border-border grid grid-cols-2 gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              <span>Month</span>
-              <span className="text-right">Paid to You</span>
+            <div className="bg-muted/30 px-4 py-2 border-b border-border flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span>{currentYear} — Month by Month</span>
+              <span>Paid to You</span>
             </div>
             <div className="divide-y divide-border/30">
-              {[...monthlyPaid].reverse().map(m => {
-                const label = new Date(m.month + "-01").toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+              {allMonths.map(m => {
+                const label     = new Date(m.month + "-01").toLocaleDateString("en-US", { month: "long" });
+                const entries   = withdrawalsByMonth.get(m.month) ?? [];
+                const isExpanded = expandedMonth === m.month && entries.length > 0;
+                const isFuture  = m.month > new Date().toISOString().slice(0, 7);
+
                 return (
-                  <div key={m.month} className="px-4 py-2 grid grid-cols-2 gap-1 text-xs">
-                    <span className="font-semibold text-foreground">{label}</span>
-                    <span className="text-right text-emerald-700 font-semibold">{formatCurrency(m.paid)}</span>
-                  </div>
+                  <React.Fragment key={m.month}>
+                    <div
+                      className={`px-4 py-2.5 flex items-center gap-2 text-sm
+                        ${m.paid > 0 ? "cursor-pointer hover:bg-muted/30 transition-colors" : ""}
+                        ${isFuture ? "opacity-35" : ""}`}
+                      onClick={() => m.paid > 0 && setExpandedMonth(isExpanded ? null : m.month)}
+                    >
+                      <span className={`font-semibold flex-1 ${m.paid === 0 && !isFuture ? "text-muted-foreground" : "text-foreground"}`}>
+                        {label}
+                      </span>
+                      {m.paid > 0 ? (
+                        <>
+                          <span className="text-emerald-700 font-bold">{formatCurrency(m.paid)}</span>
+                          {entries.length > 1 && (
+                            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                              {entries.length}
+                            </span>
+                          )}
+                          <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                        </>
+                      ) : (
+                        <span className={`text-xs ${isFuture ? "text-muted-foreground/50" : "text-muted-foreground"}`}>
+                          {isFuture ? "—" : "$0"}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Expanded: individual entries for this month */}
+                    {isExpanded && entries.map(w => (
+                      <div key={w.id} className="px-6 py-2 flex items-center gap-2 bg-muted/20 text-xs border-t border-border/20">
+                        <span className="text-muted-foreground w-20 flex-shrink-0">
+                          {w.date ? new Date(w.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}
+                        </span>
+                        <span className="flex-1 text-foreground truncate">{w.description}</span>
+                        <span className="font-semibold text-emerald-700">{formatCurrency(w.amount)}</span>
+                        <button
+                          onClick={e => { e.stopPropagation(); openEdit(w); }}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); handleDelete(w); }}
+                          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </React.Fragment>
                 );
               })}
             </div>
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground text-center py-2">No owner pay recorded yet. Use "Record Owner Pay" on the Dashboard or on any job card.</p>
-        )}
 
-        <p className="text-[11px] text-muted-foreground italic">These are actual payments made to you — same data as My Pay on the Dashboard.</p>
+          <p className="text-[11px] text-muted-foreground italic">
+            Actual payments made to you — tap any month to see individual entries.
+          </p>
+        </div>
       </div>
-    </div>
+
+      {/* Record / Edit dialog */}
+      {dialog.open && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40"
+          onClick={closeDialog}
+        >
+          <div
+            className="bg-card rounded-[20px] shadow-2xl w-full max-w-sm p-6 border border-border"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700"><Wallet className="w-4 h-4" /></div>
+              <h2 className="text-base font-bold text-foreground">
+                {dialog.editId ? "Edit Pay Entry" : "Record Owner Pay"}
+              </h2>
+              <button className="ml-auto text-muted-foreground hover:text-foreground" onClick={closeDialog}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4 ml-10">
+              {dialog.editId ? "Update this payment entry." : "Log a payment you took from the business."}
+            </p>
+
+            <form onSubmit={handleSave} className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">Amount *</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">$</span>
+                  <input
+                    type="number" step="0.01" min="0.01" required autoFocus
+                    value={dialog.amount}
+                    onChange={e => setDialog(d => ({ ...d, amount: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Date *</label>
+                <input
+                  type="date" required
+                  value={dialog.date}
+                  onChange={e => setDialog(d => ({ ...d, date: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Description</label>
+                <input
+                  type="text"
+                  value={dialog.description}
+                  onChange={e => setDialog(d => ({ ...d, description: e.target.value }))}
+                  placeholder="Owner Pay"
+                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              {dialog.error && <p className="text-xs text-destructive">{dialog.error}</p>}
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button" onClick={closeDialog}
+                  className="flex-1 px-4 py-2 rounded-xl text-sm font-medium text-muted-foreground border border-border hover:bg-muted transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit" disabled={dialog.saving}
+                  className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-60 transition-colors"
+                >
+                  {dialog.saving ? "Saving…" : dialog.editId ? "Update" : "Record"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

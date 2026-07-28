@@ -110,12 +110,14 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const mileageForNetProfit = validBl ? 0 : periodMileageDeduction;
     const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfitFormula) - mileageForNetProfit;
     // Owner draws — tracked separately, never reduce taxable profit.
-    // Only expense-category "Owner Draw" records count here.
+    // Covers all owner-distribution categories: legacy "Owner Draw", current
+    // "Owner Compensation", and equity "Owner Withdrawal".
     // Negative owner_capital_entries are "Return of Capital" — they already
     // reduce netCapitalInvested in the frontend ledger and must NOT be added
     // to ownerDrawTotal, which would deduct them a second time from equity.
+    const OWNER_PAY_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
     const ownerDrawTotal = nonMileageExpenses
-      .filter(e => e.category === "Owner Draw")
+      .filter(e => OWNER_PAY_CATS.includes(e.category ?? ""))
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const ytdMiles = ytdMileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const ytdMileageRate = getIrsMileageRate(now.getFullYear());
@@ -181,7 +183,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const blRevenue = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-      const blOwnerDrawTotal = blExpenses.filter(e => e.category === "Owner Draw").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const blOwnerDrawTotal = blExpenses.filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       const blExcluded = blExpenses.filter(e => e.excludeFromNetProfit).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       return {
         businessLine: bl,
@@ -394,9 +396,10 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     // mileage_logs to prevent double-counting in the net profit calculation.
     const nonMileageExpenses = expenses.filter(e => e.category !== "mileage");
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    // Owner Draws are personal distributions — not tax-deductible. Exclude from net profit.
+    // Owner distributions are personal — not tax-deductible. Exclude from net profit.
+    // Covers legacy "Owner Draw", current "Owner Compensation", and "Owner Withdrawal".
     const ownerDrawTotal = nonMileageExpenses
-      .filter(e => e.category === "Owner Draw")
+      .filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""))
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
 
     const businessMiles = mileageLogs.filter(m => m.classification === "business");
@@ -498,11 +501,11 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     }));
     const allRecords = [...invoiceRecords, ...otherIncomeRecords].sort((a, b) => a.issueDate.localeCompare(b.issueDate));
 
-    // Expenses by category (mileage and Owner Draw excluded — mileage shown separately,
-    // Owner Draw is a personal distribution not a business cost)
+    // Expenses by category (mileage and owner distributions excluded — mileage shown
+    // separately; owner pay is a personal distribution not a business cost)
     const catMap = new Map<string, { category: string; amount: number; count: number }>();
     for (const e of nonMileageExpenses) {
-      if (e.category === "Owner Draw") continue;
+      if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? "")) continue;
       const cat = e.category || "Uncategorized";
       const existing = catMap.get(cat) ?? { category: cat, amount: 0, count: 0 };
       existing.amount += parseFloat(e.amount ?? "0");
@@ -526,8 +529,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       }
       return Array.from(map.values()).sort((a, b) => b.amount - a.amount);
     };
-    const directJobExpenses = nonMileageExpenses.filter(e => e.jobId != null && e.category !== "Owner Draw");
-    const overheadExpenses  = nonMileageExpenses.filter(e => e.jobId == null  && e.category !== "Owner Draw");
+    const directJobExpenses = nonMileageExpenses.filter(e => e.jobId != null && !["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""));
+    const overheadExpenses  = nonMileageExpenses.filter(e => e.jobId == null  && !["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""));
     const directJobCosts = directJobExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const overheadCosts  = overheadExpenses.reduce((s, e)  => s + parseFloat(e.amount ?? "0"), 0);
     const grossMargin = paidRevenue - directJobCosts;
@@ -610,7 +613,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     }
 
     const ownerDrawRows = nonMileageExpenses
-      .filter(e => e.category === "Owner Draw")
+      .filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""))
       .map(e => ({ id: e.id, date: e.date, amount: parseFloat(e.amount ?? "0"), description: e.description, notes: e.notes ?? null, vendor: e.vendor ?? null }))
       .sort((a, b) => b.date.localeCompare(a.date));
 
@@ -941,12 +944,13 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const grossRevenue  = grossReceipts + otherIncome;
 
     // All expenses count toward P&L categories (excludeFromNetProfit only affects job panels).
-    // Owner Draw is excluded: it's a distribution of owner equity, not a deductible expense.
+    // Owner distributions are excluded: they are equity distributions, not deductible expenses.
+    // Covers "Owner Draw" (legacy), "Owner Compensation" (current), "Owner Withdrawal" (equity).
     const buckets: Record<string, number> = {};
     let ownerDrawTotal = 0;
     for (const e of expRows) {
       const cat = e.category || "Other";
-      if (cat === "Owner Draw") {
+      if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(cat)) {
         ownerDrawTotal += parseFloat(e.amount ?? "0");
         continue;
       }
@@ -1130,9 +1134,9 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     const otherIncomeTotal = otherIncomeRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const totalRevenue = grossReceipts + otherIncomeTotal;
 
-    // Owner Draw is a personal distribution — not a Schedule C deduction.
-    // Exclude it here so totalExpenses matches the expensesBySchedC breakdown total.
-    const nonMileageExpenses = expenses.filter(e => e.category !== "mileage" && e.category !== "Owner Draw");
+    // Owner distributions are personal — not Schedule C deductions.
+    // Exclude all three variants so totalExpenses matches the expensesBySchedC breakdown total.
+    const nonMileageExpenses = expenses.filter(e => e.category !== "mileage" && !["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""));
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
 
     const totalMiles = mileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
@@ -1273,8 +1277,8 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       items: { date: string; description: string; vendor: string | null; amount: number }[];
     }>();
     for (const e of nonMileageExpenses) {
-      // Owner Draw is a personal distribution — never a Schedule C deduction.
-      if (e.category === "Owner Draw") continue;
+      // Owner distributions are personal — never a Schedule C deduction.
+      if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? "")) continue;
       const cat = (e.category ?? "other").toLowerCase();
       const line = SCHED_C_MAP[cat] ?? "Line 27a – Other";
       const existing = catMap.get(line) ?? { schedCLine: line, amount: 0, count: 0, items: [] };
@@ -1552,7 +1556,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     const nonMileageExpenses = expenses.filter(e => e.category !== "mileage");
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const ownerDrawTotal = nonMileageExpenses
-      .filter(e => e.category === "Owner Draw")
+      .filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""))
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const businessMileageDeduction = mileageLogs
       .filter(m => m.classification === "business")
