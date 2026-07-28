@@ -4,9 +4,10 @@ import {
   plaidConnectionsTable,
   bankImportBatchesTable,
   bankTransactionsTable,
+  bankTransactionInvoiceLinksTable,
 } from "@workspace/db";
-import { expensesTable, otherIncomeTable, invoicesTable, subPaymentRecordsTable, subcontractorsTable, jobsTable } from "@workspace/db/schema";
-import { eq, like, isNotNull, isNull, and, gte, lte, notInArray, sql } from "drizzle-orm";
+import { expensesTable, otherIncomeTable, invoicesTable, clientsTable, subPaymentRecordsTable, subcontractorsTable, jobsTable } from "@workspace/db/schema";
+import { eq, like, isNotNull, isNull, and, gte, lte, notInArray, sql, inArray } from "drizzle-orm";
 import { getSuggestions, attemptAutoMatch } from "../lib/matchingEngine.js";
 
 import { getPlaidClient, isPlaidConfigured, extractPlaidError } from "../lib/plaid.js";
@@ -281,6 +282,7 @@ router.get("/transactions", wrapAsync(async (req, res) => {
       matchedExpenseVendor: expensesTable.vendor,
       matchedExpenseAmount: expensesTable.amount,
       matchedExpenseJobId: expensesTable.jobId,
+      investmentTransferId: bankTransactionsTable.investmentTransferId,
     })
     .from(bankTransactionsTable)
     .leftJoin(expensesTable, eq(bankTransactionsTable.matchedExpenseId, expensesTable.id))
@@ -292,7 +294,38 @@ router.get("/transactions", wrapAsync(async (req, res) => {
     )
     .orderBy(bankTransactionsTable.date);
 
-  res.json(txns);
+  // Fetch multi-invoice links for matched credit transactions
+  const matchedTxnIds = txns
+    .filter(t => t.status === "matched" && t.matchedInvoiceId != null)
+    .map(t => t.id);
+
+  let multiInvoiceMap = new Map<number, Array<{ invoiceNumber: string | null; total: string; clientName: string | null }>>();
+  if (matchedTxnIds.length > 0) {
+    const links = await db
+      .select({
+        bankTransactionId: bankTransactionInvoiceLinksTable.bankTransactionId,
+        invoiceNumber: invoicesTable.invoiceNumber,
+        total: invoicesTable.total,
+        clientName: clientsTable.name,
+      })
+      .from(bankTransactionInvoiceLinksTable)
+      .leftJoin(invoicesTable, eq(bankTransactionInvoiceLinksTable.invoiceId, invoicesTable.id))
+      .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
+      .where(inArray(bankTransactionInvoiceLinksTable.bankTransactionId, matchedTxnIds));
+
+    for (const link of links) {
+      const arr = multiInvoiceMap.get(link.bankTransactionId) ?? [];
+      arr.push({ invoiceNumber: link.invoiceNumber, total: link.total ?? "0", clientName: link.clientName });
+      multiInvoiceMap.set(link.bankTransactionId, arr);
+    }
+  }
+
+  const result = txns.map(t => ({
+    ...t,
+    linkedInvoices: multiInvoiceMap.get(t.id) ?? null,
+  }));
+
+  res.json(result);
 }));
 
 router.post("/sync", wrapAsync(async (req, res) => {
@@ -715,6 +748,119 @@ router.get("/transactions/:txnId/suggestions", wrapAsync(async (req, res) => {
   res.json(suggestions);
 }));
 
+router.post("/transactions/:txnId/match-invoices", wrapAsync(async (req, res) => {
+  const txnId = parseInt(String(req.params.txnId), 10);
+  if (isNaN(txnId)) {
+    res.status(400).json({ error: "Invalid transaction ID" });
+    return;
+  }
+
+  const { invoiceIds } = req.body as { invoiceIds?: number[] };
+  if (!Array.isArray(invoiceIds) || invoiceIds.length < 2) {
+    res.status(400).json({ error: "invoiceIds must be an array of at least 2 invoice IDs" });
+    return;
+  }
+  if (invoiceIds.some(id => isNaN(Number(id)))) {
+    res.status(400).json({ error: "All invoiceIds must be valid numbers" });
+    return;
+  }
+  const ids = invoiceIds.map(Number);
+
+  const [txn] = await db
+    .select()
+    .from(bankTransactionsTable)
+    .where(eq(bankTransactionsTable.id, txnId));
+
+  if (!txn) {
+    res.status(404).json({ error: "Transaction not found" });
+    return;
+  }
+  if (txn.status === "matched") {
+    res.status(409).json({ error: "Transaction is already matched" });
+    return;
+  }
+  if (txn.status === "investment_transfer") {
+    res.status(409).json({ error: "Transaction is already categorized as an investment transfer" });
+    return;
+  }
+  if (txn.transactionType !== "credit") {
+    res.status(400).json({ error: "Only credit (deposit) transactions can be matched to invoices" });
+    return;
+  }
+
+  // Fetch all requested invoices
+  const invoices = await db
+    .select({ id: invoicesTable.id, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid, status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber })
+    .from(invoicesTable)
+    .where(inArray(invoicesTable.id, ids));
+
+  if (invoices.length !== ids.length) {
+    res.status(404).json({ error: "One or more invoices not found" });
+    return;
+  }
+
+  // Reject any invoice that is not in an open/payable state.
+  // Invoices already marked paid must not be re-matched (would corrupt payment history).
+  const PAYABLE_STATUSES = ["approved", "sent", "partiallyPaid", "overdue"] as const;
+  const nonPayable = invoices.filter(inv => !PAYABLE_STATUSES.includes(inv.status as any));
+  if (nonPayable.length > 0) {
+    const nums = nonPayable.map(inv => inv.invoiceNumber ?? `#${inv.id}`).join(", ");
+    res.status(400).json({
+      error: `Cannot match invoices in their current state: ${nums}. Only approved, sent, partial, or overdue invoices can be matched to a deposit.`,
+    });
+    return;
+  }
+
+  const txnAmt = parseFloat(txn.amount ?? "0");
+  // Use remaining balance (total − amountPaid) so partiallyPaid invoices contribute correctly
+  const invoiceRemaining = invoices.reduce((sum, inv) => {
+    const total = parseFloat(inv.total ?? "0");
+    const paid  = parseFloat(inv.amountPaid ?? "0");
+    return sum + Math.max(total - paid, 0);
+  }, 0);
+  const diff = Math.abs(txnAmt - invoiceRemaining);
+
+  if (diff > 0.05) {
+    res.status(400).json({
+      error: `Outstanding invoice balances (${invoiceRemaining.toFixed(2)}) do not match the deposit amount (${txnAmt.toFixed(2)}). Difference: $${diff.toFixed(2)}.`,
+    });
+    return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    // Re-check status inside transaction
+    const [fresh] = await tx.select({ status: bankTransactionsTable.status }).from(bankTransactionsTable).where(eq(bankTransactionsTable.id, txnId));
+    if (fresh?.status === "matched") return { conflict: true } as const;
+
+    // Mark each invoice fully paid (deposit covers the remaining balance)
+    for (const inv of invoices) {
+      const total = parseFloat(inv.total ?? "0");
+      await tx.update(invoicesTable)
+        .set({ status: "paid", amountPaid: String(total) })
+        .where(eq(invoicesTable.id, inv.id));
+    }
+
+    // Insert junction table rows
+    await tx.insert(bankTransactionInvoiceLinksTable).values(
+      ids.map(invId => ({ bankTransactionId: txnId, invoiceId: invId }))
+    );
+
+    // Mark transaction as matched (use first invoice as primary matchedInvoiceId for backward compat)
+    await tx.update(bankTransactionsTable)
+      .set({ status: "matched", matchedInvoiceId: ids[0] })
+      .where(eq(bankTransactionsTable.id, txnId));
+
+    return { ok: true, invoiceIds: ids };
+  });
+
+  if (result && "conflict" in result) {
+    res.status(409).json({ error: "Transaction is already matched" });
+    return;
+  }
+
+  res.status(201).json(result);
+}));
+
 router.post("/transactions/:txnId/match-expense", wrapAsync(async (req, res) => {
   const txnId = parseInt(String(req.params.txnId), 10);
   if (isNaN(txnId)) {
@@ -918,6 +1064,11 @@ router.post("/transactions/:txnId/unmatch", wrapAsync(async (req, res) => {
   await db.update(subPaymentRecordsTable)
     .set({ bankTransactionId: null })
     .where(eq(subPaymentRecordsTable.bankTransactionId, txnId));
+
+  // Clear any multi-invoice links as well
+  await db
+    .delete(bankTransactionInvoiceLinksTable)
+    .where(eq(bankTransactionInvoiceLinksTable.bankTransactionId, txnId));
 
   const [updated] = await db
     .update(bankTransactionsTable)

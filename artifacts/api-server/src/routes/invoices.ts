@@ -397,19 +397,41 @@ router.post("/:id/accept", async (req, res) => {
       // Assign next sequential number if one hasn't been given yet.
       // Uses a single atomic UPDATE … RETURNING so concurrent accepts on
       // different invoices can never read the same counter value.
+      // If the generated number already exists (e.g. counter drifted below
+      // previously-cancelled invoices), we advance the counter and retry.
       if (!current.invoiceNumber) {
-        const result = await tx.execute(
-          sql`UPDATE settings
-              SET invoice_next_number = invoice_next_number + 1
-              WHERE id = (SELECT id FROM settings LIMIT 1)
-              RETURNING invoice_next_number - 1 AS num, invoice_prefix AS prefix`
-        );
-        const row = result.rows[0] as { num: number; prefix: string | null } | undefined;
-        const invoiceNumber = `${row?.prefix ?? "INV-2026-"}${row?.num ?? 1001}`;
-        await tx
-          .update(invoicesTable)
-          .set({ invoiceNumber })
-          .where(eq(invoicesTable.id, id));
+        let assigned = false;
+        let attempts = 0;
+        while (!assigned && attempts < 20) {
+          attempts++;
+          const result = await tx.execute(
+            sql`UPDATE settings
+                SET invoice_next_number = invoice_next_number + 1
+                WHERE id = (SELECT id FROM settings LIMIT 1)
+                RETURNING invoice_next_number - 1 AS num, invoice_prefix AS prefix`
+          );
+          const row = result.rows[0] as { num: number; prefix: string | null } | undefined;
+          const invoiceNumber = `${row?.prefix ?? "INV-2026-"}${row?.num ?? 1001}`;
+
+          // Check if this number is already taken (can happen when counter drifts below max)
+          const existingRows = await tx
+            .select({ id: invoicesTable.id })
+            .from(invoicesTable)
+            .where(eq(invoicesTable.invoiceNumber, invoiceNumber));
+          const existing = existingRows[0];
+
+          if (!existing) {
+            await tx
+              .update(invoicesTable)
+              .set({ invoiceNumber })
+              .where(eq(invoicesTable.id, id));
+            assigned = true;
+          }
+          // else: number taken — loop and take the next counter slot
+        }
+        if (!assigned) {
+          throw Object.assign(new Error("Could not assign a unique invoice number after 20 attempts"), { code: 500 });
+        }
       }
 
       await tx

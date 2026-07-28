@@ -34,3 +34,17 @@ export const bankTransactionsTable = pgTable("bank_transactions", {
 
 export type BankImportBatch = typeof bankImportBatchesTable.$inferSelect;
 export type BankTransaction = typeof bankTransactionsTable.$inferSelect;
+
+/** Junction table: one bank deposit ↔ many invoices (combined payment) */
+export const bankTransactionInvoiceLinksTable = pgTable("bank_transaction_invoice_links", {
+  id: serial("id").primaryKey(),
+  bankTransactionId: integer("bank_transaction_id")
+    .notNull()
+    .references(() => bankTransactionsTable.id, { onDelete: "cascade" }),
+  invoiceId: integer("invoice_id")
+    .notNull()
+    .references(() => invoicesTable.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type BankTransactionInvoiceLink = typeof bankTransactionInvoiceLinksTable.$inferSelect;

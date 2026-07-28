@@ -95,6 +95,12 @@ interface PlaidBalance {
   cachedAt: string | null;
 }
 
+interface LinkedInvoiceSummary {
+  invoiceNumber: string | null;
+  total: string;
+  clientName: string | null;
+}
+
 interface PlaidTransaction {
   id: number;
   date: string;
@@ -112,6 +118,7 @@ interface PlaidTransaction {
   matchedExpenseAmount: string | null;
   matchedExpenseJobId: number | null;
   investmentTransferId: number | null;
+  linkedInvoices: LinkedInvoiceSummary[] | null;
 }
 
 interface InvestmentAccountOption {
@@ -274,7 +281,7 @@ export default function Banking() {
     notes: "",
   });
 
-  // Match to existing expense
+  // Match to existing expense / invoice
   const [matchingTxn, setMatchingTxn] = useState<PlaidTransaction | null>(null);
   const [matchExpenseSearch, setMatchExpenseSearch] = useState("");
   const [showAllExpenses, setShowAllExpenses] = useState(false);
@@ -282,6 +289,11 @@ export default function Banking() {
   // Split sub-payment matching
   const [splitSubPayMode, setSplitSubPayMode] = useState(false);
   const [selectedSprIds, setSelectedSprIds] = useState<Set<number>>(new Set());
+
+  // Multi-invoice matching state
+  const [showMultiInvoice, setShowMultiInvoice] = useState(false);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<number>>(new Set());
+  const [multiInvoiceSearch, setMultiInvoiceSearch] = useState("");
 
   // Banking settings (#1317)
   const [showBankingSettings, setShowBankingSettings] = useState(false);
@@ -398,7 +410,7 @@ export default function Banking() {
   const { data: allInvoices } = useQuery<UnpaidInvoice[]>({
     queryKey: ["invoices-all"],
     queryFn: () => apiFetch<UnpaidInvoice[]>("/api/invoices"),
-    enabled: !!incomeFilingTxn,
+    enabled: !!incomeFilingTxn || (!!matchingTxn && matchingTxn.transactionType === "credit"),
     staleTime: 60_000,
   });
 
@@ -578,6 +590,25 @@ export default function Banking() {
       setMatchingTxn(null);
       setMatchExpenseSearch("");
       toast({ title: "Transaction matched", description: "Bank transaction linked to existing expense." });
+    },
+    onError: (err: Error) => toast({ title: "Match failed", description: err.message, variant: "destructive" }),
+  });
+
+  const matchMultipleInvoicesMutation = useMutation({
+    mutationFn: ({ txnId, invoiceIds }: { txnId: number; invoiceIds: number[] }) =>
+      apiFetch<{ ok: boolean; invoiceIds: number[] }>(`/api/plaid/transactions/${txnId}/match-invoices`, {
+        method: "POST",
+        body: JSON.stringify({ invoiceIds }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoices-all"] });
+      setMatchingTxn(null);
+      setShowMultiInvoice(false);
+      setSelectedInvoiceIds(new Set());
+      setMultiInvoiceSearch("");
+      toast({ title: "Invoices matched", description: "Bank deposit linked to multiple invoices." });
     },
     onError: (err: Error) => toast({ title: "Match failed", description: err.message, variant: "destructive" }),
   });
@@ -1132,6 +1163,37 @@ export default function Banking() {
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
+                                ) : txn.linkedInvoices && txn.linkedInvoices.length >= 2 ? (
+                                  <TooltipProvider delayDuration={200}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium cursor-default max-w-[200px]">
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                          <span className="truncate">
+                                            Covers {txn.linkedInvoices.length} invoices
+                                          </span>
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="left" className="max-w-xs p-3 text-left space-y-1.5">
+                                        <p className="font-semibold text-sm">Combined payment</p>
+                                        {txn.linkedInvoices.map((inv, i) => (
+                                          <div key={i} className="flex items-center justify-between gap-3 text-xs">
+                                            <span className="font-medium">{inv.invoiceNumber ?? `Invoice #${i + 1}`}</span>
+                                            <span className="tabular-nums">{formatCurrency(parseFloat(inv.total))}</span>
+                                          </div>
+                                        ))}
+                                        <div className="border-t pt-1 flex items-center justify-between text-xs font-semibold">
+                                          <span>Total</span>
+                                          <span className="tabular-nums">{formatCurrency(txn.linkedInvoices.reduce((s, inv) => s + parseFloat(inv.total), 0))}</span>
+                                        </div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : txn.matchedInvoiceId ? (
+                                  <span className="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                    Invoice matched ✓
+                                  </span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground font-medium">
                                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
@@ -1688,7 +1750,7 @@ export default function Banking() {
       </Sheet>
 
       {/* ── Match to Expense Sheet ───────────────────────────────────────────── */}
-      <Sheet open={!!matchingTxn} onOpenChange={(open) => { if (!open) { setMatchingTxn(null); setMatchExpenseSearch(""); setShowAllExpenses(false); } }}>
+      <Sheet open={!!matchingTxn} onOpenChange={(open) => { if (!open) { setMatchingTxn(null); setMatchExpenseSearch(""); setShowAllExpenses(false); setShowMultiInvoice(false); setSelectedInvoiceIds(new Set()); setMultiInvoiceSearch(""); } }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
@@ -1716,7 +1778,149 @@ export default function Banking() {
               </div>
             )}
 
-            {!showAllExpenses ? (
+            {showMultiInvoice ? (
+              /* ── Multi-invoice selection view ── */
+              (() => {
+                const txnAmt = matchingTxn ? parseFloat(matchingTxn.amount) : 0;
+                const selectedInvoices = allInvoices?.filter(inv => selectedInvoiceIds.has(inv.id)) ?? [];
+                // Use remaining balance (total − amountPaid) so partial invoices contribute correctly
+                const invRemaining = (inv: UnpaidInvoice) =>
+                  Math.max(parseFloat(inv.total) - parseFloat(inv.amountPaid ?? "0"), 0);
+                const selectedTotal = selectedInvoices.reduce((sum, inv) => sum + invRemaining(inv), 0);
+                const diff = Math.abs(txnAmt - selectedTotal);
+                const totalMatches = selectedInvoiceIds.size >= 2 && diff < 0.05;
+                const PAYABLE_STATUSES = ["approved", "sent", "partiallyPaid", "overdue"];
+                const searchLower = multiInvoiceSearch.toLowerCase();
+                const filteredInvoices = (allInvoices ?? [])
+                  .filter(inv => PAYABLE_STATUSES.includes(inv.status))
+                  .filter(inv =>
+                    !searchLower ||
+                    (inv.invoiceNumber ?? "").toLowerCase().includes(searchLower) ||
+                    (inv.clientName ?? "").toLowerCase().includes(searchLower)
+                  );
+
+                return (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <button
+                        type="button"
+                        className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        onClick={() => { setShowMultiInvoice(false); setSelectedInvoiceIds(new Set()); setMultiInvoiceSearch(""); }}
+                      >
+                        ← Back to suggestions
+                      </button>
+                      <span className="text-xs text-muted-foreground">
+                        Deposit: <span className="font-semibold">{formatCurrency(txnAmt)}</span>
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      Select 2 or more invoices whose totals add up to the deposit amount.
+                    </p>
+
+                    <Input
+                      placeholder="Search by invoice # or client…"
+                      value={multiInvoiceSearch}
+                      onChange={(e) => setMultiInvoiceSearch(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                      {filteredInvoices.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">No invoices found.</p>
+                      ) : filteredInvoices.map(inv => {
+                        const isSelected = selectedInvoiceIds.has(inv.id);
+                        const remaining = invRemaining(inv);
+                        const isPartial = inv.status === "partiallyPaid";
+                        return (
+                          <button
+                            key={inv.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedInvoiceIds(prev => {
+                                const next = new Set(prev);
+                                if (next.has(inv.id)) next.delete(inv.id);
+                                else next.add(inv.id);
+                                return next;
+                              });
+                            }}
+                            className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${
+                              isSelected
+                                ? "border-emerald-500 bg-emerald-50"
+                                : "border-input hover:bg-muted/40"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center text-white text-[10px] font-bold ${isSelected ? "bg-emerald-500 border-emerald-500" : "border-muted-foreground/40"}`}>
+                                    {isSelected ? "✓" : ""}
+                                  </span>
+                                  <p className="text-sm font-medium truncate">
+                                    {inv.invoiceNumber}
+                                    {inv.clientName ? ` — ${inv.clientName}` : ""}
+                                  </p>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5 pl-6">
+                                  {isPartial
+                                    ? `partial · ${formatCurrency(remaining)} remaining`
+                                    : inv.dueDate
+                                      ? `due ${new Date(inv.dueDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+                                      : "unpaid"}
+                                </p>
+                              </div>
+                              <span className={`text-sm font-semibold tabular-nums shrink-0 ${isSelected ? "text-emerald-700" : ""}`}>
+                                {formatCurrency(remaining)}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {selectedInvoiceIds.size > 0 && (
+                      <div className={`rounded-lg px-3 py-2.5 text-sm font-medium flex items-center justify-between ${
+                        totalMatches
+                          ? "bg-emerald-50 border border-emerald-300 text-emerald-800"
+                          : "bg-amber-50 border border-amber-200 text-amber-800"
+                      }`}>
+                        <span>
+                          {selectedInvoiceIds.size} invoice{selectedInvoiceIds.size !== 1 ? "s" : ""} selected
+                        </span>
+                        <span className="tabular-nums font-bold">
+                          {formatCurrency(selectedTotal)}
+                          {totalMatches ? " ✓" : ` (${diff < txnAmt ? "−" : "+"}${formatCurrency(diff)} off)`}
+                        </span>
+                      </div>
+                    )}
+
+                    <Button
+                      className="w-full"
+                      disabled={!totalMatches || matchMultipleInvoicesMutation.isPending}
+                      onClick={() => {
+                        if (!matchingTxn || !totalMatches) return;
+                        matchMultipleInvoicesMutation.mutate({
+                          txnId: matchingTxn.id,
+                          invoiceIds: Array.from(selectedInvoiceIds),
+                        });
+                      }}
+                    >
+                      {matchMultipleInvoicesMutation.isPending ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                          Linking…
+                        </>
+                      ) : (
+                        <>
+                          <Link2 className="w-4 h-4 mr-2" />
+                          Link {selectedInvoiceIds.size} Invoice{selectedInvoiceIds.size !== 1 ? "s" : ""}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                );
+              })()
+            ) : !showAllExpenses ? (
               /* ── Smart suggestions view ── */
               <div className="space-y-3">
                 {suggestionsLoading ? (
@@ -1853,7 +2057,7 @@ export default function Banking() {
                   </>
                 )}
 
-                {/* ── Split sub-payment matching ── */}
+                {/* ── Split sub-payment matching (debit only) ── */}
                 {matchingTxn?.transactionType === "debit" && !splitSubPayMode && (
                   <button
                     type="button"
@@ -1957,13 +2161,27 @@ export default function Banking() {
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  className="w-full text-sm text-muted-foreground hover:text-foreground py-2 border border-dashed rounded-lg hover:border-input transition-colors"
-                  onClick={() => setShowAllExpenses(true)}
-                >
-                  Browse all unmatched expenses
-                </button>
+                {/* Credit: match multiple invoices; Debit: browse all expenses */}
+                {matchingTxn?.transactionType === "credit" ? (
+                  <button
+                    type="button"
+                    className="w-full text-sm text-muted-foreground hover:text-foreground py-2 border border-dashed rounded-lg hover:border-input transition-colors"
+                    onClick={() => { setShowMultiInvoice(true); setShowAllExpenses(false); }}
+                  >
+                    <span className="flex items-center justify-center gap-1.5">
+                      <Receipt className="w-3.5 h-3.5" />
+                      Covers multiple invoices
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="w-full text-sm text-muted-foreground hover:text-foreground py-2 border border-dashed rounded-lg hover:border-input transition-colors"
+                    onClick={() => setShowAllExpenses(true)}
+                  >
+                    Browse all unmatched expenses
+                  </button>
+                )}
               </div>
             ) : (
               /* ── Browse all expenses view ── */

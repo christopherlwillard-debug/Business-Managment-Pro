@@ -340,10 +340,12 @@ describe("POST /:id/accept", () => {
     // Inside the transaction:
     // 1) tx.select status check (invoicesTable .where)
     // 2) tx.execute atomic UPDATE … RETURNING (settings counter)
+    // 3) tx.select collision check — empty means number is free
     // After transaction:
-    // 3) buildInvoiceQuery .where
+    // 4) buildInvoiceQuery .where
     h.selectQueue.push(
       [{ status: "draft", invoiceNumber: null }],
+      [],  // collision check: "INV-1001" is not taken
       [fakeInvoice({ status: "approved", invoiceNumber: "INV-1001" })],
     );
     // The atomic counter UPDATE RETURNING resolves to { rows: [{ num, prefix }] }

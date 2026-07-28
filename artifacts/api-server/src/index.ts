@@ -10,7 +10,7 @@ import { startBidSyncJob } from "./jobs/bidSync.js";
 import { startComplianceReminderJob } from "./jobs/complianceReminders.js";
 import { db } from "@workspace/db";
 import { businessesTable, mileageLogsTable, expensesTable, clientsTable, clientBillingProfilesTable } from "@workspace/db/schema";
-import { invoicesTable, jobSubcontractorsTable, subPaymentRecordsTable } from "@workspace/db/schema";
+import { invoicesTable, jobSubcontractorsTable, subPaymentRecordsTable, settingsTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, asc, sql, ilike, eq } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
@@ -224,8 +224,43 @@ async function recomputePartialSubPaymentStatuses(): Promise<void> {
   }
 }
 
+/**
+ * Advance the invoice counter past any existing invoice numbers so
+ * the next accept never collides with a previously-used number
+ * (e.g. after a counter reset or cancelled-invoice accumulation).
+ */
+async function syncInvoiceCounter(): Promise<void> {
+  try {
+    // Find the highest numeric suffix from any existing invoice number
+    const rows = await db
+      .select({ invoiceNumber: invoicesTable.invoiceNumber })
+      .from(invoicesTable)
+      .where(isNotNull(invoicesTable.invoiceNumber));
+
+    let maxNum = 0;
+    for (const row of rows) {
+      const m = row.invoiceNumber?.match(/(\d+)$/);
+      if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+    }
+
+    if (maxNum === 0) return; // no existing invoices
+
+    const [settings] = await db.select({ invoiceNextNumber: settingsTable.invoiceNextNumber }).from(settingsTable).limit(1);
+    const current = settings?.invoiceNextNumber ?? 1001;
+
+    if (current <= maxNum) {
+      const newCounter = maxNum + 1;
+      await db.update(settingsTable).set({ invoiceNextNumber: newCounter });
+      console.log(`[startup] syncInvoiceCounter: advanced counter ${current} → ${newCounter} (max existing: ${maxNum})`);
+    }
+  } catch (err) {
+    console.error("[startup] syncInvoiceCounter failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await clearDraftInvoiceNumbers();
+  await syncInvoiceCounter();
   await recomputePartialSubPaymentStatuses();
   await seedDefaultBusinesses();
 
