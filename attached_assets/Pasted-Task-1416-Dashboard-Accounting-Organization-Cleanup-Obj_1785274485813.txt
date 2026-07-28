@@ -1,0 +1,265 @@
+Task #1416 – Dashboard & Accounting Organization Cleanup
+
+Objective
+
+This task is an organization and usability improvement only.
+
+Do NOT redesign the application.
+Do NOT add new APIs.
+Do NOT change calculations.
+Do NOT change business logic.
+Do NOT remove existing functionality.
+
+The goal is to eliminate duplicate information, group related information together, reduce unnecessary scrolling, and make the Dashboard easier to use as the primary business command center.
+
+------------------------------------------------------------
+
+Dashboard Layout
+
+Reorganize the Dashboard into the following sections in this exact order.
+
+1. Quick Actions
+2. Today's Alerts
+3. Business Snapshot
+4. Profit
+5. Subcontractor Payments
+6. My Pay
+7. Revenue vs Expenses
+
+------------------------------------------------------------
+
+Section 1 – Quick Actions (NEW)
+
+Add a new Quick Actions section directly below the Dashboard header.
+
+This section should provide one-tap access to the most commonly used actions.
+
+Display as a clean 2x2 grid using existing functionality only.
+
+Actions:
+
+• Scan Receipt
+Launch the existing AI receipt scanning workflow.
+
+• Add Expense
+Launch the existing manual Add Expense screen.
+
+• New Job
+Launch the existing New Job workflow.
+
+• Record Owner Pay
+Launch the existing Owner Pay dialog.
+
+Requirements
+
+• Large touch-friendly buttons.
+• Equal-sized cards.
+• Rounded corners matching the Dashboard.
+• Icon above title.
+• Clean spacing.
+• No new APIs.
+• No new business logic.
+
+------------------------------------------------------------
+
+Section 2 – Today's Alerts
+
+Leave this section unchanged.
+
+Include:
+
+• Compliance
+• Overdue Invoices
+• Active Jobs
+• Existing alert cards
+
+No logic changes.
+
+------------------------------------------------------------
+
+Section 3 – Business Snapshot
+
+Group all business overview metrics together.
+
+Include existing metrics only.
+
+Examples:
+
+• Revenue
+• Expenses
+• Active Jobs
+• Overdue Invoices
+• Collections
+
+Do not add new metrics.
+
+Purpose:
+
+Quickly answer:
+
+"How is my business doing today?"
+
+------------------------------------------------------------
+
+Section 4 – Profit
+
+Replace the two existing profit cards with one combined Profit card.
+
+Current:
+
+• Net Profit – Operational (YTD)
+
+• Your Actual Profit (YTD)
+
+Replace with one card.
+
+Layout
+
+Profit
+
+Operational Profit
+
+$X,XXX.XX
+
+Less Outstanding Subcontractor Payments
+
+-$X,XXX.XX
+
+────────────────────────
+
+Actual Profit
+
+$X,XXX.XX
+
+Small helper text:
+
+"Actual Profit represents Operational Profit after all unpaid subcontractor obligations have been paid."
+
+No calculations change.
+
+Presentation only.
+
+------------------------------------------------------------
+
+Section 5 – Subcontractor Payments
+
+Create one clearly labeled section.
+
+Group together:
+
+• Total Paid
+• Total Owed
+• Remaining Balance
+
+Include "View Details" if already available.
+
+This section should naturally follow the Profit section because subcontractors are paid before owner compensation.
+
+------------------------------------------------------------
+
+Section 6 – My Pay
+
+Keep My Pay on the Dashboard.
+
+Simplify the card.
+
+Keep:
+
+• Earned
+• Taken
+• Owed
+• Record Owner Pay button
+
+Remove:
+
+• Recent Owner Pay transaction list
+
+Instead add:
+
+View Full History →
+
+This should navigate directly to the Accounting & Tax Owner Pay section.
+
+The Dashboard should provide a summary.
+
+Accounting should provide the detailed history.
+
+------------------------------------------------------------
+
+Section 7 – Revenue vs Expenses
+
+Leave the existing Revenue vs Expenses chart below My Pay.
+
+No chart changes.
+
+No calculation changes.
+
+------------------------------------------------------------
+
+Accounting
+
+No structural changes.
+
+Accounting remains the detailed financial workspace.
+
+Continue to keep:
+
+• Owner Pay History
+• Owner Draw History
+• Business Reserve
+• Owner Equity
+• Banking
+• Expenses
+• Profit & Loss
+• Reports
+• Revenue by City
+• Cost Breakdown
+• Other Income
+• Tax Reports
+
+------------------------------------------------------------
+
+Success Criteria
+
+• Dashboard begins with Quick Actions for common daily tasks.
+• No duplicate Owner Pay history on the Dashboard.
+• Operational Profit and Actual Profit are combined into one Profit card.
+• Subcontractor payment information is grouped into one section.
+• My Pay remains on the Dashboard as a summary only.
+• Revenue vs Expenses chart remains unchanged.
+• Dashboard follows a logical workflow:
+
+Quick Actions
+↓
+
+Today's Alerts
+↓
+
+Business Snapshot
+↓
+
+Profit
+↓
+
+Subcontractor Payments
+↓
+
+My Pay
+↓
+
+Revenue vs Expenses
+
+• Zero API changes.
+• Zero calculation changes.
+• Zero business logic changes.
+• Existing functionality remains unchanged.
+
+Out of Scope
+
+• New APIs
+• Business logic changes
+• Accounting redesign
+• Dashboard V2 redesign
+• New charts
+• New calculations
+• Navigation changes
