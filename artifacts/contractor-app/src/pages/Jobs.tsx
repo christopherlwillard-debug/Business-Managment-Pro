@@ -1545,8 +1545,8 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                       const paid = p.amountPaid ?? 0;
                       const appliedAdvances = (p.paymentHistory ?? []).reduce((s, h) => s + (h.advanceAmount ?? 0), 0);
                       const bal  = Math.max(0, owed - paid - appliedAdvances);
-                      const settled = p.paymentStatus === "paid";
-                      const isPartial = p.paymentStatus === "partial";
+                      const settled  = p.paymentStatus === "paid" && bal <= 0.005;
+                      const isPartial = !settled && (p.paymentStatus === "partial" || bal > 0.005);
                       const borderCls = settled ? "bg-emerald-50/40" : isPartial ? "bg-amber-50/40" : "";
                       const history = p.paymentHistory ?? [];
                       return (
