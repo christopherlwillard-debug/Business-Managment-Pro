@@ -5,7 +5,7 @@ import {
   bankImportBatchesTable,
   bankTransactionsTable,
 } from "@workspace/db";
-import { expensesTable, otherIncomeTable, invoicesTable, subPaymentRecordsTable } from "@workspace/db/schema";
+import { expensesTable, otherIncomeTable, invoicesTable, subPaymentRecordsTable, subcontractorsTable, jobsTable } from "@workspace/db/schema";
 import { eq, like, isNotNull, isNull, and, gte, lte, notInArray, sql } from "drizzle-orm";
 import { getSuggestions, attemptAutoMatch } from "../lib/matchingEngine.js";
 
@@ -785,6 +785,70 @@ router.post("/transactions/:txnId/match-expense", wrapAsync(async (req, res) => 
   res.json(result);
 }));
 
+// ── GET /sub-payments/unlinked — list all sub payment records not yet linked to a bank transaction ──
+router.get("/sub-payments/unlinked", wrapAsync(async (req, res) => {
+  const rows = await db
+    .select({
+      id: subPaymentRecordsTable.id,
+      amount: subPaymentRecordsTable.amount,
+      paymentDate: subPaymentRecordsTable.paymentDate,
+      description: subPaymentRecordsTable.description,
+      subcontractorName: subcontractorsTable.name,
+      jobTitle: jobsTable.title,
+    })
+    .from(subPaymentRecordsTable)
+    .leftJoin(subcontractorsTable, eq(subPaymentRecordsTable.subcontractorId, subcontractorsTable.id))
+    .leftJoin(jobsTable, eq(subPaymentRecordsTable.jobId, jobsTable.id))
+    .where(isNull(subPaymentRecordsTable.bankTransactionId))
+    .orderBy(subPaymentRecordsTable.paymentDate);
+  res.json(rows);
+}));
+
+// ── POST /transactions/:txnId/split-match-sub-payments — link multiple sub payment records to one bank txn ──
+router.post("/transactions/:txnId/split-match-sub-payments", wrapAsync(async (req, res) => {
+  const txnId = parseInt(String(req.params.txnId), 10);
+  if (isNaN(txnId)) { res.status(400).json({ error: "Invalid transaction ID" }); return; }
+
+  const { subPaymentIds } = req.body as { subPaymentIds?: number[] };
+  if (!Array.isArray(subPaymentIds) || subPaymentIds.length < 2) {
+    res.status(400).json({ error: "subPaymentIds must be an array of at least 2 IDs" });
+    return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const [txn] = await tx.select().from(bankTransactionsTable).where(eq(bankTransactionsTable.id, txnId));
+    if (!txn) return { notFound: true } as const;
+    if (txn.status === "matched") return { conflict: true } as const;
+
+    // Verify all sub payment records exist and are unlinked
+    const sprs = await tx
+      .select({ id: subPaymentRecordsTable.id, amount: subPaymentRecordsTable.amount, bankTransactionId: subPaymentRecordsTable.bankTransactionId })
+      .from(subPaymentRecordsTable)
+      .where(sql`${subPaymentRecordsTable.id} = ANY(${subPaymentIds})`);
+
+    if (sprs.length !== subPaymentIds.length) return { sprNotFound: true } as const;
+    const alreadyLinked = sprs.find(s => s.bankTransactionId != null);
+    if (alreadyLinked) return { alreadyLinked: alreadyLinked.id } as const;
+
+    // Update all sub payment records to reference this bank transaction
+    await tx.update(subPaymentRecordsTable)
+      .set({ bankTransactionId: txnId })
+      .where(sql`${subPaymentRecordsTable.id} = ANY(${subPaymentIds})`);
+
+    const [updated] = await tx.update(bankTransactionsTable)
+      .set({ status: "matched" })
+      .where(eq(bankTransactionsTable.id, txnId))
+      .returning();
+    return { transaction: updated, linkedCount: sprs.length };
+  });
+
+  if ("notFound" in result) { res.status(404).json({ error: "Transaction not found" }); return; }
+  if ("conflict" in result) { res.status(409).json({ error: "Transaction is already matched" }); return; }
+  if ("sprNotFound" in result) { res.status(404).json({ error: "One or more sub payment records not found" }); return; }
+  if ("alreadyLinked" in result) { res.status(409).json({ error: `Sub payment #${(result as any).alreadyLinked} is already linked to another bank transaction` }); return; }
+  res.json(result);
+}));
+
 router.post("/transactions/:txnId/match-sub-payment", wrapAsync(async (req, res) => {
   const txnId = parseInt(String(req.params.txnId), 10);
   if (isNaN(txnId)) { res.status(400).json({ error: "Invalid transaction ID" }); return; }
@@ -809,6 +873,10 @@ router.post("/transactions/:txnId/match-sub-payment", wrapAsync(async (req, res)
       .from(bankTransactionsTable)
       .where(eq(bankTransactionsTable.matchedSubPaymentId, Number(subPaymentId)));
     if (alreadyLinked) return { alreadyLinked: true } as const;
+
+    await tx.update(subPaymentRecordsTable)
+      .set({ bankTransactionId: txnId })
+      .where(eq(subPaymentRecordsTable.id, Number(subPaymentId)));
 
     const [updated] = await tx.update(bankTransactionsTable)
       .set({ status: "matched", matchedSubPaymentId: Number(subPaymentId) })
@@ -845,6 +913,11 @@ router.post("/transactions/:txnId/unmatch", wrapAsync(async (req, res) => {
     res.status(409).json({ error: "Transaction is not currently matched" });
     return;
   }
+
+  // Clear bankTransactionId on any sub payment records linked to this transaction
+  await db.update(subPaymentRecordsTable)
+    .set({ bankTransactionId: null })
+    .where(eq(subPaymentRecordsTable.bankTransactionId, txnId));
 
   const [updated] = await db
     .update(bankTransactionsTable)

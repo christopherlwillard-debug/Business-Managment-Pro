@@ -279,6 +279,10 @@ export default function Banking() {
   const [matchExpenseSearch, setMatchExpenseSearch] = useState("");
   const [showAllExpenses, setShowAllExpenses] = useState(false);
 
+  // Split sub-payment matching
+  const [splitSubPayMode, setSplitSubPayMode] = useState(false);
+  const [selectedSprIds, setSelectedSprIds] = useState<Set<number>>(new Set());
+
   // Banking settings (#1317)
   const [showBankingSettings, setShowBankingSettings] = useState(false);
   const [autoMatchEnabled, setAutoMatchEnabled] = useState(() =>
@@ -396,6 +400,22 @@ export default function Banking() {
     queryFn: () => apiFetch<UnpaidInvoice[]>("/api/invoices"),
     enabled: !!incomeFilingTxn,
     staleTime: 60_000,
+  });
+
+  interface UnlinkedSubPayment {
+    id: number;
+    amount: string;
+    paymentDate: string;
+    description: string | null;
+    subcontractorName: string | null;
+    jobTitle: string | null;
+  }
+
+  const { data: unlinkedSprs } = useQuery<UnlinkedSubPayment[]>({
+    queryKey: ["unlinked-sub-payments"],
+    queryFn: () => apiFetch<UnlinkedSubPayment[]>("/api/plaid/sub-payments/unlinked"),
+    enabled: !!matchingTxn && splitSubPayMode,
+    staleTime: 0,
   });
 
   const { data: suggestions, isLoading: suggestionsLoading } = useQuery<MatchSuggestion[]>({
@@ -522,10 +542,28 @@ export default function Banking() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      qc.invalidateQueries({ queryKey: ["unlinked-sub-payments"] });
       setMatchingTxn(null);
       toast({ title: "Transaction matched", description: "Bank transaction linked to sub payment record." });
     },
     onError: (err: Error) => toast({ title: "Match failed", description: err.message, variant: "destructive" }),
+  });
+
+  const splitMatchSubPaymentsMutation = useMutation({
+    mutationFn: ({ txnId, subPaymentIds }: { txnId: number; subPaymentIds: number[] }) =>
+      apiFetch(`/api/plaid/transactions/${txnId}/split-match-sub-payments`, {
+        method: "POST",
+        body: JSON.stringify({ subPaymentIds }),
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      qc.invalidateQueries({ queryKey: ["unlinked-sub-payments"] });
+      setMatchingTxn(null);
+      setSplitSubPayMode(false);
+      setSelectedSprIds(new Set());
+      toast({ title: "Split match applied", description: `Bank transaction linked to ${vars.subPaymentIds.length} sub payment records.` });
+    },
+    onError: (err: Error) => toast({ title: "Split match failed", description: err.message, variant: "destructive" }),
   });
 
   const matchExpenseMutation = useMutation({
@@ -1813,6 +1851,110 @@ export default function Banking() {
                       );
                     })}
                   </>
+                )}
+
+                {/* ── Split sub-payment matching ── */}
+                {matchingTxn?.transactionType === "debit" && !splitSubPayMode && (
+                  <button
+                    type="button"
+                    className="w-full text-xs text-orange-600 hover:text-orange-700 py-2 border border-dashed border-orange-200 rounded-lg hover:border-orange-300 transition-colors"
+                    onClick={() => { setSplitSubPayMode(true); setSelectedSprIds(new Set()); }}
+                  >
+                    This payment covered multiple sub payments — split match
+                  </button>
+                )}
+
+                {splitSubPayMode && matchingTxn && (
+                  <div className="rounded-lg border border-orange-200 bg-orange-50/50 p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide">Split Across Sub Payments</p>
+                      <button
+                        type="button"
+                        className="text-[10px] text-muted-foreground hover:text-foreground"
+                        onClick={() => { setSplitSubPayMode(false); setSelectedSprIds(new Set()); }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Select sub payment records that were paid together in this one transfer.</p>
+
+                    {/* Running total */}
+                    {(() => {
+                      const txnAmt = Math.abs(parseFloat(matchingTxn.amount));
+                      const selectedTotal = (unlinkedSprs ?? [])
+                        .filter(s => selectedSprIds.has(s.id))
+                        .reduce((sum, s) => sum + Math.abs(parseFloat(s.amount)), 0);
+                      const diff = Math.abs(txnAmt - selectedTotal);
+                      const isMatch = selectedSprIds.size >= 2 && diff < 1.00;
+                      const isOver = selectedTotal > txnAmt + 1.00;
+
+                      return (
+                        <div className={`rounded-md px-3 py-2 text-xs flex items-center justify-between ${isMatch ? "bg-emerald-100 text-emerald-800" : isOver ? "bg-red-50 text-red-700" : "bg-white border border-border"}`}>
+                          <span>Selected total</span>
+                          <span className="font-bold tabular-nums">
+                            {formatCurrency(selectedTotal)} / {formatCurrency(txnAmt)}
+                            {isMatch && " ✓"}
+                          </span>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Sub payment list */}
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                      {!unlinkedSprs ? (
+                        <div className="text-xs text-muted-foreground text-center py-3">Loading…</div>
+                      ) : unlinkedSprs.length === 0 ? (
+                        <div className="text-xs text-muted-foreground text-center py-3">No unlinked sub payment records found.</div>
+                      ) : (
+                        unlinkedSprs.map(spr => {
+                          const checked = selectedSprIds.has(spr.id);
+                          return (
+                            <label
+                              key={spr.id}
+                              className={`flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${checked ? "border-orange-400 bg-orange-50" : "border-border bg-background hover:bg-muted/30"}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  setSelectedSprIds(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(spr.id)) next.delete(spr.id); else next.add(spr.id);
+                                    return next;
+                                  });
+                                }}
+                                className="accent-orange-500 shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium truncate">{spr.subcontractorName ?? "Sub"}{spr.jobTitle ? ` — ${spr.jobTitle}` : ""}</p>
+                                <p className="text-[10px] text-muted-foreground">{spr.description ?? "Sub payment"} · {new Date(spr.paymentDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+                              </div>
+                              <span className="text-xs font-semibold tabular-nums shrink-0">{formatCurrency(parseFloat(spr.amount))}</span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Link button */}
+                    {(() => {
+                      const txnAmt = Math.abs(parseFloat(matchingTxn.amount));
+                      const selectedTotal = (unlinkedSprs ?? [])
+                        .filter(s => selectedSprIds.has(s.id))
+                        .reduce((sum, s) => sum + Math.abs(parseFloat(s.amount)), 0);
+                      const isMatch = selectedSprIds.size >= 2 && Math.abs(txnAmt - selectedTotal) < 1.00;
+                      return (
+                        <button
+                          type="button"
+                          disabled={!isMatch || splitMatchSubPaymentsMutation.isPending}
+                          onClick={() => splitMatchSubPaymentsMutation.mutate({ txnId: matchingTxn.id, subPaymentIds: Array.from(selectedSprIds) })}
+                          className="w-full py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {splitMatchSubPaymentsMutation.isPending ? "Linking…" : `Link ${selectedSprIds.size} records`}
+                        </button>
+                      );
+                    })()}
+                  </div>
                 )}
 
                 <button
