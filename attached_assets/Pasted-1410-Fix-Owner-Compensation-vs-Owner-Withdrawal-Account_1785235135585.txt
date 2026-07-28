@@ -1,0 +1,435 @@
+1410 - Fix Owner Compensation vs. Owner Withdrawal Accounting
+
+What & Why
+
+The Job Financials engine already calculates owner compensation correctly using the established waterfall:
+
+Revenue
+→ Expenses
+→ 5% Business Growth
+→ Hourly Employee/Subcontractor Pay
+→ 50/50 Profit Split
+→ My Share
+→ Tax Set-Aside
+→ My Take-Home
+
+This calculation is correct and must not change.
+
+The problem occurs after a job is finalized. The accounting engine currently records earned Take-Home as an "Owner Draw" expense, incorrectly treating compensation earned from completed jobs as an equity withdrawal.
+
+This causes duplicate accounting because the same money appears in multiple places:
+
+• Owner Capital
+• My Pay
+• Take-Home Dashboard
+• Owner Withdrawals
+
+The accounting engine must separate these into two completely different concepts:
+
+Owner Compensation (Owner Job Pay)
+Money earned from completing jobs. Tracks Earned, Paid, and Remaining Owed. Never reduces Gross Profit, Net Profit, Business Equity, or Owner Capital a second time.
+
+Owner Withdrawal
+A rare manual equity withdrawal that is not connected to any completed job.
+
+-----------------------------------------------------------------------
+
+Single Source of Truth
+
+The Job Financials calculation is the authoritative source for every Owner Compensation amount.
+
+Owner Compensation should never be independently calculated anywhere else in the application.
+
+Every report, dashboard, My Pay summary, Take-Home Dashboard, payroll summary, and Owner Compensation history must reference the same Owner Compensation records generated from Job Financials.
+
+No duplicate calculations should exist anywhere in the application.
+
+-----------------------------------------------------------------------
+
+Owner Compensation Architecture
+
+Each completed job must generate exactly one Owner Compensation record.
+
+That record represents the owner's earned compensation for that completed job.
+
+Payments made to the owner should reference that Owner Compensation record instead of creating additional compensation records.
+
+Example
+
+Job #42
+
+Owner Compensation
+Earned: $1,250
+
+Payments
+
+Payment #1
+$500
+
+Payment #2
+$500
+
+Payment #3
+$250
+
+Remaining Owed
+$0
+
+Status
+Paid
+
+A completed job should never generate multiple Owner Compensation records unless an administrator intentionally rebuilds accounting data.
+
+-----------------------------------------------------------------------
+
+Owner Compensation Record
+
+Each Owner Compensation record should contain:
+
+• Job Number
+• Job Name
+• Completion Date
+• Earned Amount
+• Amount Paid
+• Remaining Balance
+• Payment Date(s)
+• Notes
+• Status
+
+Status values:
+
+• Earned
+• Partially Paid
+• Paid
+
+-----------------------------------------------------------------------
+
+Owner Capital Rules
+
+Owner Capital must remain completely independent from Owner Compensation.
+
+Owner Capital may ONLY change from:
+
+• Capital Contributions
+• Capital Returns
+
+Owner Capital must never be affected by:
+
+• Owner Compensation
+• Owner Withdrawals
+• Revenue
+• Job Profit
+• Take-Home
+• My Pay
+• Payroll
+
+Owner Capital continues reading only from owner_capital_entries.
+
+-----------------------------------------------------------------------
+
+Historical Data Migration
+
+Perform a one-time migration as part of this update.
+
+Every historical expense record where:
+
+category = 'Owner Draw'
+
+should become
+
+category = 'Owner Compensation'
+
+Only update the category.
+
+Do NOT modify:
+
+• Amount
+• Date
+• Description
+• Linked Job
+• Notes
+• Payment Status
+• Created Date
+• Updated Date
+
+Safety Rules
+
+Before migrating:
+
+• Confirm the record is associated with a completed job.
+• Confirm it was created through the Record Owner Draw workflow.
+• Skip any record not linked to a completed job.
+
+No true Owner Equity Withdrawals currently exist, so all existing Owner Draw records are expected to become Owner Compensation.
+
+-----------------------------------------------------------------------
+
+Migration Safety
+
+Before creating or migrating an Owner Compensation record:
+
+Verify the completed job does not already have one.
+
+If an Owner Compensation record already exists:
+
+• Do not create a duplicate.
+• Link historical payment records to the existing Owner Compensation record whenever possible.
+• Log duplicate records for manual review.
+
+-----------------------------------------------------------------------
+
+Historical Validation
+
+After migration completes:
+
+Run a validation pass against every completed job.
+
+For every completed job:
+
+1. Read the stored Job Financials.
+
+2. Recalculate the expected Owner Compensation using:
+
+• Revenue
+• Expenses
+• Business Growth
+• Hourly Labor
+• Profit Split
+• Tax Reserve
+• Final Take-Home
+
+3. Compare the recalculated value against the migrated Owner Compensation record.
+
+If the values match:
+
+• Mark the record as Migration Verified.
+
+If they do not match:
+
+• Do NOT automatically overwrite anything.
+• Flag the record for review.
+• Log:
+
+- Job ID
+- Migrated Amount
+- Expected Amount
+- Variance
+
+Expose validation results through the existing Admin Migration page or a new read-only Admin Validation page.
+
+-----------------------------------------------------------------------
+
+Owner Compensation Rules
+
+Owner Compensation exists only to track:
+
+• Amount Earned
+• Amount Paid
+• Remaining Balance
+
+Recording Owner Compensation must NEVER:
+
+• Reduce Gross Profit
+• Reduce Net Profit
+• Reduce Business Equity
+• Reduce Owner Capital
+• Be treated as an operating expense a second time
+• Create duplicate accounting entries
+
+-----------------------------------------------------------------------
+
+Owner Withdrawals
+
+Owner Withdrawals become a completely separate manual accounting feature.
+
+Purpose:
+
+Manual removal of business equity that is NOT connected to completed jobs.
+
+Example:
+
+The business has accumulated excess retained earnings.
+
+I manually transfer $5,000 to myself that is unrelated to any completed job.
+
+That transaction is an Owner Withdrawal.
+
+Completed jobs should NEVER automatically generate Owner Withdrawal transactions.
+
+-----------------------------------------------------------------------
+
+Done Looks Like
+
+✓ Job Financials waterfall remains exactly unchanged.
+
+✓ Every completed job generates exactly one Owner Compensation record.
+
+✓ Historical Owner Draw records are migrated to Owner Compensation.
+
+✓ Historical migration validates every completed job against Job Financials.
+
+✓ Duplicate Owner Compensation records cannot be created.
+
+✓ Completed jobs generate Owner Compensation instead of Owner Draw going forward.
+
+✓ Owner Compensation only tracks Earned, Paid, and Remaining Owed.
+
+✓ Owner Compensation never reduces profit or Owner Capital a second time.
+
+✓ Owner Capital continues reading only from owner_capital_entries.
+
+✓ My Pay becomes the single source of truth for Owner Compensation.
+
+✓ Take-Home Dashboard summarizes the My Pay ledger by month instead of performing its own calculation.
+
+✓ Record Owner Draw buttons become Record Owner Pay.
+
+✓ Dashboard Record Withdrawal becomes Record Owner Pay.
+
+✓ A separate Record Equity Withdrawal button is available for true manual equity withdrawals.
+
+✓ Recent Withdrawals becomes Recent Owner Pay.
+
+✓ Owner Withdrawals are empty after migration unless true manual equity withdrawals are recorded in the future.
+
+✓ No historical compensation data is lost.
+
+-----------------------------------------------------------------------
+
+Out of Scope
+
+• Changing the Job Financials waterfall.
+• Changing Revenue calculations.
+• Changing Expense calculations.
+• Changing Business Growth calculations.
+• Changing Profit Split calculations.
+• Changing Tax calculations.
+• Automatically correcting validation failures (manual review only).
+
+-----------------------------------------------------------------------
+
+Implementation Steps
+
+1. Data Migration
+
+Run a one-time migration:
+
+UPDATE expenses
+SET category = 'Owner Compensation'
+WHERE category = 'Owner Draw';
+
+Only migrate records linked to completed jobs.
+
+Prevent duplicate Owner Compensation records.
+
+2. Historical Validation
+
+After migration:
+
+Iterate every completed job.
+
+Recalculate Owner Compensation using Job Financials.
+
+Compare against migrated records.
+
+Log mismatches.
+
+Expose validation results through an Admin page.
+
+3. API
+
+Update owner-pay-summary to read only:
+
+category = 'Owner Compensation'
+
+Update POST /api/jobs/:id/record-owner-draw
+
+Rename internally to Owner Compensation while preserving the endpoint if needed for backward compatibility.
+
+4. Jobs UI
+
+Rename:
+
+Record Owner Draw
+
+to
+
+Record Owner Pay
+
+Update request payloads to use Owner Compensation.
+
+5. Job Payroll UI
+
+Rename:
+
+Record Owner Draw
+
+to
+
+Record Owner Pay
+
+Update payload category.
+
+6. Dashboard UI
+
+Rename:
+
+Record Withdrawal
+
+to
+
+Record Owner Pay
+
+Update payload category.
+
+Add:
+
+Record Equity Withdrawal
+
+which records category:
+
+Owner Withdrawal
+
+7. Dashboard Copy
+
+Rename:
+
+Recent Withdrawals
+
+to
+
+Recent Owner Pay
+
+Update dialog descriptions accordingly.
+
+8. Accounting Overview
+
+Rewrite the Take-Home Dashboard.
+
+Instead of calculating projected values independently, summarize Owner Compensation records by month directly from the My Pay ledger.
+
+This removes duplicate calculations and guarantees every report displays identical owner compensation values.
+
+-----------------------------------------------------------------------
+
+Relevant Files
+
+artifacts/api-server/src/routes/reports.ts
+• owner-pay-summary endpoint
+
+artifacts/api-server/src/routes/jobs.ts
+• record-owner-draw endpoint
+
+artifacts/contractor-app/src/pages/Jobs.tsx
+• Record Owner Draw button
+
+artifacts/contractor-app/src/pages/JobPayroll.tsx
+• Owner Pay controls
+
+artifacts/contractor-app/src/pages/Dashboard.tsx
+• Record Withdrawal button
+• Recent Withdrawals section
+
+artifacts/contractor-app/src/pages/accounting/OverviewTab.tsx
+• TakeHomeDashboard component
+• TakeHomeDashboard render call
