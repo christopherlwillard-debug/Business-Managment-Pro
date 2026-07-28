@@ -144,10 +144,11 @@ export function KbTrainingModal({ job, onComplete, onClose }: Props) {
       await acceptKb.mutateAsync(job.id);
       onComplete("accept");
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      const raw = err instanceof Error ? err.message : String(err);
+      const msg = raw.replace(/^HTTP \d+ [^:]+:\s*/, "");
       toast({
-        title: msg?.includes("crew member") ? "Crew required" : "Failed to save",
-        description: msg ?? "Could not save knowledge record.",
+        title: msg.includes("crew member") || msg.includes("crew size") ? "Crew required" : "Failed to save",
+        description: msg || "Could not save knowledge record.",
         variant: "destructive",
       });
     } finally { setActing(false); }
@@ -159,8 +160,10 @@ export function KbTrainingModal({ job, onComplete, onClose }: Props) {
       await saveRecord();
       await excludeKb.mutateAsync(job.id);
       onComplete("exclude");
-    } catch {
-      toast({ title: "Failed to save", description: "Could not save knowledge record.", variant: "destructive" });
+    } catch (err: unknown) {
+      const raw = err instanceof Error ? err.message : String(err);
+      const msg = raw.replace(/^HTTP \d+ [^:]+:\s*/, "");
+      toast({ title: "Failed to save", description: msg || "Could not save knowledge record.", variant: "destructive" });
     } finally { setActing(false); }
   }
 
