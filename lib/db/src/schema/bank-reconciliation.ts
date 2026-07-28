@@ -2,6 +2,7 @@ import { pgTable, serial, text, integer, numeric, timestamp } from "drizzle-orm/
 import { expensesTable } from "./expenses";
 import { invoicesTable } from "./invoices";
 import { otherIncomeTable } from "./other-income";
+import { subPaymentRecordsTable } from "./sub-payment-records";
 
 export const bankImportBatchesTable = pgTable("bank_import_batches", {
   id: serial("id").primaryKey(),
@@ -23,6 +24,7 @@ export const bankTransactionsTable = pgTable("bank_transactions", {
   matchedExpenseId: integer("matched_expense_id").references(() => expensesTable.id, { onDelete: "set null" }),
   matchedInvoiceId: integer("matched_invoice_id").references(() => invoicesTable.id, { onDelete: "set null" }),
   matchedOtherIncomeId: integer("matched_other_income_id").references(() => otherIncomeTable.id, { onDelete: "set null" }),
+  matchedSubPaymentId: integer("matched_sub_payment_id").references(() => subPaymentRecordsTable.id, { onDelete: "set null" }),
   suggestedMatchType: text("suggested_match_type"),
   suggestedMatchId: integer("suggested_match_id"),
   plaidTransactionId: text("plaid_transaction_id"),

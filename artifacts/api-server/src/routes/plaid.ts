@@ -5,7 +5,7 @@ import {
   bankImportBatchesTable,
   bankTransactionsTable,
 } from "@workspace/db";
-import { expensesTable, otherIncomeTable, invoicesTable } from "@workspace/db/schema";
+import { expensesTable, otherIncomeTable, invoicesTable, subPaymentRecordsTable } from "@workspace/db/schema";
 import { eq, like, isNotNull, isNull, and, gte, lte, notInArray, sql } from "drizzle-orm";
 import { getSuggestions, attemptAutoMatch } from "../lib/matchingEngine.js";
 
@@ -785,6 +785,45 @@ router.post("/transactions/:txnId/match-expense", wrapAsync(async (req, res) => 
   res.json(result);
 }));
 
+router.post("/transactions/:txnId/match-sub-payment", wrapAsync(async (req, res) => {
+  const txnId = parseInt(String(req.params.txnId), 10);
+  if (isNaN(txnId)) { res.status(400).json({ error: "Invalid transaction ID" }); return; }
+
+  const { subPaymentId } = req.body as { subPaymentId?: number };
+  if (!subPaymentId || isNaN(Number(subPaymentId))) {
+    res.status(400).json({ error: "subPaymentId is required" });
+    return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const [txn] = await tx.select().from(bankTransactionsTable).where(eq(bankTransactionsTable.id, txnId));
+    if (!txn) return { notFound: true } as const;
+    if (txn.status === "matched") return { conflict: true } as const;
+
+    const [spr] = await tx.select({ id: subPaymentRecordsTable.id })
+      .from(subPaymentRecordsTable)
+      .where(eq(subPaymentRecordsTable.id, Number(subPaymentId)));
+    if (!spr) return { sprNotFound: true } as const;
+
+    const [alreadyLinked] = await tx.select({ id: bankTransactionsTable.id })
+      .from(bankTransactionsTable)
+      .where(eq(bankTransactionsTable.matchedSubPaymentId, Number(subPaymentId)));
+    if (alreadyLinked) return { alreadyLinked: true } as const;
+
+    const [updated] = await tx.update(bankTransactionsTable)
+      .set({ status: "matched", matchedSubPaymentId: Number(subPaymentId) })
+      .where(eq(bankTransactionsTable.id, txnId))
+      .returning();
+    return updated;
+  });
+
+  if ("notFound" in result) { res.status(404).json({ error: "Transaction not found" }); return; }
+  if ("conflict" in result) { res.status(409).json({ error: "Transaction is already matched" }); return; }
+  if ("sprNotFound" in result) { res.status(404).json({ error: "Sub payment record not found" }); return; }
+  if ("alreadyLinked" in result) { res.status(409).json({ error: "This sub payment is already linked to another bank transaction" }); return; }
+  res.json(result);
+}));
+
 router.post("/transactions/:txnId/unmatch", wrapAsync(async (req, res) => {
   const txnId = Number(req.params.txnId);
   if (isNaN(txnId)) {
@@ -809,7 +848,7 @@ router.post("/transactions/:txnId/unmatch", wrapAsync(async (req, res) => {
 
   const [updated] = await db
     .update(bankTransactionsTable)
-    .set({ status: "unmatched", matchedExpenseId: null, matchedInvoiceId: null, matchedOtherIncomeId: null })
+    .set({ status: "unmatched", matchedExpenseId: null, matchedInvoiceId: null, matchedOtherIncomeId: null, matchedSubPaymentId: null })
     .where(eq(bankTransactionsTable.id, txnId))
     .returning();
 

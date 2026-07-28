@@ -514,6 +514,20 @@ export default function Banking() {
     onError: (err: Error) => toast({ title: "Failed to file investment transfer", description: err.message, variant: "destructive" }),
   });
 
+  const matchSubPaymentMutation = useMutation({
+    mutationFn: ({ txnId, subPaymentId }: { txnId: number; subPaymentId: number }) =>
+      apiFetch(`/api/plaid/transactions/${txnId}/match-sub-payment`, {
+        method: "POST",
+        body: JSON.stringify({ subPaymentId }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      setMatchingTxn(null);
+      toast({ title: "Transaction matched", description: "Bank transaction linked to sub payment record." });
+    },
+    onError: (err: Error) => toast({ title: "Match failed", description: err.message, variant: "destructive" }),
+  });
+
   const matchExpenseMutation = useMutation({
     mutationFn: ({ txnId, expenseId }: { txnId: number; expenseId: number }) =>
       apiFetch(`/api/plaid/transactions/${txnId}/match-expense`, {
@@ -1688,7 +1702,7 @@ export default function Banking() {
                         ? "bg-amber-100 text-amber-800"
                         : "bg-muted text-muted-foreground";
 
-                      const isInfoOnly = s.matchType === "sub_payment";
+                      const isInfoOnly = false;
                       const key = s.matchType === "expense"
                         ? `exp-${s.expense?.id}`
                         : s.matchType === "invoice"
@@ -1748,8 +1762,9 @@ export default function Banking() {
                             notes: `Recurring: ${s.recurringLabel ?? ""}`,
                           });
                           setFilingTxn(matchingTxn);
+                        } else if (s.matchType === "sub_payment" && s.subPaymentId) {
+                          matchSubPaymentMutation.mutate({ txnId: matchingTxn.id, subPaymentId: s.subPaymentId });
                         }
-                        // sub_payment: informational only for now
                       }
 
                       return (
@@ -1786,9 +1801,6 @@ export default function Banking() {
                                     </span>
                                   ))}
                                 </div>
-                              )}
-                              {isInfoOnly && (
-                                <p className="text-[10px] text-muted-foreground italic mt-1">View sub payments to link this record.</p>
                               )}
                             </div>
                             {displayAmt && (
