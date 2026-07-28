@@ -97,6 +97,7 @@ export interface MfhKbRecord {
   editedAt?: string | null;
   missingMaterialsNotes?: string | null;
   factoryDefectNotes?: string | null;
+  productionServices?: { id: number; name: string }[] | null;
 }
 
 export interface MfhKnowledgeBaseEntry {

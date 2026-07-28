@@ -559,11 +559,20 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
 
                     {/* Collapsed preview */}
                     {!isExpanded && (
-                      <div className="grid grid-cols-4 gap-2 px-4 pb-2.5 text-center">
-                        <div><p className="text-[10px] text-muted-foreground">Prod. Hrs</p><p className="font-semibold text-foreground">{r.productiveHours ? parseFloat(r.productiveHours).toFixed(1) : "—"}</p></div>
-                        <div><p className="text-[10px] text-muted-foreground">Crew</p><p className="font-semibold text-foreground">{r.crewSize ?? "—"}</p></div>
-                        <div><p className="text-[10px] text-muted-foreground">Invoice</p><p className="font-semibold text-amber-600">{r.invoiceAmount ? fmt(parseFloat(r.invoiceAmount)) : "—"}</p></div>
-                        <div><p className="text-[10px] text-muted-foreground">Net Profit</p><p className="font-semibold text-foreground">{r.netProfit ? fmt(parseFloat(r.netProfit)) : "—"}</p></div>
+                      <div className="px-4 pb-2.5 space-y-1.5">
+                        <div className="grid grid-cols-4 gap-2 text-center">
+                          <div><p className="text-[10px] text-muted-foreground">Prod. Hrs</p><p className="font-semibold text-foreground">{r.productiveHours ? parseFloat(r.productiveHours).toFixed(1) : "—"}</p></div>
+                          <div><p className="text-[10px] text-muted-foreground">Crew</p><p className="font-semibold text-foreground">{r.crewSize ?? "—"}</p></div>
+                          <div><p className="text-[10px] text-muted-foreground">Invoice</p><p className="font-semibold text-amber-600">{r.invoiceAmount ? fmt(parseFloat(r.invoiceAmount)) : "—"}</p></div>
+                          <div><p className="text-[10px] text-muted-foreground">Net Profit</p><p className="font-semibold text-foreground">{r.netProfit ? fmt(parseFloat(r.netProfit)) : "—"}</p></div>
+                        </div>
+                        {r.productionServices && r.productionServices.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {r.productionServices.map(s => (
+                              <span key={s.id} className="text-[10px] bg-amber-50 border border-amber-200 text-amber-700 px-1.5 py-0.5 rounded-full">{s.name}</span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -644,6 +653,14 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
                               <div><p className="text-[10px] text-muted-foreground">Net Profit</p><p className="font-semibold">{r.netProfit ? fmt(parseFloat(r.netProfit)) : "—"}</p></div>
                               <div><p className="text-[10px] text-muted-foreground">Callbacks</p><p className="font-semibold">{r.callbacks ?? 0}</p></div>
                             </div>
+                            {r.productionServices && r.productionServices.length > 0 && (
+                              <div className="flex flex-wrap gap-1 pt-1">
+                                <span className="text-[10px] text-muted-foreground font-semibold self-center">Services:</span>
+                                {r.productionServices.map(s => (
+                                  <span key={s.id} className="text-[10px] bg-amber-50 border border-amber-200 text-amber-700 px-1.5 py-0.5 rounded-full">{s.name}</span>
+                                ))}
+                              </div>
+                            )}
                             {r.warrantyVisit && <p className="text-[10px] text-amber-600">🔧 Warranty visit needed</p>}
                             {r.editReason && <p className="text-[10px] text-muted-foreground italic">Edit note: {r.editReason}</p>}
                             {r.originalValues && (

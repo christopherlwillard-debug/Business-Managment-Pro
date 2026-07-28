@@ -902,6 +902,7 @@ mfhLibraryRouter.get("/knowledge-base/:modelId", async (req, res) => {
         warrantyVisit: jobKnowledgeRecordsTable.warrantyVisit,
         editReason: jobKnowledgeRecordsTable.editReason,
         editedAt: jobKnowledgeRecordsTable.editedAt,
+        productionServices: jobsTable.mhProductionServices,
       }).from(jobKnowledgeRecordsTable)
         .innerJoin(jobsTable, eq(jobKnowledgeRecordsTable.jobId, jobsTable.id))
         .where(and(
