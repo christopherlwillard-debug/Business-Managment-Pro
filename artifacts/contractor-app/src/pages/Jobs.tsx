@@ -18,7 +18,7 @@ import {
 } from "@workspace/api-client-react";
 import {
   useListMfhManufacturers, useMfhPanelData, useListMfhConstructionTypes,
-  useCreateMfhManufacturer, useCreateMfhModel,
+  useCreateMfhManufacturer, useUpdateMfhManufacturer, useCreateMfhModel,
   useListProductionServiceTypes, useCreateProductionServiceType,
   useUpdateProductionServiceType, useDeleteProductionServiceType,
 } from "@workspace/api-client-react";
@@ -4724,6 +4724,7 @@ function JobFormDialog({
   // existing job still resolve; display filtering happens below.
   const { data: productionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id, true);
   const createMfhManufacturer = useCreateMfhManufacturer();
+  const updateMfhManufacturer = useUpdateMfhManufacturer();
   const createMfhModel = useCreateMfhModel();
   const createProductionServiceType = useCreateProductionServiceType();
   const updateProductionServiceType = useUpdateProductionServiceType();
@@ -5353,6 +5354,26 @@ function JobFormDialog({
                             setBuilderDropOpen(false);
                           } catch (err: unknown) {
                             const msg = err instanceof Error ? err.message : "Failed to add builder";
+                            // 409 = builder already exists (possibly inactive) — find it and select it silently
+                            if (msg.includes("already exists")) {
+                              try {
+                                const all = await fetch(`${BASE}/api/mfh/manufacturers?includeInactive=true`).then(r => r.json()) as Array<{ id: number; name: string; active: boolean }>;
+                                const match = all.find(m => m.name.toLowerCase() === builderQuery.trim().toLowerCase());
+                                if (match) {
+                                  if (!match.active) {
+                                    await updateMfhManufacturer.mutateAsync({ id: match.id, active: true });
+                                  }
+                                  setMfhMfgId(match.id);
+                                  setBuilderQuery(match.name);
+                                  setMfhModelId(null);
+                                  setModelQuery("");
+                                  setBuilderDropOpen(false);
+                                  return;
+                                }
+                              } catch {
+                                // fall through to error toast
+                              }
+                            }
                             toast({ title: "Could not add builder", description: msg, variant: "destructive" });
                           }
                         }}
