@@ -93,10 +93,42 @@ export function KbTrainingModal({ job, onComplete, onClose }: Props) {
   useEffect(() => {
     if (!kbRaw) return;
     const laborSummary = laborData?.summary;
+    // laborSummary is present once the labor-entries query has resolved (even when
+    // crewCount === 0, meaning all entries were removed). Treat it as authoritative
+    // whenever it is defined so removals-to-zero are reflected immediately.
+    const laborLoaded = laborSummary != null;
+    const origVals = (kbRaw as { originalValues?: Record<string, unknown> | null }).originalValues;
+    const isDraft = kbRaw.isDraft;
+
+    // Resolve an hours field: draft records always trust the live labor summary (so
+    // entries added or removed while the modal is open are reflected immediately);
+    // saved records only override with fresh labor data when the field hasn't been
+    // manually edited (i.e. still equals the original auto-computed snapshot).
+    function resolveHours(
+      kbFieldKey: string,
+      kbValue: number | string | null | undefined,
+      laborValue: number | undefined,
+    ): string {
+      if (isDraft) {
+        // Fresh labor summary is always authoritative for draft records
+        return fmtNum(laborLoaded && laborValue != null ? laborValue : kbValue);
+      }
+      // Non-draft: preserve manual edits; refresh from labor only if the field
+      // hasn't drifted away from the original auto-computed value.
+      if (laborLoaded && laborValue != null && origVals) {
+        const savedNum = parseFloat(String(kbValue ?? "0"));
+        const origNum = parseFloat(String(origVals[kbFieldKey] ?? "0"));
+        if (Math.abs(savedNum - origNum) < 0.01) {
+          return fmtNum(laborValue);
+        }
+      }
+      return fmtNum(kbValue);
+    }
+
     setFields({
-      productiveHours: fmtNum(kbRaw.productiveHours ?? laborSummary?.totalProductiveHours),
-      travelHours: fmtNum(kbRaw.travelHours ?? laborSummary?.totalTravelHours),
-      crewSize: fmtNum(kbRaw.crewSize ?? laborSummary?.crewCount),
+      productiveHours: resolveHours("productiveHours", kbRaw.productiveHours, laborSummary?.totalProductiveHours),
+      travelHours: resolveHours("travelHours", kbRaw.travelHours, laborSummary?.totalTravelHours),
+      crewSize: resolveHours("crewSize", kbRaw.crewSize, laborSummary?.crewCount),
       daysOnSite: fmtNum(kbRaw.daysOnSite),
       invoiceAmount: fmtNum(kbRaw.invoiceAmount),
       materialCost: fmtNum(kbRaw.materialCost),
