@@ -110,60 +110,6 @@ async function seedDefaultBusinesses(): Promise<void> {
 }
 
 
-// Idempotent: creates Clayton Homes of Evansville client (if missing) and
-// inserts the Factory Billback billing profile. Safe to run on every boot.
-async function seedClaytonBillback(): Promise<void> {
-  try {
-    // 1. Ensure client exists
-    let clientId: number;
-    const existing = await db.select({ id: clientsTable.id })
-      .from(clientsTable)
-      .where(ilike(clientsTable.name, "Clayton Homes of Evansville"))
-      .limit(1);
-
-    if (existing.length > 0) {
-      clientId = existing[0].id;
-    } else {
-      const [inserted] = await db.insert(clientsTable).values({
-        name: "Clayton Homes of Evansville",
-        address: "19410 US-41",
-        city: "Evansville",
-        state: "IN",
-        zip: "47725",
-      }).returning({ id: clientsTable.id });
-      clientId = inserted.id;
-      console.log(`[startup] Created Clayton Homes of Evansville client id=${clientId}`);
-    }
-
-    // 2. Ensure billing profile exists
-    const existingProfile = await db.select({ id: clientBillingProfilesTable.id })
-      .from(clientBillingProfilesTable)
-      .where(and(
-        eq(clientBillingProfilesTable.clientId, clientId),
-        ilike(clientBillingProfilesTable.name, "Factory Billback"),
-      ))
-      .limit(1);
-
-    if (existingProfile.length === 0) {
-      await db.insert(clientBillingProfilesTable).values({
-        clientId,
-        name: "Factory Billback",
-        repairRate1Tech: "33.00",
-        repairRate2Tech: "50.00",
-        driveRate1Tech: "15.00",
-        driveRate2Tech: "30.00",
-        mileageRate: "0.35",
-        partsReimbursable: true,
-        defaultTechCount: 2,
-        billingNotes: "All work must be completed before billing. Pictures required for all repairs — send to Michelle/Service @ (812)215-9619. Mileage calculated from home center to customer site. No mileage on contracted work unless >60 miles from Home Center ($150/Day).",
-        active: true,
-      });
-      console.log(`[startup] Created Factory Billback billing profile for clientId=${clientId}`);
-    }
-  } catch (err) {
-    console.error("[startup] seedClaytonBillback failed (non-fatal):", err);
-  }
-}
 
 
 // One-time startup migration: drop NOT NULL on invoice_number (if still present)
@@ -282,7 +228,7 @@ async function start() {
   await clearDraftInvoiceNumbers();
   await recomputePartialSubPaymentStatuses();
   await seedDefaultBusinesses();
-  await seedClaytonBillback();
+
   await backfillMileageBusiness();
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
