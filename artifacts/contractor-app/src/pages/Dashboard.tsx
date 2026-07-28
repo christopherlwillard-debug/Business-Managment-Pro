@@ -125,8 +125,7 @@ interface QuickAction {
   iconBg: string;
 }
 
-function QuickActions({ onRecordOwnerPay, onNavigate }: {
-  onRecordOwnerPay: () => void;
+function QuickActions({ onNavigate }: {
   onNavigate: (path: string) => void;
 }) {
   const actions: QuickAction[] = [
@@ -139,28 +138,12 @@ function QuickActions({ onRecordOwnerPay, onNavigate }: {
       iconBg: "bg-violet-100 text-violet-700",
     },
     {
-      icon: Receipt,
-      label: "Add Expense",
-      description: "Manually record an expense",
-      onClick: () => onNavigate("/expenses"),
-      color: "border-blue-200/70 hover:border-blue-300 hover:bg-blue-50/60",
-      iconBg: "bg-blue-100 text-blue-700",
-    },
-    {
       icon: Briefcase,
       label: "New Job",
       description: "Create a new job",
       onClick: () => onNavigate("/jobs"),
       color: "border-amber-200/70 hover:border-amber-300 hover:bg-amber-50/60",
       iconBg: "bg-amber-100 text-amber-700",
-    },
-    {
-      icon: Wallet,
-      label: "Record Owner Pay",
-      description: "Log a pay draw or compensation",
-      onClick: onRecordOwnerPay,
-      color: "border-emerald-200/70 hover:border-emerald-300 hover:bg-emerald-50/60",
-      iconBg: "bg-emerald-100 text-emerald-700",
     },
   ];
 
@@ -345,7 +328,6 @@ export default function Dashboard() {
 
       {/* ── 1. QUICK ACTIONS ── */}
       <QuickActions
-        onRecordOwnerPay={() => setOwnerPayDialogOpen(true)}
         onNavigate={navigate}
       />
 
@@ -618,74 +600,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Compliance Summary Widget */}
-        <Card
-          role="button"
-          tabIndex={0}
-          onClick={() => navigate("/accounting?tab=tax-calendar")}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate("/accounting?tab=tax-calendar"); }}
-          className={`mt-3 shadow-md border-border/50 cursor-pointer transition-shadow hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-            todayLoading ? "border-l-4 border-l-muted-foreground/40" :
-            hasComplianceIssues ? "border-l-4 border-l-amber-400" :
-            "border-l-4 border-l-emerald-400"
-          }`}
-        >
-          <CardContent className="p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-xl ${
-                  todayLoading ? "bg-muted text-muted-foreground" :
-                  hasComplianceIssues ? "bg-amber-100 text-amber-700" :
-                  "bg-emerald-100 text-emerald-700"
-                }`}>
-                  <ShieldAlert className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="font-semibold text-foreground text-sm">Compliance Status</p>
-                  {todayLoading ? (
-                    <p className="text-xs text-muted-foreground mt-0.5 animate-pulse">Loading…</p>
-                  ) : hasComplianceIssues ? (
-                    <p className="text-xs text-muted-foreground mt-0.5">Action needed — check your compliance items</p>
-                  ) : (
-                    <p className="text-xs text-emerald-600 font-medium mt-0.5">All clear — no issues requiring attention</p>
-                  )}
-                </div>
-              </div>
-              {!todayLoading && (
-                <div className="flex items-center gap-3 flex-wrap">
-                  {overdueCount > 0 && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 border border-red-200">
-                      <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
-                      <span className="text-xs font-bold text-red-700">{overdueCount} Overdue</span>
-                    </div>
-                  )}
-                  {dueSoonCount > 0 && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 border border-amber-200">
-                      <Clock className="w-3.5 h-3.5 text-amber-600" />
-                      <span className="text-xs font-bold text-amber-700">{dueSoonCount} Due Soon</span>
-                    </div>
-                  )}
-                  {!hasComplianceIssues && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-100 border border-emerald-200">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="text-xs font-bold text-emerald-700">
-                        {completeCount > 0 ? `${completeCount} Complete` : "No issues"}
-                      </span>
-                    </div>
-                  )}
-                  <span className="flex items-center gap-1 text-xs font-semibold text-primary ml-1">
-                    View All <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-              )}
-              {todayLoading && (
-                <span className="flex items-center gap-1 text-xs font-semibold text-primary">
-                  View All <ArrowRight className="w-3.5 h-3.5" />
-                </span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Due for Revisit widget */}
         {dueSoonClients.length > 0 && (
