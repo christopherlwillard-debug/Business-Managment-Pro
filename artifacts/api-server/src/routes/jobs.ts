@@ -2230,6 +2230,13 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
           return { row: r, paid, outstanding: false };
         }
 
+        // Trust explicit user confirmation: paymentStatus='paid' + real ledger payment.
+        // Handles jobs that were paid and closed under the old system then reopened for
+        // edits — the user agreed to the payment amount, no re-payment should be required.
+        if (r.paymentStatus === "paid" && ledger > 0) {
+          return { row: r, paid, outstanding: false };
+        }
+
         const owed = computeSubOwed({
           amountOwed: r.amountOwed, compensationType: r.compensationType,
           fixedAmount: r.fixedAmount, allocationPct: r.allocationPct, computedOwed: "0",
@@ -2258,9 +2265,16 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
     const hourlyResult = hourlyRows
       .map(r => {
         const paid = effectivePaid(r.amountPaid, r.ledgerPaid);
+        const ledgerH = parseFloat(r.ledgerPaid ?? "0");
         const hours = parseFloat(r.totalHours ?? "0");
         const bonus = r.accruedBonus != null ? parseFloat(r.accruedBonus) : 0;
         const owedFromHours = parseFloat(r.computedOwed ?? "0");
+
+        // Trust explicit user confirmation: paymentStatus='paid' + real ledger payment.
+        if (r.paymentStatus === "paid" && ledgerH > 0) {
+          return { row: r, paid, hours, bonus, outstanding: false };
+        }
+
         // Truly outstanding only when the ledger hasn't covered hours×rate + bonus yet
         const outstanding = (owedFromHours + bonus) > (paid + 0.005);
         if (!outstanding && (r.paymentStatus === "unpaid" || r.paymentStatus === "partial")) {
