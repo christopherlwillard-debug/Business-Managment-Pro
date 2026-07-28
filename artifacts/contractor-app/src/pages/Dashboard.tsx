@@ -315,8 +315,6 @@ export default function Dashboard() {
     urgentComplianceItems.length === 0 &&
     (annualOnly || taxAlerts.length === 0);
 
-  const [ownerPayDialogOpen, setOwnerPayDialogOpen] = useState(false);
-
   if (isLoading) {
     return <div className="flex items-center justify-center h-full animate-pulse text-muted-foreground">Loading dashboard...</div>;
   }
@@ -700,12 +698,60 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard title={`Collected (${periodLabel})`} value={formatCurrency(stats.totalRevenue)} icon={DollarSign} href="/accounting" />
-          <MetricCard title={`Total Expenses (${periodLabel})`} value={formatCurrency((stats as any).businessExpenses ?? stats.totalExpenses)} icon={Receipt} href="/expenses" />
-          <MetricCard title="Active Jobs" value={stats.activeJobs.toString()} icon={Briefcase} href="/jobs" />
-          <MetricCard title="Overdue Invoices" value={stats.overdueInvoices.toString()} icon={AlertTriangle} isAlert={stats.overdueInvoices > 0} href="/accounting" />
-        </div>
+        <Card className="shadow-md border-border/50">
+          <CardContent className="p-0">
+            <div className="grid grid-cols-2 divide-x divide-y divide-border/50">
+              {/* Collected */}
+              <button
+                onClick={() => navigate("/accounting")}
+                className="flex flex-col gap-1 p-4 text-left hover:bg-muted/30 transition-colors rounded-tl-xl"
+              >
+                <div className="flex items-center gap-1.5">
+                  <DollarSign className="w-3.5 h-3.5 text-muted-foreground" />
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Collected ({periodLabel})</p>
+                </div>
+                <p className="text-xl font-display font-bold text-foreground">{formatCurrency(stats.totalRevenue)}</p>
+                <span className="text-[10px] text-primary font-medium flex items-center gap-0.5">View details <ArrowRight className="w-3 h-3" /></span>
+              </button>
+              {/* Total Expenses */}
+              <button
+                onClick={() => navigate("/expenses")}
+                className="flex flex-col gap-1 p-4 text-left hover:bg-muted/30 transition-colors rounded-tr-xl"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Receipt className="w-3.5 h-3.5 text-muted-foreground" />
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Expenses ({periodLabel})</p>
+                </div>
+                <p className="text-xl font-display font-bold text-foreground">{formatCurrency((stats as any).businessExpenses ?? stats.totalExpenses)}</p>
+                <span className="text-[10px] text-primary font-medium flex items-center gap-0.5">View details <ArrowRight className="w-3 h-3" /></span>
+              </button>
+              {/* Active Jobs */}
+              <button
+                onClick={() => navigate("/jobs")}
+                className="flex flex-col gap-1 p-4 text-left hover:bg-muted/30 transition-colors rounded-bl-xl"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Active Jobs</p>
+                </div>
+                <p className="text-xl font-display font-bold text-foreground">{stats.activeJobs}</p>
+                <span className="text-[10px] text-primary font-medium flex items-center gap-0.5">View details <ArrowRight className="w-3 h-3" /></span>
+              </button>
+              {/* Overdue Invoices */}
+              <button
+                onClick={() => navigate("/accounting")}
+                className="flex flex-col gap-1 p-4 text-left hover:bg-muted/30 transition-colors rounded-br-xl"
+              >
+                <div className="flex items-center gap-1.5">
+                  <AlertTriangle className={`w-3.5 h-3.5 ${stats.overdueInvoices > 0 ? "text-red-500" : "text-muted-foreground"}`} />
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Overdue Invoices</p>
+                </div>
+                <p className={`text-xl font-display font-bold ${stats.overdueInvoices > 0 ? "text-red-600" : "text-foreground"}`}>{stats.overdueInvoices}</p>
+                <span className="text-[10px] text-primary font-medium flex items-center gap-0.5">View details <ArrowRight className="w-3 h-3" /></span>
+              </button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Business comparison grid — visible only in All Businesses mode */}
         {hasSelection && !activeBusiness && businesses.length > 0 && (
@@ -914,15 +960,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-
-      {/* ── 7. MY PAY ── */}
-      <div>
-        <SectionHeader title="My Pay" />
-        <MyPayCard
-          externalDialogOpen={ownerPayDialogOpen}
-          onExternalDialogChange={setOwnerPayDialogOpen}
-        />
-      </div>
 
     </div>
   );
