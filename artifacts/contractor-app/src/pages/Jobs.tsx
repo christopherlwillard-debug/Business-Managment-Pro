@@ -6975,6 +6975,15 @@ export default function Jobs() {
                     </span>
                     <span className={totalProfit >= 0 ? "text-emerald-700" : "text-red-600"}>
                       Total Net Profit: <span className="font-semibold">{formatCurrency(totalProfit)}</span>
+                      {totalRev > 0 && (
+                        <span className={`ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                          (totalProfit / totalRev) >= 0.30 ? "bg-emerald-100 text-emerald-700" :
+                          (totalProfit / totalRev) >= 0.15 ? "bg-yellow-100 text-yellow-700" :
+                          "bg-red-100 text-red-600"
+                        }`}>
+                          {(totalProfit / totalRev * 100).toFixed(1)}% margin
+                        </span>
+                      )}
                     </span>
                     {totalHrs > 0 && (
                       <span className="text-orange-700">
@@ -7067,7 +7076,20 @@ export default function Jobs() {
                                   <td className="px-3 py-2.5 text-muted-foreground hidden lg:table-cell truncate max-w-[120px]">{locationParts.join(", ") || "—"}</td>
                                   <td className="px-3 py-2.5 text-right font-semibold">{formatCurrency(grossInvoiced)}</td>
                                   <td className={`px-3 py-2.5 text-right font-semibold ${netProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                                    {formatCurrency(netProfit)}
+                                    <div className="flex flex-col items-end gap-0.5">
+                                      {formatCurrency(netProfit)}
+                                      {grossInvoiced > 0 && (() => {
+                                        const pct = netProfit / grossInvoiced * 100;
+                                        const cls = pct >= 30 ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                                    pct >= 15 ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                                                                "bg-red-50 text-red-600 border-red-200";
+                                        return (
+                                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${cls}`}>
+                                            {pct.toFixed(1)}%
+                                          </span>
+                                        );
+                                      })()}
+                                    </div>
                                   </td>
                                   <td className="px-3 py-2.5 text-right hidden md:table-cell">
                                     {displayHrs > 0 ? (
