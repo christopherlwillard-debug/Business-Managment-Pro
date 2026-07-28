@@ -1,0 +1,254 @@
+Task #1416 – Dashboard & Accounting Organization Cleanup
+
+Objective
+
+This task is an organization and usability improvement only.
+
+Do NOT redesign the application.
+Do NOT add new APIs.
+Do NOT change any calculations.
+Do NOT change business logic.
+Do NOT remove any existing functionality.
+
+The goal is simply to eliminate duplicate information, group related information together, and make the Dashboard easier to understand at a glance.
+
+------------------------------------------------------------
+
+Dashboard Layout
+
+Reorganize the Dashboard into the following sections in this exact order:
+
+1. Today's Alerts
+2. Business Snapshot
+3. Profit
+4. Subcontractor Payments
+5. My Pay
+6. Revenue vs Expenses
+
+This should create a natural top-to-bottom workflow for running the business.
+
+------------------------------------------------------------
+
+Section 1 – Today's Alerts
+
+Leave this section at the top.
+
+Include existing cards only:
+
+• Compliance
+• Overdue Invoices
+• Active Jobs
+• Any existing alert cards
+
+No logic changes.
+
+------------------------------------------------------------
+
+Section 2 – Business Snapshot
+
+Group all existing business overview metrics together.
+
+Examples:
+
+• Revenue
+• Expenses
+• Active Jobs
+• Overdue Invoices
+• Collections
+
+Do not add new metrics.
+
+This section should simply answer:
+
+"How is my business doing today?"
+
+------------------------------------------------------------
+
+Section 3 – Profit
+
+Replace the two separate profit cards with one combined Profit card.
+
+Current:
+
+• Net Profit – Operational (YTD)
+• Your Actual Profit (YTD)
+
+Replace with:
+
+Profit
+
+Operational Profit
+$X,XXX.XX
+
+Less Outstanding Subcontractor Payments
+-$X,XXX.XX
+
+────────────────────────
+
+Actual Profit
+$X,XXX.XX
+
+Small helper text:
+
+"Actual Profit represents Operational Profit after all unpaid subcontractor obligations have been paid."
+
+Do not change any calculations.
+
+Only combine the existing information into one easier-to-understand card.
+
+------------------------------------------------------------
+
+Section 4 – Subcontractor Payments
+
+Place this section directly below Profit.
+
+Keep the existing information.
+
+Group together:
+
+• Total Paid
+• Total Owed
+• Remaining Balance
+
+Include a "View Details" button or link if one already exists.
+
+Reason:
+
+The workflow should naturally be:
+
+Business earns profit
+
+↓
+
+Pay subcontractors
+
+↓
+
+Then pay the owner
+
+------------------------------------------------------------
+
+Section 5 – My Pay
+
+Keep My Pay on the Dashboard because it is checked frequently.
+
+However, simplify it.
+
+Keep:
+
+• Earned
+• Taken
+• Owed
+• Record Owner Pay button
+
+Remove:
+
+• Recent Owner Pay transaction list
+
+Instead add:
+
+View Full History →
+
+This link should navigate directly to the Accounting Owner Pay page.
+
+The Dashboard should only show the summary.
+
+Accounting should contain the complete history.
+
+------------------------------------------------------------
+
+Section 6 – Revenue vs Expenses
+
+Leave the existing chart below My Pay.
+
+No changes to chart logic.
+
+No API changes.
+
+No redesign required.
+
+------------------------------------------------------------
+
+Accounting
+
+Leave all detailed financial management inside Accounting.
+
+Keep:
+
+• Owner Pay History
+• Owner Draw History
+• Edit/Delete Owner Pay
+• Business Reserve
+• Owner Equity
+• Banking
+• Expenses
+• Profit & Loss
+• Revenue by City
+• Cost Breakdown
+• Other Income
+• Reports
+• Tax Reports
+
+Accounting is the detailed financial workspace.
+
+Dashboard is the quick operational overview.
+
+------------------------------------------------------------
+
+Remove Duplication
+
+Currently the Dashboard and Accounting both display Owner Pay history.
+
+Remove the recent transaction list from the Dashboard.
+
+Keep the complete history only in Accounting.
+
+The Dashboard should remain a quick summary.
+
+------------------------------------------------------------
+
+Visual Organization
+
+Separate each section with consistent spacing and a section heading.
+
+The page should read naturally:
+
+Today's Alerts
+
+↓
+
+Business Snapshot
+
+↓
+
+Profit
+
+↓
+
+Subcontractor Payments
+
+↓
+
+My Pay
+
+↓
+
+Revenue vs Expenses
+
+------------------------------------------------------------
+
+Success Criteria
+
+• No duplicate Owner Pay history on the Dashboard.
+• Operational Profit and Actual Profit are combined into one Profit card.
+• Subcontractor payment information is grouped into one section.
+• My Pay remains on the Dashboard but is simplified.
+• Dashboard tells the story of the business in the correct order:
+  - What needs attention?
+  - How is the business performing?
+  - How much profit has been earned?
+  - What still needs to be paid to subcontractors?
+  - What can I pay myself?
+  - How is the business trending?
+• No APIs, calculations, or business logic are changed.
+• This is an organization and usability improvement only.
