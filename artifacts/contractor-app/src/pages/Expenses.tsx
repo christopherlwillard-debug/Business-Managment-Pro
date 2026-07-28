@@ -2288,10 +2288,14 @@ export default function Expenses() {
     const pd = params.get("prefill_date");
     const pDesc = params.get("prefill_desc");
     const pCat = params.get("prefill_category");
-    if (pa || pd || pDesc || pCat) {
+    const scan = params.get("scan");
+    if (pa || pd || pDesc || pCat || scan === "1") {
       if (pCat && CATEGORIES.includes(pCat)) {
         setCategory(pCat);
         if (pCat === "Owner Draw") setExcludeFromNetProfit(true);
+      }
+      if (scan === "1") {
+        setDialogMode("scan");
       }
       setPrefillAmount(pa ?? "");
       setPrefillDate(pd ?? "");
@@ -2303,6 +2307,7 @@ export default function Expenses() {
       clean.searchParams.delete("prefill_date");
       clean.searchParams.delete("prefill_desc");
       clean.searchParams.delete("prefill_category");
+      clean.searchParams.delete("scan");
       window.history.replaceState({}, "", clean.toString());
     }
   }, []);

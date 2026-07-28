@@ -134,7 +134,7 @@ function QuickActions({ onRecordOwnerPay, onNavigate }: {
       icon: Camera,
       label: "Scan Receipt",
       description: "AI scans & logs the expense",
-      onClick: () => onNavigate("/expenses"),
+      onClick: () => onNavigate("/expenses?scan=1"),
       color: "border-violet-200/70 hover:border-violet-300 hover:bg-violet-50/60",
       iconBg: "bg-violet-100 text-violet-700",
     },
