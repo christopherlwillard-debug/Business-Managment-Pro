@@ -1,0 +1,308 @@
+1416 - Dashboard & Accounting Organization Cleanup
+
+What & Why
+
+Organization and usability improvement only.
+
+Do NOT redesign the application.
+Do NOT add new APIs.
+Do NOT change calculations.
+Do NOT change business logic.
+Do NOT remove existing functionality.
+
+The goal is to eliminate duplicate information, group related information together, reduce scrolling, and make the Dashboard the primary business command center with a logical top-to-bottom workflow.
+
+Dashboard Layout
+
+Reorganize the Dashboard into the following sections in this exact order:
+
+1. Quick Actions
+2. Today's Alerts
+3. Business Overview
+4. Revenue vs Expenses
+5. Profit
+6. Subcontractor Payments
+7. My Pay
+
+------------------------------------------------------------
+
+Section 1 – Quick Actions (NEW)
+
+Add a new Quick Actions section directly below the Dashboard header.
+
+This section provides one-tap access to the most commonly used daily actions using existing functionality only.
+
+Display as a clean 2×2 grid of large, touch-friendly cards.
+
+Actions
+
+• Scan Receipt
+Launch the existing AI Receipt Scanner.
+
+Description:
+Scan a receipt and let Willard AI automatically create the expense.
+
+• Add Expense
+Launch the existing manual Add Expense screen.
+
+Description:
+Quickly record an expense without scanning a receipt.
+
+• New Job
+Launch the existing New Job workflow.
+
+Description:
+Create a new job.
+
+• Record Owner Pay
+Launch the existing Owner Pay dialog.
+
+Description:
+Record an owner draw or compensation.
+
+Design Requirements
+
+• Large touch-friendly cards
+• Equal-sized cards
+• Rounded corners matching the Dashboard
+• Icon above the title
+• Optional one-line description
+• Clean spacing
+• Responsive layout
+• No new APIs
+• No new business logic
+
+Future Proofing
+
+Build the Quick Actions component so additional actions can be added later without redesigning the component.
+
+Possible future actions include:
+
+• Create Invoice
+• Route Planner
+• Add Customer
+• Banking
+• Reports
+• Knowledge Base
+
+Do NOT implement these now.
+
+------------------------------------------------------------
+
+Section 2 – Today's Alerts
+
+Leave this section unchanged.
+
+Include all existing alert cards such as:
+
+• Compliance
+• Overdue Invoices
+• Active Jobs
+• Existing system alerts
+
+No logic changes.
+
+Purpose:
+
+"What needs my attention right now?"
+
+------------------------------------------------------------
+
+Section 3 – Business Overview
+
+Group all existing business overview metrics together.
+
+Include existing metrics only:
+
+• Revenue
+• Expenses
+• Active Jobs
+• Overdue Invoices
+• Collections
+
+Do not add new metrics.
+
+Purpose:
+
+"How is my business doing today?"
+
+------------------------------------------------------------
+
+Section 4 – Revenue vs Expenses
+
+Move the existing Revenue vs Expenses chart directly below Business Overview.
+
+No changes to the chart.
+
+No new calculations.
+
+No design changes.
+
+Purpose:
+
+"Is the business trending in the right direction?"
+
+------------------------------------------------------------
+
+Section 5 – Profit
+
+Replace the two existing profit cards with one combined Profit card.
+
+Layout
+
+Profit
+
+Operational Profit
+
+$X,XXX.XX
+
+Less Outstanding Subcontractor Payments
+
+-$X,XXX.XX
+
+────────────────────────
+
+Actual Profit
+
+$X,XXX.XX
+
+Helper Text
+
+"Actual Profit represents Operational Profit after all unpaid subcontractor obligations have been paid."
+
+No calculation changes.
+
+Presentation only.
+
+------------------------------------------------------------
+
+Section 6 – Subcontractor Payments
+
+Create one clearly labeled section.
+
+Group together the existing:
+
+• Total Paid
+• Total Outstanding
+• Remaining Balance
+
+Include the existing "View Details" link if available.
+
+Purpose:
+
+"Who still needs paid?"
+
+------------------------------------------------------------
+
+Section 7 – My Pay
+
+Keep My Pay on the Dashboard but simplify it.
+
+Keep:
+
+• Earned
+• Taken
+• Owed
+• Record Owner Pay button
+
+Remove:
+
+• Recent Owner Pay transaction list
+
+Add:
+
+View Full History →
+
+This should navigate to the Accounting & Tax Owner Pay section.
+
+The Dashboard should provide only a summary.
+
+Accounting remains the detailed financial workspace.
+
+Purpose:
+
+"What can I pay myself?"
+
+------------------------------------------------------------
+
+Accounting
+
+No structural changes.
+
+Accounting remains the complete financial management center.
+
+Continue to keep:
+
+• Owner Pay History
+• Edit/Delete Owner Pay
+• Business Reserve
+• Owner Equity
+• Banking
+• Expenses
+• Profit & Loss
+• Reports
+• Revenue by City
+• Cost Breakdown
+• Other Income
+• Tax Reports
+
+------------------------------------------------------------
+
+Success Criteria
+
+• Dashboard opens with Quick Actions.
+• Dashboard sections appear in this order:
+
+Quick Actions
+↓
+Today's Alerts
+↓
+Business Overview
+↓
+Revenue vs Expenses
+↓
+Profit
+↓
+Subcontractor Payments
+↓
+My Pay
+
+• No duplicate Owner Pay history on the Dashboard.
+• Operational Profit and Actual Profit are combined into one Profit card.
+• Subcontractor payment information is grouped into one section.
+• My Pay remains a summary only with a "View Full History →" link.
+• Revenue vs Expenses chart remains unchanged.
+• Zero API changes.
+• Zero calculation changes.
+• Zero business logic changes.
+• Existing functionality remains unchanged.
+
+Out of Scope
+
+• New APIs
+• Business logic changes
+• Accounting redesign
+• Dashboard V2 redesign
+• New charts
+• New calculations
+• Navigation changes
+
+Implementation Steps
+
+1. Add a new Quick Actions section at the top of Dashboard.tsx using existing navigation and dialog triggers.
+
+2. Reorder the Dashboard sections into the specified order and add clear section headings.
+
+3. Move the existing Revenue vs Expenses chart below Business Overview.
+
+4. Combine the existing Operational Profit card and Actual Profit card into a single Profit card without changing calculations.
+
+5. Group all subcontractor payment cards under a "Subcontractor Payments" section header.
+
+6. Simplify the My Pay card by removing the recent transaction list while keeping Earned, Taken, Owed, and the Record Owner Pay button.
+
+7. Add a "View Full History →" link that navigates to the Accounting & Tax page.
+
+Relevant File
+
+artifacts/contractor-app/src/pages/Dashboard.tsx
