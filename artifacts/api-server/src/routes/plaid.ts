@@ -261,7 +261,7 @@ router.get("/transactions", wrapAsync(async (req, res) => {
     return;
   }
 
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10);
 
@@ -289,7 +289,7 @@ router.get("/transactions", wrapAsync(async (req, res) => {
     .where(
       and(
         isNotNull(bankTransactionsTable.plaidTransactionId),
-        gte(bankTransactionsTable.date, thirtyDaysAgo)
+        gte(bankTransactionsTable.date, ninetyDaysAgo)
       )
     )
     .orderBy(bankTransactionsTable.date);
@@ -342,7 +342,7 @@ router.post("/sync", wrapAsync(async (req, res) => {
   const client = getPlaidClient();
 
   const endDate = new Date().toISOString().slice(0, 10);
-  const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const response = await client.transactionsGet({
     access_token: connection.accessToken,
@@ -466,7 +466,7 @@ router.post("/sync", wrapAsync(async (req, res) => {
 
   await db.update(plaidConnectionsTable).set({ lastSyncedAt: new Date() }).where(eq(plaidConnectionsTable.id, connection.id));
 
-  res.json({ synced: plaidTxns.length, inserted: insertedCount, updated: updatedCount });
+  res.json({ synced: plaidTxns.length, plaidReturned: plaidTxns.length, inserted: insertedCount, updated: updatedCount });
 }));
 
 router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) => {

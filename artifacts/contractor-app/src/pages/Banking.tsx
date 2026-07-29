@@ -130,6 +130,7 @@ interface InvestmentAccountOption {
 
 interface SyncResult {
   synced: number;
+  plaidReturned: number;
   inserted: number;
   updated: number;
 }
@@ -484,7 +485,14 @@ export default function Banking() {
       const parts: string[] = [];
       if (data.inserted > 0) parts.push(`${data.inserted} new`);
       if (data.updated > 0) parts.push(`${data.updated} updated`);
-      const description = parts.length > 0 ? `Synced: ${parts.join(", ")}` : "No new transactions.";
+      let description: string;
+      if (data.plaidReturned === 0) {
+        description = "Plaid returned 0 transactions. If you have recent activity, try again in a few minutes — Chase can take a moment to refresh.";
+      } else if (parts.length > 0) {
+        description = `Imported: ${parts.join(", ")} transaction${data.inserted + data.updated !== 1 ? "s" : ""} (last 90 days).`;
+      } else {
+        description = `${data.plaidReturned} transaction${data.plaidReturned !== 1 ? "s" : ""} already up to date.`;
+      }
       toast({ title: "Sync complete", description });
     },
     onError: (err: Error) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
@@ -1068,7 +1076,10 @@ export default function Banking() {
                 ))}
               </div>
             ) : !transactions || transactions.length === 0 ? (
-              <p className="text-sm text-muted-foreground px-6 py-4">No transactions found for this period.</p>
+              <div className="px-6 py-4 space-y-1">
+                <p className="text-sm text-muted-foreground">No transactions found in the last 90 days.</p>
+                <p className="text-xs text-muted-foreground/70">If you have recent activity, tap <span className="font-medium">Sync Transactions</span> — Chase can take a few minutes to make new transactions available.</p>
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
