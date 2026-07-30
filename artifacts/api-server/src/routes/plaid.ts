@@ -265,6 +265,13 @@ router.get("/transactions", wrapAsync(async (req, res) => {
     .toISOString()
     .slice(0, 10);
 
+  // Diagnostic: log total rows in the table so we can see prod vs filtered counts.
+  const [countRow] = await db
+    .select({ total: sql<string>`COUNT(*)` })
+    .from(bankTransactionsTable)
+    .where(isNotNull(bankTransactionsTable.plaidTransactionId));
+  const totalPlaidRows = parseInt(countRow?.total ?? "0", 10);
+
   const txns = await db
     .select({
       id: bankTransactionsTable.id,
@@ -289,34 +296,44 @@ router.get("/transactions", wrapAsync(async (req, res) => {
     .where(
       and(
         isNotNull(bankTransactionsTable.plaidTransactionId),
-        gte(bankTransactionsTable.date, ninetyDaysAgo)
+        // Cast to date to handle any timestamp storage differences between dev/prod
+        sql`${bankTransactionsTable.date}::date >= ${ninetyDaysAgo}::date`
       )
     )
     .orderBy(bankTransactionsTable.date);
 
-  // Fetch multi-invoice links for matched credit transactions
+  console.log(`[plaid/transactions] plaidId rows: ${totalPlaidRows}, after 90d filter: ${txns.length}`);
+
+  // Fetch multi-invoice links for matched credit transactions.
+  // Wrapped in try/catch — if the junction table is missing in an older prod schema,
+  // we still return transactions (just without the multi-invoice breakdown).
   const matchedTxnIds = txns
     .filter(t => t.status === "matched" && t.matchedInvoiceId != null)
     .map(t => t.id);
 
   let multiInvoiceMap = new Map<number, Array<{ invoiceNumber: string | null; total: string; clientName: string | null }>>();
   if (matchedTxnIds.length > 0) {
-    const links = await db
-      .select({
-        bankTransactionId: bankTransactionInvoiceLinksTable.bankTransactionId,
-        invoiceNumber: invoicesTable.invoiceNumber,
-        total: invoicesTable.total,
-        clientName: clientsTable.name,
-      })
-      .from(bankTransactionInvoiceLinksTable)
-      .leftJoin(invoicesTable, eq(bankTransactionInvoiceLinksTable.invoiceId, invoicesTable.id))
-      .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
-      .where(inArray(bankTransactionInvoiceLinksTable.bankTransactionId, matchedTxnIds));
+    try {
+      const links = await db
+        .select({
+          bankTransactionId: bankTransactionInvoiceLinksTable.bankTransactionId,
+          invoiceNumber: invoicesTable.invoiceNumber,
+          total: invoicesTable.total,
+          clientName: clientsTable.name,
+        })
+        .from(bankTransactionInvoiceLinksTable)
+        .leftJoin(invoicesTable, eq(bankTransactionInvoiceLinksTable.invoiceId, invoicesTable.id))
+        .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
+        .where(inArray(bankTransactionInvoiceLinksTable.bankTransactionId, matchedTxnIds));
 
-    for (const link of links) {
-      const arr = multiInvoiceMap.get(link.bankTransactionId) ?? [];
-      arr.push({ invoiceNumber: link.invoiceNumber, total: link.total ?? "0", clientName: link.clientName });
-      multiInvoiceMap.set(link.bankTransactionId, arr);
+      for (const link of links) {
+        const arr = multiInvoiceMap.get(link.bankTransactionId) ?? [];
+        arr.push({ invoiceNumber: link.invoiceNumber, total: link.total ?? "0", clientName: link.clientName });
+        multiInvoiceMap.set(link.bankTransactionId, arr);
+      }
+    } catch (linkErr) {
+      // Table may not exist in this environment — log and continue without invoice links
+      console.error("[plaid/transactions] bank_transaction_invoice_links query failed (non-fatal):", linkErr);
     }
   }
 

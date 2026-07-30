@@ -304,7 +304,42 @@ async function syncInvoiceCounter(): Promise<void> {
   }
 }
 
+/**
+ * Ensure the bank_transaction_invoice_links junction table exists in production.
+ * It was added after the initial banking schema; production may be missing it.
+ * Also ensures plaid_transaction_id column exists on bank_transactions.
+ */
+async function ensureBankingSchema(): Promise<void> {
+  try {
+    // plaid_transaction_id on bank_transactions (TEXT, nullable)
+    await db.execute(sql`
+      ALTER TABLE bank_transactions
+        ADD COLUMN IF NOT EXISTS plaid_transaction_id TEXT;
+    `);
+  } catch (err) {
+    console.error("[startup] ensureBankingSchema: plaid_transaction_id column check failed (non-fatal):", err);
+  }
+
+  try {
+    // bank_transaction_invoice_links junction table
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS bank_transaction_invoice_links (
+        id SERIAL PRIMARY KEY,
+        bank_transaction_id INTEGER NOT NULL
+          REFERENCES bank_transactions(id) ON DELETE CASCADE,
+        invoice_id INTEGER NOT NULL
+          REFERENCES invoices(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
+    `);
+    console.log("[startup] ensureBankingSchema: bank_transaction_invoice_links OK.");
+  } catch (err) {
+    console.error("[startup] ensureBankingSchema: bank_transaction_invoice_links failed (non-fatal):", err);
+  }
+}
+
 async function start() {
+  await ensureBankingSchema();
   await clearDraftInvoiceNumbers();
   await syncInvoiceCounter();
   await recomputePartialSubPaymentStatuses();
