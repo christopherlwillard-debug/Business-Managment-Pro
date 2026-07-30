@@ -1878,7 +1878,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
       txResult = { ok: true, paymentId: spr.id, amount: paymentAmount, accumulated: newAccumulated, status: newStatus };
     });
 
-    await recomputeSubPaid(jobId);
+    await recomputeSubPaid(jobId).catch(() => {});
 
     res.json(txResult ?? { ok: true });
   } catch (err: any) {
