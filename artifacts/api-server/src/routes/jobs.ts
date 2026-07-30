@@ -1807,7 +1807,19 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
             eq(jobSubHoursTable.subcontractorId, subId),
           ));
         const hoursOwed = parseFloat(hoursRow?.total ?? "0");
-        if (hoursOwed > 0) agreedOwed = hoursOwed;
+        // Include all bonuses in the "owed" ceiling so a valid bonus payment is never
+        // flagged as "overpaid". Sum previously-recorded bonuses from the ledger (rows
+        // before this insert) and add the current payment's bonus on top.
+        const [prevBonusRow] = await tx
+          .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.bonusAmount}), '0')` })
+          .from(subPaymentRecordsTable)
+          .where(and(
+            eq(subPaymentRecordsTable.jobId, jobId),
+            eq(subPaymentRecordsTable.subcontractorId, subId),
+            sql`(${subPaymentRecordsTable.isReversal} IS NULL OR ${subPaymentRecordsTable.isReversal} = false)`,
+          ));
+        const prevBonuses = parseFloat(prevBonusRow?.total ?? "0");
+        if (hoursOwed > 0) agreedOwed = hoursOwed + prevBonuses + (bonusAmount ?? 0);
       }
 
       // 1. Insert the payment record first

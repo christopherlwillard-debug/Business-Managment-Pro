@@ -216,8 +216,54 @@ async function recomputePartialSubPaymentStatuses(): Promise<void> {
       }
     }
 
-    if (fixed > 0 || promoted > 0) {
-      console.log(`[startup] recomputeSubPaymentStatuses: ${fixed} partial promoted, ${promoted} paid→overpaid.`);
+    // Correct "overpaid" records where the entire overpayment is explained by
+    // legitimate bonuses — these should be "paid", not "overpaid".
+    // This fixes records created before the pay-worker bonus-ceiling fix.
+    const overpaidRows = await db
+      .select({
+        jobId: jobSubcontractorsTable.jobId,
+        subId: jobSubcontractorsTable.subcontractorId,
+        amountOwed: jobSubcontractorsTable.amountOwed,
+        amountPaid: jobSubcontractorsTable.amountPaid,
+        compensationType: jobSubcontractorsTable.compensationType,
+      })
+      .from(jobSubcontractorsTable)
+      .where(eq(jobSubcontractorsTable.paymentStatus, "overpaid"));
+
+    let corrected = 0;
+    for (const row of overpaidRows) {
+      // Only correct hourly subs — fixed/allocation owed amounts are exact and
+      // bonuses don't apply to them in the same way.
+      if ((row.compensationType ?? "hourly") !== "hourly") continue;
+      const paid = row.amountPaid != null ? parseFloat(String(row.amountPaid)) : 0;
+      const owed = row.amountOwed != null ? parseFloat(String(row.amountOwed)) : null;
+      if (owed == null) continue;
+      const overpayment = paid - owed;
+      if (overpayment <= 0.005) continue; // not actually overpaid
+      // Sum all bonuses paid to this sub on this job
+      const [bonusRow] = await db
+        .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.bonusAmount}), '0')` })
+        .from(subPaymentRecordsTable)
+        .where(and(
+          eq(subPaymentRecordsTable.jobId, row.jobId),
+          eq(subPaymentRecordsTable.subcontractorId, row.subId),
+          sql`(${subPaymentRecordsTable.isReversal} IS NULL OR ${subPaymentRecordsTable.isReversal} = false)`,
+        ));
+      const totalBonuses = parseFloat(bonusRow?.total ?? "0");
+      // If the overpayment is fully covered by bonuses, restore to "paid"
+      if (totalBonuses >= overpayment - 0.005) {
+        await db.update(jobSubcontractorsTable)
+          .set({ paymentStatus: "paid" })
+          .where(and(
+            eq(jobSubcontractorsTable.jobId, row.jobId),
+            eq(jobSubcontractorsTable.subcontractorId, row.subId),
+          ));
+        corrected++;
+      }
+    }
+
+    if (fixed > 0 || promoted > 0 || corrected > 0) {
+      console.log(`[startup] recomputeSubPaymentStatuses: ${fixed} partial promoted, ${promoted} paid→overpaid, ${corrected} overpaid→paid (bonus correction).`);
     }
   } catch (err) {
     console.error("[startup] recomputePartialSubPaymentStatuses failed (non-fatal):", err);
