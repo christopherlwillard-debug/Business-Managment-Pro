@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   FileText, Download, Plus, Trash2, X,
   Check, Eye, AlertTriangle, Ban,
-  Paperclip, CreditCard, Copy, ExternalLink, Bell, Search,
+  Paperclip, CreditCard, Copy, ExternalLink, Bell, Search, Send,
 } from "lucide-react";
 import { InvoicePanel } from "@/components/InvoicePanel";
 
@@ -590,16 +590,16 @@ export default function Invoices() {
                                   }
                                 </button>
                               )}
-                              {squareUrl && (
+                              {(inv.status === "sent" || inv.status === "overdue" || inv.status === "partiallyPaid") && (
                                 <button
                                   onClick={() => handleSendReminder(inv.id, inv.invoiceNumber)}
                                   disabled={sendingReminderId === inv.id}
                                   className="text-muted-foreground hover:text-blue-600 transition-colors disabled:opacity-40"
-                                  title="Send reminder email"
+                                  title="Resend invoice email"
                                 >
                                   {sendingReminderId === inv.id
-                                    ? <span className="text-xs">…</span>
-                                    : <Bell className="w-4 h-4" />
+                                    ? <span className="text-xs animate-pulse">…</span>
+                                    : <Send className="w-4 h-4" />
                                   }
                                 </button>
                               )}
