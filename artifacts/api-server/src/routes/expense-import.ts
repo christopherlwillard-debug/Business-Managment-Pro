@@ -169,10 +169,10 @@ If a field cannot be determined, use reasonable defaults (today's date, empty st
     }
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-5.2",
+      model: "gpt-4o",
       max_completion_tokens: 512,
       messages,
-    });
+    }, { signal: AbortSignal.timeout(30_000) });
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
     const cleaned = raw.replace(/```json|```/g, "").trim();

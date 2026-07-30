@@ -2277,9 +2277,11 @@ export default function Expenses() {
   const [prefillNotes,  setPrefillNotes]              = useState("");
   const [prefillKey,    setPrefillKey]                = useState(0);
   const [scanningReceipt, setScanningReceipt]         = useState(false);
+  const [scanFailed,      setScanFailed]              = useState(false);
   const [dialogMode, setDialogMode]                   = useState<"manual" | "scan">("manual");
   const scanReceiptInputRef                           = useRef<HTMLInputElement>(null);
   const cameraInputRef                                = useRef<HTMLInputElement>(null);
+  const pendingAutoCamera                             = useRef(false);
   const isMobile                                      = useIsMobile();
 
   useEffect(() => {
@@ -2296,6 +2298,7 @@ export default function Expenses() {
       }
       if (scan === "1") {
         setDialogMode("scan");
+        pendingAutoCamera.current = true;
       }
       setPrefillAmount(pa ?? "");
       setPrefillDate(pd ?? "");
@@ -2508,6 +2511,7 @@ export default function Expenses() {
 
   async function handleReceiptScan(file: File) {
     setScanningReceipt(true);
+    setScanFailed(false);
     try {
       const processed = await processReceiptFile(file);
 
@@ -2550,7 +2554,7 @@ export default function Expenses() {
       setPrefillKey(k => k + 1);
 
       if (!res.ok) {
-        toast({ title: "Could not read receipt", description: "Fill in the details manually.", variant: "destructive" });
+        setScanFailed(true);
       }
 
       setReceiptFile(processed);
@@ -2558,7 +2562,7 @@ export default function Expenses() {
       setDialogMode("scan");
       setIsDialogOpen(true);
     } catch {
-      toast({ title: "Could not read receipt", description: "Fill in the details manually.", variant: "destructive" });
+      setScanFailed(true);
       try {
         const processed = await processReceiptFile(file);
         setReceiptFile(processed);
@@ -3347,6 +3351,7 @@ export default function Expenses() {
           setPrefillDesc("");
           setPrefillNotes("");
           setDialogMode("manual");
+          setScanFailed(false);
         }
       }}>
         <DialogContent className="max-w-md bg-card border-border shadow-2xl p-6 rounded-2xl flex flex-col max-h-[90vh]">
@@ -3357,10 +3362,17 @@ export default function Expenses() {
           </DialogHeader>
           <form key={prefillKey} id="expense-form" onSubmit={handleSubmit} className="space-y-4 mt-4 overflow-y-auto flex-1">
             {dialogMode === "scan" && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
-                <Camera className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                AI read your receipt — review and correct the fields below before saving.
-              </div>
+              scanFailed ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
+                  <Camera className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                  Couldn't read the receipt — fill in the fields manually and save.
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
+                  <Camera className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  AI read your receipt — review and correct the fields below before saving.
+                </div>
+              )
             )}
             <div className="grid grid-cols-2 gap-4">
               <div>
