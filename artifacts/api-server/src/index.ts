@@ -336,6 +336,23 @@ async function ensureBankingSchema(): Promise<void> {
   } catch (err) {
     console.error("[startup] ensureBankingSchema: bank_transaction_invoice_links failed (non-fatal):", err);
   }
+
+  try {
+    // bank_transaction_expense_links junction table (split expense matching)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS bank_transaction_expense_links (
+        id SERIAL PRIMARY KEY,
+        bank_transaction_id INTEGER NOT NULL
+          REFERENCES bank_transactions(id) ON DELETE CASCADE,
+        expense_id INTEGER NOT NULL
+          REFERENCES expenses(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
+    `);
+    console.log("[startup] ensureBankingSchema: bank_transaction_expense_links OK.");
+  } catch (err) {
+    console.error("[startup] ensureBankingSchema: bank_transaction_expense_links failed (non-fatal):", err);
+  }
 }
 
 async function start() {

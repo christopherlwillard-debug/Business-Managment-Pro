@@ -48,3 +48,17 @@ export const bankTransactionInvoiceLinksTable = pgTable("bank_transaction_invoic
 });
 
 export type BankTransactionInvoiceLink = typeof bankTransactionInvoiceLinksTable.$inferSelect;
+
+/** Junction table: one bank debit ↔ many expenses (split payment) */
+export const bankTransactionExpenseLinksTable = pgTable("bank_transaction_expense_links", {
+  id: serial("id").primaryKey(),
+  bankTransactionId: integer("bank_transaction_id")
+    .notNull()
+    .references(() => bankTransactionsTable.id, { onDelete: "cascade" }),
+  expenseId: integer("expense_id")
+    .notNull()
+    .references(() => expensesTable.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type BankTransactionExpenseLink = typeof bankTransactionExpenseLinksTable.$inferSelect;

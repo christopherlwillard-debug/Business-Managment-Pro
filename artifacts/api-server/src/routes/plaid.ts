@@ -5,6 +5,7 @@ import {
   bankImportBatchesTable,
   bankTransactionsTable,
   bankTransactionInvoiceLinksTable,
+  bankTransactionExpenseLinksTable,
 } from "@workspace/db";
 import { expensesTable, otherIncomeTable, invoicesTable, clientsTable, subPaymentRecordsTable, subcontractorsTable, jobsTable } from "@workspace/db/schema";
 import { eq, like, isNotNull, isNull, and, gte, lte, notInArray, sql, inArray } from "drizzle-orm";
@@ -337,9 +338,41 @@ router.get("/transactions", wrapAsync(async (req, res) => {
     }
   }
 
+  // Fetch multi-expense links for matched debit transactions.
+  // Wrapped in try/catch — defensive against missing table on older prod schema.
+  const matchedDebitIds = txns
+    .filter(t => t.status === "matched" && t.matchedExpenseId == null)
+    .map(t => t.id);
+
+  let multiExpenseMap = new Map<number, Array<{ description: string | null; category: string | null; vendor: string | null; amount: string }>>();
+  if (matchedDebitIds.length > 0) {
+    try {
+      const expLinks = await db
+        .select({
+          bankTransactionId: bankTransactionExpenseLinksTable.bankTransactionId,
+          description: expensesTable.description,
+          category: expensesTable.category,
+          vendor: expensesTable.vendor,
+          amount: expensesTable.amount,
+        })
+        .from(bankTransactionExpenseLinksTable)
+        .leftJoin(expensesTable, eq(bankTransactionExpenseLinksTable.expenseId, expensesTable.id))
+        .where(inArray(bankTransactionExpenseLinksTable.bankTransactionId, matchedDebitIds));
+
+      for (const link of expLinks) {
+        const arr = multiExpenseMap.get(link.bankTransactionId) ?? [];
+        arr.push({ description: link.description, category: link.category, vendor: link.vendor, amount: link.amount ?? "0" });
+        multiExpenseMap.set(link.bankTransactionId, arr);
+      }
+    } catch (expLinkErr) {
+      console.error("[plaid/transactions] bank_transaction_expense_links query failed (non-fatal):", expLinkErr);
+    }
+  }
+
   const result = txns.map(t => ({
     ...t,
     linkedInvoices: multiInvoiceMap.get(t.id) ?? null,
+    linkedExpenses: multiExpenseMap.get(t.id) ?? null,
   }));
 
   res.json(result);
@@ -967,6 +1000,47 @@ router.get("/sub-payments/unlinked", wrapAsync(async (req, res) => {
   res.json(rows);
 }));
 
+// ── POST /transactions/:txnId/split-match-expenses — link multiple expenses to one bank txn ──
+router.post("/transactions/:txnId/split-match-expenses", wrapAsync(async (req, res) => {
+  const txnId = parseInt(String(req.params.txnId), 10);
+  if (isNaN(txnId)) { res.status(400).json({ error: "Invalid transaction ID" }); return; }
+
+  const { expenseIds } = req.body as { expenseIds?: number[] };
+  if (!Array.isArray(expenseIds) || expenseIds.length < 2) {
+    res.status(400).json({ error: "expenseIds must be an array of at least 2 IDs" });
+    return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const [txn] = await tx.select().from(bankTransactionsTable).where(eq(bankTransactionsTable.id, txnId));
+    if (!txn) return { notFound: true } as const;
+    if (txn.status === "matched") return { conflict: true } as const;
+
+    // Verify all expenses exist
+    const expenses = await tx
+      .select({ id: expensesTable.id })
+      .from(expensesTable)
+      .where(sql`${expensesTable.id} = ANY(${expenseIds})`);
+    if (expenses.length !== expenseIds.length) return { expenseNotFound: true } as const;
+
+    // Insert junction rows
+    await tx.insert(bankTransactionExpenseLinksTable).values(
+      expenseIds.map(expenseId => ({ bankTransactionId: txnId, expenseId }))
+    );
+
+    const [updated] = await tx.update(bankTransactionsTable)
+      .set({ status: "matched" })
+      .where(eq(bankTransactionsTable.id, txnId))
+      .returning();
+    return { transaction: updated, linkedCount: expenses.length };
+  });
+
+  if ("notFound" in result) { res.status(404).json({ error: "Transaction not found" }); return; }
+  if ("conflict" in result) { res.status(409).json({ error: "Transaction is already matched" }); return; }
+  if ("expenseNotFound" in result) { res.status(404).json({ error: "One or more expenses not found" }); return; }
+  res.json(result);
+}));
+
 // ── POST /transactions/:txnId/split-match-sub-payments — link multiple sub payment records to one bank txn ──
 router.post("/transactions/:txnId/split-match-sub-payments", wrapAsync(async (req, res) => {
   const txnId = parseInt(String(req.params.txnId), 10);
@@ -1082,10 +1156,19 @@ router.post("/transactions/:txnId/unmatch", wrapAsync(async (req, res) => {
     .set({ bankTransactionId: null })
     .where(eq(subPaymentRecordsTable.bankTransactionId, txnId));
 
-  // Clear any multi-invoice links as well
+  // Clear any multi-invoice links
   await db
     .delete(bankTransactionInvoiceLinksTable)
     .where(eq(bankTransactionInvoiceLinksTable.bankTransactionId, txnId));
+
+  // Clear any multi-expense links
+  try {
+    await db
+      .delete(bankTransactionExpenseLinksTable)
+      .where(eq(bankTransactionExpenseLinksTable.bankTransactionId, txnId));
+  } catch {
+    // Table may not exist in older prod — non-fatal
+  }
 
   const [updated] = await db
     .update(bankTransactionsTable)

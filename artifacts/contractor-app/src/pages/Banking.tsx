@@ -101,6 +101,13 @@ interface LinkedInvoiceSummary {
   clientName: string | null;
 }
 
+interface LinkedExpenseSummary {
+  description: string | null;
+  category: string | null;
+  vendor: string | null;
+  amount: string;
+}
+
 interface PlaidTransaction {
   id: number;
   date: string;
@@ -119,6 +126,7 @@ interface PlaidTransaction {
   matchedExpenseJobId: number | null;
   investmentTransferId: number | null;
   linkedInvoices: LinkedInvoiceSummary[] | null;
+  linkedExpenses: LinkedExpenseSummary[] | null;
 }
 
 interface InvestmentAccountOption {
@@ -291,6 +299,11 @@ export default function Banking() {
   const [splitSubPayMode, setSplitSubPayMode] = useState(false);
   const [selectedSprIds, setSelectedSprIds] = useState<Set<number>>(new Set());
 
+  // Split expense matching
+  const [splitExpenseMode, setSplitExpenseMode] = useState(false);
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<number>>(new Set());
+  const [splitExpenseSearch, setSplitExpenseSearch] = useState("");
+
   // Multi-invoice matching state
   const [showMultiInvoice, setShowMultiInvoice] = useState(false);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<number>>(new Set());
@@ -441,7 +454,7 @@ export default function Banking() {
   const { data: unmatchedExpenses, isLoading: unmatchedExpensesLoading } = useQuery<UnmatchedExpense[]>({
     queryKey: ["unmatched-expenses"],
     queryFn: () => apiFetch<UnmatchedExpense[]>(`/api/plaid/expenses/unmatched?dateRange=90`),
-    enabled: !!matchingTxn && showAllExpenses,
+    enabled: !!matchingTxn && (showAllExpenses || splitExpenseMode),
     staleTime: 0,
   });
 
@@ -582,6 +595,25 @@ export default function Banking() {
       setSplitSubPayMode(false);
       setSelectedSprIds(new Set());
       toast({ title: "Split match applied", description: `Bank transaction linked to ${vars.subPaymentIds.length} sub payment records.` });
+    },
+    onError: (err: Error) => toast({ title: "Split match failed", description: err.message, variant: "destructive" }),
+  });
+
+  const splitMatchExpensesMutation = useMutation({
+    mutationFn: ({ txnId, expenseIds }: { txnId: number; expenseIds: number[] }) =>
+      apiFetch(`/api/plaid/transactions/${txnId}/split-match-expenses`, {
+        method: "POST",
+        body: JSON.stringify({ expenseIds }),
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
+      qc.invalidateQueries({ queryKey: ["unmatched-expenses"] });
+      qc.invalidateQueries({ queryKey: ["expenses"] });
+      setMatchingTxn(null);
+      setSplitExpenseMode(false);
+      setSelectedExpenseIds(new Set());
+      setSplitExpenseSearch("");
+      toast({ title: "Split match applied", description: `Bank transaction linked to ${vars.expenseIds.length} expenses.` });
     },
     onError: (err: Error) => toast({ title: "Split match failed", description: err.message, variant: "destructive" }),
   });
@@ -1142,6 +1174,32 @@ export default function Banking() {
                                       </button>
                                     </span>
                                   )
+                                ) : txn.linkedExpenses && txn.linkedExpenses.length >= 2 ? (
+                                  <TooltipProvider delayDuration={200}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700 font-medium cursor-default max-w-[200px]">
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                          <span className="truncate">
+                                            Covers {txn.linkedExpenses.length} expenses
+                                          </span>
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="left" className="max-w-xs p-3 text-left space-y-1.5">
+                                        <p className="font-semibold text-sm">Split payment</p>
+                                        {txn.linkedExpenses.map((exp, i) => (
+                                          <div key={i} className="flex items-center justify-between gap-3 text-xs">
+                                            <span className="font-medium truncate max-w-[140px]">{exp.vendor ?? exp.description ?? `Expense ${i + 1}`}</span>
+                                            <span className="tabular-nums shrink-0">{formatCurrency(parseFloat(exp.amount))}</span>
+                                          </div>
+                                        ))}
+                                        <div className="border-t pt-1 flex items-center justify-between text-xs font-semibold">
+                                          <span>Total</span>
+                                          <span className="tabular-nums">{formatCurrency(txn.linkedExpenses.reduce((s, e) => s + parseFloat(e.amount), 0))}</span>
+                                        </div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 ) : txn.matchedExpenseId && txn.matchedExpenseDescription ? (
                                   <TooltipProvider delayDuration={200}>
                                     <Tooltip>
@@ -1761,7 +1819,7 @@ export default function Banking() {
       </Sheet>
 
       {/* ── Match to Expense Sheet ───────────────────────────────────────────── */}
-      <Sheet open={!!matchingTxn} onOpenChange={(open) => { if (!open) { setMatchingTxn(null); setMatchExpenseSearch(""); setShowAllExpenses(false); setShowMultiInvoice(false); setSelectedInvoiceIds(new Set()); setMultiInvoiceSearch(""); } }}>
+      <Sheet open={!!matchingTxn} onOpenChange={(open) => { if (!open) { setMatchingTxn(null); setMatchExpenseSearch(""); setShowAllExpenses(false); setShowMultiInvoice(false); setSelectedInvoiceIds(new Set()); setMultiInvoiceSearch(""); setSplitSubPayMode(false); setSelectedSprIds(new Set()); setSplitExpenseMode(false); setSelectedExpenseIds(new Set()); setSplitExpenseSearch(""); } }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
@@ -2069,7 +2127,7 @@ export default function Banking() {
                 )}
 
                 {/* ── Split sub-payment matching (debit only) ── */}
-                {matchingTxn?.transactionType === "debit" && !splitSubPayMode && (
+                {matchingTxn?.transactionType === "debit" && !splitSubPayMode && !splitExpenseMode && (
                   <button
                     type="button"
                     className="w-full text-xs text-orange-600 hover:text-orange-700 py-2 border border-dashed border-orange-200 rounded-lg hover:border-orange-300 transition-colors"
@@ -2077,6 +2135,129 @@ export default function Banking() {
                   >
                     This payment covered multiple sub payments — split match
                   </button>
+                )}
+
+                {/* ── Split expense matching (debit only) ── */}
+                {matchingTxn?.transactionType === "debit" && !splitSubPayMode && !splitExpenseMode && (
+                  <button
+                    type="button"
+                    className="w-full text-xs text-blue-600 hover:text-blue-700 py-2 border border-dashed border-blue-200 rounded-lg hover:border-blue-300 transition-colors"
+                    onClick={() => { setSplitExpenseMode(true); setSelectedExpenseIds(new Set()); setSplitExpenseSearch(""); }}
+                  >
+                    This payment covered multiple expenses — split match
+                  </button>
+                )}
+
+                {splitExpenseMode && matchingTxn && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Split Across Expenses</p>
+                      <button
+                        type="button"
+                        className="text-[10px] text-muted-foreground hover:text-foreground"
+                        onClick={() => { setSplitExpenseMode(false); setSelectedExpenseIds(new Set()); setSplitExpenseSearch(""); }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Select expenses that were paid together in this one transfer.</p>
+
+                    {/* Search */}
+                    <input
+                      type="text"
+                      placeholder="Search expenses…"
+                      value={splitExpenseSearch}
+                      onChange={e => setSplitExpenseSearch(e.target.value)}
+                      className="w-full text-xs border border-border rounded-md px-2.5 py-1.5 bg-background outline-none focus:border-blue-400"
+                    />
+
+                    {/* Running total */}
+                    {(() => {
+                      const txnAmt = Math.abs(parseFloat(matchingTxn.amount));
+                      const selectedTotal = (unmatchedExpenses ?? [])
+                        .filter(e => selectedExpenseIds.has(e.id))
+                        .reduce((sum, e) => sum + Math.abs(parseFloat(e.amount)), 0);
+                      const diff = Math.abs(txnAmt - selectedTotal);
+                      const isMatch = selectedExpenseIds.size >= 2 && diff < 1.00;
+                      const isOver = selectedTotal > txnAmt + 1.00;
+                      return (
+                        <div className={`rounded-md px-3 py-2 text-xs flex items-center justify-between ${isMatch ? "bg-emerald-100 text-emerald-800" : isOver ? "bg-red-50 text-red-700" : "bg-white border border-border"}`}>
+                          <span>Selected total</span>
+                          <span className="font-bold tabular-nums">
+                            {formatCurrency(selectedTotal)} / {formatCurrency(txnAmt)}
+                            {isMatch && " ✓"}
+                          </span>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Expense list */}
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                      {unmatchedExpensesLoading ? (
+                        <div className="text-xs text-muted-foreground text-center py-3">Loading…</div>
+                      ) : !unmatchedExpenses || unmatchedExpenses.length === 0 ? (
+                        <div className="text-xs text-muted-foreground text-center py-3">No unmatched expenses found.</div>
+                      ) : (
+                        (() => {
+                          const search = splitExpenseSearch.toLowerCase();
+                          const filtered = unmatchedExpenses.filter(e =>
+                            !search ||
+                            e.description.toLowerCase().includes(search) ||
+                            e.category.toLowerCase().includes(search) ||
+                            (e.vendor ?? "").toLowerCase().includes(search)
+                          );
+                          return filtered.length === 0 ? (
+                            <div className="text-xs text-muted-foreground text-center py-3">No results for "{splitExpenseSearch}"</div>
+                          ) : filtered.map(exp => {
+                            const checked = selectedExpenseIds.has(exp.id);
+                            return (
+                              <label
+                                key={exp.id}
+                                className={`flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${checked ? "border-blue-400 bg-blue-50" : "border-border bg-background hover:bg-muted/30"}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    setSelectedExpenseIds(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(exp.id)) next.delete(exp.id); else next.add(exp.id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="accent-blue-500 shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-medium truncate">{exp.vendor ?? exp.description}</p>
+                                  <p className="text-[10px] text-muted-foreground">{exp.category} · {new Date(exp.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+                                </div>
+                                <span className="text-xs font-semibold tabular-nums shrink-0">{formatCurrency(parseFloat(exp.amount))}</span>
+                              </label>
+                            );
+                          });
+                        })()
+                      )}
+                    </div>
+
+                    {/* Link button */}
+                    {(() => {
+                      const txnAmt = Math.abs(parseFloat(matchingTxn.amount));
+                      const selectedTotal = (unmatchedExpenses ?? [])
+                        .filter(e => selectedExpenseIds.has(e.id))
+                        .reduce((sum, e) => sum + Math.abs(parseFloat(e.amount)), 0);
+                      const isMatch = selectedExpenseIds.size >= 2 && Math.abs(txnAmt - selectedTotal) < 1.00;
+                      return (
+                        <button
+                          type="button"
+                          disabled={!isMatch || splitMatchExpensesMutation.isPending}
+                          onClick={() => splitMatchExpensesMutation.mutate({ txnId: matchingTxn.id, expenseIds: Array.from(selectedExpenseIds) })}
+                          className="w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {splitMatchExpensesMutation.isPending ? "Linking…" : `Link ${selectedExpenseIds.size} expenses`}
+                        </button>
+                      );
+                    })()}
+                  </div>
                 )}
 
                 {splitSubPayMode && matchingTxn && (
