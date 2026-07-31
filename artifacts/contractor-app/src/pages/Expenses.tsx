@@ -2701,6 +2701,7 @@ export default function Expenses() {
       // Background: receipt upload (receiptFile still holds the file — setState is async)
       if (receiptFile && expense.id) {
         uploadMutation.mutateAsync({ id: expense.id, data: { receipt: receiptFile } })
+          .then(() => qc.invalidateQueries({ queryKey: ["/api/expenses"] }))
           .catch(() => {
             toast({ title: "Receipt upload failed", description: "Expense saved. Open it to re-attach the receipt.", variant: "destructive" });
           });
