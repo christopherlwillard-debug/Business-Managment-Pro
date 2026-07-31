@@ -2291,8 +2291,7 @@ export default function Expenses() {
     const pDesc = params.get("prefill_desc");
     const pCat = params.get("prefill_category");
     const scan = params.get("scan");
-    const newExpense = params.get("new");
-    if (pa || pd || pDesc || pCat || scan === "1" || newExpense === "1") {
+    if (pa || pd || pDesc || pCat || scan === "1") {
       if (pCat && CATEGORIES.includes(pCat)) {
         setCategory(pCat);
         if (pCat === "Owner Draw") setExcludeFromNetProfit(true);
@@ -2315,7 +2314,6 @@ export default function Expenses() {
       clean.searchParams.delete("prefill_desc");
       clean.searchParams.delete("prefill_category");
       clean.searchParams.delete("scan");
-      clean.searchParams.delete("new");
       window.history.replaceState({}, "", clean.toString());
     }
   }, []);
@@ -2620,6 +2618,17 @@ export default function Expenses() {
     const fd = new FormData(e.currentTarget);
 
     try {
+      // ── Explicit JS validation (replaces unreliable mobile browser native validation) ──
+      const rawDesc = (fd.get("description") as string ?? "").trim();
+      const rawAmt  = parseFloat(fd.get("amount") as string ?? "0");
+      if (!rawDesc) {
+        setUploadError("Description is required — add what was purchased.");
+        return;
+      }
+      if (rawAmt === 0 && dialogMode === "scan") {
+        setUploadError("Amount is $0.00 — correct the amount before saving.");
+        return;
+      }
       if (receiptStatus === "missing" && !receiptMissingExpl.trim()) {
         toast({ title: "Explanation required", description: "Please describe why the receipt is missing (IRS requirement).", variant: "destructive" });
         return;
@@ -2667,6 +2676,9 @@ export default function Expenses() {
       );
 
       // ── Close dialog immediately — background work continues below ──
+      // Auto-jump the year filter to match the saved expense so it's immediately visible
+      const savedYear = (expense.date ?? "").slice(0, 4);
+      if (savedYear && savedYear !== selectedYear) setSelectedYear(savedYear);
       setIsDialogOpen(false);
       setReceiptFile(null);
       setVendor("");

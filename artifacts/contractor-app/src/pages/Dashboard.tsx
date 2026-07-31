@@ -138,14 +138,6 @@ function QuickActions({ onNavigate }: {
       iconBg: "bg-violet-100 text-violet-700",
     },
     {
-      icon: Plus,
-      label: "New Expense",
-      description: "Log an expense manually",
-      onClick: () => onNavigate("/expenses?new=1"),
-      color: "border-emerald-200/70 hover:border-emerald-300 hover:bg-emerald-50/60",
-      iconBg: "bg-emerald-100 text-emerald-700",
-    },
-    {
       icon: Briefcase,
       label: "New Job",
       description: "Create a new job",
