@@ -2278,10 +2278,10 @@ export default function Expenses() {
   const [prefillKey,    setPrefillKey]                = useState(0);
   const [scanningReceipt, setScanningReceipt]         = useState(false);
   const [scanFailed,      setScanFailed]              = useState(false);
+  const [scanActionSheetOpen, setScanActionSheetOpen] = useState(false);
   const [dialogMode, setDialogMode]                   = useState<"manual" | "scan">("manual");
   const scanReceiptInputRef                           = useRef<HTMLInputElement>(null);
   const cameraInputRef                                = useRef<HTMLInputElement>(null);
-  const pendingAutoCamera                             = useRef(false);
   const isMobile                                      = useIsMobile();
 
   useEffect(() => {
@@ -2291,26 +2291,31 @@ export default function Expenses() {
     const pDesc = params.get("prefill_desc");
     const pCat = params.get("prefill_category");
     const scan = params.get("scan");
-    if (pa || pd || pDesc || pCat || scan === "1") {
+    const newExpense = params.get("new");
+    if (pa || pd || pDesc || pCat || scan === "1" || newExpense === "1") {
       if (pCat && CATEGORIES.includes(pCat)) {
         setCategory(pCat);
         if (pCat === "Owner Draw") setExcludeFromNetProfit(true);
       }
       if (scan === "1") {
-        setDialogMode("scan");
-        pendingAutoCamera.current = true;
+        // Show the action sheet so the user can tap Take Photo / Upload — do NOT open the
+        // expense dialog yet. Mobile browsers require the file input to be activated by a
+        // direct user tap on a <label>; a programmatic .click() from useEffect is blocked.
+        setScanActionSheetOpen(true);
+      } else {
+        setPrefillAmount(pa ?? "");
+        setPrefillDate(pd ?? "");
+        setPrefillDesc(pDesc ?? "");
+        setPrefillKey(k => k + 1);
+        setIsDialogOpen(true);
       }
-      setPrefillAmount(pa ?? "");
-      setPrefillDate(pd ?? "");
-      setPrefillDesc(pDesc ?? "");
-      setPrefillKey(k => k + 1);
-      setIsDialogOpen(true);
       const clean = new URL(window.location.href);
       clean.searchParams.delete("prefill_amount");
       clean.searchParams.delete("prefill_date");
       clean.searchParams.delete("prefill_desc");
       clean.searchParams.delete("prefill_category");
       clean.searchParams.delete("scan");
+      clean.searchParams.delete("new");
       window.history.replaceState({}, "", clean.toString());
     }
   }, []);
@@ -2510,6 +2515,7 @@ export default function Expenses() {
   }
 
   async function handleReceiptScan(file: File) {
+    setScanActionSheetOpen(false);
     setScanningReceipt(true);
     setScanFailed(false);
     try {
@@ -3341,6 +3347,74 @@ export default function Expenses() {
           onClearHighlight={() => setHighlightedTemplateId(null)}
         />
       </div>
+
+      {/* ── Scan Receipt Action Sheet ──────────────────────────────────────────
+          This overlay is shown when the user taps "Scan Receipt" from the dashboard.
+          Using <label> elements that directly wrap hidden file inputs is the only
+          reliable way to open the camera/picker on mobile — programmatic .click()
+          from useEffect is blocked by iOS Safari unless it's a direct user gesture. */}
+      {scanActionSheetOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/60"
+          onClick={() => setScanActionSheetOpen(false)}
+        >
+          <div
+            className="w-full bg-card rounded-t-2xl p-6 pb-10 shadow-2xl space-y-3 animate-in slide-in-from-bottom duration-300"
+            onClick={e => e.stopPropagation()}
+          >
+            <p className="text-center text-sm font-semibold text-muted-foreground mb-1">Scan a Receipt</p>
+
+            {/* Take Photo — label wraps hidden camera input so the tap IS the gesture */}
+            <label
+              htmlFor="scan-action-camera"
+              className="flex items-center gap-3 w-full px-5 py-4 rounded-2xl bg-violet-600 text-white font-semibold text-sm cursor-pointer hover:bg-violet-700 active:scale-[0.98] transition-all shadow"
+            >
+              <Camera className="w-5 h-5 shrink-0" />
+              Take Photo
+            </label>
+            <input
+              id="scan-action-camera"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptScan(f); e.target.value = ""; }}
+            />
+
+            {/* Upload Receipt — label wraps hidden file input */}
+            <label
+              htmlFor="scan-action-upload"
+              className="flex items-center gap-3 w-full px-5 py-4 rounded-2xl bg-secondary text-secondary-foreground font-semibold text-sm cursor-pointer hover:bg-secondary/80 active:scale-[0.98] transition-all shadow border border-border"
+            >
+              <Upload className="w-5 h-5 shrink-0" />
+              Upload Receipt
+            </label>
+            <input
+              id="scan-action-upload"
+              type="file"
+              accept="image/*,application/pdf,.heic,.heif"
+              className="sr-only"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptScan(f); e.target.value = ""; }}
+            />
+
+            <button
+              type="button"
+              className="w-full px-5 py-3 rounded-2xl text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setScanActionSheetOpen(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Loading overlay while AI is reading the receipt */}
+      {scanningReceipt && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/70 gap-4">
+          <div className="w-10 h-10 border-4 border-white border-t-transparent rounded-full animate-spin" />
+          <p className="text-white font-semibold text-sm">Reading receipt…</p>
+        </div>
+      )}
 
       <Dialog open={isDialogOpen} onOpenChange={open => {
         setIsDialogOpen(open);
