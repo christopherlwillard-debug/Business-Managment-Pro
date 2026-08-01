@@ -1,0 +1,136 @@
+This is a good addition. Based on your workflow, I'd make one small enhancement so it becomes more useful over time without adding complexity.
+
+Suggested Task #1442 (revised)
+
+What & Why
+
+Willard needs to record context on a business trip that doesn't fit any existing field—for example:
+
+Trip was not approved for billing.
+Client cancelled after arrival.
+Warranty work (non-billable).
+Waiting on customer approval.
+Additional work sold while on site.
+
+Currently there is no place to save this information, so important tax and business context is lost.
+
+Done looks like
+✅ A Notes textarea appears on the Create Business Trip form.
+✅ The same Notes field appears when editing an existing trip.
+✅ Notes are optional.
+✅ Notes are persisted in the database.
+✅ Notes are returned from the API.
+✅ Notes are displayed in the expanded Business Trip card in their own Trip Notes section.
+✅ Trips with empty notes display nothing extra.
+✅ Existing trips continue working without migration issues.
+Out of scope
+Receipt-level notes (already handled by receipt description)
+PDF audit packet inclusion
+Searching/filtering by notes
+Rich text formatting
+Implementation
+1. Database
+
+File
+
+lib/db/src/schema/business-trips.ts
+
+Add
+
+notes: text("notes"),
+
+Startup migration
+
+ALTER TABLE business_trips
+ADD COLUMN IF NOT EXISTS notes TEXT;
+2. API
+
+POST /trips
+
+Accept
+
+{
+  "notes": "Trip not approved for billing. Customer cancelled after arrival."
+}
+
+PATCH /trips/:id
+
+Allow updating
+
+notes
+
+GET
+
+Return
+
+notes
+
+inside every Business Trip object.
+
+3. UI — Create Trip
+
+Add a textarea after the Description or IRS section.
+
+Example
+
+Notes
+
+_____________________________________
+
+Trip was not approved for billing.
+Customer cancelled after arrival.
+
+Recommended props
+
+<Textarea
+  label="Notes"
+  placeholder="Optional notes about this trip..."
+  rows={4}
+/>
+4. UI — Edit Trip
+
+Same textarea with existing value populated.
+
+5. Expanded Trip Card
+
+If
+
+trip.notes?.trim()
+
+display
+
+Trip Notes
+
+Trip was not approved for service billing.
+Customer decided to postpone repairs.
+Stayed overnight before cancellation.
+
+Hide entire section when empty.
+
+Example use cases
+
+Example 1
+
+Trip was not approved for billing. Two technicians spent two days on-site evaluating whether service could be billed. No invoice generated.
+
+Example 2
+
+Customer cancelled after arrival. Lodging and meals retained for tax documentation.
+
+Example 3
+
+Warranty inspection only. Manufacturer requested site visit before authorizing repairs.
+
+Acceptance Checklist
+ Database migration adds nullable notes column.
+ Drizzle schema updated.
+ POST accepts notes.
+ PATCH updates notes.
+ GET returns notes.
+ Create Trip form includes Notes textarea.
+ Edit Trip form includes Notes textarea.
+ Expanded trip card displays notes when present.
+ Existing trips remain compatible.
+ Empty notes do not render a blank section.
+
+This would have solved the exact situation you described today—being able to record something like: "Two-day inspection. Service call was ultimately not approved for billing, resulting in travel and labor costs with no associated revenue." That kind of note is valuable months later when you're reviewing trips, reconciling expenses, or explaining why a business trip had costs but no income.
