@@ -1760,11 +1760,15 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
 
     const totalWithdrawn = withdrawals.reduce((s, w) => s + w.amount, 0);
 
-    // Monthly paid — group Owner Compensation payments by YYYY-MM for the Take-Home Dashboard
+    // Monthly paid — group Owner Compensation payments by YYYY-MM for the Take-Home Dashboard.
+    // Parse via Date so overflow date strings (e.g. "2026-06-32" stored due to a past bug)
+    // are resolved to their true calendar month before bucketing.
     const monthlyPaidMap = new Map<string, number>();
     for (const e of withdrawalExpenses) {
       if (!e.date) continue;
-      const month = e.date.slice(0, 7);
+      const d = new Date(e.date + "T12:00:00"); // local-time parse avoids UTC midnight shift
+      if (isNaN(d.getTime())) continue;
+      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       monthlyPaidMap.set(month, (monthlyPaidMap.get(month) ?? 0) + parseFloat(e.amount ?? "0"));
     }
     const monthlyPaid = Array.from(monthlyPaidMap.entries())

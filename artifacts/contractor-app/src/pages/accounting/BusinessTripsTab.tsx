@@ -267,11 +267,12 @@ export default function BusinessTripsTab({ year }: { year: number }) {
   const archivedTrips = trips.filter(t => t.status === "archived");
   const [showArchived, setShowArchived] = useState(false);
   const activeTrips = trips.filter(t => t.status !== "archived");
-  const totalSpend = activeTrips.reduce((s, t) => s + t.totalAmount, 0);
-  const totalMeals = activeTrips.reduce((s, t) => s + t.mealTotal, 0);
-  const deductibleMeals = activeTrips.reduce((s, t) => s + t.deductibleMeals, 0);
+  // Totals include ALL trips (archived ones are real expenses, they should count toward the year's spend)
+  const totalSpend = trips.reduce((s, t) => s + t.totalAmount, 0);
+  const totalMeals = trips.reduce((s, t) => s + t.mealTotal, 0);
+  const deductibleMeals = trips.reduce((s, t) => s + t.deductibleMeals, 0);
   const needsAttentionCount = activeTrips.filter(t => auditStatus(t).issues.length > 0).length;
-  const allReady = activeTrips.length > 0 && needsAttentionCount === 0;
+  const allReady = trips.length > 0 && needsAttentionCount === 0;
 
   return (
     <div className="space-y-6">

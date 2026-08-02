@@ -391,11 +391,14 @@ function TakeHomeDashboard() {
     allMonths.push({ month: key, paid: found?.paid ?? 0 });
   }
 
-  // Index withdrawals by YYYY-MM for the expanded row
+  // Index withdrawals by YYYY-MM for the expanded row.
+  // Parse via Date to handle any overflow dates (e.g. "2026-06-32" → July) correctly.
   const withdrawalsByMonth = new Map<string, typeof withdrawals>();
   for (const w of withdrawals) {
     if (!w.date) continue;
-    const key = w.date.slice(0, 7);
+    const d = new Date(w.date + "T12:00:00"); // local-time parse avoids UTC midnight shift
+    if (isNaN(d.getTime())) continue;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     if (!withdrawalsByMonth.has(key)) withdrawalsByMonth.set(key, []);
     withdrawalsByMonth.get(key)!.push(w);
   }
