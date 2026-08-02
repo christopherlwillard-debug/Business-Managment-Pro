@@ -158,7 +158,8 @@ router.get("/schedule-c", async (req, res) => {
     // When there is no filter at all, include everything (null businessId logs belong to no specific business but count globally).
     const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
 
-    // 1. Gross Receipts (Line 1) - only paid/sent invoices
+    // 1. Gross Receipts (Line 1) — cash basis: only paid invoices count as received income.
+    // Draft, sent, overdue, and cancelled invoices are excluded because no cash has been received.
     const [grossResult] = await db
       .select({ total: sum(invoicesTable.total) })
       .from(invoicesTable)
@@ -166,6 +167,7 @@ router.get("/schedule-c", async (req, res) => {
         and(
           gte(invoicesTable.issueDate, startDate),
           lte(invoicesTable.issueDate, endDate),
+          eq(invoicesTable.status, "paid"),
           blWhere(invoicesTable.businessLine)
         )
       );

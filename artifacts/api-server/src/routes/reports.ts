@@ -231,7 +231,10 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const invRevenue = monthlyInv.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const othRevenue = monthlyOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const mo_revenue = invRevenue + othRevenue;
-      const mo_expenses = monthlyExp.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      // Exclude mileage (sourced from mileage_logs) and owner distributions (equity, not business costs)
+      // so the monthly chart matches the top-line net profit formula.
+      const MONTHLY_OWNER_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
+      const mo_expenses = monthlyExp.filter(e => e.category !== "mileage" && !MONTHLY_OWNER_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       const mo_outstanding = monthlyInv.filter(i => ["sent", "overdue"].includes(i.status ?? "")).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       monthlyRevenue.push({
         month: monthStr,
