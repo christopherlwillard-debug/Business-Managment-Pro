@@ -62,6 +62,7 @@ import { InspectorPanel } from "./InspectorPanel";
 import { type InspectorTab } from "./inspectorFields";
 import { DepositSubmissionsPanel } from "./DepositSubmissionsPanel";
 import { CardItemEditorPanel } from "./CardItemEditorPanel";
+import { LogoSectionInspector } from "./LogoSectionInspector";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
 import { SectionLibraryPanel } from "./SectionLibraryPanel";
@@ -5455,6 +5456,15 @@ function WebsiteEditor() {
                   </button>
                 </div>
               );
+            } else if (sec.type === "featured-clients" || sec.type === "partners") {
+              const raw = sec.content as unknown as Parameters<typeof LogoSectionInspector>[0]["content"];
+              specialContent = (
+                <LogoSectionInspector
+                  content={raw}
+                  sectionType={sec.type as "featured-clients" | "partners"}
+                  onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
+                />
+              );
             }
 
             if (selectedCardData && selectedCardState?.sectionId === sec.id) {
@@ -5760,6 +5770,15 @@ function WebsiteEditor() {
                     + Add Pair
                   </button>
                 </div>
+              );
+            } else if (sec.type === "featured-clients" || sec.type === "partners") {
+              const raw = sec.content as unknown as Parameters<typeof LogoSectionInspector>[0]["content"];
+              specialContent = (
+                <LogoSectionInspector
+                  content={raw}
+                  sectionType={sec.type as "featured-clients" | "partners"}
+                  onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
+                />
               );
             }
 
