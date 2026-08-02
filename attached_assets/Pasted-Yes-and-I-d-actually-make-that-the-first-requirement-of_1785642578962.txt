@@ -1,0 +1,137 @@
+Yes—and I'd actually make that the first requirement of Phase 2.
+
+Looking at your Phase 1 screenshot and what Replit told you earlier, there is no reason to rebuild the editor. The goal of Phase 2 should be to change how users interact with the existing systems, not replace those systems.
+
+Here's how I'd frame it.
+
+Engineering Principles
+Phase 2 is an extension of Phase 1, not a rewrite.
+
+The implementation must reuse the existing editor architecture wherever possible.
+
+Before creating any new component or state management, search the existing codebase for reusable functionality.
+
+Prefer extending, refactoring, or restyling existing systems over replacing them.
+
+The objective is to make the editor feel new while keeping the underlying editing engine intact.
+
+Reuse Requirements
+
+The following systems should be reused unless there is a documented technical limitation.
+
+Reuse Existing
+Existing dnd-kit drag-and-drop engine
+Existing WebsiteEditor
+Existing EditableWrapper
+Existing InlineEditableText
+Existing InlineEditContext
+Existing media picker
+Existing inspector panel
+Existing auto-save
+Existing undo/redo history
+Existing selection model
+Existing context menu infrastructure
+Existing website renderer
+Existing JSON schema
+Existing page/component rendering
+Existing keyboard shortcut registration (if present)
+Extend Instead of Replace
+
+Examples:
+
+Instead of
+
+Create a new image editor
+
+Do
+
+Extend EditableImage so clicking an image opens a floating toolbar that uses the existing media picker.
+
+Instead of
+
+Create another drag system
+
+Do
+
+Extend the existing dnd-kit implementation to support element-level dragging.
+
+Instead of
+
+Build another inspector
+
+Do
+
+Keep the existing inspector but reposition it as the advanced editor while moving common actions to the canvas.
+
+Instead of
+
+Create another save engine
+
+Do
+
+Continue using the existing auto-save and mutation pipeline.
+
+New Components Allowed
+
+Only create new UI components where there is currently no equivalent.
+
+Examples:
+
+FloatingTextToolbar
+FloatingImageToolbar
+FloatingButtonToolbar
+AlignmentGuideOverlay
+ResizeHandleOverlay
+MiniQuickAddMenu
+
+These should integrate with the existing editor state rather than introducing new state management.
+
+Step 0 — Architecture Audit
+
+Before implementation, audit the current editor and produce a short report.
+
+For every Phase 2 feature, specify one of:
+
+Reuse (existing implementation is sufficient)
+Extend (existing implementation requires enhancement)
+New (no suitable implementation exists)
+
+The expectation is that the majority of work falls into the first two categories.
+
+I would even add a measurable goal
+Architecture Goal
+
+Reuse or extend at least 85% of the existing editor architecture.
+
+New code should primarily consist of UI components and interaction layers—not replacement business logic.
+
+If replacing an existing subsystem is believed necessary, document:
+
+• Why it cannot be extended
+• What functionality would be lost
+• Migration strategy
+• Performance impact
+
+Approval is required before replacing any major subsystem.
+Looking at your project specifically
+
+Based on everything you've shown me, I'd expect the breakdown to look something like this:
+
+System	Reuse	Extend	Replace
+Website renderer	✅		❌
+Website JSON	✅		❌
+Auto-save	✅		❌
+Undo/Redo	✅		❌
+dnd-kit		✅	❌
+Inline editing		✅	❌
+Inspector		✅	❌
+Section library		✅	❌
+Selection model		✅	❌
+Media picker		✅	❌
+Floating toolbars			✅ (new UI only)
+Alignment guides			✅ (new feature)
+Resize handles			✅ (new feature)
+
+That's exactly the balance you want: reuse the engine, enhance the interactions, add only the UI pieces that don't already exist.
+
+In other words, if Replit comes back saying it needs to rewrite WebsiteEditor, replace your state management, or build a second drag-and-drop engine, I'd push back. Phase 2 should mostly be about making the current editor behave better, not replacing the foundation you've already invested in.
