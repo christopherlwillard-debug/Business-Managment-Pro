@@ -1,0 +1,123 @@
+I think this is an excellent task. The only thing I'd change is to make it future-proof so you never have to revisit this workflow again.
+
+I'd rename it:
+
+#1445 - Unified Receipt Intake & Robust PDF Processing
+
+The feature is really about having one intake pipeline, not just one button.
+
+Add one more "Done looks like"
+✅ All receipt sources (camera, image upload, PDF upload, email attachment in the future, and drag & drop) use the exact same backend parsing pipeline so new intake methods require no additional parsing logic.
+
+This prevents duplicate code from creeping in later.
+
+I'd also tweak the PDF logic
+
+Instead of:
+
+if (text.length < 80) {
+    // use Vision
+}
+
+I'd make it something like:
+
+const hasEnoughText =
+    extractedText.trim().length >= 80 &&
+    extractedText.split(/\s+/).length >= 20;
+
+if (!hasEnoughText) {
+    // Vision fallback
+}
+
+Some receipts have only 60–70 characters but are perfectly valid.
+
+Better error states
+
+Instead of one generic message:
+
+Failed to parse receipt.
+
+Use distinct messages:
+
+Unsupported file
+
+We couldn't open this file.
+
+Unreadable receipt
+
+We could open the receipt, but couldn't read enough information.
+
+AI extraction failed
+
+The receipt was read, but we couldn't identify the vendor or totals. Please review before saving.
+
+That makes troubleshooting much easier.
+
+Future-proof the parser
+
+Rather than branching everywhere:
+
+Image
+↓
+
+OCR
+
+PDF
+↓
+
+Text
+
+PDF
+
+↓
+
+Vision
+
+I'd recommend a small parser pipeline:
+
+Upload
+
+↓
+
+Determine file type
+
+↓
+
+Extract text
+(Image OCR / PDF text / Vision)
+
+↓
+
+Normalize
+
+↓
+
+AI Extraction
+
+↓
+
+Expense Review
+
+↓
+
+Save
+
+Now every upload source ends in exactly the same extraction code.
+
+One UX improvement I'd add
+
+In the action sheet:
+
+📷 Take Photo
+
+🖼 Upload Image
+
+📄 Upload PDF
+
+──────────────
+
+📊 Import Spreadsheet / CSV
+
+Put the spreadsheet option below a divider. It's not really a receipt, so visually separating it makes the flow feel more intuitive.
+
+Overall, I think this is one of the highest-impact cleanup tasks you've written. It simplifies the Expenses page, eliminates duplicate upload workflows, fixes the current PDF parsing failure, and establishes a single receipt intake pipeline that will make future features—like drag-and-drop uploads, emailed receipts, or cloud storage imports—much easier to add.
