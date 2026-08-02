@@ -84,6 +84,7 @@ import { useEditorHistory } from "./useEditorHistory";
 import { EditableWrapper } from "./EditableWrapper";
 import { useInlineEdit, InlineEditContext, InlineEditStatus } from "./InlineEditContext";
 import { FloatingTextToolbar } from "./FloatingTextToolbar";
+import { ImageFloatingToolbar } from "./ImageFloatingToolbar";
 import { SelectionHandles } from "./SelectionHandles";
 import { AlignmentGuides } from "./AlignmentGuides";
 import { computeAlignmentGuides, type AlignmentGuide, type SimpleRect } from "./alignmentUtils";
@@ -4897,6 +4898,42 @@ function WebsiteEditor() {
     return (
       <InlineEditContext.Provider value={contextValue}>
         {!previewMode && <FloatingTextToolbar />}
+        {/* Image floating toolbar — appears above selected image components */}
+        {!previewMode && (() => {
+          if (!selectedComponentState) return null;
+          const { sectionId, componentId } = selectedComponentState;
+          const sec = sections.find(s => s.id === sectionId);
+          const comps: SiteComponent[] = (sec?.content as any)?.components ?? [];
+          const comp = comps.find(c => c.id === componentId);
+          if (!comp || comp.type !== "image") return null;
+          const imageProps = comp.props as ImageCompProps;
+          return (
+            <ImageFloatingToolbar
+              componentId={componentId}
+              imageProps={imageProps}
+              onReplaceImage={() => {
+                openMediaLibrary((url: string) => {
+                  history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+                  isDirtyRef.current = true;
+                  setHasUnpublishedChanges(true);
+                  updateComponentInSection(sectionId, undefined, componentId, c => ({
+                    ...c, props: { ...(c.props as ImageCompProps), url },
+                  }));
+                });
+              }}
+              onUpdateProps={(partial, commit) => {
+                if (commit) {
+                  history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+                }
+                isDirtyRef.current = true;
+                setHasUnpublishedChanges(true);
+                updateComponentInSection(sectionId, undefined, componentId, c => ({
+                  ...c, props: { ...(c.props as ImageCompProps), ...partial },
+                }));
+              }}
+            />
+          );
+        })()}
         {/* M6: Selection handles — portal-rendered ring + resize handles around selected component */}
         {/* Content-section components */}
         {!previewMode && selectedComponentState?.componentId && !selectedRowState && (

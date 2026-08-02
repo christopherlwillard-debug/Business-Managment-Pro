@@ -48,13 +48,25 @@ export interface ButtonCompProps {
 export interface ImageCompProps {
   url?: string;
   alt?: string;
-  objectFit?: "cover" | "contain";
+  objectFit?: "cover" | "contain" | "fill";
   width?: "full" | "half" | "quarter" | "auto";
   /** Fixed pixel width set via canvas drag-resize; overrides the class-based `width` preset when present. */
   widthPx?: number;
   borderRadius?: number;
   caption?: string;
   link?: string;
+  /** Focal point X as 0–100 percentage (default 50) */
+  focalX?: number;
+  /** Focal point Y as 0–100 percentage (default 50) */
+  focalY?: number;
+  /** Crop left edge as 0–100 percentage (default 0) */
+  cropX?: number;
+  /** Crop top edge as 0–100 percentage (default 0) */
+  cropY?: number;
+  /** Crop width as 0–100 percentage (default 100) */
+  cropW?: number;
+  /** Crop height as 0–100 percentage (default 100) */
+  cropH?: number;
 }
 export interface DividerCompProps {
   color?: string;
@@ -365,6 +377,18 @@ export function renderSiteComponent(
           </div>
         );
       }
+      // Build clip-path from crop values (if a crop has been applied)
+      const hasCrop = (p.cropX != null && p.cropX > 0) || (p.cropY != null && p.cropY > 0)
+        || (p.cropW != null && p.cropW < 100) || (p.cropH != null && p.cropH < 100);
+      const cropX = p.cropX ?? 0;
+      const cropY = p.cropY ?? 0;
+      const cropW = p.cropW ?? 100;
+      const cropH = p.cropH ?? 100;
+      const br = p.borderRadius ?? 0;
+      const clipPath = hasCrop
+        ? `inset(${cropY}% ${100 - cropX - cropW}% ${100 - cropY - cropH}% ${cropX}%${br > 0 ? ` round ${br}px` : ""})`
+        : undefined;
+
       const figure = (
         <figure>
           <img
@@ -373,7 +397,9 @@ export function renderSiteComponent(
             className={p.widthPx ? "rounded-lg" : `${widthClassMap[p.width ?? "full"] ?? "w-full"} rounded-lg`}
             style={{
               objectFit: p.objectFit ?? "cover",
-              borderRadius: p.borderRadius ? `${p.borderRadius}px` : undefined,
+              objectPosition: `${p.focalX ?? 50}% ${p.focalY ?? 50}%`,
+              borderRadius: br ? `${br}px` : undefined,
+              clipPath,
               width: p.widthPx ? `${p.widthPx}px` : undefined,
               maxWidth: p.widthPx ? "100%" : undefined,
             }}
