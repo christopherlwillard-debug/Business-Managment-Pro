@@ -3,6 +3,7 @@ import multer from "multer";
 import { Readable } from "stream";
 import { createHmac, createHash } from "crypto";
 import OpenAI from "openai";
+import { BUILDPRO_AI_MINI_MODEL } from "../ai-models";
 import { db } from "@workspace/db";
 import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable, depositSubmissionsTable, contactsTable } from "@workspace/db/schema";
 import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
@@ -815,7 +816,7 @@ router.post("/generate-copy", wrapAsync(async (req, res) => {
   }
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4.1-mini",
+    model: BUILDPRO_AI_MINI_MODEL,
     max_completion_tokens: 300,
     messages: [
       {

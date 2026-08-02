@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { bidOpportunitiesTable, businessesTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { BUILDPRO_AI_MINI_MODEL } from "../ai-models";
 import { fetchBidDocument } from "../lib/bidDocumentFetcher.js";
 import { runBidSync } from "../jobs/bidSync.js";
 
@@ -239,7 +240,7 @@ router.post("/:id/summarize", async (req, res) => {
     const prompt = buildSummarizePrompt(doc, businessType);
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-5-mini",
+      model: BUILDPRO_AI_MINI_MODEL,
       max_completion_tokens: 1024,
       messages: [{ role: "user", content: prompt }],
     });

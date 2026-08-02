@@ -12,6 +12,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, asc, desc, and, ilike, or, max, sql, getTableColumns } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { BUILDPRO_AI_MINI_MODEL } from "../ai-models";
 import { z } from "zod";
 
 const router = Router();
@@ -254,7 +255,7 @@ router.post("/ai-import", async (req, res) => {
     }
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5-mini",
+      model: BUILDPRO_AI_MINI_MODEL,
       max_completion_tokens: 4096,
       response_format: { type: "json_schema", json_schema: AI_IMPORT_JSON_SCHEMA },
       messages: [

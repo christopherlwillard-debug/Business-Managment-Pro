@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import OpenAI from "openai";
+import { BUILDPRO_AI_MODEL } from "../ai-models";
 import ExcelJS from "exceljs";
 import { Readable } from "stream";
 import { db } from "@workspace/db";
@@ -225,7 +226,7 @@ router.post("/parse-receipt", upload.single("file"), async (req, res) => {
 
     // ── Step 2: AI extraction ────────────────────────────────────────────────
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: BUILDPRO_AI_MODEL,
       max_completion_tokens: 512,
       messages,
     }, { signal: AbortSignal.timeout(30_000) });
