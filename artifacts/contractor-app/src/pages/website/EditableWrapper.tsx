@@ -1,6 +1,6 @@
 import { useState, useRef, type ReactNode } from "react";
 import {
-  ChevronUp, ChevronDown, Copy, EyeOff, Eye, Plus, Trash2, Lock, Pencil, Sparkles,
+  ChevronUp, ChevronDown, Copy, EyeOff, Eye, Plus, Trash2, Lock, Pencil, Sparkles, Settings2,
 } from "lucide-react";
 import type { BlockStyle } from "./sections/BlockStyleWrapper";
 
@@ -255,6 +255,8 @@ export interface EditableWrapperProps {
   locked?: boolean;
   /** Optional extra toolbar buttons inserted before the Delete button */
   extraToolbar?: ReactNode;
+  /** Opens the Advanced inspector drawer for this element */
+  onAdvanced?: () => void;
   children: ReactNode;
   /** Called when the user clicks the element to select it */
   onSelect: (e: React.MouseEvent) => void;
@@ -350,6 +352,7 @@ export function EditableWrapper({
   blockStyle,
   onPaddingDragStart,
   onPaddingChangeLive,
+  onAdvanced,
 }: EditableWrapperProps) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -543,6 +546,20 @@ export function EditableWrapper({
 
           {/* Extra toolbar items (caller-supplied, e.g. image Replace button) */}
           {extraToolbar}
+
+          {/* Advanced settings — opens the inspector drawer */}
+          {onAdvanced && (
+            <>
+              <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+              <ToolbarBtn
+                onClick={e => { e.stopPropagation(); onAdvanced(); }}
+                tooltip="Advanced settings"
+                className="p-1 rounded text-blue-300 hover:bg-blue-400/20 transition-colors"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+              </ToolbarBtn>
+            </>
+          )}
 
           {/* AI slot — reserved for Phase 4; always visible but disabled until enabled */}
           <>

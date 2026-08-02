@@ -1506,7 +1506,7 @@ function WebsiteEditor() {
   const [leftCollapsed, setLeftCollapsed] = useState(
     () => localStorage.getItem("website-editor-left-collapsed") === "true"
   );
-  const [leftPanelTab, setLeftPanelTab] = useState<"structure" | "components">("structure");
+  const [leftPanelTab, setLeftPanelTab] = useState<"structure" | "layers" | "assets" | "components">("structure");
   /** Active library-panel drag state — tracks ghost position and canvas drop target. */
   const [libraryDrag, setLibraryDrag] = useState<{
     type: ComponentType;
@@ -1521,6 +1521,11 @@ function WebsiteEditor() {
     const s = localStorage.getItem('website-inspector-mode');
     return (s === 'pinned' || s === 'floating') ? s : 'auto';
   });
+  /** Whether the right inspector drawer is currently open (default hidden). */
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  // Auto-close inspector when section is deselected (not applicable in pinned mode).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!activeSection && panelMode !== "pinned") setInspectorOpen(false); }, [activeSection]);
   /** The specific canvas element (heading, phone, button, etc.) drilled into via double-click. */
   const [selectedSubElement, setSelectedSubElement] = useState<{ type: string; label: string } | null>(null);
   /** Ref keeps sub-element accessible from zero-dep keydown listeners. */
@@ -2099,6 +2104,17 @@ function WebsiteEditor() {
     },
   });
   const savedSections: SavedSection[] = savedSectionsData ?? [];
+
+  /** Media items — fetched lazily when the Assets sidebar tab is active. */
+  const { data: assetItems = [] } = useQuery<Array<{ id: number; url: string; filename: string; displayName: string | null }>>({
+    queryKey: ["website-media", bizId],
+    enabled: leftPanelTab === "assets" && !!bizId,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/website/media?businessId=${bizId}`, { credentials: "include" });
+      return res.ok ? (res.json() as Promise<Array<{ id: number; url: string; filename: string; displayName: string | null }>>) : [];
+    },
+  });
 
   // Derived constants — declared here, after useQuery, so they are in scope
   // for every hook and callback that follows. Never reference these in a hook
@@ -4892,6 +4908,7 @@ function WebsiteEditor() {
           onMoveUp={!isHeader && !previewMode ? () => moveSection(s.id, "up") : undefined}
           onMoveDown={!isHeader && !previewMode ? () => moveSection(s.id, "down") : undefined}
           onInsertBelow={!isHeader && !previewMode ? () => { setInsertAfterSectionId(s.id); setShowAddSection(true); } : undefined}
+          onAdvanced={!isHeader && !previewMode ? () => { setActiveSection(s.id); setInspectorOpen(true); } : undefined}
           onDoubleClickPrimary={!previewMode ? () => {
             // When the user double-clicks a non-text background area of the section,
             // trigger inline editing on the section's first text target.
@@ -5726,24 +5743,23 @@ function WebsiteEditor() {
               <Layers className="w-4 h-4 text-muted-foreground/40" />
             </div>
           ) : (<>
-          {/* Panel header — tabbed: Structure / Components */}
+          {/* Panel header — tabbed: Pages · Layers · Assets · Blocks */}
           <div className="flex-shrink-0 border-b border-border">
-            {/* Tab row */}
+            {/* Tab row — 4 compact tabs */}
             <div className="flex items-center">
-              <button
-                type="button"
-                onClick={() => setLeftPanelTab("structure")}
-                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${leftPanelTab === "structure" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                Structure
-              </button>
-              <button
-                type="button"
-                onClick={() => setLeftPanelTab("components")}
-                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${leftPanelTab === "components" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                Components
-              </button>
+              {(["structure", "layers", "assets", "components"] as const).map(tab => {
+                const labels: Record<typeof tab, string> = { structure: "Pages", layers: "Layers", assets: "Assets", components: "Blocks" };
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setLeftPanelTab(tab)}
+                    className={`flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors ${leftPanelTab === tab ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {labels[tab]}
+                  </button>
+                );
+              })}
             </div>
             {/* Action buttons row (structure-only helpers + always-visible hide button) */}
             <div className="flex items-center gap-1 px-2 py-1">
@@ -5787,7 +5803,7 @@ function WebsiteEditor() {
             </div>
           </div>
           {/* Tree search — hidden when Components tab is active */}
-          <div className={`px-2 py-1.5 border-b border-border/50 flex-shrink-0 ${leftPanelTab === "components" ? "hidden" : ""}`}>
+          <div className={`px-2 py-1.5 border-b border-border/50 flex-shrink-0 ${leftPanelTab !== "structure" ? "hidden" : ""}`}>
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
               <input
@@ -5811,7 +5827,7 @@ function WebsiteEditor() {
             </div>
           </div>
 
-          {/* Components library panel — shown only when Components tab is active */}
+          {/* Components library panel — shown only when Blocks tab is active */}
           {leftPanelTab === "components" && (
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
               <ComponentLibraryPanel
@@ -5822,8 +5838,100 @@ function WebsiteEditor() {
             </div>
           )}
 
+          {/* ── Layers panel — section tree for the active page ──────────── */}
+          {leftPanelTab === "layers" && (
+            <div className="flex-1 min-h-0 overflow-y-auto py-1">
+              {sections.length === 0 ? (
+                <div className="px-3 py-6 text-center text-xs text-muted-foreground">No sections on this page.</div>
+              ) : sections.map((sec) => {
+                const isActive = activeSection === sec.id;
+                const sectionIcons = getSectionTypeIcons();
+                const secLabel = SECTION_LABELS[sec.type] ?? sec.type;
+                // Gather nested components for content/row sections
+                const nestedComps: Array<{ id: string; label: string }> = [];
+                if (sec.type === "content") {
+                  const d = sec.content as { components?: Array<{ id: string; type: string }> };
+                  (d.components ?? []).forEach(c => nestedComps.push({ id: c.id, label: COMPONENT_TYPE_LABELS[c.type as ComponentType] ?? c.type }));
+                } else if (sec.type === "row") {
+                  const d = sec.content as { columns?: Array<{ components?: Array<{ id: string; type: string }> }> };
+                  (d.columns ?? []).forEach(col => (col.components ?? []).forEach(c => nestedComps.push({ id: c.id, label: COMPONENT_TYPE_LABELS[c.type as ComponentType] ?? c.type })));
+                }
+                return (
+                  <div key={sec.id} className="group/layer">
+                    <div
+                      className={`flex items-center gap-1.5 px-2 py-1.5 text-xs cursor-pointer transition-colors ${isActive ? "bg-primary/10 text-primary font-medium" : "text-foreground hover:bg-muted/50"} ${!sec.enabled ? "opacity-50" : ""}`}
+                      onClick={() => setActiveSection(sec.id)}
+                    >
+                      <span className="flex-shrink-0 opacity-60 [&>svg]:w-3 [&>svg]:h-3">{sectionIcons[sec.type]}</span>
+                      <span className="flex-1 truncate">{secLabel}</span>
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); toggleSection(sec.id); }}
+                        className="p-0.5 rounded opacity-0 group-hover/layer:opacity-100 hover:bg-muted flex-shrink-0 transition-opacity"
+                        title={sec.enabled ? "Hide section" : "Show section"}
+                      >
+                        {sec.enabled ? <Eye className="w-3 h-3 text-muted-foreground" /> : <EyeOff className="w-3 h-3 text-orange-400" />}
+                      </button>
+                    </div>
+                    {nestedComps.length > 0 && isActive && (
+                      <div className="ml-4 border-l border-border/40 pl-1.5 py-0.5">
+                        {nestedComps.map(comp => {
+                          const isCompActive = selectedComponentState?.sectionId === sec.id && selectedComponentState.componentId === comp.id;
+                          return (
+                            <div
+                              key={comp.id}
+                              className={`flex items-center gap-1.5 px-1.5 py-1 text-[10px] rounded cursor-pointer transition-colors ${isCompActive ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/30"}`}
+                              onClick={() => { setActiveSection(sec.id); setSelectedComponentState({ sectionId: sec.id, componentId: comp.id }); }}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-current opacity-40 flex-shrink-0" />
+                              <span className="flex-1 truncate">{comp.label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── Assets panel — media thumbnails for quick access ─────────── */}
+          {leftPanelTab === "assets" && (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {assetItems.length === 0 ? (
+                <div className="px-3 py-8 text-center">
+                  <Images className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">No media yet.</p>
+                  <p className="text-[10px] text-muted-foreground/60 mt-1 leading-relaxed">Upload images via the media library in any section.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-1 p-2">
+                  {assetItems.map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      title={item.displayName ?? item.filename}
+                      onClick={() => {
+                        navigator.clipboard.writeText(item.url).then(() => {
+                          toast({ title: "URL copied", description: "Paste it into any image field.", duration: 2000 });
+                        }).catch(() => {});
+                      }}
+                      className="relative aspect-square bg-muted rounded overflow-hidden group/asset border border-border hover:border-primary/40 transition-colors"
+                    >
+                      <img src={item.url} alt={item.displayName ?? item.filename} className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/asset:opacity-100 transition-opacity flex items-center justify-center">
+                        <Copy className="w-3.5 h-3.5 text-white" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Scrollable body — tree + theme designer scroll together; header & search stay sticky above */}
-          <div ref={sidebarListRef} className={`flex-1 min-h-0 overflow-y-auto ${leftPanelTab === "components" ? "hidden" : ""}`}>
+          <div ref={sidebarListRef} className={`flex-1 min-h-0 overflow-y-auto ${leftPanelTab !== "structure" ? "hidden" : ""}`}>
 
           {/* Inline add-page form */}
           {showAddPage && (
@@ -6126,7 +6234,7 @@ function WebsiteEditor() {
             const hasValidSec = !!sec;
             const _savedW = parseInt(localStorage.getItem("inspector-panel-width") ?? "280", 10);
             const dockW = Math.max(240, Math.min(300, isNaN(_savedW) ? 280 : _savedW));
-            const dockVisible = panelMode === 'pinned' || (panelMode === 'auto' && hasValidSec);
+            const dockVisible = panelMode === 'pinned' || (panelMode === 'auto' && hasValidSec && inspectorOpen);
 
             // Header section: show Header Builder instead of generic InspectorPanel
             if (sec?.type === "header") {
