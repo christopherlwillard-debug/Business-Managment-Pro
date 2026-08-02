@@ -87,7 +87,7 @@ function BottomNav({ activeTab, setTab, features }: {
     ...(features.includes("income_report") ? [{ key: "income_report", label: "Income", icon: TrendingUp, primary: true }] : []),
     ...(features.includes("payments") && !features.includes("income_report") ? [{ key: "payments", label: "My Pay", icon: DollarSign, primary: true }] : []),
     ...(features.includes("w9") ? [{ key: "w9", label: "W-9", icon: FileText, primary: false }] : []),
-    ...(features.includes("expenses") ? [{ key: "expenses", label: "Expenses", icon: Receipt, primary: false }] : []),
+    ...(features.includes("expenses") ? [{ key: "expenses", label: "Expenses", icon: Receipt, primary: true }] : []),
     ...(features.includes("mileage") ? [{ key: "mileage", label: "Mileage", icon: Navigation, primary: false }] : []),
     ...(features.includes("tax_reports") ? [{ key: "tax_reports", label: "Tax Reports", icon: BarChart3, primary: false }] : []),
     ...(features.includes("home_office") ? [{ key: "home_office", label: "Home Office", icon: Home, primary: false }] : []),
@@ -1541,39 +1541,38 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
           <h2 className="text-lg font-display font-bold">My Expenses</h2>
           <p className="text-sm text-muted-foreground">Total: <strong className="text-foreground">{formatCurrency(total)}</strong></p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* AI scan — opens camera/file picker and auto-fills the form */}
-          <button
-            onClick={() => scanInputRef.current?.click()}
-            disabled={scanning}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors"
-            title="Scan a receipt with AI"
-          >
-            {scanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
-            <span className="hidden sm:inline">Scan</span>
-          </button>
-          <input
-            ref={scanInputRef}
-            type="file"
-            accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf"
-            capture="environment"
-            className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleScanFile(f); }}
-          />
+        {(expenses as any[]).length > 0 && (
           <button
             onClick={() => { setFormOpen(!formOpen); if (formOpen) { resetForm(); setScanError(null); } }}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
           >
-            <Plus className="w-4 h-4" /> Add
+            <Plus className="w-4 h-4" /> Add Expense
           </button>
-        </div>
+        )}
       </div>
 
+      {/* Hidden file inputs — shared between the form and the empty-state scan button */}
+      <input
+        ref={scanInputRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf"
+        capture="environment"
+        className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleScanFile(f); }}
+      />
+      <input
+        ref={receiptInputRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf"
+        className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptFile(f); }}
+      />
+
       {formOpen && (
-        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
+        <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-4">
           {/* Scan status banners */}
           {scanning && (
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+            <div className="flex items-center gap-2 px-3 py-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium">
               <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
               <span>Reading your receipt with AI…</span>
             </div>
@@ -1590,17 +1589,55 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
               <span>Fields filled from your receipt — review and tap Save.</span>
             </div>
           )}
+
+          {/* ── Receipt hero section (top of form) ── */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Receipt</p>
+            {receiptFile ? (
+              <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                {receiptPreview
+                  ? <img src={receiptPreview} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-emerald-200" />
+                  : <FileText className="w-10 h-10 text-emerald-600 flex-shrink-0" />
+                }
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-emerald-800 truncate">{receiptFile.name}</p>
+                  <p className="text-xs text-emerald-600">Ready to upload</p>
+                </div>
+                <button type="button"
+                  onClick={() => { setReceiptFile(null); setReceiptPreview(null); if (receiptInputRef.current) receiptInputRef.current.value = ""; }}
+                  className="p-1.5 rounded-full hover:bg-emerald-200 transition-colors">
+                  <X className="w-4 h-4 text-emerald-700" />
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Primary CTA — AI scan */}
+                <button
+                  type="button"
+                  onClick={() => scanInputRef.current?.click()}
+                  disabled={scanning}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-amber-500 text-white font-semibold text-sm hover:bg-amber-600 disabled:opacity-50 transition-colors shadow-sm"
+                >
+                  {scanning ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
+                  Scan Receipt with AI
+                </button>
+                {/* Secondary — manual file upload */}
+                <button type="button" onClick={() => receiptInputRef.current?.click()}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors">
+                  <Upload className="w-4 h-4" /> Upload from files
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* ── Form fields (below receipt) ── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Description *"><Input value={form.description} onChange={e => setF("description", e.target.value)} placeholder="What was it for?" /></Field>
             <Field label="Amount *"><Input type="number" min="0" step="0.01" value={form.amount} onChange={e => setF("amount", e.target.value)} placeholder="0.00" /></Field>
-            <Field label="Date *"><Input type="date" value={form.date} onChange={e => setF("date", e.target.value)} /></Field>
             <Field label="Category">
               <select value={form.category} onChange={e => setF("category", e.target.value)} className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm focus:outline-none">
                 {EXPENSE_CATS.map(c => <option key={c}>{c}</option>)}
               </select>
-            </Field>
-            <Field label="Vendor">
-              <Input value={form.vendor} onChange={e => setF("vendor", e.target.value)} placeholder="e.g. Home Depot" />
             </Field>
             {jobs.length > 0 && (
               <Field label="Job">
@@ -1610,33 +1647,8 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
                 </select>
               </Field>
             )}
-          </div>
-
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1"><ImageIcon className="w-3 h-3" /> Receipt <span className="font-normal">(optional)</span></p>
-            {receiptFile ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200">
-                {receiptPreview
-                  ? <img src={receiptPreview} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-emerald-200" />
-                  : <FileText className="w-8 h-8 text-emerald-600 flex-shrink-0" />
-                }
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-emerald-800 truncate">{receiptFile.name}</p>
-                  <p className="text-[10px] text-emerald-600">Ready to upload</p>
-                </div>
-                <button type="button" onClick={() => { setReceiptFile(null); setReceiptPreview(null); if (receiptInputRef.current) receiptInputRef.current.value = ""; }}
-                  className="p-1 rounded-full hover:bg-emerald-200 transition-colors">
-                  <X className="w-3.5 h-3.5 text-emerald-700" />
-                </button>
-              </div>
-            ) : (
-              <button type="button" onClick={() => receiptInputRef.current?.click()}
-                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors">
-                <Upload className="w-4 h-4" /> Tap to attach receipt photo or PDF
-              </button>
-            )}
-            <input ref={receiptInputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf" className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptFile(f); }} />
+            <Field label="Vendor"><Input value={form.vendor} onChange={e => setF("vendor", e.target.value)} placeholder="e.g. Home Depot" /></Field>
+            <Field label="Date *"><Input type="date" value={form.date} onChange={e => setF("date", e.target.value)} /></Field>
           </div>
 
           <div className="flex gap-2 pt-1">
@@ -1647,17 +1659,42 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
             >
               {addMut.isPending ? "Saving…" : "Save Expense"}
             </button>
-            <button onClick={() => { setFormOpen(false); resetForm(); }} className="w-10 h-10 rounded-xl border border-border flex items-center justify-center hover:bg-muted"><X className="w-4 h-4" /></button>
+            <button onClick={() => { setFormOpen(false); resetForm(); setScanError(null); }}
+              className="w-10 h-10 rounded-xl border border-border flex items-center justify-center hover:bg-muted">
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}
 
-      {(expenses as any[]).length === 0 ? (
-        <div className="bg-card border border-border rounded-2xl p-10 text-center text-muted-foreground">
-          <Receipt className="w-8 h-8 mx-auto mb-2 opacity-20" />
-          <p className="text-sm">No expenses yet. Tap Add to get started.</p>
+      {(expenses as any[]).length === 0 && !formOpen ? (
+        /* ── Rich empty state ── */
+        <div className="bg-card border border-border rounded-2xl p-6 space-y-5">
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto">
+              <Receipt className="w-7 h-7 text-blue-500" />
+            </div>
+            <h3 className="font-semibold text-foreground">Track your business expenses</h3>
+            <p className="text-sm text-muted-foreground leading-snug max-w-xs mx-auto">
+              Every business expense you log is a potential tax deduction. Fuel, tools, materials, supplies — it all adds up.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <button
+              onClick={() => { setFormOpen(true); scanInputRef.current?.click(); }}
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-amber-500 text-white font-semibold text-sm hover:bg-amber-600 transition-colors shadow-sm"
+            >
+              <Camera className="w-5 h-5" /> Scan a Receipt
+            </button>
+            <button
+              onClick={() => setFormOpen(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium text-foreground hover:bg-muted/40 transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Add Manually
+            </button>
+          </div>
         </div>
-      ) : (
+      ) : (expenses as any[]).length > 0 ? (
         <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm divide-y divide-border/50">
           {(expenses as any[]).map(e => (
             <div key={e.id} className="flex items-start gap-3 px-4 py-3">
@@ -1680,7 +1717,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
