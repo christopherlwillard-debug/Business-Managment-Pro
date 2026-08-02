@@ -1,0 +1,184 @@
+still have some issues with the right panel still existing and then my map is not right and state shapes are incorrect
+
+I actually think this screenshot shows two separate problems, and they're unrelated.
+
+1. The right inspector is still dominating the UI
+
+This confirms what you were saying yesterday.
+
+Even after all of Phase 1, my eyes still go here:
+
+➡️ the inspector
+
+instead of here:
+
+➡️ the website
+
+The inspector still consumes almost 25% of the editor.
+
+I would absolutely continue with Inspector Retirement (#1475).
+
+I think the editor should open like this:
+
+-------------------------------------------------------------
+Toolbar
+
+Navigator        WEBSITE CANVAS
+(Home)          ┌───────────────────────────────┐
+(Sections)      │                               │
+(Add Section)   │        Your Website           │
+                │                               │
+                │                               │
+                └───────────────────────────────┘
+
+No inspector.
+
+When you click a heading...
+
+Heading
+
+[B] [I] [Color] [Size] [Link]
+
+When you click an image...
+
+[Replace]
+[Crop]
+[Alt Text]
+[Link]
+
+When you click a button...
+
+Edit Text
+
+Link
+
+Style
+
+Only if you click
+
+Advanced...
+
+does the inspector slide out.
+
+That's exactly how modern editors work.
+
+2. The map is wrong
+
+This is actually the bigger issue.
+
+That is not a proper US map.
+
+It looks like it's using simplified polygons.
+
+Kentucky...
+
+Indiana...
+
+Illinois...
+
+Tennessee...
+
+Florida...
+
+California...
+
+They're all distorted.
+
+If your goal is a professional website builder, this won't look good on a client's site.
+
+I would NOT have Replit draw the states.
+
+I would tell it to use a real US SVG map.
+
+Something like:
+
+Every state already exists as a path.
+
+Then clicking
+
+Kentucky
+
+simply changes
+
+fill="#e5e7eb"
+
+↓
+
+fill=brandColor
+
+Done.
+
+No geometry.
+
+No generated polygons.
+
+No approximations.
+
+I'd actually modify #1480
+
+I'd add this engineering requirement.
+
+Engineering Requirement
+
+Do not generate or approximate state outlines.
+
+Use a professionally drawn SVG United States map with accurate state boundaries.
+
+Each state must exist as an individual SVG path so it can be independently selected and highlighted.
+
+The map should preserve the true proportions and recognizable shapes of all 50 states.
+
+Avoid simplified polygon representations or dynamically generated state geometry.
+I also noticed something else...
+
+The state checklist is HUGE.
+
+Look how much room it consumes.
+
+If you're only ever going to select:
+
+✅ Kentucky
+
+✅ Indiana
+
+✅ Illinois
+
+...you shouldn't have to scroll through 50 checkboxes every time.
+
+I'd replace that with:
+
+Search...
+
+Recently Selected
+
+✓ Kentucky
+
+✓ Indiana
+
+✓ Illinois
+
+-----------------
+
+All States
+
+...
+
+or even better...
+
+Click the map.
+
+The checklist becomes secondary.
+
+The map becomes the primary editor.
+
+That's much more intuitive.
+
+My overall impression
+
+Phase 1: ⭐⭐⭐⭐⭐ (major improvement over where you started)
+
+Coverage Map: ⭐⭐☆☆☆ (good concept, but the map asset and interaction still need refinement)
+
+Inspector: Still the biggest thing keeping it from feeling like Wix Studio or Framer.
+
+If it were my project, I'd prioritize #1475 (Inspector Retirement) before polishing the map, because removing the always-visible inspector will make the entire editor feel dramatically more modern. Then I'd come back and replace the current map with a proper SVG-based U.S. map and make clicking states the primary way to define service areas.
