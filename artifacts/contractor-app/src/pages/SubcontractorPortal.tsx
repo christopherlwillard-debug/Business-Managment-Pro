@@ -9,6 +9,7 @@ import {
   Lock, KeyRound, Home, Store, ChevronDown, ImageIcon, Upload,
   MapPin, Calculator, PenLine, User, Download, TrendingUp,
   ClipboardCheck, Check, Minus, Loader2, Camera, Sparkles,
+  PieChart, Star, ArrowDown, ChevronUp,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -2295,9 +2296,17 @@ function TaxReportsTab({ token }: { token: string }) {
 }
 
 // ─── Income Entry Row (expandable breakdown) ──────────────────────────────────
+function paymentTypeIcon(entry: any): { Icon: React.ComponentType<{ className?: string }>; color: string; bg: string; label: string } {
+  if (entry.workHours != null) return { Icon: Clock,     color: "text-blue-600",   bg: "bg-blue-50",   label: "Hourly work" };
+  if (entry.bonusAmount > 0)   return { Icon: Star,      color: "text-amber-500",  bg: "bg-amber-50",  label: "Bonus" };
+  if (entry.advanceAmount > 0) return { Icon: ArrowDown, color: "text-red-500",    bg: "bg-red-50",    label: "Advance deducted" };
+  return                               { Icon: PieChart,  color: "text-violet-600", bg: "bg-violet-50", label: "Allocation / fixed" };
+}
+
 function IncomeEntryRow({ entry }: { entry: any }) {
   const [open, setOpen] = useState(false);
   const hasBreakdown = entry.workHours != null || entry.travelHours != null || entry.bonusAmount != null || entry.advanceAmount != null;
+  const { Icon: PayIcon, color, bg } = paymentTypeIcon(entry);
 
   return (
     <div className="border-b border-border/40 last:border-0">
@@ -2306,6 +2315,10 @@ function IncomeEntryRow({ entry }: { entry: any }) {
         className={`w-full flex items-start gap-3 py-2 text-left ${hasBreakdown ? "cursor-pointer" : "cursor-default"}`}
         onClick={() => hasBreakdown && setOpen(v => !v)}
       >
+        {/* Payment type icon */}
+        <div className={`w-7 h-7 rounded-lg ${bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
+          <PayIcon className={`w-3.5 h-3.5 ${color}`} />
+        </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-foreground">{entry.description || "Payment"}</p>
           <div className="flex flex-wrap gap-2 mt-0.5">
@@ -2361,16 +2374,36 @@ function IncomeEntryRow({ entry }: { entry: any }) {
 }
 
 // ─── Income Report Tab ────────────────────────────────────────────────────────
+// Module-level variable persists the collapsed/expanded preference for the
+// Earnings by Job section across tab navigations within the same browser session.
+let _incomeJobsOpenPref: boolean | null = null;
+
 function IncomeReportTab({ token, subName, ytdPayments }: { token: string; subName: string; ytdPayments?: number }) {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const years = [currentYear, currentYear - 1, currentYear - 2];
+  const [jobsOpen, setJobsOpen] = useState<boolean>(_incomeJobsOpenPref ?? true);
+  const userToggledJobs = useRef(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["portal-income-report", token, year],
     queryFn: () => apiFetch(`/portal/${token}/income-report?year=${year}`),
     staleTime: 60000,
   });
+
+  // Set smart default once data loads (>3 jobs → collapse), unless user already toggled
+  useEffect(() => {
+    if (data && !userToggledJobs.current && _incomeJobsOpenPref === null) {
+      setJobsOpen((data.byJob?.length ?? 0) <= 3);
+    }
+  }, [data]);
+
+  function toggleJobsOpen() {
+    const next = !jobsOpen;
+    setJobsOpen(next);
+    _incomeJobsOpenPref = next;
+    userToggledJobs.current = true;
+  }
 
   function handlePrint() {
     window.print();
@@ -2415,15 +2448,16 @@ function IncomeReportTab({ token, subName, ytdPayments }: { token: string; subNa
       {/* YTD threshold card — current year only */}
       {year === currentYear && ytdPayments != null && (
         <div className="space-y-3 no-print">
-          <div className="bg-card border border-border rounded-2xl p-5 text-center shadow-sm">
+          <div className="bg-card border border-border rounded-2xl p-4 text-center shadow-sm">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Year-to-Date Payments</p>
-            <p className="text-4xl font-display font-bold text-emerald-600 mt-2">{formatCurrency(ytdPayments)}</p>
-            <p className="text-sm text-muted-foreground mt-2">
+            <p className="text-4xl font-display font-bold text-emerald-600 mt-1">{formatCurrency(ytdPayments)}</p>
+            <p className="text-sm text-muted-foreground mt-1.5">
               {ytdPayments >= 2000
                 ? "⚠️ You may receive a 1099-NEC for this tax year."
                 : `${formatCurrency(2000 - ytdPayments)} more before a 1099-NEC is required.`}
             </p>
           </div>
+
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
             <p className="text-xs text-amber-800">
               <strong>2026 Rule (OBBBA):</strong> If you receive $2,000 or more in total payments from a single contractor in a tax year, they are required to file a 1099-NEC.
@@ -2456,34 +2490,71 @@ function IncomeReportTab({ token, subName, ytdPayments }: { token: string; subNa
           </div>
 
           {/* Total paid */}
-          <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-6 text-center">
-            <p className="text-xs font-bold uppercase tracking-widest text-emerald-700 mb-2">Total Received from Contractor</p>
+          <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-4 text-center">
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-700 mb-1.5">Total Received from Contractor</p>
             <p className="text-5xl font-display font-bold text-emerald-700">{formatCurrency(data.totalPaid)}</p>
             {data.totalPaid >= 2000 && (
-              <p className="text-xs text-emerald-600 mt-3 bg-emerald-100 rounded-lg px-3 py-1.5 inline-block">
+              <p className="text-xs text-emerald-600 mt-2.5 bg-emerald-100 rounded-lg px-3 py-1.5 inline-block">
                 ⚠️ You will receive a 1099-NEC for {data.year} — income ≥ $2,000
               </p>
             )}
           </div>
 
-          {/* Per-job breakdown */}
-          {data.byJob && data.byJob.length > 0 && (
-            <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide border-b border-border pb-2">Breakdown by Job</p>
-              {data.byJob.map((j: any) => (
-                <div key={j.jobId ?? "__none__"} className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Briefcase className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                    <span className="text-sm text-foreground truncate">{j.jobTitle}</span>
-                    <span className="text-xs text-muted-foreground flex-shrink-0">({j.count} payment{j.count !== 1 ? "s" : ""})</span>
+          {/* Payment stats chips — count, average, largest — shown for all years */}
+          {data.entries && data.entries.length > 0 && (() => {
+            const entries: any[] = data.entries;
+            const avg = data.totalPaid / entries.length;
+            const largest = Math.max(...entries.map((e: any) => e.amount));
+            return (
+              <div className="grid grid-cols-3 gap-2 no-print">
+                {[
+                  { label: "Payments", value: String(entries.length) },
+                  { label: "Average",  value: formatCurrency(avg) },
+                  { label: "Largest",  value: formatCurrency(largest) },
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-muted/40 border border-border rounded-xl px-3 py-2.5 text-center">
+                    <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">{label}</p>
+                    <p className="text-sm font-bold text-foreground mt-0.5">{value}</p>
                   </div>
-                  <span className="font-semibold text-sm text-emerald-700 flex-shrink-0">{formatCurrency(j.total)}</span>
-                </div>
-              ))}
-              {data.byJob.length > 1 && (
-                <div className="border-t border-border pt-2 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-foreground">Total</span>
-                  <span className="font-bold text-emerald-700">{formatCurrency(data.totalPaid)}</span>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Earnings by Job — collapsible */}
+          {data.byJob && data.byJob.length > 0 && (
+            <div className="bg-card border border-border rounded-2xl overflow-hidden">
+              <button
+                type="button"
+                onClick={toggleJobsOpen}
+                className="w-full flex items-center justify-between gap-2 px-5 py-3 text-left hover:bg-muted/30 transition-colors"
+              >
+                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
+                  Earnings by Job ({data.byJob.length})
+                </span>
+                {jobsOpen
+                  ? <ChevronUp className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  : <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                }
+              </button>
+              {jobsOpen && (
+                <div className="px-5 pb-4 space-y-3 border-t border-border/60">
+                  {data.byJob.map((j: any) => (
+                    <div key={j.jobId ?? "__none__"} className="flex items-center justify-between gap-4 pt-3 first:pt-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Briefcase className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <span className="text-sm text-foreground truncate">{j.jobTitle}</span>
+                        <span className="text-xs text-muted-foreground flex-shrink-0">({j.count} payment{j.count !== 1 ? "s" : ""})</span>
+                      </div>
+                      <span className="font-semibold text-sm text-emerald-700 flex-shrink-0">{formatCurrency(j.total)}</span>
+                    </div>
+                  ))}
+                  {data.byJob.length > 1 && (
+                    <div className="border-t border-border pt-2 flex items-center justify-between">
+                      <span className="text-sm font-semibold text-foreground">Total</span>
+                      <span className="font-bold text-emerald-700">{formatCurrency(data.totalPaid)}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
