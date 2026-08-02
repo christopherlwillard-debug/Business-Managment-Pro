@@ -18,6 +18,8 @@ interface LogoCellProps {
   onDelete: () => void;
   onToggleHide: () => void;
   dragHandle?: React.ReactNode;
+  /** Called when user clicks the empty placeholder — should open the media picker */
+  onPickImage?: () => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -36,6 +38,7 @@ export function LogoCell({
   onDelete,
   onToggleHide,
   dragHandle,
+  onPickImage,
 }: LogoCellProps) {
   const [hovered, setHovered] = useState(false);
 
@@ -68,11 +71,11 @@ export function LogoCell({
     />
   ) : isEditing ? (
     <div
-      className="w-full flex flex-col items-center justify-center gap-1 text-muted-foreground/40"
+      className="w-full flex flex-col items-center justify-center gap-1 text-primary/50 hover:text-primary transition-colors"
       style={{ height: logoMaxHeight }}
     >
       <ImagePlus className="w-5 h-5" />
-      <span className="text-[10px]">Add logo</span>
+      <span className="text-[10px]">{onPickImage ? "Click to pick logo" : "Add logo"}</span>
     </div>
   ) : null;
 
@@ -109,7 +112,15 @@ export function LogoCell({
       data-universal-card
       className={`group/logo relative flex items-center justify-center bg-card border border-border/60 ${cellPad} ${radius} ${hoverCls} ${hiddenOp} ${selRing} ${cursor}`}
       style={{ minHeight: logoMaxHeight + (normalizePadding ? 40 : 24) }}
-      onClick={() => isEditing && onSelect()}
+      onClick={() => {
+        if (!isEditing) return;
+        // Empty cell with media library available → open picker directly
+        if (!item.imageUrl && onPickImage) {
+          onPickImage();
+        } else {
+          onSelect();
+        }
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

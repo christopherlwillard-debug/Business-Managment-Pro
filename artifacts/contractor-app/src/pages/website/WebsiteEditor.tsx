@@ -295,6 +295,7 @@ function renderSection(
         onToggleRowComponentHide={extras?.onToggleRowComponentHide ? (colId, compId) => extras.onToggleRowComponentHide!(section.id, colId, compId) : undefined}
         onComponentContextMenu={extras?.onRowComponentContextMenu}
         onColumnContextMenu={extras?.onColumnContextMenu}
+        onOpenMediaLibrary={extras?.onOpenMediaLibrary}
       />
     );
     case "featured-clients": return (

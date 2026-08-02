@@ -97,7 +97,7 @@ function createNewCard(): CardComponent {
 function SortableCard({
   card, settings, isEditing, selected, displayMode,
   logoMaxHeight, normalizePadding, showHoverEffect, grayscaleUntilHover, roundedCorners,
-  onSelect, onDuplicate, onDelete, onToggleHide, onUpdateCard,
+  onSelect, onDuplicate, onDelete, onToggleHide, onUpdateCard, onOpenMediaLibrary,
 }: {
   card: CardComponent;
   settings: SiteSettings;
@@ -114,6 +114,7 @@ function SortableCard({
   onDelete: () => void;
   onToggleHide: () => void;
   onUpdateCard: (patch: Partial<CardComponent>) => void;
+  onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id });
 
@@ -154,6 +155,9 @@ function SortableCard({
           onDelete={onDelete}
           onToggleHide={onToggleHide}
           dragHandle={dragHandle}
+          onPickImage={onOpenMediaLibrary
+            ? () => onOpenMediaLibrary(url => onUpdateCard({ imageUrl: url }))
+            : undefined}
         />
       ) : (
         <UniversalCard
@@ -177,6 +181,7 @@ function SortableCard({
 
 export function FeaturedClientsSection({
   content, settings, isEditing, onChange, blockStyle, sectionId, selectedCardId, onSelectCard,
+  onOpenMediaLibrary,
 }: Props) {
   const sid = sectionId ?? "featured-clients";
 
@@ -275,6 +280,7 @@ export function FeaturedClientsSection({
                   }}
                   onToggleHide={() => updateCard(card.id, { hidden: !card.hidden })}
                   onUpdateCard={p => updateCard(card.id, p)}
+                  onOpenMediaLibrary={onOpenMediaLibrary}
                 />
               ))}
             </div>
@@ -285,7 +291,17 @@ export function FeaturedClientsSection({
           <div className="flex justify-center mt-6">
             <button
               type="button"
-              onClick={() => update({ items: [...content.items, createNewCard()] })}
+              onClick={() => {
+                const newCard = createNewCard();
+                const newItems = [...content.items, newCard];
+                update({ items: newItems });
+                if (isLogoMode && onOpenMediaLibrary) {
+                  // Open media library immediately so user can pick the logo image
+                  onOpenMediaLibrary(url => {
+                    onChange?.({ ...content, items: newItems.map(i => i.id === newCard.id ? { ...i, imageUrl: url } : i) });
+                  });
+                }
+              }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
             >
               <Plus className="w-3 h-3" />

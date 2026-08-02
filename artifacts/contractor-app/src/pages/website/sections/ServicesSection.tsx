@@ -182,7 +182,10 @@ export function ServicesSection({
   }
 
   function addItem() {
-    update({ items: [...content.items, createNewCard()] });
+    const newCard = createNewCard();
+    update({ items: [...content.items, newCard] });
+    // Auto-open the card editor so the user can immediately edit the new card
+    requestAnimationFrame(() => onSelectCard?.(newCard.id));
   }
 
   return (

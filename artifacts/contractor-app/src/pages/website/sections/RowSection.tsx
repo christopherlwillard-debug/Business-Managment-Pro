@@ -268,6 +268,8 @@ interface RowSectionProps {
   onComponentContextMenu?: (sectionId: string, colId: string, compId: string, compType: string, e: React.MouseEvent) => void;
   /** Called when user right-clicks a column header — opens column context menu */
   onColumnContextMenu?: (sectionId: string, colId: string, e: React.MouseEvent) => void;
+  /** Open the media library and return the selected URL */
+  onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
 }
 
 export function RowSection({
@@ -286,6 +288,7 @@ export function RowSection({
   onToggleRowComponentHide,
   onComponentContextMenu,
   onColumnContextMenu,
+  onOpenMediaLibrary,
 }: RowSectionProps) {
   const { toast } = useToast();
   const [showPickerForCol, setShowPickerForCol] = useState<string | null>(null);
@@ -487,7 +490,24 @@ export function RowSection({
                           className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 shadow-sm transition-colors">
                           <Type className="w-2.5 h-2.5" />Text
                         </button>
-                        <button type="button" title="Add image" onClick={e => { e.stopPropagation(); addComponent(col.id, "image"); }}
+                        <button type="button" title="Add image" onClick={e => {
+                          e.stopPropagation();
+                          if (onOpenMediaLibrary) {
+                            // Add the component first, then open media library to set its URL
+                            onBeforeAction?.();
+                            const newComp: SiteComponent = { id: uid(), type: "image", props: defaultPropsForType("image") };
+                            const col2 = columns.find(c => c.id === col.id);
+                            if (col2) {
+                              updateColumn(col.id, [...col2.components, newComp]);
+                              onSelectRowComponent?.(col.id, newComp.id);
+                              onOpenMediaLibrary(url => {
+                                updateColumn(col.id, [...col2.components, { ...newComp, props: { ...newComp.props, url } }]);
+                              });
+                            }
+                          } else {
+                            addComponent(col.id, "image");
+                          }
+                        }}
                           className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 shadow-sm transition-colors">
                           <ImageIcon className="w-2.5 h-2.5" />Image
                         </button>

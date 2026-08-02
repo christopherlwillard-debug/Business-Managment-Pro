@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, ChevronDown, LayoutGrid, AlignLeft } from "lucide-react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -10,6 +10,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { InlineEditableText } from "../InlineEditableText";
+import { useInlineEditContext } from "../InlineEditContext";
 import { UniversalCard, GripVertical } from "./UniversalCard";
 import type { CardComponent, SiteSettings } from "../website-types";
 
@@ -186,6 +187,11 @@ export function FAQSection({
   const sid = sectionId ?? "faq";
   const displayMode = content.displayMode ?? "accordion";
   const cards = content.cards ?? [];
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
+  const inlineCtx = useInlineEditContext();
+  // Ref always holds the freshest updateItem so the startEditing commit callback is never stale
+  const updateItemRef = useRef<(id: string, patch: Partial<FAQItem>) => void>(updateItem);
+  useEffect(() => { updateItemRef.current = updateItem; });
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -200,8 +206,30 @@ export function FAQSection({
   }
 
   function addAccordionItem() {
-    update({ items: [...items, { id: uid(), question: "Your question here?", answer: "Write your answer here. Be clear and helpful." }] });
+    const newId = uid();
+    update({ items: [...items, { id: newId, question: "", answer: "" }] });
+    setPendingFocusId(newId);
   }
+
+  // After the new item renders, use InlineEditContext to immediately enter editing mode.
+  // The commit callback uses a ref so it always writes through the freshest updateItem.
+  useEffect(() => {
+    if (!pendingFocusId || !inlineCtx) return;
+    const capturedId = pendingFocusId;
+    const fieldId = `${sid}-faq-${capturedId}-q`;
+    // rAF lets the DOM settle so the new InlineEditableText is mounted before we focus it
+    const raf = requestAnimationFrame(() => {
+      inlineCtx.startEditing(
+        fieldId,
+        "",
+        v => updateItemRef.current(capturedId, { question: v }),
+        "commit",
+        "cancel",
+      );
+      setPendingFocusId(null);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [pendingFocusId, sid, inlineCtx]);
 
   function removeAccordionItem(id: string) {
     update({ items: items.filter(it => it.id !== id) });

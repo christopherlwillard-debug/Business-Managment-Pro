@@ -266,7 +266,10 @@ export function TestimonialsSection({
   }
 
   function addItem() {
-    update({ items: [...items, createTestimonialCard()] });
+    const newCard = createTestimonialCard();
+    update({ items: [...items, newCard] });
+    // Auto-open the card editor so the user can immediately fill in name/photo
+    requestAnimationFrame(() => onSelectCard?.(newCard.id));
   }
 
   return (

@@ -83,7 +83,14 @@ export function ImageGallerySection({
 
   function addImage() {
     if (images.length >= 12) return;
-    update({ images: [...images, { id: uid(), url: "", caption: "" }] });
+    if (onOpenMediaLibrary) {
+      // Open media library directly — only add the slot once the user picks an image
+      onOpenMediaLibrary(url => {
+        update({ images: [...images, { id: uid(), url, caption: "" }] });
+      });
+    } else {
+      update({ images: [...images, { id: uid(), url: "", caption: "" }] });
+    }
   }
 
   function removeImage(id: string) {
@@ -216,38 +223,54 @@ export function ImageGallerySection({
                   <Trash2 className="w-3 h-3" />
                 </button>
 
-                <label className="block cursor-pointer">
-                  <div className="aspect-square bg-white/5 flex items-center justify-center overflow-hidden">
-                    {img.url ? (
-                      <img src={img.url} alt={img.caption ?? ""} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="flex flex-col items-center gap-1 text-white/30">
-                        {isUploading ? (
-                          <div className="w-5 h-5 border-2 border-white/30 border-t-white/70 rounded-full animate-spin" />
-                        ) : (
-                          <>
-                            <ImageIcon className="w-6 h-6" />
-                            <span className="text-[10px]">Upload photo</span>
-                          </>
-                        )}
+                {/* Empty tile — clicking opens media library directly if available */}
+                {!img.url && onOpenMediaLibrary && !isUploading ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenMediaLibrary(url => updateImage(img.id, { url }))}
+                    className="block w-full cursor-pointer"
+                  >
+                    <div className="aspect-square bg-white/5 flex items-center justify-center overflow-hidden hover:bg-white/10 transition-colors">
+                      <div className="flex flex-col items-center gap-1 text-white/40 hover:text-white/70 transition-colors">
+                        <ImageIcon className="w-6 h-6" />
+                        <span className="text-[10px]">Pick from library</span>
                       </div>
-                    )}
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={isUploading}
-                    onChange={e => handleFileChange(img.id, e)}
-                  />
-                </label>
-                {onOpenMediaLibrary && (
+                    </div>
+                  </button>
+                ) : (
+                  <label className="block cursor-pointer">
+                    <div className="aspect-square bg-white/5 flex items-center justify-center overflow-hidden">
+                      {img.url ? (
+                        <img src={img.url} alt={img.caption ?? ""} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="flex flex-col items-center gap-1 text-white/30">
+                          {isUploading ? (
+                            <div className="w-5 h-5 border-2 border-white/30 border-t-white/70 rounded-full animate-spin" />
+                          ) : (
+                            <>
+                              <ImageIcon className="w-6 h-6" />
+                              <span className="text-[10px]">Upload photo</span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={isUploading}
+                      onChange={e => handleFileChange(img.id, e)}
+                    />
+                  </label>
+                )}
+                {onOpenMediaLibrary && img.url && (
                   <button
                     type="button"
                     onClick={() => onOpenMediaLibrary(url => updateImage(img.id, { url }))}
                     className="w-full text-[9px] text-white/40 hover:text-white/70 py-0.5 transition-colors"
                   >
-                    {img.url ? "Replace from Library" : "Library"}
+                    Replace from Library
                   </button>
                 )}
 
