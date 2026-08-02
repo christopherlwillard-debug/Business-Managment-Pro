@@ -10,7 +10,7 @@ export interface SectionTemplate {
   name: string;
   description: string;
   emoji: string;
-  /** Library category for the Section Library panel (e.g. "Hero", "Layout"). */
+  /** Library category for the Section Library panel (e.g. "Getting Started", "Services"). */
   category: string;
   /**
    * The section type this template produces. When absent the template creates a
@@ -18,6 +18,8 @@ export interface SectionTemplate {
    * is used with that specific section type instead.
    */
   sectionType?: string;
+  /** Extra search keywords beyond the label / description / category text. */
+  keywords?: string[];
   content: () => RowSectionData | Record<string, unknown>;
   blockStyle?: BlockStyle;
 }
@@ -28,7 +30,8 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Hero Centered",
     description: "Full-width heading, paragraph, and CTA button — all centered",
     emoji: "🎯",
-    category: "Hero",
+    category: "Getting Started",
+    keywords: ["headline", "banner", "landing", "welcome", "above fold", "first section", "intro"],
     content: () => ({
       columns: [
         {
@@ -53,7 +56,8 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Hero Split",
     description: "Heading + text + button on the left, image on the right",
     emoji: "⬛",
-    category: "Hero",
+    category: "Getting Started",
+    keywords: ["headline", "photo", "split", "landing", "banner", "above fold", "image left right"],
     content: () => ({
       columns: [
         {
@@ -85,7 +89,8 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Features Grid",
     description: "Three columns — icon, heading, and description per feature",
     emoji: "✨",
-    category: "Layout",
+    category: "Services",
+    keywords: ["features", "benefits", "three column", "icons", "selling points", "why choose", "highlights"],
     content: () => ({
       columns: [
         {
@@ -128,7 +133,8 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Testimonials",
     description: "Three customer testimonial cards side by side",
     emoji: "💬",
-    category: "Social Proof",
+    category: "Trust",
+    keywords: ["reviews", "ratings", "star", "social proof", "customers", "feedback", "google", "five star"],
     content: () => ({
       columns: [
         {
@@ -166,6 +172,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     description: "Three pricing tier cards with features and CTA",
     emoji: "💳",
     category: "Marketing",
+    keywords: ["pricing", "plans", "packages", "tiers", "cost", "rates", "quote", "affordable"],
     content: () => ({
       columns: [
         {
@@ -203,6 +210,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     description: "Full-width call-to-action with heading and button on a dark background",
     emoji: "📣",
     category: "Marketing",
+    keywords: ["call to action", "convert", "button", "dark", "action", "get started", "conversion", "signup"],
     content: () => ({
       columns: [
         {
@@ -227,7 +235,8 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Team Section",
     description: "Four team member cards with photo, name, and role",
     emoji: "👥",
-    category: "Business",
+    category: "About",
+    keywords: ["team", "staff", "employees", "people", "crew", "workers", "who we are", "meet us", "our people"],
     content: () => ({
       columns: [
         {
@@ -279,7 +288,8 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "FAQ",
     description: "Two-column FAQ layout with questions and answers",
     emoji: "❓",
-    category: "Business",
+    category: "Getting Started",
+    keywords: ["questions", "answers", "help", "common questions", "accordion", "q&a", "support", "faq"],
     content: () => ({
       columns: [
         {
@@ -324,6 +334,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     description: "Form on the left, map and contact info on the right",
     emoji: "📬",
     category: "Contact",
+    keywords: ["contact", "form", "quote request", "reach out", "email", "phone", "get in touch", "map", "address"],
     content: () => ({
       columns: [
         {
@@ -357,7 +368,8 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Gallery Grid",
     description: "Three-column image grid for showcasing work",
     emoji: "🖼️",
-    category: "Media",
+    category: "Layout",
+    keywords: ["photos", "images", "portfolio", "work samples", "projects", "pictures", "photo grid"],
     content: () => ({
       columns: [
         {
@@ -397,8 +409,9 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Owner Story — Split",
     description: "Photo left, bio right — great for owner-operated businesses",
     emoji: "👤",
-    category: "About Your Business",
+    category: "About",
     sectionType: "meet-owner",
+    keywords: ["owner", "biography", "meet", "introduction", "about me", "who we are", "founder", "personal", "story", "veteran"],
     content: () => ({
       layout: "split",
       heading: "Meet the Owner",
@@ -434,8 +447,9 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Owner Story — Centered",
     description: "Circular portrait above centered bio — personal and approachable",
     emoji: "🙋",
-    category: "About Your Business",
+    category: "About",
     sectionType: "meet-owner",
+    keywords: ["owner", "biography", "meet", "introduction", "about me", "founder", "personal", "story", "photo"],
     content: () => ({
       layout: "centered",
       heading: "Meet the Owner",
@@ -471,6 +485,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     emoji: "➡️",
     category: "Services",
     sectionType: "process",
+    keywords: ["steps", "process", "how it works", "workflow", "procedure", "numbered", "what to expect", "timeline"],
     content: () => ({
       heading: "How We Work",
       subheading: "Simple, transparent, and stress-free — every time.",
@@ -495,6 +510,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     emoji: "📋",
     category: "Services",
     sectionType: "process",
+    keywords: ["steps", "process", "how it works", "timeline", "numbered", "what to expect", "procedure", "vertical"],
     content: () => ({
       heading: "What to Expect",
       subheading: "Here's exactly what happens after you reach out.",
