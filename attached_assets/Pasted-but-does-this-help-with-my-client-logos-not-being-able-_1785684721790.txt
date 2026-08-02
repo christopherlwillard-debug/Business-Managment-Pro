@@ -1,0 +1,375 @@
+but does this help with my client logos not being able to upload when clicked on?
+
+No. Those issues don't fix the problem you're seeing.
+
+From your screenshots, I think you actually have a bug, not a missing feature.
+
+When you click "Add Logo", it should open the media picker (or upload dialog). Since nothing happens, something in the click chain isn't wired up.
+
+I'd create a separate issue specifically for it.
+
+#1514 - Featured Clients "Add Logo" Click Does Nothing
+What & Why
+
+The Featured Clients / Partners & Brands section renders "Add Logo" placeholders, but clicking them does not open the Media Library or file picker. This makes the section unusable because users have no way to populate logos.
+
+Done looks like
+Clicking any Add Logo placeholder opens the existing Media Library.
+Users can upload a new image or select an existing one.
+The selected image immediately replaces the placeholder.
+Clicking an existing logo reopens the Media Library so it can be replaced.
+Remove Logo option available.
+Logo updates save correctly.
+Works in both Card and Logo Grid display modes.
+Steps
+Verify the Add Logo button has an active onClick handler.
+Reuse the same media picker used by Hero images and Gallery images.
+Save the selected image into the logo item's image field.
+Refresh the canvas immediately after selection.
+Ensure newly added logo cards are editable after upload.
+
+Relevant files
+
+FeaturedClientsSection.tsx
+MediaLibrary.tsx
+WebsiteEditor.tsx
+
+Priority: 🔴 High (Broken functionality)
+
+I also noticed another bug from your screenshots
+
+The header is the same way.
+
+You said you can't click the phone number or email.
+
+That should be another issue.
+
+#1515 - Header Contact Items Not Directly Editable
+What & Why
+
+The header displays the business phone number, email, and contact information, but users cannot click these elements directly to edit them. Editing requires navigating through settings (or isn't possible), which is inconsistent with the rest of the editor.
+
+Done looks like
+Clicking the phone number selects the phone field.
+Clicking the email selects the email field.
+Clicking the logo selects the logo.
+Clicking navigation links edits them.
+Clicking the CTA button edits its text and link.
+Hover outlines indicate editable elements.
+Uses InlineEditableText for all text.
+Inspector updates based on the selected header element.
+
+These two bugs are actually higher priority than adding new sections like "Meet the Owner." A user expects the existing components to work before they expect new components to exist.
+
+If I were prioritizing the roadmap, I'd go:
+
+🔴 Fix Add Logo (currently broken).
+🔴 Make header fully clickable/editable.
+🔴 Finish the new Footer Builder.
+🟡 Add Meet the Owner.
+🟡 Add How We Work.
+🟢 Add FAQ and other conversion-focused sections.
+
+Getting those editing interactions working first will make the builder feel much more polished and trustworthy.
+
+Ad
+can you make that thru out the website 
+
+Absolutely. In fact, I think this should become one of the core design principles of BuildPro.
+
+I'd create a single epic that covers the entire editor rather than fixing sections one at a time.
+
+Epic #1516 - Universal Direct Editing Experience
+What & Why
+
+The website builder should feel like Canva, Framer, or Webflow—not like editing a settings form.
+
+Today, many elements require users to hunt through the inspector to make changes, while others aren't editable at all. Every visible element should be directly interactive on the canvas.
+
+The goal is simple:
+
+If you can see it, you can click it.
+
+Every section should use the same editing experience so users never have to guess how to modify something.
+
+Core Principles
+Every visible element is clickable.
+Hovering any editable element highlights it.
+Clicking selects the element and opens the correct inspector.
+Text edits inline using InlineEditableText.
+Images open the Media Library.
+Icons open the Icon Picker.
+Buttons open Button Settings.
+Logos open the Logo Picker.
+Backgrounds open Background Settings.
+Empty placeholders are clickable.
+Done Looks Like
+Universal Hover States
+
+Hovering any editable object displays:
+
+✏ Edit
+
+⧉ Duplicate
+
+⬆ Move Up
+
+⬇ Move Down
+
+👁 Hide
+
+🗑 Delete
+
+The selected object receives a blue outline.
+
+Universal Text Editing
+
+Clicking any text immediately edits it inline.
+
+Examples:
+
+Hero heading
+Hero subheading
+CTA buttons
+Navigation links
+Phone numbers
+Email addresses
+Addresses
+Footer text
+Copyright
+Service descriptions
+Testimonials
+FAQ
+Pricing
+Team bios
+Owner bio
+Process steps
+Statistics
+Badges
+Review quotes
+
+No inspector required.
+
+Universal Image Editing
+
+Clicking any image opens the Media Library.
+
+Applies to:
+
+Hero background
+Owner photo
+Gallery photos
+Before & After
+Project images
+Service images
+Featured client logos
+Certifications
+Badges
+Footer logos
+Team photos
+CTA backgrounds
+Universal Logo Editing
+
+Clicking any logo opens the Logo Picker.
+
+Includes:
+
+Business logo
+Client logos
+Partner logos
+Manufacturer logos
+Certification logos
+Footer logos
+
+If empty:
+
+Click → Upload Logo
+
+If populated:
+
+Click → Replace / Remove / Crop
+
+Universal Button Editing
+
+Clicking any button opens:
+
+Button text
+Link
+Icon
+Size
+Style
+Color
+Border radius
+Hover animation
+Universal Icons
+
+Clicking an icon opens:
+
+Icon picker
+Color
+Size
+Background
+Shape
+Border
+Animation
+
+Applies everywhere.
+
+Universal Cards
+
+Every card supports:
+
+Duplicate
+Delete
+Move
+Hide
+Change layout
+Edit content
+
+Examples:
+
+Service cards
+Reviews
+FAQ
+Team members
+Process steps
+Pricing cards
+Client logos
+Gallery items
+Universal Background Editing
+
+Clicking the background of any section opens:
+
+Background color
+Gradient
+Image
+Video
+Overlay
+Opacity
+Blur
+Pattern
+Spacing
+Universal Empty States
+
+Empty placeholders always work.
+
+Examples:
+
+Add Image
+
+Add Logo
+
+Add Team Member
+
+Add Review
+
+Add FAQ
+
+Add Project
+
+Add Step
+
+Add Badge
+
+Add Gallery Photo
+
+Each immediately launches the appropriate editor.
+
+Universal Inspector
+
+Inspector becomes contextual.
+
+Selecting:
+
+Phone Number
+
+↓
+
+Shows only Phone settings.
+
+Selecting:
+
+Logo
+
+↓
+
+Shows Logo settings.
+
+Selecting:
+
+Button
+
+↓
+
+Shows Button settings.
+
+No more giant accordion panels.
+
+Universal Toolbar
+
+Every selected component shows:
+
+✏ Edit
+
+⧉ Duplicate
+
+📋 Copy
+
+📄 Paste Style
+
+👁 Hide
+
+🔒 Lock
+
+⬆ Move Up
+
+⬇ Move Down
+
+🗑 Delete
+
+Section Coverage
+
+This interaction model should apply to every section in the builder:
+
+Header
+Hero
+CTA Banner
+Services
+About
+Meet the Owner
+Team
+Process
+Stats
+Before & After
+Gallery
+Featured Clients
+Partners & Brands
+Coverage Map
+Testimonials
+Reviews
+FAQ
+Pricing
+Financing
+Certifications
+Awards
+Contact
+Footer
+
+No exceptions.
+
+Acceptance Criteria
+Every visible text element uses InlineEditableText.
+Every image opens the Media Library when clicked.
+Every logo opens the Logo Picker.
+Every button is directly editable.
+Every icon is directly editable.
+Every card can be duplicated, moved, hidden, or deleted.
+Empty placeholders always launch the appropriate editor.
+The inspector reflects the currently selected element instead of showing unrelated controls.
+Hover outlines and edit affordances are consistent across all sections.
+Keyboard shortcuts (Delete, Ctrl+D, Ctrl+C, Ctrl+V, Esc) work uniformly throughout the builder.
+Priority
+
+🔴 Critical – Core UX Foundation
+
+Every new section added to BuildPro should automatically follow this interaction model. It creates a consistent editing experience, reduces the learning curve, and makes the builder feel as polished as products like Framer, Webflow, or Canva. Once this foundation is in place, future components inherit the same behavior instead of requiring custom editing logic each time.

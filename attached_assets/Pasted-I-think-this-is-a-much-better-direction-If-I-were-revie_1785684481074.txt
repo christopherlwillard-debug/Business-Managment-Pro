@@ -1,0 +1,417 @@
+I think this is a much better direction. If I were reviewing this as a GitHub issue, I'd approve the concept, but I'd push it a little further so you don't have to redesign the footer again in six months.
+
+Overall
+
+9.8/10
+
+The biggest improvement is you're changing the mental model from "Footer Settings" to "Footer Builder."
+
+That's exactly what users expect.
+
+I'd make one architectural change
+
+Instead of
+
+type: "logo"
+type: "links"
+type: "service-area"
+type: "contact"
+
+I'd make it a true component system.
+
+FooterColumn
+{
+    id,
+    component,
+    props,
+    width
+}
+
+Example
+
+{
+    id: "logo1",
+    component: "LogoBlock",
+    width: 4,
+    props: {
+        logo: "...",
+        tagline: "...",
+        socials:[]
+    }
+}
+
+Then
+
+{
+    id:"links1",
+    component:"LinksBlock",
+    width:3,
+    props:{
+        title:"Services",
+        links:[]
+    }
+}
+
+Now later you can build
+
+MapBlock
+
+HoursBlock
+
+AwardsBlock
+
+NewsletterBlock
+
+ReviewsBlock
+
+BusinessHoursBlock
+
+without touching FooterSection again.
+
+Add column widths
+
+Instead of every column being equal
+
+Allow
+
+25%
+
+33%
+
+50%
+
+66%
+
+75%
+
+100%
+
+Example
+
+LOGO
+(40%)
+SERVICES
+(20%)
+SERVICE AREA
+(20%)
+CONTACT
+(20%)
+
+Looks far more professional.
+
+Links block needs nesting
+
+Current
+
+Services
+
+Interior
+
+Flooring
+
+Repairs
+
+I'd allow
+
+Heading
+
+Links
+
+Button
+
+
+OR
+
+Heading
+
+Description
+
+Links
+
+Some companies don't want only links.
+
+Service Area block
+
+Don't hardcode
+
+Kentucky
+
+Indiana
+
+Illinois
+
+Instead
+
+Serving
+
+✓ Kentucky
+
+✓ Indiana
+
+✓ Illinois
+
+
+If no states selected
+
+Serving Your Area
+
+Automatically.
+
+Contact block
+
+I would include
+
+Phone
+
+Email
+
+Hours
+
+Address
+
+License Number
+
+Emergency Number
+
+All individually toggleable.
+
+Logo Block
+
+I'd include
+
+Logo
+
+Business Name
+
+Tagline
+
+Veteran Badge
+
+BBB Badge
+
+SBA Badge
+
+Socials
+
+One click.
+
+Copyright
+
+Don't make it part of a column.
+
+It belongs below.
+
+Example
+
+Columns
+
+Small divider
+
+©2026 Willard's General Contracting LLC
+
+Privacy Policy
+
+Terms
+
+Built with BuildPro
+
+Much cleaner.
+
+Inspector
+
+Instead of
+
+Column 1
+
+Settings
+
+
+I'd show
+
+Footer
+
+Logo Block
+
+Services Block
+
+Service Area
+
+Contact
+
+Copyright
+
+Bottom Bar
+
+
+Selecting
+
+Logo Block
+
+highlights it.
+
+Inline editing
+
+This should apply to literally everything.
+
+Logo
+
+Heading
+
+Links
+
+Phone
+
+Email
+
+Hours
+
+Copyright
+
+Badges
+
+Service Area
+
+EVERYTHING.
+
+No exceptions.
+
+Hover
+
+When hovering
+
+┌──────────────────┐
+
+Logo Block
+
+✏ Edit
+
+⧉ Duplicate
+
+⬆ Move
+
+⬇ Move
+
+🗑 Delete
+
+└──────────────────┘
+
+Feels modern.
+
+Add Footer Templates
+
+This is something Wix still struggles with.
+
+I would ship
+
+Footer 1
+
+Simple
+
+Footer 2
+
+Centered
+
+Footer 3
+
+Corporate
+
+Footer 4
+
+Contractor
+
+Footer 5
+
+Minimal
+
+Footer 6
+
+Split
+
+Footer 7
+
+Large CTA
+
+Footer 8
+
+Dark
+
+One click.
+
+Add CTA Above Footer
+
+This is huge.
+
+Almost every contractor website has
+
+Ready to Start Your Project?
+
+GET A FREE ESTIMATE
+
+Call Now
+
+Immediately above the footer.
+
+Should be built in.
+
+Mobile
+
+Very important.
+
+Desktop
+
+LOGO
+
+SERVICES
+
+AREA
+
+CONTACT
+
+Tablet
+
+LOGO
+
+SERVICES
+
+AREA
+
+CONTACT
+
+Mobile
+
+LOGO
+
+CONTACT
+
+SERVICES
+
+AREA
+
+or allow reordering.
+
+Future-proof it
+
+One thing I'd add to the issue is a "Custom Block" placeholder, even if it's hidden for now.
+
+Eventually users will want things like:
+
+Google Reviews
+Newsletter signup
+Financing badge
+QR code
+"Download Our Brochure"
+Embedded Google Map
+Recent blog posts
+Awards & certifications
+
+If the footer is built around generic blocks instead of four hardcoded column types, all of those become easy additions later.
+
+I'd also add these acceptance criteria
+✔ Columns can be resized (25/33/50/66/75/100% widths).
+✔ Every visible footer element is directly clickable and inline editable.
+✔ Hovering any block displays edit controls and highlights the selected block.
+✔ Footer automatically stacks into a responsive layout on tablet and mobile, with configurable order.
+✔ Footer templates can be swapped without losing existing content where possible.
+✔ Copyright and legal links are rendered in a dedicated bottom bar, separate from the main content columns.
+
+If you build it this way, I don't think you'll ever need to redesign the footer architecture again—only add new block types over time.
