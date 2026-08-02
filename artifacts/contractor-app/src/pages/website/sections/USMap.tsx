@@ -94,11 +94,9 @@ export function USMap({
         </filter>
       </defs>
 
-      {/* Inset boxes */}
-      <rect x="102" y="466" width="152" height="116" rx="4" fill={mapStyle === "minimal" ? "transparent" : mapStyle === "dark" ? "#1e293b" : mapStyle === "patriotic" ? "#1e3a5f" : "#e5e7eb"} stroke={mapStyle === "dark" ? "#374151" : mapStyle === "patriotic" ? "#243b6e" : "#d1d5db"} strokeWidth="0.8" />
-      <rect x="240" y="522" width="80" height="52" rx="4" fill={mapStyle === "minimal" ? "transparent" : mapStyle === "dark" ? "#1e293b" : mapStyle === "patriotic" ? "#1e3a5f" : "#e5e7eb"} stroke={mapStyle === "dark" ? "#374151" : mapStyle === "patriotic" ? "#243b6e" : "#d1d5db"} strokeWidth="0.8" />
-      <text x="178" y="590" fontSize={7} fill="#9ca3af" textAnchor="middle" fontFamily="system-ui, sans-serif">AK</text>
-      <text x="280" y="590" fontSize={7} fill="#9ca3af" textAnchor="middle" fontFamily="system-ui, sans-serif">HI</text>
+      {/* Inset boxes — sized to fit the Albers USA fitSize([960,600]) AK/HI insets */}
+      <rect x="0" y="440" width="252" height="142" rx="4" fill={mapStyle === "minimal" ? "transparent" : mapStyle === "dark" ? "#1e293b" : mapStyle === "patriotic" ? "#1e3a5f" : "#e5e7eb"} stroke={mapStyle === "dark" ? "#374151" : mapStyle === "patriotic" ? "#243b6e" : "#d1d5db"} strokeWidth="0.8" />
+      <rect x="254" y="500" width="120" height="84" rx="4" fill={mapStyle === "minimal" ? "transparent" : mapStyle === "dark" ? "#1e293b" : mapStyle === "patriotic" ? "#1e3a5f" : "#e5e7eb"} stroke={mapStyle === "dark" ? "#374151" : mapStyle === "patriotic" ? "#243b6e" : "#d1d5db"} strokeWidth="0.8" />
 
       {/* State paths — render unselected first, then selected on top */}
       {[false, true].map(renderSelected =>
