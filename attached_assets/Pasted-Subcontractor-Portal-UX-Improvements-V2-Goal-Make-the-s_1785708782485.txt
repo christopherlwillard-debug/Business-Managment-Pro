@@ -1,0 +1,291 @@
+Subcontractor Portal UX Improvements (V2)
+
+Goal
+
+Make the subcontractor portal feel like a premium mobile app rather than accounting software. Every page should answer three simple questions:
+
+* What do I need to do next?
+* How much have I made?
+* How can I save money on taxes?
+
+The overall experience should be clean, modern, actionable, and extremely easy for non-technical users.
+
+⸻
+
+Home Dashboard
+
+Replace passive information with actionable cards.
+
+Instead of simply displaying “W-9 Not Completed,” create an Action Required card that explains why the W-9 is important, estimates it takes about two minutes to complete, and includes a prominent “Complete W-9” button.
+
+Once the W-9 is complete, replace the warning with a green success card stating that there are no outstanding tasks.
+
+⸻
+
+Dashboard Statistics
+
+Keep the four statistic cards but make them more useful.
+
+For YTD Payments, display the total amount and the number of payments received this year.
+
+For Business Miles, display total miles and the estimated mileage deduction.
+
+For Expenses, display the total expenses logged and the number of expense entries.
+
+For Assigned Jobs, display total assigned jobs and active jobs.
+
+This gives users context instead of only numbers.
+
+⸻
+
+Tax Readiness
+
+Add a Tax Readiness section showing the user’s progress toward being ready for tax season.
+
+Examples include:
+
+* Income Recorded
+* Mileage Logged
+* W-9 Completed
+* Expenses Logged
+* Home Office Completed
+
+Display an overall completion percentage with a progress bar.
+
+⸻
+
+Profile Completion
+
+Add a profile completion progress bar near the top of the dashboard.
+
+Show remaining tasks such as:
+
+* Complete W-9
+* Add first expense
+* Complete Home Office deduction
+* Verify mailing address
+
+Users enjoy seeing measurable progress.
+
+⸻
+
+Empty States
+
+Replace generic “No data” messages with helpful guidance.
+
+Instead of saying “No expenses yet,” explain that tracking expenses can reduce taxable income and provide buttons to scan a receipt or add an expense.
+
+Do the same for mileage by encouraging users to log business miles and explaining the potential tax benefit.
+
+⸻
+
+Expense Entry
+
+Reorder the expense form to better match how users naturally enter expenses.
+
+Recommended order:
+
+Receipt
+
+Description
+
+Amount
+
+Category
+
+Job
+
+Vendor
+
+Date
+
+Notes
+
+Save Expense
+
+Most users begin with a receipt, not by typing a description.
+
+⸻
+
+Quick Actions
+
+Reduce the height of the Quick Action cards by approximately 25%.
+
+Allow more actions to fit on screen without scrolling while maintaining clear descriptions.
+
+⸻
+
+Income Dashboard
+
+Reduce the height of the large green income summary card.
+
+Below it, add useful statistics such as:
+
+* Number of payments received
+* Average payment amount
+* Largest payment
+* Most recent payment
+
+This provides valuable insights without adding clutter.
+
+⸻
+
+Payment History
+
+Add icons based on payment type.
+
+Examples:
+
+Allocation Pay
+
+Hourly Pay
+
+Bonus
+
+Advance
+
+Reimbursement
+
+Icons make the payment list much easier to scan.
+
+⸻
+
+Home Office Calculator
+
+Convert the Home Office Calculator into a multi-step wizard.
+
+Step 1:
+
+Enter home square footage and office square footage.
+
+Step 2:
+
+Enter annual home expenses.
+
+Step 3:
+
+Display estimated deduction and estimated tax savings.
+
+Breaking the calculator into steps makes it much less intimidating.
+
+⸻
+
+Estimated Tax Savings
+
+Add a dashboard widget showing estimated tax savings.
+
+As users log mileage, expenses, and home office information, display estimated deductions and an approximate tax savings estimate with a disclaimer that actual savings depend on their tax situation.
+
+This encourages users to continue tracking expenses.
+
+⸻
+
+Tax Reports
+
+Add a Tax Readiness Summary showing completed and incomplete tax items.
+
+Examples include income, mileage, expenses, W-9, and home office deduction.
+
+Display an overall readiness percentage so users know whether they are prepared for tax season.
+
+⸻
+
+Personalized Greeting
+
+Replace the static “Welcome back” message with time-based greetings.
+
+Examples:
+
+Good morning, James.
+
+Good afternoon, James.
+
+Good evening, James.
+
+This small detail makes the portal feel more polished and personal.
+
+⸻
+
+Color Consistency
+
+Use a consistent color system throughout the portal.
+
+Green for income and money received.
+
+Blue for jobs.
+
+Purple for tax calculations and deductions.
+
+Orange for actions and warnings.
+
+Red only for errors or overdue items.
+
+Avoid using red for informational values.
+
+⸻
+
+Bottom Navigation
+
+Add Expenses as a permanent navigation item.
+
+Recommended navigation:
+
+Home
+
+Jobs
+
+Income
+
+Expenses
+
+More
+
+Expenses are one of the most frequently used features and should always be one tap away.
+
+⸻
+
+Take Home Summary
+
+Add a simple earnings summary showing:
+
+Income
+
+Business Expenses
+
+Mileage Deduction
+
+Estimated Net Income
+
+Most subcontractors care about how much money they actually made, so present this information using simple language instead of tax terminology.
+
+⸻
+
+Celebrate Milestones
+
+Provide positive feedback when users complete important tasks.
+
+Examples include:
+
+W-9 completed.
+
+First expense logged.
+
+500 business miles reached.
+
+Tax profile complete.
+
+Small celebrations make the portal feel more engaging and rewarding.
+
+⸻
+
+Overall Design Philosophy
+
+The subcontractor portal should feel like a personal business assistant rather than accounting software.
+
+Every screen should clearly answer:
+
+* What should I do next?
+* How much have I earned?
+* How can I save money on taxes?
+
+Prioritize simplicity, actionable guidance, visual hierarchy, mobile-first design, and subtle positive feedback. The end result should feel premium, approachable, and comparable to modern apps like Stripe, QuickBooks Self-Employed, and Rocket Money while remaining tailored specifically to subcontractors.
