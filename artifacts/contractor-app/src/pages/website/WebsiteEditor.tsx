@@ -5953,6 +5953,7 @@ function WebsiteEditor() {
                   initialTab={contextInspectorTab}
                   selectedSubElement={selectedSubElement}
                   onClearSubElement={() => setSelectedSubElement(null)}
+                  onChangeContent={content => updateContent(sec.id, content)}
                 />
               </div>
             );
@@ -6235,6 +6236,7 @@ function WebsiteEditor() {
                       initialTab={contextInspectorTab}
                       selectedSubElement={selectedSubElement}
                       onClearSubElement={() => setSelectedSubElement(null)}
+                      onChangeContent={content => updateContent(sec.id, content)}
                     />
                   )}
                 </div>
@@ -6545,6 +6547,7 @@ function WebsiteEditor() {
                     initialTab={contextInspectorTab}
                     selectedSubElement={selectedSubElement}
                     onClearSubElement={() => setSelectedSubElement(null)}
+                    onChangeContent={content => updateContent(sec.id, content)}
                   />
                 </div>
               </div>

@@ -9,6 +9,7 @@ import type { SiteComponent } from "./sections/ContentSection";
 import type { RowSectionData } from "./sections/RowSection";
 import { ComponentEditorPanel } from "./ComponentEditorPanel";
 import { RowEditorPanel } from "./RowEditorPanel";
+import { ElementMiniPanelRouter, SectionCompactPanel } from "./ElementMiniPanels";
 import {
   ALL_FIELDS, type InspectorTab, type FieldDescriptor,
   getPinnedFields, togglePin, getRecentFields, recordRecentField,
@@ -55,6 +56,8 @@ export interface InspectorPanelProps {
   selectedSubElement?: { type: string; label: string } | null;
   /** Called when the user clicks the breadcrumb sub-element crumb to step back up. */
   onClearSubElement?: () => void;
+  /** Patch the section's content object (heading text, phone, button label, etc.) */
+  onChangeContent?: (content: Record<string, unknown>) => void;
 }
 
 // ── Context passed into every field renderer ───────────────────────────────────
@@ -557,6 +560,7 @@ export function InspectorPanel({
   collapsed, onCollapse, onExpand, autoCollapsed, onClearAutoCollapse,
   specialContent, initialTab,
   selectedSubElement, onClearSubElement,
+  onChangeContent,
 }: InspectorPanelProps) {
   const hasComponent = !!selectedComponent;
 
@@ -708,6 +712,21 @@ export function InspectorPanel({
 
   // ── Apply Style To ─────────────────────────────────────────────────────────
   const [applyScope, setApplyScope] = useState<"section" | "page" | "site">("section");
+
+  // ── Advanced expand (mini-panel & compact panel modes) ──────────────────────
+  // Persisted per section type so the preference is remembered between visits.
+  const advancedStorageKey = `inspector-advanced-${section.type}`;
+  const [advancedOpen, setAdvancedOpen] = useState(() => readAccordion(advancedStorageKey, false));
+  // Reset when the section changes so stale state doesn't carry over.
+  useEffect(() => {
+    setAdvancedOpen(readAccordion(advancedStorageKey, false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section.id]);
+  function toggleAdvanced() {
+    const next = !advancedOpen;
+    setAdvancedOpen(next);
+    writeAccordion(advancedStorageKey, next);
+  }
 
   // ── Field context ──────────────────────────────────────────────────────────
   const fieldCtx: FieldCtx = {
@@ -982,22 +1001,80 @@ export function InspectorPanel({
                 </>
               )}
             </div>
-          ) : (
+          ) : selectedSubElement ? (
+            // ── Element mini-panel mode ─────────────────────────────────────
+            // Focused controls for the specific element drilled into via double-click.
+            <div key={selectedSubElement.type + section.id} className="animate-in fade-in-0 duration-150">
+              <ElementMiniPanelRouter
+                subElementType={selectedSubElement.type}
+                bs={bs}
+                patch={patch}
+                content={(section.content ?? {}) as Record<string, unknown>}
+                onChangeContent={onChangeContent ?? (() => {})}
+                sectionType={section.type}
+                sectionEnabled={section.enabled}
+                onToggleSection={onToggleSection}
+                onOpenMediaLibrary={onOpenMediaLibrary}
+                onBgImageUpload={onBgImageUpload}
+                isBgUploading={isBgUploading}
+                advancedOpen={advancedOpen}
+                onToggleAdvanced={toggleAdvanced}
+              />
+              {advancedOpen && (
+                <div className="border-t border-border">
+                  <AccordionBlock title="Content" open={contentOpen} onToggle={() => toggleAcc("content")}>
+                    {renderContentBody()}
+                  </AccordionBlock>
+                  <AccordionBlock title="Style" open={styleOpen} onToggle={() => toggleAcc("style")}>
+                    {renderStyleBody()}
+                  </AccordionBlock>
+                </div>
+              )}
+            </div>
+          ) : (hasComponent || specialContent) ? (
+            // ── Component / special-content mode ────────────────────────────
+            // Full Content + Style accordions for component editors and
+            // section-specific special-content panels (unchanged behaviour).
             <>
-              {/* CONTENT */}
               <AccordionBlock title="Content"
                 open={contentOpen} onToggle={() => toggleAcc("content")}>
                 {renderContentBody()}
               </AccordionBlock>
-
-              {/* STYLE */}
               <AccordionBlock title="Style"
                 open={styleOpen} onToggle={() => toggleAcc("style")}>
                 {renderStyleBody()}
               </AccordionBlock>
-
-              {/* Layout & Advanced are nested inside Style accordion */}
             </>
+          ) : (
+            // ── Section compact panel mode ───────────────────────────────────
+            // Shown when a section is selected but no sub-element is drilled
+            // into and there's no component or special-content panel active.
+            <div key="__compact__" className="animate-in fade-in-0 duration-150">
+              <SectionCompactPanel
+                bs={bs}
+                patch={patch}
+                content={(section.content ?? {}) as Record<string, unknown>}
+                onChangeContent={onChangeContent ?? (() => {})}
+                sectionType={section.type}
+                sectionEnabled={section.enabled}
+                onToggleSection={onToggleSection}
+                onOpenMediaLibrary={onOpenMediaLibrary}
+                onBgImageUpload={onBgImageUpload}
+                isBgUploading={isBgUploading}
+                advancedOpen={advancedOpen}
+                onToggleAdvanced={toggleAdvanced}
+              />
+              {advancedOpen && (
+                <div className="border-t border-border">
+                  <AccordionBlock title="Content" open={contentOpen} onToggle={() => toggleAcc("content")}>
+                    {renderContentBody()}
+                  </AccordionBlock>
+                  <AccordionBlock title="Style" open={styleOpen} onToggle={() => toggleAcc("style")}>
+                    {renderStyleBody()}
+                  </AccordionBlock>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
