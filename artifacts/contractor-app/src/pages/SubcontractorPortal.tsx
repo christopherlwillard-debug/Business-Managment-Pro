@@ -8,7 +8,7 @@ import {
   Save, LayoutDashboard, ChevronRight, BarChart3, Printer, Clock,
   Lock, KeyRound, Home, Store, ChevronDown, ImageIcon, Upload,
   MapPin, Calculator, PenLine, User, Download, TrendingUp,
-  ClipboardCheck, Check, Minus, Loader2,
+  ClipboardCheck, Check, Minus, Loader2, Camera, Sparkles,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -1306,6 +1306,42 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
   const receiptInputRef = useRef<HTMLInputElement>(null);
   const setF = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
+  // ── AI receipt scan ──────────────────────────────────────────────────────────
+  const scanInputRef = useRef<HTMLInputElement>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+
+  async function handleScanFile(file: File) {
+    setScanning(true);
+    setScanError(null);
+    setFormOpen(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${BASE}/api/expense-import/parse-receipt`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        setScanError(data.error ?? "Couldn't read this receipt. Fill in the details manually.");
+        return;
+      }
+      setForm(f => ({
+        ...f,
+        description: data.description || f.description,
+        amount:      data.amount      ? String(data.amount) : f.amount,
+        date:        data.date        || f.date,
+        category:    EXPENSE_CATS.includes(data.category) ? data.category : f.category,
+        vendor:      data.vendor      || f.vendor,
+      }));
+      // Pre-load the scanned file as the receipt attachment too
+      handleReceiptFile(file);
+    } catch {
+      setScanError("Couldn't connect. Please fill in the details manually.");
+    } finally {
+      setScanning(false);
+      if (scanInputRef.current) scanInputRef.current.value = "";
+    }
+  }
+
   const handleReceiptFile = useCallback((f: File) => {
     setReceiptFile(f);
     if (f.type.startsWith("image/")) {
@@ -1364,16 +1400,55 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
           <h2 className="text-lg font-display font-bold">My Expenses</h2>
           <p className="text-sm text-muted-foreground">Total: <strong className="text-foreground">{formatCurrency(total)}</strong></p>
         </div>
-        <button
-          onClick={() => { setFormOpen(!formOpen); if (formOpen) resetForm(); }}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" /> Add
-        </button>
+        <div className="flex items-center gap-2">
+          {/* AI scan — opens camera/file picker and auto-fills the form */}
+          <button
+            onClick={() => scanInputRef.current?.click()}
+            disabled={scanning}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors"
+            title="Scan a receipt with AI"
+          >
+            {scanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+            <span className="hidden sm:inline">Scan</span>
+          </button>
+          <input
+            ref={scanInputRef}
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf"
+            capture="environment"
+            className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleScanFile(f); }}
+          />
+          <button
+            onClick={() => { setFormOpen(!formOpen); if (formOpen) { resetForm(); setScanError(null); } }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Add
+          </button>
+        </div>
       </div>
 
       {formOpen && (
         <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
+          {/* Scan status banners */}
+          {scanning && (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+              <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+              <span>Reading your receipt with AI…</span>
+            </div>
+          )}
+          {scanError && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-50 border border-red-100">
+              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700 leading-snug">{scanError}</p>
+            </div>
+          )}
+          {!scanning && !scanError && receiptFile && form.description && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs">
+              <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>Fields filled from your receipt — review and tap Save.</span>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Description *"><Input value={form.description} onChange={e => setF("description", e.target.value)} placeholder="What was it for?" /></Field>
             <Field label="Amount *"><Input type="number" min="0" step="0.01" value={form.amount} onChange={e => setF("amount", e.target.value)} placeholder="0.00" /></Field>
