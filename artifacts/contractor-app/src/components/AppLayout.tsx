@@ -166,16 +166,13 @@ export function AppLayout({ children }: AppLayoutProps) {
   let bottomNavItems: BottomNavItem[];
 
   if (isOwner) {
-    const savedHrefs: string[] = settings?.bottomNavItems ?? DEFAULT_BOTTOM_NAV_HREFS;
+    // Fixed bottom nav for owners: Home · Jobs · Routes · Accounting · More
     bottomNavItems = [
-      { name: "Home", href: "/", icon: LayoutDashboard, section: null },
-      ...savedHrefs
-        .map(href => {
-          const opt = BOTTOM_NAV_MAP[href];
-          if (!opt) return null;
-          return { name: opt.name, href, icon: opt.icon, section: null } as BottomNavItem;
-        })
-        .filter((o): o is BottomNavItem => o !== null),
+      { name: "Home",       href: "/",             icon: LayoutDashboard, section: null },
+      { name: "Jobs",       href: "/jobs",          icon: Briefcase,       section: null },
+      { name: "Routes",     href: "/route-planner", icon: Route,           section: null },
+      { name: "Accounting", href: "/accounting",    icon: BookOpen,        section: null },
+      { name: "More",       href: "#",              icon: Menu, action: () => setMobileMenuOpen(true), section: null },
     ];
   } else {
     const nonOwnerItems: BottomNavItem[] = [

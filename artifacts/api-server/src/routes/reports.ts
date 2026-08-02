@@ -230,10 +230,15 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       ]);
       const invRevenue = monthlyInv.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const othRevenue = monthlyOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+      const mo_revenue = invRevenue + othRevenue;
+      const mo_expenses = monthlyExp.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const mo_outstanding = monthlyInv.filter(i => ["sent", "overdue"].includes(i.status ?? "")).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       monthlyRevenue.push({
         month: monthStr,
-        revenue: invRevenue + othRevenue,
-        expenses: monthlyExp.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
+        revenue: mo_revenue,
+        expenses: mo_expenses,
+        profit: mo_revenue - mo_expenses,
+        outstanding: mo_outstanding,
       });
     }
 

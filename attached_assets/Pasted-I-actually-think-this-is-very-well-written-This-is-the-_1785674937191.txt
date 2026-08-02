@@ -1,0 +1,101 @@
+I actually think this is very well written. This is the level of task I'd expect from a senior engineer.
+
+There are only three changes I'd make.
+
+1. Don't create a second manifest unless necessary
+
+Right now you say:
+
+"Add a per-business web manifest API endpoint"
+
+I would soften that.
+
+Instead say:
+
+Reuse the existing manifest generation wherever practical.
+
+If the existing manifest infrastructure can be extended to support runtime business branding, prefer extending it over introducing an entirely separate manifest implementation.
+
+Only create new manifest endpoints if the current architecture cannot reasonably support dynamic manifests.
+
+Same philosophy you've been using throughout Studio:
+
+Reuse before rebuild.
+
+2. Don't hard-code BuildPro hosts
+
+This sentence:
+
+localhost, *.replit.dev, *.replit.app, *.repl.co
+
+works today...
+
+...but what happens when you deploy somewhere else?
+
+I'd change the architecture.
+
+Instead determine
+
+Is this a published website?
+
+YES
+
+↓
+
+No BuildPro shell
+
+NO
+
+↓
+
+BuildPro shell
+
+instead of
+
+Host == localhost
+
+Host == replit
+
+Host == ...
+
+In other words, determine application mode, not hostname.
+
+I would add something like:
+
+Engineering Requirement
+
+Avoid scattering hostname checks throughout the application.
+
+Centralize runtime mode detection into a single reusable helper (for example, determine whether the current request is running in BuildPro mode or Published Website mode).
+
+All PWA, manifest, service worker, and BuildPro-specific behavior should rely on this shared runtime determination rather than maintaining multiple hostname lists.
+
+That will save you headaches later.
+
+3. Make this future-proof
+
+Right now you're solving today's problem.
+
+I'd add one sentence.
+
+Future Architecture Constraint
+
+Published websites may eventually support their own PWA identities, install prompts, manifests, icons, and service workers.
+
+The solution implemented here should isolate BuildPro behavior from published websites without preventing future business-specific PWA capabilities.
+
+That keeps your options open.
+
+Overall
+
+I'd honestly rate this task a 9.8/10.
+
+It's:
+
+✔ clear
+✔ scoped
+✔ doesn't rebuild the website engine
+✔ separates BuildPro from published websites
+✔ preserves Website Studio
+
+The only thing I would avoid is making runtime behavior depend on a growing list of hostnames. Instead, I'd have Replit introduce a single "runtime mode" concept (BuildPro vs. Published Website) and let everything else key off that. That makes the architecture cleaner and much easier to maintain as your deployment options evolve.

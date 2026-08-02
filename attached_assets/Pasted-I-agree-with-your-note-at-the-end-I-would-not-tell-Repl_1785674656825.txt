@@ -1,0 +1,243 @@
+I agree with your note at the end. I would not tell Replit to "rewrite Dashboard.tsx" or "rebuild the Home Dashboard." That's exactly how features get broken.
+
+I'd change the task to something like this:
+
+#1413 - Dashboard V2 — Business Command Center (Incremental Upgrade)
+Goal
+
+Upgrade the existing dashboard into the V2 Business Command Center without replacing or rewriting working code.
+
+Preserve all existing APIs, hooks, routing, permissions, business logic, calculations, and components whenever possible.
+
+The objective is to improve layout, hierarchy, and presentation—not rebuild functionality.
+
+Development Rules (Important)
+Do NOT rewrite Dashboard.tsx from scratch.
+Do NOT remove existing working components.
+Reuse every existing data hook that already provides the needed data.
+Only create new APIs when information truly does not already exist.
+Prefer rearranging existing sections over replacing them.
+Preserve all navigation behavior.
+Preserve all existing calculations.
+Keep all styling changes isolated so future dashboard updates remain easy.
+Make the smallest possible code changes required to achieve the V2 design.
+Layout Order
+
+Reorganize the current dashboard into:
+
+Header
+AI Receipt Hero
+Quick Actions
+Continue Working
+Today's Schedule
+Needs Attention
+Business Health
+Cash Flow
+Owner Pay
+Recent Activity
+
+Only move existing sections where possible.
+
+Header
+
+Keep current business selector and authentication.
+
+Add:
+
+Good Morning, Chris
+Today's Date
+Notification Bell
+Avatar
+
+Do not change authentication logic.
+
+Hero Card
+
+Replace only the existing top card.
+
+Use:
+
+Blue gradient
+AI Powered badge
+Scan Receipt button
+Opens existing expense flow
+
+No backend work.
+
+Quick Actions
+
+Keep existing action handlers.
+
+Simply limit visible buttons to:
+
+New Job
+Route Planner
+Record Owner Pay
+Open Jobs
+Continue Working
+
+Before creating any endpoint:
+
+Check whether existing job queries already return enough information.
+
+Only add:
+
+GET /api/dashboard/continue-working
+
+if the current APIs cannot provide:
+
+latest active job
+progress
+invoice status
+checklist totals
+crew names
+Today's Schedule
+
+Reuse current schedule/job data.
+
+Only display:
+
+Time
+Customer
+Status
+View Calendar link
+
+No new scheduling logic.
+
+Needs Attention
+
+Reuse existing counts if available.
+
+Only create additional queries if a count cannot be produced from existing endpoints.
+
+Display:
+
+Subs Need Paid
+Outstanding Invoices
+Compliance
+Missing Receipts
+
+Each row navigates to its existing page.
+
+Business Health
+
+Do NOT replace current KPI calculations.
+
+Combine existing cards into one component.
+
+Reuse existing values.
+
+Only extend backend if monthly trend data is unavailable.
+
+Trend Chart
+
+Use Recharts LineChart.
+
+Single data source containing:
+
+Revenue
+Expenses
+Net Profit
+Outstanding
+
+Reuse report endpoints whenever possible.
+
+Business Score
+
+Only add this calculation.
+
+Do not change existing financial calculations.
+
+Score:
+
+40%
+Profit Margin
+
+40%
+Collection Rate
+
+20%
+Compliance
+
+Return:
+
+score
+
+label
+
+Cash Flow
+
+Reuse existing balances.
+
+Display:
+
+Checking
+
+Tax Reserve
+
+Growth Fund
+
+Available Cash
+
+No new calculations.
+
+Owner Pay
+
+Reuse owner compensation logic.
+
+Only reorganize into the new layout.
+
+Recent Activity
+
+First determine whether existing dashboard queries already expose recent events.
+
+Only create:
+
+GET /api/dashboard/recent-activity
+
+if aggregation cannot be built client-side.
+
+Limit to 10 events.
+
+Bottom Navigation
+
+Update AppLayout only.
+
+Replace customizable bottom navigation with:
+
+Home
+
+Jobs
+
+Routes
+
+Accounting
+
+More
+
+Do not modify routing.
+
+Design System
+
+Instead of scattered values, create:
+
+dashboardTheme.ts
+
+containing only shared constants:
+
+border radius
+shadows
+spacing
+typography
+icon sizes
+
+No functional logic belongs here.
+
+Priority
+Reuse existing APIs.
+Reuse existing components.
+Reuse existing calculations.
+Add new backend only where absolutely necessary.
+Never rewrite working code simply to match the mockup.
+
+This version gives Replit a much better constraint: modernize and reorganize instead of rebuilding. In my experience, that dramatically reduces regressions while still achieving the visual upgrade you're after.

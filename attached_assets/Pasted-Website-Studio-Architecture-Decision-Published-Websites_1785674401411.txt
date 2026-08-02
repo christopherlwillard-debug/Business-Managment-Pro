@@ -1,0 +1,178 @@
+Website Studio Architecture Decision - Published Websites vs. BuildPro
+Purpose
+
+Website Studio is a module inside BuildPro that allows me to build and manage a website for each of my businesses.
+
+However, the websites themselves should not be BuildPro.
+
+BuildPro is my internal business management software.
+
+The websites are the public-facing output of Website Studio.
+
+This distinction should guide all future website development.
+
+Architecture Principle
+
+BuildPro is the authoring environment.
+
+Website Studio is the visual editor.
+
+Published websites are the deployment output.
+
+A published website should behave exactly like any professionally built public website.
+
+Visitors should never know the website was created using BuildPro.
+
+Current Problem
+
+My production deployment currently serves both the BuildPro application and my public website.
+
+Because they share the same application shell, Chrome detects my business website as the BuildPro Progressive Web App and offers visitors the option to install BuildPro.
+
+This is incorrect behavior.
+
+Someone visiting one of my business websites should never see BuildPro branding or BuildPro application behavior.
+
+Desired Architecture
+BuildPro
+│
+├── Business Manager
+├── Accounting
+├── CRM
+├── Website Studio
+│
+│      Business
+│          │
+│          └── Website
+│                 │
+│                 └── Publish
+│
+└──────────────────────────────
+
+Published Website
+
+willardsgc.com
+
+Standalone public website
+
+No BuildPro navigation
+
+No BuildPro editor
+
+No BuildPro authentication
+
+No BuildPro install prompt
+
+No BuildPro PWA
+
+Website Studio builds the website.
+
+Publishing generates the public website.
+
+The public website is independent of the BuildPro application shell while still using the same website data and rendering engine.
+
+My Businesses
+
+Each business inside BuildPro owns one website.
+
+Example:
+
+Willard's General Contracting
+→ willardsgc.com
+
+Willard's Asphalt Sealing
+→ willardsasphalt.com
+
+Willard's Rentals
+→ willardsrentals.com
+
+Every business has its own:
+
+Website
+Pages
+Theme
+Assets
+Domain
+Publish status
+
+Publishing one business must never affect another business.
+
+Publishing
+
+Publishing should simply publish the currently selected business website.
+
+The workflow should be:
+
+Business
+
+↓
+
+Website Studio
+
+↓
+
+Edit Website
+
+↓
+
+Preview
+
+↓
+
+Publish
+
+↓
+
+Live Website
+
+The live website should not load the BuildPro application.
+
+It should only load the published website.
+
+Website Settings
+
+Each business should have simple Website Settings.
+
+Example:
+
+Domain
+Website Status
+Preview Website
+Publish Website
+Last Published
+Open Live Website
+
+I do not want BuildPro to become a domain registrar or domain purchasing platform.
+
+I will continue purchasing domains from external providers.
+
+BuildPro simply needs to know which domain belongs to each business website.
+
+Important Engineering Requirement
+
+Reuse the existing Website Studio rendering engine.
+
+Do not build a second website application.
+
+Do not duplicate rendering logic.
+
+The editor, preview, and published website should all use the same website components.
+
+The difference should only be the runtime mode:
+
+Editor Mode – editing tools enabled.
+Preview Mode – read-only preview inside BuildPro.
+Published Mode – standalone public website with no BuildPro UI or application behavior.
+Long-Term Goal
+
+I am not building a website hosting company or a Wix competitor.
+
+BuildPro is my personal business management platform.
+
+Website Studio is simply one module inside BuildPro that allows each of my businesses to have its own professional public website.
+
+The websites should feel completely independent from BuildPro, while BuildPro remains the tool used to build and manage them.
+
+This architecture should guide all future Website Studio development.
+
+I think this is stronger than a task because it establishes a foundational rule. Once Replit understands this separation, future features like publishing, domains, SEO, previews, and deployments can all be built around the same architecture instead of having to revisit the design later.
