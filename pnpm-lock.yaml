@@ -194,6 +194,9 @@ importers:
       '@google-cloud/storage':
         specifier: ^7.19.0
         version: 7.19.0
+      '@napi-rs/canvas':
+        specifier: ^0.1.80
+        version: 0.1.80
       '@replit/connectors-sdk':
         specifier: ^0.4.0
         version: 0.4.0
@@ -248,6 +251,9 @@ importers:
       pdf-parse:
         specifier: ^2.4.5
         version: 2.4.5
+      pdfjs-dist:
+        specifier: ^5.4.296
+        version: 5.4.296
       pdfkit:
         specifier: ^0.19.1
         version: 0.19.1

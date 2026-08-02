@@ -20,6 +20,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link } from "wouter";
 import { ExpenseImportDialog } from "@/components/ExpenseImportDialog";
+import type { ImportTab } from "@/components/ExpenseImportDialog";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { openDrivePicker } from "@/lib/googleDrivePicker";
 
@@ -2298,7 +2299,9 @@ export default function Expenses() {
   const [prefillKey,    setPrefillKey]                = useState(0);
   const [scanningReceipt, setScanningReceipt]         = useState(false);
   const [scanFailed,      setScanFailed]              = useState(false);
+  const [scanFailReason,  setScanFailReason]          = useState<"unsupported_file" | "unreadable_receipt" | "ai_extraction_failed" | null>(null);
   const [scanActionSheetOpen, setScanActionSheetOpen] = useState(false);
+  const [importTab, setImportTab]                     = useState<ImportTab>("receipt");
   const [dialogMode, setDialogMode]                   = useState<"manual" | "scan">("manual");
   const scanReceiptInputRef                           = useRef<HTMLInputElement>(null);
   const cameraInputRef                                = useRef<HTMLInputElement>(null);
@@ -2565,8 +2568,14 @@ export default function Expenses() {
         credentials: "include",
       });
 
-      const data: { description?: string; vendor?: string; amount?: number; date?: string; category?: string; notes?: string } =
-        res.ok ? await res.json() : {};
+      let data: { description?: string; vendor?: string; amount?: number; date?: string; category?: string; notes?: string; errorType?: string } = {};
+      if (res.ok) {
+        data = await res.json();
+      } else {
+        const errBody = await res.json().catch(() => ({}));
+        setScanFailed(true);
+        setScanFailReason((errBody as any).errorType ?? "unreadable_receipt");
+      }
 
       // Pre-fill form with AI-extracted values
       setPrefillAmount(data.amount != null ? String(data.amount) : "");
@@ -2577,16 +2586,13 @@ export default function Expenses() {
       if (data.category && CATEGORIES.includes(data.category)) setCategory(data.category);
       setPrefillKey(k => k + 1);
 
-      if (!res.ok) {
-        setScanFailed(true);
-      }
-
       setReceiptFile(processed);
       setUploadError("");
       setDialogMode("scan");
       setIsDialogOpen(true);
     } catch {
       setScanFailed(true);
+      setScanFailReason("unreadable_receipt");
       try {
         const processed = await processReceiptFile(file);
         setReceiptFile(processed);
@@ -2793,55 +2799,28 @@ export default function Expenses() {
         {canEdit("expenses") && (
           <div className="flex gap-2">
             <button
-              onClick={() => setImportOpen(true)}
-              className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border"
+              onClick={() => setScanActionSheetOpen(true)}
+              disabled={scanningReceipt}
+              className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border disabled:opacity-60"
             >
-              <Upload className="w-4 h-4 mr-2" /> Import
+              {scanningReceipt
+                ? <><span className="w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />Reading…</>
+                : <><Camera className="w-4 h-4 mr-2" />Scan Receipt</>}
             </button>
-            {isMobile ? (
-              <>
-                <button
-                  onClick={() => cameraInputRef.current?.click()}
-                  disabled={scanningReceipt}
-                  className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border disabled:opacity-60"
-                >
-                  {scanningReceipt
-                    ? <><span className="w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />Reading…</>
-                    : <><Camera className="w-4 h-4 mr-2" />Take Photo</>}
-                </button>
-                <button
-                  onClick={() => scanReceiptInputRef.current?.click()}
-                  disabled={scanningReceipt}
-                  className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border disabled:opacity-60"
-                >
-                  <Upload className="w-4 h-4 mr-2" />Choose File
-                </button>
-                <input
-                  ref={cameraInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="sr-only"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptScan(f); e.target.value = ""; }}
-                />
-              </>
-            ) : (
-              <button
-                onClick={() => scanReceiptInputRef.current?.click()}
-                disabled={scanningReceipt}
-                className="flex items-center justify-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm transition-all border border-border disabled:opacity-60"
-              >
-                {scanningReceipt
-                  ? <><span className="w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />Reading…</>
-                  : <><Camera className="w-4 h-4 mr-2" />Scan Receipt</>}
-              </button>
-            )}
             <input
               ref={scanReceiptInputRef}
               type="file"
               accept="image/*,application/pdf,.heic,.heif"
               className="sr-only"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptScan(f); }}
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptScan(f); e.target.value = ""; }}
             />
             <button
               onClick={openDialog}
@@ -3403,7 +3382,7 @@ export default function Expenses() {
               className="flex items-center gap-3 w-full px-5 py-4 rounded-2xl bg-violet-600 text-white font-semibold text-sm cursor-pointer hover:bg-violet-700 active:scale-[0.98] transition-all shadow"
             >
               <Camera className="w-5 h-5 shrink-0" />
-              Take Photo
+              📷 Take Photo
             </label>
             <input
               id="scan-action-camera"
@@ -3414,21 +3393,58 @@ export default function Expenses() {
               onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptScan(f); e.target.value = ""; }}
             />
 
-            {/* Upload Receipt — label wraps hidden file input */}
+            {/* Upload Image */}
             <label
-              htmlFor="scan-action-upload"
+              htmlFor="scan-action-image"
               className="flex items-center gap-3 w-full px-5 py-4 rounded-2xl bg-secondary text-secondary-foreground font-semibold text-sm cursor-pointer hover:bg-secondary/80 active:scale-[0.98] transition-all shadow border border-border"
             >
-              <Upload className="w-5 h-5 shrink-0" />
-              Upload Receipt
+              <ImageIcon className="w-5 h-5 shrink-0" />
+              🖼 Upload Image
             </label>
             <input
-              id="scan-action-upload"
+              id="scan-action-image"
               type="file"
-              accept="image/*,application/pdf,.heic,.heif"
+              accept="image/*,.heic,.heif"
               className="sr-only"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptScan(f); e.target.value = ""; }}
             />
+
+            {/* Upload PDF */}
+            <label
+              htmlFor="scan-action-pdf"
+              className="flex items-center gap-3 w-full px-5 py-4 rounded-2xl bg-secondary text-secondary-foreground font-semibold text-sm cursor-pointer hover:bg-secondary/80 active:scale-[0.98] transition-all shadow border border-border"
+            >
+              <FileText className="w-5 h-5 shrink-0" />
+              📄 Upload PDF
+            </label>
+            <input
+              id="scan-action-pdf"
+              type="file"
+              accept="application/pdf,.pdf"
+              className="sr-only"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptScan(f); e.target.value = ""; }}
+            />
+
+            {/* Divider */}
+            <div className="flex items-center gap-3 py-1">
+              <div className="flex-1 border-t border-border/50" />
+              <span className="text-[11px] text-muted-foreground font-medium">or</span>
+              <div className="flex-1 border-t border-border/50" />
+            </div>
+
+            {/* Import Spreadsheet / CSV */}
+            <button
+              type="button"
+              className="flex items-center gap-3 w-full px-5 py-4 rounded-2xl bg-secondary text-secondary-foreground font-semibold text-sm cursor-pointer hover:bg-secondary/80 active:scale-[0.98] transition-all shadow border border-border"
+              onClick={() => {
+                setScanActionSheetOpen(false);
+                setImportTab("spreadsheet");
+                setImportOpen(true);
+              }}
+            >
+              <FileText className="w-5 h-5 shrink-0" />
+              📊 Import Spreadsheet / CSV
+            </button>
 
             <button
               type="button"
@@ -3459,6 +3475,7 @@ export default function Expenses() {
           setPrefillNotes("");
           setDialogMode("manual");
           setScanFailed(false);
+          setScanFailReason(null);
         }
       }}>
         <DialogContent className="max-w-md bg-card border-border shadow-2xl p-6 rounded-2xl flex flex-col max-h-[90vh]">
@@ -3470,9 +3487,15 @@ export default function Expenses() {
           <form key={prefillKey} id="expense-form" onSubmit={handleSubmit} className="space-y-4 mt-4 overflow-y-auto flex-1">
             {dialogMode === "scan" && (
               scanFailed ? (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
-                  <Camera className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                  Couldn't read the receipt — fill in the fields manually and save.
+                <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
+                  <Camera className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <span>
+                    {scanFailReason === "unsupported_file"
+                      ? "Unsupported file — we couldn't open this file. Try a JPG, PNG, or PDF."
+                      : scanFailReason === "ai_extraction_failed"
+                      ? "AI extraction failed — the receipt was read but we couldn't identify the vendor or totals. Fill in the fields and save."
+                      : "Unreadable receipt — we could open the file but couldn't read enough information. Fill in the fields manually and save."}
+                  </span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
@@ -3871,7 +3894,8 @@ export default function Expenses() {
       <ExpenseImportDialog
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onImported={() => { setImportOpen(false); refetch(); }}
+        initialTab={importTab}
+        onImported={() => { setImportOpen(false); setImportTab("receipt"); refetch(); }}
       />
 
       {/* Edit Expense Modal */}

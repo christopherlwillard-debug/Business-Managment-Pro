@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useListJobs } from "@workspace/api-client-react";
 import {
   X, Upload, FileText, FileSpreadsheet, CheckCircle2,
@@ -55,7 +55,8 @@ const CAT_COLORS: Record<string, string> = {
   "Other":                 "bg-orange-100 text-orange-700",
 };
 
-type Tab = "receipt" | "spreadsheet";
+export type ImportTab = "receipt" | "spreadsheet";
+type Tab = ImportTab;
 
 // ─── Drop Zone ────────────────────────────────────────────────────────────────
 function DropZone({
@@ -487,11 +488,16 @@ function SpreadsheetTab({ onImported }: { onImported: () => void }) {
 
 // ─── Main Dialog ──────────────────────────────────────────────────────────────
 export function ExpenseImportDialog({
-  open, onClose, onImported,
+  open, onClose, onImported, initialTab = "receipt",
 }: {
-  open: boolean; onClose: () => void; onImported: () => void;
+  open: boolean; onClose: () => void; onImported: () => void; initialTab?: ImportTab;
 }) {
-  const [tab, setTab] = useState<Tab>("receipt");
+  const [tab, setTab] = useState<Tab>(initialTab);
+
+  // Sync tab to initialTab whenever the dialog opens so callers can control the active tab
+  useEffect(() => {
+    if (open) setTab(initialTab);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null;
 

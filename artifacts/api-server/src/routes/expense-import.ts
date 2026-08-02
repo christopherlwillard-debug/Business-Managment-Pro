@@ -95,79 +95,135 @@ function normalizeAmount(raw: any): number {
   return parseFloat(s) || 0;
 }
 
+// ─── Receipt parser pipeline helpers ──────────────────────────────────────────
+
+const RECEIPT_SYSTEM_PROMPT = `You are a receipt/invoice parser for a contractor expense tracking app.
+
+Extract expense information and return ONLY valid JSON (no markdown, no explanation):
+
+{
+  "description": "short description of what was purchased",
+  "vendor": "store or company name",
+  "amount": 0.00,
+  "date": "YYYY-MM-DD",
+  "category": "one of: Materials, Advertising, Fuel/Travel, Subcontractor, Insurance, Professional Services, Office/Admin, Rent/Lease, Repairs/Maintenance, Tools/Equipment, Utilities, Other",
+  "notes": "any useful notes (optional, empty string if none)"
+}
+
+If a field cannot be determined, use reasonable defaults (today's date, empty string for optional fields, 0 for amount).`;
+
+function buildTextMessages(text: string): OpenAI.ChatCompletionMessageParam[] {
+  return [{ role: "user", content: `${RECEIPT_SYSTEM_PROMPT}\n\nReceipt/Invoice text:\n${text}` }];
+}
+
+function buildVisionMessages(dataUrl: string): OpenAI.ChatCompletionMessageParam[] {
+  return [{
+    role: "user",
+    content: [
+      { type: "text", text: RECEIPT_SYSTEM_PROMPT },
+      { type: "image_url", image_url: { url: dataUrl } },
+    ],
+  }];
+}
+
+/** Try to render the first page of a PDF buffer as a JPEG base64 string. */
+async function renderPdfPageToJpeg(buffer: Buffer): Promise<string | null> {
+  try {
+    // Use the legacy build — required for Node.js (main build needs DOMMatrix/browser APIs)
+    // @ts-ignore — pdfjs-dist types may vary by version
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    // Disable worker for Node.js environment
+    if ((pdfjs as any).GlobalWorkerOptions) {
+      (pdfjs as any).GlobalWorkerOptions.workerSrc = "";
+    }
+    const loadingTask = (pdfjs as any).getDocument({
+      data: new Uint8Array(buffer),
+      useWorkerFetch: false,
+      isEvalSupported: false,
+      useSystemFonts: true,
+    });
+    const pdfDoc = await loadingTask.promise;
+    const page = await pdfDoc.getPage(1);
+    const viewport = page.getViewport({ scale: 2.0 });
+
+    // @ts-ignore — @napi-rs/canvas types
+    const { createCanvas } = await import("@napi-rs/canvas");
+    const canvas = createCanvas(Math.floor(viewport.width), Math.floor(viewport.height));
+    const ctx = canvas.getContext("2d");
+
+    await page.render({ canvasContext: ctx as any, viewport }).promise;
+
+    const jpegBuf: Buffer = canvas.toBuffer("image/jpeg");
+    return jpegBuf.toString("base64");
+  } catch (err) {
+    console.warn("[parse-receipt] PDF vision fallback (render) failed:", (err as any)?.message ?? err);
+    return null;
+  }
+}
+
 // ─── POST /api/expense-import/parse-receipt ────────────────────────────────────
-// Accepts a PDF or image file, returns extracted expense fields via AI
+// Unified pipeline: image → vision | PDF → text extraction → vision fallback
 router.post("/parse-receipt", upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!req.file) {
+      return res.status(400).json({ errorType: "unsupported_file", error: "No file uploaded." });
+    }
 
-    const { mimetype, buffer } = req.file;
-    const isPdf   = mimetype === "application/pdf" || req.file.originalname.toLowerCase().endsWith(".pdf");
+    const { mimetype, buffer, originalname } = req.file;
+    const isPdf   = mimetype === "application/pdf" || originalname.toLowerCase().endsWith(".pdf");
     const isImage = mimetype.startsWith("image/");
 
+    if (!isPdf && !isImage) {
+      return res.status(422).json({
+        errorType: "unsupported_file",
+        error: "Unsupported file type. Please upload a JPG, PNG, or PDF receipt.",
+      });
+    }
+
+    // ── Step 1: Extract content via the unified pipeline ────────────────────
     let messages: OpenAI.ChatCompletionMessageParam[];
 
     if (isPdf) {
-      // Extract text from PDF then send to GPT as text
-      // @ts-ignore — pdf-parse types not available
-      const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default;
-      const data = await pdfParse(buffer);
-      const text = data.text.slice(0, 4000);
+      // 1a. Try text extraction using pdf-parse v2 class API
+      let extractedText = "";
+      try {
+        const { PDFParse } = await import("pdf-parse");
+        const parser = new (PDFParse as any)({ data: buffer });
+        const result = await parser.getText();
+        extractedText = ((result as any).text ?? "").slice(0, 4000);
+      } catch (err) {
+        console.warn("[parse-receipt] pdf-parse text extraction failed:", (err as any)?.message);
+      }
 
-      messages = [
-        {
-          role: "user",
-          content: `You are a receipt/invoice parser for a contractor expense tracking app.
+      // Quality gate: enough characters AND enough words
+      const hasEnoughText =
+        extractedText.trim().length >= 80 &&
+        extractedText.split(/\s+/).filter(Boolean).length >= 20;
 
-Extract expense information from this text and return ONLY valid JSON (no markdown, no explanation):
-
-{
-  "description": "short description of what was purchased",
-  "vendor": "store or company name",
-  "amount": 0.00,
-  "date": "YYYY-MM-DD",
-  "category": "one of: Materials, Advertising, Fuel/Travel, Subcontractor, Insurance, Professional Services, Office/Admin, Rent/Lease, Repairs/Maintenance, Tools/Equipment, Utilities, Other",
-  "notes": "any useful notes (optional, empty string if none)"
-}
-
-If a field cannot be determined, use reasonable defaults (today's date, empty string for optional fields, 0 for amount).
-
-Receipt/Invoice text:
-${text}`,
-        },
-      ];
-    } else if (isImage) {
-      const b64 = buffer.toString("base64");
-      const dataUrl = `data:${mimetype};base64,${b64}`;
-      messages = [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `You are a receipt/invoice parser for a contractor expense tracking app.
-
-Extract expense information from this receipt image and return ONLY valid JSON (no markdown, no explanation):
-
-{
-  "description": "short description of what was purchased",
-  "vendor": "store or company name",
-  "amount": 0.00,
-  "date": "YYYY-MM-DD",
-  "category": "one of: Materials, Advertising, Fuel/Travel, Subcontractor, Insurance, Professional Services, Office/Admin, Rent/Lease, Repairs/Maintenance, Tools/Equipment, Utilities, Other",
-  "notes": "any useful notes (optional, empty string if none)"
-}
-
-If a field cannot be determined, use reasonable defaults (today's date, empty string for optional fields, 0 for amount).`,
-            },
-            { type: "image_url", image_url: { url: dataUrl } },
-          ],
-        },
-      ];
+      if (hasEnoughText) {
+        messages = buildTextMessages(extractedText);
+      } else {
+        // 1b. Fall back to rendering page 1 as an image for vision
+        const jpegBase64 = await renderPdfPageToJpeg(buffer);
+        if (jpegBase64) {
+          messages = buildVisionMessages(`data:image/jpeg;base64,${jpegBase64}`);
+        } else if (extractedText.trim()) {
+          // Render failed but we have some text — use it anyway
+          messages = buildTextMessages(extractedText);
+        } else {
+          return res.status(422).json({
+            errorType: "unreadable_receipt",
+            error: "We could open the PDF but couldn't read enough information. Try a clearer scan or enter the details manually.",
+          });
+        }
+      }
     } else {
-      return res.status(400).json({ error: "File must be a PDF or image (JPG, PNG, etc.)" });
+      // Image path — straight to vision
+      const b64 = buffer.toString("base64");
+      messages = buildVisionMessages(`data:${mimetype};base64,${b64}`);
     }
 
+    // ── Step 2: AI extraction ────────────────────────────────────────────────
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       max_completion_tokens: 512,
@@ -179,6 +235,15 @@ If a field cannot be determined, use reasonable defaults (today's date, empty st
 
     let parsed: any = {};
     try { parsed = JSON.parse(cleaned); } catch { parsed = {}; }
+
+    // ── Step 3: Validate AI result ───────────────────────────────────────────
+    const hasUsefulData = !!(parsed.description || parsed.vendor || (parsed.amount && parsed.amount !== 0));
+    if (!hasUsefulData) {
+      return res.status(422).json({
+        errorType: "ai_extraction_failed",
+        error: "The receipt was read, but we couldn't identify the vendor or totals. Please review and fill in the fields before saving.",
+      });
+    }
 
     const today = new Date().toISOString().slice(0, 10);
     const category = CATEGORIES.includes(parsed.category) ? parsed.category : guessCategory(parsed.description ?? "");
@@ -193,7 +258,10 @@ If a field cannot be determined, use reasonable defaults (today's date, empty st
     });
   } catch (err) {
     console.error("parse-receipt error:", err);
-    res.status(500).json({ error: "Failed to parse receipt. Please fill in the details manually." });
+    res.status(500).json({
+      errorType: "unreadable_receipt",
+      error: "Failed to parse receipt. Please fill in the details manually.",
+    });
   }
 });
 
