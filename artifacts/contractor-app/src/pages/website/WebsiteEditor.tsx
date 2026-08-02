@@ -70,6 +70,7 @@ import { useEditorHistory } from "./useEditorHistory";
 import { EditableWrapper } from "./EditableWrapper";
 import { useInlineEdit, InlineEditContext, InlineEditStatus } from "./InlineEditContext";
 import { FloatingTextToolbar } from "./FloatingTextToolbar";
+import { SelectionHandles } from "./SelectionHandles";
 import { nanoid } from "nanoid";
 import type { SiteSettings, CardComponent } from "./website-types";
 import { reportCrash } from "@/lib/reportCrash";
@@ -172,6 +173,10 @@ function renderSection(
     selectedCardId?: string | null;
     onSelectCard?: (id: string | null) => void;
     onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
+    /** M8: Shift+click handler to toggle a component into multi-selection. */
+    onMultiSelectComponent?: (id: string) => void;
+    /** M8: IDs of currently multi-selected components (for cyan ring). */
+    multiSelectedIds?: ReadonlySet<string>;
     copiedComponent?: SiteComponent | null;
     onCopyComponent?: (comp: SiteComponent) => void;
     onBeforeAction?: () => void;
@@ -269,6 +274,8 @@ function renderSection(
         onToggleHide={extras?.onToggleHide ? (compId) => extras.onToggleHide!(section.id, compId) : undefined}
         onComponentContextMenu={extras?.onContentComponentContextMenu}
         onOpenMediaLibrary={extras?.onOpenMediaLibrary}
+        onMultiSelectComponent={extras?.onMultiSelectComponent}
+        multiSelectedIds={extras?.multiSelectedIds}
       />
     );
     case "row": return (
@@ -1113,6 +1120,8 @@ function WebsiteEditor() {
   const [selectedRowState, setSelectedRowState] = useState<{ sectionId: string; columnId: string; componentId?: string | null } | null>(null);
   const [selectedCardState, setSelectedCardState] = useState<{ sectionId: string; cardId: string } | null>(null); // selection-critical
   const [selectedCardData, setSelectedCardData] = useState<CardComponent | null>(null);
+  /** M8: Component IDs added to multi-selection via Shift+click. */
+  const [multiSelectedIds, setMultiSelectedIds] = useState<ReadonlySet<string>>(new Set());
   const pickerShownRef = useRef(false);
   const sidebarListRef = useRef<HTMLDivElement>(null);
   const pendingFocusFieldRef = useRef<string | null>(null);
@@ -1150,6 +1159,11 @@ function WebsiteEditor() {
   const [treeSearch, setTreeSearch] = useState("");
   const [previewViewport, setPreviewViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const leftCollapsedRef = useRef(leftCollapsed);
+  // Refs kept current every render for stale-closure-safe [] useEffect keyboard handlers
+  const selectedComponentStateRef = useRef<{ sectionId: string; componentId: string } | null>(null);
+  const selectedRowStateRef = useRef<{ sectionId: string; columnId: string; componentId?: string | null } | null>(null);
+  selectedComponentStateRef.current = selectedComponentState;
+  selectedRowStateRef.current = selectedRowState;
   const [editorNarrow, setEditorNarrow] = useState(false);
   const editorBodyRef = useRef<HTMLDivElement>(null);
 
@@ -1330,10 +1344,75 @@ function WebsiteEditor() {
         }
       } else if (!isTyping) {
         const sec = activeSectionRef.current;
-        if (e.key === "d" && sec) {
-          // Ctrl+D — duplicate active section
+        const compState = selectedComponentStateRef.current;
+
+        if (e.key === "d") {
           e.preventDefault();
-          duplicateSectionRef.current(sec);
+          if (compState) {
+            // Ctrl+D — duplicate selected component
+            history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+            isDirtyRef.current = true;
+            setLocalPages(prev => {
+              if (!prev) return prev;
+              return prev.map(p =>
+                p.id !== activePageIdRef.current ? p : {
+                  ...p,
+                  sections: p.sections.map(s =>
+                    s.id !== compState.sectionId ? s : {
+                      ...s,
+                      content: {
+                        ...(s.content as Record<string, unknown>),
+                        components: (() => {
+                          const comps = [...((s.content as any)?.components ?? [])];
+                          const idx = comps.findIndex((c: { id: string }) => c.id === compState.componentId);
+                          if (idx === -1) return comps;
+                          const copy = { ...comps[idx], id: nanoid() };
+                          comps.splice(idx + 1, 0, copy);
+                          return comps;
+                        })(),
+                      },
+                    }
+                  ),
+                }
+              );
+            });
+            toast({ title: "Component duplicated", duration: 2000 });
+          } else if (sec) {
+            // Ctrl+D — duplicate active section (fallback)
+            duplicateSectionRef.current(sec);
+          }
+        } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          // Ctrl+↑/↓ — reorder selected component within its section
+          if (compState) {
+            e.preventDefault();
+            const delta = e.key === "ArrowUp" ? -1 : 1;
+            history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+            isDirtyRef.current = true;
+            setLocalPages(prev => {
+              if (!prev) return prev;
+              return prev.map(p =>
+                p.id !== activePageIdRef.current ? p : {
+                  ...p,
+                  sections: p.sections.map(s =>
+                    s.id !== compState.sectionId ? s : {
+                      ...s,
+                      content: {
+                        ...(s.content as Record<string, unknown>),
+                        components: (() => {
+                          const comps = [...((s.content as any)?.components ?? [])];
+                          const idx = comps.findIndex((c: { id: string }) => c.id === compState.componentId);
+                          const newIdx = idx + delta;
+                          if (newIdx < 0 || newIdx >= comps.length) return comps;
+                          [comps[idx], comps[newIdx]] = [comps[newIdx], comps[idx]];
+                          return comps;
+                        })(),
+                      },
+                    }
+                  ),
+                }
+              );
+            });
+          }
         } else if (e.key === "c" && sec) {
           // Ctrl+C — copy active section (only when not inside a text input)
           // Native clipboard copy still works because we call preventDefault only on canvas
@@ -1395,6 +1474,7 @@ function WebsiteEditor() {
         setSelectedRowState(null);
         setSelectedCardState(null);
         setSelectedCardData(null);
+        setMultiSelectedIds(new Set());
         return;
       }
       if (isTyping) return;
@@ -1448,6 +1528,37 @@ function WebsiteEditor() {
           return;
         }
 
+        // M8: Multi-select delete — removes all shift-selected + primary component at once
+        if (multiSelectedIds.size > 0 && selectedComponentState) {
+          const { sectionId } = selectedComponentState;
+          const idsToDelete = new Set([...multiSelectedIds, selectedComponentState.componentId]);
+          history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+          setLocalPages(prev => {
+            if (!prev) return prev;
+            return prev.map(p =>
+              p.id !== activePageIdRef.current ? p : {
+                ...p,
+                sections: p.sections.map(s =>
+                  s.id !== sectionId ? s : {
+                    ...s,
+                    content: {
+                      ...(s.content as Record<string, unknown>),
+                      components: ((s.content as any)?.components ?? []).filter(
+                        (c: { id: string }) => !idsToDelete.has(c.id)
+                      ),
+                    },
+                  }
+                ),
+              }
+            );
+          });
+          isDirtyRef.current = true;
+          setSelectedComponentState(null);
+          setMultiSelectedIds(new Set());
+          toast({ title: `${idsToDelete.size} component${idsToDelete.size === 1 ? "" : "s"} deleted`, duration: 2000 });
+          return;
+        }
+
         if (selectedComponentState) {
           // ContentSection components are stored in content.components
           const { sectionId, componentId } = selectedComponentState;
@@ -1480,6 +1591,21 @@ function WebsiteEditor() {
         if (activeSection) {
           handleDeleteSectionClick(activeSection);
         }
+      }
+
+      // Arrow ↑/↓ — navigate between components in a content section (no modifier needed)
+      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && selectedComponentState && !isTyping) {
+        e.preventDefault();
+        const { sectionId, componentId } = selectedComponentState;
+        const page = pagesRef.current.find(p => p.id === activePageIdRef.current);
+        const secData = page?.sections.find(s => s.id === sectionId);
+        const comps: Array<{ id: string }> = (secData?.content as any)?.components ?? [];
+        const idx = comps.findIndex(c => c.id === componentId);
+        const nextIdx = e.key === "ArrowDown" ? idx + 1 : idx - 1;
+        if (nextIdx >= 0 && nextIdx < comps.length) {
+          setSelectedComponentState({ sectionId, componentId: comps[nextIdx].id });
+        }
+        return;
       }
     }
     window.addEventListener("keydown", onNavKey);
@@ -3579,6 +3705,14 @@ function WebsiteEditor() {
       siteSlug: activeBusiness?.slug,
       pages: pages.filter(p => p.id !== "home").map(p => ({ id: p.id, name: p.name, slug: p.slug })),
       onOpenMediaLibrary: openMediaLibrary,
+      onMultiSelectComponent: (id: string) => {
+        setMultiSelectedIds(prev => {
+          const next = new Set(prev);
+          if (next.has(id)) { next.delete(id); } else { next.add(id); }
+          return next;
+        });
+      },
+      multiSelectedIds,
       copiedComponent,
       onCopyComponent: (comp: SiteComponent) => {
         setCopiedComponent(comp);
@@ -3820,6 +3954,10 @@ function WebsiteEditor() {
     return (
       <InlineEditContext.Provider value={contextValue}>
         {!previewMode && <FloatingTextToolbar />}
+        {/* M6: Selection handles — portal-rendered ring + resize dots around selected component */}
+        {!previewMode && selectedComponentState?.componentId && (
+          <SelectionHandles selectedId={selectedComponentState.componentId} />
+        )}
         <div style={previewBodyStyle} data-editing={editingId || undefined}>
           {settings.headingFont && (
             <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
@@ -5184,6 +5322,45 @@ function WebsiteEditor() {
                   updateContent(sec.id, { ...contentData, components: newComponents });
                 };
               }
+            } else if (sec.type === "content") {
+              // M9: Canvas-first — keyboard shortcut guide when no component is selected
+              specialContent = (
+                <div className="p-4 flex flex-col gap-3">
+                  <div className="text-center py-5 px-3">
+                    <div className="text-2xl mb-2">🖱️</div>
+                    <p className="text-sm font-medium text-foreground mb-1">Click to select</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Click any component on the canvas to edit it.{" "}
+                      <span className="font-medium">Shift+click</span> to select multiple.
+                    </p>
+                  </div>
+                  <div className="border border-border rounded-lg overflow-hidden text-xs">
+                    <div className="px-3 py-2 bg-muted/50 border-b border-border text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Keyboard shortcuts
+                    </div>
+                    <div className="divide-y divide-border">
+                      {[
+                        ["↑ / ↓", "Navigate components"],
+                        ["Ctrl+D", "Duplicate"],
+                        ["Ctrl+↑/↓", "Reorder"],
+                        ["Delete", "Remove"],
+                        ["Escape", "Deselect"],
+                      ].map(([key, desc]) => (
+                        <div key={key} className="flex items-center justify-between px-3 py-1.5">
+                          <span className="text-[10px] text-muted-foreground">{desc}</span>
+                          <kbd className="font-mono bg-muted border border-border rounded px-1.5 py-0.5 text-[9px] text-foreground">{key}</kbd>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {multiSelectedIds.size > 0 && (
+                    <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-3 py-2 text-xs text-cyan-700 dark:text-cyan-400 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-cyan-500 flex-shrink-0" />
+                      <span>{multiSelectedIds.size} component{multiSelectedIds.size === 1 ? "" : "s"} selected — press Delete to remove all</span>
+                    </div>
+                  )}
+                </div>
+              );
             } else if (sec.type === "row") {
               rowData = sec.content as unknown as RowSectionData;
               onChangeRowData = (newData: RowSectionData) =>
@@ -5451,6 +5628,45 @@ function WebsiteEditor() {
                   updateContent(sec.id, { ...contentData, components: newComponents });
                 };
               }
+            } else if (sec.type === "content") {
+              // M9: Canvas-first — keyboard shortcut guide when no component is selected
+              specialContent = (
+                <div className="p-4 flex flex-col gap-3">
+                  <div className="text-center py-5 px-3">
+                    <div className="text-2xl mb-2">🖱️</div>
+                    <p className="text-sm font-medium text-foreground mb-1">Click to select</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Click any component on the canvas to edit it.{" "}
+                      <span className="font-medium">Shift+click</span> to select multiple.
+                    </p>
+                  </div>
+                  <div className="border border-border rounded-lg overflow-hidden text-xs">
+                    <div className="px-3 py-2 bg-muted/50 border-b border-border text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Keyboard shortcuts
+                    </div>
+                    <div className="divide-y divide-border">
+                      {[
+                        ["↑ / ↓", "Navigate components"],
+                        ["Ctrl+D", "Duplicate"],
+                        ["Ctrl+↑/↓", "Reorder"],
+                        ["Delete", "Remove"],
+                        ["Escape", "Deselect"],
+                      ].map(([key, desc]) => (
+                        <div key={key} className="flex items-center justify-between px-3 py-1.5">
+                          <span className="text-[10px] text-muted-foreground">{desc}</span>
+                          <kbd className="font-mono bg-muted border border-border rounded px-1.5 py-0.5 text-[9px] text-foreground">{key}</kbd>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {multiSelectedIds.size > 0 && (
+                    <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-3 py-2 text-xs text-cyan-700 dark:text-cyan-400 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-cyan-500 flex-shrink-0" />
+                      <span>{multiSelectedIds.size} component{multiSelectedIds.size === 1 ? "" : "s"} selected — press Delete to remove all</span>
+                    </div>
+                  )}
+                </div>
+              );
             } else if (sec.type === "row") {
               rowData = sec.content as unknown as RowSectionData;
               onChangeRowData = (newData: RowSectionData) =>

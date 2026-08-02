@@ -26,6 +26,8 @@ export interface EditableWrapperProps {
   label: string;
   /** Whether this object is currently selected / active */
   isSelected: boolean;
+  /** M8: True when this element is part of a Shift+click multi-selection (cyan ring). */
+  isMultiSelected?: boolean;
   /** When true the canvas renders it dimmed and with a "Hidden" badge */
   isHidden?: boolean;
   /** Suppresses move-up when the item is first in its container */
@@ -77,6 +79,7 @@ export function EditableWrapper({
   id,
   label,
   isSelected,
+  isMultiSelected,
   isHidden,
   isFirst,
   isLast,
@@ -99,15 +102,17 @@ export function EditableWrapper({
   return (
     <div
       data-section-canvas-id={id}
-      className={`group/sec relative transition-all ${
+      className={`group/sec relative transition-all duration-100 ${
         locked
           ? "cursor-not-allowed"
           : "cursor-pointer"
       } ${
         isSelected && !locked
-          ? "ring-2 ring-inset ring-primary/60"
+          ? "ring-2 ring-inset ring-primary/60 bg-primary/[0.02]"
+          : isMultiSelected && !locked
+          ? "ring-2 ring-inset ring-cyan-500/60 bg-cyan-500/[0.02]"
           : !locked
-          ? "hover:ring-2 hover:ring-inset hover:ring-muted-foreground/20"
+          ? "hover:ring-2 hover:ring-inset hover:ring-primary/40 hover:bg-primary/[0.02]"
           : "ring-2 ring-inset ring-slate-400/40"
       } ${isHidden ? "opacity-50" : ""}`}
       onClick={locked ? undefined : onSelect}

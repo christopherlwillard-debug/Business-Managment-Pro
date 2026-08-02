@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
+  DragOverlay, type DragStartEvent, type DragOverEvent,
 } from "@dnd-kit/core";
 import { InlineEditableText } from "../InlineEditableText";
 import { useInlineEditContext } from "../InlineEditContext";
@@ -526,7 +527,9 @@ export function renderSiteComponent(
 interface SortableItemProps {
   comp: SiteComponent;
   isSelected: boolean;
-  onSelect: () => void;
+  /** M8: True when Shift+click has added this component to multi-selection. */
+  isMultiSelected?: boolean;
+  onSelect: (e: React.MouseEvent) => void;
   onEdit?: () => void;
   /** Update this component's props directly from the toolbar (e.g. bold, align). */
   onUpdate?: (props: SiteComponentProps) => void;
@@ -540,7 +543,7 @@ interface SortableItemProps {
   settings: { brandColor: string; accentColor?: string; secondaryColor?: string };
 }
 
-function SortableItem({ comp, isSelected, onSelect, onEdit, onUpdate, onDuplicate, onDelete, onCopy, onToggleHide, onContextMenu, onOpenMediaLibrary, settings }: SortableItemProps) {
+function SortableItem({ comp, isSelected, isMultiSelected, onSelect, onEdit, onUpdate, onDuplicate, onDelete, onCopy, onToggleHide, onContextMenu, onOpenMediaLibrary, settings }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: comp.id });
   const label = getContentComponentTypes().find(t => t.type === comp.type)?.label ?? comp.type;
   // Inline input mode for image/button/icon toolbars
@@ -733,9 +736,10 @@ function SortableItem({ comp, isSelected, onSelect, onEdit, onUpdate, onDuplicat
         id={comp.id}
         label={label}
         isSelected={isSelected}
+        isMultiSelected={isMultiSelected}
         isHidden={!!comp.hidden}
         locked={!!comp.locked}
-        onSelect={e => { e.stopPropagation(); onSelect(); }}
+        onSelect={e => { e.stopPropagation(); onSelect(e); }}
         onEdit={onEdit}
         onDoubleClick={onEdit ? e => { e.stopPropagation(); onEdit!(); } : undefined}
         onDuplicate={onDuplicate}
@@ -844,6 +848,10 @@ interface ContentSectionProps {
   onComponentContextMenu?: (sectionId: string, compId: string, compType: string, e: React.MouseEvent) => void;
   /** Opens the media library; calls back with the chosen URL (for Replace Image action). */
   onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
+  /** M8: Shift+click handler to toggle a component into multi-selection. */
+  onMultiSelectComponent?: (id: string) => void;
+  /** M8: IDs currently in multi-selection (cyan ring indicator). */
+  multiSelectedIds?: ReadonlySet<string>;
 }
 
 export function ContentSection({
@@ -861,6 +869,8 @@ export function ContentSection({
   onToggleHide,
   onComponentContextMenu,
   onOpenMediaLibrary,
+  onMultiSelectComponent,
+  multiSelectedIds,
 }: ContentSectionProps) {
   const { toast } = useToast();
   const [showPicker, setShowPicker] = useState(false);
@@ -873,11 +883,27 @@ export function ContentSection({
     activationConstraint: { distance: inlineCtx?.editingId ? 99999 : 5 },
   }));
 
+  // M3: track which component is actively being dragged for DragOverlay ghost
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const draggingComp = draggingId ? (components.find(c => c.id === draggingId) ?? null) : null;
+  /** M7: ID of the component being hovered over during drag — used for drop zone guide. */
+  const [overDropId, setOverDropId] = useState<string | null>(null);
+
   function updateComps(newComps: SiteComponent[]) {
     onChange?.({ ...content, components: newComps });
   }
 
+  function handleDragStart(event: DragStartEvent) {
+    setDraggingId(String(event.active.id));
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    setOverDropId(event.over ? String(event.over.id) : null);
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    setDraggingId(null);
+    setOverDropId(null);
     const { active, over } = event;
     if (over && active.id !== over.id) {
       onBeforeAction?.();
@@ -966,16 +992,28 @@ export function ContentSection({
   return (
     <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-4 py-6" isEditing={true} defaultBg="#f8fafc">
       <div onClick={e => e.stopPropagation()}>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
           <SortableContext items={components.map(c => c.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-0">
               <QuickAddBetween onAdd={type => addComponentAt(0, type)} />
               {components.map((comp, index) => (
                 <React.Fragment key={comp.id}>
+                  {/* M7: Snap guide — glowing line shows where dragged item will land */}
+                  {draggingId && overDropId === comp.id && comp.id !== draggingId && (
+                    <div className="h-0.5 bg-primary rounded-full mx-4 -mb-0.5 relative z-10 animate-pulse shadow-[0_0_6px_2px_rgba(99,102,241,0.4)]" />
+                  )}
                   <SortableItem
                     comp={comp}
                     isSelected={selectedComponentId === comp.id}
-                    onSelect={() => onSelectComponent?.(selectedComponentId === comp.id ? null : comp.id)}
+                    onSelect={(e) => {
+                      if (e.shiftKey && onMultiSelectComponent) {
+                        // M8: Shift+click adds/removes this component from multi-selection
+                        onMultiSelectComponent(comp.id);
+                      } else {
+                        onSelectComponent?.(selectedComponentId === comp.id ? null : comp.id);
+                      }
+                    }}
+                    isMultiSelected={multiSelectedIds?.has(comp.id) ?? false}
                     onEdit={() => {
                       // Always select this component (not toggle), then focus first
                       // editable field in the component inspector panel (Enter contract)
@@ -1006,6 +1044,19 @@ export function ContentSection({
               ))}
             </div>
           </SortableContext>
+          {/* M3: drag ghost overlay — appears while component is being dragged */}
+          <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
+            {draggingComp && (
+              <div className="bg-white border-2 border-primary/80 rounded-lg shadow-2xl px-4 py-3 rotate-1 opacity-90 max-w-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground">
+                    {getContentComponentTypes().find(t => t.type === draggingComp.type)?.label ?? draggingComp.type}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">moving</span>
+                </div>
+              </div>
+            )}
+          </DragOverlay>
         </DndContext>
 
         {components.length === 0 && (
