@@ -1,5 +1,5 @@
-import { useRef } from "react";
-import { HeaderFloatingToolbar } from "./HeaderFloatingToolbar";
+import { useRef, useState } from "react";
+import { HeaderFloatingToolbar, type TabId } from "./HeaderFloatingToolbar";
 
 export interface NavLink {
   id: string;
@@ -96,6 +96,8 @@ interface HeaderSectionProps {
   pages?: SitePageRef[];
   /** Called when the "Advanced" tab is clicked in the floating toolbar. */
   onAdvanced?: () => void;
+  /** Opens the media library — used for logo replacement. */
+  onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
 }
 
 // ── Small badge ───────────────────────────────────────────────────────────────
@@ -111,18 +113,65 @@ function HeaderBadge({ label, color }: { label: string; color: string }) {
   );
 }
 
+// ── Editable hint wrapper ─────────────────────────────────────────────────────
+// Wraps any header element in edit mode with a hover ring + click affordance.
+
+function EditHint({
+  children,
+  isEditing,
+  onClick,
+  title,
+  className = "",
+}: {
+  children: React.ReactNode;
+  isEditing: boolean;
+  onClick?: (e: React.MouseEvent) => void;
+  title?: string;
+  className?: string;
+}) {
+  if (!isEditing) return <>{children}</>;
+  return (
+    <span
+      className={`relative inline-flex items-center cursor-pointer rounded transition-all hover:ring-2 hover:ring-primary/60 hover:bg-primary/5 px-0.5 ${className}`}
+      onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
+      title={title}
+    >
+      {children}
+    </span>
+  );
+}
+
 // ── HeaderPreviewBar ───────────────────────────────────────────────────────────
+
+interface HeaderPreviewBarProps {
+  content: HeaderContent;
+  settings: HeaderSectionSettings;
+  businessName?: string;
+  /** When true, elements show hover highlights and click handlers. */
+  isEditing?: boolean;
+  onChange?: (content: HeaderContent) => void;
+  /** Programmatically open a specific toolbar tab. */
+  onFocusTab?: (tab: TabId) => void;
+  /** Open media library (for logo replacement). */
+  onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
+}
 
 export function HeaderPreviewBar({
   content,
   settings,
   businessName,
-}: {
-  content: HeaderContent;
-  settings: HeaderSectionProps["settings"];
-  businessName?: string;
-}) {
-  // Content-level headerStyle overrides settings.headerStyle
+  isEditing = false,
+  onChange,
+  onFocusTab,
+  onOpenMediaLibrary,
+}: HeaderPreviewBarProps) {
+  // ── Inline editing state ─────────────────────────────────────────────────
+  const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
+  const [linkDraft, setLinkDraft] = useState("");
+  const [editingCta, setEditingCta] = useState(false);
+  const [ctaDraft, setCtaDraft] = useState("");
+
+  // ── Style resolution ─────────────────────────────────────────────────────
   const headerStyle = content.headerStyle ?? settings.headerStyle ?? "light";
   const isDark = headerStyle === "dark" || headerStyle === "transparent";
   const borderClass =
@@ -155,13 +204,56 @@ export function HeaderPreviewBar({
   const logoHeightPx = resolveLogoHeightPx(content.logoSize);
   const logoAlignment = content.logoAlignment ?? "left";
 
-  // Logo section positioning
   const logoContainerStyle: React.CSSProperties =
     logoAlignment === "center"
       ? { position: "absolute", left: "50%", transform: "translateX(-50%)" }
       : logoAlignment === "right"
       ? { order: 3 }
       : {};
+
+  // ── Inline edit handlers ─────────────────────────────────────────────────
+
+  function startEditingLink(link: NavLink, e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditingLinkId(link.id);
+    setLinkDraft(link.label);
+  }
+
+  function commitLinkEdit() {
+    if (!editingLinkId || !onChange) { setEditingLinkId(null); return; }
+    const trimmed = linkDraft.trim();
+    onChange({
+      ...content,
+      navLinks: navLinks.map((l) =>
+        l.id === editingLinkId ? { ...l, label: trimmed || l.label } : l
+      ),
+    });
+    setEditingLinkId(null);
+  }
+
+  function startEditingCta(e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditingCta(true);
+    setCtaDraft(ctaLabel);
+  }
+
+  function commitCtaEdit() {
+    if (!onChange) { setEditingCta(false); return; }
+    const trimmed = ctaDraft.trim();
+    onChange({ ...content, ctaLabel: trimmed || ctaLabel });
+    setEditingCta(false);
+  }
+
+  function handleLogoClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (onOpenMediaLibrary) {
+      // Logo URL lives in site settings, so we surface the logo tab which
+      // lets users manage size/alignment; full logo-replacement is task #1508.
+      onFocusTab?.("logo");
+    } else {
+      onFocusTab?.("logo");
+    }
+  }
 
   return (
     <div
@@ -174,13 +266,26 @@ export function HeaderPreviewBar({
         color: `var(--theme-header-text, ${darkFallbackText})`,
       }}
     >
+      {/* ── Logo / business name ──────────────────────────────────────────── */}
       <div className="flex items-center gap-3 flex-shrink-0" style={logoContainerStyle}>
         {showLogo && settings.logoUrl && (
-          <img
-            src={settings.logoUrl}
-            alt={businessName ?? "Logo"}
-            style={{ height: logoHeightPx, width: "auto", objectFit: "contain" }}
-          />
+          <EditHint isEditing={isEditing} onClick={handleLogoClick} title="Click to edit logo settings">
+            <img
+              src={settings.logoUrl}
+              alt={businessName ?? "Logo"}
+              style={{ height: logoHeightPx, width: "auto", objectFit: "contain" }}
+            />
+          </EditHint>
+        )}
+        {/* When no logo is set and in edit mode, show a logo placeholder */}
+        {showLogo && !settings.logoUrl && isEditing && (
+          <span
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded border-2 border-dashed border-primary/30 text-xs text-primary/50 cursor-pointer hover:border-primary/60 hover:text-primary/70 transition-colors"
+            onClick={(e) => { e.stopPropagation(); onFocusTab?.("logo"); }}
+            title="Click to manage logo"
+          >
+            🖼 Logo
+          </span>
         )}
         {showBusinessName && (
           <span
@@ -204,51 +309,126 @@ export function HeaderPreviewBar({
         )}
       </div>
 
+      {/* ── Navigation links ─────────────────────────────────────────────── */}
       {showNav && (
         <nav className="hidden md:flex items-center gap-6">
-          {navLinks.map((link) => (
-            <span
-              key={link.id}
-              className="text-sm font-medium transition-opacity hover:opacity-80 cursor-pointer"
-              style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
-            >
-              {link.label}
-            </span>
-          ))}
+          {navLinks.map((link) => {
+            if (isEditing && editingLinkId === link.id) {
+              // Inline input for this link's label
+              return (
+                <input
+                  key={link.id}
+                  type="text"
+                  value={linkDraft}
+                  autoFocus
+                  onChange={(e) => setLinkDraft(e.target.value)}
+                  onBlur={commitLinkEdit}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); commitLinkEdit(); }
+                    if (e.key === "Escape") { e.preventDefault(); setEditingLinkId(null); }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-sm font-medium bg-transparent border-b-2 border-primary outline-none min-w-0 w-20 text-center"
+                  style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
+                />
+              );
+            }
+            return (
+              <EditHint
+                key={link.id}
+                isEditing={isEditing}
+                onClick={(e) => startEditingLink(link, e)}
+                title={isEditing ? "Click to edit link label" : undefined}
+              >
+                <span
+                  className="text-sm font-medium transition-opacity hover:opacity-80"
+                  style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
+                >
+                  {link.label}
+                </span>
+              </EditHint>
+            );
+          })}
         </nav>
       )}
 
+      {/* ── Right-side controls ───────────────────────────────────────────── */}
       <div className="flex items-center gap-3 flex-shrink-0">
         {showEmail && (
-          <a
-            href={`mailto:${email}`}
-            className="hidden md:block text-sm font-medium hover:opacity-80 transition-opacity"
-            style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
+          <EditHint
+            isEditing={isEditing}
+            onClick={(e) => { e.stopPropagation(); onFocusTab?.("phone"); }}
+            title="Click to edit email"
           >
-            {email}
-          </a>
+            <a
+              href={isEditing ? undefined : `mailto:${email}`}
+              className="hidden md:block text-sm font-medium hover:opacity-80 transition-opacity"
+              style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
+              onClick={isEditing ? (e) => e.preventDefault() : undefined}
+            >
+              {email}
+            </a>
+          </EditHint>
         )}
-        {showPhone && phone && (
-          <span
-            className="hidden md:block text-sm font-medium"
-            style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
+
+        {showPhone && (phone || isEditing) && (
+          <EditHint
+            isEditing={isEditing}
+            onClick={(e) => { e.stopPropagation(); onFocusTab?.("phone"); }}
+            title="Click to edit phone number"
           >
-            {phone}
-          </span>
+            <span
+              className="hidden md:block text-sm font-medium"
+              style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
+            >
+              {phone || (isEditing ? <em className="opacity-40 not-italic">Add phone…</em> : null)}
+            </span>
+          </EditHint>
         )}
+
         {showCta && (
-          <span
-            className="px-4 py-2 text-sm text-white cursor-pointer transition-opacity hover:opacity-90"
-            style={{
-              backgroundColor: settings.brandColor,
-              borderRadius: "var(--theme-btn-radius, 9999px)",
-              fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
-              boxShadow: "var(--theme-btn-shadow, none)",
-            }}
-          >
-            {ctaLabel}
-          </span>
+          editingCta && isEditing ? (
+            <input
+              type="text"
+              value={ctaDraft}
+              autoFocus
+              onChange={(e) => setCtaDraft(e.target.value)}
+              onBlur={commitCtaEdit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); commitCtaEdit(); }
+                if (e.key === "Escape") { e.preventDefault(); setEditingCta(false); }
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="px-3 py-2 text-sm text-white outline-none text-center w-32"
+              style={{
+                backgroundColor: settings.brandColor,
+                borderRadius: "var(--theme-btn-radius, 9999px)",
+                fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+                boxShadow: "var(--theme-btn-shadow, none)",
+              }}
+            />
+          ) : (
+            <EditHint
+              isEditing={isEditing}
+              onClick={startEditingCta}
+              title="Click to edit button text"
+            >
+              <span
+                className="px-4 py-2 text-sm text-white transition-opacity hover:opacity-90"
+                style={{
+                  cursor: isEditing ? "text" : "pointer",
+                  backgroundColor: settings.brandColor,
+                  borderRadius: "var(--theme-btn-radius, 9999px)",
+                  fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+                  boxShadow: "var(--theme-btn-shadow, none)",
+                }}
+              >
+                {ctaLabel}
+              </span>
+            </EditHint>
+          )
         )}
+
         <span
           className="md:hidden cursor-pointer"
           style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}
@@ -256,6 +436,14 @@ export function HeaderPreviewBar({
           ☰
         </span>
       </div>
+
+      {/* Edit-mode overlay hint strip */}
+      {isEditing && (
+        <div
+          className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary/20 pointer-events-none"
+          aria-hidden
+        />
+      )}
     </div>
   );
 }
@@ -271,8 +459,11 @@ export function HeaderSection({
   siteSlug,
   pages = [],
   onAdvanced,
+  onOpenMediaLibrary,
 }: HeaderSectionProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Lifted tab state — clicking canvas elements focuses the corresponding tab
+  const [activeTab, setActiveTab] = useState<TabId | null>(null);
 
   if (!isEditing) {
     return (
@@ -290,6 +481,10 @@ export function HeaderSection({
         content={content}
         settings={settings}
         businessName={businessName}
+        isEditing={isEditing}
+        onChange={onChange}
+        onFocusTab={setActiveTab}
+        onOpenMediaLibrary={onOpenMediaLibrary}
       />
       {onChange && (
         <HeaderFloatingToolbar
@@ -301,6 +496,8 @@ export function HeaderSection({
           pages={pages}
           headerRef={wrapperRef as React.RefObject<HTMLElement>}
           onAdvanced={onAdvanced}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
         />
       )}
     </div>

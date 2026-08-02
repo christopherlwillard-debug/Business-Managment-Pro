@@ -26,9 +26,13 @@ interface HeaderFloatingToolbarProps {
   headerRef: React.RefObject<HTMLElement>;
   /** Called when "Advanced" tab is clicked — opens InspectorPanel. */
   onAdvanced?: () => void;
+  /** Controlled active tab — lifted to HeaderSection so canvas clicks can focus a tab. */
+  activeTab?: TabId | null;
+  /** Called when the user opens/closes a tab from within the toolbar. */
+  onTabChange?: (tab: TabId | null) => void;
 }
 
-type TabId = "logo" | "nav" | "phone" | "cta" | "style" | "advanced";
+export type TabId = "logo" | "nav" | "phone" | "cta" | "style" | "advanced";
 
 // Maps logoSize string aliases → pixel heights
 const LOGO_SIZE_TO_PX: Record<string, number> = {
@@ -145,9 +149,17 @@ export function HeaderFloatingToolbar({
   pages = [],
   headerRef,
   onAdvanced,
+  activeTab: controlledActiveTab,
+  onTabChange,
 }: HeaderFloatingToolbarProps) {
   const [rect, setRect] = useState<DOMRect | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId | null>(null);
+  const [localActiveTab, setLocalActiveTab] = useState<TabId | null>(null);
+  // Use controlled tab if provided (canvas-click integration), else local state
+  const activeTab = controlledActiveTab !== undefined ? controlledActiveTab : localActiveTab;
+  function setActiveTab(tab: TabId | null) {
+    setLocalActiveTab(tab);
+    onTabChange?.(tab);
+  }
   const rafRef = useRef<number>(0);
   const [showPagesPicker, setShowPagesPicker] = useState(false);
 

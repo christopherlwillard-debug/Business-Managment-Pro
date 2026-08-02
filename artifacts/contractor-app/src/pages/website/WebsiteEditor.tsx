@@ -265,7 +265,7 @@ function renderSection(
         onOpenMediaLibrary={extras?.onOpenMediaLibrary}
       />
     );
-    case "header": return <HeaderSection content={section.content as any} settings={settings} isEditing={isEditing} onChange={onChange as any} businessName={extras?.businessName} siteSlug={extras?.siteSlug} pages={extras?.pages} onAdvanced={extras?.onHeaderAdvanced} />;
+    case "header": return <HeaderSection content={section.content as any} settings={settings} isEditing={isEditing} onChange={onChange as any} businessName={extras?.businessName} siteSlug={extras?.siteSlug} pages={extras?.pages} onAdvanced={extras?.onHeaderAdvanced} onOpenMediaLibrary={extras?.onOpenMediaLibrary as any} />;
     case "content": return (
       <ContentSection
         {...props}
