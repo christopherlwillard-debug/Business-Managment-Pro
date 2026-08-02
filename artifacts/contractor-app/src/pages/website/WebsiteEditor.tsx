@@ -116,6 +116,9 @@ class WebsiteEditorErrorBoundary extends Component<{ children: ReactNode }, { er
   }
 }
 
+/** Controls how the right-hand inspector panel behaves. */
+type PanelMode = 'auto' | 'pinned' | 'floating';
+
 interface Section {
   id: string;
   type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us" | "legal" | "meet-owner" | "process";
@@ -1206,7 +1209,7 @@ function WebsiteEditor() {
   // These four values own the editor's selection model. Layout restructures,
   // scroll container changes, and panel refactors must NEVER reset or redeclare
   // these at a lower level. They live here and are passed down as props only.
-  const [activeSection, setActiveSection] = useState<string | null>("hero");
+  const [activeSection, setActiveSection] = useState<string | null>(null);
   const [localPages, setLocalPages] = useState<SitePage[] | null>(null);
   const [localSettings, setLocalSettings] = useState<SiteSettings | null>(null);
   const [activePageId, setActivePageId] = useState<string>("home");
@@ -1289,6 +1292,18 @@ function WebsiteEditor() {
   const [leftCollapsed, setLeftCollapsed] = useState(
     () => localStorage.getItem("website-editor-left-collapsed") === "true"
   );
+  const [panelMode, setPanelMode] = useState<PanelMode>(() => {
+    const s = localStorage.getItem('website-inspector-mode');
+    return (s === 'pinned' || s === 'floating') ? s : 'auto';
+  });
+  const [floatingPos, setFloatingPos] = useState<{ x: number; y: number }>(() => {
+    try {
+      const s = localStorage.getItem('website-inspector-float-pos');
+      if (s) return JSON.parse(s) as { x: number; y: number };
+    } catch {}
+    return { x: Math.max(0, window.innerWidth - 300), y: 64 };
+  });
+  const floatingDragRef = useRef<{ startX: number; startY: number; startPosX: number; startPosY: number } | null>(null);
   const [canvasZoom, setCanvasZoom] = useState(100);
   const [showSaved, setShowSaved] = useState(false);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1327,6 +1342,10 @@ function WebsiteEditor() {
     localStorage.setItem("website-editor-left-collapsed", String(leftCollapsed));
     leftCollapsedRef.current = leftCollapsed;
   }, [leftCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem('website-inspector-mode', panelMode);
+  }, [panelMode]);
 
   // Reset headerAdvancedOpen when the user navigates away from the header section.
   useEffect(() => {
@@ -5456,6 +5475,33 @@ function WebsiteEditor() {
               )}
             </div>
 
+            {/* Panel mode toggle — bottom-right of canvas, above zoom */}
+            {!focusMode && !previewMode && (
+              <div
+                className="absolute bottom-[3.5rem] right-4 z-10 flex items-center gap-0.5 bg-card/90 backdrop-blur-sm border border-border rounded-lg shadow-md px-1 py-0.5 select-none"
+                onClick={e => e.stopPropagation()}
+              >
+                {(['auto', 'pinned', 'floating'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setPanelMode(mode)}
+                    title={
+                      mode === 'auto' ? 'Auto — inspector opens when a section is selected' :
+                      mode === 'pinned' ? 'Pinned — inspector always visible' :
+                      'Float — detach as a draggable window'
+                    }
+                    className={`px-2 py-0.5 text-[10px] rounded transition-colors font-medium ${
+                      panelMode === mode
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    {mode === 'auto' ? 'Auto' : mode === 'pinned' ? 'Pin' : 'Float'}
+                  </button>
+                ))}
+              </div>
+            )}
             {/* Zoom control — bottom-right of canvas */}
             <div className="absolute bottom-4 right-4 z-10 flex items-center gap-0.5 bg-card/90 backdrop-blur-sm border border-border rounded-lg shadow-md px-1.5 py-1 select-none">
               <button
@@ -5491,10 +5537,13 @@ function WebsiteEditor() {
               >Fit</button>
             </div>
           </div>
-          {/* Docked inspector panel — desktop only, auto-sizes beside canvas as flex sibling */}
-          {!editorNarrow && activeSection && activeTab === "editor" && !focusMode && !previewMode && (() => {
-            const sec = sections.find(s => s.id === activeSection);
-            if (!sec || (sec.type === "header" && !headerAdvancedOpen)) return null;
+          {/* Docked inspector panel — desktop only, width-transitions as flex sibling */}
+          {!editorNarrow && activeTab === "editor" && !focusMode && !previewMode && panelMode !== 'floating' && (() => {
+            const sec = activeSection ? sections.find(s => s.id === activeSection) : null;
+            const hasValidSec = !!sec && !(sec.type === "header" && !headerAdvancedOpen);
+            const _savedW = parseInt(localStorage.getItem("inspector-panel-width") ?? "280", 10);
+            const dockW = Math.max(240, Math.min(300, isNaN(_savedW) ? 280 : _savedW));
+            const dockVisible = panelMode === 'pinned' || (panelMode === 'auto' && hasValidSec);
 
             let selectedComponent: SiteComponent | undefined;
             let rowData: RowSectionData | undefined;
@@ -5503,6 +5552,7 @@ function WebsiteEditor() {
             let onChangeRowData: ((data: RowSectionData) => void) | undefined;
             let specialContent: React.ReactNode | undefined;
 
+            if (hasValidSec && sec) {
             if (sec.type === "content" && selectedComponentState?.sectionId === sec.id) {
               const contentData = sec.content as { components?: SiteComponent[] };
               const comp = contentData.components?.find(c => c.id === selectedComponentState.componentId);
@@ -5735,9 +5785,9 @@ function WebsiteEditor() {
               }
 
               return (
-                <div className="flex-shrink-0 border-l border-border bg-card flex flex-col overflow-hidden"
-                  style={{ width: 280 }} onClick={e => e.stopPropagation()}>
-                  <CardItemEditorPanel
+                <div className="flex-shrink-0 border-l border-border bg-card overflow-hidden transition-[width] duration-200 ease-in-out"
+                  style={{ width: dockVisible ? dockW : 0 }} onClick={e => e.stopPropagation()}>
+                  {dockVisible && <CardItemEditorPanel
                     card={selectedCardData}
                     onChange={handleCardChange}
                     onDuplicate={handleCardDuplicate}
@@ -5745,45 +5795,333 @@ function WebsiteEditor() {
                     onClose={() => { setSelectedCardState(null); setSelectedCardData(null); setActiveSection(null); }}
                     onOpenMediaLibrary={openMediaLibrary}
                     businessId={bizId}
-                  />
+                  />}
                 </div>
               );
             }
 
             return (
-              <InspectorPanel
-                pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
-                section={sec}
-                selectedComponent={selectedComponent}
-                rowData={rowData}
-                selectedRowColumnId={selectedRowColumnId}
-                onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
-                onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
-                isBgUploading={!!bgUploading[sec.id]}
-                onOpenMediaLibrary={openMediaLibrary}
-                copiedStyle={copiedBlockStyle}
-                onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
-                onPasteStyle={() => {
-                  if (copiedBlockStyle) {
-                    updateBlockStyle(sec.id, copiedBlockStyle);
-                    toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
-                  }
-                }}
-                onApplyStyleTo={applyStyleTo}
-                onToggleSection={() => toggleSection(sec.id)}
-                onDuplicateSection={() => duplicateSection(sec.id)}
-                onDeleteSection={() => handleDeleteSectionClick(sec.id)}
-                onChangeComponent={onChangeComponent}
-                onComponentImageUpload={handleContentComponentImageUpload}
-                onChangeRowData={onChangeRowData}
-                collapsed={false}
-                onCollapse={() => setActiveSection(null)}
-                onExpand={() => {}}
-                autoCollapsed={false}
-                onClearAutoCollapse={() => {}}
-                specialContent={specialContent}
-                initialTab={contextInspectorTab}
-              />
+              <div
+                className="flex-shrink-0 border-l border-border bg-card overflow-hidden transition-[width] duration-200 ease-in-out"
+                style={{ width: dockVisible ? dockW : 0 }}
+                onClick={e => e.stopPropagation()}
+              >
+                <InspectorPanel
+                  pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
+                  section={sec}
+                  selectedComponent={selectedComponent}
+                  rowData={rowData}
+                  selectedRowColumnId={selectedRowColumnId}
+                  onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
+                  onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
+                  isBgUploading={!!bgUploading[sec.id]}
+                  onOpenMediaLibrary={openMediaLibrary}
+                  copiedStyle={copiedBlockStyle}
+                  onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
+                  onPasteStyle={() => {
+                    if (copiedBlockStyle) {
+                      updateBlockStyle(sec.id, copiedBlockStyle);
+                      toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
+                    }
+                  }}
+                  onApplyStyleTo={applyStyleTo}
+                  onToggleSection={() => toggleSection(sec.id)}
+                  onDuplicateSection={() => duplicateSection(sec.id)}
+                  onDeleteSection={() => handleDeleteSectionClick(sec.id)}
+                  onChangeComponent={onChangeComponent}
+                  onComponentImageUpload={handleContentComponentImageUpload}
+                  onChangeRowData={onChangeRowData}
+                  collapsed={false}
+                  onCollapse={() => setActiveSection(null)}
+                  onExpand={() => {}}
+                  autoCollapsed={false}
+                  onClearAutoCollapse={() => {}}
+                  specialContent={specialContent}
+                  initialTab={contextInspectorTab}
+                />
+              </div>
+            );
+            } // end if (hasValidSec && sec)
+            // 0-width placeholder / pinned empty state
+            return (
+              <div
+                className="flex-shrink-0 border-l border-border bg-card overflow-hidden transition-[width] duration-200 ease-in-out"
+                style={{ width: dockVisible ? dockW : 0 }}
+                onClick={e => e.stopPropagation()}
+              >
+                {dockVisible && (
+                  <div className="flex flex-col items-center justify-center h-full text-center px-6 py-16 select-none">
+                    <div className="text-3xl mb-3">👆</div>
+                    <p className="text-sm font-medium text-foreground mb-1">Nothing selected</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Click any section on the canvas to inspect and edit it.
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          {/* Floating inspector — detached draggable window */}
+          {!editorNarrow && panelMode === 'floating' && activeSection && activeTab === "editor" && !focusMode && !previewMode && (() => {
+            const sec = sections.find(s => s.id === activeSection);
+            if (!sec || (sec.type === "header" && !headerAdvancedOpen)) return null;
+
+            let selectedComponent: SiteComponent | undefined;
+            let rowData: RowSectionData | undefined;
+            let selectedRowColumnId: string | undefined;
+            let onChangeComponent: ((comp: SiteComponent) => void) | undefined;
+            let onChangeRowData: ((data: RowSectionData) => void) | undefined;
+            let specialContent: React.ReactNode | undefined;
+
+            if (sec.type === "content" && selectedComponentState?.sectionId === sec.id) {
+              const contentData = sec.content as { components?: SiteComponent[] };
+              const comp = contentData.components?.find(c => c.id === selectedComponentState.componentId);
+              if (comp) {
+                selectedComponent = comp as SiteComponent;
+                onChangeComponent = (updatedComp: SiteComponent) => {
+                  const newComponents = (contentData.components ?? []).map(c =>
+                    c.id === updatedComp.id ? updatedComp : c
+                  );
+                  updateContent(sec.id, { ...contentData, components: newComponents });
+                };
+              }
+            } else if (sec.type === "content") {
+              specialContent = (
+                <div className="p-4 flex flex-col gap-3">
+                  <div className="text-center py-5 px-3">
+                    <div className="text-2xl mb-2">🖱️</div>
+                    <p className="text-sm font-medium text-foreground mb-1">Click to select</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Click any component on the canvas to edit it.{" "}
+                      <span className="font-medium">Shift+click</span> to select multiple.
+                    </p>
+                  </div>
+                  {multiSelectedIds.size > 0 && (
+                    <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-3 py-2 text-xs text-cyan-700 dark:text-cyan-400 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-cyan-500 flex-shrink-0" />
+                      <span>{multiSelectedIds.size} component{multiSelectedIds.size === 1 ? "" : "s"} selected</span>
+                    </div>
+                  )}
+                </div>
+              );
+            } else if (sec.type === "row") {
+              rowData = sec.content as unknown as RowSectionData;
+              onChangeRowData = (newData: RowSectionData) =>
+                updateContent(sec.id, newData as unknown as Record<string, unknown>);
+              if (selectedRowState?.sectionId === sec.id && selectedRowState.componentId) {
+                const selCol = rowData.columns?.find(c => c.id === selectedRowState.columnId);
+                const selComp = selCol?.components?.find(c => c.id === selectedRowState.componentId);
+                if (selComp) {
+                  selectedComponent = selComp as SiteComponent;
+                  selectedRowColumnId = selectedRowState.columnId;
+                  onChangeComponent = (updatedComp: SiteComponent) => {
+                    const newCols = (rowData!.columns ?? []).map(col =>
+                      col.id === selectedRowState.columnId
+                        ? { ...col, components: col.components.map(cp => cp.id === updatedComp.id ? updatedComp : cp) }
+                        : col
+                    );
+                    updateContent(sec.id, { ...rowData!, columns: newCols } as unknown as Record<string, unknown>);
+                  };
+                }
+              }
+            } else if (sec.type === "deposit") {
+              specialContent = <DepositSubmissionsPanel businessId={bizId} />;
+            } else if (sec.type === "service-area") {
+              const raw = sec.content as unknown as Parameters<typeof CoverageMapInspector>[0]["content"];
+              specialContent = (
+                <CoverageMapInspector
+                  content={raw}
+                  onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
+                />
+              );
+            } else if (sec.type === "before-after") {
+              const ba = sec.content as { heading?: string; pairs?: Array<{ id: string; caption?: string; beforeUrl?: string; afterUrl?: string; beforeLabel?: string; afterLabel?: string }> };
+              const baPairs = ba.pairs ?? [];
+              specialContent = (
+                <div className="p-3 space-y-2.5 overflow-y-auto">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Before & After Pairs</p>
+                  <div className="space-y-2">
+                    {baPairs.map((pair, idx) => (
+                      <div key={pair.id} className="border border-border rounded-lg p-2 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-foreground">Pair {idx + 1}</span>
+                          <button type="button" onClick={() => updateContent(sec.id, { ...ba, pairs: baPairs.filter(p => p.id !== pair.id) })}
+                            className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <input
+                          className="w-full text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                          placeholder="Caption (optional)"
+                          value={pair.caption ?? ""}
+                          onChange={e => updateContent(sec.id, { ...ba, pairs: baPairs.map(p => p.id === pair.id ? { ...p, caption: e.target.value } : p) })}
+                        />
+                        <div className="flex gap-1">
+                          <button type="button"
+                            onClick={() => openMediaLibrary(url => updateContent(sec.id, { ...ba, pairs: baPairs.map(p => p.id === pair.id ? { ...p, beforeUrl: url } : p) }))}
+                            className={`flex-1 text-xs border rounded px-1.5 py-1 hover:bg-muted truncate transition-colors ${pair.beforeUrl ? "border-green-500 text-green-700" : "border-border text-muted-foreground"}`}>
+                            {pair.beforeUrl ? "✓ Before" : "Before img"}
+                          </button>
+                          <button type="button"
+                            onClick={() => openMediaLibrary(url => updateContent(sec.id, { ...ba, pairs: baPairs.map(p => p.id === pair.id ? { ...p, afterUrl: url } : p) }))}
+                            className={`flex-1 text-xs border rounded px-1.5 py-1 hover:bg-muted truncate transition-colors ${pair.afterUrl ? "border-green-500 text-green-700" : "border-border text-muted-foreground"}`}>
+                            {pair.afterUrl ? "✓ After" : "After img"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button"
+                    onClick={() => { const id = `pair-${Date.now()}`; updateContent(sec.id, { ...ba, pairs: [...baPairs, { id, beforeLabel: "Before", afterLabel: "After", caption: "" }] }); }}
+                    className="text-xs w-full border border-dashed border-border rounded px-2 py-1.5 hover:bg-muted text-muted-foreground transition-colors">
+                    + Add Pair
+                  </button>
+                </div>
+              );
+            } else if (sec.type === "featured-clients" || sec.type === "partners") {
+              const raw = sec.content as unknown as Parameters<typeof LogoSectionInspector>[0]["content"];
+              specialContent = (
+                <LogoSectionInspector
+                  content={raw}
+                  sectionType={sec.type as "featured-clients" | "partners"}
+                  onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
+                />
+              );
+            }
+
+            // Card-panel mode: build handlers so floating window can show CardItemEditorPanel
+            let floatShowCardPanel = false;
+            let floatCardChange: (u: CardComponent) => void = () => {};
+            let floatCardDuplicate: () => void = () => {};
+            let floatCardDelete: () => void = () => {};
+            if (selectedCardData && selectedCardState?.sectionId === sec.id) {
+              floatShowCardPanel = true;
+              if (sec.type === "services") {
+                const d = sec.content as { heading?: string; items?: CardComponent[] };
+                floatCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...d, items: (d.items ?? []).map(i => i.id === u.id ? u : i) }); };
+                floatCardDuplicate = () => {
+                  const items = d.items ?? [];
+                  const idx = items.findIndex(i => i.id === selectedCardState.cardId);
+                  if (idx >= 0) { const duped = { ...items[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }; updateContent(sec.id, { ...d, items: [...items.slice(0, idx + 1), duped, ...items.slice(idx + 1)] }); setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped); }
+                };
+                floatCardDelete = () => { updateContent(sec.id, { ...d, items: (d.items ?? []).filter(i => i.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
+              } else if (sec.type === "testimonials") {
+                const raw = sec.content as { heading?: string; items?: CardComponent[]; testimonials?: any[] };
+                let tItems: CardComponent[] = raw.items ?? [];
+                if (tItems.length === 0 && raw.testimonials?.length) { tItems = (raw.testimonials as any[]).map((t: any) => ({ id: t.id, title: t.name, description: `"${t.quote}"${t.location ? `\n\n— ${t.location}` : ""}`, mediaType: "none" as const, layout: "horizontal" as const, textAlign: "left" as const, hoverEffect: "none" as const, clickAction: "none" as const, templateType: "testimonial" as const, badgeEnabled: t.rating > 0, badgeText: "★".repeat(Math.min(t.rating, 5)), badgeColor: "#f59e0b", badgeTextColor: "#ffffff", badgePosition: "top-right" as const })); }
+                floatCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: tItems.map(i => i.id === u.id ? u : i), testimonials: undefined }); };
+                floatCardDuplicate = () => { const idx = tItems.findIndex(i => i.id === selectedCardState.cardId); if (idx >= 0) { const duped = { ...tItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }; updateContent(sec.id, { ...raw, items: [...tItems.slice(0, idx + 1), duped, ...tItems.slice(idx + 1)], testimonials: undefined }); setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped); } };
+                floatCardDelete = () => { updateContent(sec.id, { ...raw, items: tItems.filter(i => i.id !== selectedCardState.cardId), testimonials: undefined }); setSelectedCardState(null); setSelectedCardData(null); };
+              } else if (sec.type === "stats") {
+                const raw = sec.content as { heading?: string; items?: CardComponent[]; stats?: any[] };
+                const STAT_ICONS_FB = ["Star", "CheckCircle2", "Award", "Clock", "Users", "Briefcase"];
+                let sItems: CardComponent[] = raw.items ?? [];
+                if (sItems.length === 0 && raw.stats?.length) { sItems = (raw.stats as any[]).map((st: any, idx: number) => ({ id: st.id, title: st.value, description: st.label, mediaType: "icon" as const, iconName: STAT_ICONS_FB[idx % STAT_ICONS_FB.length], layout: "icon-top" as const, textAlign: "center" as const, hoverEffect: "none" as const, clickAction: "none" as const })); }
+                floatCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: sItems.map(i => i.id === u.id ? u : i), stats: undefined }); };
+                floatCardDuplicate = () => { const idx = sItems.findIndex(i => i.id === selectedCardState.cardId); if (idx >= 0) { const duped = { ...sItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }; updateContent(sec.id, { ...raw, items: [...sItems.slice(0, idx + 1), duped, ...sItems.slice(idx + 1)], stats: undefined }); setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped); } };
+                floatCardDelete = () => { updateContent(sec.id, { ...raw, items: sItems.filter(i => i.id !== selectedCardState.cardId), stats: undefined }); setSelectedCardState(null); setSelectedCardData(null); };
+              } else if (sec.type === "faq") {
+                const raw = sec.content as { heading?: string; items?: unknown[]; displayMode?: string; cards?: CardComponent[] };
+                const faqCards = raw.cards ?? [];
+                floatCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, cards: faqCards.map(c => c.id === u.id ? u : c) }); };
+                floatCardDuplicate = () => { const idx = faqCards.findIndex(c => c.id === selectedCardState.cardId); if (idx >= 0) { const duped = { ...faqCards[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }; updateContent(sec.id, { ...raw, cards: [...faqCards.slice(0, idx + 1), duped, ...faqCards.slice(idx + 1)] }); setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped); } };
+                floatCardDelete = () => { updateContent(sec.id, { ...raw, cards: faqCards.filter(c => c.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
+              } else if (sec.type === "featured-clients" || sec.type === "partners" || sec.type === "certifications" || sec.type === "why-choose-us") {
+                const raw = sec.content as { heading?: string; items?: CardComponent[] };
+                const rItems = raw.items ?? [];
+                floatCardChange = (u) => { setSelectedCardData(u); updateContent(sec.id, { ...raw, items: rItems.map(i => i.id === u.id ? u : i) }); };
+                floatCardDuplicate = () => { const idx = rItems.findIndex(i => i.id === selectedCardState.cardId); if (idx >= 0) { const duped = { ...rItems[idx], id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }; updateContent(sec.id, { ...raw, items: [...rItems.slice(0, idx + 1), duped, ...rItems.slice(idx + 1)] }); setSelectedCardState({ sectionId: sec.id, cardId: duped.id }); setSelectedCardData(duped); } };
+                floatCardDelete = () => { updateContent(sec.id, { ...raw, items: rItems.filter(i => i.id !== selectedCardState.cardId) }); setSelectedCardState(null); setSelectedCardData(null); };
+              }
+            }
+
+            return (
+              <div
+                className="fixed z-[200] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
+                style={{ left: floatingPos.x, top: floatingPos.y, width: 280, maxHeight: 'calc(100vh - 80px)' }}
+                onClick={e => e.stopPropagation()}
+              >
+                {/* Drag handle */}
+                <div
+                  className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 cursor-grab active:cursor-grabbing select-none"
+                  onPointerDown={e => {
+                    if ((e.target as HTMLElement).closest('button,input,select,textarea')) return;
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    floatingDragRef.current = { startX: e.clientX, startY: e.clientY, startPosX: floatingPos.x, startPosY: floatingPos.y };
+                  }}
+                  onPointerMove={e => {
+                    if (!floatingDragRef.current) return;
+                    const { startX, startY, startPosX, startPosY } = floatingDragRef.current;
+                    setFloatingPos({ x: startPosX + (e.clientX - startX), y: startPosY + (e.clientY - startY) });
+                  }}
+                  onPointerUp={() => {
+                    if (!floatingDragRef.current) return;
+                    floatingDragRef.current = null;
+                    setFloatingPos(p => { localStorage.setItem('website-inspector-float-pos', JSON.stringify(p)); return p; });
+                  }}
+                  onPointerCancel={() => { floatingDragRef.current = null; }}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <GripVertical className="w-3.5 h-3.5 text-muted-foreground/50" />
+                    <span className="text-xs font-semibold text-muted-foreground">Inspector</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPanelMode('auto')}
+                    title="Dock inspector"
+                    className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  {floatShowCardPanel ? (
+                    <CardItemEditorPanel
+                      card={selectedCardData!}
+                      onChange={floatCardChange}
+                      onDuplicate={floatCardDuplicate}
+                      onDelete={floatCardDelete}
+                      onClose={() => { setSelectedCardState(null); setSelectedCardData(null); setActiveSection(null); }}
+                      onOpenMediaLibrary={openMediaLibrary}
+                      businessId={bizId}
+                    />
+                  ) : (
+                    <InspectorPanel
+                      pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
+                      section={sec}
+                      selectedComponent={selectedComponent}
+                      rowData={rowData}
+                      selectedRowColumnId={selectedRowColumnId}
+                      onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
+                      onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
+                      isBgUploading={!!bgUploading[sec.id]}
+                      onOpenMediaLibrary={openMediaLibrary}
+                      copiedStyle={copiedBlockStyle}
+                      onCopyStyle={() => setCopiedBlockStyle(sec.blockStyle ?? {})}
+                      onPasteStyle={() => {
+                        if (copiedBlockStyle) {
+                          updateBlockStyle(sec.id, copiedBlockStyle);
+                          toast({ title: "Styles pasted", description: "Section styles applied", duration: 2000 });
+                        }
+                      }}
+                      onApplyStyleTo={applyStyleTo}
+                      onToggleSection={() => toggleSection(sec.id)}
+                      onDuplicateSection={() => duplicateSection(sec.id)}
+                      onDeleteSection={() => handleDeleteSectionClick(sec.id)}
+                      onChangeComponent={onChangeComponent}
+                      onComponentImageUpload={handleContentComponentImageUpload}
+                      onChangeRowData={onChangeRowData}
+                      collapsed={false}
+                      onCollapse={() => setActiveSection(null)}
+                      onExpand={() => {}}
+                      autoCollapsed={false}
+                      onClearAutoCollapse={() => {}}
+                      specialContent={specialContent}
+                      initialTab={contextInspectorTab}
+                    />
+                  )}
+                </div>
+              </div>
             );
           })()}
           {/* Narrow screen: fixed bottom drawer (position:fixed escapes any overflow clipping) */}
