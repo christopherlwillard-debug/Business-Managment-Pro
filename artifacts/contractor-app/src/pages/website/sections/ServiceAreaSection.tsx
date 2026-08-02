@@ -1,4 +1,13 @@
-import { Plus, MapPin, X, Check } from "lucide-react";
+import { useState } from "react";
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, useSortable, arrayMove, rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripHorizontal, Plus, MapPin, X, Check } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { InlineEditableText } from "../InlineEditableText";
 import type { SiteSettings } from "../website-types";
@@ -14,11 +23,12 @@ export interface ServiceAreaContent {
   selectedStates?: string[];
   ctaText?: string;
   ctaUrl?: string;
+  ctaActionType?: "button" | "phone" | "form" | "directions";
   /** "map" | "list" | "both" — default "both" */
   displayMode?: "map" | "list" | "both";
   captionText?: string;
   captionHidden?: boolean;
-  mapStyle?: "outline" | "filled" | "minimal" | "modern";
+  mapStyle?: "outline" | "filled" | "minimal" | "modern" | "dark" | "patriotic";
   showLabels?: boolean;
   showBorders?: boolean;
   highlightColor?: string;
@@ -33,6 +43,64 @@ interface Props {
   sectionId?: string;
 }
 
+// ── Sortable chip used in the editing strip ───────────────────────────────────
+
+function SortableChip({
+  id,
+  value,
+  onChange,
+  onRemove,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+        zIndex: isDragging ? 999 : undefined,
+      }}
+      className="flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-dashed border-border bg-muted/20 touch-none"
+    >
+      {/* Drag handle */}
+      <button
+        type="button"
+        className="text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0"
+        aria-label="Drag to reorder"
+        {...listeners}
+        {...attributes}
+      >
+        <GripHorizontal className="w-3 h-3" />
+      </button>
+
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="text-sm bg-transparent focus:outline-none min-w-0 w-28"
+        style={{ color: "var(--theme-text, #111827)" }}
+      />
+
+      <button
+        type="button"
+        onClick={onRemove}
+        className="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+      >
+        <X className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
 export function ServiceAreaSection({
   content,
   settings,
@@ -43,6 +111,12 @@ export function ServiceAreaSection({
 }: Props) {
   const sid = sectionId ?? "service-area";
 
+  // "Add Custom Area" 2-step type picker state
+  const [showAreaPicker, setShowAreaPicker] = useState(false);
+
+  // dnd-kit sensors (pointer only — avoids accidental drag on text input)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
   // ── Migration: promote matching state names from areas → selectedStates ──
   const migrated = migrateAreas(content.areas ?? []);
   const selectedStates: string[] = content.selectedStates ?? migrated.selectedStates;
@@ -50,11 +124,12 @@ export function ServiceAreaSection({
     ? (content.areas ?? [])
     : migrated.areas;
 
-  const displayMode   = content.displayMode ?? "both";
-  const mapStyle      = content.mapStyle ?? "modern";
-  const showLabels    = content.showLabels !== false;
-  const showBorders   = content.showBorders !== false;
+  const displayMode    = content.displayMode ?? "both";
+  const mapStyle       = content.mapStyle ?? "modern";
+  const showLabels     = content.showLabels !== false;
+  const showBorders    = content.showBorders !== false;
   const highlightColor = content.highlightColor ?? settings.brandColor;
+  const ctaActionType  = content.ctaActionType ?? "button";
 
   // Auto-caption from selected states
   const autoCaption = buildCaption(selectedStates);
@@ -76,8 +151,9 @@ export function ServiceAreaSection({
     update({ selectedStates: next });
   }
 
-  function addArea() {
-    update({ areas: [...freeformAreas, "New Location"] });
+  function addArea(text = "") {
+    update({ areas: [...freeformAreas, text] });
+    setShowAreaPicker(false);
   }
 
   function updateArea(idx: number, val: string) {
@@ -90,6 +166,23 @@ export function ServiceAreaSection({
     update({ areas: freeformAreas.filter((_, i) => i !== idx) });
   }
 
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = freeformAreas.findIndex((_, i) => `area-${i}` === active.id);
+    const newIdx = freeformAreas.findIndex((_, i) => `area-${i}` === over.id);
+    if (oldIdx !== -1 && newIdx !== -1) {
+      update({ areas: arrayMove(freeformAreas, oldIdx, newIdx) });
+    }
+  }
+
+  // Derive CTA href based on action type
+  function getCtaHref(): string {
+    if (ctaActionType === "phone") return `tel:${content.ctaUrl ?? ""}`;
+    if (ctaActionType === "form")  return "#contact";
+    return content.ctaUrl ?? "#contact";
+  }
+
   const showMap  = displayMode === "map"  || displayMode === "both";
   const showList = displayMode === "list" || displayMode === "both";
 
@@ -97,6 +190,9 @@ export function ServiceAreaSection({
   const stateNames = [...selectedStates]
     .map(c => STATE_CODE_TO_NAME[c] ?? c)
     .sort((a, b) => a.localeCompare(b));
+
+  // Stable sortable IDs for freeform chips
+  const chipIds = freeformAreas.map((_, i) => `area-${i}`);
 
   return (
     <BlockStyleWrapper
@@ -154,14 +250,18 @@ export function ServiceAreaSection({
               className="max-w-2xl mx-auto"
             />
 
-            {/* Caption — only shown when not hidden and there's text */}
-            {!content.captionHidden && caption && (
-              <p
-                className="text-sm mt-2 italic"
+            {/* Caption — inline-editable in edit mode */}
+            {!content.captionHidden && (caption || isEditing) && (
+              <InlineEditableText
+                id={`${sid}-caption`}
+                as="p"
+                value={caption}
+                placeholder="Serving customers across the region"
+                className="text-sm mt-2 italic w-full text-center"
                 style={{ color: "var(--theme-text-muted, #6b7280)" }}
-              >
-                {caption}
-              </p>
+                onCommit={v => update({ captionText: v || undefined })}
+                disabled={!isEditing}
+              />
             )}
           </div>
         )}
@@ -186,7 +286,7 @@ export function ServiceAreaSection({
           </div>
         )}
 
-        {/* Freeform areas (non-state entries) */}
+        {/* Freeform areas (non-state, non-travel entries) */}
         {showList && freeformAreas.filter(a => !a.trim().toLowerCase().includes("travel")).length > 0 && (
           <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 mb-5">
             {freeformAreas
@@ -214,33 +314,82 @@ export function ServiceAreaSection({
           </p>
         )}
 
-        {/* Editing: freeform areas management */}
+        {/* Editing: drag-sortable freeform area chips */}
         {isEditing && (
-          <div className="flex flex-wrap justify-center gap-2 mb-6">
-            {freeformAreas.map((area, idx) => (
-              <div key={idx} className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-dashed border-border bg-muted/20">
-                <input
-                  value={area}
-                  onChange={e => updateArea(idx, e.target.value)}
-                  className="text-sm bg-transparent focus:outline-none min-w-0 w-28"
-                  style={{ color: "var(--theme-text, #111827)" }}
-                />
+          <div className="mb-6">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext items={chipIds} strategy={rectSortingStrategy}>
+                <div className="flex flex-wrap justify-center gap-2 mb-2">
+                  {freeformAreas.map((area, idx) => (
+                    <SortableChip
+                      key={chipIds[idx]}
+                      id={chipIds[idx]}
+                      value={area}
+                      onChange={v => updateArea(idx, v)}
+                      onRemove={() => removeArea(idx)}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+
+            {/* "Add Custom Area" picker */}
+            {showAreaPicker ? (
+              <div className="flex flex-wrap justify-center gap-1.5 animate-in fade-in-0 duration-100">
+                <span className="text-xs text-muted-foreground self-center mr-1">Add:</span>
                 <button
                   type="button"
-                  onClick={() => removeArea(idx)}
-                  className="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+                  onClick={() => {
+                    // State selection done directly on the map above — just close
+                    setShowAreaPicker(false);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+                  title="Click states directly on the map above"
+                >
+                  📍 State
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addArea("City Name")}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+                >
+                  🏙 City
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addArea("Zip Code")}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+                >
+                  📮 Zip Code
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addArea("")}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+                >
+                  ✏️ Other
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAreaPicker(false)}
+                  className="px-2 py-1 rounded-full text-xs text-muted-foreground hover:text-foreground"
                 >
                   <X className="w-3 h-3" />
                 </button>
               </div>
-            ))}
-            <button
-              type="button"
-              onClick={addArea}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
-            >
-              <Plus className="w-3 h-3" /> Add Custom Area
-            </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowAreaPicker(true)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-full border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary transition-colors mx-auto"
+              >
+                <Plus className="w-3 h-3" /> Add Custom Area
+              </button>
+            )}
           </div>
         )}
 
@@ -255,7 +404,7 @@ export function ServiceAreaSection({
                   placeholder="CTA button text (optional)"
                   className="text-sm border border-border rounded px-3 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary w-52 text-center"
                 />
-                {content.ctaText && (
+                {content.ctaText && ctaActionType === "button" && (
                   <input
                     value={content.ctaUrl ?? ""}
                     onChange={e => update({ ctaUrl: e.target.value || undefined })}
@@ -266,7 +415,7 @@ export function ServiceAreaSection({
               </div>
             ) : content.ctaText ? (
               <a
-                href={content.ctaUrl ?? "#contact"}
+                href={getCtaHref()}
                 className="inline-flex items-center gap-2 px-7 py-3 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
                 style={{ backgroundColor: highlightColor }}
               >
@@ -292,5 +441,6 @@ export function defaultServiceAreaContent(): ServiceAreaContent {
     showBorders: true,
     ctaText: "Request a Free Estimate",
     ctaUrl: "#contact",
+    ctaActionType: "button",
   };
 }

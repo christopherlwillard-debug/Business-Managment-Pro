@@ -9,10 +9,25 @@ interface Props {
   onChange: (patch: Partial<ServiceAreaContent>) => void;
 }
 
-// Small collapsible accordion section for the inspector
+// ── Map style swatch definitions ─────────────────────────────────────────────
+const MAP_STYLE_SWATCHES: Array<{
+  value: NonNullable<ServiceAreaContent["mapStyle"]>;
+  label: string;
+  base: string;
+  highlight: string; // fixed highlight for preview only; actual uses brandColor unless overridden
+}> = [
+  { value: "outline",   label: "Classic",   base: "#f1f5f9", highlight: "#2563eb" },
+  { value: "minimal",   label: "Minimal",   base: "#ffffff", highlight: "#94a3b8" },
+  { value: "filled",    label: "Filled",    base: "#e2e8f0", highlight: "#2563eb" },
+  { value: "modern",    label: "Modern",    base: "#d1d5db", highlight: "#2563eb" },
+  { value: "dark",      label: "Dark",      base: "#1e293b", highlight: "#38bdf8" },
+  { value: "patriotic", label: "Patriotic", base: "#1e3a5f", highlight: "#dc2626" },
+];
+
+// ── Collapsible section ──────────────────────────────────────────────────────
 function Section({
   title,
-  defaultOpen = true,
+  defaultOpen = false,
   children,
 }: {
   title: string;
@@ -27,14 +42,12 @@ function Section({
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-muted/30 transition-colors"
       >
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-          {title}
-        </span>
+        <span className="text-xs font-medium text-foreground/80">{title}</span>
         {open
           ? <ChevronDown className="w-3 h-3 text-muted-foreground" />
           : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
       </button>
-      {open && <div className="px-3 pb-3 space-y-2">{children}</div>}
+      {open && <div className="px-3 pb-3 space-y-2.5">{children}</div>}
     </div>
   );
 }
@@ -70,18 +83,20 @@ function ToggleRow({
   );
 }
 
+// ── Main inspector ────────────────────────────────────────────────────────────
+
 export function CoverageMapInspector({ content, onChange }: Props) {
   const [stateSearch, setStateSearch] = useState("");
 
-  // Resolve effective state lists (with migration)
   const migrated = useMemo(() => migrateAreas(content.areas ?? []), [content.areas]);
   const selectedStates: string[] = content.selectedStates ?? migrated.selectedStates;
   const freeformAreas: string[] = content.selectedStates !== undefined
     ? (content.areas ?? [])
     : migrated.areas;
 
-  const displayMode = content.displayMode ?? "both";
-  const mapStyle = content.mapStyle ?? "outline";
+  const displayMode   = content.displayMode ?? "both";
+  const mapStyle      = content.mapStyle ?? "outline";
+  const ctaActionType = content.ctaActionType ?? "button";
 
   function toggleState(code: string) {
     const next = selectedStates.includes(code)
@@ -90,8 +105,8 @@ export function CoverageMapInspector({ content, onChange }: Props) {
     onChange({ selectedStates: next });
   }
 
-  function addArea() {
-    onChange({ areas: [...freeformAreas, "New Location"] });
+  function addArea(text = "New Location") {
+    onChange({ areas: [...freeformAreas, text] });
   }
 
   function updateArea(idx: number, val: string) {
@@ -105,8 +120,10 @@ export function CoverageMapInspector({ content, onChange }: Props) {
   }
 
   const q = stateSearch.toLowerCase().trim();
-
   const autoCaption = buildCaption(selectedStates);
+
+  // For swatch preview: use custom highlight or blue as preview base
+  const userHighlight = content.highlightColor ?? "#2563eb";
 
   return (
     <div className="flex flex-col overflow-hidden h-full">
@@ -115,14 +132,15 @@ export function CoverageMapInspector({ content, onChange }: Props) {
         <p className="text-xs font-semibold text-foreground">Coverage Map</p>
         <p className="text-[10px] text-muted-foreground mt-0.5">
           {selectedStates.length === 0
-            ? "No states selected — click states on the map or check them below"
+            ? "No states selected — click states on the map or check below"
             : `${selectedStates.length} state${selectedStates.length !== 1 ? "s" : ""} selected`}
         </p>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* ── States ────────────────────────────────────────── */}
-        <Section title="States" defaultOpen>
+
+        {/* ── 📍 States ──────────────────────────────────────── */}
+        <Section title="📍 States" defaultOpen>
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
@@ -158,10 +176,7 @@ export function CoverageMapInspector({ content, onChange }: Props) {
                 <button
                   key={r.name}
                   type="button"
-                  onClick={() => {
-                    const all = [...new Set([...selectedStates, ...r.codes])];
-                    onChange({ selectedStates: all });
-                  }}
+                  onClick={() => onChange({ selectedStates: [...new Set([...selectedStates, ...r.codes])] })}
                   className="text-[9px] px-1.5 py-0.5 rounded border border-border hover:bg-primary/10 hover:text-primary hover:border-primary/40 text-muted-foreground transition-colors"
                   title={`Select all ${r.name} states`}
                 >
@@ -232,40 +247,8 @@ export function CoverageMapInspector({ content, onChange }: Props) {
           </div>
         </Section>
 
-        {/* ── Custom Areas ───────────────────────────────────── */}
-        <Section title="Custom Entries" defaultOpen={false}>
-          <p className="text-[10px] text-muted-foreground leading-relaxed">
-            Add freeform entries like "Nationwide Travel" or "Remote Consulting" that don't map to a state.
-          </p>
-          <div className="space-y-1">
-            {freeformAreas.map((area, idx) => (
-              <div key={idx} className="flex items-center gap-1">
-                <input
-                  className="flex-1 text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                  value={area}
-                  onChange={e => updateArea(idx, e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => removeArea(idx)}
-                  className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive flex-shrink-0"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={addArea}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted w-full px-2 py-1 rounded border border-dashed border-border transition-colors"
-          >
-            <Plus className="w-3 h-3" /> Add custom entry
-          </button>
-        </Section>
-
-        {/* ── Display ────────────────────────────────────────── */}
-        <Section title="Display" defaultOpen>
+        {/* ── 🎨 Appearance ──────────────────────────────────── */}
+        <Section title="🎨 Appearance">
           {/* Display mode */}
           <div>
             <p className="text-[10px] text-muted-foreground mb-1">Show</p>
@@ -276,7 +259,7 @@ export function CoverageMapInspector({ content, onChange }: Props) {
                   type="button"
                   onClick={() => onChange({ displayMode: m })}
                   className={cn(
-                    "py-1 text-[10px] font-medium rounded border transition-colors capitalize",
+                    "py-1 text-[10px] font-medium rounded border transition-colors",
                     displayMode === m
                       ? "bg-primary/10 border-primary/40 text-primary"
                       : "border-border text-muted-foreground hover:bg-muted"
@@ -319,82 +302,137 @@ export function CoverageMapInspector({ content, onChange }: Props) {
               )}
             </div>
           )}
+
+          {/* Map style swatches — 3×2 visual grid */}
+          {(displayMode === "map" || displayMode === "both") && (
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1.5">Map style</p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {MAP_STYLE_SWATCHES.map(opt => {
+                  const isSelected = mapStyle === opt.value;
+                  // Use user's highlight color for styles that respond to it
+                  const previewHighlight =
+                    opt.value === "patriotic" ? opt.highlight :
+                    opt.value === "dark"      ? opt.highlight :
+                    opt.value === "minimal"   ? userHighlight :
+                    userHighlight;
+
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => onChange({ mapStyle: opt.value })}
+                      className={cn(
+                        "rounded border transition-all p-1.5 flex flex-col items-center gap-1",
+                        isSelected
+                          ? "border-primary/60 bg-primary/5 ring-1 ring-primary/30"
+                          : "border-border hover:border-muted-foreground/40"
+                      )}
+                    >
+                      {/* Mini color preview: base fill + highlight stripe */}
+                      <div
+                        className="w-full rounded overflow-hidden border border-border/40 flex flex-col"
+                        style={{ height: 28 }}
+                      >
+                        <div className="flex-1" style={{ backgroundColor: opt.base }} />
+                        <div style={{ height: 8, backgroundColor: previewHighlight }} />
+                      </div>
+                      <span className={cn(
+                        "text-[9px] font-medium leading-none",
+                        isSelected ? "text-primary" : "text-muted-foreground"
+                      )}>
+                        {opt.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </Section>
 
-        {/* ── Map Style ──────────────────────────────────────── */}
-        {(displayMode === "map" || displayMode === "both") && (
-          <Section title="Map Style" defaultOpen={false}>
-            <div className="grid grid-cols-2 gap-1">
-              {([
-                { value: "outline", label: "Outline" },
-                { value: "filled",  label: "Filled" },
-                { value: "minimal", label: "Minimal" },
-                { value: "modern",  label: "Modern" },
-              ] as const).map(opt => (
+        {/* ── 🔘 CTA ─────────────────────────────────────────── */}
+        <Section title="🔘 CTA">
+          {/* Action type segmented control */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">Action type</p>
+            <div className="grid grid-cols-4 gap-0.5">
+              {(["button", "phone", "form", "directions"] as const).map(type => (
                 <button
-                  key={opt.value}
+                  key={type}
                   type="button"
-                  onClick={() => onChange({ mapStyle: opt.value })}
+                  onClick={() => {
+                    const patch: Partial<ServiceAreaContent> = { ctaActionType: type };
+                    if (type === "form") patch.ctaUrl = "#contact";
+                    onChange(patch);
+                  }}
                   className={cn(
-                    "py-1 text-[10px] font-medium rounded border transition-colors",
-                    mapStyle === opt.value
+                    "py-1 text-[9px] font-medium rounded border transition-colors",
+                    ctaActionType === type
                       ? "bg-primary/10 border-primary/40 text-primary"
                       : "border-border text-muted-foreground hover:bg-muted"
                   )}
                 >
-                  {opt.label}
+                  {type === "button"     ? "Button" :
+                   type === "phone"      ? "Phone" :
+                   type === "form"       ? "Form" :
+                   "Maps"}
                 </button>
               ))}
             </div>
+          </div>
 
-            <ToggleRow
-              label="Show state labels"
-              checked={content.showLabels !== false}
-              onChange={v => onChange({ showLabels: v })}
-            />
-            <ToggleRow
-              label="Show state borders"
-              checked={content.showBorders !== false}
-              onChange={v => onChange({ showBorders: v })}
-            />
-
-            {/* Highlight color */}
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-foreground">Highlight color</span>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="color"
-                  value={content.highlightColor ?? "#2563eb"}
-                  onChange={e => onChange({ highlightColor: e.target.value })}
-                  className="w-6 h-6 rounded border border-border cursor-pointer p-0"
-                />
-                {content.highlightColor && (
-                  <button
-                    type="button"
-                    onClick={() => onChange({ highlightColor: undefined })}
-                    className="text-[10px] text-primary hover:underline"
-                  >
-                    Reset
-                  </button>
-                )}
-              </div>
-            </div>
-          </Section>
-        )}
-
-        {/* ── CTA ────────────────────────────────────────────── */}
-        <Section title="Call to Action" defaultOpen={false}>
+          {/* Button text */}
           <div>
             <p className="text-[10px] text-muted-foreground mb-1">Button text</p>
             <input
               type="text"
               className="w-full text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
               value={content.ctaText ?? ""}
-              placeholder="Request a Free Estimate"
+              placeholder={
+                ctaActionType === "phone"      ? "Call Us Now" :
+                ctaActionType === "form"       ? "Get a Free Estimate" :
+                ctaActionType === "directions" ? "Get Directions" :
+                "Request a Free Estimate"
+              }
               onChange={e => onChange({ ctaText: e.target.value || undefined })}
             />
           </div>
-          {content.ctaText && (
+
+          {/* Conditional second field based on action type */}
+          {ctaActionType === "phone" && (
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1">Phone number</p>
+              <input
+                type="tel"
+                className="w-full text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                value={content.ctaUrl ?? ""}
+                placeholder="(555) 867-5309"
+                onChange={e => onChange({ ctaUrl: e.target.value || undefined })}
+              />
+            </div>
+          )}
+
+          {ctaActionType === "form" && (
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              Button scrolls the visitor down to the contact form on this page.
+            </p>
+          )}
+
+          {ctaActionType === "directions" && (
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1">Google Maps URL</p>
+              <input
+                type="url"
+                className="w-full text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                value={content.ctaUrl ?? ""}
+                placeholder="https://maps.google.com/?q=your+business"
+                onChange={e => onChange({ ctaUrl: e.target.value || undefined })}
+              />
+            </div>
+          )}
+
+          {ctaActionType === "button" && (
             <div>
               <p className="text-[10px] text-muted-foreground mb-1">Button URL</p>
               <input
@@ -407,6 +445,76 @@ export function CoverageMapInspector({ content, onChange }: Props) {
             </div>
           )}
         </Section>
+
+        {/* ── ⚙ Advanced ─────────────────────────────────────── */}
+        <Section title="⚙ Advanced">
+          {/* Custom freeform entries */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1 leading-relaxed">
+              Freeform entries like "Nationwide Travel" that don't map to a state.
+            </p>
+            <div className="space-y-1 mb-1.5">
+              {freeformAreas.map((area, idx) => (
+                <div key={idx} className="flex items-center gap-1">
+                  <input
+                    className="flex-1 text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={area}
+                    onChange={e => updateArea(idx, e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeArea(idx)}
+                    className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive flex-shrink-0"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => addArea()}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted w-full px-2 py-1 rounded border border-dashed border-border transition-colors"
+            >
+              <Plus className="w-3 h-3" /> Add custom entry
+            </button>
+          </div>
+
+          {/* Labels / borders toggles */}
+          <ToggleRow
+            label="Show state labels"
+            checked={content.showLabels !== false}
+            onChange={v => onChange({ showLabels: v })}
+          />
+          <ToggleRow
+            label="Show state borders"
+            checked={content.showBorders !== false}
+            onChange={v => onChange({ showBorders: v })}
+          />
+
+          {/* Highlight color */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-foreground">Highlight color</span>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="color"
+                value={content.highlightColor ?? "#2563eb"}
+                onChange={e => onChange({ highlightColor: e.target.value })}
+                className="w-6 h-6 rounded border border-border cursor-pointer p-0"
+              />
+              {content.highlightColor && (
+                <button
+                  type="button"
+                  onClick={() => onChange({ highlightColor: undefined })}
+                  className="text-[10px] text-primary hover:underline"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+        </Section>
+
       </div>
     </div>
   );

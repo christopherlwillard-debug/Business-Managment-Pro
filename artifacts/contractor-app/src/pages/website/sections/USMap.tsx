@@ -7,7 +7,7 @@ interface USMapProps {
   highlightColor?: string;
   showLabels?: boolean;
   showBorders?: boolean;
-  mapStyle?: "outline" | "filled" | "minimal" | "modern";
+  mapStyle?: "outline" | "filled" | "minimal" | "modern" | "dark" | "patriotic";
   className?: string;
 }
 
@@ -34,16 +34,22 @@ export function USMap({
     const selected = selectedStates.includes(code);
     const hovered  = hoveredCode === code;
 
-    if (selected) return brandColor;
+    if (selected) {
+      // Patriotic preset uses a fixed red highlight for selected states
+      return mapStyle === "patriotic" ? "#dc2626" : brandColor;
+    }
     if (hovered && isInteractive) {
+      if (mapStyle === "dark" || mapStyle === "patriotic") return "rgba(255,255,255,0.10)";
       return mapStyle === "minimal" ? "rgba(0,0,0,0.06)" : "rgba(37,99,235,0.14)";
     }
     switch (mapStyle) {
-      case "filled":  return "#e2e8f0";
-      case "minimal": return "transparent";
-      case "modern":  return "#d1d5db";
+      case "filled":    return "#e2e8f0";
+      case "minimal":   return "transparent";
+      case "modern":    return "#d1d5db";
+      case "dark":      return "#1e293b";
+      case "patriotic": return "#1e3a5f";
       case "outline":
-      default:        return "#f1f5f9";
+      default:          return "#f1f5f9";
     }
   }
 
@@ -52,8 +58,10 @@ export function USMap({
     const selected = selectedStates.includes(code);
     if (selected) return "#ffffff";               // white border on selected states
     switch (mapStyle) {
-      case "minimal": return "rgba(0,0,0,0.10)";
-      default:        return "#9ca3af";
+      case "minimal":   return "rgba(0,0,0,0.10)";
+      case "dark":      return "#374151";
+      case "patriotic": return "#243b6e";
+      default:          return "#9ca3af";
     }
   }
 
@@ -64,7 +72,8 @@ export function USMap({
 
   function getLabelFill(code: string): string {
     if (selectedStates.includes(code)) return "#ffffff";
-    return mapStyle === "minimal" ? "#6b7280" : "#6b7280";
+    if (mapStyle === "dark" || mapStyle === "patriotic") return "#94a3b8";
+    return "#6b7280";
   }
 
   return (
@@ -86,8 +95,8 @@ export function USMap({
       </defs>
 
       {/* Inset boxes */}
-      <rect x="102" y="466" width="152" height="116" rx="4" fill={mapStyle === "minimal" ? "transparent" : "#e5e7eb"} stroke="#d1d5db" strokeWidth="0.8" />
-      <rect x="240" y="522" width="80" height="52" rx="4" fill={mapStyle === "minimal" ? "transparent" : "#e5e7eb"} stroke="#d1d5db" strokeWidth="0.8" />
+      <rect x="102" y="466" width="152" height="116" rx="4" fill={mapStyle === "minimal" ? "transparent" : mapStyle === "dark" ? "#1e293b" : mapStyle === "patriotic" ? "#1e3a5f" : "#e5e7eb"} stroke={mapStyle === "dark" ? "#374151" : mapStyle === "patriotic" ? "#243b6e" : "#d1d5db"} strokeWidth="0.8" />
+      <rect x="240" y="522" width="80" height="52" rx="4" fill={mapStyle === "minimal" ? "transparent" : mapStyle === "dark" ? "#1e293b" : mapStyle === "patriotic" ? "#1e3a5f" : "#e5e7eb"} stroke={mapStyle === "dark" ? "#374151" : mapStyle === "patriotic" ? "#243b6e" : "#d1d5db"} strokeWidth="0.8" />
       <text x="178" y="590" fontSize={7} fill="#9ca3af" textAnchor="middle" fontFamily="system-ui, sans-serif">AK</text>
       <text x="280" y="590" fontSize={7} fill="#9ca3af" textAnchor="middle" fontFamily="system-ui, sans-serif">HI</text>
 
