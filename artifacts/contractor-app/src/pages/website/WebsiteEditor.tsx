@@ -1142,6 +1142,7 @@ function WebsiteEditor() {
   const pasteSectionRef = useRef<(afterId: string) => void>(() => {});
   const saveMutateRef = useRef<() => void>(() => {});
   const [focusMode, setFocusMode] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
   const [showFullscreenPreview, setShowFullscreenPreview] = useState(false);
   const preFocusSidebarState = useRef<{ left: boolean } | null>(null);
   const [expandedPageIds, setExpandedPageIds] = useState<Set<string>>(() => new Set(["home"]));
@@ -1254,6 +1255,15 @@ function WebsiteEditor() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [showFullscreenPreview]);
+
+  useEffect(() => {
+    if (!previewMode) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setPreviewMode(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [previewMode]);
 
   useEffect(() => {
     if (!activeSection || !sidebarListRef.current) return;
@@ -3668,7 +3678,7 @@ function WebsiteEditor() {
           isFirst={isFirst}
           isLast={isLast}
           isHeader={isHeader}
-          onSelect={e => {
+          onSelect={previewMode ? (e) => { e.stopPropagation(); } : (e) => {
             e.stopPropagation();
             const tgt = e.target as HTMLElement;
             if (tgt.closest("a[href]")) e.preventDefault();
@@ -3679,7 +3689,7 @@ function WebsiteEditor() {
               setActiveSection(s.id);
             }
           }}
-          onEdit={() => {
+          onEdit={!previewMode ? () => {
             // Ensure section is selected then focus its first settings field
             setActiveSection(s.id);
             requestAnimationFrame(() => {
@@ -3688,14 +3698,14 @@ function WebsiteEditor() {
               firstField?.focus();
               firstField?.scrollIntoView({ block: "nearest" });
             });
-          }}
+          } : undefined}
           locked={!!s.locked}
-          onContextMenu={!isHeader ? (e) => {
+          onContextMenu={!isHeader && !previewMode ? (e) => {
             e.preventDefault();
             e.stopPropagation();
             openSectionContextMenu(e.clientX, e.clientY, s);
           } : undefined}
-          onDoubleClick={!isHeader ? (e) => {
+          onDoubleClick={!isHeader && !previewMode ? (e) => {
             e.stopPropagation();
             setActiveSection(s.id);
             requestAnimationFrame(() => {
@@ -3705,13 +3715,13 @@ function WebsiteEditor() {
               firstField?.scrollIntoView({ block: "nearest" });
             });
           } : undefined}
-          onDuplicate={!isHeader ? () => duplicateSection(s.id) : undefined}
-          onToggleHide={!isHeader ? () => toggleSection(s.id) : undefined}
-          onDelete={!isHeader ? () => handleDeleteSectionClick(s.id) : undefined}
-          onMoveUp={!isHeader ? () => moveSection(s.id, "up") : undefined}
-          onMoveDown={!isHeader ? () => moveSection(s.id, "down") : undefined}
-          onInsertBelow={!isHeader ? () => { setInsertAfterSectionId(s.id); setShowAddSection(true); } : undefined}
-          onDoubleClickPrimary={() => {
+          onDuplicate={!isHeader && !previewMode ? () => duplicateSection(s.id) : undefined}
+          onToggleHide={!isHeader && !previewMode ? () => toggleSection(s.id) : undefined}
+          onDelete={!isHeader && !previewMode ? () => handleDeleteSectionClick(s.id) : undefined}
+          onMoveUp={!isHeader && !previewMode ? () => moveSection(s.id, "up") : undefined}
+          onMoveDown={!isHeader && !previewMode ? () => moveSection(s.id, "down") : undefined}
+          onInsertBelow={!isHeader && !previewMode ? () => { setInsertAfterSectionId(s.id); setShowAddSection(true); } : undefined}
+          onDoubleClickPrimary={!previewMode ? () => {
             // When the user double-clicks a non-text background area of the section,
             // trigger inline editing on the section's first text target.
             requestAnimationFrame(() => {
@@ -3719,9 +3729,9 @@ function WebsiteEditor() {
               const first = container?.querySelector<HTMLElement>("[data-inline-editable]");
               if (first) first.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
             });
-          }}
+          } : undefined}
         >
-          {renderSection(s, settings, isActive, content => updateContent(s.id, content), {
+          {renderSection(s, settings, isActive && !previewMode, content => updateContent(s.id, content), {
             ...sectionExtras,
             sectionId: s.id,
             selectedComponentId: selectedComponentState?.sectionId === s.id ? selectedComponentState.componentId : null,
@@ -3808,7 +3818,7 @@ function WebsiteEditor() {
 
     return (
       <InlineEditContext.Provider value={contextValue}>
-        <FloatingTextToolbar />
+        {!previewMode && <FloatingTextToolbar />}
         <div style={previewBodyStyle} data-editing={editingId || undefined}>
           {settings.headingFont && (
             <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
@@ -3844,11 +3854,15 @@ function WebsiteEditor() {
               </div>
             </div>
           )}
-          {canvasSections.flatMap((s, idx) => [
-            addBetween(idx === 0 ? (headerSec ? headerSec.id : null) : canvasSections[idx - 1]?.id, `ins-${idx}`),
-            renderWrapped(s, { isFirst: idx === 0, isLast: idx === canvasSections.length - 1 }),
-          ])}
-          {canvasSections.length > 0 && addBetween(canvasSections[canvasSections.length - 1]?.id, "ins-end")}
+          {canvasSections.flatMap((s, idx) => {
+            const wrapped = renderWrapped(s, { isFirst: idx === 0, isLast: idx === canvasSections.length - 1 });
+            if (previewMode) return [wrapped];
+            return [
+              addBetween(idx === 0 ? (headerSec ? headerSec.id : null) : canvasSections[idx - 1]?.id, `ins-${idx}`),
+              wrapped,
+            ];
+          })}
+          {canvasSections.length > 0 && !previewMode && addBetween(canvasSections[canvasSections.length - 1]?.id, "ins-end")}
         </div>
       </InlineEditContext.Provider>
     );
@@ -4095,128 +4109,207 @@ function WebsiteEditor() {
 
         <div className="flex-1" />
 
-        {/* Viewport toggle */}
-        <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
-          {([
-            { id: "desktop", Icon: Monitor, label: "Desktop" },
-            { id: "tablet",  Icon: Tablet,  label: "Tablet"  },
-            { id: "mobile",  Icon: Smartphone, label: "Mobile" },
-          ] as const).map(({ id, Icon, label }) => (
+        {previewMode ? (
+          /* ── Preview mode chrome ─────────────────────────────────────────── */
+          <>
+            <span className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-muted-foreground select-none">
+              <Eye className="w-3.5 h-3.5" />
+              Previewing
+            </span>
+
+            {/* Device picker */}
+            <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
+              {([
+                { id: "desktop", Icon: Monitor, label: "Desktop" },
+                { id: "tablet",  Icon: Tablet,  label: "Tablet"  },
+                { id: "mobile",  Icon: Smartphone, label: "Mobile" },
+              ] as const).map(({ id, Icon, label }) => (
+                <button
+                  key={id}
+                  onClick={() => changeViewport(id)}
+                  title={label}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors ${
+                    viewport === id ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">{label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Published / Draft badge */}
+            <span className={`hidden sm:flex items-center gap-1.5 text-[10px] font-semibold rounded-full px-2.5 py-0.5 select-none border ${
+              isPublished
+                ? "text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                : "text-muted-foreground bg-muted/50 border-border"
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isPublished ? "bg-green-500" : "bg-muted-foreground/40"}`} />
+              {isPublished ? "Published" : "Draft"}
+            </span>
+
+            {/* Exit Preview */}
             <button
-              key={id}
-              onClick={() => changeViewport(id)}
-              title={label}
-              className={`flex items-center px-2 py-1.5 transition-colors ${
-                viewport === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              type="button"
+              onClick={() => setPreviewMode(false)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/50 bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Exit Preview
+            </button>
+          </>
+        ) : (
+          /* ── Edit mode controls ──────────────────────────────────────────── */
+          <>
+            {/* Viewport toggle */}
+            <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
+              {([
+                { id: "desktop", Icon: Monitor, label: "Desktop" },
+                { id: "tablet",  Icon: Tablet,  label: "Tablet"  },
+                { id: "mobile",  Icon: Smartphone, label: "Mobile" },
+              ] as const).map(({ id, Icon, label }) => (
+                <button
+                  key={id}
+                  onClick={() => changeViewport(id)}
+                  title={label}
+                  className={`flex items-center px-2 py-1.5 transition-colors ${
+                    viewport === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                </button>
+              ))}
+            </div>
+
+            {/* Inline edit status badge */}
+            <InlineEditStatus editingId={editingId} />
+
+            {/* Undo / Redo */}
+            <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={!history.canUndo}
+                title="Undo (Ctrl+Z)"
+                className={`flex items-center px-2 py-1.5 transition-colors ${!history.canUndo ? "text-muted-foreground/30 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleRedo}
+                disabled={!history.canRedo}
+                title="Redo (Ctrl+Shift+Z)"
+                className={`flex items-center px-2 py-1.5 transition-colors ${!history.canRedo ? "text-muted-foreground/30 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
+              >
+                <Redo2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Focus mode toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                if (focusMode) {
+                  setFocusMode(false);
+                  if (preFocusSidebarState.current) {
+                    setLeftCollapsed(preFocusSidebarState.current.left);
+                    preFocusSidebarState.current = null;
+                  }
+                } else {
+                  preFocusSidebarState.current = { left: leftCollapsed };
+                  setFocusMode(true);
+                }
+              }}
+              title={focusMode ? "Exit focus mode (F)" : "Focus mode (F)"}
+              className={`flex items-center px-2 py-1.5 rounded-lg border transition-colors ${
+                focusMode ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/50 text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Icon className="w-3.5 h-3.5" />
+              {focusMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
-          ))}
-        </div>
 
-        {/* Inline edit status badge */}
-        <InlineEditStatus editingId={editingId} />
-
-        {/* Undo / Redo */}
-        <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted/50">
-          <button
-            type="button"
-            onClick={handleUndo}
-            disabled={!history.canUndo}
-            title="Undo (Ctrl+Z)"
-            className={`flex items-center px-2 py-1.5 transition-colors ${!history.canUndo ? "text-muted-foreground/30 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
-          >
-            <Undo2 className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={handleRedo}
-            disabled={!history.canRedo}
-            title="Redo (Ctrl+Shift+Z)"
-            className={`flex items-center px-2 py-1.5 transition-colors ${!history.canRedo ? "text-muted-foreground/30 cursor-not-allowed" : "text-foreground hover:bg-muted"}`}
-          >
-            <Redo2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Focus mode toggle */}
-        <button
-          type="button"
-          onClick={() => {
-            if (focusMode) {
-              setFocusMode(false);
-              if (preFocusSidebarState.current) {
-                setLeftCollapsed(preFocusSidebarState.current.left);
-                preFocusSidebarState.current = null;
-              }
-            } else {
-              preFocusSidebarState.current = { left: leftCollapsed };
-              setFocusMode(true);
-            }
-          }}
-          title={focusMode ? "Exit focus mode (F)" : "Focus mode (F)"}
-          className={`flex items-center px-2 py-1.5 rounded-lg border transition-colors ${
-            focusMode ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/50 text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          {focusMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-        </button>
-
-        {/* Preview — full-screen overlay */}
-        {previewUrl && (
-          <button
-            type="button"
-            onClick={() => setShowFullscreenPreview(true)}
-            title={isPublished ? "Preview live site (full screen)" : "Preview site full screen (draft)"}
-            className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+            {/* Published / Draft status badge */}
+            <span className={`hidden md:flex items-center gap-1.5 text-[10px] font-semibold rounded-full px-2 py-0.5 select-none border ${
               isPublished
-                ? "border-green-500/40 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40"
-                : "border-border bg-muted/50 text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Eye className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">{isPublished ? "Live" : "Preview"}</span>
-          </button>
+                ? "text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                : "text-muted-foreground bg-muted/50 border-border"
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isPublished ? "bg-green-500" : "bg-muted-foreground/40"}`} />
+              {isPublished ? "Published" : "Draft"}
+            </span>
+
+            {/* Canvas preview toggle */}
+            <button
+              type="button"
+              onClick={() => { setPreviewMode(true); setFocusMode(false); }}
+              title="Preview — read-only canvas with device picker (Esc to exit)"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-border bg-muted/50 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Preview</span>
+            </button>
+
+            {/* Open live site — only when published */}
+            {isPublished && publicUrl && (
+              <a
+                href={publicUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open published site in new tab"
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-green-500/40 bg-green-50 dark:bg-green-900/20 text-xs font-medium text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Live Site</span>
+              </a>
+            )}
+
+            {/* Save status indicator */}
+            {saveMutation.isPending ? (
+              <span className="hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Saving…
+              </span>
+            ) : showSaved ? (
+              <span className="hidden sm:flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
+                <Check className="w-3 h-3" />
+                Saved
+              </span>
+            ) : null}
+
+            {/* Save Draft */}
+            <button
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors disabled:opacity-60"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Save Draft</span>
+            </button>
+
+            {/* Unpublished changes badge */}
+            {hasUnpublishedChanges && !publishing && (
+              <span className="hidden sm:flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-full px-2 py-0.5 select-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                Unpublished changes
+              </span>
+            )}
+
+            {/* Publish */}
+            <button
+              onClick={() => setShowPublishConfirm(true)}
+              disabled={publishing}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-60 ${
+                hasUnpublishedChanges
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm shadow-primary/30"
+                  : "bg-primary/80 text-primary-foreground hover:bg-primary/70"
+              }`}
+            >
+              <Upload className="w-3.5 h-3.5" />
+              {publishing ? "Publishing…" : "Publish"}
+            </button>
+          </>
         )}
-        {/* Save status indicator */}
-        {saveMutation.isPending ? (
-          <span className="hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            Saving…
-          </span>
-        ) : showSaved ? (
-          <span className="hidden sm:flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
-            <Check className="w-3 h-3" />
-            Saved
-          </span>
-        ) : null}
-        <button
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors disabled:opacity-60"
-        >
-          <Save className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Save Draft</span>
-        </button>
-        {hasUnpublishedChanges && !publishing && (
-          <span className="hidden sm:flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-full px-2 py-0.5 select-none">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-            Unpublished changes
-          </span>
-        )}
-        <button
-          onClick={() => setShowPublishConfirm(true)}
-          disabled={publishing}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-60 ${
-            hasUnpublishedChanges
-              ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm shadow-primary/30"
-              : "bg-primary/80 text-primary-foreground hover:bg-primary/70"
-          }`}
-        >
-          <Upload className="w-3.5 h-3.5" />
-          {publishing ? "Publishing…" : "Publish"}
-        </button>
       </div>
 
       {showPublished && (
@@ -4228,7 +4321,7 @@ function WebsiteEditor() {
       )}
 
       {/* Breadcrumb bar — shows selection path when a section is active */}
-      {activeTab === "editor" && !focusMode && activeSection && (() => {
+      {activeTab === "editor" && !focusMode && !previewMode && activeSection && (() => {
         const activeSec = sections.find(s => s.id === activeSection);
         const secLabel = activeSec ? (SECTION_LABELS[activeSec.type] ?? "Section") : "Section";
         const hasSubSel = !!(selectedComponentState || selectedRowState || selectedCardState);
@@ -4960,11 +5053,11 @@ function WebsiteEditor() {
             data-editor-canvas="true"
             ref={canvasScrollRef}
             className={`flex-1 overflow-y-auto relative bg-[#1c1c1e] ${
-              spaceHeld ? "cursor-grab select-none" : !focusMode ? "cursor-zoom-in" : ""
+              spaceHeld ? "cursor-grab select-none" : !focusMode && !previewMode ? "cursor-zoom-in" : ""
             }`}
-            onClick={spaceHeld ? undefined : () => setActiveSection(null)}
+            onClick={spaceHeld || previewMode ? undefined : () => setActiveSection(null)}
             onDoubleClick={e => {
-              if (spaceHeld || focusMode) return;
+              if (spaceHeld || focusMode || previewMode) return;
               if ((e.target as HTMLElement).closest("[data-section-canvas-id]")) return;
               preFocusSidebarState.current = { left: leftCollapsed };
               setFocusMode(true);
@@ -5067,7 +5160,7 @@ function WebsiteEditor() {
             </div>
           </div>
           {/* Docked inspector panel — desktop only, auto-sizes beside canvas as flex sibling */}
-          {!editorNarrow && activeSection && activeTab === "editor" && !focusMode && (() => {
+          {!editorNarrow && activeSection && activeTab === "editor" && !focusMode && !previewMode && (() => {
             const sec = sections.find(s => s.id === activeSection);
             if (!sec || sec.type === "header") return null;
 
