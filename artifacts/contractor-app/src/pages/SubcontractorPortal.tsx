@@ -658,19 +658,51 @@ function NotificationCenter({ data, features, setTab }: {
   );
 }
 
+// ─── Portal greeting helper ───────────────────────────────────────────────────
+function portalGreeting(name: string): string {
+  const h = new Date().getHours();
+  const firstName = name.split(" ")[0];
+  if (h < 12) return `Good morning, ${firstName}!`;
+  if (h < 17) return `Good afternoon, ${firstName}!`;
+  return `Good evening, ${firstName}!`;
+}
+
 // ─── Dashboard Tab ────────────────────────────────────────────────────────────
 function DashboardTab({ data, features, setTab }: { data: any; features: string[]; setTab: (t: string) => void }) {
   const s = data.stats;
   const sub = data.subcontractor;
   const quickActions = ALL_FEATURES.filter(f => features.includes(f.key) && f.key !== "payments" && f.key !== "jobs");
 
+  // Tax readiness checklist — 4 core items + optional home office when feature is enabled.
+  // "Home Office Set Up" is always incomplete (done: false) because home office data is a
+  // local calculator with no server persistence — it remains an actionable deep link.
+  type ReadinessItem = { label: string; done: boolean; Icon: React.ComponentType<{ className?: string }>; tab: string };
+  const readinessItems: ReadinessItem[] = [
+    { label: "Income Recorded",  done: s.ytdPayments > 0,                                         Icon: DollarSign, tab: "income_report" },
+    { label: "Mileage Logged",   done: features.includes("mileage") && s.totalMiles > 0,          Icon: Navigation, tab: "mileage"       },
+    { label: "W-9 Completed",    done: !!sub.w9Complete,                                          Icon: FileText,   tab: "w9"            },
+    { label: "Expenses Logged",  done: features.includes("expenses") && s.expenseCount > 0,       Icon: Receipt,    tab: "expenses"      },
+    ...(features.includes("home_office")
+      ? [{ label: "Home Office Set Up", done: false, Icon: Home, tab: "home_office" } as ReadinessItem]
+      : []),
+  ];
+  const doneCount    = readinessItems.filter(i => i.done).length;
+  const readinessPct = Math.round((doneCount / readinessItems.length) * 100);
+
+  // Estimated tax savings — show once any deduction exists
+  const mileageDed  = features.includes("mileage")   ? s.mileageDeduction : 0;
+  const expenseDed  = features.includes("expenses")  ? s.totalExpenses    : 0;
+  const totalDed    = mileageDed + expenseDed;
+  const showSavings = totalDed > 0;
+
   return (
     <div className="space-y-5">
       {/* Proactive notification center — shown above greeting when there are items */}
       <NotificationCenter data={data} features={features} setTab={setTab} />
 
+      {/* Personalized time-based greeting */}
       <div>
-        <h2 className="text-xl font-display font-bold text-foreground">Welcome back, {sub.name.split(" ")[0]}!</h2>
+        <h2 className="text-xl font-display font-bold text-foreground">{portalGreeting(sub.name)}</h2>
         <p className="text-sm text-muted-foreground mt-0.5">Here's a snapshot of your activity.</p>
       </div>
 
@@ -680,72 +712,164 @@ function DashboardTab({ data, features, setTab }: { data: any; features: string[
           <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
             <p className="text-xs text-muted-foreground font-medium">YTD Payments</p>
             <p className="text-2xl font-display font-bold text-emerald-600 mt-1">{formatCurrency(s.ytdPayments)}</p>
-            <p className="text-xs text-muted-foreground mt-1">From your contractor</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {s.ytdPaymentCount != null
+                ? `${s.ytdPaymentCount} payment${s.ytdPaymentCount !== 1 ? "s" : ""} received`
+                : "From your contractor"}
+            </p>
           </div>
         )}
         {features.includes("expenses") && (
           <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
             <p className="text-xs text-muted-foreground font-medium">My Expenses</p>
             <p className="text-2xl font-display font-bold text-red-500 mt-1">{formatCurrency(s.totalExpenses)}</p>
-            <p className="text-xs text-muted-foreground mt-1">{s.expenseCount} logged</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {s.expenseCount} {s.expenseCount === 1 ? "entry" : "entries"} logged
+            </p>
           </div>
         )}
         {features.includes("mileage") && (
           <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
             <p className="text-xs text-muted-foreground font-medium">Business Miles</p>
             <p className="text-2xl font-display font-bold text-violet-600 mt-1">{s.totalMiles.toFixed(1)}</p>
-            <p className="text-xs text-muted-foreground mt-1">{formatCurrency(s.mileageDeduction)} deduction</p>
+            <p className="text-xs text-muted-foreground mt-1">≈ {formatCurrency(s.mileageDeduction)} est. deduction</p>
           </div>
         )}
         {features.includes("jobs") && (
           <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
             <p className="text-xs text-muted-foreground font-medium">Assigned Jobs</p>
             <p className="text-2xl font-display font-bold text-blue-600 mt-1">{data.jobs.length}</p>
-            <p className="text-xs text-muted-foreground mt-1">{data.jobs.filter((j: any) => j.status === "active" || j.status === "in_progress").length} active</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {data.jobs.filter((j: any) => j.status === "active" || j.status === "in_progress").length} active
+            </p>
           </div>
         )}
       </div>
 
-      {/* W-9 prompt */}
+      {/* W-9 — actionable card when missing, green success card when complete */}
       {features.includes("w9") && !sub.w9Complete && (
-        <button
-          onClick={() => setTab("w9")}
-          className="w-full flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left hover:bg-amber-100 transition-colors"
-        >
-          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-amber-900">W-9 not completed</p>
-            <p className="text-xs text-amber-700 mt-0.5">Your contractor needs your W-9 for 1099 filing. Tap to fill it out.</p>
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+              <FileText className="w-5 h-5 text-amber-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-amber-900">W-9 Required</p>
+              <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                Your contractor needs your W-9 for 1099-NEC reporting. It takes about 2 minutes and protects you at tax time.
+              </p>
+            </div>
           </div>
-          <ChevronRight className="w-4 h-4 text-amber-600 flex-shrink-0" />
-        </button>
+          <button
+            onClick={() => setTab("w9")}
+            className="mt-3 w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold transition-colors"
+          >
+            Complete W-9 →
+          </button>
+        </div>
       )}
-
       {features.includes("w9") && sub.w9Complete && (
         <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+          <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+          </div>
           <div>
-            <p className="text-sm font-semibold text-emerald-900">W-9 on file</p>
-            <p className="text-xs text-emerald-700">Signed {sub.w9SignedAt} — your contractor has your info.</p>
+            <p className="text-sm font-bold text-emerald-900">You're all set — W-9 on file</p>
+            <p className="text-xs text-emerald-700 mt-0.5">Signed {sub.w9SignedAt} · Your contractor has your tax info.</p>
           </div>
         </div>
       )}
 
-      {/* Quick actions */}
+      {/* Tax Readiness tracker */}
+      <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Tax Readiness</p>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+            readinessPct === 100 ? "bg-emerald-100 text-emerald-700"
+            : readinessPct >= 60 ? "bg-amber-100 text-amber-700"
+            :                       "bg-red-100 text-red-600"
+          }`}>{readinessPct}%</span>
+        </div>
+        {/* Progress bar */}
+        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${
+              readinessPct === 100 ? "bg-emerald-500"
+              : readinessPct >= 60 ? "bg-amber-400"
+              :                       "bg-red-400"
+            }`}
+            style={{ width: `${readinessPct}%` }}
+          />
+        </div>
+        {/* Checklist */}
+        <div className="space-y-2 pt-0.5">
+          {readinessItems.map(({ label, done, Icon, tab }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => !done && features.includes(tab) ? setTab(tab) : undefined}
+              className={`w-full flex items-center gap-3 text-left ${!done && features.includes(tab) ? "cursor-pointer" : "cursor-default"}`}
+            >
+              <div className={`w-5 h-5 rounded-full flex-shrink-0 border-2 flex items-center justify-center transition-colors ${
+                done ? "bg-emerald-500 border-emerald-500" : "border-border bg-background"
+              }`}>
+                {done && <Check className="w-3 h-3 text-white" />}
+              </div>
+              <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${done ? "bg-emerald-50" : "bg-muted/60"}`}>
+                <Icon className={`w-3.5 h-3.5 ${done ? "text-emerald-600" : "text-muted-foreground"}`} />
+              </div>
+              <span className={`text-sm flex-1 ${done ? "text-foreground font-medium" : "text-muted-foreground"}`}>{label}</span>
+              {!done && features.includes(tab) && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Estimated Tax Savings — appears once any deduction exists */}
+      {showSavings && (
+        <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 space-y-2">
+          <p className="text-xs font-bold text-violet-800 uppercase tracking-wide">Estimated Tax Savings</p>
+          <div className="flex items-end justify-between gap-3">
+            <div className="space-y-1">
+              {mileageDed > 0 && (
+                <div className="flex items-center gap-2 text-xs text-violet-700">
+                  <Navigation className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Mileage deduction: {formatCurrency(mileageDed)}</span>
+                </div>
+              )}
+              {expenseDed > 0 && (
+                <div className="flex items-center gap-2 text-xs text-violet-700">
+                  <Receipt className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Expense deductions: {formatCurrency(expenseDed)}</span>
+                </div>
+              )}
+            </div>
+            <div className="text-right flex-shrink-0">
+              <p className="text-2xl font-display font-bold text-violet-700">{formatCurrency(totalDed * 0.15)}</p>
+              <p className="text-[10px] text-violet-500">est. savings</p>
+            </div>
+          </div>
+          <p className="text-[10px] text-violet-500 border-t border-violet-200/60 pt-2">
+            Based on estimated 15% self-employment tax rate. Consult a tax professional for accurate figures.
+          </p>
+        </div>
+      )}
+
+      {/* Quick actions — compact */}
       {quickActions.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Quick Actions</p>
-          <div className="grid grid-cols-1 gap-2">
+          <div className="grid grid-cols-1 gap-1.5">
             {quickActions.map(f => {
               const Icon = f.icon;
               return (
                 <button
                   key={f.key}
                   onClick={() => setTab(f.key)}
-                  className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3 text-left hover:bg-muted/40 transition-colors"
+                  className="flex items-center gap-3 bg-card border border-border rounded-xl px-3 py-2 text-left hover:bg-muted/40 transition-colors"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-4 h-4 text-primary" />
+                  <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-3.5 h-3.5 text-primary" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-foreground">{f.label}</p>

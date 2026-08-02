@@ -356,7 +356,21 @@ tokenRouter.get("/", async (req, res) => {
     const totalExpenses = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
     const businessMileage = mileage.filter(m => m.classification === "business");
     const totalMiles = businessMileage.reduce((s, m) => s + parseFloat(m.miles), 0);
-    const [rate, ytdPayments] = await Promise.all([getRate(), computeYtd(sub.id, new Date().getFullYear())]);
+    const curYear = new Date().getFullYear();
+    const ytdStart = `${curYear}-01-01`;
+    const ytdEnd = `${curYear}-12-31`;
+    const [rate, ytdPayments, ytdCountRows] = await Promise.all([
+      getRate(),
+      computeYtd(sub.id, curYear),
+      db.select({ count: sql<number>`count(*)::int` })
+        .from(subPaymentRecordsTable)
+        .where(and(
+          eq(subPaymentRecordsTable.subcontractorId, sub.id),
+          gte(subPaymentRecordsTable.paymentDate, ytdStart),
+          lte(subPaymentRecordsTable.paymentDate, ytdEnd),
+        )),
+    ]);
+    const ytdPaymentCount = ytdCountRows[0]?.count ?? 0;
 
     const features: string[] = Array.isArray(sub.portalFeatures)
       ? (sub.portalFeatures as string[])
@@ -397,6 +411,7 @@ tokenRouter.get("/", async (req, res) => {
       })),
       stats: {
         ytdPayments,
+        ytdPaymentCount,
         totalExpenses,
         totalMiles,
         mileageDeduction: totalMiles * rate,
