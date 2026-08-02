@@ -1,0 +1,392 @@
+Now that I've seen Phase 1, I actually wouldn't build what I originally suggested.
+
+The shell is now good enough. The next bottleneck is editing.
+
+When I look at your screenshot, I still see something that requires users to think like they're using a website editor.
+
+Wix's biggest strength isn't its appearance—it's that you rarely wonder, "How do I edit this?"
+
+So I would make Phase 2 entirely about eliminating friction.
+
+#1458 – BuildPro Studio 2.0: Direct Editing Experience
+Design Principles
+
+The canvas is no longer just a preview—it is the editor.
+
+Users should be able to build an entire website while rarely interacting with the inspector.
+
+The inspector becomes a secondary tool for advanced styling and configuration.
+
+Every common action should require one click or less to discover.
+
+What & Why
+
+Phase 1 transformed Studio into a professional workspace.
+
+Phase 2 transforms Studio into an editor that feels effortless to use.
+
+The focus is not adding new capabilities—it is making existing capabilities discoverable, intuitive, and available directly on the canvas.
+
+The user should never wonder:
+
+"Where is that setting?"
+
+The answer should almost always be:
+
+"Click the thing you want to change."
+
+Success Metrics
+
+A new user should be able to:
+
+Replace any image without opening the inspector.
+Change any heading by simply clicking it.
+Edit any button directly on the canvas.
+Move sections without reading documentation.
+Add new content in under 30 seconds.
+Understand how to edit the website without watching a tutorial.
+
+If a user opens the inspector for a common task, the UX should be reconsidered.
+
+Done Looks Like
+Inline Image Editing
+
+Click an image.
+
+A floating toolbar appears directly above it.
+
+Replace
+
+Crop
+
+Alt Text
+
+Link
+
+Delete
+
+Dragging an image from the media library onto another image replaces it automatically.
+
+Double-clicking an image opens the media picker.
+
+The inspector is no longer required for image replacement.
+
+Inline Button Editing
+
+Click a button.
+
+Toolbar appears.
+
+Edit Text
+
+Change Link
+
+Style
+
+Duplicate
+
+Delete
+
+Double-click enters text editing.
+
+Inline Icon Editing
+
+Click any icon.
+
+Toolbar appears.
+
+Replace Icon
+
+Color
+
+Size
+
+Delete
+
+Search icons without leaving the canvas.
+
+Drag Individual Elements
+
+Not just sections.
+
+Users can drag:
+
+Headings
+Paragraphs
+Images
+Buttons
+Icons
+Containers
+Columns
+Cards
+
+Visual drop indicators show exactly where the element will land.
+
+Resize Handles
+
+Selecting an image, container, button, or column shows resize handles.
+
+Dragging handles updates dimensions live.
+
+Maintain aspect ratio by default.
+
+Hold Shift to unlock aspect ratio.
+
+Smart Alignment Guides
+
+Dragging any object displays:
+
+Center guides
+Edge alignment
+Equal spacing indicators
+Snap points
+Margin guides
+
+Behavior should feel similar to Canva or Figma.
+
+Right-Click Context Menu
+
+Every editable object supports:
+
+Copy
+
+Paste
+
+Duplicate
+
+Delete
+
+Hide
+
+Lock
+
+Bring Forward
+
+Send Back
+
+Save as Component (future placeholder)
+
+Menu adapts to selection type.
+
+Multi-Selection
+
+Shift-click selects multiple elements.
+
+Selection box drag selects multiple objects.
+
+Operations available:
+
+Move
+
+Duplicate
+
+Delete
+
+Align
+
+Distribute
+
+Group (future placeholder)
+
+Hover Affordances
+
+Hovering any editable object subtly indicates it is editable.
+
+Examples:
+
+Text:
+
+Soft blue outline.
+
+Images:
+
+Small image badge.
+
+Buttons:
+
+Highlight border.
+
+Containers:
+
+Light outline.
+
+Nothing flashy.
+
+Just enough to communicate:
+
+"You can click me."
+
+Smart Empty Containers
+
+Instead of blank areas.
+
+Display contextual prompts.
+
+Example:
+
+Add Heading
+
+Add Image
+
+Add Button
+
+Browse Components
+
+One click inserts content.
+
+On-Canvas Quick Add
+
+Hover between two elements.
+
+Small + button appears.
+
+Clicking opens a mini component picker.
+
+Text
+
+Image
+
+Button
+
+Spacer
+
+Divider
+
+Gallery
+
+Video
+
+No need to visit the section library.
+
+Floating Mini Inspector
+
+Instead of immediately opening the large inspector.
+
+Selecting an object opens a compact floating panel.
+
+Example:
+
+Typography
+
+Spacing
+
+Color
+
+Animation
+
+More…
+
+Choosing "More…" expands the full inspector.
+
+Better Drag Experience
+
+Dragging an object slightly scales it.
+
+Drop zones highlight.
+
+Movement feels fluid.
+
+No sudden jumps.
+
+Keyboard Navigation
+
+Tab cycles through editable objects.
+
+Enter edits selected object.
+
+Esc exits editing.
+
+Arrow keys nudge elements.
+
+Shift + Arrow nudges by 10px (where applicable).
+
+Better Media Picker
+
+Searching images is instant.
+
+Drag images directly into the page.
+
+Support multi-select uploads.
+
+Recently used images appear first.
+
+Out of Scope
+AI content generation
+Responsive breakpoint redesign
+Dynamic business data
+Reusable components
+CMS
+Team collaboration
+Implementation Steps
+Step 0 — Reuse Audit
+
+Audit existing:
+
+Inline editing
+Selection system
+Media picker
+Drag-and-drop
+Context menus
+Keyboard shortcuts
+
+Reuse and extend before creating anything new.
+
+Step 1 — Expand Canvas Editing
+
+Move all common editing actions from the inspector to floating toolbars.
+
+Step 2 — Element Dragging
+
+Extend existing drag-and-drop to support element-level manipulation.
+
+Do not replace dnd-kit.
+
+Step 3 — Floating Mini Inspector
+
+Introduce a lightweight contextual panel.
+
+Retain the full inspector for advanced options.
+
+Step 4 — Smart Alignment
+
+Add alignment guides and snap behavior.
+
+Step 5 — Context Menus
+
+Standardize right-click behavior across every editable element.
+
+Step 6 — Hover States
+
+Audit every editable component.
+
+Ensure users always know what is interactive.
+
+Step 7 — Polish
+
+Animation pass.
+
+Interaction consistency.
+
+Performance verification.
+
+Accessibility review.
+
+Relevant Existing Systems to Reuse
+
+The implementation should reuse and extend:
+
+Existing dnd-kit drag-and-drop engine.
+Existing InlineEditableText component.
+Existing InlineEditContext.
+Existing media picker.
+Existing selection model.
+Existing undo/redo system.
+Existing auto-save.
+Existing website JSON schema.
+Existing inspector (repositioned as an advanced editor rather than the primary editing surface).
+Existing context menu infrastructure where available.
+Why I think this is the right Phase 2
+
+Looking at your completed Phase 1, you've already achieved the "looks like a design app" milestone. The next thing a first-time user will judge isn't the visuals—it's whether they can instinctively figure out how to change text, replace an image, move content, or insert something new.
+
+If Phase 1 made Studio look like Wix Studio, Phase 2 should make it feel like Wix Studio. That shift—from relying on side panels to interacting directly with the page—is what will make BuildPro Studio feel natural to use.
