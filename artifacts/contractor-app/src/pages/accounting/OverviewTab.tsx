@@ -1202,21 +1202,6 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
     onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-capital", capitalBizId] }),
   });
 
-  const { data: ownerDrawExpenses = [] } = useQuery<{id: number; description: string; date: string; amount: string}[]>({
-    queryKey: ["owner-draw-expenses", year],
-    queryFn: () => fetch(`${BASE}/api/expenses?startDate=${year}-01-01&endDate=${year}-12-31&category=Owner+Draw`).then(r => r.json()),
-  });
-  const deleteOwnerDraw = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await fetch(`${BASE}/api/expenses/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete owner draw");
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["owner-draw-expenses", year] });
-      qc.invalidateQueries({ queryKey: ["accounting", year] });
-      qc.invalidateQueries({ queryKey: ["profit-loss", year] });
-    },
-  });
 
   const { data: clientsList = [] } = useQuery<{ id: number; name: string }[]>({
     queryKey: ["clients-list-oi"],
@@ -1291,7 +1276,9 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
 
       <BusinessReserveDashboard />
 
-      <TakeHomeDashboard />
+      <div id="owner-pay-dashboard">
+        <TakeHomeDashboard />
+      </div>
 
       <BusinessOverview s={s} year={year} netProfit={netProfit} otherIncomeTotal={otherIncomeTotal} />
 
@@ -1402,51 +1389,39 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
 
                 <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-blue-50 border border-blue-200">
                   <div>
-                    <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">= Total Equity</p>
-                    <p className="text-[10px] text-blue-600">Net capital + business performance</p>
+                    <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">= Owner Equity</p>
+                    <p className="text-[10px] text-blue-600">Net capital + profit earned</p>
                   </div>
                   <span className="text-sm font-bold text-blue-700">{formatCurrency(totalEquity)}</span>
                 </div>
 
+                {/* Owner pays summary — single line linking up to Owner Pay Dashboard */}
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-semibold text-foreground">− Job Pay &amp; Owner Draws</p>
-                    <p className="text-[10px] text-muted-foreground">Profit distributions taken from jobs — does not reduce Net Capital Invested</p>
+                    <p className="text-sm font-semibold text-foreground">− Owner Pays &amp; Draws (YTD)</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Distributions taken this year —{" "}
+                      <button
+                        onClick={() => document.getElementById("owner-pay-dashboard")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                        className="text-violet-600 hover:underline font-semibold"
+                      >
+                        View pays ↑
+                      </button>
+                    </p>
                   </div>
                   <span className="text-sm font-bold text-foreground">−{formatCurrency(ownerDraws)}</span>
                 </div>
-                {ownerDrawExpenses.length > 0 && (
-                  <div className="rounded-xl border border-border/60 overflow-hidden ml-2">
-                    <div className="divide-y divide-border/40">
-                      {[...ownerDrawExpenses].sort((a, b) => b.date.localeCompare(a.date)).map(e => (
-                        <div key={e.id} className="px-3 py-2 grid grid-cols-[80px_1fr_72px_24px] gap-2 items-center">
-                          <span className="text-[11px] text-muted-foreground">
-                            {new Date(e.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" })}
-                          </span>
-                          <span className="text-[11px] text-foreground truncate">{e.description}</span>
-                          <span className="text-[11px] font-semibold text-right text-red-600">−{formatCurrency(parseFloat(String(e.amount)))}</span>
-                          <button
-                            onClick={() => { if (confirm("Delete this owner draw?")) deleteOwnerDraw.mutate(e.id); }}
-                            className="text-muted-foreground hover:text-red-600 transition-colors justify-self-end"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 <div className="border-t border-border" />
 
                 <div className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 ${businessOwesYou >= 0 ? "border-violet-300 bg-violet-50" : "border-red-300 bg-red-50"}`}>
                   <div>
                     <p className={`text-xs font-bold uppercase tracking-wide ${businessOwesYou >= 0 ? "text-violet-700" : "text-red-700"}`}>
-                      {businessOwesYou >= 0 ? "= Business Owes You" : "= Still in the Hole"}
+                      {businessOwesYou >= 0 ? "= Remaining Owner Equity" : "= Still in the Hole"}
                     </p>
                     <p className={`text-[10px] mt-0.5 ${businessOwesYou >= 0 ? "text-violet-600" : "text-red-500"}`}>
                       {businessOwesYou >= 0
-                        ? "Your equity minus draws already paid out"
+                        ? "Owner equity after distributions taken"
                         : "Business hasn't earned back your investment yet"}
                     </p>
                   </div>

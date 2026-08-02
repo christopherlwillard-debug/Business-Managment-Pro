@@ -1,0 +1,188 @@
+This is definitely an improvement over the pill list, but there are still a few things that make it feel "homemade" instead of professional.
+
+1. The map itself
+
+This is the biggest issue.
+
+The state shapes are incorrect. Illinois, Indiana, and Kentucky look like rectangles instead of actual state outlines.
+
+A professional builder (Wix, Squarespace, Framer) would use a real SVG US map with accurate state boundaries.
+
+I'd have Replit replace this with a proper vector map—not a simplified polygon map.
+
+2. It needs context around the map
+
+Right now it's just floating in space.
+
+I'd redesign it more like:
+
+---------------------------------------------------
+
+            Our Service Area
+
+ Proudly serving manufactured home dealers
+ throughout Kentucky, Indiana & Illinois.
+
+     [ Accurate USA Map ]
+
+-------------------------------------------
+✓ Kentucky
+✓ Indiana
+✓ Illinois
+
+Serving dealers throughout the tri-state area
+for new manufactured home finishing,
+service calls and repairs.
+
+[ Request Service ]
+
+---------------------------------------------------
+
+Instead of making the visitor interpret the map.
+
+3. The selected states need better colors
+
+Currently:
+
+Dark navy
+
+Everything else nearly invisible
+
+Instead I'd use
+
+Gray map
+
+↓
+
+Blue states
+
+↓
+
+Thin white borders
+
+↓
+
+Subtle drop shadow
+
+Much easier to read.
+
+4. Kentucky shouldn't visually dominate
+
+Because Kentucky is long, it immediately becomes the focus.
+
+I'd instead use
+
+• Equal stroke widths
+
+• Slight glow
+
+• Labels
+
+Something like
+
+KY
+IN
+IL
+
+inside the states.
+
+5. Service coverage instead of just geography
+
+What people actually want to know is
+
+"Will they come to me?"
+
+Not
+
+"Can I identify my state?"
+
+I'd add something like
+
+Proudly Serving
+
+✓ Kentucky
+
+✓ Indiana
+
+✓ Illinois
+
+Travel available for large commercial projects.
+6. Your footer
+
+Right now it feels empty.
+
+I'd redesign it to something like
+
+--------------------------------------
+
+📞 (270) 363-3917
+
+✉ contact@willardsgc.com
+
+Veteran Owned
+
+Fully Insured
+
+Licensed
+
+SDVOSB (when approved)
+
+Serving
+Kentucky • Indiana • Illinois
+
+--------------------------------------
+I actually have another idea...
+
+Instead of showing only the states...
+
+Show your coverage.
+
+Something similar to this:
+
+          UNITED STATES
+
+            ███████
+
+          IL ██
+
+          IN ██
+
+          KY ██
+
+
+Then underneath
+
+Proudly Serving
+
+Kentucky
+
+Indiana
+
+Illinois
+
+Traveling Nationwide for Large Dealer Contracts
+
+That instantly tells a manufactured home dealer:
+
+"These are their normal service states, but they travel."
+
+Which is far more valuable than simply highlighting states.
+
+Overall
+
+I'd rate it:
+
+Map concept: 9/10 (much better than a text list)
+State artwork: 4/10 (needs accurate SVG shapes)
+Layout: 6/10
+Professional feel: 7/10
+
+Once you replace the map with a proper SVG and redesign the surrounding content, I think this section could easily be a 9.5/10.
+
+One additional suggestion: since BuildPro is your own platform, I would go a step further than Wix. Add an optional coverage radius mode where businesses can choose either:
+
+State coverage (like you have now),
+County coverage, or
+Distance radius (e.g. "250 miles from Owensboro, KY").
+
+That would make your Website Studio more flexible than most website builders while still keeping the interface simple.
