@@ -1768,11 +1768,24 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
     // Monthly paid — group Owner Compensation payments by YYYY-MM for the Take-Home Dashboard.
     // Parse via Date so overflow date strings (e.g. "2026-06-32" stored due to a past bug)
     // are resolved to their true calendar month before bucketing.
+    // Parse YYYY-MM-DD strings via the multi-argument Date constructor so that
+    // overflow day values (e.g. "2026-06-32" stored due to a past timezone bug)
+    // resolve to the correct calendar month.  The string-based constructor
+    // (new Date("2026-06-32T12:00:00")) does NOT reliably overflow in all V8
+    // versions — the multi-argument form new Date(y, m-1, d) always does.
+    function parseOwnerPayDate(dateStr: string): Date | null {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+      if (!m) return null;
+      const [, y, mo, d] = m.map(Number);
+      const dt = new Date(y, mo - 1, d, 12, 0, 0); // midday avoids DST edges
+      return isNaN(dt.getTime()) ? null : dt;
+    }
+
     const monthlyPaidMap = new Map<string, number>();
     for (const e of withdrawalExpenses) {
       if (!e.date) continue;
-      const d = new Date(e.date + "T12:00:00"); // local-time parse avoids UTC midnight shift
-      if (isNaN(d.getTime())) continue;
+      const d = parseOwnerPayDate(e.date);
+      if (!d) continue;
       const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       monthlyPaidMap.set(month, (monthlyPaidMap.get(month) ?? 0) + parseFloat(e.amount ?? "0"));
     }

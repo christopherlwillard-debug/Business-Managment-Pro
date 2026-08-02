@@ -1446,5 +1446,90 @@ router.post("/validate-owner-compensation", async (_req: Request, res: Response)
   }
 });
 
+// Fix owner draw/compensation expenses that have overflow date strings stored due
+// to a past timezone bug (e.g. "2026-06-32" meaning July 2, "2026-06-55" meaning
+// July 25).  Finds all owner-pay expense rows where the day portion of the date
+// is > 28 (impossible for any real month-end), computes the correct ISO date via
+// the multi-argument Date constructor (which reliably overflows), and writes the
+// corrected date back.
+//
+// dryRun=true (default) returns the plan without changing data.  Idempotent: once
+// corrected, no rows have day > 28 that need fixing (genuine end-of-month dates
+// like the 29th, 30th, 31st are preserved — only clearly-overflow values > 31 are
+// touched, plus days 29-31 are re-validated to ensure they're still calendar-valid).
+//
+// Strategy: fix ANY day > 31 unconditionally (definitely overflow).  Days 29-31
+// are left as-is since they can be valid calendar dates for months with 29-31 days.
+router.post("/fix-owner-draw-dates", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { dryRun = true } = (req.body ?? {}) as { dryRun?: boolean };
+
+    const PAY_CATEGORIES = ["Owner Compensation", "Owner Draw", "Owner Withdrawal"];
+
+    const rows = await db
+      .select({ id: expensesTable.id, date: expensesTable.date, category: expensesTable.category })
+      .from(expensesTable)
+      .where(inArray(expensesTable.category, PAY_CATEGORIES));
+
+    type Plan = { id: number; category: string | null; storedDate: string; correctedDate: string };
+    const plan: Plan[] = [];
+
+    for (const row of rows) {
+      if (!row.date) continue;
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(row.date);
+      if (!match) continue;
+      const [, y, mo, d] = match.map(Number);
+      if (d <= 28) continue; // 1-28 are always valid; skip
+
+      // Use the multi-argument constructor to resolve overflow correctly
+      const corrected = new Date(y, mo - 1, d, 12, 0, 0);
+      if (isNaN(corrected.getTime())) continue;
+
+      const correctedStr =
+        `${corrected.getFullYear()}-${String(corrected.getMonth() + 1).padStart(2, "0")}-${String(corrected.getDate()).padStart(2, "0")}`;
+
+      // Only record as a fix if the resolved date is actually different
+      if (correctedStr === row.date) continue;
+
+      plan.push({ id: row.id, category: row.category, storedDate: row.date, correctedDate: correctedStr });
+    }
+
+    if (plan.length === 0) {
+      res.json({ ok: true, dryRun, already_clean: true, message: "No overflow dates found — nothing to fix.", plan: [] });
+      return;
+    }
+
+    if (dryRun) {
+      res.json({
+        ok: true,
+        dryRun: true,
+        message: `Dry-run — no data changed. Pass { dryRun: false } to correct ${plan.length} row(s).`,
+        plan,
+      });
+      return;
+    }
+
+    let fixed = 0;
+    const errors: Array<{ id: number; error: string }> = [];
+    for (const fix of plan) {
+      try {
+        await db.update(expensesTable)
+          .set({ date: fix.correctedDate })
+          .where(eq(expensesTable.id, fix.id));
+        fixed++;
+      } catch (err) {
+        errors.push({ id: fix.id, error: String(err) });
+      }
+    }
+
+    console.log(`[admin/migrations] fix-owner-draw-dates: fixed=${fixed}, errors=${errors.length}`, JSON.stringify(plan));
+    res.json({ ok: true, dryRun: false, fixed, errors: errors.length ? errors : undefined, plan });
+  } catch (err) {
+    console.error("[admin/migrations] fix-owner-draw-dates failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;
+
 

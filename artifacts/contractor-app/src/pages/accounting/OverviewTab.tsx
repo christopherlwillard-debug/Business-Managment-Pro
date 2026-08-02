@@ -392,12 +392,23 @@ function TakeHomeDashboard() {
   }
 
   // Index withdrawals by YYYY-MM for the expanded row.
-  // Parse via Date to handle any overflow dates (e.g. "2026-06-32" → July) correctly.
+  // Parse YYYY-MM-DD via the multi-argument Date constructor so that overflow
+  // day values (e.g. "2026-06-32" stored by a past timezone bug) resolve to the
+  // correct calendar month.  The string-based form new Date("2026-06-32T12:00:00")
+  // does NOT reliably overflow in all V8/browser versions; new Date(y, m-1, d) does.
+  function parseOwnerPayDate(dateStr: string): Date | null {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+    if (!match) return null;
+    const [, y, mo, d] = match.map(Number);
+    const dt = new Date(y, mo - 1, d, 12, 0, 0); // midday avoids DST edges
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+
   const withdrawalsByMonth = new Map<string, typeof withdrawals>();
   for (const w of withdrawals) {
     if (!w.date) continue;
-    const d = new Date(w.date + "T12:00:00"); // local-time parse avoids UTC midnight shift
-    if (isNaN(d.getTime())) continue;
+    const d = parseOwnerPayDate(w.date);
+    if (!d) continue;
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     if (!withdrawalsByMonth.has(key)) withdrawalsByMonth.set(key, []);
     withdrawalsByMonth.get(key)!.push(w);
@@ -492,7 +503,7 @@ function TakeHomeDashboard() {
                     {isExpanded && entries.map(w => (
                       <div key={w.id} className="px-6 py-2 flex items-center gap-2 bg-muted/20 text-xs border-t border-border/20">
                         <span className="text-muted-foreground w-20 flex-shrink-0">
-                          {w.date ? new Date(w.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}
+                          {w.date ? (() => { const d = parseOwnerPayDate(w.date!); return d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""; })() : ""}
                         </span>
                         <span className="flex-1 text-foreground truncate">{w.description}</span>
                         <span className="font-semibold text-emerald-700">{formatCurrency(w.amount)}</span>
