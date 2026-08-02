@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
-  DragOverlay, type DragStartEvent, type DragOverEvent,
+  DragOverlay, type DragStartEvent, type DragOverEvent, type DragMoveEvent,
 } from "@dnd-kit/core";
 import { InlineEditableText } from "../InlineEditableText";
 import { useInlineEditContext } from "../InlineEditContext";
@@ -865,6 +865,14 @@ interface ContentSectionProps {
   onMultiSelectComponent?: (id: string) => void;
   /** M8: IDs currently in multi-selection (cyan ring indicator). */
   multiSelectedIds?: ReadonlySet<string>;
+  /**
+   * Called on every pointer-move during a dnd-kit drag with the current
+   * viewport rect of the dragged element. Pass null to clear guides (drag end).
+   */
+  onAlignmentDrag?: (
+    draggedId: string,
+    rect: { top: number; bottom: number; left: number; right: number; width: number; height: number } | null,
+  ) => void;
 }
 
 export function ContentSection({
@@ -884,6 +892,7 @@ export function ContentSection({
   onOpenMediaLibrary,
   onMultiSelectComponent,
   multiSelectedIds,
+  onAlignmentDrag,
 }: ContentSectionProps) {
   const { toast } = useToast();
   const [showPicker, setShowPicker] = useState(false);
@@ -914,9 +923,23 @@ export function ContentSection({
     setOverDropId(event.over ? String(event.over.id) : null);
   }
 
+  function handleDragMove(event: DragMoveEvent) {
+    const translated = event.active.rect.current.translated;
+    if (!translated) return;
+    onAlignmentDrag?.(String(event.active.id), {
+      top: translated.top,
+      bottom: translated.bottom,
+      left: translated.left,
+      right: translated.right,
+      width: translated.width,
+      height: translated.height,
+    });
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     setDraggingId(null);
     setOverDropId(null);
+    onAlignmentDrag?.(String(event.active.id), null); // clear guides
     const { active, over } = event;
     if (over && active.id !== over.id) {
       onBeforeAction?.();
@@ -1005,7 +1028,7 @@ export function ContentSection({
   return (
     <BlockStyleWrapper blockStyle={blockStyle} wrapperClassName="px-4 py-6" isEditing={true} defaultBg="#f8fafc">
       <div onClick={e => e.stopPropagation()}>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd} onDragMove={onAlignmentDrag ? handleDragMove : undefined}>
           <SortableContext items={components.map(c => c.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-0">
               <QuickAddBetween onAdd={type => addComponentAt(0, type)} />

@@ -84,6 +84,8 @@ import { EditableWrapper } from "./EditableWrapper";
 import { useInlineEdit, InlineEditContext, InlineEditStatus } from "./InlineEditContext";
 import { FloatingTextToolbar } from "./FloatingTextToolbar";
 import { SelectionHandles } from "./SelectionHandles";
+import { AlignmentGuides } from "./AlignmentGuides";
+import { computeAlignmentGuides, type AlignmentGuide, type SimpleRect } from "./alignmentUtils";
 import { nanoid } from "nanoid";
 import type { SiteSettings, CardComponent } from "./website-types";
 import { reportCrash } from "@/lib/reportCrash";
@@ -203,6 +205,13 @@ function renderSection(
     onColumnContextMenu?: (sectionId: string, colId: string, e: React.MouseEvent) => void;
     /** Called when the header's "Advanced" toolbar tab is clicked — opens InspectorPanel. */
     onHeaderAdvanced?: () => void;
+    /** Called on every pointer-move during a ContentSection dnd-kit drag with the dragged
+     *  element's current viewport rect. Pass null to clear guides on drag end. */
+    onAlignmentDrag?: (
+      sectionId: string,
+      draggedId: string,
+      rect: { top: number; bottom: number; left: number; right: number; width: number; height: number } | null,
+    ) => void;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
@@ -295,6 +304,9 @@ function renderSection(
         onOpenMediaLibrary={extras?.onOpenMediaLibrary}
         onMultiSelectComponent={extras?.onMultiSelectComponent}
         multiSelectedIds={extras?.multiSelectedIds}
+        onAlignmentDrag={extras?.onAlignmentDrag
+          ? (draggedId, rect) => extras.onAlignmentDrag!(section.id, draggedId, rect)
+          : undefined}
       />
     );
     case "row": return (
@@ -1543,6 +1555,9 @@ function WebsiteEditor() {
     edge: string;
     initialContentHeight: number;
   } | null>(null);
+
+  // Alignment guide lines to overlay during drag/resize in ContentSections.
+  const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([]);
 
   const [editorNarrow, setEditorNarrow] = useState(false);
   const editorBodyRef = useRef<HTMLDivElement>(null);
@@ -3509,6 +3524,35 @@ function WebsiteEditor() {
     };
   }
 
+  /**
+   * Collect sibling rects from the DOM for a given section and component, then
+   * compute and display alignment guide lines.  Used by both drag and resize paths.
+   */
+  function computeAndShowAlignmentGuides(sectionId: string, componentId: string, virtualRect: SimpleRect) {
+    const sectionEl = document.querySelector<HTMLElement>(`[data-section-canvas-id="${sectionId}"]`);
+    if (!sectionEl) { setAlignmentGuides([]); return; }
+
+    const siblingRects: SimpleRect[] = [];
+    sectionEl.querySelectorAll<HTMLElement>("[data-section-canvas-id]").forEach(el => {
+      const id = el.getAttribute("data-section-canvas-id");
+      if (!id || id === componentId || id === sectionId) return;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 4) siblingRects.push(r);
+    });
+
+    setAlignmentGuides(computeAlignmentGuides(virtualRect, siblingRects));
+  }
+
+  /** Called from ContentSection's onAlignmentDrag — fires on every dnd-kit DragMoveEvent. */
+  function handleAlignmentDragMove(
+    sectionId: string,
+    draggedId: string,
+    rect: { top: number; bottom: number; left: number; right: number; width: number; height: number } | null,
+  ) {
+    if (!rect) { setAlignmentGuides([]); return; }
+    computeAndShowAlignmentGuides(sectionId, draggedId, rect);
+  }
+
   /** Apply live DOM style override for 60fps feedback — no React state update. */
   function handleResizeLive(edge: string, dx: number, dy: number) {
     const base = resizeDragBaseRef.current;
@@ -3557,12 +3601,17 @@ function WebsiteEditor() {
         hr.style.marginBottom = `${newMY}px`;
       }
     }
+
+    // Show alignment guides for the current (post-delta) element rect
+    const liveRect = el.getBoundingClientRect();
+    computeAndShowAlignmentGuides(base.sectionId, base.componentId, liveRect);
   }
 
   /** Clear live DOM overrides and commit the permanent prop update. */
   function handleResizeCommit(edge: string, dx: number, dy: number) {
     const base = resizeDragBaseRef.current;
     resizeDragBaseRef.current = null;
+    setAlignmentGuides([]); // clear guides on pointer-up
     if (!base) return;
 
     // Clear any live style overrides so React's re-render takes over.
@@ -4376,6 +4425,7 @@ function WebsiteEditor() {
         setCopiedComponent(comp);
         toast({ title: "Component copied", duration: 2000 });
       },
+      onAlignmentDrag: handleAlignmentDragMove,
       /** Push a snapshot before discrete component mutations so each action is individually undoable */
       onBeforeAction: () => {
         textEditSessionRef.current.active = false;
@@ -4645,6 +4695,8 @@ function WebsiteEditor() {
             onResizeCommit={handleResizeCommit}
           />
         )}
+        {/* Alignment guide overlay — Canva-style blue lines during drag/resize */}
+        {!previewMode && <AlignmentGuides guides={alignmentGuides} />}
         {/* Spacer section — resize height by dragging top/bottom handles */}
         {!previewMode && !selectedComponentState && !selectedRowState && (() => {
           const spacerSec = activeSection
