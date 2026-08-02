@@ -44,6 +44,26 @@ export interface SiteSettings {
   headerStyle?: "light" | "dark" | "transparent";
   footerBgColor?: string;
   themeId?: string;
+  /** User-saved section snapshots — stored inside settings JSONB so they persist with the site. */
+  savedSections?: SavedSection[];
+}
+
+/** A snapshot of a canvas section saved by the user for reuse across pages. */
+export interface SavedSection {
+  /** Unique saved-entry ID (not the canvas section ID). */
+  id: string;
+  /** Display name chosen at save-time. */
+  name: string;
+  /** One-character emoji chosen at save-time. */
+  emoji: string;
+  /** The Section.type string (e.g. "hero", "services"). */
+  sectionType: string;
+  /** Deep-cloned Section.content at save-time. */
+  content: Record<string, unknown>;
+  /** Deep-cloned Section.blockStyle at save-time, if any. */
+  blockStyle?: Record<string, unknown>;
+  /** ISO timestamp. */
+  savedAt: string;
 }
 
 // ── Universal Card Engine ─────────────────────────────────────────────────────

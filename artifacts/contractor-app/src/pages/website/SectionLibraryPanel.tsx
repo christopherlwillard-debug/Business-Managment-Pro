@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { Search, Star, X, Sparkles } from "lucide-react";
+import { Search, Star, X, Sparkles, Bookmark, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
+import type { SavedSection } from "./website-types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,12 @@ export interface SectionLibraryPanelProps {
   onAddSection: (type: string) => void;
   /** Insert a section from a pre-built template */
   onAddSectionFromTemplate: (id: string) => void;
+  /** User-saved sections from site settings */
+  savedSections?: SavedSection[];
+  /** Insert a previously-saved section */
+  onInsertSaved?: (saved: SavedSection) => void;
+  /** Delete a saved section by its saved-entry ID */
+  onDeleteSaved?: (savedId: string) => void;
 }
 
 // ─── Static data ──────────────────────────────────────────────────────────────
@@ -275,10 +282,14 @@ export function SectionLibraryPanel({
   onClose,
   onAddSection,
   onAddSectionFromTemplate,
+  savedSections = [],
+  onInsertSaved,
+  onDeleteSaved,
 }: SectionLibraryPanelProps) {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
   const [showFavs, setShowFavs] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
   const [favIds, setFavIds] = useState<Set<string>>(() => loadFavs());
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -288,6 +299,7 @@ export function SectionLibraryPanel({
       setSearch("");
       setActiveCategory("All");
       setShowFavs(false);
+      setShowSaved(false);
       setTimeout(() => searchRef.current?.focus(), 80);
     }
   }, [show]);
@@ -318,6 +330,7 @@ export function SectionLibraryPanel({
   const q = search.toLowerCase().trim();
 
   const filteredItems = useMemo<LibraryItem[]>(() => {
+    if (showSaved) return [];           // saved tab handled separately
     let base = showFavs ? ALL_ITEMS.filter(it => favIds.has(it.id)) : ALL_ITEMS;
     if (!showFavs && activeCategory !== "All") base = base.filter(it => it.category === activeCategory);
     if (q) base = base.filter(it =>
@@ -327,11 +340,20 @@ export function SectionLibraryPanel({
       (it.keywords ?? []).some(kw => kw.toLowerCase().includes(q))
     );
     return base;
-  }, [showFavs, activeCategory, q, favIds]);
+  }, [showFavs, showSaved, activeCategory, q, favIds]);
+
+  const filteredSaved = useMemo<SavedSection[]>(() => {
+    if (!showSaved) return [];
+    if (!q) return savedSections;
+    return savedSections.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      s.sectionType.toLowerCase().includes(q)
+    );
+  }, [showSaved, savedSections, q]);
 
   /** When showing "All" without search, group items by category for readability */
   const groupedItems = useMemo<Map<string, LibraryItem[]> | null>(() => {
-    if (q || showFavs || activeCategory !== "All") return null;
+    if (q || showFavs || showSaved || activeCategory !== "All") return null;
     const map = new Map<string, LibraryItem[]>();
     // Use CATEGORIES order so groups appear in the correct sequence
     for (const cat of CATEGORIES.slice(1)) {
@@ -339,7 +361,7 @@ export function SectionLibraryPanel({
       if (items.length > 0) map.set(cat, items);
     }
     return map;
-  }, [filteredItems, q, showFavs, activeCategory]);
+  }, [filteredItems, q, showFavs, showSaved, activeCategory]);
 
   function handleInsert(item: LibraryItem) {
     if (item.kind === "blank" && item.sectionType) {

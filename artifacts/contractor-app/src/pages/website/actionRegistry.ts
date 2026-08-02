@@ -38,6 +38,7 @@ export interface SectionActionParams {
   onPasteStyles: () => void;
   onInspect: (tab?: InspectorTab) => void;
   onMoveToPage: (targetPageId: string) => void;
+  onSaveToLibrary: () => void;
 }
 
 export function buildSectionActions(p: SectionActionParams): ContextMenuGroup[] {
@@ -84,15 +85,18 @@ export function buildSectionActions(p: SectionActionParams): ContextMenuGroup[] 
     { items: mainItems },
     { items: styleItems },
     {
-      items: [{
-        id: "inspect",
-        label: "Inspect…",
-        children: [
-          { id: "inspect-content", label: "Content", onClick: () => p.onInspect("content") },
-          { id: "inspect-style",   label: "Style",   onClick: () => p.onInspect("style") },
-          { id: "inspect-layout",  label: "Layout",  onClick: () => p.onInspect("layout") },
-        ],
-      }],
+      items: [
+        {
+          id: "inspect",
+          label: "Inspect…",
+          children: [
+            { id: "inspect-content", label: "Content", onClick: () => p.onInspect("content") },
+            { id: "inspect-style",   label: "Style",   onClick: () => p.onInspect("style") },
+            { id: "inspect-layout",  label: "Layout",  onClick: () => p.onInspect("layout") },
+          ],
+        },
+        { id: "save-to-library", label: "Save to Library…", onClick: () => p.onSaveToLibrary() },
+      ],
     },
   ];
 }
