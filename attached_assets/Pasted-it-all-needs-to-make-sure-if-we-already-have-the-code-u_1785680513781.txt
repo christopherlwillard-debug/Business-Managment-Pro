@@ -1,0 +1,211 @@
+it all needs to make sure if we already have the code use it we dont want to rewrite something we already have. 
+
+I actually think this should become a non-negotiable engineering principle for the entire BuildPro project.
+
+You've spent months building the editor. You don't want Replit to start replacing working systems every time you improve the UX.
+
+I'd add this to the top of every major Website Studio task.
+
+BuildPro Studio Development Standard
+Architecture First
+
+Before writing any new code, perform an architectural review of the existing Website Studio implementation.
+
+The goal is to extend, reuse, and compose existing systems, not replace them.
+
+Every new feature should first ask:
+
+Does this capability already exist?
+Can an existing component be reused?
+Can an existing hook or context be extended?
+Can an existing renderer support the new behavior through configuration?
+Can this be implemented as a thin UI layer over the existing editor logic?
+
+Only create new architecture when there is no reasonable extension point.
+
+Reuse Requirements
+
+The implementation should prioritize reuse in this order:
+
+Existing Components
+
+Reuse existing components whenever possible.
+
+Examples include:
+
+WebsiteEditor
+EditableWrapper
+InlineEditableText
+FloatingTextToolbar
+InspectorPanel
+Media Library
+Theme system
+Context menus
+dnd-kit drag system
+Undo/Redo history
+Auto Save
+Selection model
+Breakpoint system
+Existing section renderers
+Existing toolbar components
+
+Do not duplicate functionality already implemented.
+
+Existing State
+
+Do not introduce parallel state.
+
+Extend existing state objects.
+
+Examples:
+
+Use
+
+selectedSection
+selectedComponent
+previewMode
+editingState
+historyState
+
+instead of creating
+
+currentSelection2
+editorSelection
+previewState2
+Existing APIs
+
+Do not create duplicate endpoints.
+
+Extend existing APIs whenever practical.
+
+If a website endpoint already exists, extend it.
+
+If a media endpoint already exists, reuse it.
+
+If publishing already exists, build on it.
+
+Existing JSON
+
+Avoid changing the website schema.
+
+Prefer
+
+optional fields
+
+feature flags
+
+configuration objects
+
+default values
+
+instead of introducing breaking schema changes.
+
+Existing websites must continue working without migration.
+
+UI Over Architecture
+
+Most Studio improvements should only change the presentation layer.
+
+Examples:
+
+✅ Better floating toolbars
+
+✅ Better overlays
+
+✅ Better animations
+
+✅ Better layout
+
+✅ Better navigation
+
+without changing
+
+render engine
+data model
+publishing
+website JSON
+persistence
+Avoid Duplicate Systems
+
+Never build a second implementation of an existing feature.
+
+Examples:
+
+❌ Second image picker
+
+Reuse Media Library.
+
+❌ Second undo system
+
+Reuse existing history.
+
+❌ Second drag engine
+
+Reuse dnd-kit.
+
+❌ Second inline editor
+
+Reuse InlineEditableText.
+
+❌ Second inspector
+
+Reuse InspectorPanel.
+
+❌ Second context menu
+
+Reuse existing menu primitives.
+
+Refactor Before Rebuild
+
+If an existing component is difficult to extend:
+
+Refactor it.
+Extract reusable pieces.
+Continue using the same component.
+
+Avoid deleting mature code and replacing it.
+
+Performance
+
+Avoid unnecessary renders.
+
+Prefer extending memoized components.
+
+Lazy-load new UI panels.
+
+Reuse observers, contexts, and event handlers.
+
+Do not duplicate ResizeObservers, MutationObservers, or drag listeners when existing ones can be shared.
+
+Backwards Compatibility
+
+All existing:
+
+websites
+templates
+themes
+published sites
+editor state
+media
+pages
+
+must continue working without migration.
+
+Final Validation
+
+Before considering the task complete, verify:
+
+No duplicate editor systems were introduced.
+Existing components were reused where possible.
+Existing APIs were extended instead of duplicated.
+Existing website JSON still loads correctly.
+Existing published websites render identically.
+Existing editor functionality still works.
+Bundle size increased only where necessary.
+No architectural regressions were introduced.
+
+I would even make Replit follow one additional rule that's saved you from a lot of technical debt already:
+
+"If you find yourself copying more than ~30 lines of existing logic into a new component, stop. Refactor the original into a shared utility or reusable component instead."
+
+That one rule encourages building on what already exists rather than cloning code, which keeps BuildPro Studio maintainable as it grows.

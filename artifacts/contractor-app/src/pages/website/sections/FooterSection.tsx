@@ -27,6 +27,10 @@ interface FooterContent {
   badges?: BadgeItem[];
   socialLinks?: SocialLink[];
   customText?: string;
+  /** Text credential chips e.g. ["Veteran Owned", "Fully Insured", "Licensed", "SDVOSB"] */
+  credentials?: string[];
+  /** "Serving Kentucky • Indiana • Illinois" — shown above the copyright line */
+  servingText?: string;
 }
 
 interface FooterSectionProps {
@@ -314,6 +318,35 @@ export function FooterSection({ content, settings, isEditing, onChange, blockSty
             </div>
           </AccordionGroup>
 
+          {/* Credentials & Serving Area Accordion */}
+          <AccordionGroup title="Credentials & Service Area" groupKey="creds" openGroups={openGroups} onToggle={toggleGroup}>
+            <div>
+              <label className="block text-xs mb-1 opacity-50">Credential chips (one per line)</label>
+              <p className="text-[10px] opacity-30 mb-1.5 leading-relaxed">
+                e.g. Veteran Owned · Fully Insured · Licensed · SDVOSB
+              </p>
+              <textarea
+                rows={4}
+                value={(content.credentials ?? []).join("\n")}
+                onChange={(e) => update({ credentials: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })}
+                placeholder={"Veteran Owned\nFully Insured\nLicensed\nSDVOSB"}
+                className="w-full bg-white/10 border border-white/20 rounded px-2 py-1.5 text-xs placeholder-white/30 focus:outline-none focus:border-white/50 resize-none"
+                style={{ color: "var(--theme-footer-text, #ffffff)" }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs mb-1 opacity-50">States served line</label>
+              <input
+                type="text"
+                value={content.servingText ?? ""}
+                onChange={(e) => update({ servingText: e.target.value || undefined })}
+                placeholder="Serving Kentucky • Indiana • Illinois"
+                className="w-full bg-white/10 border border-white/20 rounded px-2 py-1.5 text-xs placeholder-white/30 focus:outline-none focus:border-white/50"
+                style={{ color: "var(--theme-footer-text, #ffffff)" }}
+              />
+            </div>
+          </AccordionGroup>
+
           {/* Custom Text Accordion */}
           <AccordionGroup title="Custom Text" groupKey="custom" openGroups={openGroups} onToggle={toggleGroup}>
             <label className="block text-xs mb-1 opacity-50">Disclaimer or additional info</label>
@@ -418,6 +451,35 @@ export function FooterSection({ content, settings, isEditing, onChange, blockSty
               );
             })}
           </div>
+        )}
+
+        {/* Credential chips */}
+        {(content.credentials ?? []).length > 0 && (
+          <div className="flex flex-wrap justify-center gap-2">
+            {(content.credentials ?? []).map((chip, i) => (
+              <span
+                key={i}
+                className="px-3 py-1 rounded-full text-xs font-medium border"
+                style={{
+                  borderColor: "rgba(255,255,255,0.25)",
+                  color: footerText ? `var(--theme-footer-text, ${footerText})` : "rgba(255,255,255,0.80)",
+                  backgroundColor: "rgba(255,255,255,0.08)",
+                }}
+              >
+                {chip}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* States served line */}
+        {content.servingText && (
+          <p className="text-xs opacity-60 tracking-wide">
+            {sectionId ? (
+              <InlineEditableText id={`${sectionId}-footer-serving`} value={content.servingText} placeholder="Serving Kentucky • Indiana • Illinois"
+                as="span" onCommit={(v) => onChange?.({ ...content, servingText: v || undefined })} />
+            ) : content.servingText}
+          </p>
         )}
 
         {/* Custom text */}

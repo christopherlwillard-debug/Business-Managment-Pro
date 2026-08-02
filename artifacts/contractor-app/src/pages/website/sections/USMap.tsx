@@ -13,69 +13,59 @@ interface USMapProps {
 
 const VIEWBOX = "0 0 960 600";
 
+// Small / dense states that don't have room for an inline label
+const SMALL_STATES = new Set(["RI","DE","CT","NJ","MD","DC","VT","NH","MA"]);
+
 export function USMap({
   selectedStates,
   onToggleState,
   highlightColor,
   showLabels = true,
   showBorders = true,
-  mapStyle = "outline",
+  mapStyle = "modern",
   className = "",
 }: USMapProps) {
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
   const isInteractive = !!onToggleState;
 
-  // Resolve fill color for a state
+  const brandColor = highlightColor ?? "var(--theme-brand, #2563eb)";
+
   function getFill(code: string): string {
     const selected = selectedStates.includes(code);
-    const hovered = hoveredCode === code;
+    const hovered  = hoveredCode === code;
 
-    if (selected) {
-      return highlightColor ?? "var(--theme-brand, #2563eb)";
-    }
+    if (selected) return brandColor;
     if (hovered && isInteractive) {
-      return mapStyle === "minimal" ? "rgba(0,0,0,0.07)" : "rgba(37,99,235,0.12)";
+      return mapStyle === "minimal" ? "rgba(0,0,0,0.06)" : "rgba(37,99,235,0.14)";
     }
-
     switch (mapStyle) {
-      case "filled":   return "#e5e7eb";
-      case "minimal":  return "transparent";
-      case "modern":   return "#f3f4f6";
+      case "filled":  return "#e2e8f0";
+      case "minimal": return "transparent";
+      case "modern":  return "#d1d5db";
       case "outline":
-      default:         return "#f9fafb";
+      default:        return "#f1f5f9";
     }
   }
 
   function getStroke(code: string): string {
     if (!showBorders) return "transparent";
     const selected = selectedStates.includes(code);
-    if (selected) {
-      // Slightly darker than fill
-      return "rgba(0,0,0,0.15)";
-    }
+    if (selected) return "#ffffff";               // white border on selected states
     switch (mapStyle) {
-      case "minimal": return "rgba(0,0,0,0.12)";
-      case "modern":  return "#d1d5db";
-      default:        return "#d1d5db";
+      case "minimal": return "rgba(0,0,0,0.10)";
+      default:        return "#9ca3af";
     }
   }
 
+  // Uniform stroke weight — selected state border is thinner (white on color bg looks bold)
   function getStrokeWidth(code: string): number {
-    return selectedStates.includes(code) ? 1.5 : 0.8;
+    return selectedStates.includes(code) ? 1.5 : 0.6;
   }
 
   function getLabelFill(code: string): string {
-    const selected = selectedStates.includes(code);
-    if (selected) return "#ffffff";
-    return mapStyle === "minimal" ? "#6b7280" : "#9ca3af";
+    if (selectedStates.includes(code)) return "#ffffff";
+    return mapStyle === "minimal" ? "#6b7280" : "#6b7280";
   }
-
-  // AK/HI inset label rects (drawn below main map)
-  const insetLabel = (text: string, x: number, y: number) => (
-    <text x={x} y={y} fontSize={7} fill="#9ca3af" textAnchor="middle" fontFamily="system-ui, sans-serif">
-      {text}
-    </text>
-  );
 
   return (
     <svg
@@ -84,79 +74,94 @@ export function USMap({
       aria-label="US Coverage Map"
       style={{ fontFamily: "system-ui, sans-serif" }}
     >
-      {/* Drop shadow for modern style */}
-      {mapStyle === "modern" && (
-        <defs>
-          <filter id="state-shadow" x="-2%" y="-2%" width="104%" height="104%">
-            <feDropShadow dx="0" dy="1" stdDeviation="1" floodOpacity="0.1" />
-          </filter>
-        </defs>
-      )}
+      <defs>
+        {/* Glow applied to selected states for "modern" style */}
+        <filter id="selected-glow" x="-8%" y="-8%" width="116%" height="116%">
+          <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor={brandColor} floodOpacity="0.45" />
+        </filter>
+        {/* Subtle shadow for all states in modern mode */}
+        <filter id="state-shadow" x="-3%" y="-3%" width="106%" height="106%">
+          <feDropShadow dx="0" dy="1" stdDeviation="1" floodOpacity="0.08" />
+        </filter>
+      </defs>
 
       {/* Inset boxes */}
-      <rect x="104" y="466" width="148" height="110" rx="3" fill="#f3f4f6" stroke="#e5e7eb" strokeWidth="0.8" />
-      <rect x="244" y="530" width="58" height="48" rx="3" fill="#f3f4f6" stroke="#e5e7eb" strokeWidth="0.8" />
-      {insetLabel("AK", 178, 583)}
-      {insetLabel("HI", 273, 583)}
+      <rect x="102" y="466" width="152" height="116" rx="4" fill={mapStyle === "minimal" ? "transparent" : "#e5e7eb"} stroke="#d1d5db" strokeWidth="0.8" />
+      <rect x="240" y="522" width="80" height="52" rx="4" fill={mapStyle === "minimal" ? "transparent" : "#e5e7eb"} stroke="#d1d5db" strokeWidth="0.8" />
+      <text x="178" y="590" fontSize={7} fill="#9ca3af" textAnchor="middle" fontFamily="system-ui, sans-serif">AK</text>
+      <text x="280" y="590" fontSize={7} fill="#9ca3af" textAnchor="middle" fontFamily="system-ui, sans-serif">HI</text>
 
-      {/* State paths */}
-      {US_STATES.map(s => {
-        const selected = selectedStates.includes(s.code);
-        const hovered = hoveredCode === s.code;
-        const smallLabel = ["RI","DE","CT","NJ","MD","DC","VT","NH","MA"].includes(s.code);
+      {/* State paths — render unselected first, then selected on top */}
+      {[false, true].map(renderSelected =>
+        US_STATES.filter(s => selectedStates.includes(s.code) === renderSelected).map(s => {
+          const selected  = selectedStates.includes(s.code);
+          const hovered   = hoveredCode === s.code;
+          const smallLabel = SMALL_STATES.has(s.code);
 
-        return (
-          <g key={s.code}>
-            <path
-              d={s.d}
-              fill={getFill(s.code)}
-              stroke={getStroke(s.code)}
-              strokeWidth={getStrokeWidth(s.code)}
-              strokeLinejoin="round"
-              filter={mapStyle === "modern" && selected ? "url(#state-shadow)" : undefined}
-              style={{
-                cursor: isInteractive ? "pointer" : "default",
-                transition: "fill 0.15s ease",
-              }}
-              onClick={() => onToggleState?.(s.code)}
-              onMouseEnter={() => setHoveredCode(s.code)}
-              onMouseLeave={() => setHoveredCode(null)}
-            >
-              <title>{s.name}{selected ? " ✓" : ""}</title>
-            </path>
-
-            {/* State abbreviation label */}
-            {showLabels && !smallLabel && (
-              <text
-                x={s.lx}
-                y={s.ly + 3.5}
-                fontSize={s.code === "AK" ? 8 : 7.5}
-                fontWeight={selected ? "700" : "500"}
-                fill={getLabelFill(s.code)}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                style={{ pointerEvents: "none", userSelect: "none" }}
+          return (
+            <g key={s.code}>
+              <path
+                d={s.d}
+                fill={getFill(s.code)}
+                stroke={getStroke(s.code)}
+                strokeWidth={getStrokeWidth(s.code)}
+                strokeLinejoin="round"
+                filter={
+                  selected
+                    ? mapStyle === "modern" ? "url(#selected-glow)" : undefined
+                    : mapStyle === "modern" ? "url(#state-shadow)" : undefined
+                }
+                style={{
+                  cursor: isInteractive ? "pointer" : "default",
+                  transition: "fill 0.12s ease",
+                }}
+                onClick={() => onToggleState?.(s.code)}
+                onMouseEnter={() => setHoveredCode(s.code)}
+                onMouseLeave={() => setHoveredCode(null)}
               >
-                {s.code}
-              </text>
-            )}
+                <title>{s.name}{selected ? " ✓ (selected)" : " — click to toggle"}</title>
+              </path>
 
-            {/* Hover tooltip for small states */}
-            {hovered && smallLabel && (
-              <text
-                x={s.lx}
-                y={s.ly - 6}
-                fontSize={7}
-                fill="#374151"
-                textAnchor="middle"
-                style={{ pointerEvents: "none" }}
-              >
-                {s.code}
-              </text>
-            )}
-          </g>
-        );
-      })}
+              {/* State abbreviation label */}
+              {showLabels && !smallLabel && (
+                <text
+                  x={s.lx}
+                  y={s.ly + 3}
+                  fontSize={s.code === "AK" || s.code === "HI" ? 8 : 7.5}
+                  fontWeight={selected ? "700" : "500"}
+                  fill={getLabelFill(s.code)}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  style={{ pointerEvents: "none", userSelect: "none" }}
+                >
+                  {s.code}
+                </text>
+              )}
+
+              {/* Hover tooltip for small/dense NE states */}
+              {hovered && smallLabel && (
+                <g style={{ pointerEvents: "none" }}>
+                  <rect
+                    x={s.lx - 14} y={s.ly - 15}
+                    width={28} height={13}
+                    rx={3}
+                    fill="rgba(0,0,0,0.75)"
+                  />
+                  <text
+                    x={s.lx} y={s.ly - 5}
+                    fontSize={7}
+                    fill="#ffffff"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                  >
+                    {s.code}
+                  </text>
+                </g>
+              )}
+            </g>
+          );
+        })
+      )}
     </svg>
   );
 }

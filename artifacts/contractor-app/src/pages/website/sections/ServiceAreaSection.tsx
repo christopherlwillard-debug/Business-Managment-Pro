@@ -1,4 +1,4 @@
-import { Plus, MapPin, X } from "lucide-react";
+import { Plus, MapPin, X, Check } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { InlineEditableText } from "../InlineEditableText";
 import type { SiteSettings } from "../website-types";
@@ -50,15 +50,20 @@ export function ServiceAreaSection({
     ? (content.areas ?? [])
     : migrated.areas;
 
-  const displayMode = content.displayMode ?? "both";
-  const mapStyle = content.mapStyle ?? "outline";
-  const showLabels = content.showLabels !== false;
-  const showBorders = content.showBorders !== false;
+  const displayMode   = content.displayMode ?? "both";
+  const mapStyle      = content.mapStyle ?? "modern";
+  const showLabels    = content.showLabels !== false;
+  const showBorders   = content.showBorders !== false;
   const highlightColor = content.highlightColor ?? settings.brandColor;
 
   // Auto-caption from selected states
   const autoCaption = buildCaption(selectedStates);
-  const caption = content.captionText || autoCaption;
+  const caption     = content.captionText || autoCaption;
+
+  // Show a "travel available" note if any freeform entry mentions travel
+  const hasTravelNote = freeformAreas.some(a =>
+    a.trim().toLowerCase().includes("travel")
+  );
 
   function update(patch: Partial<ServiceAreaContent>) {
     onChange?.({ ...content, ...patch });
@@ -85,14 +90,13 @@ export function ServiceAreaSection({
     update({ areas: freeformAreas.filter((_, i) => i !== idx) });
   }
 
-  const showMap = displayMode === "map" || displayMode === "both";
+  const showMap  = displayMode === "map"  || displayMode === "both";
   const showList = displayMode === "list" || displayMode === "both";
 
-  // All items to show in the list (state names + freeform)
-  const listItems: string[] = [
-    ...selectedStates.map(c => STATE_CODE_TO_NAME[c] ?? c),
-    ...freeformAreas,
-  ].sort((a, b) => a.localeCompare(b));
+  // State names sorted alphabetically for the checkmark list
+  const stateNames = [...selectedStates]
+    .map(c => STATE_CODE_TO_NAME[c] ?? c)
+    .sort((a, b) => a.localeCompare(b));
 
   return (
     <BlockStyleWrapper
@@ -130,7 +134,7 @@ export function ServiceAreaSection({
             as="p"
             value={content.subheading ?? ""}
             placeholder="Brief description (optional)"
-            className="text-base mb-8 w-full text-center"
+            className="text-base mb-6 w-full text-center"
             style={{ color: "var(--theme-text-muted, #6b7280)" }}
             onCommit={v => update({ subheading: v || undefined })}
             disabled={!isEditing}
@@ -139,7 +143,7 @@ export function ServiceAreaSection({
 
         {/* SVG Map */}
         {showMap && (
-          <div className="mb-4">
+          <div className="mb-6">
             <USMap
               selectedStates={selectedStates}
               onToggleState={isEditing ? toggleState : undefined}
@@ -150,10 +154,10 @@ export function ServiceAreaSection({
               className="max-w-2xl mx-auto"
             />
 
-            {/* Caption */}
+            {/* Caption — only shown when not hidden and there's text */}
             {!content.captionHidden && caption && (
               <p
-                className="text-sm mt-3 italic"
+                className="text-sm mt-2 italic"
                 style={{ color: "var(--theme-text-muted, #6b7280)" }}
               >
                 {caption}
@@ -162,20 +166,52 @@ export function ServiceAreaSection({
           </div>
         )}
 
-        {/* State pill list */}
-        {showList && listItems.length > 0 && (
-          <div className="flex flex-wrap justify-center gap-2 mb-8 mt-4">
-            {listItems.map((item, idx) => (
+        {/* Checkmark list of states */}
+        {showList && stateNames.length > 0 && (
+          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 mb-5">
+            {stateNames.map(name => (
               <span
-                key={idx}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border border-border bg-muted/40"
+                key={name}
+                className="inline-flex items-center gap-1.5 text-sm font-medium"
                 style={{ color: "var(--theme-text, #111827)" }}
               >
-                <MapPin className="w-3 h-3 opacity-50" />
-                {item}
+                <Check
+                  className="w-4 h-4 flex-shrink-0"
+                  style={{ color: highlightColor }}
+                  strokeWidth={2.5}
+                />
+                {name}
               </span>
             ))}
           </div>
+        )}
+
+        {/* Freeform areas (non-state entries) */}
+        {showList && freeformAreas.filter(a => !a.trim().toLowerCase().includes("travel")).length > 0 && (
+          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 mb-5">
+            {freeformAreas
+              .filter(a => !a.trim().toLowerCase().includes("travel"))
+              .map((item, idx) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium"
+                  style={{ color: "var(--theme-text-muted, #6b7280)" }}
+                >
+                  <MapPin className="w-3.5 h-3.5 flex-shrink-0 opacity-50" />
+                  {item}
+                </span>
+              ))}
+          </div>
+        )}
+
+        {/* Travel note */}
+        {hasTravelNote && (
+          <p
+            className="text-sm italic mb-5"
+            style={{ color: "var(--theme-text-muted, #6b7280)" }}
+          >
+            Travel available for large commercial projects.
+          </p>
         )}
 
         {/* Editing: freeform areas management */}
@@ -208,7 +244,7 @@ export function ServiceAreaSection({
           </div>
         )}
 
-        {/* CTA */}
+        {/* CTA button */}
         {(content.ctaText || isEditing) && (
           <div className="mt-4">
             {isEditing ? (
@@ -231,7 +267,7 @@ export function ServiceAreaSection({
             ) : content.ctaText ? (
               <a
                 href={content.ctaUrl ?? "#contact"}
-                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold text-white transition-colors hover:opacity-90"
+                className="inline-flex items-center gap-2 px-7 py-3 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
                 style={{ backgroundColor: highlightColor }}
               >
                 {content.ctaText}
@@ -251,7 +287,7 @@ export function defaultServiceAreaContent(): ServiceAreaContent {
     areas: [],
     selectedStates: ["KY", "IN", "IL", "TN", "OH"],
     displayMode: "both",
-    mapStyle: "outline",
+    mapStyle: "modern",
     showLabels: true,
     showBorders: true,
     ctaText: "Request a Free Estimate",
