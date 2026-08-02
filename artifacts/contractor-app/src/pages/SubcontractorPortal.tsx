@@ -519,6 +519,144 @@ function HomeOfficeTab() {
   );
 }
 
+// ─── Portal Notification Center ───────────────────────────────────────────────
+interface PortalNotification {
+  id: string;
+  priority: number;
+  Icon: React.ComponentType<{ className?: string }>;
+  iconColor: string;
+  iconBg: string;
+  message: string;
+  actionLabel: string;
+  actionTab: string;
+}
+
+function buildPortalNotifications(data: any, features: string[]): PortalNotification[] {
+  const sub = data.subcontractor;
+  const stats = data.stats;
+  const jobs: any[] = data.jobs ?? [];
+  const notes: PortalNotification[] = [];
+
+  // W-9 missing — blocks 1099 issuance
+  if (features.includes("w9") && !sub.w9Complete) {
+    notes.push({
+      id: "w9",
+      priority: 1,
+      Icon: FileText,
+      iconColor: "text-amber-600",
+      iconBg: "bg-amber-100",
+      message: "Complete your W-9 to receive a 1099.",
+      actionLabel: "Complete now →",
+      actionTab: "w9",
+    });
+  }
+
+  // Expenses enabled but none logged yet
+  if (features.includes("expenses") && stats.expenseCount === 0) {
+    notes.push({
+      id: "no_expenses",
+      priority: 2,
+      Icon: Receipt,
+      iconColor: "text-blue-600",
+      iconBg: "bg-blue-100",
+      message: "Start logging expenses to reduce your tax bill.",
+      actionLabel: "Log expense →",
+      actionTab: "expenses",
+    });
+  }
+
+  // Mileage enabled but zero miles logged
+  if (features.includes("mileage") && stats.totalMiles === 0) {
+    notes.push({
+      id: "no_mileage",
+      priority: 3,
+      Icon: Navigation,
+      iconColor: "text-violet-600",
+      iconBg: "bg-violet-100",
+      message: "Log business miles you've driven — they're tax-deductible.",
+      actionLabel: "Log mileage →",
+      actionTab: "mileage",
+    });
+  }
+
+  // Active / in-progress jobs needing attention
+  const activeJobs = jobs.filter((j: any) => j.status === "active" || j.status === "in_progress");
+  if (features.includes("jobs") && activeJobs.length > 0) {
+    notes.push({
+      id: "active_jobs",
+      priority: 4,
+      Icon: Briefcase,
+      iconColor: "text-emerald-600",
+      iconBg: "bg-emerald-100",
+      message: `You have ${activeJobs.length} active job${activeJobs.length !== 1 ? "s" : ""} in progress.`,
+      actionLabel: "View jobs →",
+      actionTab: "jobs",
+    });
+  }
+
+  return notes.sort((a, b) => a.priority - b.priority);
+}
+
+function NotificationCenter({ data, features, setTab }: {
+  data: any; features: string[]; setTab: (t: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const notifications = buildPortalNotifications(data, features);
+
+  if (notifications.length === 0) return null;
+
+  const MAX_VISIBLE = 2;
+  const visible = expanded ? notifications : notifications.slice(0, MAX_VISIBLE);
+  const hiddenCount = notifications.length - MAX_VISIBLE;
+
+  return (
+    <div className="bg-white border border-border rounded-2xl shadow-sm overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-border/60 flex items-center justify-between bg-amber-50/60">
+        <div className="flex items-center gap-2">
+          <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
+            <span className="text-white text-[10px] font-bold leading-none">{notifications.length}</span>
+          </div>
+          <p className="text-xs font-semibold text-amber-900">
+            {notifications.length === 1 ? "1 item needs your attention" : `${notifications.length} items need your attention`}
+          </p>
+        </div>
+        {notifications.length > MAX_VISIBLE && (
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="text-[11px] font-semibold text-amber-700 hover:text-amber-900 transition-colors"
+          >
+            {expanded ? "Show less" : `See all ${notifications.length}`}
+          </button>
+        )}
+      </div>
+      <div className="divide-y divide-border/40">
+        {visible.map(({ id, Icon, iconColor, iconBg, message, actionLabel, actionTab }) => (
+          <div key={id} className="flex items-center gap-3 px-4 py-3">
+            <div className={`w-8 h-8 rounded-xl ${iconBg} flex items-center justify-center flex-shrink-0`}>
+              <Icon className={`w-4 h-4 ${iconColor}`} />
+            </div>
+            <p className="flex-1 text-sm text-foreground leading-snug">{message}</p>
+            <button
+              onClick={() => setTab(actionTab)}
+              className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors flex-shrink-0 whitespace-nowrap"
+            >
+              {actionLabel}
+            </button>
+          </div>
+        ))}
+      </div>
+      {!expanded && hiddenCount > 0 && (
+        <button
+          onClick={() => setExpanded(true)}
+          className="w-full py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors border-t border-border/40"
+        >
+          +{hiddenCount} more item{hiddenCount !== 1 ? "s" : ""}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── Dashboard Tab ────────────────────────────────────────────────────────────
 function DashboardTab({ data, features, setTab }: { data: any; features: string[]; setTab: (t: string) => void }) {
   const s = data.stats;
@@ -527,6 +665,9 @@ function DashboardTab({ data, features, setTab }: { data: any; features: string[
 
   return (
     <div className="space-y-5">
+      {/* Proactive notification center — shown above greeting when there are items */}
+      <NotificationCenter data={data} features={features} setTab={setTab} />
+
       <div>
         <h2 className="text-xl font-display font-bold text-foreground">Welcome back, {sub.name.split(" ")[0]}!</h2>
         <p className="text-sm text-muted-foreground mt-0.5">Here's a snapshot of your activity.</p>

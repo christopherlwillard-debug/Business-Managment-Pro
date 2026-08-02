@@ -1,5 +1,27 @@
 # Workspace
 
+## Golden Rule: Extend Before You Create
+
+> **Reuse before rebuild. Every duplicate implementation is technical debt unless there is a documented architectural reason for creating it.**
+
+Before writing any new component, page, API endpoint, database table, AI workflow, calculation, or business logic, answer these questions:
+
+1. Does this feature already exist somewhere in the app?
+2. Can an existing component be reused or lightly adapted?
+3. Can an existing API endpoint be reused?
+4. Can an existing database table be reused?
+5. Can this simply be exposed to another user role via permissions?
+6. Can this be accomplished with configuration instead of new code?
+
+If the answer to any of these is **yes**, reuse it.
+
+**Example — Correct:** Expose the existing expense system to subcontractors using role-based permissions; reuse the existing AI receipt scanning, expense model, categories, reports, and calculations.
+**Example — Incorrect:** Create a second expense system for subcontractors.
+
+The goal is **one source of truth** for every piece of business logic. UIs may differ by user role, but the underlying logic must be shared: one receipt scanner, one expense engine, one mileage engine, one tax calculation engine, one notification engine, one payment engine, one authentication system.
+
+---
+
 ## Overview
 
 This project is a full-stack Contractor Management App designed for general contractors. It provides comprehensive tools for managing various aspects of a contracting business, including job tracking, invoicing, expense management, subcontractor coordination, and financial reporting. The application aims to streamline operations, improve financial oversight, and enhance compliance for contractors.
