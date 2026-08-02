@@ -1,0 +1,93 @@
+Yes—but I'd make that requirement much more explicit.
+
+Right now your spec implies code reuse, but it doesn't require it. AI developers often default to rebuilding components because it's easier than integrating with existing ones.
+
+I'd add one more section near the top.
+
+Engineering Principles
+Reuse Before Rebuild
+
+BuildPro Studio 2.0 is a UX redesign, not a rewrite.
+
+Before creating any new component, search the existing codebase for reusable functionality.
+
+Prefer extending or restyling existing components over replacing them.
+
+Only create new components when the current architecture cannot reasonably support the desired UX.
+
+Examples:
+
+✅ Reuse existing drag-and-drop engine.
+✅ Reuse existing undo/redo system.
+✅ Reuse existing auto-save logic.
+✅ Reuse existing inline editing.
+✅ Reuse existing website rendering engine.
+✅ Reuse existing section template data.
+✅ Reuse existing publish/save APIs.
+✅ Reuse existing selection state.
+❌ Do not create a second editor engine.
+❌ Do not create a second website renderer.
+❌ Do not duplicate existing state management.
+❌ Do not replace working systems solely for cleaner code.
+Minimize Technical Debt
+
+Every change should reduce complexity rather than increase it.
+
+If an existing component can be improved through refactoring instead of replacement, refactor it.
+
+Avoid duplicate utilities, duplicate hooks, duplicate state stores, or parallel implementations.
+
+Preserve Existing Functionality
+
+Every feature that currently works must continue to work after the redesign unless explicitly listed in the task.
+
+Visual redesigns must not introduce functional regressions.
+
+Build Incrementally
+
+Every milestone should leave Studio in a fully working state.
+
+Avoid "big bang" rewrites.
+
+Each completed milestone should be shippable on its own.
+
+Then I'd add one sentence to the Steps section.
+
+At the very beginning:
+
+Step 0 – Code Audit
+
+Before implementing any UI changes, audit the existing website editor and identify reusable systems (drag-and-drop, selection model, undo/redo, auto-save, inline editing, rendering, templates, inspector, context menus, keyboard shortcuts). Produce a short implementation plan showing which systems will be reused, which will be refactored, and which truly require new components. Do not begin implementation until this audit is complete.
+
+Based on what Replit already told you...
+
+It already identified several things that should absolutely be reused:
+
+✅ Existing website renderer
+✅ Existing drag-and-drop (dnd-kit)
+✅ Existing inline editing
+✅ Existing undo/redo
+✅ Existing context menus
+✅ Existing inspector
+✅ Existing auto-save
+✅ Existing section templates
+✅ Existing breakpoint logic
+✅ Existing website JSON schema
+✅ Existing publish/save flow
+
+So Phase 1 should mostly be:
+
+New layout
+Better styling
+Better interaction patterns
+A few new UI components (floating toolbar, section gallery, breadcrumb bar)
+
+—not rebuilding the core editor.
+
+One more thing I'd require
+
+I'd tell Replit:
+
+Before writing code, estimate the percentage of existing editor code that will be reused. The target should be at least 80–90% reuse of the core editing engine, with most new code focused on presentation and interaction layers rather than replacing business logic. If a major subsystem must be replaced, explain why and get approval before proceeding.
+
+That gives you a checkpoint. If Replit comes back saying, "We need to rewrite the editor," you'll know immediately to challenge that decision. The strongest outcome is a Studio that feels completely new while keeping the mature editing engine you've already invested in.
