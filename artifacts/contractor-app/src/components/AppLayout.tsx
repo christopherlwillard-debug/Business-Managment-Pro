@@ -48,6 +48,7 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isStudioMode = location.startsWith("/website");
   const { guardNavigate } = useNavigationBlocker();
   const { isDark, toggle: toggleTheme } = useTheme();
 
@@ -205,14 +206,14 @@ export function AppLayout({ children }: AppLayoutProps) {
       const currentGroup = item.group;
       if (currentGroup && currentGroup !== lastGroup) {
         result.push(
-          <div key={`divider-${currentGroup}`} className="mt-3 mb-1 px-3">
+          <div key={`divider-${currentGroup}`} className={cn("mt-3 mb-1 px-3", isStudioMode && "lg:hidden")}>
             <p className="text-[10px] font-bold tracking-widest uppercase text-primary-foreground/30 select-none">
               {GROUP_LABELS[currentGroup]}
             </p>
           </div>
         );
       } else if (!currentGroup && lastGroup) {
-        result.push(<div key="divider-bottom" className="my-2 border-t border-primary-foreground/10" />);
+        result.push(<div key="divider-bottom" className={cn("my-2 border-t border-primary-foreground/10", isStudioMode && "lg:hidden")} />);
       }
       lastGroup = currentGroup;
 
@@ -234,14 +235,17 @@ export function AppLayout({ children }: AppLayoutProps) {
             "flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors group",
             isActive
               ? "bg-accent/10 text-accent"
-              : "text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-white"
+              : "text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-white",
+            isStudioMode && "lg:justify-center lg:px-0"
           )}
+          title={isStudioMode ? item.name : undefined}
         >
           <item.icon className={cn(
-            "w-5 h-5 mr-3 flex-shrink-0",
+            "w-5 h-5 flex-shrink-0",
+            isStudioMode ? "lg:mx-auto" : "mr-3",
             isActive ? "text-accent" : "text-primary-foreground/50 group-hover:text-primary-foreground/80"
           )} />
-          <span className="flex-1">{item.name}</span>
+          <span className={cn("flex-1", isStudioMode && "lg:hidden")}>{item.name}</span>
           {isBids && activeBidCount > 0 && (
             <span className={cn(
               "ml-2 text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center",
@@ -277,11 +281,16 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* Sidebar — desktop always visible, mobile slides in */}
       <div className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 bg-primary text-primary-foreground transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col",
+        "fixed inset-y-0 left-0 z-50 bg-primary text-primary-foreground transform transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col",
+        // Desktop width: collapse to icon rail in Studio mode
+        isStudioMode ? "w-64 lg:w-14" : "w-64",
         mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         {/* Logo */}
-        <div className="flex items-center justify-between h-16 px-4 bg-primary border-b border-primary-foreground/10 flex-shrink-0">
+        <div className={cn(
+          "flex items-center h-16 bg-primary border-b border-primary-foreground/10 flex-shrink-0",
+          isStudioMode ? "lg:justify-center px-4 lg:px-0" : "justify-between px-4"
+        )}>
           <Link href="/" className="flex items-center" onClick={(e) => { e.preventDefault(); guardNavigate(() => { setMobileMenuOpen(false); setLocation("/"); }); }}>
             {logoUrl && !logoImgError ? (
               <img
@@ -301,9 +310,9 @@ export function AppLayout({ children }: AppLayoutProps) {
           </button>
         </div>
 
-        {/* Business switcher / context badge — only shown for owners */}
+        {/* Business switcher / context badge — only shown for owners; hidden in Studio mode */}
         {isOwner && (
-          <div className="px-3 py-2 border-b border-primary-foreground/10">
+          <div className={cn("px-3 py-2 border-b border-primary-foreground/10", isStudioMode && "lg:hidden")}>
             <button
               onClick={openBusinessSwitcher}
               className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-semibold text-primary-foreground/80 hover:bg-primary-foreground/10 hover:text-white transition-colors"
@@ -327,25 +336,36 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
 
         {/* Bottom sidebar actions */}
-        <div className="flex-shrink-0 px-3 pb-4 border-t border-primary-foreground/10 pt-3 space-y-0.5">
+        <div className={cn(
+          "flex-shrink-0 pb-4 border-t border-primary-foreground/10 pt-3 space-y-0.5",
+          isStudioMode ? "lg:px-1 px-3" : "px-3"
+        )}>
           <button
             onClick={toggleTheme}
-            className="w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-white transition-colors group"
+            className={cn(
+              "w-full flex items-center py-2.5 rounded-lg text-sm font-medium text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-white transition-colors group",
+              isStudioMode ? "lg:justify-center lg:px-0 px-3" : "px-3"
+            )}
             aria-label="Toggle dark mode"
+            title={isStudioMode ? (isDark ? "Light mode" : "Dark mode") : undefined}
           >
             {isDark ? (
-              <Sun className="w-5 h-5 mr-3 flex-shrink-0 text-primary-foreground/50 group-hover:text-primary-foreground/80" />
+              <Sun className={cn("w-5 h-5 flex-shrink-0 text-primary-foreground/50 group-hover:text-primary-foreground/80", isStudioMode ? "lg:mx-auto" : "mr-3")} />
             ) : (
-              <Moon className="w-5 h-5 mr-3 flex-shrink-0 text-primary-foreground/50 group-hover:text-primary-foreground/80" />
+              <Moon className={cn("w-5 h-5 flex-shrink-0 text-primary-foreground/50 group-hover:text-primary-foreground/80", isStudioMode ? "lg:mx-auto" : "mr-3")} />
             )}
-            {isDark ? "Light mode" : "Dark mode"}
+            <span className={cn(isStudioMode && "lg:hidden")}>{isDark ? "Light mode" : "Dark mode"}</span>
           </button>
           <button
             onClick={logout}
-            className="w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-white transition-colors group"
+            className={cn(
+              "w-full flex items-center py-2.5 rounded-lg text-sm font-medium text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-white transition-colors group",
+              isStudioMode ? "lg:justify-center lg:px-0 px-3" : "px-3"
+            )}
+            title={isStudioMode ? "Log out" : undefined}
           >
-            <LogOut className="w-5 h-5 mr-3 flex-shrink-0 text-primary-foreground/50 group-hover:text-primary-foreground/80" />
-            Log out
+            <LogOut className={cn("w-5 h-5 flex-shrink-0 text-primary-foreground/50 group-hover:text-primary-foreground/80", isStudioMode ? "lg:mx-auto" : "mr-3")} />
+            <span className={cn(isStudioMode && "lg:hidden")}>Log out</span>
           </button>
         </div>
       </div>
@@ -414,7 +434,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </header>
 
         {/* Page content — add bottom padding on mobile for the bottom nav */}
-        {location === "/aerial-quote" ? (
+        {location === "/aerial-quote" || location.startsWith("/website") ? (
           <main className="flex-1 overflow-hidden bg-background relative flex flex-col">
             {children}
           </main>

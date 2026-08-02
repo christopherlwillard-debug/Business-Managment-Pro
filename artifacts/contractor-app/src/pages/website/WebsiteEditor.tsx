@@ -8,7 +8,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info,
+  Eye, EyeOff, GripVertical, Globe, Save, Upload, CheckCircle, ExternalLink, ImagePlus, Loader2, Link2, Copy, Info, Check,
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
   Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette, Briefcase,
   ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText, X, Search,
@@ -1345,6 +1345,9 @@ function WebsiteEditor() {
   const [leftCollapsed, setLeftCollapsed] = useState(
     () => localStorage.getItem("website-editor-left-collapsed") === "true"
   );
+  const [canvasZoom, setCanvasZoom] = useState(100);
+  const [showSaved, setShowSaved] = useState(false);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [showFullscreenPreview, setShowFullscreenPreview] = useState(false);
   const preFocusSidebarState = useRef<{ left: boolean } | null>(null);
@@ -1803,7 +1806,9 @@ function WebsiteEditor() {
     onSuccess: () => {
       isDirtyRef.current = false;
       qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Draft saved" });
+      setShowSaved(true);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setShowSaved(false), 2500);
     },
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
   });
@@ -4281,6 +4286,18 @@ function WebsiteEditor() {
             <span className="hidden md:inline">{isPublished ? "Live" : "Preview"}</span>
           </button>
         )}
+        {/* Save status indicator */}
+        {saveMutation.isPending ? (
+          <span className="hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Saving…
+          </span>
+        ) : showSaved ? (
+          <span className="hidden sm:flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
+            <Check className="w-3 h-3" />
+            Saved
+          </span>
+        ) : null}
         <button
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending}
@@ -4982,7 +4999,7 @@ function WebsiteEditor() {
           {/* Canvas — live preview, scrolls */}
           <div
             data-editor-canvas="true"
-            className={`flex-1 overflow-y-auto bg-muted/30 ${!focusMode ? "cursor-zoom-in" : ""}`}
+            className={`flex-1 overflow-y-auto relative bg-[#1c1c1e] ${!focusMode ? "cursor-zoom-in" : ""}`}
             onClick={() => setActiveSection(null)}
             onDoubleClick={e => {
               if (focusMode) return;
@@ -4991,11 +5008,14 @@ function WebsiteEditor() {
               setFocusMode(true);
             }}
           >
-            <div className={`mx-auto my-6 transition-all duration-300 ${
-              viewport === "desktop" ? "w-full px-6 min-w-[400px]" :
-              viewport === "tablet" ? "max-w-[800px] px-4" :
-              "max-w-[430px] px-3"
-            }`}>
+            <div
+              className={`mx-auto my-8 transition-all duration-300 ${
+                viewport === "desktop" ? "w-full px-6 min-w-[400px]" :
+                viewport === "tablet" ? "max-w-[800px] px-4" :
+                "max-w-[430px] px-3"
+              }`}
+              style={{ transform: `scale(${canvasZoom / 100})`, transformOrigin: "top center" }}
+            >
               {viewport === "mobile" ? (
                 /* Phone chrome */
                 <div className="bg-gray-800 rounded-[3rem] p-[10px] shadow-2xl border border-gray-700">
@@ -5025,11 +5045,46 @@ function WebsiteEditor() {
                   </div>
                 </div>
               ) : (
-                /* Desktop — existing card */
-                <div className="bg-white dark:bg-gray-900 shadow-lg rounded-xl overflow-hidden">
+                /* Desktop — floating card on dark canvas */
+                <div className="bg-white dark:bg-gray-900 shadow-2xl rounded-xl overflow-hidden ring-1 ring-black/10">
                   {renderSections()}
                 </div>
               )}
+            </div>
+
+            {/* Zoom control — bottom-right of canvas */}
+            <div className="absolute bottom-4 right-4 z-10 flex items-center gap-0.5 bg-card/90 backdrop-blur-sm border border-border rounded-lg shadow-md px-1.5 py-1 select-none">
+              <button
+                type="button"
+                onClick={() => setCanvasZoom(z => Math.max(50, z - 25))}
+                disabled={canvasZoom <= 50}
+                className="w-6 h-6 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-30"
+                title="Zoom out"
+              >−</button>
+              <select
+                value={canvasZoom}
+                onChange={e => setCanvasZoom(Number(e.target.value))}
+                className="text-xs font-medium bg-transparent text-foreground cursor-pointer border-none outline-none px-0.5 appearance-none w-[46px] text-center"
+                title="Zoom level"
+              >
+                {[50, 75, 100, 125, 150].map(z => (
+                  <option key={z} value={z}>{z}%</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setCanvasZoom(z => Math.min(150, z + 25))}
+                disabled={canvasZoom >= 150}
+                className="w-6 h-6 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-30"
+                title="Zoom in"
+              >+</button>
+              <div className="w-px h-3 bg-border mx-0.5" />
+              <button
+                type="button"
+                onClick={() => setCanvasZoom(100)}
+                className="text-xs font-medium text-muted-foreground hover:text-foreground px-1 rounded hover:bg-muted transition-colors"
+                title="Reset zoom"
+              >Fit</button>
             </div>
           </div>
           {/* Docked inspector panel — desktop only, auto-sizes beside canvas as flex sibling */}
