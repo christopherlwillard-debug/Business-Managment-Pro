@@ -12,7 +12,7 @@ import {
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
   Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette, Briefcase,
   ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText, X, Search,
-  Users, Handshake, MapPin, Award, ArrowLeftRight, ThumbsUp, Sparkles,
+  Users, Handshake, MapPin, Award, ArrowLeftRight, ThumbsUp, Sparkles, ArrowUpDown,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -500,6 +500,128 @@ function SortableRow({
     </div>
   );
 }
+
+// ─── BetweenSectionsZone ─────────────────────────────────────────────────────
+// Thin zone rendered between every adjacent pair of canvas sections.
+// Reveals on hover: a centred + button that opens the Section Library Panel
+// at the correct insert index, and a spacing pill that lets the user drag
+// the upper section's paddingBottom live.
+
+interface BetweenSectionsZoneProps {
+  /** The section ID passed to insertAfterSectionId when + is clicked */
+  afterSectionId: string | null | undefined;
+  /** Section ID whose blockStyle.paddingBottom we are adjusting (null = no drag handle) */
+  upperSectionId: string | null;
+  /** Current blockStyle of the upper section */
+  upperBlockStyle: BlockStyle | undefined;
+  /** Open the Section Library Panel with this afterSectionId pre-set */
+  onOpenLibrary: (afterId: string | null | undefined) => void;
+  /** Called once on drag-start — caller should push a history snapshot here */
+  onDragStart: () => void;
+  /** Live blockStyle update (no history push) */
+  onUpdateLive: (sectionId: string, blockStyle: BlockStyle) => void;
+}
+
+function BetweenSectionsZone({
+  afterSectionId,
+  upperSectionId,
+  upperBlockStyle,
+  onOpenLibrary,
+  onDragStart,
+  onUpdateLive,
+}: BetweenSectionsZoneProps) {
+  const dragRef = useRef<{ startY: number; startPadding: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [livePadding, setLivePadding] = useState<number | null>(null);
+
+  const currentPadding = livePadding ?? (upperBlockStyle?.paddingBottom ?? 0);
+
+  function handlePointerDown(e: React.PointerEvent<HTMLButtonElement>) {
+    if (!upperSectionId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startPadding = upperBlockStyle?.paddingBottom ?? 0;
+    dragRef.current = { startY: e.clientY, startPadding };
+    setIsDragging(true);
+    setLivePadding(startPadding);
+    onDragStart();
+    (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    if (!dragRef.current || !upperSectionId) return;
+    // Dragging UP increases padding (drag up → negative delta → add to padding)
+    const delta = dragRef.current.startY - e.clientY;
+    const raw = dragRef.current.startPadding + delta;
+    const snapped = Math.round(Math.max(0, Math.min(400, raw)) / 4) * 4;
+    setLivePadding(snapped);
+    onUpdateLive(upperSectionId, { ...(upperBlockStyle ?? {}), paddingBottom: snapped });
+  }
+
+  function handlePointerUp(e: React.PointerEvent<HTMLButtonElement>) {
+    if (!dragRef.current || !upperSectionId) return;
+    const delta = dragRef.current.startY - e.clientY;
+    const raw = dragRef.current.startPadding + delta;
+    const snapped = Math.round(Math.max(0, Math.min(400, raw)) / 4) * 4;
+    dragRef.current = null;
+    setIsDragging(false);
+    setLivePadding(null);
+    // Final live update — history snapshot was already pushed on pointerdown
+    onUpdateLive(upperSectionId, { ...(upperBlockStyle ?? {}), paddingBottom: snapped });
+  }
+
+  const displayPadding = livePadding ?? upperBlockStyle?.paddingBottom;
+
+  return (
+    <div
+      className="group/zone relative h-7 flex items-center justify-center z-20 cursor-default"
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Dashed separator line */}
+      <div className="absolute inset-x-10 top-1/2 -translate-y-1/2 h-px bg-primary/0 group-hover/zone:bg-primary/30 transition-colors duration-150 pointer-events-none" />
+
+      {/* + insert button */}
+      <button
+        type="button"
+        title="Add section here"
+        className="relative z-10 w-5 h-5 rounded-full bg-primary text-primary-foreground shadow-md opacity-0 group-hover/zone:opacity-100 transition-opacity duration-150 hover:scale-110 active:scale-95 flex items-center justify-center"
+        onClick={e => {
+          e.stopPropagation();
+          onOpenLibrary(afterSectionId);
+        }}
+      >
+        <Plus className="w-3 h-3" />
+      </button>
+
+      {/* Spacing drag pill — only when there's an upper section to adjust */}
+      {upperSectionId && (
+        <button
+          type="button"
+          title="Drag up/down to adjust spacing"
+          className={[
+            "absolute right-10 top-1/2 -translate-y-1/2",
+            "flex items-center gap-1 px-1.5 py-0.5 rounded",
+            "text-[10px] font-mono font-medium",
+            "bg-background border border-border shadow-sm",
+            "select-none cursor-ns-resize",
+            "transition-opacity duration-150",
+            isDragging
+              ? "opacity-100 bg-primary/10 border-primary text-primary"
+              : "opacity-0 group-hover/zone:opacity-100 text-muted-foreground hover:text-foreground hover:border-primary/50",
+          ].join(" ")}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        >
+          <ArrowUpDown className="w-2.5 h-2.5 flex-shrink-0" />
+          <span>{displayPadding !== undefined ? `${displayPadding}px` : "auto"}</span>
+        </button>
+      )}
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function CustomDomainPanel({
   customDomain,
@@ -1969,6 +2091,21 @@ function WebsiteEditor() {
   function updateBlockStyle(id: string, blockStyle: BlockStyle) {
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.sections.some(s => s.id === id)) {
+          return { ...p, sections: p.sections.map(s => s.id === id ? { ...s, blockStyle } : s) };
+        }
+        return p;
+      });
+    });
+  }
+
+  /** Live blockStyle update used during spacing drag — no history push (snapshot already taken on drag start). */
+  function setBlockStyleLive(id: string, blockStyle: BlockStyle) {
+    isDirtyRef.current = true;
+    setHasUnpublishedChanges(true);
     setLocalPages(prev => {
       if (!prev) return prev;
       return prev.map(p => {
@@ -3959,27 +4096,26 @@ function WebsiteEditor() {
       );
     }
 
-    function addBetween(afterSectionId: string | null | undefined, key: string) {
+    function addBetween(
+      afterSectionId: string | null | undefined,
+      key: string,
+      upperSection?: Section | null,
+    ) {
       return (
-        <div
+        <BetweenSectionsZone
           key={key}
-          className="group/ins relative h-6 flex items-center justify-center z-20"
-          onClick={e => e.stopPropagation()}
-        >
-          <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-px bg-primary/0 group-hover/ins:bg-primary/40 transition-colors pointer-events-none" />
-          <button
-            type="button"
-            title="Add section here"
-            className="relative z-10 w-5 h-5 rounded-full bg-primary text-primary-foreground shadow-md opacity-0 group-hover/ins:opacity-100 transition-opacity hover:scale-110 flex items-center justify-center"
-            onClick={e => {
-              e.stopPropagation();
-              setInsertAfterSectionId(afterSectionId);
-              setShowAddSection(true);
-            }}
-          >
-            <Plus className="w-3 h-3" />
-          </button>
-        </div>
+          afterSectionId={afterSectionId}
+          upperSectionId={upperSection?.id ?? null}
+          upperBlockStyle={upperSection?.blockStyle}
+          onOpenLibrary={afterId => {
+            setInsertAfterSectionId(afterId);
+            setShowAddSection(true);
+          }}
+          onDragStart={() => {
+            history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+          }}
+          onUpdateLive={setBlockStyleLive}
+        />
       );
     }
 
@@ -4028,12 +4164,24 @@ function WebsiteEditor() {
           {canvasSections.flatMap((s, idx) => {
             const wrapped = renderWrapped(s, { isFirst: idx === 0, isLast: idx === canvasSections.length - 1 });
             if (previewMode) return [wrapped];
+            // Upper section for the zone above s:
+            //   idx === 0 → above the first body section; header is non-adjustable so pass null
+            //   idx > 0   → the previous canvas section
+            const upperForZone = idx === 0 ? null : canvasSections[idx - 1];
             return [
-              addBetween(idx === 0 ? (headerSec ? headerSec.id : null) : canvasSections[idx - 1]?.id, `ins-${idx}`),
+              addBetween(
+                idx === 0 ? (headerSec ? headerSec.id : null) : canvasSections[idx - 1]?.id,
+                `ins-${idx}`,
+                upperForZone,
+              ),
               wrapped,
             ];
           })}
-          {canvasSections.length > 0 && !previewMode && addBetween(canvasSections[canvasSections.length - 1]?.id, "ins-end")}
+          {canvasSections.length > 0 && !previewMode && addBetween(
+            canvasSections[canvasSections.length - 1]?.id,
+            "ins-end",
+            canvasSections[canvasSections.length - 1],
+          )}
         </div>
       </InlineEditContext.Provider>
     );
