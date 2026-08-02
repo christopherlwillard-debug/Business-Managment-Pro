@@ -74,6 +74,8 @@ interface FieldCtx {
   onOpenMediaLibrary: (cb: (url: string) => void) => void;
   onBgImageUpload: (file: File) => void;
   isBgUploading: boolean;
+  /** Used to target the section's canvas element for animation preview. */
+  sectionId?: string;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -474,20 +476,80 @@ function renderField(f: FieldDescriptor, ctx: FieldCtx): React.ReactNode {
 
   if (k.type === "animation-preset") {
     const val = (f.getValue(bs) as string | undefined) ?? "none";
-    const presets: { label: string; value: BlockStyle["animation"] }[] = [
-      { label: "None",    value: "none" },
-      { label: "Fade",    value: "fadeIn" },
-      { label: "Slide ↑", value: "slideUp" },
-      { label: "Slide ←", value: "slideLeft" },
+    const presets: { label: string; icon: string; value: NonNullable<BlockStyle["animation"]> }[] = [
+      { label: "None",       icon: "—",  value: "none" },
+      { label: "Fade In",    icon: "✦",  value: "fadeIn" },
+      { label: "Slide Up",   icon: "↑",  value: "slideUp" },
+      { label: "Slide Left", icon: "←",  value: "slideLeft" },
+      { label: "Slide Right",icon: "→",  value: "slideRight" },
+      { label: "Scale Up",   icon: "⊕",  value: "scaleUp" },
+      { label: "Zoom In",    icon: "⊙",  value: "zoomIn" },
     ];
+    const hasAnim = val !== "none";
+    const delay    = bs.animationDelay    ?? 0;
+    const duration = bs.animationDuration ?? 700;
+
+    function doPreview() {
+      const sectionId = ctx.sectionId;
+      if (!sectionId || !hasAnim) return;
+      const kfMap: Record<string, string> = {
+        fadeIn: "bs-fade-in", slideUp: "bs-slide-up", slideLeft: "bs-slide-left",
+        slideRight: "bs-slide-right", scaleUp: "bs-scale-up", zoomIn: "bs-zoom-in",
+      };
+      const kf = kfMap[val];
+      const el = document.querySelector<HTMLElement>(`[data-section-canvas-id="${sectionId}"]`);
+      if (!el || !kf) return;
+      el.style.opacity = "0";
+      el.style.animation = "none";
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.style.opacity = "";
+          el.style.animation = `${kf} ${duration}ms ease ${delay}ms both`;
+          setTimeout(() => { el.style.animation = ""; }, delay + duration + 200);
+        });
+      });
+    }
+
     return (
-      <div className="grid grid-cols-3 gap-1">
-        {presets.map(p => (
-          <button key={p.value} type="button" onClick={() => change(p.value)}
-            className={`py-1.5 text-[10px] rounded border transition-colors ${val === p.value ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-muted-foreground"}`}>
-            {p.label}
-          </button>
-        ))}
+      <div className="space-y-2">
+        <div className="grid grid-cols-4 gap-1">
+          {presets.map(p => (
+            <button key={p.value} type="button" onClick={() => {
+              trackRecent(f.id);
+              patch(f.setValue(p.value));
+            }}
+              className={`flex flex-col items-center gap-0.5 py-1.5 px-0.5 text-[9px] rounded border transition-colors leading-tight ${val === p.value ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-muted-foreground"}`}>
+              <span className="text-xs leading-none">{p.icon}</span>
+              <span className="truncate w-full text-center">{p.label}</span>
+            </button>
+          ))}
+        </div>
+        {hasAnim && (
+          <>
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[10px] text-muted-foreground">Delay</label>
+                <span className="text-[10px] font-mono tabular-nums">{delay}ms</span>
+              </div>
+              <input type="range" min={0} max={1000} step={50} value={delay}
+                onChange={e => { trackRecent("animation-delay"); patch({ animationDelay: Number(e.target.value) }); }}
+                className="w-full h-1 accent-primary" />
+            </div>
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[10px] text-muted-foreground">Duration</label>
+                <span className="text-[10px] font-mono tabular-nums">{duration}ms</span>
+              </div>
+              <input type="range" min={200} max={1200} step={100} value={duration}
+                onChange={e => { trackRecent("animation-duration"); patch({ animationDuration: Number(e.target.value) }); }}
+                className="w-full h-1 accent-primary" />
+            </div>
+            <button type="button" onClick={doPreview}
+              className="w-full py-1 text-[10px] rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors border border-border">
+              ▶ Preview animation
+            </button>
+          </>
+        )}
       </div>
     );
   }
@@ -734,6 +796,7 @@ export function InspectorPanel({
     sectionEnabled: section.enabled,
     onToggleSection, switchToAccordion, handlePin, pins,
     onOpenMediaLibrary, onBgImageUpload, isBgUploading,
+    sectionId: section.id,
   };
 
   // ── Search results ─────────────────────────────────────────────────────────

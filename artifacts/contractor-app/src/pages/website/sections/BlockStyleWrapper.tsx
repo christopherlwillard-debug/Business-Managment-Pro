@@ -33,7 +33,11 @@ export interface BlockStyle {
   borderStyle?: "none" | "solid" | "dashed" | "dotted";
   borderColor?: string;
   shadow?: "none" | "sm" | "md" | "lg" | "xl";
-  animation?: "none" | "fadeIn" | "slideUp" | "slideLeft";
+  animation?: "none" | "fadeIn" | "slideUp" | "slideLeft" | "slideRight" | "scaleUp" | "zoomIn";
+  /** Entrance animation delay in ms (0–1000, step 50). Default: 0. */
+  animationDelay?: number;
+  /** Entrance animation duration in ms (200–1200, step 100). Default: 700. */
+  animationDuration?: number;
   hideOnMobile?: boolean;
   hideOnTablet?: boolean;
   customClass?: string;
@@ -57,9 +61,22 @@ const SHADOW_MAP: Record<string, string> = {
 };
 
 const ANIM_CLASS_MAP: Record<string, string> = {
-  fadeIn: "bs-anim-fade-in",
-  slideUp: "bs-anim-slide-up",
-  slideLeft: "bs-anim-slide-left",
+  fadeIn:     "bs-anim-fade-in",
+  slideUp:    "bs-anim-slide-up",
+  slideLeft:  "bs-anim-slide-left",
+  slideRight: "bs-anim-slide-right",
+  scaleUp:    "bs-anim-scale-up",
+  zoomIn:     "bs-anim-zoom-in",
+};
+
+/** Map from animation key to the underlying @keyframes name — used for live DOM preview. */
+export const ANIM_KEYFRAME_MAP: Record<string, string> = {
+  fadeIn:     "bs-fade-in",
+  slideUp:    "bs-slide-up",
+  slideLeft:  "bs-slide-left",
+  slideRight: "bs-slide-right",
+  scaleUp:    "bs-scale-up",
+  zoomIn:     "bs-zoom-in",
 };
 
 interface BlockStyleWrapperProps {
@@ -133,6 +150,16 @@ export function BlockStyleWrapper({
     style.borderStyle = (bs.borderStyle && bs.borderStyle !== "none") ? bs.borderStyle : "solid";
     if (bs.borderColor) style.borderColor = bs.borderColor;
   }
+  // Entrance-animation timing CSS variables (consumed by .bs-anim-* classes)
+  if (anim) {
+    if (bs.animationDelay !== undefined && bs.animationDelay > 0) {
+      (style as Record<string, unknown>)["--bs-anim-delay"] = `${bs.animationDelay}ms`;
+    }
+    if (bs.animationDuration !== undefined) {
+      (style as Record<string, unknown>)["--bs-anim-duration"] = `${bs.animationDuration}ms`;
+    }
+  }
+
   if (bs.textColor) style.color = bs.textColor;
   if (bs.fontFamily) style.fontFamily = bs.fontFamily;
   if (bs.fontSize) style.fontSize = bs.fontSize;

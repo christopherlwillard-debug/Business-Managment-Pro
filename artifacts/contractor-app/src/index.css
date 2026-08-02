@@ -199,10 +199,26 @@
   from { opacity: 0; transform: translateX(-40px); }
   to { opacity: 1; transform: translateX(0); }
 }
+@keyframes bs-slide-right {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes bs-scale-up {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes bs-zoom-in {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+/* --bs-anim-duration and --bs-anim-delay can be set per-element to customise timing */
 .bs-anim-hidden { opacity: 0; }
-.bs-anim-fade-in { animation: bs-fade-in 0.7s ease forwards; }
-.bs-anim-slide-up { animation: bs-slide-up 0.7s ease forwards; }
-.bs-anim-slide-left { animation: bs-slide-left 0.7s ease forwards; }
+.bs-anim-fade-in    { animation: bs-fade-in    var(--bs-anim-duration, 700ms) ease var(--bs-anim-delay, 0ms) forwards; }
+.bs-anim-slide-up   { animation: bs-slide-up   var(--bs-anim-duration, 700ms) ease var(--bs-anim-delay, 0ms) forwards; }
+.bs-anim-slide-left { animation: bs-slide-left var(--bs-anim-duration, 700ms) ease var(--bs-anim-delay, 0ms) forwards; }
+.bs-anim-slide-right { animation: bs-slide-right var(--bs-anim-duration, 700ms) ease var(--bs-anim-delay, 0ms) forwards; }
+.bs-anim-scale-up   { animation: bs-scale-up   var(--bs-anim-duration, 700ms) ease var(--bs-anim-delay, 0ms) forwards; }
+.bs-anim-zoom-in    { animation: bs-zoom-in    var(--bs-anim-duration, 700ms) ease var(--bs-anim-delay, 0ms) forwards; }
 
 /* Custom Scrollbar for a premium feel */
 ::-webkit-scrollbar {

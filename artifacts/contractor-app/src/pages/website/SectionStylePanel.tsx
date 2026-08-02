@@ -98,7 +98,7 @@ interface SectionStylePanelProps {
 }
 
 export function SectionStylePanel({
-  sectionId: _sectionId,
+  sectionId,
   sectionType,
   blockStyle,
   onChange,
@@ -501,30 +501,81 @@ export function SectionStylePanel({
             {/* Animation */}
             <AccordionSection title="Animation" groupKey="animation" openGroups={openGroups} onToggle={toggleGroup}>
               <p className="text-[10px] text-muted-foreground mb-2">
-                Entrance animation — plays on the live site when the section scrolls into view
+                Entrance animation — plays when the section scrolls into view
               </p>
-              <div className="grid grid-cols-2 gap-1">
+              <div className="grid grid-cols-4 gap-1 mb-2">
                 {(
                   [
-                    { value: "none",      label: "None" },
-                    { value: "fadeIn",    label: "Fade In" },
-                    { value: "slideUp",   label: "Slide Up" },
-                    { value: "slideLeft", label: "Slide Left" },
+                    { value: "none",       label: "None",        icon: "—" },
+                    { value: "fadeIn",     label: "Fade In",     icon: "✦" },
+                    { value: "slideUp",    label: "Slide Up",    icon: "↑" },
+                    { value: "slideLeft",  label: "Slide Left",  icon: "←" },
+                    { value: "slideRight", label: "Slide Right", icon: "→" },
+                    { value: "scaleUp",    label: "Scale Up",    icon: "⊕" },
+                    { value: "zoomIn",     label: "Zoom In",     icon: "⊙" },
                   ] as const
-                ).map(({ value, label }) => (
+                ).map(({ value, label, icon }) => (
                   <button
                     key={value}
                     onClick={() => patch({ animation: value })}
-                    className={`py-1.5 text-xs rounded transition-colors ${
+                    className={`flex flex-col items-center gap-0.5 py-1.5 px-0.5 text-[9px] rounded border transition-colors leading-tight ${
                       (bs.animation ?? "none") === value
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground hover:text-foreground"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-muted-foreground"
                     }`}
                   >
-                    {label}
+                    <span className="text-xs leading-none">{icon}</span>
+                    <span className="truncate w-full text-center">{label}</span>
                   </button>
                 ))}
               </div>
+              {(bs.animation && bs.animation !== "none") && (
+                <div className="space-y-2 mt-1">
+                  <SliderRow
+                    label="Delay"
+                    value={bs.animationDelay ?? 0}
+                    min={0}
+                    max={1000}
+                    unit="ms"
+                    onChange={v => patch({ animationDelay: v })}
+                  />
+                  <SliderRow
+                    label="Duration"
+                    value={bs.animationDuration ?? 700}
+                    min={200}
+                    max={1200}
+                    unit="ms"
+                    onChange={v => patch({ animationDuration: v })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const kfMap: Record<string, string> = {
+                        fadeIn: "bs-fade-in", slideUp: "bs-slide-up",
+                        slideLeft: "bs-slide-left", slideRight: "bs-slide-right",
+                        scaleUp: "bs-scale-up", zoomIn: "bs-zoom-in",
+                      };
+                      const kf = kfMap[bs.animation ?? ""];
+                      const el = document.querySelector<HTMLElement>(`[data-section-canvas-id="${sectionId}"]`);
+                      if (!el || !kf) return;
+                      const dur = bs.animationDuration ?? 700;
+                      const del = bs.animationDelay ?? 0;
+                      el.style.opacity = "0";
+                      el.style.animation = "none";
+                      requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                          el.style.opacity = "";
+                          el.style.animation = `${kf} ${dur}ms ease ${del}ms both`;
+                          setTimeout(() => { el.style.animation = ""; }, del + dur + 200);
+                        });
+                      });
+                    }}
+                    className="w-full py-1 text-xs rounded bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors border border-border"
+                  >
+                    ▶ Preview animation
+                  </button>
+                </div>
+              )}
             </AccordionSection>
 
             <button
