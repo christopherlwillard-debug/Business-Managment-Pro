@@ -3,6 +3,49 @@ import {
   ChevronUp, ChevronDown, Copy, EyeOff, Eye, Plus, Trash2, Lock, Pencil, Sparkles,
 } from "lucide-react";
 
+// ── Tooltip-aware toolbar button ──────────────────────────────────────────────
+// Wraps a button with a small floating label that appears after a 150 ms hover
+// delay so it never flickers on quick mouse-overs.
+
+function ToolbarBtn({
+  onClick,
+  disabled,
+  tooltip,
+  className,
+  children,
+}: {
+  onClick?: (e: React.MouseEvent) => void;
+  disabled?: boolean;
+  tooltip: string;
+  className: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="relative group/btn flex-shrink-0">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={className}
+      >
+        {children}
+      </button>
+      {/* Tooltip */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2
+          px-1.5 py-0.5 bg-gray-950/95 text-white text-[10px] font-medium rounded
+          whitespace-nowrap shadow-lg border border-white/10
+          opacity-0 group-hover/btn:opacity-100
+          transition-opacity duration-100 delay-150
+          z-[9999]"
+      >
+        {tooltip}
+      </span>
+    </div>
+  );
+}
+
 /**
  * EditableWrapper — the shared architectural foundation for every editable
  * object in the website editor canvas: sections, rows, columns, and
@@ -142,16 +185,16 @@ export function EditableWrapper({
       }}
       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onContextMenu?.(e); }}
     >
-      {/* Type label badge — faint on hover, solid primary when selected */}
+      {/* Type label chip — hover-only, pill style, minimal weight */}
       <div className="absolute top-1 left-1 z-10 flex items-center gap-1.5 pointer-events-none">
         <span
-          className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 transition-all duration-150 ${
+          className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full flex items-center gap-1 transition-all duration-150 border ${
             isSelected
-              ? "bg-primary text-primary-foreground opacity-100"
-              : "bg-foreground/70 text-background opacity-0 group-hover/sec:opacity-100"
+              ? "bg-black/50 backdrop-blur-sm text-white/85 border-white/20 opacity-80"
+              : "bg-black/30 backdrop-blur-sm text-white/65 border-white/10 opacity-0 group-hover/sec:opacity-60"
           }`}
         >
-          {(isHeader || locked) && <Lock className="w-2.5 h-2.5" />}
+          {(isHeader || locked) && <Lock className="w-2 h-2" />}
           {label}
         </span>
 
@@ -192,44 +235,41 @@ export function EditableWrapper({
           {/* Edit — always first in toolbar; opens inspector / focuses first editable field */}
           {onEdit && (
             <>
-              <button
-                type="button"
+              <ToolbarBtn
                 onClick={onEdit}
-                title="Edit (Enter)"
+                tooltip="Edit"
                 className="p-1 rounded text-white hover:bg-white/20 transition-colors"
               >
                 <Pencil className="w-3.5 h-3.5" />
-              </button>
+              </ToolbarBtn>
               <div className="w-px h-3.5 bg-white/20 mx-0.5" />
             </>
           )}
 
           {/* Move controls */}
           {onMoveUp && (
-            <button
-              type="button"
+            <ToolbarBtn
               onClick={e => { e.stopPropagation(); onMoveUp(); }}
               disabled={isFirst}
-              title="Move up"
+              tooltip="Move up"
               className={`p-1 rounded text-white transition-colors ${
                 isFirst ? "opacity-25 cursor-not-allowed" : "hover:bg-white/20"
               }`}
             >
               <ChevronUp className="w-3.5 h-3.5" />
-            </button>
+            </ToolbarBtn>
           )}
           {onMoveDown && (
-            <button
-              type="button"
+            <ToolbarBtn
               onClick={e => { e.stopPropagation(); onMoveDown(); }}
               disabled={isLast}
-              title="Move down"
+              tooltip="Move down"
               className={`p-1 rounded text-white transition-colors ${
                 isLast ? "opacity-25 cursor-not-allowed" : "hover:bg-white/20"
               }`}
             >
               <ChevronDown className="w-3.5 h-3.5" />
-            </button>
+            </ToolbarBtn>
           )}
 
           {/* Separator between move controls and action controls */}
@@ -237,38 +277,35 @@ export function EditableWrapper({
 
           {/* Duplicate */}
           {onDuplicate && (
-            <button
-              type="button"
+            <ToolbarBtn
               onClick={e => { e.stopPropagation(); onDuplicate(); }}
-              title="Duplicate"
+              tooltip="Duplicate"
               className="p-1 rounded text-white hover:bg-white/20 transition-colors"
             >
               <Copy className="w-3.5 h-3.5" />
-            </button>
+            </ToolbarBtn>
           )}
 
           {/* Hide / Show */}
           {onToggleHide && (
-            <button
-              type="button"
+            <ToolbarBtn
               onClick={e => { e.stopPropagation(); onToggleHide(); }}
-              title={isHidden ? "Show" : "Hide"}
+              tooltip={isHidden ? "Show" : "Hide"}
               className="p-1 rounded text-white/70 hover:bg-white/20 hover:text-white transition-colors"
             >
               {isHidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-            </button>
+            </ToolbarBtn>
           )}
 
           {/* Add section below */}
           {onInsertBelow && (
-            <button
-              type="button"
+            <ToolbarBtn
               onClick={e => { e.stopPropagation(); onInsertBelow(); }}
-              title="Add section below"
+              tooltip="Add section below"
               className="p-1 rounded text-white hover:bg-white/20 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
-            </button>
+            </ToolbarBtn>
           )}
 
           {/* Extra toolbar items (caller-supplied, e.g. image Replace button) */}
@@ -277,28 +314,26 @@ export function EditableWrapper({
           {/* AI slot — reserved for Phase 4; always visible but disabled until enabled */}
           <>
             <div className="w-px h-3.5 bg-white/20 mx-0.5" />
-            <button
-              type="button"
+            <ToolbarBtn
               disabled
-              title="AI Rewrite (coming soon)"
+              tooltip="AI Rewrite (coming soon)"
               className="p-1 rounded text-purple-300/40 cursor-not-allowed transition-colors"
             >
               <Sparkles className="w-3.5 h-3.5" />
-            </button>
+            </ToolbarBtn>
           </>
 
           {/* Delete — always last, with red accent */}
           {onDelete && (
             <>
               <div className="w-px h-3.5 bg-white/20 mx-0.5" />
-              <button
-                type="button"
+              <ToolbarBtn
                 onClick={e => { e.stopPropagation(); onDelete(); }}
-                title="Delete (Del)"
+                tooltip="Delete"
                 className="p-1 rounded text-red-300 hover:bg-red-500/20 transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              </ToolbarBtn>
             </>
           )}
         </div>
