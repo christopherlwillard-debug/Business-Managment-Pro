@@ -28,6 +28,8 @@ import { BeforeAfterSection } from "./sections/BeforeAfterSection";
 import { WhyChooseUsSection } from "./sections/WhyChooseUsSection";
 import type { BlockStyle } from "./sections/BlockStyleWrapper";
 
+import { isPublishedWebsite } from "@/lib/runtimeMode";
+
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
@@ -300,6 +302,22 @@ export default function PublicSite() {
             focusRingColor: settings.focusRingColor,
           })}</style>
           {settings.faviconUrl && <link rel="icon" href={settings.faviconUrl} />}
+          {/*
+            Inject a per-business web manifest so the browser's install prompt
+            (if shown) reflects this business, not BuildPro.
+            Only injected on real published-website sessions — not draft previews,
+            and not when viewing /site/:slug inside the BuildPro shell.
+          */}
+          {!isDraftPreview && isPublishedWebsite() && (
+            <link
+              rel="manifest"
+              href={
+                slug
+                  ? `${BASE}/api/public/site/${resolvedSlug}/manifest.json`
+                  : `${BASE}/api/public/site/by-host/manifest.json`
+              }
+            />
+          )}
         </>,
         document.head
       )}

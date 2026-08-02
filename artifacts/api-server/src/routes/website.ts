@@ -366,6 +366,84 @@ function normalizeHost(raw: string): string {
   return raw.toLowerCase().split(":")[0].replace(/\.+$/, "").trim();
 }
 
+// ── Per-business Web App Manifests ────────────────────────────────────────────
+// These endpoints let published websites have their own browser identity (name,
+// icon, theme colour) so "Add to Home Screen" reflects the business, not BuildPro.
+// They are intentionally public (no auth) and mounted before the /:slug catch-all.
+
+function buildManifest(biz: { name: string; slug: string }, settings: Record<string, unknown>): Record<string, unknown> {
+  const brandColor = (settings.brandColor as string | undefined) ?? "#1a1a2e";
+  const logoUrl = (settings.logoUrl as string | undefined) ?? "";
+  const icons: unknown[] = [];
+  if (logoUrl && (logoUrl.startsWith("http") || logoUrl.startsWith("/"))) {
+    icons.push({ src: logoUrl, sizes: "any", type: "image/png", purpose: "any" });
+  }
+  // Always include a fallback favicon-sized entry
+  icons.push({ src: "/favicon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" });
+
+  return {
+    name: biz.name,
+    short_name: biz.name.slice(0, 12),
+    description: `${biz.name} — official website`,
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    orientation: "portrait-primary",
+    theme_color: brandColor,
+    background_color: brandColor,
+    icons,
+  };
+}
+
+publicRouter.get("/by-host/manifest.json", wrapAsync(async (req, res) => {
+  const rawHost = (req.headers["x-forwarded-host"] as string | undefined) || req.hostname || "";
+  const host = normalizeHost(rawHost);
+  if (!host) return res.status(400).json({ error: "Cannot determine host" });
+
+  const [config] = await db
+    .select()
+    .from(websiteConfigsTable)
+    .where(
+      and(
+        eq(websiteConfigsTable.published, true),
+        sql`lower(trim(trailing '.' from ${websiteConfigsTable.settings}->>'customDomain')) = ${host}`
+      )
+    );
+
+  if (!config) return res.status(404).json({ error: "No site found for this domain" });
+
+  const [biz] = await db.select({ id: businessesTable.id, name: businessesTable.name, slug: businessesTable.slug })
+    .from(businessesTable)
+    .where(eq(businessesTable.id, config.businessId));
+
+  if (!biz) return res.status(404).json({ error: "Business not found" });
+
+  res.setHeader("Content-Type", "application/manifest+json");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.json(buildManifest(biz, config.settings as Record<string, unknown>));
+}));
+
+publicRouter.get("/:slug/manifest.json", wrapAsync(async (req, res) => {
+  const slug = req.params.slug as string;
+  const [biz] = await db
+    .select({ id: businessesTable.id, name: businessesTable.name, slug: businessesTable.slug })
+    .from(businessesTable)
+    .where(eq(businessesTable.slug, slug));
+
+  if (!biz) return res.status(404).json({ error: "Not found" });
+
+  const [config] = await db
+    .select({ settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(and(eq(websiteConfigsTable.businessId, biz.id), eq(websiteConfigsTable.published, true)));
+
+  if (!config) return res.status(404).json({ error: "Website not published" });
+
+  res.setHeader("Content-Type", "application/manifest+json");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.json(buildManifest(biz, config.settings as Record<string, unknown>));
+}));
+
 publicRouter.get("/by-host", wrapAsync(async (req, res) => {
   const rawHost = (req.headers["x-forwarded-host"] as string | undefined) || req.hostname || "";
   const host = normalizeHost(rawHost);

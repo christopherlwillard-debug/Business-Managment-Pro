@@ -1,5 +1,6 @@
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { useEffect, lazy, Suspense } from "react";
+import { isBuildProMode } from "@/lib/runtimeMode";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -339,18 +340,8 @@ function AdminApp() {
   );
 }
 
-function isBuiltInHost(host: string): boolean {
-  const h = host.toLowerCase().split(":")[0];
-  return (
-    h === "localhost" ||
-    h.endsWith(".replit.dev") ||
-    h.endsWith(".replit.app") ||
-    h.endsWith(".repl.co")
-  );
-}
-
 function Router() {
-  const onCustomDomain = !isBuiltInHost(window.location.host);
+  const onCustomDomain = !isBuildProMode();
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
       <Switch>
