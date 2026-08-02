@@ -10,6 +10,8 @@ export interface SectionTemplate {
   name: string;
   description: string;
   emoji: string;
+  /** Library category for the Section Library panel (e.g. "Hero", "Layout"). */
+  category: string;
   content: () => RowSectionData;
   blockStyle?: BlockStyle;
 }
@@ -20,6 +22,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Hero Centered",
     description: "Full-width heading, paragraph, and CTA button — all centered",
     emoji: "🎯",
+    category: "Hero",
     content: () => ({
       columns: [
         {
@@ -44,6 +47,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Hero Split",
     description: "Heading + text + button on the left, image on the right",
     emoji: "⬛",
+    category: "Hero",
     content: () => ({
       columns: [
         {
@@ -75,6 +79,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Features Grid",
     description: "Three columns — icon, heading, and description per feature",
     emoji: "✨",
+    category: "Layout",
     content: () => ({
       columns: [
         {
@@ -117,6 +122,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Testimonials",
     description: "Three customer testimonial cards side by side",
     emoji: "💬",
+    category: "Social Proof",
     content: () => ({
       columns: [
         {
@@ -153,6 +159,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Pricing",
     description: "Three pricing tier cards with features and CTA",
     emoji: "💳",
+    category: "Marketing",
     content: () => ({
       columns: [
         {
@@ -189,6 +196,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "CTA Banner",
     description: "Full-width call-to-action with heading and button on a dark background",
     emoji: "📣",
+    category: "Marketing",
     content: () => ({
       columns: [
         {
@@ -213,6 +221,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Team Section",
     description: "Four team member cards with photo, name, and role",
     emoji: "👥",
+    category: "Business",
     content: () => ({
       columns: [
         {
@@ -264,6 +273,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "FAQ",
     description: "Two-column FAQ layout with questions and answers",
     emoji: "❓",
+    category: "Business",
     content: () => ({
       columns: [
         {
@@ -307,6 +317,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Contact Form",
     description: "Form on the left, map and contact info on the right",
     emoji: "📬",
+    category: "Contact",
     content: () => ({
       columns: [
         {
@@ -340,6 +351,7 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     name: "Gallery Grid",
     description: "Three-column image grid for showcasing work",
     emoji: "🖼️",
+    category: "Media",
     content: () => ({
       columns: [
         {

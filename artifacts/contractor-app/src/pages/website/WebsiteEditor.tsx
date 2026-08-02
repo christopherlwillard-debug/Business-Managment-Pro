@@ -12,7 +12,7 @@ import {
   Monitor, Tablet, Smartphone, LayoutTemplate, BarChart2, Pencil, Plus, Columns, Undo2, Redo2, Trash2, ChevronUp, ChevronDown,
   Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette, Briefcase,
   ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText, X, Search,
-  Users, Handshake, MapPin, Award, ArrowLeftRight, ThumbsUp,
+  Users, Handshake, MapPin, Award, ArrowLeftRight, ThumbsUp, Sparkles,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -64,6 +64,7 @@ import { DepositSubmissionsPanel } from "./DepositSubmissionsPanel";
 import { CardItemEditorPanel } from "./CardItemEditorPanel";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
+import { SectionLibraryPanel } from "./SectionLibraryPanel";
 import { PAGE_TEMPLATES, type PageTemplate } from "./pageTemplates";
 import { useEditorHistory } from "./useEditorHistory";
 import { EditableWrapper } from "./EditableWrapper";
@@ -747,225 +748,6 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
                 <Plus className="w-3 h-3" />
                 Add Section
               </button>
-              {showAddSection && (
-                <div className="absolute left-0 top-full mt-1 z-30 w-72 bg-popover border border-border rounded-xl shadow-xl overflow-hidden text-sm">
-                  <div className="flex border-b border-border">
-                    <button type="button" onClick={() => setAddSectionTab("sections")}
-                      className={`flex-1 px-3 py-2 text-xs font-semibold transition-colors ${addSectionTab === "sections" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>
-                      Blank Sections
-                    </button>
-                    <button type="button" onClick={() => setAddSectionTab("templates")}
-                      className={`flex-1 px-3 py-2 text-xs font-semibold transition-colors flex items-center justify-center gap-1 ${addSectionTab === "templates" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>
-                      <LayoutTemplate className="w-3 h-3" />
-                      Templates
-                    </button>
-                  </div>
-                  {addSectionTab === "sections" ? (
-                    <div className="p-2 max-h-96 overflow-y-auto">
-                      {(() => {
-                        // Wireframe thumbnail SVGs keyed by section type
-                        const THUMBS: Record<string, React.ReactNode> = {
-                          "hero": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              <rect width="80" height="44" fill="currentColor" fillOpacity=".07" rx="3" />
-                              <rect x="18" y="9" width="44" height="5" rx="1.5" fill="currentColor" fillOpacity=".35" />
-                              <rect x="24" y="17" width="32" height="3" rx="1" fill="currentColor" fillOpacity=".2" />
-                              <rect x="28" y="24" width="24" height="3" rx="1" fill="currentColor" fillOpacity=".15" />
-                              <rect x="28" y="31" width="10" height="6" rx="2" fill="currentColor" fillOpacity=".3" />
-                              <rect x="42" y="31" width="10" height="6" rx="2" fill="currentColor" fillOpacity=".15" />
-                            </svg>
-                          ),
-                          "services": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              <rect x="4" y="8" width="22" height="28" rx="2" fill="currentColor" fillOpacity=".12" />
-                              <rect x="29" y="8" width="22" height="28" rx="2" fill="currentColor" fillOpacity=".12" />
-                              <rect x="54" y="8" width="22" height="28" rx="2" fill="currentColor" fillOpacity=".12" />
-                              <rect x="9" y="13" width="12" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
-                              <rect x="9" y="19" width="12" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
-                              <rect x="34" y="13" width="12" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
-                              <rect x="34" y="19" width="12" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
-                              <rect x="59" y="13" width="12" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
-                              <rect x="59" y="19" width="12" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
-                            </svg>
-                          ),
-                          "stats": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              {[4,22,40,58].map((x, i) => (
-                                <g key={i}>
-                                  <rect x={x} y="10" width="18" height="24" rx="2" fill="currentColor" fillOpacity=".1" />
-                                  <rect x={x+3} y="16" width="12" height="5" rx="1" fill="currentColor" fillOpacity=".35" />
-                                  <rect x={x+3} y="24" width="9" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
-                                </g>
-                              ))}
-                            </svg>
-                          ),
-                          "faq": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              {[6,17,28,39].map((y, i) => (
-                                <g key={i}>
-                                  <rect x="4" y={y} width="72" height="8" rx="2" fill="currentColor" fillOpacity=".1" />
-                                  <rect x="8" y={y+2.5} width="40" height="2.5" rx="1" fill="currentColor" fillOpacity=".3" />
-                                  <rect x="68" y={y+2.5} width="4" height="2.5" rx="1" fill="currentColor" fillOpacity=".2" />
-                                </g>
-                              ))}
-                            </svg>
-                          ),
-                          "testimonials": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              <rect x="4" y="6" width="33" height="32" rx="3" fill="currentColor" fillOpacity=".1" />
-                              <rect x="43" y="6" width="33" height="32" rx="3" fill="currentColor" fillOpacity=".1" />
-                              <rect x="9" y="12" width="23" height="2" rx="1" fill="currentColor" fillOpacity=".25" />
-                              <rect x="9" y="17" width="20" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
-                              <circle cx="13" cy="30" r="4" fill="currentColor" fillOpacity=".2" />
-                              <rect x="20" y="28" width="12" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
-                              <rect x="48" y="12" width="23" height="2" rx="1" fill="currentColor" fillOpacity=".25" />
-                              <rect x="48" y="17" width="20" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
-                              <circle cx="52" cy="30" r="4" fill="currentColor" fillOpacity=".2" />
-                              <rect x="59" y="28" width="12" height="2" rx="1" fill="currentColor" fillOpacity=".2" />
-                            </svg>
-                          ),
-                          "cta": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              <rect x="4" y="6" width="72" height="32" rx="3" fill="currentColor" fillOpacity=".12" />
-                              <rect x="20" y="13" width="40" height="5" rx="1.5" fill="currentColor" fillOpacity=".3" />
-                              <rect x="25" y="21" width="30" height="3" rx="1" fill="currentColor" fillOpacity=".18" />
-                              <rect x="28" y="28" width="24" height="6" rx="2" fill="currentColor" fillOpacity=".3" />
-                            </svg>
-                          ),
-                          "columns": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              <rect x="4" y="6" width="34" height="32" rx="2" fill="currentColor" fillOpacity=".1" />
-                              <rect x="42" y="6" width="34" height="32" rx="2" fill="currentColor" fillOpacity=".1" />
-                              <rect x="8" y="10" width="26" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
-                              <rect x="8" y="16" width="22" height="2" rx="1" fill="currentColor" fillOpacity=".18" />
-                              <rect x="8" y="20" width="24" height="2" rx="1" fill="currentColor" fillOpacity=".15" />
-                              <rect x="46" y="10" width="26" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
-                              <rect x="46" y="16" width="22" height="2" rx="1" fill="currentColor" fillOpacity=".18" />
-                              <rect x="46" y="20" width="24" height="2" rx="1" fill="currentColor" fillOpacity=".15" />
-                            </svg>
-                          ),
-                          "gallery": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              {[[4,6],[30,6],[56,6],[4,26],[30,26],[56,26]].map(([x, y], i) => (
-                                <rect key={i} x={x} y={y} width="22" height="16" rx="2" fill="currentColor" fillOpacity=".15" />
-                              ))}
-                            </svg>
-                          ),
-                          "contact": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              <rect x="4" y="6" width="72" height="6" rx="2" fill="currentColor" fillOpacity=".12" />
-                              <rect x="4" y="15" width="72" height="6" rx="2" fill="currentColor" fillOpacity=".12" />
-                              <rect x="4" y="24" width="72" height="8" rx="2" fill="currentColor" fillOpacity=".1" />
-                              <rect x="22" y="35" width="36" height="6" rx="2" fill="currentColor" fillOpacity=".3" />
-                            </svg>
-                          ),
-                          "before-after": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              <rect x="4" y="6" width="33" height="32" rx="2" fill="currentColor" fillOpacity=".15" />
-                              <rect x="43" y="6" width="33" height="32" rx="2" fill="currentColor" fillOpacity=".25" />
-                              <line x1="40" y1="6" x2="40" y2="38" stroke="currentColor" strokeWidth="1.5" strokeOpacity=".3" strokeDasharray="2 2" />
-                              <rect x="8" y="32" width="18" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
-                              <rect x="48" y="32" width="18" height="3" rx="1" fill="currentColor" fillOpacity=".3" />
-                            </svg>
-                          ),
-                          "default-cards": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              <rect x="4" y="6" width="22" height="28" rx="2" fill="currentColor" fillOpacity=".12" />
-                              <rect x="29" y="6" width="22" height="28" rx="2" fill="currentColor" fillOpacity=".12" />
-                              <rect x="54" y="6" width="22" height="28" rx="2" fill="currentColor" fillOpacity=".12" />
-                            </svg>
-                          ),
-                          "default-text": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              <rect x="12" y="10" width="56" height="4" rx="1.5" fill="currentColor" fillOpacity=".3" />
-                              <rect x="18" y="18" width="44" height="2.5" rx="1" fill="currentColor" fillOpacity=".18" />
-                              <rect x="14" y="23" width="52" height="2.5" rx="1" fill="currentColor" fillOpacity=".15" />
-                              <rect x="20" y="28" width="40" height="2.5" rx="1" fill="currentColor" fillOpacity=".12" />
-                            </svg>
-                          ),
-                          "default-row": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              <rect x="4" y="12" width="16" height="20" rx="2" fill="currentColor" fillOpacity=".15" />
-                              <rect x="23" y="12" width="16" height="20" rx="2" fill="currentColor" fillOpacity=".12" />
-                              <rect x="42" y="12" width="16" height="20" rx="2" fill="currentColor" fillOpacity=".12" />
-                              <rect x="61" y="12" width="15" height="20" rx="2" fill="currentColor" fillOpacity=".1" />
-                            </svg>
-                          ),
-                          "default-image": (
-                            <svg viewBox="0 0 80 44" className="w-full h-full" fill="none">
-                              <rect x="8" y="6" width="64" height="32" rx="2" fill="currentColor" fillOpacity=".15" />
-                              <path d="M20 30 L32 16 L44 24 L54 14 L68 30Z" fill="currentColor" fillOpacity=".18" />
-                              <circle cx="26" cy="17" r="4" fill="currentColor" fillOpacity=".2" />
-                            </svg>
-                          ),
-                        };
-
-                        const TYPE_THUMB: Record<string, string> = {
-                          "hero": "hero", "cta": "cta",
-                          "services": "services", "stats": "stats", "faq": "faq",
-                          "testimonials": "testimonials", "columns": "columns",
-                          "gallery": "gallery", "contact": "contact",
-                          "before-after": "before-after",
-                          "why-choose-us": "services", "certifications": "default-cards",
-                          "service-area": "default-text", "featured-clients": "default-cards",
-                          "partners": "default-cards",
-                          "content": "default-text", "row": "default-row",
-                          "text": "default-text", "image": "default-image",
-                          "deposit": "contact", "footer": "default-text",
-                          "about": "columns", "portfolio": "gallery",
-                        };
-
-                        const entries = getAddableSectionTypes();
-                        const categories = [...new Set(entries.map(e => e.category))];
-                        const catColors: Record<string, string> = {
-                          "Contractor": "text-orange-500",
-                          "Business":   "text-blue-500",
-                          "Social Proof": "text-yellow-500",
-                          "Marketing":  "text-purple-500",
-                          "Layout":     "text-gray-500",
-                          "Media":      "text-green-500",
-                          "Contact":    "text-teal-500",
-                          "Legal":      "text-slate-500",
-                        };
-                        return categories.map(cat => (
-                          <div key={cat}>
-                            <div className="px-1 pt-2 pb-1 text-[9px] font-bold uppercase tracking-widest text-muted-foreground/50">{cat}</div>
-                            <div className="grid grid-cols-2 gap-1.5">
-                              {entries.filter(e => e.category === cat).map(opt => (
-                                <button key={opt.type} type="button" onClick={() => addSection(opt.type)}
-                                  className="flex flex-col rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-all group overflow-hidden text-left">
-                                  {/* Thumbnail preview */}
-                                  <div className={`w-full h-14 bg-muted/40 flex items-center justify-center p-2 group-hover:bg-primary/8 transition-colors ${catColors[cat] ?? "text-muted-foreground"}`}>
-                                    {THUMBS[TYPE_THUMB[opt.type] ?? "default-text"]}
-                                  </div>
-                                  {/* Label row */}
-                                  <div className="px-2 py-1.5 flex items-center gap-1.5">
-                                    <span className={`flex-shrink-0 ${catColors[cat] ?? "text-muted-foreground"}`}>{opt.icon}</span>
-                                    <span className="text-xs font-medium text-foreground group-hover:text-primary transition-colors leading-tight truncate">{opt.label}</span>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                  ) : (
-                    <div className="py-1 max-h-96 overflow-y-auto">
-                      {SECTION_TEMPLATES.map(tpl => (
-                        <button key={tpl.id} type="button" onClick={() => addSectionFromTemplate(tpl.id)}
-                          className="flex items-start gap-2.5 w-full px-3 py-2.5 text-left hover:bg-muted transition-colors group">
-                          <span className="text-base flex-shrink-0 mt-0.5">{tpl.emoji}</span>
-                          <span className="min-w-0">
-                            <span className="block text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{tpl.name}</span>
-                            <span className="block text-[10px] text-muted-foreground leading-snug mt-0.5">{tpl.description}</span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -4033,8 +3815,33 @@ function WebsiteEditor() {
           )}
           {headerSec && renderWrapped(headerSec, { isHeader: true })}
           {canvasSections.length === 0 && !headerSec && (
-            <div className="py-20 text-center text-muted-foreground text-sm">
-              Add a section to start building your page.
+            <div className="py-16 flex flex-col items-center gap-5 text-center max-w-xs mx-auto">
+              <span className="text-5xl select-none" role="img" aria-label="Building">🏗️</span>
+              <div>
+                <p className="text-base font-semibold text-foreground">Your page is empty</p>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                  Pick a starting point or add sections one by one.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 w-full">
+                <button
+                  type="button"
+                  onClick={() => { setInsertAfterSectionId(undefined); setShowAddSection(true); }}
+                  className="w-full px-4 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                >
+                  Browse Section Library
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  title="Coming in a future release"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-dashed border-border rounded-lg text-sm text-muted-foreground cursor-not-allowed select-none"
+                >
+                  <Sparkles className="w-4 h-4 text-purple-400/60" />
+                  Generate with AI
+                  <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground/60">Soon</span>
+                </button>
+              </div>
             </div>
           )}
           {canvasSections.flatMap((s, idx) => [
@@ -4176,6 +3983,12 @@ function WebsiteEditor() {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+    <SectionLibraryPanel
+      show={showAddSection}
+      onClose={() => { setShowAddSection(false); setInsertAfterSectionId(undefined); }}
+      onAddSection={type => addSection(type as Parameters<typeof addSection>[0])}
+      onAddSectionFromTemplate={addSectionFromTemplate}
+    />
     {mediaPickerState && bizId && (
       <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6">
         <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl h-[70vh] flex flex-col overflow-hidden border border-border">
