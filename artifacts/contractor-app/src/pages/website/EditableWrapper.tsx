@@ -1,7 +1,173 @@
-import { type ReactNode } from "react";
+import { useState, useRef, type ReactNode } from "react";
 import {
   ChevronUp, ChevronDown, Copy, EyeOff, Eye, Plus, Trash2, Lock, Pencil, Sparkles,
 } from "lucide-react";
+import type { BlockStyle } from "./sections/BlockStyleWrapper";
+
+// ── Padding guide helpers ─────────────────────────────────────────────────────
+
+const PADDING_SNAP_VALUES = [0, 8, 16, 24, 32, 48, 64, 80, 96, 128, 160, 200];
+
+function snapPadding(v: number): number {
+  return PADDING_SNAP_VALUES.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
+}
+
+/**
+ * Renders two drag-to-adjust horizontal guides inside the section:
+ * one at the top padding boundary, one at the bottom.
+ * Dragging adjusts paddingTop / paddingBottom live with snapping.
+ * Only visible in editor mode (parent controls rendering).
+ */
+function PaddingGuides({
+  paddingTop,
+  paddingBottom,
+  onDragStart,
+  onChangeLive,
+}: {
+  paddingTop: number;
+  paddingBottom: number;
+  /** Called once on the first pointer-down — caller should push a history snapshot. */
+  onDragStart: () => void;
+  /** Live update during drag (no history push; snapshot was taken on drag start). */
+  onChangeLive: (paddingTop: number, paddingBottom: number) => void;
+}) {
+  const [dragging, setDragging] = useState<"top" | "bottom" | null>(null);
+  const [liveTop, setLiveTop] = useState<number | null>(null);
+  const [liveBottom, setLiveBottom] = useState<number | null>(null);
+  const [snapFlash, setSnapFlash] = useState<"top" | "bottom" | null>(null);
+  const dragStartedRef = useRef(false);
+  const dragRef = useRef<{ startY: number; startPadding: number } | null>(null);
+
+  const displayTop = liveTop ?? paddingTop;
+  const displayBottom = liveBottom ?? paddingBottom;
+
+  function flashSnap(which: "top" | "bottom") {
+    setSnapFlash(which);
+    setTimeout(() => setSnapFlash(s => (s === which ? null : s)), 200);
+  }
+
+  function handlePointerDownTop(e: React.PointerEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { startY: e.clientY, startPadding: paddingTop };
+    setDragging("top");
+    if (!dragStartedRef.current) { dragStartedRef.current = true; onDragStart(); }
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+  }
+
+  function handlePointerDownBottom(e: React.PointerEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { startY: e.clientY, startPadding: paddingBottom };
+    setDragging("bottom");
+    if (!dragStartedRef.current) { dragStartedRef.current = true; onDragStart(); }
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+  }
+
+  function handlePointerMoveTop(e: React.PointerEvent<HTMLDivElement>) {
+    if (dragging !== "top" || !dragRef.current) return;
+    const delta = e.clientY - dragRef.current.startY;
+    // Drag UP (negative delta) → increase paddingTop
+    const raw = dragRef.current.startPadding - delta;
+    const snapped = snapPadding(Math.max(0, Math.min(200, raw)));
+    if (snapped !== (liveTop ?? paddingTop)) flashSnap("top");
+    setLiveTop(snapped);
+    onChangeLive(snapped, liveBottom ?? paddingBottom);
+  }
+
+  function handlePointerMoveBottom(e: React.PointerEvent<HTMLDivElement>) {
+    if (dragging !== "bottom" || !dragRef.current) return;
+    const delta = e.clientY - dragRef.current.startY;
+    // Drag DOWN (positive delta) → increase paddingBottom
+    const raw = dragRef.current.startPadding + delta;
+    const snapped = snapPadding(Math.max(0, Math.min(200, raw)));
+    if (snapped !== (liveBottom ?? paddingBottom)) flashSnap("bottom");
+    setLiveBottom(snapped);
+    onChangeLive(liveTop ?? paddingTop, snapped);
+  }
+
+  function handlePointerUp() {
+    setDragging(null);
+    setLiveTop(null);
+    setLiveBottom(null);
+    dragStartedRef.current = false;
+    dragRef.current = null;
+  }
+
+  const topActive = dragging === "top" || snapFlash === "top";
+  const bottomActive = dragging === "bottom" || snapFlash === "bottom";
+
+  return (
+    <>
+      {/* ── Top padding guide ─────────────────────────────────────────── */}
+      <div
+        className="absolute left-0 right-0 z-30 select-none pointer-events-none"
+        style={{ top: displayTop }}
+        aria-hidden="true"
+      >
+        {/* 16 px hit area centred on the guide line */}
+        <div
+          className="absolute left-0 right-0 cursor-ns-resize"
+          style={{ top: -8, height: 16, pointerEvents: "auto" }}
+          onPointerDown={handlePointerDownTop}
+          onPointerMove={handlePointerMoveTop}
+          onPointerUp={handlePointerUp}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Visual dashed line */}
+          <div
+            className={`absolute left-6 right-6 border-t-2 border-dashed transition-colors duration-100 ${
+              topActive ? "border-blue-400" : "border-primary/55"
+            }`}
+            style={{ top: 7 }}
+          />
+          {/* Value label — above the line */}
+          <span
+            className={`absolute left-6 px-1.5 py-0.5 rounded text-[9px] font-mono font-medium whitespace-nowrap pointer-events-none transition-colors duration-100 ${
+              topActive ? "bg-blue-500 text-white" : "bg-primary/75 text-primary-foreground"
+            }`}
+            style={{ top: -18 }}
+          >
+            ↕ {displayTop}px
+          </span>
+        </div>
+      </div>
+
+      {/* ── Bottom padding guide ──────────────────────────────────────── */}
+      <div
+        className="absolute left-0 right-0 z-30 select-none pointer-events-none"
+        style={{ bottom: displayBottom }}
+        aria-hidden="true"
+      >
+        <div
+          className="absolute left-0 right-0 cursor-ns-resize"
+          style={{ top: -8, height: 16, pointerEvents: "auto" }}
+          onPointerDown={handlePointerDownBottom}
+          onPointerMove={handlePointerMoveBottom}
+          onPointerUp={handlePointerUp}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Visual dashed line */}
+          <div
+            className={`absolute left-6 right-6 border-t-2 border-dashed transition-colors duration-100 ${
+              bottomActive ? "border-blue-400" : "border-primary/55"
+            }`}
+            style={{ top: 7 }}
+          />
+          {/* Value label — below the line */}
+          <span
+            className={`absolute left-6 px-1.5 py-0.5 rounded text-[9px] font-mono font-medium whitespace-nowrap pointer-events-none transition-colors duration-100 ${
+              bottomActive ? "bg-blue-500 text-white" : "bg-primary/75 text-primary-foreground"
+            }`}
+            style={{ top: 16 }}
+          >
+            ↕ {displayBottom}px
+          </span>
+        </div>
+      </div>
+    </>
+  );
+}
 
 // ── Tooltip-aware toolbar button ──────────────────────────────────────────────
 // Wraps a button with a small floating label that appears after a 150 ms hover
@@ -122,6 +288,20 @@ export interface EditableWrapperProps {
    * human-readable label so the inspector can show a breadcrumb.
    */
   onSubElementSelect?: (type: string, label: string) => void;
+  /**
+   * Section block-style — when provided (editor mode only), padding guide
+   * handles are shown on hover/selection so the user can drag-adjust
+   * paddingTop / paddingBottom directly on the canvas.
+   */
+  blockStyle?: BlockStyle;
+  /**
+   * Called once on the first pointer-down of a padding drag.
+   * Caller should push a history snapshot here (before any live updates).
+   * If undefined, padding guides are not rendered.
+   */
+  onPaddingDragStart?: () => void;
+  /** Live padding update during drag (no history push — snapshot is taken on drag start). */
+  onPaddingChangeLive?: (paddingTop: number, paddingBottom: number) => void;
 }
 
 /** Maps data-element-type values to human-readable labels for the breadcrumb. */
@@ -167,7 +347,20 @@ export function EditableWrapper({
   onDoubleClick,
   onContextMenu,
   onSubElementSelect,
+  blockStyle,
+  onPaddingDragStart,
+  onPaddingChangeLive,
 }: EditableWrapperProps) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  // Show padding guides when hovered or selected, and guide callbacks are provided.
+  const showPaddingGuides =
+    !locked &&
+    !isHidden &&
+    !!onPaddingDragStart &&
+    !!onPaddingChangeLive &&
+    (isHovered || isSelected);
+
   return (
     <div
       data-section-canvas-id={id}
@@ -185,6 +378,8 @@ export function EditableWrapper({
           : "ring-2 ring-inset ring-slate-400/40"
       } ${isHidden ? "opacity-50" : ""}`}
       onClick={locked ? undefined : onSelect}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onDoubleClick={locked ? undefined : (e) => {
         // If the user double-clicked directly on an InlineEditableText element,
         // that element's own handleDoubleClick has already called e.stopPropagation()
@@ -378,6 +573,16 @@ export function EditableWrapper({
       )}
 
       {children}
+
+      {/* Padding guides — only in editor mode, only when hovered or selected */}
+      {showPaddingGuides && (
+        <PaddingGuides
+          paddingTop={blockStyle?.paddingTop ?? 0}
+          paddingBottom={blockStyle?.paddingBottom ?? 0}
+          onDragStart={onPaddingDragStart!}
+          onChangeLive={onPaddingChangeLive!}
+        />
+      )}
     </div>
   );
 }

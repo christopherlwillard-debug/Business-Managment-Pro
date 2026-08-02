@@ -4298,6 +4298,13 @@ function WebsiteEditor() {
               if (first) first.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
             });
           } : undefined}
+          blockStyle={!previewMode ? s.blockStyle : undefined}
+          onPaddingDragStart={!previewMode && !s.locked && !isHeader ? () => {
+            history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+          } : undefined}
+          onPaddingChangeLive={!previewMode && !s.locked && !isHeader ? (paddingTop, paddingBottom) => {
+            setBlockStyleLive(s.id, { ...(s.blockStyle ?? {}), paddingTop, paddingBottom });
+          } : undefined}
         >
           {renderSection(s, settings, isActive && !previewMode, content => updateContent(s.id, content), {
             ...sectionExtras,
