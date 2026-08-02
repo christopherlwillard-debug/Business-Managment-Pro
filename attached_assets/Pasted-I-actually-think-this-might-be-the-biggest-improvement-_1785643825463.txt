@@ -1,0 +1,388 @@
+I actually think this might be the biggest improvement to Studio so far.
+
+I'd rate this 11/10.
+
+Not because it's flashy—but because it completely changes the philosophy of the editor.
+
+This is what BuildPro Studio becomes
+
+Instead of this...
+
+Navigator | Canvas | Inspector
+
+It becomes this...
+
+Navigator | Canvas
+
+And the inspector becomes a tool, not part of the workspace.
+
+That is a huge shift.
+
+I would change the title
+
+Instead of
+
+Inspector Retirement
+
+I'd call it
+
+Canvas-First Editing
+
+or
+
+On-Demand Inspector
+
+"Retirement" sounds like you're getting rid of it forever.
+
+You're not.
+
+You're making it secondary.
+
+I LOVE this sentence
+
+The canvas doubles in width. The website fills the screen.
+
+YES.
+
+That is exactly what users care about.
+
+Not
+
+Spacing
+
+Layout
+
+Shadow
+
+Padding
+
+
+They care about
+
+"Can I see my website?"
+
+I would add one thing
+Smart Inspector Opening
+
+Right now you say
+
+Advanced...
+
+I'd make it smarter.
+
+Example
+
+Click image
+
+Toolbar
+
+Replace
+
+Crop
+
+Alt
+
+Advanced...
+
+Click Advanced
+
+Don't just open the inspector.
+
+Open
+
+Image
+
+▼
+
+Image Source
+
+Border Radius
+
+Shadow
+
+Animation
+
+Don't make them hunt.
+
+I would also add
+Peek Mode
+
+This is something I don't think Wix even does.
+
+Hold
+
+Space
+
+or
+
+Option
+
+temporarily open inspector.
+
+Release.
+
+Inspector closes.
+
+Kind of like Quick Look on macOS.
+
+Maybe not now.
+
+But someday.
+
+Here's the thing I REALLY want
+
+I think you're one milestone away from something unique.
+
+Imagine this.
+
+Current editors
+
+Click Image
+
+↓
+
+Sidebar changes
+
+↓
+
+Move eyes right
+
+↓
+
+Edit
+
+↓
+
+Move eyes back
+
+BuildPro
+
+Click Image
+
+↓
+
+Toolbar
+
+↓
+
+Replace
+
+↓
+
+Done
+
+No eye movement.
+
+No context switching.
+
+That's faster.
+
+I'd actually go even further
+
+I'd change one sentence.
+
+Instead of
+
+Advanced...
+
+I'd call it
+
+More...
+
+or
+
+Advanced
+
+with a sliders icon.
+
+Because
+
+Advanced...
+
+feels scary.
+
+More
+
+feels discoverable.
+
+I'd also make the inspector overlay
+
+Not resize the canvas.
+
+Instead
+
+Website
+
+──────────────
+
+Inspector
+
+
+slides over the right edge.
+
+Maybe
+
+380px.
+
+The page underneath doesn't move.
+
+It just becomes slightly dimmed.
+
+Close.
+
+Gone.
+
+No layout shift.
+
+That feels much smoother than shrinking the canvas every time you open advanced settings.
+
+Biggest improvement I'd make
+
+I wouldn't store
+
+Open
+
+Closed
+
+I would store
+
+Pinned
+
+Temporary
+
+Example
+
+Temporary
+
+Click More.
+
+Inspector opens.
+
+Close.
+
+Gone.
+
+Pinned
+
+Click 📌
+
+Inspector stays open.
+
+Exactly like today's editor.
+
+Some users will love it.
+
+Some won't.
+
+Everyone wins.
+
+I'd even rewrite the design principle
+Canvas-First Editing
+
+The website is the interface.
+
+Controls appear only when the user expresses intent by selecting an element.
+
+The inspector is an optional companion for advanced configuration—not the primary editing experience.
+
+Common editing tasks should never require opening the inspector.
+
+If the user spends more time looking at controls than at their website, the interaction should be redesigned.
+
+I honestly think this should become the defining principle of BuildPro Studio.
+
+One thing I would add to the roadmap
+
+After #1475, I think the roadmap changes slightly.
+
+1457
+Studio Foundation
+
+↓
+
+1466
+Direct Editing
+
+↓
+
+1467
+Inline Toolbars
+
+↓
+
+1468
+Navigator
+
+↓
+
+1471
+Hover
+
+↓
+
+1469
+Drag
+
+↓
+
+1470
+Context Menus
+
+↓
+
+1472
+Selection
+
+↓
+
+1473
+Alignment
+
+↓
+
+1474
+Multi-Selection
+
+↓
+
+1475
+Canvas-First Editing
+
+↓
+
+1476
+Reusable Components
+
+↓
+
+1477
+Global Components
+
+↓
+
+1478
+Responsive Editing
+
+↓
+
+1479
+AI Studio
+
+Notice something?
+
+#1475 becomes the moment the product's identity changes.
+
+Before it, BuildPro Studio is a good website editor.
+
+After it, it's a canvas-first visual editor that happens to have an advanced inspector available when needed.
+
+One final suggestion
+
+I would add one more item to the "Done looks like" section:
+
+The inspector can be pinned or unpinned.
+
+Unpinned (default): Opens temporarily over the canvas and closes with Esc or by clicking outside.
+Pinned: Behaves like the traditional persistent inspector for users who prefer that workflow. The pinned state is remembered per user.
+
+That gives you the best of both worlds. New users get a clean, modern, canvas-focused experience, while experienced users who like having the inspector always visible can opt into that workflow without forcing it on everyone. I think that's the strongest long-term design because it doesn't take functionality away—it simply makes the modern workflow the default.
