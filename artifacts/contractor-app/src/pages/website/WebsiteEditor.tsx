@@ -68,6 +68,7 @@ import { PAGE_TEMPLATES, type PageTemplate } from "./pageTemplates";
 import { useEditorHistory } from "./useEditorHistory";
 import { EditableWrapper } from "./EditableWrapper";
 import { useInlineEdit, InlineEditContext, InlineEditStatus } from "./InlineEditContext";
+import { FloatingTextToolbar } from "./FloatingTextToolbar";
 import { nanoid } from "nanoid";
 import type { SiteSettings, CardComponent } from "./website-types";
 import { reportCrash } from "@/lib/reportCrash";
@@ -1348,6 +1349,16 @@ function WebsiteEditor() {
   const [canvasZoom, setCanvasZoom] = useState(100);
   const [showSaved, setShowSaved] = useState(false);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Space-pan state
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const panStartRef = useRef<{ x: number; y: number; scrollTop: number } | null>(null);
+  const canvasScrollRef = useRef<HTMLDivElement>(null);
+  // Stable refs for keyboard-shortcut handlers (avoid stale closures in [] useEffects)
+  const activeSectionRef = useRef<string | null>(null);
+  const copiedSectionRef = useRef<typeof copiedSection | null>(null);
+  const duplicateSectionRef = useRef<(id: string) => void>(() => {});
+  const pasteSectionRef = useRef<(afterId: string) => void>(() => {});
+  const saveMutateRef = useRef<() => void>(() => {});
   const [focusMode, setFocusMode] = useState(false);
   const [showFullscreenPreview, setShowFullscreenPreview] = useState(false);
   const preFocusSidebarState = useRef<{ left: boolean } | null>(null);
@@ -1492,7 +1503,22 @@ function WebsiteEditor() {
     function onKeyDown(e: KeyboardEvent) {
       const ctrl = e.ctrlKey || e.metaKey;
       if (!ctrl) return;
+
+      // Ctrl+S — save draft (allowed even while editing text)
+      if (e.key === "s") {
+        e.preventDefault();
+        saveMutateRef.current();
+        return;
+      }
+
+      // Remaining shortcuts are blocked while inline-editing a text field
       if (editingIdRef.current) return;
+
+      const tag = (document.activeElement as HTMLElement)?.tagName ?? "";
+      const isTyping =
+        ["INPUT", "TEXTAREA", "SELECT"].includes(tag) ||
+        (document.activeElement as HTMLElement)?.isContentEditable;
+
       if (e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         const prev = history.undo({ sections: pagesRef.current, settings: settingsRef.current });
@@ -1509,10 +1535,55 @@ function WebsiteEditor() {
           setLocalPages(next.sections);
           setLocalSettings(next.settings);
         }
+      } else if (!isTyping) {
+        const sec = activeSectionRef.current;
+        if (e.key === "d" && sec) {
+          // Ctrl+D — duplicate active section
+          e.preventDefault();
+          duplicateSectionRef.current(sec);
+        } else if (e.key === "c" && sec) {
+          // Ctrl+C — copy active section (only when not inside a text input)
+          // Native clipboard copy still works because we call preventDefault only on canvas
+          e.preventDefault();
+          const found = pagesRef.current
+            .find(p => p.id === activePageIdRef.current)
+            ?.sections.find(s => s.id === sec);
+          if (found) {
+            setCopiedSection(found);
+            toast({ title: "Section copied", description: "Press Ctrl+V to paste below.", duration: 2000 });
+          }
+        } else if (e.key === "v" && sec && copiedSectionRef.current) {
+          // Ctrl+V — paste copied section after active section
+          e.preventDefault();
+          pasteSectionRef.current(sec);
+        }
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // Space pan — hold Space to grab-drag the canvas
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.code !== "Space" || e.repeat) return;
+      const tag = (document.activeElement as HTMLElement)?.tagName ?? "";
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || (document.activeElement as HTMLElement)?.isContentEditable) return;
+      e.preventDefault();
+      setSpaceHeld(true);
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.code === "Space") {
+        setSpaceHeld(false);
+        panStartRef.current = null;
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
   }, []);
 
   // Non-ctrl keyboard shortcuts — Delete (active section), Escape (deselect all)
@@ -1663,6 +1734,10 @@ function WebsiteEditor() {
   pagesRef.current = pages;
   settingsRef.current = settings;
   activePageIdRef.current = activePageId;
+  // Keep shortcut refs current every render
+  activeSectionRef.current = activeSection;
+  copiedSectionRef.current = copiedSection;
+  saveMutateRef.current = () => saveMutation.mutate();
 
   useEffect(() => {
     if (!config || dataInitializedRef.current) return;
@@ -2117,6 +2192,8 @@ function WebsiteEditor() {
     setActiveSection(dup.id);
     toast({ title: "Section duplicated", description: "Press Ctrl+Z to undo." });
   }
+  // Keep shortcut refs pointing to current closures (updated every render so they close over fresh state)
+  duplicateSectionRef.current = duplicateSection;
 
   const CORE_SECTION_TYPES = new Set(["hero", "services", "about", "contact", "footer", "portfolio", "deposit"]);
 
@@ -3058,6 +3135,8 @@ function WebsiteEditor() {
     isDirtyRef.current = true;
   }
 
+  pasteSectionRef.current = (afterId: string) => pasteSection(afterId);
+
   function pasteSection(afterSectionId: string) {
     if (!copiedSection) return;
     history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
@@ -3947,6 +4026,7 @@ function WebsiteEditor() {
 
     return (
       <InlineEditContext.Provider value={contextValue}>
+        <FloatingTextToolbar />
         <div style={previewBodyStyle} data-editing={editingId || undefined}>
           {settings.headingFont && (
             <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
@@ -4333,6 +4413,72 @@ function WebsiteEditor() {
           <a href={publicUrl} target="_blank" rel="noopener noreferrer" className="underline font-medium break-all">{publicUrl}</a>
         </div>
       )}
+
+      {/* Breadcrumb bar — shows selection path when a section is active */}
+      {activeTab === "editor" && !focusMode && activeSection && (() => {
+        const activeSec = sections.find(s => s.id === activeSection);
+        const secLabel = activeSec ? (SECTION_LABELS[activeSec.type] ?? "Section") : "Section";
+        const hasSubSel = !!(selectedComponentState || selectedRowState || selectedCardState);
+        const hasLeafSel = !!(selectedRowState?.componentId);
+        return (
+          <div className="flex-shrink-0 flex items-center gap-0.5 px-3 h-7 border-b border-border bg-muted/30 text-xs text-muted-foreground overflow-x-auto select-none">
+            {/* Page */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection(null);
+                setSelectedComponentState(null);
+                setSelectedRowState(null);
+                setSelectedCardState(null);
+                setSelectedCardData(null);
+              }}
+              className="hover:text-foreground transition-colors truncate max-w-[100px] shrink-0"
+            >
+              {activePage.name}
+            </button>
+            <ChevronRight className="w-3 h-3 mx-0.5 opacity-40 flex-shrink-0" />
+            {/* Section */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedComponentState(null);
+                setSelectedRowState(null);
+                setSelectedCardState(null);
+                setSelectedCardData(null);
+              }}
+              className={`hover:text-foreground transition-colors truncate max-w-[140px] shrink-0 ${!hasSubSel ? "text-foreground/80 font-medium" : ""}`}
+            >
+              {secLabel}
+            </button>
+            {/* Row / Container */}
+            {hasSubSel && (
+              <>
+                <ChevronRight className="w-3 h-3 mx-0.5 opacity-40 flex-shrink-0" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCardState(null);
+                    setSelectedCardData(null);
+                    if (!selectedRowState?.componentId) setSelectedComponentState(null);
+                    else setSelectedRowState(prev => prev ? { sectionId: prev.sectionId, columnId: prev.columnId } : null);
+                  }}
+                  className={`hover:text-foreground transition-colors truncate max-w-[100px] shrink-0 ${!hasLeafSel ? "text-foreground/80 font-medium" : ""}`}
+                >
+                  {selectedRowState ? "Row" : "Component"}
+                </button>
+              </>
+            )}
+            {/* Leaf element */}
+            {hasLeafSel && (
+              <>
+                <ChevronRight className="w-3 h-3 mx-0.5 opacity-40 flex-shrink-0" />
+                <span className="text-foreground/80 font-medium truncate max-w-[100px] shrink-0">Component</span>
+              </>
+            )}
+            <span className="ml-auto pl-2 flex-shrink-0 text-[10px] text-muted-foreground/40 hidden sm:block">Esc to deselect</span>
+          </div>
+        );
+      })()}
 
       <div ref={editorBodyRef} className="flex-1 flex overflow-hidden">
         {activeTab === "analytics" ? (
@@ -4999,14 +5145,34 @@ function WebsiteEditor() {
           {/* Canvas — live preview, scrolls */}
           <div
             data-editor-canvas="true"
-            className={`flex-1 overflow-y-auto relative bg-[#1c1c1e] ${!focusMode ? "cursor-zoom-in" : ""}`}
-            onClick={() => setActiveSection(null)}
+            ref={canvasScrollRef}
+            className={`flex-1 overflow-y-auto relative bg-[#1c1c1e] ${
+              spaceHeld ? "cursor-grab select-none" : !focusMode ? "cursor-zoom-in" : ""
+            }`}
+            onClick={spaceHeld ? undefined : () => setActiveSection(null)}
             onDoubleClick={e => {
-              if (focusMode) return;
+              if (spaceHeld || focusMode) return;
               if ((e.target as HTMLElement).closest("[data-section-canvas-id]")) return;
               preFocusSidebarState.current = { left: leftCollapsed };
               setFocusMode(true);
             }}
+            onMouseDown={e => {
+              if (!spaceHeld) return;
+              const el = canvasScrollRef.current;
+              if (!el) return;
+              e.preventDefault();
+              panStartRef.current = { x: e.clientX, y: e.clientY, scrollTop: el.scrollTop };
+            }}
+            onMouseMove={e => {
+              if (!spaceHeld || !panStartRef.current) return;
+              const el = canvasScrollRef.current;
+              if (!el) return;
+              const dy = e.clientY - panStartRef.current.y;
+              el.scrollTop = panStartRef.current.scrollTop - dy;
+              if (e.buttons === 0) panStartRef.current = null;
+            }}
+            onMouseUp={() => { panStartRef.current = null; }}
+            onMouseLeave={() => { panStartRef.current = null; }}
           >
             <div
               className={`mx-auto my-8 transition-all duration-300 ${

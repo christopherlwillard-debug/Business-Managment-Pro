@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import {
-  ChevronUp, ChevronDown, Copy, EyeOff, Eye, Plus, Trash2, Lock, Pencil,
+  ChevronUp, ChevronDown, Copy, EyeOff, Eye, Plus, Trash2, Lock, Pencil, Sparkles,
 } from "lucide-react";
 
 /**
@@ -179,7 +179,7 @@ export function EditableWrapper({
           Not shown for the locked header section or locked items. */}
       {!isHeader && !locked && (
         <div
-          className={`absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 bg-gray-900/90 backdrop-blur-sm rounded-lg px-1 py-1 shadow-lg transition-opacity ${
+          className={`absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 bg-gray-900/90 backdrop-blur-sm rounded-lg px-1 py-1 shadow-lg transition-opacity duration-150 ease-out ${
             isSelected ? "opacity-100" : "opacity-0 group-hover/sec:opacity-100"
           }`}
           onClick={e => e.stopPropagation()}
@@ -268,6 +268,19 @@ export function EditableWrapper({
 
           {/* Extra toolbar items (caller-supplied, e.g. image Replace button) */}
           {extraToolbar}
+
+          {/* AI slot — reserved for Phase 4; always visible but disabled until enabled */}
+          <>
+            <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+            <button
+              type="button"
+              disabled
+              title="AI Rewrite (coming soon)"
+              className="p-1 rounded text-purple-300/40 cursor-not-allowed transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+            </button>
+          </>
 
           {/* Delete — always last, with red accent */}
           {onDelete && (
