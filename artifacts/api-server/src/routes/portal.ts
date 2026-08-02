@@ -265,7 +265,7 @@ function maskTaxId(id: string): string {
 
 // ─── Phone lookup — lets a sub verify their account by phone number ───────────
 // Normalises both stored and submitted phone numbers (digits only) before comparing.
-// Returns only the subcontractor's first name — does NOT disclose the portal token.
+// Returns the sub's first name and portal token so the client can redirect directly.
 router.post("/lookup", async (req, res) => {
   try {
     const raw: string = req.body.phone ?? "";
@@ -281,7 +281,7 @@ router.post("/lookup", async (req, res) => {
     if (!match.portalApproved) return res.status(403).json({ error: "Portal access not yet approved. Ask your contractor to approve your portal." });
     if (!match.portalToken) return res.status(404).json({ error: "No portal link generated yet. Ask your contractor to create your portal." });
 
-    res.json({ name: match.name.split(" ")[0] });
+    res.json({ name: match.name.split(" ")[0], token: match.portalToken });
   } catch (err) {
     console.error("[portal-lookup]", err);
     res.status(500).json({ error: "Lookup failed" });
