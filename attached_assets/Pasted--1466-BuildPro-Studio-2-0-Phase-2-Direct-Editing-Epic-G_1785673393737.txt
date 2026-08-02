@@ -1,0 +1,106 @@
+#1466 - BuildPro Studio 2.0 — Phase 2: Direct Editing (Epic)
+Golden Rule
+Every new Studio feature must satisfy all four conditions:
+
+Reuse the existing editing engine whenever practical.
+Reduce the number of clicks required for common tasks.
+Keep the user's attention on the canvas.
+Leave Studio in a shippable state after each milestone.
+If a feature adds power but fails any of these four tests, it should be redesigned or deferred.
+
+Guiding Principle
+Every phase of BuildPro Studio should reduce the number of clicks required to complete common editing tasks. If a feature adds power but increases friction for the average user, it should be redesigned or deferred.
+
+What & Why
+Phase 1 made the editor look like a design application. Phase 2 makes it behave like one.
+
+The canvas is the only place users should need for 95% of their work.
+
+A contractor building their website should be able to click a heading and type, click an image and replace it, click a button and change the label — and never once look at a settings panel. The inspector is not the editor. The canvas is.
+
+The right inspector panel becomes an on-demand advanced tools drawer — hidden by default, opened only when the user explicitly asks for it via "Advanced…" in a floating toolbar or the I keyboard shortcut. Common editing actions live entirely on the canvas through floating toolbars, context menus, and direct manipulation. Every common action must be completable in one click or less without touching the inspector.
+
+Engineering Requirements
+Studio Architecture Rule
+New editing capabilities must be implemented as overlays, controllers, or extensions around the existing WebsiteEditor whenever practical. Avoid expanding WebsiteEditor.tsx into a monolithic file. If new interaction systems are introduced, prefer isolated modules that subscribe to existing editor state rather than modifying the renderer directly.
+
+New code belongs in focused subfolders, not appended to the root editor file:
+
+website/
+  overlays/        AlignmentGuideOverlay, ResizeOverlay, SelectionOverlay, HoverOverlay
+  toolbar/         FloatingTextToolbar, FloatingImageToolbar, FloatingButtonToolbar, FloatingIconToolbar
+  selection/       SelectionManager, MultiSelectionManager
+  drag/            SnapEngine, GuideEngine, DropIndicator
+  keyboard/        KeyboardNavigator, ShortcutManager
+None of these replace existing code — they are interaction-layer additions only.
+
+Reuse Before Rebuild
+Phase 2 is an extension of Phase 1, not a rewrite. The following systems must be reused unless a documented technical limitation prevents it:
+
+System	Expected approach
+Website renderer	Reuse
+Website JSON schema	Reuse
+Auto-save	Reuse
+Undo / redo	Reuse
+dnd-kit drag-and-drop engine	Extend
+InlineEditableText / InlineEditContext	Extend
+Inspector panel	Extend (reposition as advanced editor)
+Section library	Extend
+Selection model	Extend
+Media picker	Extend
+FloatingTextToolbar	Extend
+WebsiteEditor state	Extend
+Floating image / button toolbars	New UI only
+Alignment guide overlay	New feature
+Resize handle overlay	New feature
+MiniQuickAddMenu	New UI only
+Architecture goal: reuse or extend at least 85% of the existing editor architecture. New code should primarily consist of interaction-layer UI — not replacement business logic.
+
+Engineering Gate (applies to every milestone)
+Before implementation, the executor must:
+
+Audit the relevant existing systems and document which are Reused / Extended / New.
+Prefer extending or restyling existing components over replacing them.
+Never duplicate existing state management.
+Never introduce a second implementation of an existing feature.
+If replacing a major subsystem is believed necessary, document: why it cannot be extended, what functionality would be lost, the migration strategy, and the performance impact. Approval is required before proceeding.
+History Rules (applies to every milestone)
+These rules govern the undo history across all Phase 2 interaction systems:
+
+Every continuous interaction (drag, resize, multi-move, duplicate, hide, delete) creates exactly one undo history entry — pushed on completion, not on each intermediate event.
+Selection changes do not create history entries.
+Hover state never creates history entries.
+Guide overlays and snap state never create history entries.
+Interaction Consistency
+Every editable element of the same type must behave identically. If clicking text enters editing for one heading, it must work that way for all headings. If double-clicking an image opens the media picker, it must work that way for every image. Users should never need to remember different interaction models for different components. This is the single biggest reason Canva feels intuitive — and it must be true of Studio from M1 onward.
+
+Done looks like
+A user can replace an image by clicking it, without opening the inspector
+A user can edit a button's label by clicking it, without opening the inspector
+Every editable element shows a clear hover signal that it can be clicked
+Components inside a section can be reordered by dragging
+The Site Structure panel looks and feels like a Navigator — lightweight, extensible
+The toolbar shows one status area and one action area — no competing indicators
+Right-click works consistently on every editable element
+The interaction model is identical across all elements of the same type
+Out of scope (Phase 2)
+AI content generation
+Responsive breakpoint redesign
+Reusable / saved components
+CMS / dynamic data
+Team collaboration
+Template marketplace
+Milestones
+M1 (#1467) — Inline Component Toolbars
+M2 (#1471) — Hover Affordances
+M3 (#1469) — Component Reordering
+M4 (#1468) — Navigator & Toolbar Simplification
+M5 (#1470) — Context Menus & Keyboard Navigation
+M6 (#1472) — Smart Selection & Resize
+M7 (#1473) — Smart Alignment & Snapping
+M8 (#1474) — Multi-Selection
+Relevant files
+artifacts/contractor-app/src/pages/website/WebsiteEditor.tsx
+artifacts/contractor-app/src/pages/website/FloatingTextToolbar.tsx
+artifacts/contractor-app/src/pages/website/EditableWrapper.tsx
+artifacts/contractor-app/src/pages/website/sections/ContentSection.tsx
