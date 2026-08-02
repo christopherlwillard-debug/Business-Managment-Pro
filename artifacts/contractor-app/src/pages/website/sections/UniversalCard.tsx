@@ -235,7 +235,12 @@ export function UniversalCard({
             onCommit={v => onUpdateCard({ title: v })}
           />
         ) : (
-          <h3 className="font-semibold text-base mb-1.5" style={{ color: titleColor }}>
+          <h3
+            data-element-type="heading"
+            data-element-label="Card Title"
+            className="font-semibold text-base mb-1.5"
+            style={{ color: titleColor }}
+          >
             {card.title}
           </h3>
         )}
@@ -252,7 +257,12 @@ export function UniversalCard({
             onCommit={v => onUpdateCard({ description: v })}
           />
         ) : (
-          <p className="text-sm leading-relaxed" style={{ color: descColor }}>
+          <p
+            data-element-type="paragraph"
+            data-element-label="Card Description"
+            className="text-sm leading-relaxed"
+            style={{ color: descColor }}
+          >
             {card.description}
           </p>
         )}

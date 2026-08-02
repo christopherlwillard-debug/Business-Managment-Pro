@@ -244,6 +244,8 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
       {showHeadline && (
         <h1
           data-edit-field="headline"
+          data-element-type="heading"
+          data-element-label="Heading"
           className={`font-bold mb-4 leading-tight${!content.headlineStyle?.fontSize ? " text-4xl md:text-5xl" : ""}`}
           style={headlineCSS}
         >
@@ -253,6 +255,8 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
       {showSubheadline && (
         <p
           data-edit-field="subheadline"
+          data-element-type="subheading"
+          data-element-label="Subheading"
           className={`text-white/80 mb-8 max-w-2xl mx-auto${!content.subheadlineStyle?.fontSize ? " text-lg md:text-xl" : ""}`}
           style={subheadlineCSS}
         >
@@ -262,6 +266,8 @@ export function HeroSection({ content, settings, isEditing, onChange, businessNa
       {showCta && (
         <a
           data-edit-field="ctaLabel"
+          data-element-type="button"
+          data-element-label="CTA Button"
           href={ctaHref}
           target={ctaTarget}
           rel={ctaRel}

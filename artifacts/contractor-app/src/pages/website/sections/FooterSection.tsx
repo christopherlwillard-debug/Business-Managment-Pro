@@ -514,9 +514,24 @@ function renderContactBlock(
       <ul className="flex flex-col gap-2">
         {visibleFields.map(({ key, icon, placeholder }) => {
           const fieldVal = props[key as keyof ContactBlockProps] as ContactField;
+          const elType = key === "phone" || key === "emergencyNumber" ? "phone"
+            : key === "email" ? "email"
+            : key === "address" ? "address"
+            : key === "hours" ? "hours"
+            : key === "licenseNumber" ? "badge"
+            : "contact";
+          const elLabel = key === "phone" ? "Phone Number"
+            : key === "emergencyNumber" ? "Emergency Line"
+            : key === "email" ? "Email"
+            : key === "address" ? "Address"
+            : key === "hours" ? "Hours"
+            : key === "licenseNumber" ? "License #"
+            : key;
           return (
             <li
               key={key}
+              data-element-type={elType}
+              data-element-label={elLabel}
               className={`flex items-start gap-1.5 text-sm ${isEditing && onFieldFocus ? "cursor-pointer hover:opacity-100 transition-opacity" : ""}`}
               style={{ color: textColor, opacity: 0.8 }}
               onClick={isEditing && onFieldFocus ? (e) => { e.stopPropagation(); onFieldFocus(key); } : undefined}

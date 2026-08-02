@@ -1296,6 +1296,11 @@ function WebsiteEditor() {
     const s = localStorage.getItem('website-inspector-mode');
     return (s === 'pinned' || s === 'floating') ? s : 'auto';
   });
+  /** The specific canvas element (heading, phone, button, etc.) drilled into via double-click. */
+  const [selectedSubElement, setSelectedSubElement] = useState<{ type: string; label: string } | null>(null);
+  /** Ref keeps sub-element accessible from zero-dep keydown listeners. */
+  const selectedSubElementRef = useRef<{ type: string; label: string } | null>(null);
+  selectedSubElementRef.current = selectedSubElement;
   const [floatingPos, setFloatingPos] = useState<{ x: number; y: number }>(() => {
     try {
       const s = localStorage.getItem('website-inspector-float-pos');
@@ -1346,6 +1351,11 @@ function WebsiteEditor() {
   useEffect(() => {
     localStorage.setItem('website-inspector-mode', panelMode);
   }, [panelMode]);
+
+  // Clear sub-element drill-down whenever the user switches to a different section.
+  useEffect(() => {
+    setSelectedSubElement(null);
+  }, [activeSection]);
 
   // Reset headerAdvancedOpen when the user navigates away from the header section.
   useEffect(() => {
@@ -1417,6 +1427,11 @@ function WebsiteEditor() {
         // If the user is inline-editing a text field, let InlineEditableText handle
         // the Escape (it commits and stopPropagation()s). Do not deselect section.
         if (editingIdRef.current) return;
+        // Step-up: sub-element → section → nothing
+        if (selectedSubElementRef.current) {
+          setSelectedSubElement(null);
+          return;
+        }
         setActiveSection(null);
       }
       if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -1646,7 +1661,14 @@ function WebsiteEditor() {
         (document.activeElement as HTMLElement)?.isContentEditable;
 
       if (e.key === "Escape") {
-        // Deselect everything — always fires even when typing (mirrors Escape behavior in editors)
+        // Step-up: if a sub-element is drilled into, Escape steps back to section level
+        // rather than doing a full deselect. Both Escape handlers share this ref so they
+        // agree on the same precedence and avoid the second handler bypassing the first.
+        if (selectedSubElementRef.current) {
+          setSelectedSubElement(null);
+          return; // stay at section level; do NOT clear activeSection
+        }
+        // Full deselect — clear all selection state
         setActiveSection(null);
         setSelectedComponentState(null);
         setSelectedRowState(null);
@@ -4051,6 +4073,10 @@ function WebsiteEditor() {
               firstField?.scrollIntoView({ block: "nearest" });
             });
           } : undefined}
+          onSubElementSelect={!previewMode ? (type, label) => {
+            setActiveSection(s.id);
+            setSelectedSubElement({ type, label });
+          } : undefined}
           onDuplicate={!isHeader && !previewMode ? () => duplicateSection(s.id) : undefined}
           onToggleHide={!isHeader && !previewMode ? () => toggleSection(s.id) : undefined}
           onDelete={!isHeader && !previewMode ? () => handleDeleteSectionClick(s.id) : undefined}
@@ -5838,6 +5864,8 @@ function WebsiteEditor() {
                   onClearAutoCollapse={() => {}}
                   specialContent={specialContent}
                   initialTab={contextInspectorTab}
+                  selectedSubElement={selectedSubElement}
+                  onClearSubElement={() => setSelectedSubElement(null)}
                 />
               </div>
             );
@@ -6118,6 +6146,8 @@ function WebsiteEditor() {
                       onClearAutoCollapse={() => {}}
                       specialContent={specialContent}
                       initialTab={contextInspectorTab}
+                      selectedSubElement={selectedSubElement}
+                      onClearSubElement={() => setSelectedSubElement(null)}
                     />
                   )}
                 </div>
@@ -6426,6 +6456,8 @@ function WebsiteEditor() {
                     onClearAutoCollapse={() => {}}
                     specialContent={specialContent}
                     initialTab={contextInspectorTab}
+                    selectedSubElement={selectedSubElement}
+                    onClearSubElement={() => setSelectedSubElement(null)}
                   />
                 </div>
               </div>

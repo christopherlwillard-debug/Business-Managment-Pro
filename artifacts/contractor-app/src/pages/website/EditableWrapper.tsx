@@ -116,7 +116,32 @@ export interface EditableWrapperProps {
   onDoubleClick?: (e: React.MouseEvent) => void;
   /** Called on right-click — opens the canvas context menu */
   onContextMenu?: (e: React.MouseEvent) => void;
+  /**
+   * Called when the user double-clicks a canvas element that carries a
+   * `data-element-type` attribute.  Receives the element type string and a
+   * human-readable label so the inspector can show a breadcrumb.
+   */
+  onSubElementSelect?: (type: string, label: string) => void;
 }
+
+/** Maps data-element-type values to human-readable labels for the breadcrumb. */
+const ELEMENT_TYPE_LABELS: Record<string, string> = {
+  heading:    "Heading",
+  subheading: "Subheading",
+  paragraph:  "Paragraph",
+  logo:       "Logo",
+  image:      "Image",
+  button:     "Button",
+  phone:      "Phone Number",
+  email:      "Email",
+  address:    "Address",
+  hours:      "Hours",
+  badge:      "Badge",
+  background: "Background",
+  tagline:    "Tagline",
+  copyright:  "Copyright",
+  social:     "Social Links",
+};
 
 export function EditableWrapper({
   id,
@@ -141,6 +166,7 @@ export function EditableWrapper({
   onInsertBelow,
   onDoubleClick,
   onContextMenu,
+  onSubElementSelect,
 }: EditableWrapperProps) {
   return (
     <div
@@ -166,6 +192,18 @@ export function EditableWrapper({
         // a background area (no data-inline-editable attribute).
         if ((e.target as HTMLElement).dataset.inlineEditable) return;
         e.stopPropagation();
+
+        // ── Sub-element drill-down ────────────────────────────────────────────
+        // Check if the double-clicked element (or an ancestor) carries a
+        // data-element-type attribute.  If so, notify the parent so it can
+        // mark that element as selected and update the inspector breadcrumb.
+        const elWithType = (e.target as HTMLElement).closest<HTMLElement>("[data-element-type]");
+        if (elWithType && onSubElementSelect) {
+          const elType  = elWithType.dataset.elementType ?? "";
+          const elLabel = elWithType.dataset.elementLabel ?? ELEMENT_TYPE_LABELS[elType] ?? elType;
+          onSubElementSelect(elType, elLabel);
+        }
+
         // Capture cursor position so we can target the correct editable after re-render.
         const { clientX, clientY } = e;
         requestAnimationFrame(() => {

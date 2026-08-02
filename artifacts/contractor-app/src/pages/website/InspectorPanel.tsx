@@ -51,6 +51,10 @@ export interface InspectorPanelProps {
   onClearAutoCollapse?: () => void;
   specialContent?: React.ReactNode;
   initialTab?: { tab: InspectorTab; id: number };
+  /** Sub-element selected via double-click drill-down.  Shown in breadcrumb. */
+  selectedSubElement?: { type: string; label: string } | null;
+  /** Called when the user clicks the breadcrumb sub-element crumb to step back up. */
+  onClearSubElement?: () => void;
 }
 
 // ── Context passed into every field renderer ───────────────────────────────────
@@ -552,6 +556,7 @@ export function InspectorPanel({
   onChangeComponent, onComponentImageUpload, onChangeRowData,
   collapsed, onCollapse, onExpand, autoCollapsed, onClearAutoCollapse,
   specialContent, initialTab,
+  selectedSubElement, onClearSubElement,
 }: InspectorPanelProps) {
   const hasComponent = !!selectedComponent;
 
@@ -880,10 +885,24 @@ export function InspectorPanel({
           <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50 mb-1 truncate">
             <span className="truncate">{pageName}</span>
             <span>›</span>
-            <span className="font-medium text-muted-foreground truncate">{sectionLabel}</span>
+            <span
+              className={`font-medium truncate ${selectedSubElement ? "text-muted-foreground cursor-pointer hover:text-foreground transition-colors" : "text-muted-foreground"}`}
+              onClick={selectedSubElement ? onClearSubElement : undefined}
+              title={selectedSubElement ? "Back to section" : undefined}
+            >
+              {sectionLabel}
+            </span>
+            {selectedSubElement && (
+              <>
+                <span>›</span>
+                <span className="font-medium text-foreground truncate">{selectedSubElement.label}</span>
+              </>
+            )}
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest truncate">{sectionLabel}</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest truncate">
+              {selectedSubElement ? selectedSubElement.label : sectionLabel}
+            </span>
             <div className="flex items-center gap-0.5 flex-shrink-0">
               {!hasComponent && (
                 <>
