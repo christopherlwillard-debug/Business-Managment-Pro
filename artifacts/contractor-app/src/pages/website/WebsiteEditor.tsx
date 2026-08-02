@@ -225,6 +225,7 @@ function renderSection(
           ? (colId, blockId, file) => extras.onColumnImageUpload!(section.id, colId, blockId, file)
           : undefined}
         uploadingImageKeys={extras?.uploadingColumnImageKeys}
+        onBeforeAction={extras?.onBeforeAction}
       />
     );
     case "testimonials": return (
