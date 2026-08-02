@@ -43,6 +43,11 @@ import { isPublishedWebsite } from "@/lib/runtimeMode";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+interface SectionBreakpoints {
+  tablet?: Partial<BlockStyle>;
+  mobile?: Partial<BlockStyle>;
+}
+
 interface Section {
   id: string;
   type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us" | "legal" | "meet-owner" | "process" | "divider" | "spacer" | "alert-bar" | "business-hours" | "trust-counter" | "sticky-cta" | "map-embed" | "quote-form";
@@ -50,6 +55,7 @@ interface Section {
   order: number;
   content: Record<string, unknown>;
   blockStyle?: BlockStyle;
+  breakpoints?: SectionBreakpoints;
 }
 
 interface SitePage {
@@ -100,14 +106,29 @@ interface PublishedConfig {
   businessSlug: string;
 }
 
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(query).matches;
+  });
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [query]);
+  return matches;
+}
+
 function renderBodySection(
   section: Section,
   settings: SiteSettings,
   resolvedSlug: string,
   handleContactSubmit: (d: Record<string, unknown>) => Promise<void>,
   businessName?: string,
+  effectiveBlockStyle?: BlockStyle,
 ) {
-  const props = { content: section.content as any, settings, isEditing: false, blockStyle: section.blockStyle };
+  const props = { content: section.content as any, settings, isEditing: false, blockStyle: effectiveBlockStyle ?? section.blockStyle };
   switch (section.type) {
     case "hero":        return <HeroSection key={section.id} {...props} />;
     case "services":    return <ServicesSection key={section.id} {...props} />;
@@ -222,6 +243,16 @@ export default function PublicSite() {
         </div>
       </div>
     );
+  }
+
+  const isMobile = useMediaQuery("(max-width: 767px)");
+  const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
+
+  function getEffectiveBlockStyle(section: Section): BlockStyle | undefined {
+    const bp = section.breakpoints;
+    if (isMobile && bp?.mobile) return { ...(section.blockStyle ?? {}), ...bp.mobile };
+    if (isTablet && bp?.tablet) return { ...(section.blockStyle ?? {}), ...bp.tablet };
+    return section.blockStyle;
   }
 
   const { sections, settings, businessName } = data;
@@ -541,7 +572,7 @@ export default function PublicSite() {
       )}
 
       {bodySections.map(section =>
-        renderBodySection(section, settings, resolvedSlug, handleContactSubmit, businessName)
+        renderBodySection(section, settings, resolvedSlug, handleContactSubmit, businessName, getEffectiveBlockStyle(section))
       )}
     </div>
   );

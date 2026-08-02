@@ -1,9 +1,11 @@
 import type { BlockStyle } from "./sections/BlockStyleWrapper";
 
 /**
- * Responsive breakpoint overrides — reserved for future implementation.
- * Currently non-functional; fields are persisted so they round-trip safely
- * once responsive editing ships. Tablet = 768–1023px; Mobile = <768px.
+ * Per-breakpoint BlockStyle overrides for responsive editing.
+ * These are delta-only: only fields that differ from the root blockStyle
+ * are stored. Tablet = 768–1023px; Mobile = <768px.
+ * Applied in the editor when the device picker is in Tablet/Mobile mode,
+ * and emitted as merged blockStyle on the published site via a useMediaQuery hook.
  */
 export interface SectionBreakpoints {
   tablet?: Partial<BlockStyle>;

@@ -58,6 +58,12 @@ export interface InspectorPanelProps {
   onClearSubElement?: () => void;
   /** Patch the section's content object (heading text, phone, button label, etc.) */
   onChangeContent?: (content: Record<string, unknown>) => void;
+  /** Desktop (base) BlockStyle — provided when editing a responsive breakpoint. */
+  desktopBlockStyle?: BlockStyle;
+  /** Which breakpoint is currently being edited ("tablet" | "mobile"). */
+  editingBreakpoint?: "tablet" | "mobile";
+  /** Reset all responsive overrides for this section back to desktop values. */
+  onResetBreakpointStyle?: () => void;
 }
 
 // ── Context passed into every field renderer ───────────────────────────────────
@@ -76,6 +82,10 @@ interface FieldCtx {
   isBgUploading: boolean;
   /** Used to target the section's canvas element for animation preview. */
   sectionId?: string;
+  /** Desktop (base) BlockStyle — provided when editing a responsive breakpoint. */
+  desktopBlockStyle?: BlockStyle;
+  /** Which breakpoint is currently being edited. */
+  editingBreakpoint?: "tablet" | "mobile";
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -223,17 +233,38 @@ function AccordionBlock({
 
 // ── FieldWrap ──────────────────────────────────────────────────────────────────
 
-function FieldWrap({ fieldId, label, onPin, pinned, onReset, children }: {
+function FieldWrap({ fieldId, label, onPin, pinned, onReset, breakpointOverride, onBreakpointReset, children }: {
   fieldId: string; label: string;
   onPin?: (id: string) => void; pinned?: boolean;
-  onReset?: () => void; children: React.ReactNode;
+  onReset?: () => void;
+  /** Set when this field has a responsive override that differs from desktop. */
+  breakpointOverride?: "mobile" | "tablet";
+  /** Called to reset this field back to its desktop value. */
+  onBreakpointReset?: () => void;
+  children: React.ReactNode;
 }) {
   const [hover, setHover] = useState(false);
+  const dotColor = breakpointOverride === "mobile" ? "bg-orange-500" : "bg-purple-500";
   return (
     <div className="mb-3 group" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <div className="flex items-center justify-between mb-1">
-        <label className="text-xs text-muted-foreground">{label}</label>
+        <div className="flex items-center gap-1.5">
+          {breakpointOverride && (
+            <span
+              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`}
+              title={`${breakpointOverride === "mobile" ? "Mobile" : "Tablet"} override — differs from desktop`}
+            />
+          )}
+          <label className="text-xs text-muted-foreground">{label}</label>
+        </div>
         <div className={`flex items-center gap-0.5 transition-opacity ${hover ? "opacity-100" : "opacity-0"}`}>
+          {breakpointOverride && onBreakpointReset && (
+            <button type="button" onClick={onBreakpointReset}
+              title="Reset to desktop value"
+              className="text-[9px] px-1 py-0.5 rounded transition-colors text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/30 hover:bg-orange-100 dark:hover:bg-orange-900/50">
+              ✕
+            </button>
+          )}
           {onReset && (
             <button type="button" onClick={onReset} title="Reset to default"
               className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
@@ -558,6 +589,24 @@ function renderField(f: FieldDescriptor, ctx: FieldCtx): React.ReactNode {
 }
 
 function RenderedField({ f, ctx }: { f: FieldDescriptor; ctx: FieldCtx }) {
+  // Detect breakpoint overrides — only when we're in responsive edit mode
+  const breakpointOverride: "mobile" | "tablet" | undefined = (ctx.editingBreakpoint && ctx.desktopBlockStyle)
+    ? (() => {
+        try {
+          const cur = JSON.stringify(f.getValue(ctx.bs));
+          const desk = JSON.stringify(f.getValue(ctx.desktopBlockStyle!));
+          return cur !== desk ? ctx.editingBreakpoint : undefined;
+        } catch {
+          return undefined;
+        }
+      })()
+    : undefined;
+
+  // Per-field "reset to desktop value" — sets the field back to what desktop shows
+  const onBreakpointReset = breakpointOverride && ctx.desktopBlockStyle
+    ? () => { ctx.patch(f.setValue(f.getValue(ctx.desktopBlockStyle!))); ctx.trackRecent(f.id); }
+    : undefined;
+
   if (f.kind.type === "toggle") {
     const isSpecial = f.kind.type === "toggle";
     const resetFn = f.resetOverride
@@ -568,7 +617,9 @@ function RenderedField({ f, ctx }: { f: FieldDescriptor; ctx: FieldCtx }) {
     return (
       <FieldWrap fieldId={f.id} label={f.label}
         onPin={ctx.handlePin} pinned={ctx.pins.includes(f.id)}
-        onReset={resetFn}>
+        onReset={resetFn}
+        breakpointOverride={breakpointOverride}
+        onBreakpointReset={onBreakpointReset}>
         {renderField(f, ctx)}
       </FieldWrap>
     );
@@ -584,7 +635,9 @@ function RenderedField({ f, ctx }: { f: FieldDescriptor; ctx: FieldCtx }) {
   return (
     <FieldWrap fieldId={f.id} label={f.label}
       onPin={ctx.handlePin} pinned={ctx.pins.includes(f.id)}
-      onReset={resetFn}>
+      onReset={resetFn}
+      breakpointOverride={breakpointOverride}
+      onBreakpointReset={onBreakpointReset}>
       {renderField(f, ctx)}
     </FieldWrap>
   );
@@ -623,6 +676,7 @@ export function InspectorPanel({
   specialContent, initialTab,
   selectedSubElement, onClearSubElement,
   onChangeContent,
+  desktopBlockStyle, editingBreakpoint, onResetBreakpointStyle,
 }: InspectorPanelProps) {
   const hasComponent = !!selectedComponent;
 
@@ -771,6 +825,7 @@ export function InspectorPanel({
   // ── BlockStyle helpers ─────────────────────────────────────────────────────
   const bs: BlockStyle = section.blockStyle ?? {};
   function patch(p: Partial<BlockStyle>) { onChangeBlockStyle({ ...bs, ...p }); }
+  const isResponsive = !!editingBreakpoint;
 
   // ── Apply Style To ─────────────────────────────────────────────────────────
   const [applyScope, setApplyScope] = useState<"section" | "page" | "site">("section");
@@ -797,6 +852,8 @@ export function InspectorPanel({
     onToggleSection, switchToAccordion, handlePin, pins,
     onOpenMediaLibrary, onBgImageUpload, isBgUploading,
     sectionId: section.id,
+    desktopBlockStyle: desktopBlockStyle,
+    editingBreakpoint: editingBreakpoint,
   };
 
   // ── Search results ─────────────────────────────────────────────────────────
@@ -1028,6 +1085,23 @@ export function InspectorPanel({
             )}
           </div>
         </div>
+
+        {/* Responsive breakpoint banner */}
+        {isResponsive && editingBreakpoint && (
+          <div className={`flex items-center justify-between gap-2 px-3 py-2 text-xs font-semibold text-white ${editingBreakpoint === "mobile" ? "bg-orange-500" : "bg-purple-600"}`}>
+            <span className="flex items-center gap-1.5">
+              {editingBreakpoint === "mobile" ? "📱" : "⬜"}
+              <span className="capitalize">{editingBreakpoint}</span>
+              <span className="font-normal opacity-80">overrides</span>
+            </span>
+            {onResetBreakpointStyle && (
+              <button type="button" onClick={onResetBreakpointStyle}
+                className="text-[9px] px-1.5 py-0.5 rounded bg-white/20 hover:bg-white/30 transition-colors font-medium whitespace-nowrap">
+                Reset all
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Scrollable body */}
         <div ref={panelScrollRef} className="flex-1 overflow-y-auto min-h-0">

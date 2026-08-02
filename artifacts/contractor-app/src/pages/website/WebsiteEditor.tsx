@@ -2484,6 +2484,105 @@ function WebsiteEditor() {
     });
   }
 
+  // ── Responsive editing helpers ──────────────────────────────────────────────
+
+  /** Merge base blockStyle with breakpoint overrides for the current viewport. */
+  function getEffectiveBlockStyle(s: { blockStyle?: BlockStyle; breakpoints?: import("./website-types").SectionBreakpoints }): BlockStyle {
+    if (viewport === "desktop" || !s.breakpoints?.[viewport]) return s.blockStyle ?? {};
+    return { ...(s.blockStyle ?? {}), ...(s.breakpoints[viewport]!) };
+  }
+
+  /**
+   * Compute the delta between a full (merged) style and the desktop base.
+   * Only fields that differ are stored — so the breakpoints object stays minimal.
+   */
+  function computeBreakpointDelta(newBs: BlockStyle, desktopBs: BlockStyle): Partial<BlockStyle> {
+    const delta: Partial<BlockStyle> = {};
+    const allKeys = new Set([
+      ...Object.keys(newBs as object),
+      ...Object.keys(desktopBs as object),
+    ]) as Set<keyof BlockStyle>;
+    for (const k of allKeys) {
+      const nv = (newBs as Record<string, unknown>)[k as string];
+      const dv = (desktopBs as Record<string, unknown>)[k as string];
+      if (JSON.stringify(nv) !== JSON.stringify(dv)) {
+        (delta as Record<string, unknown>)[k as string] = nv;
+      }
+    }
+    return delta;
+  }
+
+  /** Write breakpoint overrides for a section (tablet/mobile responsive edit mode). */
+  function updateBreakpointStyle(id: string, newBs: BlockStyle) {
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (!p.sections.some(s => s.id === id)) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== id) return s;
+            const delta = computeBreakpointDelta(newBs, s.blockStyle ?? {});
+            const bpDevice = viewport as "tablet" | "mobile";
+            const updatedBreakpoints = {
+              ...(s.breakpoints ?? {}),
+              [bpDevice]: Object.keys(delta).length > 0 ? delta : undefined,
+            };
+            return { ...s, breakpoints: updatedBreakpoints };
+          }),
+        };
+      });
+    });
+  }
+
+  /** Live breakpoint override update — no history push (used during padding drag). */
+  function setBreakpointLive(id: string, partial: Partial<BlockStyle>) {
+    isDirtyRef.current = true;
+    setHasUnpublishedChanges(true);
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (!p.sections.some(s => s.id === id)) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== id) return s;
+            const bpDevice = viewport as "tablet" | "mobile";
+            const current = s.breakpoints?.[bpDevice] ?? {};
+            return {
+              ...s,
+              breakpoints: { ...(s.breakpoints ?? {}), [bpDevice]: { ...current, ...partial } },
+            };
+          }),
+        };
+      });
+    });
+  }
+
+  /** Clear all breakpoint overrides for a section at the current device. */
+  function resetBreakpointStyle(id: string) {
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (!p.sections.some(s => s.id === id)) return p;
+        return {
+          ...p,
+          sections: p.sections.map(s => {
+            if (s.id !== id) return s;
+            const bp = { ...(s.breakpoints ?? {}) };
+            if (viewport === "tablet") delete bp.tablet;
+            if (viewport === "mobile") delete bp.mobile;
+            return { ...s, breakpoints: Object.keys(bp).length > 0 ? bp : undefined };
+          }),
+        };
+      });
+    });
+  }
+
   function applyStyleTo(scope: "section" | "page" | "site", style: BlockStyle) {
     const styleOnly: Partial<BlockStyle> = {
       bgType: style.bgType,
@@ -4802,12 +4901,16 @@ function WebsiteEditor() {
               if (first) first.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
             });
           } : undefined}
-          blockStyle={!previewMode ? s.blockStyle : undefined}
+          blockStyle={!previewMode ? getEffectiveBlockStyle(s) : undefined}
           onPaddingDragStart={!previewMode && !s.locked && !isHeader ? () => {
             history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
           } : undefined}
           onPaddingChangeLive={!previewMode && !s.locked && !isHeader ? (paddingTop, paddingBottom) => {
-            setBlockStyleLive(s.id, { ...(s.blockStyle ?? {}), paddingTop, paddingBottom });
+            if (viewport === "desktop") {
+              setBlockStyleLive(s.id, { ...(s.blockStyle ?? {}), paddingTop, paddingBottom });
+            } else {
+              setBreakpointLive(s.id, { paddingTop, paddingBottom });
+            }
           } : undefined}
         >
           {renderSection(s, settings, isActive && !previewMode, content => updateContent(s.id, content), {
@@ -4991,6 +5094,22 @@ function WebsiteEditor() {
             <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
           )}
           {headerSec && renderWrapped(headerSec, { isHeader: true })}
+          {/* Responsive edit mode banner */}
+          {!previewMode && viewport !== "desktop" && (
+            <div className={`sticky top-0 z-30 flex items-center justify-between gap-2 px-4 py-2 text-xs font-semibold text-white shadow-md ${viewport === "mobile" ? "bg-orange-500" : "bg-purple-600"}`}>
+              <span>
+                {viewport === "mobile" ? "📱 Editing Mobile layout" : "⬜ Editing Tablet layout"}
+                {" — "}changes here only affect screens {viewport === "mobile" ? "under 768px" : "768–1023px"}
+              </span>
+              <button
+                type="button"
+                onClick={() => changeViewport("desktop")}
+                className="flex-shrink-0 px-2.5 py-1 rounded bg-white/20 hover:bg-white/30 transition-colors text-white font-medium"
+              >
+                ← Desktop
+              </button>
+            </div>
+          )}
           {canvasSections.length === 0 && !headerSec && (
             <div className="py-16 flex flex-col items-center gap-5 text-center max-w-xs mx-auto">
               <span className="text-5xl select-none" role="img" aria-label="Building">🏗️</span>
@@ -6295,11 +6414,14 @@ function WebsiteEditor() {
               >
                 <InspectorPanel
                   pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
-                  section={sec}
+                  section={viewport !== "desktop" ? { ...sec, blockStyle: getEffectiveBlockStyle(sec) } : sec}
                   selectedComponent={selectedComponent}
                   rowData={rowData}
                   selectedRowColumnId={selectedRowColumnId}
-                  onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
+                  onChangeBlockStyle={bs => viewport !== "desktop" ? updateBreakpointStyle(sec.id, bs) : updateBlockStyle(sec.id, bs)}
+                  desktopBlockStyle={viewport !== "desktop" ? (sec.blockStyle ?? {}) : undefined}
+                  editingBreakpoint={viewport !== "desktop" ? viewport : undefined}
+                  onResetBreakpointStyle={viewport !== "desktop" ? () => resetBreakpointStyle(sec.id) : undefined}
                   onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
                   isBgUploading={!!bgUploading[sec.id]}
                   onOpenMediaLibrary={openMediaLibrary}
@@ -6610,11 +6732,14 @@ function WebsiteEditor() {
                   ) : (
                     <InspectorPanel
                       pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
-                      section={sec}
+                      section={viewport !== "desktop" ? { ...sec, blockStyle: getEffectiveBlockStyle(sec) } : sec}
                       selectedComponent={selectedComponent}
                       rowData={rowData}
                       selectedRowColumnId={selectedRowColumnId}
-                      onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
+                      onChangeBlockStyle={bs => viewport !== "desktop" ? updateBreakpointStyle(sec.id, bs) : updateBlockStyle(sec.id, bs)}
+                      desktopBlockStyle={viewport !== "desktop" ? (sec.blockStyle ?? {}) : undefined}
+                      editingBreakpoint={viewport !== "desktop" ? viewport : undefined}
+                      onResetBreakpointStyle={viewport !== "desktop" ? () => resetBreakpointStyle(sec.id) : undefined}
                       onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
                       isBgUploading={!!bgUploading[sec.id]}
                       onOpenMediaLibrary={openMediaLibrary}
@@ -6945,11 +7070,14 @@ function WebsiteEditor() {
                 <div className="flex-1 overflow-hidden min-h-0">
                   <InspectorPanel
                     pageName={pages.find(p => p.id === activePageId)?.name ?? "Home"}
-                    section={sec}
+                    section={viewport !== "desktop" ? { ...sec, blockStyle: getEffectiveBlockStyle(sec) } : sec}
                     selectedComponent={selectedComponent}
                     rowData={rowData}
                     selectedRowColumnId={selectedRowColumnId}
-                    onChangeBlockStyle={bs => updateBlockStyle(sec.id, bs)}
+                    onChangeBlockStyle={bs => viewport !== "desktop" ? updateBreakpointStyle(sec.id, bs) : updateBlockStyle(sec.id, bs)}
+                    desktopBlockStyle={viewport !== "desktop" ? (sec.blockStyle ?? {}) : undefined}
+                    editingBreakpoint={viewport !== "desktop" ? viewport : undefined}
+                    onResetBreakpointStyle={viewport !== "desktop" ? () => resetBreakpointStyle(sec.id) : undefined}
                     onBgImageUpload={file => handleSectionBgUpload(sec.id, file)}
                     isBgUploading={!!bgUploading[sec.id]}
                     onOpenMediaLibrary={openMediaLibrary}
