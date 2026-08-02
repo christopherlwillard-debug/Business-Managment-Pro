@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  Search, X, ChevronDown, ChevronUp, ImagePlus, Loader2, Images,
+  Search, X, ChevronDown, ImagePlus, Loader2, Images,
   Copy, ClipboardPaste, Eye, EyeOff, ChevronsLeft, ChevronsRight, Layers,
   Trash2, RotateCcw,
 } from "lucide-react";
@@ -110,6 +110,14 @@ const FONT_OPTIONS = [
 const STYLE_SECTION_ORDER = ["Typography","Colors","Backgrounds","Borders","Shadows"];
 const LAYOUT_SECTION_ORDER = ["","Spacing","Sizing"];
 
+/** Every sub-section storage key — used to bulk-reset on auto-expand. */
+const ALL_STYLE_SUB_KEYS = [
+  ...Object.values(STYLE_SUB_KEYS),
+  "insp-acc-style-layout-adv",
+  ...Object.values(LAYOUT_SUB_KEYS),
+  "insp-acc-row-layout",
+] as const;
+
 type AccordionId = "content" | "style" | "layout" | "advanced"; // layout/advanced fold into Style
 
 // ── localStorage helpers ───────────────────────────────────────────────────────
@@ -191,12 +199,15 @@ function AccordionBlock({
         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{title}</span>
         <div className="flex items-center gap-1">
           {action}
-          {open
-            ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
-            : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+          <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
         </div>
       </button>
-      {open && <div>{children}</div>}
+      {/* CSS grid trick: animates from 0fr → 1fr for smooth height transition */}
+      <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+        <div className="overflow-hidden">
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
@@ -571,7 +582,7 @@ export function InspectorPanel({
 
   // ── Accordion open states (top-level: Content / Style only) ─────────────────
   // Layout and Advanced are nested inside the Style accordion as a collapsed sub-section.
-  const [contentOpen, setContentOpen] = useState(() => readAccordion(ACC_KEYS.content, true));
+  const [contentOpen, setContentOpen] = useState(() => readAccordion(ACC_KEYS.content, false));
   const [styleOpen,   setStyleOpen]   = useState(() => readAccordion(ACC_KEYS.style, false));
 
   function toggleAcc(id: AccordionId) {
@@ -600,11 +611,64 @@ export function InspectorPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTab?.id]);
 
-  // Reset content to open when section changes
+  // ── Sub-section controlled open state ──────────────────────────────────────
+  // Keyed by storageKey; overrides the persisted localStorage default.
+  const [subOpenOverrides, setSubOpenOverrides] = useState<Record<string, boolean>>({});
+
+  function isSubOpen(key: string): boolean {
+    if (key in subOpenOverrides) return subOpenOverrides[key];
+    return readAccordion(key, false); // default: collapsed
+  }
+
+  function toggleSub(key: string) {
+    const next = !isSubOpen(key);
+    setSubOpenOverrides(prev => ({ ...prev, [key]: next }));
+    writeAccordion(key, next);
+  }
+
+  // Context-aware auto-expand: fires on section change or component change.
+  // Maps element type → which groups to open so the inspector surfaces only
+  // what's relevant and collapses everything else.
   useEffect(() => {
-    setContentOpen(true);
-    writeAccordion(ACC_KEYS.content, true);
-  }, [section.id]);
+    const compType = selectedComponent?.type;
+    let newContent: boolean;
+    let newStyle: boolean;
+    const subKeys: string[] = [];
+
+    if (compType === "heading" || compType === "paragraph") {
+      // Text component → show content editor + Typography style group
+      newContent = true;
+      newStyle = true;
+      subKeys.push(STYLE_SUB_KEYS.Typography);
+    } else if (compType === "image") {
+      // Image component → show content editor + Backgrounds style group
+      newContent = true;
+      newStyle = true;
+      subKeys.push(STYLE_SUB_KEYS.Backgrounds);
+    } else if (compType) {
+      // Button, icon, divider, etc. → content editor is the primary surface
+      newContent = true;
+      newStyle = false;
+    } else {
+      // No component selected — section-level editing; style is more useful
+      // than "click to edit on canvas" placeholder
+      newContent = false;
+      newStyle = true;
+      subKeys.push(STYLE_SUB_KEYS.Backgrounds, "insp-acc-style-layout-adv");
+    }
+
+    setContentOpen(newContent);
+    writeAccordion(ACC_KEYS.content, newContent);
+    setStyleOpen(newStyle);
+    writeAccordion(ACC_KEYS.style, newStyle);
+
+    // Reset ALL sub-sections to collapsed, then open the relevant ones
+    const overrides: Record<string, boolean> = {};
+    for (const k of ALL_STYLE_SUB_KEYS) overrides[k] = false;
+    for (const k of subKeys) overrides[k] = true;
+    setSubOpenOverrides(overrides);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section.id, selectedComponent?.id]);
 
   // ── Pin state ──────────────────────────────────────────────────────────────
   const [pins, setPins] = useState<string[]>(() => getPinnedFields());
@@ -729,8 +793,8 @@ export function InspectorPanel({
           if (!secFields?.length) return null;
           return (
             <AccordionBlock key={secName} title={secName}
-              storageKey={STYLE_SUB_KEYS[secName as keyof typeof STYLE_SUB_KEYS]}
-              defaultOpen={false}>
+              open={isSubOpen(STYLE_SUB_KEYS[secName as keyof typeof STYLE_SUB_KEYS])}
+              onToggle={() => toggleSub(STYLE_SUB_KEYS[secName as keyof typeof STYLE_SUB_KEYS])}>
               <div className="px-3 pb-2">
                 {secFields.map(f => <RenderedField key={f.id} f={f} ctx={fieldCtx} />)}
               </div>
@@ -740,8 +804,8 @@ export function InspectorPanel({
 
         {/* Layout + Advanced folded in as a collapsed disclosure */}
         <AccordionBlock title="Layout & Advanced"
-          storageKey="insp-acc-style-layout-adv"
-          defaultOpen={false}>
+          open={isSubOpen("insp-acc-style-layout-adv")}
+          onToggle={() => toggleSub("insp-acc-style-layout-adv")}>
           <div>
             {LAYOUT_SECTION_ORDER.map(secName => {
               const layoutFields = ALL_FIELDS.filter(f => f.tab === "layout" && (f.section ?? "") === secName);
@@ -749,8 +813,8 @@ export function InspectorPanel({
               const title = secName === "" ? "Alignment" : secName;
               return (
                 <AccordionBlock key={secName || "align"} title={title}
-                  storageKey={LAYOUT_SUB_KEYS[secName as keyof typeof LAYOUT_SUB_KEYS]}
-                  defaultOpen={false}>
+                  open={isSubOpen(LAYOUT_SUB_KEYS[secName as keyof typeof LAYOUT_SUB_KEYS])}
+                  onToggle={() => toggleSub(LAYOUT_SUB_KEYS[secName as keyof typeof LAYOUT_SUB_KEYS])}>
                   <div className="px-3 pb-2">
                     {layoutFields.map(f => <RenderedField key={f.id} f={f} ctx={fieldCtx} />)}
                   </div>
@@ -759,8 +823,8 @@ export function InspectorPanel({
             })}
             {section.type === "row" && rowData && onChangeRowData && (
               <AccordionBlock title="Row Layout"
-                storageKey="insp-acc-row-layout"
-                defaultOpen={true}>
+                open={isSubOpen("insp-acc-row-layout")}
+                onToggle={() => toggleSub("insp-acc-row-layout")}>
                 <div className="px-3 pb-2">
                   <RowEditorPanel data={rowData} onChange={onChangeRowData} />
                 </div>
