@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronUp, ChevronDown, Plus, Trash2,
   Facebook, Instagram, Linkedin, Twitter, Youtube,
@@ -188,7 +188,15 @@ export function defaultFooterContent(): FooterContent {
 
 // ── BLOCK RENDERERS (public view) ─────────────────────────────────────────────
 
-function SocialRow({ links, footerLink }: { links: SocialLink[]; footerLink?: string }) {
+function SocialRow({
+  links,
+  footerLink,
+  onSocialClick,
+}: {
+  links: SocialLink[];
+  footerLink?: string;
+  onSocialClick?: (platform: string) => void;
+}) {
   const active = getSocialPlatforms().filter(p => links.some(l => l.platform === p.key && l.url));
   if (!active.length) return null;
   return (
@@ -196,9 +204,16 @@ function SocialRow({ links, footerLink }: { links: SocialLink[]; footerLink?: st
       {active.map(({ key, label, Icon }) => {
         const url = links.find(l => l.platform === key)?.url ?? "";
         return (
-          <a key={key} href={url} target="_blank" rel="noopener noreferrer" title={label}
-            className="opacity-60 hover:opacity-100 transition-opacity"
-            style={{ color: footerLink ? `var(--theme-footer-link, ${footerLink})` : "currentColor" }}>
+          <a
+            key={key}
+            href={onSocialClick ? undefined : url}
+            target={onSocialClick ? undefined : "_blank"}
+            rel="noopener noreferrer"
+            title={label}
+            className={`opacity-60 hover:opacity-100 transition-opacity ${onSocialClick ? "cursor-pointer" : ""}`}
+            style={{ color: footerLink ? `var(--theme-footer-link, ${footerLink})` : "currentColor" }}
+            onClick={onSocialClick ? (e) => { e.stopPropagation(); e.preventDefault(); onSocialClick(key); } : undefined}
+          >
             <Icon className="w-4 h-4" />
           </a>
         );
@@ -215,6 +230,7 @@ function renderLogoBlock(
   isEditing: boolean,
   onChange?: (c: FooterContent) => void,
   businessName?: string,
+  onFieldFocus?: (field: string) => void,
 ) {
   const { props } = block;
   const textColor = `var(--theme-footer-text, ${settings.footerTextColor ?? "#ffffff"})`;
@@ -223,6 +239,12 @@ function renderLogoBlock(
   function updateBlock(patch: Partial<LogoBlockProps>) {
     if (!onChange) return;
     onChange({ ...content, columns: patchBlock(content.columns!, block.id, patch as Record<string, unknown>) });
+  }
+
+  function badgeClick(field: string) {
+    return isEditing && onFieldFocus
+      ? (e: React.MouseEvent) => { e.stopPropagation(); onFieldFocus(field); }
+      : undefined;
   }
 
   return (
@@ -251,7 +273,11 @@ function renderLogoBlock(
 
       {/* Credential chips */}
       {(props.credentialChips ?? []).length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-1">
+        <div
+          className={`flex flex-wrap gap-1.5 mt-1 ${isEditing && onFieldFocus ? "cursor-pointer" : ""}`}
+          onClick={isEditing && onFieldFocus ? (e) => { e.stopPropagation(); onFieldFocus("credentials"); } : undefined}
+          title={isEditing ? "Edit credential chips" : undefined}
+        >
           {(props.credentialChips ?? []).map((chip, i) => (
             <span key={i} className="px-2 py-0.5 rounded-full text-[11px] font-medium border"
               style={{ borderColor: "rgba(255,255,255,0.25)", color: "rgba(255,255,255,0.75)", backgroundColor: "rgba(255,255,255,0.08)" }}>
@@ -263,13 +289,37 @@ function renderLogoBlock(
 
       {/* Badge chips */}
       <div className="flex flex-wrap gap-1.5 mt-1">
-        {props.showVeteranBadge && <span className="text-[11px] px-2 py-0.5 rounded border border-white/25 text-white/70">Veteran-Owned</span>}
-        {props.showSdvosbBadge  && <span className="text-[11px] px-2 py-0.5 rounded border border-white/25 text-white/70">SDVOSB</span>}
-        {props.showBBBBadge     && <span className="text-[11px] px-2 py-0.5 rounded border border-white/25 text-white/70">BBB Accredited</span>}
-        {props.showSBABadge     && <span className="text-[11px] px-2 py-0.5 rounded border border-white/25 text-white/70">SBA Certified</span>}
+        {props.showVeteranBadge && (
+          <span onClick={badgeClick("badge-veteran")}
+            className={`text-[11px] px-2 py-0.5 rounded border border-white/25 text-white/70 ${isEditing && onFieldFocus ? "cursor-pointer hover:border-white/50" : ""}`}>
+            Veteran-Owned
+          </span>
+        )}
+        {props.showSdvosbBadge && (
+          <span onClick={badgeClick("badge-sdvosb")}
+            className={`text-[11px] px-2 py-0.5 rounded border border-white/25 text-white/70 ${isEditing && onFieldFocus ? "cursor-pointer hover:border-white/50" : ""}`}>
+            SDVOSB
+          </span>
+        )}
+        {props.showBBBBadge && (
+          <span onClick={badgeClick("badge-bbb")}
+            className={`text-[11px] px-2 py-0.5 rounded border border-white/25 text-white/70 ${isEditing && onFieldFocus ? "cursor-pointer hover:border-white/50" : ""}`}>
+            BBB Accredited
+          </span>
+        )}
+        {props.showSBABadge && (
+          <span onClick={badgeClick("badge-sba")}
+            className={`text-[11px] px-2 py-0.5 rounded border border-white/25 text-white/70 ${isEditing && onFieldFocus ? "cursor-pointer hover:border-white/50" : ""}`}>
+            SBA Certified
+          </span>
+        )}
       </div>
 
-      <SocialRow links={content.socialLinks ?? []} footerLink={footerLink} />
+      <SocialRow
+        links={content.socialLinks ?? []}
+        footerLink={footerLink}
+        onSocialClick={isEditing && onFieldFocus ? (platform) => onFieldFocus(`social-${platform}`) : undefined}
+      />
     </div>
   );
 }
@@ -417,6 +467,7 @@ function renderContactBlock(
   isEditing: boolean,
   onChange?: (c: FooterContent) => void,
   content?: FooterContent,
+  onFieldFocus?: (field: string) => void,
 ) {
   const { props } = block;
   const textColor = `var(--theme-footer-text, ${settings.footerTextColor ?? "#ffffff"})`;
@@ -464,7 +515,13 @@ function renderContactBlock(
         {visibleFields.map(({ key, icon, placeholder }) => {
           const fieldVal = props[key as keyof ContactBlockProps] as ContactField;
           return (
-            <li key={key} className="flex items-start gap-1.5 text-sm" style={{ color: textColor, opacity: 0.8 }}>
+            <li
+              key={key}
+              className={`flex items-start gap-1.5 text-sm ${isEditing && onFieldFocus ? "cursor-pointer hover:opacity-100 transition-opacity" : ""}`}
+              style={{ color: textColor, opacity: 0.8 }}
+              onClick={isEditing && onFieldFocus ? (e) => { e.stopPropagation(); onFieldFocus(key); } : undefined}
+              title={isEditing ? `Edit ${key}` : undefined}
+            >
               {icon}
               <InlineEditableText
                 id={`${sid}-${block.id}-${key}`}
@@ -485,7 +542,7 @@ function renderContactBlock(
 }
 
 function BlockContent({
-  block, settings, content, sid, isEditing, onChange, businessName,
+  block, settings, content, sid, isEditing, onChange, businessName, onFieldFocus,
 }: {
   block: FooterBlock;
   settings: FooterSectionSettings;
@@ -494,16 +551,17 @@ function BlockContent({
   isEditing: boolean;
   onChange?: (c: FooterContent) => void;
   businessName?: string;
+  onFieldFocus?: (field: string) => void;
 }) {
   switch (block.component) {
     case "LogoBlock":
-      return <>{renderLogoBlock(block, settings, content, sid, isEditing, onChange, businessName)}</>;
+      return <>{renderLogoBlock(block, settings, content, sid, isEditing, onChange, businessName, onFieldFocus)}</>;
     case "LinksBlock":
       return <>{renderLinksBlock(block, settings, sid, isEditing, onChange, content)}</>;
     case "ServiceAreaBlock":
       return <>{renderServiceAreaBlock(block, settings, sid, isEditing, onChange, content)}</>;
     case "ContactBlock":
-      return <>{renderContactBlock(block, settings, sid, isEditing, onChange, content)}</>;
+      return <>{renderContactBlock(block, settings, sid, isEditing, onChange, content, onFieldFocus)}</>;
     default:
       return null;
   }
@@ -528,13 +586,35 @@ const WIDTH_OPTIONS: FooterBlockWidth[] = [20, 25, 33, 40, 50, 60, 66, 75, 100];
 // ── Block inspector / editor panels ───────────────────────────────────────────
 
 function LogoBlockEditor({
-  block, content, onChange,
+  block, content, onChange, focusedField, onClearFocus,
 }: {
   block: LogoBlock;
   content: FooterContent;
   onChange: (c: FooterContent) => void;
+  focusedField?: string | null;
+  onClearFocus?: () => void;
 }) {
   const p = block.props;
+  const badgeRef  = useRef<HTMLDivElement | null>(null);
+  const socialRef = useRef<HTMLDivElement | null>(null);
+  const credRef   = useRef<HTMLDivElement | null>(null);
+  const socialInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  useEffect(() => {
+    if (!focusedField) return;
+    let target: HTMLElement | null = null;
+    if (focusedField.startsWith("badge-")) target = badgeRef.current;
+    else if (focusedField.startsWith("social-")) {
+      target = socialRef.current;
+      // Focus the specific platform input
+      const platform = focusedField.replace("social-", "");
+      const input = socialInputRefs.current[platform];
+      if (input) { input.focus(); input.select(); }
+    } else if (focusedField === "credentials") target = credRef.current;
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const t = setTimeout(() => onClearFocus?.(), 2000);
+    return () => clearTimeout(t);
+  }, [focusedField, onClearFocus]);
 
   function up(patch: Partial<LogoBlockProps>) {
     onChange({ ...content, columns: patchBlock(content.columns!, block.id, patch as Record<string, unknown>) });
@@ -558,16 +638,26 @@ function LogoBlockEditor({
     );
   }
 
+  const isBadgeFocused = focusedField?.startsWith("badge-") ?? false;
+  const isSocialFocused = focusedField?.startsWith("social-") ?? false;
+  const isCredFocused = focusedField === "credentials";
+
   return (
     <div className="space-y-3 text-white">
-      <div>
+      <div
+        ref={badgeRef}
+        className={`rounded-lg transition-all duration-300 ${isBadgeFocused ? "ring-2 ring-primary p-2 shadow-lg shadow-primary/20" : ""}`}
+      >
         <p className="text-[10px] uppercase tracking-wider opacity-40 mb-1">Badges</p>
         <Toggle label="Veteran-Owned"   checked={!!p.showVeteranBadge} onChg={v => up({ showVeteranBadge: v })} />
         <Toggle label="SDVOSB"          checked={!!p.showSdvosbBadge}  onChg={v => up({ showSdvosbBadge: v })} />
         <Toggle label="BBB Accredited"  checked={!!p.showBBBBadge}     onChg={v => up({ showBBBBadge: v })} />
         <Toggle label="SBA Certified"   checked={!!p.showSBABadge}     onChg={v => up({ showSBABadge: v })} />
       </div>
-      <div>
+      <div
+        ref={credRef}
+        className={`rounded-lg transition-all duration-300 ${isCredFocused ? "ring-2 ring-primary p-2 shadow-lg shadow-primary/20" : ""}`}
+      >
         <p className="text-[10px] uppercase tracking-wider opacity-40 mb-1">Credential chips (one per line)</p>
         <textarea
           rows={3}
@@ -577,18 +667,23 @@ function LogoBlockEditor({
           className="w-full bg-white/10 border border-white/20 rounded px-2 py-1.5 text-xs placeholder-white/30 focus:outline-none focus:border-white/50 resize-none"
         />
       </div>
-      <div>
+      <div
+        ref={socialRef}
+        className={`rounded-lg transition-all duration-300 ${isSocialFocused ? "ring-2 ring-primary p-2 shadow-lg shadow-primary/20" : ""}`}
+      >
         <p className="text-[10px] uppercase tracking-wider opacity-40 mb-1.5">Social media</p>
         <div className="space-y-1.5">
           {getSocialPlatforms().map(({ key, label, Icon }) => (
             <div key={key} className="flex items-center gap-2">
               <Icon className="w-3.5 h-3.5 flex-shrink-0 opacity-50" />
               <input
+                ref={el => { socialInputRefs.current[key] = el; }}
                 type="text"
                 value={getSocialUrl(key)}
                 onChange={e => setSocialUrl(key, e.target.value.trim())}
                 placeholder={`${label} URL`}
-                className="flex-1 bg-white/10 border border-white/20 rounded px-2 py-1 text-xs placeholder-white/30 focus:outline-none focus:border-white/50 text-white"
+                className={`flex-1 bg-white/10 rounded px-2 py-1 text-xs placeholder-white/30 focus:outline-none text-white transition-all
+                  ${focusedField === `social-${key}` ? "border-2 border-primary shadow-primary/30 shadow-md" : "border border-white/20 focus:border-white/50"}`}
               />
             </div>
           ))}
@@ -730,13 +825,31 @@ function ServiceAreaBlockEditor({
 }
 
 function ContactBlockEditor({
-  block, content, onChange,
+  block, content, onChange, focusedField, onClearFocus,
 }: {
   block: ContactBlock;
   content: FooterContent;
   onChange: (c: FooterContent) => void;
+  focusedField?: string | null;
+  onClearFocus?: () => void;
 }) {
   const p = block.props;
+  const fieldRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const fieldInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  useEffect(() => {
+    if (!focusedField) return;
+    const row = fieldRowRefs.current[focusedField];
+    if (row) {
+      row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      // Focus value input if the field is visible
+      const input = fieldInputRefs.current[focusedField];
+      if (input) { input.focus(); input.select(); }
+    }
+    const t = setTimeout(() => onClearFocus?.(), 2000);
+    return () => clearTimeout(t);
+  }, [focusedField, onClearFocus]);
+
   function up(patch: Partial<ContactBlockProps>) {
     onChange({ ...content, columns: patchBlock(content.columns!, block.id, patch as Record<string, unknown>) });
   }
@@ -761,8 +874,13 @@ function ContactBlockEditor({
       </div>
       {fields.map(({ key, label, placeholder }) => {
         const fv = (p[key as keyof ContactBlockProps] as ContactField | undefined) ?? { show: false, value: "" };
+        const isFocused = focusedField === key;
         return (
-          <div key={key} className="bg-white/5 rounded-lg px-2.5 py-2">
+          <div
+            key={key}
+            ref={el => { fieldRowRefs.current[key] = el; }}
+            className={`rounded-lg px-2.5 py-2 transition-all duration-300 ${isFocused ? "bg-primary/20 ring-2 ring-primary shadow-lg shadow-primary/20" : "bg-white/5"}`}
+          >
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-medium opacity-70">{label}</label>
               <label className="flex items-center gap-1.5 cursor-pointer">
@@ -774,6 +892,7 @@ function ContactBlockEditor({
             </div>
             {fv.show && (
               <input
+                ref={el => { fieldInputRefs.current[key] = el; }}
                 className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-xs text-white placeholder-white/30 focus:outline-none focus:border-white/50"
                 value={fv.value}
                 onChange={e => up({ [key]: { ...fv, value: e.target.value } } as Partial<ContactBlockProps>)}
@@ -788,17 +907,19 @@ function ContactBlockEditor({
 }
 
 function BlockEditorPanel({
-  block, content, onChange,
+  block, content, onChange, focusedField, onClearFocus,
 }: {
   block: FooterBlock;
   content: FooterContent;
   onChange: (c: FooterContent) => void;
+  focusedField?: string | null;
+  onClearFocus?: () => void;
 }) {
   switch (block.component) {
-    case "LogoBlock":       return <LogoBlockEditor       block={block} content={content} onChange={onChange} />;
+    case "LogoBlock":       return <LogoBlockEditor       block={block} content={content} onChange={onChange} focusedField={focusedField} onClearFocus={onClearFocus} />;
     case "LinksBlock":      return <LinksBlockEditor       block={block} content={content} onChange={onChange} />;
     case "ServiceAreaBlock":return <ServiceAreaBlockEditor  block={block} content={content} onChange={onChange} />;
-    case "ContactBlock":    return <ContactBlockEditor      block={block} content={content} onChange={onChange} />;
+    case "ContactBlock":    return <ContactBlockEditor      block={block} content={content} onChange={onChange} focusedField={focusedField} onClearFocus={onClearFocus} />;
     default: return null;
   }
 }
@@ -905,6 +1026,14 @@ export function FooterSection({
 
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const copyrightInputRef = useRef<HTMLInputElement | null>(null);
+
+  /** Select a block AND mark a specific field inside it to be highlighted/scrolled. */
+  function focusBlockField(blockId: string, field: string) {
+    setSelectedBlockId(blockId);
+    setFocusedField(field);
+  }
 
   const bg  = settings.footerBgColor || settings.brandColor || "#1a1a2e";
   const textColor = `var(--theme-footer-text, ${settings.footerTextColor ?? "#ffffff"})`;
@@ -977,7 +1106,7 @@ export function FooterSection({
           total={columns.length}
           isEditing={!!isEditing}
           isSelected={selectedBlockId === block.id}
-          onSelect={() => setSelectedBlockId(prev => prev === block.id ? null : block.id)}
+          onSelect={() => { setSelectedBlockId(prev => prev === block.id ? null : block.id); setFocusedField(null); }}
           onMove={dir => moveBlock(block.id, dir)}
           onDelete={() => deleteBlock(block.id)}
           onDuplicate={() => duplicateBlock(block.id)}
@@ -990,6 +1119,7 @@ export function FooterSection({
             isEditing={!!isEditing}
             onChange={onChange ? (c) => onChange(c) : undefined}
             businessName={businessName}
+            onFieldFocus={isEditing ? (field) => focusBlockField(block.id, field) : undefined}
           />
         </BlockWrapper>
       ))}
@@ -998,7 +1128,12 @@ export function FooterSection({
 
   const copyrightBar = (
     <div className="mt-10 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-2">
-      <p className="text-xs opacity-40" style={{ color: textColor }}>
+      <p
+        className={`text-xs opacity-40 ${isEditing ? "cursor-pointer hover:opacity-70 transition-opacity" : ""}`}
+        style={{ color: textColor }}
+        onClick={isEditing ? () => { setSelectedBlockId(null); setFocusedField("copyright"); } : undefined}
+        title={isEditing ? "Edit copyright text" : undefined}
+      >
         <InlineEditableText
           id={`${sid}-copyright`}
           as="span"
@@ -1055,7 +1190,7 @@ export function FooterSection({
               <button
                 key={block.id}
                 type="button"
-                onClick={() => setSelectedBlockId(prev => prev === block.id ? null : block.id)}
+                onClick={() => { setSelectedBlockId(prev => prev === block.id ? null : block.id); setFocusedField(null); }}
                 className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap border-r border-white/10 transition-colors flex-shrink-0
                   ${selectedBlockId === block.id
                     ? "bg-primary/20 text-white"
@@ -1117,47 +1252,86 @@ export function FooterSection({
                 block={selectedBlock}
                 content={content}
                 onChange={c => onChange?.(c)}
+                focusedField={focusedField}
+                onClearFocus={() => setFocusedField(null)}
               />
             </div>
           )}
 
           {/* Copyright bar settings (when no block selected or as separate section) */}
           {!selectedBlock && (
-            <div className="p-4 space-y-3">
-              <p className="text-[10px] uppercase tracking-wider text-white/40 mb-1">Copyright bar</p>
-              <div>
-                <label className="block text-xs text-white/50 mb-1">Copyright text</label>
-                <input
-                  className="w-full bg-white/10 border border-white/20 rounded px-2 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-white/50"
-                  value={content.copyright ?? ""}
-                  onChange={e => update({ copyright: e.target.value })}
-                  placeholder={copyrightFallback}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs text-white/50 mb-1">Privacy Policy URL</label>
-                  <input
-                    className="w-full bg-white/10 border border-white/20 rounded px-2 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-white/50"
-                    value={content.privacyPolicyUrl ?? ""}
-                    onChange={e => update({ privacyPolicyUrl: e.target.value || undefined })}
-                    placeholder="/privacy"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-white/50 mb-1">Terms URL</label>
-                  <input
-                    className="w-full bg-white/10 border border-white/20 rounded px-2 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-white/50"
-                    value={content.termsUrl ?? ""}
-                    onChange={e => update({ termsUrl: e.target.value || undefined })}
-                    placeholder="/terms"
-                  />
-                </div>
-              </div>
-            </div>
+            <CopyrightPanel
+              content={content}
+              copyrightFallback={copyrightFallback}
+              focusedField={focusedField}
+              onClearFocus={() => setFocusedField(null)}
+              update={update}
+            />
           )}
         </div>
       </div>
     </BlockStyleWrapper>
+  );
+}
+
+// Extracted so it can hold its own ref without conflicting with FooterSection's refs
+function CopyrightPanel({
+  content, copyrightFallback, focusedField, onClearFocus, update,
+}: {
+  content: FooterContent;
+  copyrightFallback: string;
+  focusedField: string | null;
+  onClearFocus: () => void;
+  update: (patch: Partial<FooterContent>) => void;
+}) {
+  const copyrightRowRef = useRef<HTMLDivElement | null>(null);
+  const copyrightInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (focusedField !== "copyright") return;
+    copyrightRowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    copyrightInputRef.current?.focus();
+    copyrightInputRef.current?.select();
+    const t = setTimeout(() => onClearFocus(), 2000);
+    return () => clearTimeout(t);
+  }, [focusedField, onClearFocus]);
+
+  return (
+    <div className="p-4 space-y-3">
+      <p className="text-[10px] uppercase tracking-wider text-white/40 mb-1">Copyright bar</p>
+      <div
+        ref={copyrightRowRef}
+        className={`rounded-lg transition-all duration-300 ${focusedField === "copyright" ? "ring-2 ring-primary p-2 shadow-lg shadow-primary/20" : ""}`}
+      >
+        <label className="block text-xs text-white/50 mb-1">Copyright text</label>
+        <input
+          ref={copyrightInputRef}
+          className="w-full bg-white/10 border border-white/20 rounded px-2 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-white/50"
+          value={content.copyright ?? ""}
+          onChange={e => update({ copyright: e.target.value })}
+          placeholder={copyrightFallback}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs text-white/50 mb-1">Privacy Policy URL</label>
+          <input
+            className="w-full bg-white/10 border border-white/20 rounded px-2 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-white/50"
+            value={content.privacyPolicyUrl ?? ""}
+            onChange={e => update({ privacyPolicyUrl: e.target.value || undefined })}
+            placeholder="/privacy"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-white/50 mb-1">Terms URL</label>
+          <input
+            className="w-full bg-white/10 border border-white/20 rounded px-2 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-white/50"
+            value={content.termsUrl ?? ""}
+            onChange={e => update({ termsUrl: e.target.value || undefined })}
+            placeholder="/terms"
+          />
+        </div>
+      </div>
+    </div>
   );
 }
