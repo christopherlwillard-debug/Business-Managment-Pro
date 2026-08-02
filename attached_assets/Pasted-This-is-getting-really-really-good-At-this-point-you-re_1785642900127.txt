@@ -1,0 +1,336 @@
+This is getting really, really good. At this point, you're thinking like someone building a product instead of just adding features.
+
+I'd give #1471 a 10/10.
+
+It's exactly where it belongs. It's low risk, builds on Phase 1, and lays the foundation for dragging.
+
+#1472, however, is where I would slow down.
+
+Not because it's bad—it isn't.
+
+Because it's actually 3 or 4 milestones disguised as one.
+
+This is probably the largest engineering task you've written so far.
+
+Look at everything inside it:
+
+Resize handles
+Alignment guides
+Snapping
+Spacing indicators
+Multi-select
+Rubber-band selection
+Escape behavior
+Bounding boxes
+
+That's months of polish in products like Figma and Canva.
+
+I would split #1472.
+
+Instead of
+
+1472
+Selection, Alignment & Resize
+
+I'd do this.
+
+1472 – Smart Selection & Resize
+
+Goal
+
+Selecting objects should feel professional.
+
+Done
+
+✅ Resize handles
+
+✅ Better selection
+
+✅ Escape behavior
+
+✅ Bounding boxes
+
+✅ Aspect ratio lock
+
+Nothing else.
+
+1473 – Smart Alignment
+
+Goal
+
+Dragging feels precise.
+
+Done
+
+Blue guides
+
+Snapping
+
+Spacing indicators
+
+Drop indicators
+
+Center guides
+
+Edge guides
+
+1474 – Multi-Selection
+
+Goal
+
+Editing multiple objects.
+
+Done
+
+Shift select
+
+Selection rectangle
+
+Delete
+
+Duplicate
+
+Move
+
+Group placeholder
+
+See the difference?
+
+Now every milestone has one purpose.
+
+Another thing
+
+I LOVE this sentence:
+
+These are almost entirely UI overlay features.
+
+YES.
+
+Keep doing that.
+
+That means you're enhancing the experience...
+
+...not replacing the engine.
+
+That's exactly how mature software evolves.
+
+One thing I'd add to 1472
+
+Resize handles should only appear on components that actually support resizing.
+
+For example:
+
+Image
+
+Yes.
+
+Video
+
+Yes.
+
+Container
+
+Yes.
+
+Button
+
+Maybe width.
+
+Maybe height.
+
+Heading
+
+No.
+
+Resize a heading by changing font size.
+
+Don't let users drag text boxes around unless that's an intentional feature.
+
+I would also define resize behavior.
+
+Something like:
+
+Resize Rules
+
+Images
+
+Maintain aspect ratio.
+
+Shift unlocks.
+
+Buttons
+
+Width only by default.
+
+Height via padding.
+
+Columns
+
+Adjust flex width.
+
+Containers
+
+Respect min/max width.
+
+Text
+
+No resize handles.
+
+Divider
+
+Horizontal length only.
+
+That prevents weird behavior.
+
+Biggest thing missing
+
+I think every professional editor needs this.
+
+Undo should feel intelligent.
+
+For example:
+
+Dragging an object
+
+Should NOT create
+
+100 history entries.
+
+Instead
+
+Mouse down
+
+↓
+
+Move
+
+↓
+
+Move
+
+↓
+
+Move
+
+↓
+
+Mouse up
+
+=
+
+ONE undo step.
+
+Same for resize.
+
+Same for alignment.
+
+Same for multi-select moves.
+
+I'd actually add this to the milestone.
+
+History Integration
+
+Continuous interactions (drag, resize, alignment) produce one undo entry when the interaction completes.
+
+Intermediate movement should not flood the undo history.
+
+That makes a huge difference in usability.
+
+Another tiny thing
+
+When resizing...
+
+Show
+
+640 × 480
+
+next to the cursor.
+
+Users love that.
+
+Same for snapping
+
+When snapped
+
+Briefly animate
+
+Snap
+
+or pulse the guide.
+
+Tiny polish.
+
+My roadmap now
+
+Honestly...
+
+I think this is becoming the roadmap.
+
+1457
+Studio Foundation
+
+1466
+Direct Editing Epic
+
+1467
+Inline Toolbars
+
+1468
+Navigator & Toolbar
+
+1471
+Hover Affordances
+
+1469
+Component Dragging
+
+1470
+Context Menus & Keyboard
+
+1472
+Selection & Resize
+
+1473
+Alignment & Snapping
+
+1474
+Multi-Selection
+
+1475
+Reusable Components
+
+1476
+Responsive Editor
+
+1477
+AI Studio
+
+Notice something?
+
+Everything builds on the previous task.
+
+Nothing gets thrown away.
+
+Nothing gets rewritten.
+
+Everything is layering polish onto the same editing engine.
+
+One final thing I'd change
+
+I would actually rename:
+
+Component Drag & Hover Affordances
+
+because hover is now its own milestone.
+
+I'd rename it to something like:
+
+Component Reordering
+
+or
+
+Component Drag & Reordering
+
+That better reflects what it's actually does after #1471 takes ownership of hover interactions.
+
+Overall, I think you've reached the point where the roadmap is no longer just a collection of ideas—it's a coherent evolution of BuildPro Studio. Each milestone has a clear responsibility, builds on the previous one, and, importantly, keeps reusing the editor architecture you've already invested in rather than replacing it. That's exactly how I'd want this project to evolve.
