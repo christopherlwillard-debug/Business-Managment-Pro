@@ -29,6 +29,14 @@ import { BeforeAfterSection } from "./sections/BeforeAfterSection";
 import { WhyChooseUsSection } from "./sections/WhyChooseUsSection";
 import { MeetOwnerSection } from "./sections/MeetOwnerSection";
 import { ProcessSection } from "./sections/ProcessSection";
+import { DividerSection } from "./sections/DividerSection";
+import { SpacerSection } from "./sections/SpacerSection";
+import { AlertBarSection } from "./sections/AlertBarSection";
+import { BusinessHoursSection } from "./sections/BusinessHoursSection";
+import { TrustCounterSection } from "./sections/TrustCounterSection";
+import { StickyCTASection } from "./sections/StickyCTASection";
+import { MapEmbedSection } from "./sections/MapEmbedSection";
+import { QuoteFormSection } from "./sections/QuoteFormSection";
 import type { BlockStyle } from "./sections/BlockStyleWrapper";
 
 import { isPublishedWebsite } from "@/lib/runtimeMode";
@@ -37,7 +45,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us" | "legal" | "meet-owner" | "process";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us" | "legal" | "meet-owner" | "process" | "divider" | "spacer" | "alert-bar" | "business-hours" | "trust-counter" | "sticky-cta" | "map-embed" | "quote-form";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -126,6 +134,14 @@ function renderBodySection(
     case "meet-owner":       return <MeetOwnerSection key={section.id} {...props} />;
     case "process":          return <ProcessSection key={section.id} {...props} />;
     case "legal":            return <TextSection key={section.id} {...props} />;
+    case "divider":          return <DividerSection key={section.id} {...props} />;
+    case "spacer":           return <SpacerSection key={section.id} {...props} />;
+    case "alert-bar":        return <AlertBarSection key={section.id} {...props} sectionId={section.id} />;
+    case "business-hours":   return <BusinessHoursSection key={section.id} {...props} sectionId={section.id} />;
+    case "trust-counter":    return <TrustCounterSection key={section.id} {...props} sectionId={section.id} />;
+    case "sticky-cta":       return <StickyCTASection key={section.id} {...props} sectionId={section.id} />;
+    case "map-embed":        return <MapEmbedSection key={section.id} {...props} sectionId={section.id} />;
+    case "quote-form":       return <QuoteFormSection key={section.id} {...props} siteSlug={resolvedSlug} />;
     default:                 return null;
   }
 }

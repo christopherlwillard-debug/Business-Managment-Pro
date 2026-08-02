@@ -13,6 +13,7 @@ import {
   Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette, Briefcase,
   ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText, X, Search,
   Users, Handshake, MapPin, Award, ArrowLeftRight, ThumbsUp, Sparkles, ArrowUpDown,
+  Minus, Clock, Phone,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -58,6 +59,14 @@ import { BeforeAfterSection, defaultBeforeAfterContent } from "./sections/Before
 import { WhyChooseUsSection, defaultWhyChooseUsContent } from "./sections/WhyChooseUsSection";
 import { MeetOwnerSection, defaultMeetOwnerContent } from "./sections/MeetOwnerSection";
 import { ProcessSection, defaultProcessContent } from "./sections/ProcessSection";
+import { DividerSection, defaultDividerContent } from "./sections/DividerSection";
+import { SpacerSection, defaultSpacerContent } from "./sections/SpacerSection";
+import { AlertBarSection, defaultAlertBarContent } from "./sections/AlertBarSection";
+import { BusinessHoursSection, defaultBusinessHoursContent } from "./sections/BusinessHoursSection";
+import { TrustCounterSection, defaultTrustCounterContent } from "./sections/TrustCounterSection";
+import { StickyCTASection, defaultStickyCTAContent } from "./sections/StickyCTASection";
+import { MapEmbedSection, defaultMapEmbedContent } from "./sections/MapEmbedSection";
+import { QuoteFormSection, defaultQuoteFormContent } from "./sections/QuoteFormSection";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { InspectorPanel } from "./InspectorPanel";
@@ -121,7 +130,7 @@ type PanelMode = 'auto' | 'pinned' | 'floating';
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us" | "legal" | "meet-owner" | "process";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us" | "legal" | "meet-owner" | "process" | "divider" | "spacer" | "alert-bar" | "business-hours" | "trust-counter" | "sticky-cta" | "map-embed" | "quote-form";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -366,6 +375,44 @@ function renderSection(
         sectionId={extras?.sectionId}
       />
     );
+    case "divider": return <DividerSection {...props} />;
+    case "spacer": return <SpacerSection {...props} />;
+    case "alert-bar": return (
+      <AlertBarSection
+        {...props}
+        sectionId={extras?.sectionId}
+      />
+    );
+    case "business-hours": return (
+      <BusinessHoursSection
+        {...props}
+        sectionId={extras?.sectionId}
+      />
+    );
+    case "trust-counter": return (
+      <TrustCounterSection
+        {...props}
+        sectionId={extras?.sectionId}
+      />
+    );
+    case "sticky-cta": return (
+      <StickyCTASection
+        {...props}
+        sectionId={extras?.sectionId}
+      />
+    );
+    case "map-embed": return (
+      <MapEmbedSection
+        {...props}
+        sectionId={extras?.sectionId}
+      />
+    );
+    case "quote-form": return (
+      <QuoteFormSection
+        {...props}
+        siteSlug={extras?.siteSlug}
+      />
+    );
     default: return null;
   }
 }
@@ -398,6 +445,14 @@ const SECTION_LABELS: Record<string, string> = {
   legal: "Legal / Disclaimer",
   "meet-owner": "Owner / Team Story",
   process:      "How We Work",
+  divider:        "Divider",
+  spacer:         "Spacer",
+  "alert-bar":    "Alert Bar",
+  "business-hours": "Business Hours",
+  "trust-counter":  "Trust Counter",
+  "sticky-cta":   "Sticky CTA Bar",
+  "map-embed":    "Google Map",
+  "quote-form":   "Quote Request Form",
 };
 
 let _sectionTypeIcons: Record<string, React.ReactNode> | null = null;
@@ -431,6 +486,14 @@ function getSectionTypeIcons(): Record<string, React.ReactNode> {
       legal:              <FileText  className="w-3 h-3 flex-shrink-0" />,
       "meet-owner":       <Users     className="w-3 h-3 flex-shrink-0" />,
       process:            <ChevronRight className="w-3 h-3 flex-shrink-0" />,
+      divider:            <Minus        className="w-3 h-3 flex-shrink-0" />,
+      spacer:             <ArrowUpDown  className="w-3 h-3 flex-shrink-0" />,
+      "alert-bar":        <Megaphone    className="w-3 h-3 flex-shrink-0" />,
+      "business-hours":   <Clock        className="w-3 h-3 flex-shrink-0" />,
+      "trust-counter":    <BarChart2    className="w-3 h-3 flex-shrink-0" />,
+      "sticky-cta":       <Phone        className="w-3 h-3 flex-shrink-0" />,
+      "map-embed":        <MapPin       className="w-3 h-3 flex-shrink-0" />,
+      "quote-form":       <FileText     className="w-3 h-3 flex-shrink-0" />,
     };
   }
   return _sectionTypeIcons;
@@ -470,7 +533,15 @@ function getAddableSectionTypes(): AddableSectionEntry[] {
       { category: "Media",      type: "gallery",          label: "Image Gallery",           description: "A responsive photo grid — great for portfolio or projects",  icon: <Images     className="w-4 h-4" />, allowMultiple: true },
       { category: "Media",      type: "image",            label: "Image",                   description: "A single full-width or constrained image with caption",      icon: <Images     className="w-4 h-4" />, allowMultiple: true },
       { category: "Contact",    type: "contact",          label: "Contact / Quote Form",    description: "A form visitors can use to request a quote or reach out",     icon: <AlignLeft  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Contact",    type: "quote-form",       label: "Quote Request Form",      description: "Dedicated estimate request form with service type dropdown",   icon: <FileText   className="w-4 h-4" />, allowMultiple: true },
       { category: "Legal",      type: "legal",            label: "Legal / Disclaimer",      description: "Privacy policy, terms of service, or a legal disclosure block", icon: <FileText   className="w-4 h-4" />, allowMultiple: true },
+      { category: "Layout",     type: "divider",          label: "Divider",                 description: "Horizontal rule to visually separate sections",               icon: <Minus      className="w-4 h-4" />, allowMultiple: true },
+      { category: "Layout",     type: "spacer",           label: "Spacer",                  description: "Blank vertical gap for fine-tuning whitespace",              icon: <ArrowUpDown className="w-4 h-4" />, allowMultiple: true },
+      { category: "Marketing",  type: "alert-bar",        label: "Alert Bar",               description: "Full-width announcement banner — Now Hiring, Holiday Hours",  icon: <Megaphone  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Marketing",  type: "sticky-cta",       label: "Sticky CTA Bar",          description: "Fixed bottom bar with Call Now / Get Estimate buttons",       icon: <Phone      className="w-4 h-4" />, allowMultiple: false },
+      { category: "Business",   type: "business-hours",   label: "Business Hours",          description: "Day-by-day hours grid that highlights today automatically",   icon: <Clock      className="w-4 h-4" />, allowMultiple: true },
+      { category: "Business",   type: "trust-counter",    label: "Trust Counter",           description: "Animated stats — 500+ Jobs, 15+ Years, 5★ Rating",          icon: <BarChart2  className="w-4 h-4" />, allowMultiple: true },
+      { category: "Business",   type: "map-embed",        label: "Google Map",              description: "Embed a Google Maps iframe centered on your business address", icon: <MapPin     className="w-4 h-4" />, allowMultiple: true },
     ];
   }
   return _addableSectionTypes;
@@ -2899,6 +2970,22 @@ function WebsiteEditor() {
       content = defaultMeetOwnerContent() as unknown as Record<string, unknown>;
     } else if (type === "process") {
       content = defaultProcessContent() as unknown as Record<string, unknown>;
+    } else if (type === "divider") {
+      content = defaultDividerContent() as unknown as Record<string, unknown>;
+    } else if (type === "spacer") {
+      content = defaultSpacerContent() as unknown as Record<string, unknown>;
+    } else if (type === "alert-bar") {
+      content = defaultAlertBarContent() as unknown as Record<string, unknown>;
+    } else if (type === "business-hours") {
+      content = defaultBusinessHoursContent() as unknown as Record<string, unknown>;
+    } else if (type === "trust-counter") {
+      content = defaultTrustCounterContent() as unknown as Record<string, unknown>;
+    } else if (type === "sticky-cta") {
+      content = defaultStickyCTAContent() as unknown as Record<string, unknown>;
+    } else if (type === "map-embed") {
+      content = defaultMapEmbedContent() as unknown as Record<string, unknown>;
+    } else if (type === "quote-form") {
+      content = defaultQuoteFormContent() as unknown as Record<string, unknown>;
     } else if (type === "legal") {
       content = { heading: "Legal Notices", body: "Privacy Policy | Terms of Service\n\nBy using our services, you agree to our terms and conditions. We respect your privacy and handle your personal information in accordance with applicable laws.\n\n© " + new Date().getFullYear() + " All rights reserved." } as unknown as Record<string, unknown>;
     } else if (type === "contact") {

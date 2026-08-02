@@ -34,90 +34,108 @@ export interface SectionLibraryPanelProps {
 
 /** Blank sections — one entry per addable section type */
 const BLANK_ITEMS: LibraryItem[] = [
-  // Getting Started
+  // Hero
   {
-    id: "b:hero", kind: "blank", label: "Hero Banner", category: "Getting Started", sectionType: "hero",
+    id: "b:hero", kind: "blank", label: "Hero Banner", category: "Hero", sectionType: "hero",
     description: "Full-width headline, subtext, and a CTA button",
     emoji: "🚀",
     keywords: ["headline", "banner", "top", "first", "landing", "welcome", "above fold", "intro"],
   },
-  {
-    id: "b:faq", kind: "blank", label: "FAQ", category: "Getting Started", sectionType: "faq",
-    description: "Accordion Q&A to answer common visitor questions",
-    emoji: "❓",
-    keywords: ["questions", "answers", "common", "help", "q&a", "support", "accordion"],
-  },
 
-  // About
+  // Contractor
   {
-    id: "b:meet-owner", kind: "blank", label: "Owner / Team Story", category: "About", sectionType: "meet-owner",
-    description: "Introduce yourself or your crew with photo, bio, stats, and badges",
-    emoji: "👤",
-    keywords: ["owner", "biography", "story", "meet", "introduction", "about me", "who we are", "founder", "personal", "veteran"],
-  },
-  {
-    id: "b:service-area", kind: "blank", label: "Coverage Map", category: "About", sectionType: "service-area",
-    description: "Interactive US state map showing where you work",
-    emoji: "🗺️",
-    keywords: ["map", "coverage", "states", "where", "location", "region", "territory", "geography", "service area"],
-  },
-  {
-    id: "b:partners", kind: "blank", label: "Partners & Brands", category: "About", sectionType: "partners",
-    description: "Manufacturers, suppliers, and brands you install or service",
-    emoji: "🏭",
-    keywords: ["manufacturers", "suppliers", "brands", "vendor", "distributor", "authorized dealer", "logos"],
-  },
-
-  // Services
-  {
-    id: "b:services", kind: "blank", label: "Services", category: "Services", sectionType: "services",
-    description: "Showcase what you offer with a grid of service cards",
-    emoji: "🔧",
-    keywords: ["what we offer", "service list", "offerings", "packages", "work we do", "cards"],
-  },
-  {
-    id: "b:process", kind: "blank", label: "How We Work", category: "Services", sectionType: "process",
-    description: "Numbered step flow showing prospects exactly what to expect",
-    emoji: "➡️",
-    keywords: ["steps", "process", "how it works", "workflow", "procedure", "numbered", "what to expect", "timeline"],
-  },
-  {
-    id: "b:before-after", kind: "blank", label: "Before & After", category: "Services", sectionType: "before-after",
-    description: "Side-by-side before/after photo pairs from real jobs",
-    emoji: "↔️",
-    keywords: ["photos", "results", "transformation", "comparison", "project", "work samples", "portfolio", "reveal"],
-  },
-  {
-    id: "b:why-choose-us", kind: "blank", label: "Why Choose Us", category: "Services", sectionType: "why-choose-us",
+    id: "b:why-choose-us", kind: "blank", label: "Why Choose Us", category: "Contractor", sectionType: "why-choose-us",
     description: "Selling points explaining why customers should hire you",
     emoji: "🏆",
     keywords: ["benefits", "reasons", "unique", "differentiator", "selling points", "value proposition", "advantages"],
   },
-
-  // Trust
   {
-    id: "b:testimonials", kind: "blank", label: "Testimonials", category: "Trust", sectionType: "testimonials",
-    description: "Customer reviews in a card or carousel layout",
-    emoji: "💬",
-    keywords: ["reviews", "star", "rating", "social proof", "feedback", "five star", "google", "customers"],
-  },
-  {
-    id: "b:stats", kind: "blank", label: "Stats / Numbers", category: "Trust", sectionType: "stats",
-    description: "Highlight key numbers like years in business or jobs done",
-    emoji: "📊",
-    keywords: ["numbers", "achievements", "years", "jobs", "proven", "track record", "experience", "count"],
-  },
-  {
-    id: "b:certifications", kind: "blank", label: "Certifications", category: "Trust", sectionType: "certifications",
+    id: "b:certifications", kind: "blank", label: "Certifications", category: "Contractor", sectionType: "certifications",
     description: "Show licenses, awards, and industry credentials",
     emoji: "🎖️",
     keywords: ["license", "badge", "award", "credential", "accreditation", "certified", "insured", "bonded"],
   },
   {
-    id: "b:featured-clients", kind: "blank", label: "Featured Clients", category: "Trust", sectionType: "featured-clients",
+    id: "b:service-area", kind: "blank", label: "Coverage Map", category: "Contractor", sectionType: "service-area",
+    description: "Interactive US state map showing where you work",
+    emoji: "🗺️",
+    keywords: ["map", "coverage", "states", "where", "location", "region", "territory", "geography", "service area"],
+  },
+  {
+    id: "b:before-after", kind: "blank", label: "Before & After", category: "Contractor", sectionType: "before-after",
+    description: "Side-by-side before/after photo pairs from real jobs",
+    emoji: "↔️",
+    keywords: ["photos", "results", "transformation", "comparison", "project", "work samples", "portfolio", "reveal"],
+  },
+  {
+    id: "b:featured-clients", kind: "blank", label: "Featured Clients", category: "Contractor", sectionType: "featured-clients",
     description: "Highlight companies and organizations you've worked with",
     emoji: "🤝",
     keywords: ["clients", "customers", "logos", "companies", "references", "who we work with", "brands"],
+  },
+  {
+    id: "b:partners", kind: "blank", label: "Partners & Brands", category: "Contractor", sectionType: "partners",
+    description: "Manufacturers, suppliers, and brands you install or service",
+    emoji: "🏭",
+    keywords: ["manufacturers", "suppliers", "brands", "vendor", "distributor", "authorized dealer", "logos"],
+  },
+  {
+    id: "b:meet-owner", kind: "blank", label: "Owner / Team Story", category: "Contractor", sectionType: "meet-owner",
+    description: "Introduce yourself or your crew with photo, bio, stats, and badges",
+    emoji: "👤",
+    keywords: ["owner", "biography", "story", "meet", "introduction", "about me", "who we are", "founder", "personal", "veteran"],
+  },
+
+  // Business
+  {
+    id: "b:services", kind: "blank", label: "Services", category: "Business", sectionType: "services",
+    description: "Showcase what you offer with a grid of service cards",
+    emoji: "🔧",
+    keywords: ["what we offer", "service list", "offerings", "packages", "work we do", "cards"],
+  },
+  {
+    id: "b:process", kind: "blank", label: "How We Work", category: "Business", sectionType: "process",
+    description: "Numbered step flow showing prospects exactly what to expect",
+    emoji: "➡️",
+    keywords: ["steps", "process", "how it works", "workflow", "procedure", "numbered", "what to expect", "timeline"],
+  },
+  {
+    id: "b:stats", kind: "blank", label: "Stats / Numbers", category: "Business", sectionType: "stats",
+    description: "Highlight key numbers like years in business or jobs done",
+    emoji: "📊",
+    keywords: ["numbers", "achievements", "years", "jobs", "proven", "track record", "experience", "count"],
+  },
+  {
+    id: "b:faq", kind: "blank", label: "FAQ", category: "Business", sectionType: "faq",
+    description: "Accordion Q&A to answer common visitor questions",
+    emoji: "❓",
+    keywords: ["questions", "answers", "common", "help", "q&a", "support", "accordion"],
+  },
+  {
+    id: "b:business-hours", kind: "blank", label: "Business Hours", category: "Business", sectionType: "business-hours",
+    description: "Day-by-day hours grid that highlights today automatically",
+    emoji: "🕐",
+    keywords: ["hours", "open", "closed", "schedule", "times", "when", "days", "weekly"],
+  },
+  {
+    id: "b:trust-counter", kind: "blank", label: "Trust Counter", category: "Business", sectionType: "trust-counter",
+    description: "Animated stats — 500+ Jobs, 15+ Years Experience, 5★ Rating",
+    emoji: "🔢",
+    keywords: ["animated", "counter", "numbers", "milestones", "achievements", "highlights", "stats bar"],
+  },
+  {
+    id: "b:map-embed", kind: "blank", label: "Google Map", category: "Business", sectionType: "map-embed",
+    description: "Google Maps iframe centered on your business address",
+    emoji: "📍",
+    keywords: ["map", "google", "location", "address", "directions", "find us", "where we are", "embed"],
+  },
+
+  // Social Proof
+  {
+    id: "b:testimonials", kind: "blank", label: "Testimonials", category: "Social Proof", sectionType: "testimonials",
+    description: "Customer reviews in a card or carousel layout",
+    emoji: "💬",
+    keywords: ["reviews", "star", "rating", "social proof", "feedback", "five star", "google", "customers"],
   },
 
   // Marketing
@@ -126,6 +144,18 @@ const BLANK_ITEMS: LibraryItem[] = [
     description: "Bold call-to-action strip with headline and button",
     emoji: "📣",
     keywords: ["call to action", "button", "convert", "get started", "conversion", "action", "signup", "dark"],
+  },
+  {
+    id: "b:alert-bar", kind: "blank", label: "Alert Bar", category: "Marketing", sectionType: "alert-bar",
+    description: "Full-width banner — Now Hiring, Holiday Hours, Military Discount",
+    emoji: "📢",
+    keywords: ["announcement", "notice", "hiring", "holiday", "discount", "banner", "notification", "top bar"],
+  },
+  {
+    id: "b:sticky-cta", kind: "blank", label: "Sticky CTA Bar", category: "Marketing", sectionType: "sticky-cta",
+    description: "Fixed bottom bar with Call Now / Get Estimate buttons",
+    emoji: "📌",
+    keywords: ["sticky", "fixed", "bottom bar", "call now", "phone", "floating", "persistent", "cta"],
   },
 
   // Layout
@@ -154,13 +184,27 @@ const BLANK_ITEMS: LibraryItem[] = [
     keywords: ["text", "paragraph", "copy", "announcement", "simple", "heading"],
   },
   {
-    id: "b:gallery", kind: "blank", label: "Image Gallery", category: "Layout", sectionType: "gallery",
+    id: "b:divider", kind: "blank", label: "Divider", category: "Layout", sectionType: "divider",
+    description: "Horizontal rule — solid, dashed, dotted, or decorative",
+    emoji: "➖",
+    keywords: ["hr", "rule", "separator", "line", "break", "horizontal"],
+  },
+  {
+    id: "b:spacer", kind: "blank", label: "Spacer", category: "Layout", sectionType: "spacer",
+    description: "Blank vertical gap for fine-tuning whitespace between sections",
+    emoji: "↕️",
+    keywords: ["gap", "space", "padding", "whitespace", "empty", "height", "blank"],
+  },
+
+  // Media
+  {
+    id: "b:gallery", kind: "blank", label: "Image Gallery", category: "Media", sectionType: "gallery",
     description: "A responsive photo grid for portfolio or projects",
     emoji: "🖼️",
     keywords: ["photos", "images", "portfolio", "projects", "work samples", "pictures", "grid"],
   },
   {
-    id: "b:image", kind: "blank", label: "Image", category: "Layout", sectionType: "image",
+    id: "b:image", kind: "blank", label: "Image", category: "Media", sectionType: "image",
     description: "A single full-width or constrained image with caption",
     emoji: "📷",
     keywords: ["photo", "picture", "banner image", "full width", "single image"],
@@ -173,10 +217,16 @@ const BLANK_ITEMS: LibraryItem[] = [
     emoji: "📬",
     keywords: ["form", "quote request", "get in touch", "email", "phone", "reach out", "message"],
   },
-
-  // Footer
   {
-    id: "b:legal", kind: "blank", label: "Legal / Disclaimer", category: "Footer", sectionType: "legal",
+    id: "b:quote-form", kind: "blank", label: "Quote Request Form", category: "Contact", sectionType: "quote-form",
+    description: "Dedicated estimate request form with service type dropdown",
+    emoji: "📋",
+    keywords: ["estimate", "request", "service type", "quote", "get quote", "form", "dropdown", "project description"],
+  },
+
+  // Legal
+  {
+    id: "b:legal", kind: "blank", label: "Legal / Disclaimer", category: "Legal", sectionType: "legal",
     description: "Privacy policy, terms of service, or a legal disclosure",
     emoji: "⚖️",
     keywords: ["privacy", "terms", "disclaimer", "policy", "compliance", "legal text"],
@@ -199,7 +249,7 @@ const TEMPLATE_ITEMS: LibraryItem[] = SECTION_TEMPLATES.map(tpl => ({
 const ALL_ITEMS: LibraryItem[] = [...BLANK_ITEMS, ...TEMPLATE_ITEMS];
 
 /** Ordered category list shown in the tab bar */
-const CATEGORIES = ["All", "Getting Started", "About", "Services", "Trust", "Marketing", "Layout", "Contact", "Footer"];
+const CATEGORIES = ["All", "Hero", "Contractor", "Business", "Social Proof", "Marketing", "Layout", "Media", "Contact", "Legal"];
 
 const LS_FAV_KEY = "website-section-library-favorites-v1";
 
@@ -459,14 +509,15 @@ export function SectionLibraryPanel({
  * is used as the visual representation.
  */
 const CATEGORY_TYPE_MAP: Record<string, string> = {
-  "Getting Started": "hero",
-  "About":           "meet-owner",
-  "Services":        "services",
-  "Trust":           "testimonials",
-  "Marketing":       "cta",
-  "Layout":          "columns",
-  "Contact":         "contact",
-  "Footer":          "legal",
+  "Hero":         "hero",
+  "Contractor":   "meet-owner",
+  "Business":     "services",
+  "Social Proof": "testimonials",
+  "Marketing":    "cta",
+  "Layout":       "columns",
+  "Media":        "gallery",
+  "Contact":      "contact",
+  "Legal":        "legal",
 };
 
 function SectionPreviewThumb({ sectionType, category }: { sectionType?: string; category: string }) {
