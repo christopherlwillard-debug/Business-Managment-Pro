@@ -268,6 +268,7 @@ function renderSection(
         onBeforeAction={extras?.onBeforeAction}
         onToggleHide={extras?.onToggleHide ? (compId) => extras.onToggleHide!(section.id, compId) : undefined}
         onComponentContextMenu={extras?.onContentComponentContextMenu}
+        onOpenMediaLibrary={extras?.onOpenMediaLibrary}
       />
     );
     case "row": return (

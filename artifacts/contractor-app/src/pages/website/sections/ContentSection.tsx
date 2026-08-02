@@ -11,7 +11,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Plus, GripVertical, Trash2, Copy, Type, AlignLeft, AlignCenter, AlignRight, MousePointer,
   Image as ImageIcon, Minus, Smile, PlayCircle, Square, Quote, Mail, MapPin, Layers,
-  ClipboardPaste, Link2, FileText,
+  ClipboardPaste, Link2, FileText, Check, X,
 } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { buttonConfigToStyle, buttonConfigToClasses, type ButtonConfig } from "./ButtonEditor";
@@ -535,12 +535,17 @@ interface SortableItemProps {
   onCopy?: () => void;
   onToggleHide?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  /** Opens the media library; calls back with the chosen URL. */
+  onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
   settings: { brandColor: string; accentColor?: string; secondaryColor?: string };
 }
 
-function SortableItem({ comp, isSelected, onSelect, onEdit, onUpdate, onDuplicate, onDelete, onCopy, onToggleHide, onContextMenu, settings }: SortableItemProps) {
+function SortableItem({ comp, isSelected, onSelect, onEdit, onUpdate, onDuplicate, onDelete, onCopy, onToggleHide, onContextMenu, onOpenMediaLibrary, settings }: SortableItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: comp.id });
   const label = getContentComponentTypes().find(t => t.type === comp.type)?.label ?? comp.type;
+  // Inline input mode for image/button/icon toolbars
+  const [showInputMode, setShowInputMode] = useState<"alt" | "link" | "emoji" | null>(null);
+  const [inputDraft, setInputDraft] = useState("");
 
   const dragHandle = (
     <div
@@ -615,24 +620,108 @@ function SortableItem({ comp, isSelected, onSelect, onEdit, onUpdate, onDuplicat
     );
   } else if (comp.type === "image") {
     const imgP = comp.props as ImageCompProps;
-    // Replace / Alt Text / Link: each opens the inspector focused on the relevant field
-    typeToolbar = (
-      <>
-        <div className="w-px h-3.5 bg-white/20 mx-0.5" />
-        <button type="button" title="Replace image" onClick={e => { e.stopPropagation(); onEdit?.(); }}
-          className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white transition-colors">
-          <ImageIcon className="w-3.5 h-3.5" />
-        </button>
-        <button type="button" title="Alt text" onClick={e => { e.stopPropagation(); onEdit?.(); }}
-          className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white transition-colors">
-          <FileText className="w-3.5 h-3.5" />
-        </button>
-        <button type="button" title={imgP.link ? `Link: ${imgP.link}` : "Add link"} onClick={e => { e.stopPropagation(); onEdit?.(); }}
-          className={`p-1 rounded transition-colors ${imgP.link ? "bg-blue-500/40 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
-          <Link2 className="w-3.5 h-3.5" />
-        </button>
-      </>
-    );
+    if (showInputMode === "alt") {
+      typeToolbar = (
+        <>
+          <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+          <input autoFocus type="text" value={inputDraft} onChange={e => setInputDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { onUpdate?.({ ...imgP, alt: inputDraft }); setShowInputMode(null); } if (e.key === "Escape") setShowInputMode(null); }}
+            placeholder="Alt text…"
+            className="px-1.5 py-0.5 rounded text-xs bg-white/20 text-white placeholder-white/40 outline-none border border-white/30 w-28"
+            onClick={e => e.stopPropagation()} />
+          <button type="button" onClick={e => { e.stopPropagation(); onUpdate?.({ ...imgP, alt: inputDraft }); setShowInputMode(null); }} className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white"><Check className="w-3 h-3" /></button>
+          <button type="button" onClick={e => { e.stopPropagation(); setShowInputMode(null); }} className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white"><X className="w-3 h-3" /></button>
+        </>
+      );
+    } else if (showInputMode === "link") {
+      typeToolbar = (
+        <>
+          <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+          <input autoFocus type="url" value={inputDraft} onChange={e => setInputDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { onUpdate?.({ ...imgP, link: inputDraft || undefined }); setShowInputMode(null); } if (e.key === "Escape") setShowInputMode(null); }}
+            placeholder="https://…"
+            className="px-1.5 py-0.5 rounded text-xs bg-white/20 text-white placeholder-white/40 outline-none border border-white/30 w-36"
+            onClick={e => e.stopPropagation()} />
+          <button type="button" onClick={e => { e.stopPropagation(); onUpdate?.({ ...imgP, link: inputDraft || undefined }); setShowInputMode(null); }} className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white"><Check className="w-3 h-3" /></button>
+          <button type="button" onClick={e => { e.stopPropagation(); setShowInputMode(null); }} className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white"><X className="w-3 h-3" /></button>
+        </>
+      );
+    } else {
+      typeToolbar = (
+        <>
+          <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+          <button type="button" title="Replace image"
+            onClick={e => { e.stopPropagation(); onOpenMediaLibrary?.(url => onUpdate?.({ ...imgP, url })); }}
+            className="flex items-center gap-1 p-1 rounded text-white/60 hover:bg-white/20 hover:text-white transition-colors text-xs">
+            <ImageIcon className="w-3.5 h-3.5" /><span>Replace</span>
+          </button>
+          <button type="button" title="Edit alt text"
+            onClick={e => { e.stopPropagation(); setInputDraft(imgP.alt ?? ""); setShowInputMode("alt"); }}
+            className="flex items-center gap-1 p-1 rounded text-white/60 hover:bg-white/20 hover:text-white transition-colors text-xs">
+            <FileText className="w-3.5 h-3.5" /><span>Alt</span>
+          </button>
+          <button type="button" title={imgP.link ? `Link: ${imgP.link}` : "Add link"}
+            onClick={e => { e.stopPropagation(); setInputDraft(imgP.link ?? ""); setShowInputMode("link"); }}
+            className={`flex items-center gap-1 p-1 rounded transition-colors text-xs ${imgP.link ? "bg-blue-500/40 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
+            <Link2 className="w-3.5 h-3.5" /><span>Link</span>
+          </button>
+        </>
+      );
+    }
+  } else if (comp.type === "button") {
+    const btnP = comp.props as ButtonCompProps;
+    if (showInputMode === "link") {
+      typeToolbar = (
+        <>
+          <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+          <input autoFocus type="url" value={inputDraft} onChange={e => setInputDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { onUpdate?.({ ...btnP, config: { ...(btnP.config ?? {}), url: inputDraft } }); setShowInputMode(null); } if (e.key === "Escape") setShowInputMode(null); }}
+            placeholder="https://…"
+            className="px-1.5 py-0.5 rounded text-xs bg-white/20 text-white placeholder-white/40 outline-none border border-white/30 w-36"
+            onClick={e => e.stopPropagation()} />
+          <button type="button" onClick={e => { e.stopPropagation(); onUpdate?.({ ...btnP, config: { ...(btnP.config ?? {}), url: inputDraft } }); setShowInputMode(null); }} className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white"><Check className="w-3 h-3" /></button>
+          <button type="button" onClick={e => { e.stopPropagation(); setShowInputMode(null); }} className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white"><X className="w-3 h-3" /></button>
+        </>
+      );
+    } else {
+      typeToolbar = (
+        <>
+          <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+          <button type="button" title={btnP.config?.url ? `Link: ${btnP.config.url}` : "Set button link"}
+            onClick={e => { e.stopPropagation(); setInputDraft(btnP.config?.url ?? ""); setShowInputMode("link"); }}
+            className={`flex items-center gap-1 p-1 rounded transition-colors text-xs ${btnP.config?.url ? "bg-blue-500/40 text-white" : "text-white/60 hover:bg-white/20 hover:text-white"}`}>
+            <Link2 className="w-3.5 h-3.5" /><span>Link</span>
+          </button>
+        </>
+      );
+    }
+  } else if (comp.type === "icon") {
+    const iconP = comp.props as IconCompProps;
+    if (showInputMode === "emoji") {
+      typeToolbar = (
+        <>
+          <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+          <input autoFocus type="text" value={inputDraft} onChange={e => setInputDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { onUpdate?.({ ...iconP, emoji: inputDraft }); setShowInputMode(null); } if (e.key === "Escape") setShowInputMode(null); }}
+            placeholder="Paste emoji…"
+            className="px-1.5 py-0.5 rounded text-xs bg-white/20 text-white placeholder-white/40 outline-none border border-white/30 w-24"
+            onClick={e => e.stopPropagation()} />
+          <button type="button" onClick={e => { e.stopPropagation(); onUpdate?.({ ...iconP, emoji: inputDraft }); setShowInputMode(null); }} className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white"><Check className="w-3 h-3" /></button>
+          <button type="button" onClick={e => { e.stopPropagation(); setShowInputMode(null); }} className="p-1 rounded text-white/60 hover:bg-white/20 hover:text-white"><X className="w-3 h-3" /></button>
+        </>
+      );
+    } else {
+      typeToolbar = (
+        <>
+          <div className="w-px h-3.5 bg-white/20 mx-0.5" />
+          <button type="button" title="Change icon emoji"
+            onClick={e => { e.stopPropagation(); setInputDraft(iconP.emoji ?? ""); setShowInputMode("emoji"); }}
+            className="flex items-center gap-1 p-1 rounded text-white/60 hover:bg-white/20 hover:text-white transition-colors text-xs">
+            <Smile className="w-3.5 h-3.5" /><span>Change</span>
+          </button>
+        </>
+      );
+    }
   }
 
   return (
@@ -695,6 +784,45 @@ function AddComponentPicker({ onAdd, onClose }: AddComponentPickerProps) {
   );
 }
 
+/** Hover-triggered "+" button rendered between components for on-canvas quick-add. */
+function QuickAddBetween({ onAdd }: { onAdd: (type: ComponentType) => void }) {
+  const [hovered, setHovered] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const close = () => { setPickerOpen(false); setHovered(false); };
+  return (
+    <div
+      className="relative h-5 flex items-center"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { if (!pickerOpen) setHovered(false); }}
+    >
+      {(hovered || pickerOpen) ? (
+        <div className="flex items-center w-full">
+          <div className="flex-1 h-px bg-primary/40" />
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setPickerOpen(v => !v); }}
+            className="mx-1.5 w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center hover:scale-110 active:scale-95 transition-transform shadow-sm flex-shrink-0"
+            title="Add component here"
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+          <div className="flex-1 h-px bg-primary/40" />
+        </div>
+      ) : (
+        <div className="w-full" />
+      )}
+      {pickerOpen && (
+        <div className="absolute top-full left-1/2 -translate-x-1/2 z-50 mt-1 w-72">
+          <AddComponentPicker
+            onAdd={type => { onAdd(type); close(); }}
+            onClose={close}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ContentSectionProps {
   content: ContentSectionData;
   settings: { brandColor: string; accentColor?: string; secondaryColor?: string };
@@ -714,6 +842,8 @@ interface ContentSectionProps {
   onToggleHide?: (id: string) => void;
   /** Called when user right-clicks a component — opens the canvas context menu */
   onComponentContextMenu?: (sectionId: string, compId: string, compType: string, e: React.MouseEvent) => void;
+  /** Opens the media library; calls back with the chosen URL (for Replace Image action). */
+  onOpenMediaLibrary?: (onSelect: (url: string) => void) => void;
 }
 
 export function ContentSection({
@@ -730,6 +860,7 @@ export function ContentSection({
   onBeforeAction,
   onToggleHide,
   onComponentContextMenu,
+  onOpenMediaLibrary,
 }: ContentSectionProps) {
   const { toast } = useToast();
   const [showPicker, setShowPicker] = useState(false);
@@ -760,6 +891,15 @@ export function ContentSection({
     onBeforeAction?.();
     const newComp: SiteComponent = { id: uid(), type, props: defaultPropsForType(type) };
     updateComps([...components, newComp]);
+    onSelectComponent?.(newComp.id);
+  }
+
+  function addComponentAt(index: number, type: ComponentType) {
+    onBeforeAction?.();
+    const newComp: SiteComponent = { id: uid(), type, props: defaultPropsForType(type) };
+    const next = [...components];
+    next.splice(index, 0, newComp);
+    updateComps(next);
     onSelectComponent?.(newComp.id);
   }
 
@@ -828,37 +968,41 @@ export function ContentSection({
       <div onClick={e => e.stopPropagation()}>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={components.map(c => c.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-2">
-              {components.map(comp => (
-                <SortableItem
-                  key={comp.id}
-                  comp={comp}
-                  isSelected={selectedComponentId === comp.id}
-                  onSelect={() => onSelectComponent?.(selectedComponentId === comp.id ? null : comp.id)}
-                  onEdit={() => {
-                    // Always select this component (not toggle), then focus first
-                    // editable field in the component inspector panel (Enter contract)
-                    onSelectComponent?.(comp.id);
-                    requestAnimationFrame(() => {
-                      const panel = document.querySelector("[data-component-editor-panel]");
-                      (panel?.querySelector("input, textarea, select") as HTMLElement | null)?.focus();
-                    });
-                  }}
-                  onUpdate={(newProps) => {
-                    // Direct prop update from the type-specific toolbar (bold, align, etc.)
-                    // Each toolbar click is a discrete action — push a snapshot first.
-                    onBeforeAction?.();
-                    updateComps(components.map(c => c.id === comp.id ? { ...c, props: newProps } : c));
-                  }}
-                  onDuplicate={() => duplicateComponent(comp.id)}
-                  onDelete={() => deleteComponent(comp.id)}
-                  onCopy={onCopyComponent ? () => onCopyComponent(comp) : undefined}
-                  onToggleHide={onToggleHide ? () => onToggleHide(comp.id) : undefined}
-                  onContextMenu={onComponentContextMenu && sectionId
-                    ? (e) => onComponentContextMenu(sectionId, comp.id, comp.type, e)
-                    : undefined}
-                  settings={settings}
-                />
+            <div className="space-y-0">
+              <QuickAddBetween onAdd={type => addComponentAt(0, type)} />
+              {components.map((comp, index) => (
+                <React.Fragment key={comp.id}>
+                  <SortableItem
+                    comp={comp}
+                    isSelected={selectedComponentId === comp.id}
+                    onSelect={() => onSelectComponent?.(selectedComponentId === comp.id ? null : comp.id)}
+                    onEdit={() => {
+                      // Always select this component (not toggle), then focus first
+                      // editable field in the component inspector panel (Enter contract)
+                      onSelectComponent?.(comp.id);
+                      requestAnimationFrame(() => {
+                        const panel = document.querySelector("[data-component-editor-panel]");
+                        (panel?.querySelector("input, textarea, select") as HTMLElement | null)?.focus();
+                      });
+                    }}
+                    onUpdate={(newProps) => {
+                      // Direct prop update from the type-specific toolbar (bold, align, etc.)
+                      // Each toolbar click is a discrete action — push a snapshot first.
+                      onBeforeAction?.();
+                      updateComps(components.map(c => c.id === comp.id ? { ...c, props: newProps } : c));
+                    }}
+                    onOpenMediaLibrary={onOpenMediaLibrary}
+                    onDuplicate={() => duplicateComponent(comp.id)}
+                    onDelete={() => deleteComponent(comp.id)}
+                    onCopy={onCopyComponent ? () => onCopyComponent(comp) : undefined}
+                    onToggleHide={onToggleHide ? () => onToggleHide(comp.id) : undefined}
+                    onContextMenu={onComponentContextMenu && sectionId
+                      ? (e) => onComponentContextMenu(sectionId, comp.id, comp.type, e)
+                      : undefined}
+                    settings={settings}
+                  />
+                  <QuickAddBetween onAdd={type => addComponentAt(index + 1, type)} />
+                </React.Fragment>
               ))}
             </div>
           </SortableContext>
