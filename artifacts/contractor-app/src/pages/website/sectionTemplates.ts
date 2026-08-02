@@ -463,4 +463,53 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
     }),
     blockStyle: { paddingTop: 80, paddingBottom: 80 },
   },
+
+  {
+    id: "process-horizontal",
+    name: "How We Work — Horizontal",
+    description: "4 numbered steps in a row with arrow connectors",
+    emoji: "➡️",
+    category: "Services",
+    sectionType: "process",
+    content: () => ({
+      heading: "How We Work",
+      subheading: "Simple, transparent, and stress-free — every time.",
+      layout: "horizontal",
+      connector: "arrow",
+      steps: [
+        { id: "p1", icon: "📋", title: "Free Estimate",  description: "We visit the site, take measurements, and give you a clear written quote — no surprise fees." },
+        { id: "p2", icon: "📅", title: "Schedule",       description: "Pick a start date that works for you. We confirm 48 hours before and show up on time." },
+        { id: "p3", icon: "🏗️", title: "We Build",       description: "Our crew handles everything — foundation, delivery, setup, and tie-downs — to code." },
+        { id: "p4", icon: "🏠", title: "Move In",        description: "Final walkthrough, punch-list sign-off, and you get the keys. That's it." },
+      ],
+      ctaText: "Get Your Free Estimate",
+      ctaUrl:  "#contact",
+    }),
+    blockStyle: { paddingTop: 64, paddingBottom: 64 },
+  },
+
+  {
+    id: "process-timeline",
+    name: "How We Work — Timeline",
+    description: "Vertical numbered timeline — best for mobile-first sites",
+    emoji: "📋",
+    category: "Services",
+    sectionType: "process",
+    content: () => ({
+      heading: "What to Expect",
+      subheading: "Here's exactly what happens after you reach out.",
+      layout: "timeline",
+      connector: "solid",
+      steps: [
+        { id: "p1", icon: "📞", title: "You Call or Request Online", description: "Takes 2 minutes. We'll respond the same day with available estimate windows." },
+        { id: "p2", icon: "🔍", title: "On-Site Estimate",           description: "We assess the site, confirm measurements, and answer every question — in writing." },
+        { id: "p3", icon: "📝", title: "Review & Sign",              description: "You get a clear scope-of-work document. No work starts until you've signed off." },
+        { id: "p4", icon: "🏗️", title: "Installation Day",          description: "Our crew arrives on time and completes the work to code. Clean-up included." },
+        { id: "p5", icon: "🔑", title: "Walkthrough & Keys",         description: "We walk every step together. If anything's not right, we fix it before we leave.", ctaMode: true },
+      ],
+      ctaText: "Start the Process Today",
+      ctaUrl:  "#contact",
+    }),
+    blockStyle: { paddingTop: 64, paddingBottom: 64 },
+  },
 ];

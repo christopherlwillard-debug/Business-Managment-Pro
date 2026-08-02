@@ -28,6 +28,7 @@ import { CertificationsSection } from "./sections/CertificationsSection";
 import { BeforeAfterSection } from "./sections/BeforeAfterSection";
 import { WhyChooseUsSection } from "./sections/WhyChooseUsSection";
 import { MeetOwnerSection } from "./sections/MeetOwnerSection";
+import { ProcessSection } from "./sections/ProcessSection";
 import type { BlockStyle } from "./sections/BlockStyleWrapper";
 
 import { isPublishedWebsite } from "@/lib/runtimeMode";
@@ -36,7 +37,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us" | "legal" | "meet-owner";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us" | "legal" | "meet-owner" | "process";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -123,6 +124,7 @@ function renderBodySection(
     case "before-after":     return <BeforeAfterSection key={section.id} {...props} />;
     case "why-choose-us":    return <WhyChooseUsSection key={section.id} {...props} />;
     case "meet-owner":       return <MeetOwnerSection key={section.id} {...props} />;
+    case "process":          return <ProcessSection key={section.id} {...props} />;
     case "legal":            return <TextSection key={section.id} {...props} />;
     default:                 return null;
   }
