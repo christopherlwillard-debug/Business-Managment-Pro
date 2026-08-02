@@ -701,6 +701,13 @@ function BusinessTripsSection({
   const [newNotes, setNewNotes] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<BusinessTrip | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [editingTripId, setEditingTripId] = useState<number | null>(null);
+  const [editDest, setEditDest] = useState("");
+  const [editPurpose, setEditPurpose] = useState("");
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
+  const [editJobId, setEditJobId] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   // Auto-open new trip form when navigated from a job card with prefill_jobId param
   useEffect(() => {
@@ -762,6 +769,42 @@ function BusinessTripsSection({
     await deleteTrip.mutateAsync(deleteConfirm.id);
     setDeleteConfirm(null);
     toast({ title: "Trip deleted" });
+  }
+
+  function handleStartEdit(trip: BusinessTrip) {
+    setEditingTripId(trip.id);
+    setEditDest(trip.destination);
+    setEditPurpose(trip.businessPurpose ?? "");
+    setEditStart(trip.startDate ?? "");
+    setEditEnd(trip.endDate ?? "");
+    setEditJobId(trip.jobId != null ? String(trip.jobId) : "");
+    setEditNotes(trip.notes ?? "");
+  }
+
+  function handleCancelEdit() {
+    setEditingTripId(null);
+  }
+
+  async function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingTripId || !editDest.trim()) return;
+    try {
+      await updateTrip.mutateAsync({
+        id: editingTripId,
+        data: {
+          destination: editDest.trim(),
+          businessPurpose: editPurpose.trim() || undefined,
+          startDate: editStart || undefined,
+          endDate: editEnd || undefined,
+          jobId: editJobId ? parseInt(editJobId) : undefined,
+          notes: editNotes.trim() || undefined,
+        },
+      });
+      setEditingTripId(null);
+      toast({ title: "Trip updated" });
+    } catch {
+      toast({ title: "Error", description: "Could not update trip.", variant: "destructive" });
+    }
   }
 
   const activeTrips = [...trips]
@@ -951,6 +994,13 @@ function BusinessTripsSection({
                             <Download className="w-3.5 h-3.5" />
                           </a>
                           <button
+                            title="Edit trip"
+                            onClick={() => editingTripId === trip.id ? handleCancelEdit() : handleStartEdit(trip)}
+                            className="p-1 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
                             title="Delete trip"
                             onClick={() => setDeleteConfirm(trip)}
                             className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-red-50 transition-colors"
@@ -960,6 +1010,68 @@ function BusinessTripsSection({
                         </div>
                       </div>
                     </div>
+                    {editingTripId === trip.id && (
+                      <div className="border-t border-border/30 bg-amber-50/60 px-5 py-4" onClick={e => e.stopPropagation()}>
+                        <p className="text-sm font-semibold text-amber-900 mb-3 flex items-center gap-2">
+                          <Pencil className="w-4 h-4" /> Edit Trip
+                        </p>
+                        <form onSubmit={handleSaveEdit} className="space-y-3">
+                          <div className="grid sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium mb-1">Destination *</label>
+                              <input
+                                value={editDest} onChange={e => setEditDest(e.target.value)} required
+                                placeholder="e.g. Louisville, KY"
+                                className="w-full px-3 py-1.5 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium mb-1">Business Purpose</label>
+                              <input
+                                value={editPurpose} onChange={e => setEditPurpose(e.target.value)}
+                                placeholder="e.g. Site installation for ABC job"
+                                className="w-full px-3 py-1.5 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium mb-1">Start Date</label>
+                              <input type="date" value={editStart} onChange={e => setEditStart(e.target.value)}
+                                className="w-full px-3 py-1.5 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium mb-1">End Date</label>
+                              <input type="date" value={editEnd} onChange={e => setEditEnd(e.target.value)}
+                                className="w-full px-3 py-1.5 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="block text-xs font-medium mb-1">Linked Job (optional)</label>
+                              <select value={editJobId} onChange={e => setEditJobId(e.target.value)}
+                                className="w-full px-3 py-1.5 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20">
+                                <option value="">— No job linked —</option>
+                                {jobs.map(j => <option key={j.id} value={j.id}>{formatJobLabel(j)}</option>)}
+                              </select>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="block text-xs font-medium mb-1">Notes (optional)</label>
+                              <textarea
+                                value={editNotes} onChange={e => setEditNotes(e.target.value)}
+                                placeholder="e.g. Trip was not approved for billing. Customer cancelled after arrival."
+                                rows={3}
+                                className="w-full px-3 py-1.5 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button type="button" onClick={handleCancelEdit}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted transition-colors">Cancel</button>
+                            <button type="submit" disabled={updateTrip.isPending}
+                              className="px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60">
+                              {updateTrip.isPending ? "Saving…" : "Save Changes"}
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    )}
                     {isOpen && (
                       <TripReceiptsPanel
                         trip={trip}
