@@ -1,0 +1,91 @@
+These are excellent. They all follow the same philosophy and build on each other instead of adding random features.
+
+I’d only make a couple of refinements.
+
+#1607 – Receipt-First Expense Entry
+
+Rating: 10/10
+
+No changes. This is exactly how people use expense tracking in the field.
+
+One small addition I’d consider:
+
+After AI scans the receipt, show a confidence badge (“High Confidence”, “Medium Confidence”) and highlight any fields that need review before saving.
+
+That builds trust in the AI.
+
+⸻
+
+#1608 – Income Breakdown
+
+Rating: 9.8/10
+
+I like everything except one thing.
+
+Instead of “Breakdown by Job”, I’d rename it to:
+
+Income by Job
+
+or
+
+Earnings by Job
+
+Those are simpler and more natural for most subcontractors.
+
+I’d also add one line to the “Done looks like” section:
+
+The expanded state is remembered while the user remains in the portal session.
+
+That way if they expand it once, it doesn’t keep collapsing every time they navigate around.
+
+⸻
+
+#1609 – Dashboard Overhaul
+
+Rating: 10/10
+
+This is exactly the direction I’d take.
+
+One thing I’d tweak is the Tax Readiness checklist.
+
+Instead of:
+
+* Income Recorded
+* Mileage Logged
+* W-9 Completed
+* Expenses Logged
+* Home Office Set Up
+
+I’d make it:
+
+* ✅ W-9 Completed
+* ✅ Income Recorded
+* ✅ Expenses Logged
+* ✅ Mileage Logged
+* ✅ Tax Profile Complete (or Home Office Set Up if that’s already implemented)
+
+The W-9 is the biggest blocker to getting a 1099 issued, so surfacing it first makes the checklist more logical.
+
+⸻
+
+One Feature I’d Add Next
+
+After these three tasks, I’d create:
+
+1610 – Smart Notifications & Action Center
+
+Instead of users hunting for problems, the portal proactively tells them what needs attention.
+
+Examples:
+
+* Complete your W-9 to receive a 1099.
+* You have 3 unpaid jobs awaiting payment.
+* You haven’t logged mileage in 14 days.
+* You have receipts that still need reviewing.
+* Your contractor added a new job.
+* A payment has been issued.
+* Your tax savings increased by $42 after your latest expense.
+
+This becomes the first card on the dashboard and doubles as an in-app notification center. It makes the portal feel like it’s actively helping the subcontractor rather than just displaying data.
+
+If you keep building in this direction—action-oriented, simple, and tax-aware—I think your subcontractor portal will stand out from generic contractor software because it’s actually designed around how independent subcontractors work day to day.

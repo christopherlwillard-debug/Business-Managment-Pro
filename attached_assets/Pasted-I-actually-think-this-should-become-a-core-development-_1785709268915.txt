@@ -1,0 +1,104 @@
+I actually think this should become a core development principle for your entire app. It’s one of the reasons your app can stay maintainable as it grows.
+
+I’d make it an explicit rule for every task.
+
+⸻
+
+Development Golden Rule: Reuse Before Build
+
+Principle
+
+Before creating any new component, page, API, database table, business logic, AI workflow, calculation, or UI, first determine whether the functionality already exists elsewhere in the application.
+
+If an existing feature can be reused, exposed, extended, or lightly adapted, always choose that approach instead of creating a duplicate implementation.
+
+The goal is a single source of truth for every feature.
+
+Rules
+
+* Reuse existing pages whenever possible.
+* Reuse existing API endpoints whenever possible.
+* Reuse existing database tables.
+* Reuse existing AI workflows.
+* Reuse existing calculations.
+* Reuse existing components.
+* Reuse existing forms.
+* Reuse existing uploaders.
+* Reuse existing receipt scanning.
+* Reuse existing tax calculations.
+* Reuse existing notification systems.
+* Reuse existing permissions.
+* Reuse existing business logic.
+
+Only build something new when no reusable solution exists or when the existing implementation cannot reasonably be extended.
+
+Before Every Task
+
+Before writing code, answer these questions:
+
+1. Does this feature already exist somewhere in the app?
+2. Can an existing component be reused?
+3. Can an existing API endpoint be reused?
+4. Can an existing database table be reused?
+5. Can this simply be exposed to another user role?
+6. Can this be accomplished with configuration instead of new code?
+
+If the answer to any of these is yes, reuse it.
+
+Example
+
+Incorrect
+
+Create a second expense system for subcontractors.
+
+Correct
+
+Expose the existing expense system to subcontractors using role-based permissions and reuse the existing AI receipt scanning, expense model, categories, reports, and calculations.
+
+⸻
+
+Incorrect
+
+Create a new mileage tracker.
+
+Correct
+
+Reuse the existing mileage tracking engine and simply filter records to the logged-in subcontractor.
+
+⸻
+
+Incorrect
+
+Build a second W-9 workflow.
+
+Correct
+
+Reuse the existing W-9 component and adapt it for the subcontractor portal.
+
+Desired Architecture
+
+One receipt scanner.
+
+One expense engine.
+
+One mileage engine.
+
+One tax calculation engine.
+
+One notification engine.
+
+One payment engine.
+
+One authentication system.
+
+One source of truth for every piece of business logic.
+
+UIs may differ by user role, but the underlying logic should be shared.
+
+⸻
+
+I would even add this sentence to the very top of your Replit project documentation:
+
+Golden Rule: Extend before you create. Reuse before you rebuild. Every duplicate implementation is technical debt unless there is a documented architectural reason for creating it.
+
+From everything we’ve worked on with Build Pro, this philosophy fits perfectly. The subcontractor portal shouldn’t have its own expense system—it should simply expose the existing expense system with permissions and a subcontractor-friendly UI. The same applies to receipts, mileage, AI scanning, tax calculations, notifications, W-9s, and any future features. One engine, multiple experiences.
