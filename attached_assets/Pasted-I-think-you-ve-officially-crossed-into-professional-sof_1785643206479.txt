@@ -1,0 +1,268 @@
+I think you've officially crossed into "professional software roadmap" territory.
+
+These are no longer feature ideas—they're implementation specifications.
+
+I'd give both of these 10/10.
+
+But I have a few senior-architect suggestions that will save you pain later.
+
+#1473 — Smart Alignment & Snapping
+
+This is probably the most technically impressive task you've written.
+
+The caching.
+
+The rAF throttling.
+
+Spatial filtering.
+
+Alt bypass.
+
+Undo integration.
+
+Those are exactly the kinds of details most teams forget.
+
+I'd only add one thing.
+Don't calculate guides during auto-scroll.
+
+Eventually you'll allow dragging near the edge of the canvas.
+
+When that happens...
+
+Drag
+
+↓
+
+Canvas auto-scrolls
+
+↓
+
+Guide calculations temporarily pause
+
+↓
+
+Resume after scrolling stabilizes
+
+Otherwise you'll get jitter.
+
+I'd literally add
+
+Auto-scroll handling
+
+If the canvas auto-scrolls while dragging, temporarily suspend guide snapping until the scroll delta settles.
+
+Guide overlays should reposition after the scroll completes.
+
+Prevent jitter caused by simultaneous scrolling and snapping.
+I'd also add
+Guide priority
+
+When multiple guides are possible simultaneously:
+
+Center alignment has higher priority than edge alignment.
+
+Edge alignment has higher priority than spacing indicators.
+
+Spacing indicators never override an active snap.
+
+Otherwise weird snapping happens.
+
+#1474 — Multi Selection
+
+This is honestly fantastic.
+
+There's only one thing I'd change.
+
+Don't store duplicated position as pixels.
+
+Your spec says
+
+16px down
+16px right
+
+Instead I'd say
+
+Duplicate offset
+
+Duplicate relative to the current zoom level.
+
+The visual offset should appear approximately 16 screen pixels regardless of canvas zoom.
+
+Otherwise
+
+200%
+
+looks different than
+
+50%.
+
+Biggest thing I'd add
+
+This belongs to BOTH tasks.
+
+History Integration
+History Rules
+
+Every continuous interaction creates exactly one undo history entry.
+
+Examples:
+
+Dragging
+
+Resize
+
+Multi-move
+
+Duplicate
+
+Hide
+
+Delete
+
+Selection changes do NOT create history entries.
+
+Hover state never creates history entries.
+
+Guide overlays never create history entries.
+
+This is incredibly important.
+
+Another thing
+
+I LOVE this sentence
+
+Pure interaction layer.
+
+Keep using that phrase.
+
+Because it forces everyone to think
+
+"Can we build this without touching the renderer?"
+
+One architecture improvement
+
+I'd actually introduce a new folder.
+
+Right now
+
+Everything is becoming WebsiteEditor.
+
+Eventually it'll explode.
+
+I'd start separating now.
+
+Example
+
+website/
+
+overlays/
+
+AlignmentGuideOverlay
+
+ResizeOverlay
+
+SelectionOverlay
+
+HoverOverlay
+
+toolbar/
+
+FloatingTextToolbar
+
+FloatingImageToolbar
+
+FloatingButtonToolbar
+
+FloatingIconToolbar
+
+selection/
+
+SelectionManager
+
+MultiSelectionManager
+
+drag/
+
+SnapEngine
+
+GuideEngine
+
+DropIndicator
+
+keyboard/
+
+KeyboardNavigator
+
+ShortcutManager
+
+Notice something?
+
+None of those replace existing code.
+
+They're all overlays.
+
+Exactly what your roadmap keeps saying.
+
+That architecture is going to age much better than continuing to grow WebsiteEditor.tsx.
+
+One thing I'd tell Replit
+
+I'd literally put this on every Studio milestone.
+
+Studio Architecture Rule
+
+New editing capabilities should be implemented as overlays, controllers, or extensions around the existing WebsiteEditor whenever practical.
+
+Avoid expanding WebsiteEditor.tsx into a monolithic file.
+
+If new interaction systems are introduced, prefer isolated modules that subscribe to existing editor state rather than modifying the renderer directly.
+
+That one paragraph will save you thousands of lines of tangled code six months from now.
+
+My roadmap is now complete
+
+At this point, I wouldn't add anything else before development.
+
+1457
+Studio Foundation
+
+1466
+Direct Editing Epic
+
+1467
+Inline Toolbars
+
+1468
+Navigator & Toolbar
+
+1471
+Hover Affordances
+
+1469
+Component Dragging
+
+1470
+Context Menus & Keyboard
+
+1472
+Selection & Resize
+
+1473
+Alignment & Snapping
+
+1474
+Multi-Selection
+
+1475
+Reusable Components
+
+1476
+Global Components
+
+1477
+Responsive Editor
+
+1478
+AI Studio
+
+I especially like that you're reusing the engine instead of replacing it. Every milestone is layering capabilities onto the existing architecture, which is exactly how mature products evolve. If you keep that discipline, BuildPro Studio can continue to grow in sophistication without becoming harder to maintain.
