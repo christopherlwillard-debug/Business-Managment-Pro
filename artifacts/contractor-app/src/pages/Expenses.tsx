@@ -555,6 +555,22 @@ function TripReceiptsPanel({
   const money = (n: number) => `$${n.toFixed(2)}`;
   const status = auditStatus(trip);
 
+  // ── Inline notes editing ──────────────────────────────────────────────────
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesValue,   setNotesValue]   = useState(trip.notes ?? "");
+  const updateTrip = useUpdateTrip();
+
+  // Keep draft in sync if the trip refreshes (e.g. after a save elsewhere)
+  useEffect(() => {
+    if (!editingNotes) setNotesValue(trip.notes ?? "");
+  }, [trip.notes, editingNotes]);
+
+  async function handleSaveNotes(e: React.FormEvent) {
+    e.preventDefault();
+    await updateTrip.mutateAsync({ id: trip.id, data: { notes: notesValue.trim() || null } });
+    setEditingNotes(false);
+  }
+
   return (
     <div className="border-t border-border/30 bg-gray-50/60">
       <div className="px-6 py-4">
@@ -579,13 +595,62 @@ function TripReceiptsPanel({
           )}
         </div>
 
-        {/* Trip Notes */}
-        {trip.notes?.trim() && (
-          <div className="mb-4">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Trip Notes</p>
-            <p className="text-xs text-foreground whitespace-pre-wrap bg-white border border-border/40 rounded-xl px-3 py-2.5 leading-relaxed">{trip.notes.trim()}</p>
+        {/* Trip Notes — always visible, inline editable */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Trip Notes</p>
+            {!editingNotes && (
+              <button
+                type="button"
+                onClick={() => { setNotesValue(trip.notes ?? ""); setEditingNotes(true); }}
+                className="flex items-center gap-1 text-[11px] text-primary hover:underline font-medium"
+              >
+                <Pencil className="w-3 h-3" />
+                {trip.notes?.trim() ? "Edit" : "Add note"}
+              </button>
+            )}
           </div>
-        )}
+          {editingNotes ? (
+            <form onSubmit={handleSaveNotes} onClick={e => e.stopPropagation()}>
+              <textarea
+                autoFocus
+                value={notesValue}
+                onChange={e => setNotesValue(e.target.value)}
+                placeholder="e.g. Trip was not approved for billing. Customer cancelled after arrival."
+                rows={3}
+                className="w-full px-3 py-2 rounded-xl border border-primary/40 bg-white text-xs outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+              />
+              <div className="flex justify-end gap-2 mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => setEditingNotes(false)}
+                  className="px-3 py-1 rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateTrip.isPending}
+                  className="px-3 py-1 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+                >
+                  {updateTrip.isPending ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </form>
+          ) : trip.notes?.trim() ? (
+            <p className="text-xs text-foreground whitespace-pre-wrap bg-white border border-border/40 rounded-xl px-3 py-2.5 leading-relaxed">
+              {trip.notes.trim()}
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { setNotesValue(""); setEditingNotes(true); }}
+              className="w-full text-left px-3 py-2.5 rounded-xl border border-dashed border-border text-xs text-muted-foreground hover:border-primary/40 hover:text-primary/70 transition-colors"
+            >
+              No notes yet — tap to add one
+            </button>
+          )}
+        </div>
 
         {/* IRS Audit Checklist */}
         <div className="mb-4 space-y-1.5">
