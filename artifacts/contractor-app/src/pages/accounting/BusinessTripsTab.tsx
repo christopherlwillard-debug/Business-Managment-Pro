@@ -33,6 +33,7 @@ interface BusinessTrip {
   parkingTollTotal: number;
   potentiallyNonDeductibleMeals: number;
   mealsMissingReceipts: number;
+  notes: string | null;
 }
 
 function money(n: number) { return `$${n.toFixed(2)}`; }
@@ -189,6 +190,14 @@ function TripRow({ trip }: { trip: BusinessTrip }) {
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Trip Notes */}
+          {trip.notes?.trim() && (
+            <div className="mb-4">
+              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Trip Notes</p>
+              <p className="text-xs text-foreground whitespace-pre-wrap bg-white border border-border/40 rounded-xl px-3 py-2.5 leading-relaxed">{trip.notes.trim()}</p>
             </div>
           )}
 

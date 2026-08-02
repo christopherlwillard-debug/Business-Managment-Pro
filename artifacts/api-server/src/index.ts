@@ -355,8 +355,18 @@ async function ensureBankingSchema(): Promise<void> {
   }
 }
 
+async function ensureTripNotesColumn() {
+  try {
+    await db.execute(sql`ALTER TABLE business_trips ADD COLUMN IF NOT EXISTS notes TEXT`);
+    console.log("[startup] ensureTripNotesColumn: notes column OK.");
+  } catch (err) {
+    console.error("[startup] ensureTripNotesColumn failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await ensureBankingSchema();
+  await ensureTripNotesColumn();
   await clearDraftInvoiceNumbers();
   await syncInvoiceCounter();
   await recomputePartialSubPaymentStatuses();

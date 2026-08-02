@@ -9,6 +9,7 @@ export const businessTripsTable = pgTable("business_trips", {
   endDate: text("end_date"),
   jobId: integer("job_id").references(() => jobsTable.id, { onDelete: "set null" }),
   status: text("status").default("open").notNull(),
+  notes: text("notes"),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   closedBy: text("closed_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -43,6 +43,7 @@ const tripStatsSelect = {
   endDate: businessTripsTable.endDate,
   jobId: businessTripsTable.jobId,
   status: businessTripsTable.status,
+  notes: businessTripsTable.notes,
   closedAt: businessTripsTable.closedAt,
   closedBy: businessTripsTable.closedBy,
   createdAt: businessTripsTable.createdAt,
@@ -85,6 +86,7 @@ function buildTripsQuery() {
       businessTripsTable.endDate,
       businessTripsTable.jobId,
       businessTripsTable.status,
+      businessTripsTable.notes,
       businessTripsTable.closedAt,
       businessTripsTable.closedBy,
       businessTripsTable.createdAt,
@@ -132,7 +134,7 @@ router.get("/:id", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { destination, businessPurpose, startDate, endDate, jobId } = req.body;
+    const { destination, businessPurpose, startDate, endDate, jobId, notes } = req.body;
     if (!destination?.trim()) return res.status(400).json({ error: "destination is required" });
 
     const [trip] = await db.insert(businessTripsTable).values({
@@ -141,6 +143,7 @@ router.post("/", async (req, res) => {
       startDate: startDate || null,
       endDate: endDate || null,
       jobId: jobId ? parseInt(jobId) : null,
+      notes: notes?.trim() || null,
       status: "open",
     }).returning();
 
@@ -155,7 +158,7 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { destination, businessPurpose, startDate, endDate, jobId, status } = req.body;
+    const { destination, businessPurpose, startDate, endDate, jobId, status, notes } = req.body;
     const authedUser = (req as any).user;
     const serverUserId = authedUser?.claims?.sub || authedUser?.id?.toString() || null;
 
@@ -165,6 +168,7 @@ router.patch("/:id", async (req, res) => {
     if (startDate !== undefined) updateData.startDate = startDate || null;
     if (endDate !== undefined) updateData.endDate = endDate || null;
     if (jobId !== undefined) updateData.jobId = jobId ? parseInt(jobId) : null;
+    if (notes !== undefined) updateData.notes = notes?.trim() || null;
     if (status !== undefined) {
       updateData.status = status;
       if (status === "completed" || status === "archived") {

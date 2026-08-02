@@ -435,6 +435,7 @@ export interface BusinessTrip {
   jobId: number | null;
   jobTitle: string | null;
   status: string;
+  notes: string | null;
   closedAt: string | null;
   createdAt: string;
   receiptCount: number;
@@ -577,6 +578,14 @@ function TripReceiptsPanel({
           )}
         </div>
 
+        {/* Trip Notes */}
+        {trip.notes?.trim() && (
+          <div className="mb-4">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Trip Notes</p>
+            <p className="text-xs text-foreground whitespace-pre-wrap bg-white border border-border/40 rounded-xl px-3 py-2.5 leading-relaxed">{trip.notes.trim()}</p>
+          </div>
+        )}
+
         {/* IRS Audit Checklist */}
         <div className="mb-4 space-y-1.5">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">IRS Audit Checklist</p>
@@ -688,6 +697,7 @@ function BusinessTripsSection({
   const [newStart, setNewStart] = useState("");
   const [newEnd, setNewEnd] = useState("");
   const [newJobId, setNewJobId] = useState("");
+  const [newNotes, setNewNotes] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<BusinessTrip | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
@@ -723,9 +733,10 @@ function BusinessTripsSection({
         startDate: newStart || undefined,
         endDate: newEnd || undefined,
         jobId: newJobId ? parseInt(newJobId) : undefined,
+        notes: newNotes.trim() || undefined,
       });
       setNewTripOpen(false);
-      setNewDest(""); setNewPurpose(""); setNewStart(""); setNewEnd(""); setNewJobId("");
+      setNewDest(""); setNewPurpose(""); setNewStart(""); setNewEnd(""); setNewJobId(""); setNewNotes("");
       toast({ title: "Trip created", description: "Add receipts to start building the audit folder." });
     } catch {
       toast({ title: "Error", description: "Could not create trip.", variant: "destructive" });
@@ -831,6 +842,15 @@ function BusinessTripsSection({
                       <option value="">— No job linked —</option>
                       {jobs.map(j => <option key={j.id} value={j.id}>{formatJobLabel(j)}</option>)}
                     </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium mb-1">Notes (optional)</label>
+                    <textarea
+                      value={newNotes} onChange={e => setNewNotes(e.target.value)}
+                      placeholder="e.g. Trip was not approved for billing. Customer cancelled after arrival."
+                      rows={3}
+                      className="w-full px-3 py-1.5 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                    />
                   </div>
                 </div>
                 <div className="flex justify-end gap-2">
