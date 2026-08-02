@@ -1,0 +1,508 @@
+Phase 3 — Visual Layout Builder ⭐⭐⭐⭐⭐
+Design Philosophy
+
+Stop editing settings. Start building layouts.
+
+Users shouldn't think in terms of sections and inspector panels.
+
+They should think:
+
+"I want another row here."
+
+"I want this image bigger."
+
+"I want two columns."
+
+Done looks like
+
+The user can visually build almost any website without touching the inspector.
+
+Everything is drag-and-drop.
+
+Everything resizes visually.
+
+Everything snaps together.
+
+No coding.
+
+No forms.
+
+1. Layout Builder
+
+Instead of
+
+Add Section
+
+You click
+
++
+
+between sections.
+
+Then choose
+
+Hero
+
+2 Columns
+
+3 Columns
+
+Grid
+
+Cards
+
+Gallery
+
+Testimonials
+
+FAQ
+
+Blank Container
+Containers
+
+Every page becomes
+
+Page
+
+↓
+
+Sections
+
+↓
+
+Containers
+
+↓
+
+Columns
+
+↓
+
+Components
+
+Exactly like Figma.
+
+2. Drag Layout
+
+Imagine clicking
+
+About Us
+
+Now instead of settings...
+
+You see
+
++-------------------------------+
+
+TEXT
+
+IMAGE
+
++-------------------------------+
+
+Grab the divider.
+
+Drag.
+
+Now
+
+70%
+
+30%
+
+instead of
+
+50%
+
+50%
+
+No inspector.
+
+3. Visual Spacing
+
+Hover between two sections.
+
+──────────────
+
+16px
+
+──────────────
+
+Grab it.
+
+Drag.
+
+Spacing changes live.
+
+4. Visual Resizing
+
+Click an image.
+
+Corners appear.
+
+Drag.
+
+Done.
+
+Click a button.
+
+◀────────────▶
+
+Drag wider.
+
+Logo.
+
+◀────────────▶
+
+Drag.
+
+Cards.
+
+◀────────────▶
+
+Resize.
+
+5. Real Grid System
+
+Not just
+
+3 columns
+
+Actually
+
+□□□□□□□□□□□□
+12-column grid
+□□□□□□□□□□□□
+
+Like Bootstrap.
+
+Like Wix Studio.
+
+Drag
+
+6 columns
+
+↓
+
+8 columns
+
+Live.
+
+6. Smart Guides
+
+Exactly like Canva.
+
+Move something.
+
+Blue lines appear.
+
+────────────
+
+CENTER
+
+────────────
+
+Snap.
+
+Equal spacing.
+
+16px
+
+16px
+
+16px
+7. Components Library
+
+Instead of
+
+Add Section
+
+Have
+
+COMPONENTS
+
+Text
+
+Heading
+
+Paragraph
+
+Button
+
+Image
+
+Video
+
+Divider
+
+Spacer
+
+Quote
+
+Icon
+
+Counter
+
+Accordion
+
+Tabs
+
+Pricing
+
+Timeline
+
+Map
+
+Calendar
+
+Form
+
+Gallery
+
+Logo Grid
+
+Coverage Map
+
+Manufacturer Logos
+
+Veteran Badge
+
+Service Cards
+
+etc.
+
+Just drag them in.
+
+8. Header Builder
+
+This deserves its own builder.
+
+LOGO
+
+NAVIGATION
+
+PHONE
+
+BUTTON
+
+EMAIL
+
+SOCIAL
+
+BADGES
+
+Drag them around.
+
+Resize.
+
+Hide.
+
+Show.
+
+Done.
+
+9. Footer Builder
+
+Exactly the same.
+
+10. Theme Variables
+
+Instead of editing every button...
+
+Theme
+
+Primary Color
+
+Accent Color
+
+Radius
+
+Buttons
+
+Cards
+
+Shadows
+
+Typography
+
+Animations
+
+Change once.
+
+Entire website updates.
+
+11. Reusable Sections
+
+Build something once.
+
+Save Section
+
+★★★★★
+
+Now
+
+My Hero
+
+My CTA
+
+My Footer
+
+My Contact
+
+My Gallery
+
+Every future business can use it.
+
+This is huge for you, since you're creating websites for multiple businesses inside BuildPro.
+
+12. Better Media
+
+Click image.
+
+Replace
+
+Crop
+
+Focal Point
+
+Alt Text
+
+Caption
+
+Filters
+
+Border Radius
+
+All floating.
+
+13. Animation
+
+Click section.
+
+Fade
+
+Slide
+
+Scale
+
+Zoom
+
+Delay
+
+Duration
+
+Preview instantly.
+
+14. Better Responsive Editing
+
+Desktop
+
+Tablet
+
+Phone
+
+Actually useful.
+
+Not just previews.
+
+Move things differently.
+
+Hide things.
+
+Resize things.
+
+15. Full Canvas Editing
+
+This is what I would ultimately aim for.
+
+LEFT
+
+Pages
+
+Layers
+
+Assets
+
+Components
+
+------------------------
+
+CENTER
+
+Website
+
+------------------------
+
+RIGHT
+
+Nothing.
+
+
+Unless you click
+
+Advanced
+
+Then
+
+Inspector
+
+slides out.
+
+My Overall Roadmap
+Phase 1 ✅
+
+Studio UX Foundation
+
+Better shell
+Dark canvas
+Hover controls
+Floating toolbars
+Section gallery
+Phase 2 🚧
+
+Direct Editing
+
+Inspector retirement
+On-canvas editing
+Dragging
+Hover affordances
+Context menus
+Keyboard shortcuts
+Visual interactions
+Phase 3 ⭐⭐⭐⭐⭐
+
+Visual Layout Builder
+
+Drag-to-resize
+Containers
+Columns
+Components
+Grid system
+Snap guides
+Reusable sections
+Header/Footer builders
+True visual editing
+Phase 4
+
+Design System & Templates
+Once users can build anything visually, make it fast:
+
+Professional contractor templates
+Global components (edit header/footer once, update every page)
+Saved design blocks
+Theme presets
+Industry-specific starter sites (General Contractor, HVAC, Plumbing, Roofing, Asphalt, Manufactured Homes, etc.)
+Phase 5
+
+AI Studio
+Only after the editor is excellent:
+
+Generate complete websites from business data
+Rewrite content
+Generate service pages
+Suggest layouts
+SEO optimization
+AI image generation
+Accessibility checks
+
+I would deliberately push AI to Phase 5, not because it isn't valuable, but because an AI-generated website is only as good as the editor it's generated into. If BuildPro Studio already feels like a polished, professional design tool by Phase 4, then AI becomes a productivity multiplier instead of a workaround for a difficult editor. That's a much stronger long-term product.

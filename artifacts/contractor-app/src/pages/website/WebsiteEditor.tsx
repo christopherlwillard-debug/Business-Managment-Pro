@@ -206,7 +206,7 @@ function renderSection(
     );
     case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
     case "contact": return <ContactFormSection {...props} businessId={extras?.businessId} />;
-    case "footer":  return <FooterSection {...props} sectionId={extras?.sectionId} onOpenMediaLibrary={extras?.onOpenMediaLibrary as any} />;
+    case "footer":  return <FooterSection {...props} sectionId={extras?.sectionId} onOpenMediaLibrary={extras?.onOpenMediaLibrary as any} businessName={extras?.businessName} />;
     case "image":   return <ImageSection {...(props as any)} onOpenMediaLibrary={extras?.onOpenMediaLibrary as any} />;
     case "portfolio": return (
       <PortfolioSection

@@ -94,7 +94,8 @@ function renderBodySection(
   section: Section,
   settings: SiteSettings,
   resolvedSlug: string,
-  handleContactSubmit: (d: Record<string, unknown>) => Promise<void>
+  handleContactSubmit: (d: Record<string, unknown>) => Promise<void>,
+  businessName?: string,
 ) {
   const props = { content: section.content as any, settings, isEditing: false, blockStyle: section.blockStyle };
   switch (section.type) {
@@ -102,7 +103,7 @@ function renderBodySection(
     case "services":    return <ServicesSection key={section.id} {...props} />;
     case "about":       return <AboutSection key={section.id} {...props} />;
     case "contact":     return <ContactFormSection key={section.id} {...props} onSubmit={handleContactSubmit} />;
-    case "footer":      return <FooterSection key={section.id} {...props} />;
+    case "footer":      return <FooterSection key={section.id} {...props} businessName={businessName} />;
     case "portfolio":   return <PortfolioSection key={section.id} {...props} />;
     case "deposit":     return <DepositSection key={section.id} {...props} businessSlug={resolvedSlug} />;
     case "columns":     return <ColumnsSection key={section.id} {...props} />;
@@ -520,7 +521,7 @@ export default function PublicSite() {
       )}
 
       {bodySections.map(section =>
-        renderBodySection(section, settings, resolvedSlug, handleContactSubmit)
+        renderBodySection(section, settings, resolvedSlug, handleContactSubmit, businessName)
       )}
     </div>
   );
