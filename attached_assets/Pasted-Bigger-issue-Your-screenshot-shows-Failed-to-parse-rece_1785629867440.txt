@@ -1,0 +1,83 @@
+Bigger issue
+
+Your screenshot shows
+
+Failed to parse receipt. Please fill in the details manually.
+
+That tells me the dialog is already expecting PDFs, but your backend is almost certainly doing something like:
+
+if (image)
+    OCR(image)
+
+instead of
+
+if (pdf)
+    extract text
+
+if no text
+    render pages as images
+    OCR images
+
+Most receipts from hotels, airlines, Home Depot, Lowe's, etc., are digital PDFs, not scanned images.
+
+The parser should work like this:
+
+User uploads file
+
+↓
+
+Is Image?
+    OCR
+
+Is PDF?
+    Try PDF text extraction
+        ↓
+    Found text?
+        Parse
+        DONE
+
+No text?
+        Render pages
+        OCR pages
+        Parse
+
+That gives you nearly 100% coverage.
+
+I also noticed another UI issue
+
+You currently have:
+
+Import
+Scan Receipt
+Log Expense
+
+I'd simplify it to:
+
++ New Expense ▼
+
+• Scan Receipt
+• Manual Expense
+• Import CSV
+
+This is how QuickBooks, Xero, and many other accounting apps organize expense creation. It reduces button clutter while keeping all options available.
+
+I would make this a dedicated roadmap item:
+#1443 - Unify Expense Import & Receipt Scanning
+
+What & Why
+
+The Expenses page currently has separate Import and Scan Receipt buttons, even though both ultimately create expenses from uploaded documents. This is confusing because users shouldn't have to decide whether a receipt should be "scanned" or "imported." Additionally, PDF receipts frequently fail to parse because the backend doesn't properly handle both text-based and scanned PDFs.
+
+Done looks like
+
+✅ Replace separate Import and Scan Receipt buttons with a single Scan Receipt (or New Expense) entry point.
+✅ Support JPG, PNG, HEIC, and PDF uploads from the same dialog.
+✅ Automatically detect the uploaded file type.
+✅ For PDFs:
+Extract embedded text when available.
+Fall back to OCR if the PDF is image-based.
+✅ Keep Spreadsheet/CSV import available as a separate option within the same dialog.
+✅ Eliminate duplicate upload workflows and reuse a single parsing pipeline.
+✅ Display clearer error messages when parsing fails, including whether the failure occurred during PDF extraction or OCR.
+
+I think this would make the expense workflow feel much more polished and intuitive while also fixing the PDF parsing issue that's causing frustration.
