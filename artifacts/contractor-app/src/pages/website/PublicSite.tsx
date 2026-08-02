@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, X, Menu } from "lucide-react";
 import { useParams, Link } from "wouter";
 import { buildThemeCssVarBlock } from "./themes";
+import { resolveLogoHeightPx } from "./sections/HeaderSection";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
 import { AboutSection } from "./sections/AboutSection";
@@ -223,9 +224,20 @@ export default function PublicSite() {
   const headerContent = headerSec?.content as any;
   const navLinks: Array<{ id: string; label: string; href: string }> = headerContent?.navLinks ?? [];
   const headerPhone: string = headerContent?.phone ?? "";
+  const headerEmail: string = headerContent?.email ?? "";
   const ctaLabel: string = headerContent?.ctaLabel ?? "Get a Quote";
   const ctaUrl: string = headerContent?.ctaConfig?.url ?? "#contact";
   const isSticky: boolean = headerContent?.sticky ?? true;
+  const showPhone: boolean = headerContent?.showPhone !== false;
+  const showCta: boolean = headerContent?.showCta !== false;
+  const showLogo: boolean = headerContent?.showLogo !== false;
+  const showBusinessName: boolean = headerContent?.showBusinessName !== false;
+  const showNav: boolean = headerContent?.showNav !== false;
+  const showEmail: boolean = headerContent?.showEmail === true && !!headerEmail;
+  const showVeteranBadge: boolean = headerContent?.showVeteranBadge === true;
+  const showSdvosbBadge: boolean = headerContent?.showSdvosbBadge === true;
+  const logoAlignment: "left" | "center" | "right" = headerContent?.logoAlignment ?? "left";
+  const logoHeightPx: number = resolveLogoHeightPx(headerContent?.logoSize);
 
   const GOOGLE_FONT_SET = new Set(["Oswald","Montserrat","Playfair Display","Raleway","Roboto Slab","Lato","Open Sans","Merriweather","Source Sans 3","Nunito"]);
   const googleFontFamilies = [settings.headingFont, settings.bodyFont]
@@ -235,7 +247,8 @@ export default function PublicSite() {
     ? `https://fonts.googleapis.com/css2?${googleFontFamilies.map(f => `family=${encodeURIComponent(f)}:wght@400;500;600;700`).join("&")}&display=swap`
     : null;
 
-  const headerStyle = settings.headerStyle ?? "light";
+  // content.headerStyle (set via the header toolbar's Style tab) overrides the site-level setting
+  const headerStyle = (headerContent?.headerStyle as "light" | "dark" | "transparent" | undefined) ?? settings.headerStyle ?? "light";
   const isDarkHeader = headerStyle === "dark" || headerStyle === "transparent";
   const headerBg =
     headerStyle === "dark" ? "bg-gray-900/95 backdrop-blur" :
@@ -339,23 +352,61 @@ export default function PublicSite() {
 
       {/* Dynamic site header */}
       <header
-        className={`${isSticky ? "sticky" : ""} top-0 z-50 ${headerStyle === "transparent" ? "bg-white/10 backdrop-blur-md" : ""} border-b ${headerBorder} px-6 py-3 flex items-center justify-between ${headerShadow}`}
+        className={`${isSticky ? "sticky" : ""} top-0 z-50 relative ${headerStyle === "transparent" ? "bg-white/10 backdrop-blur-md" : ""} border-b ${headerBorder} px-6 py-3 flex items-center justify-between ${headerShadow}`}
         style={{
           backgroundColor: headerStyle !== "transparent" ? `var(--theme-header-bg, ${headerStyle === "dark" ? "rgba(17,24,39,0.95)" : "rgba(255,255,255,0.95)"})` : undefined,
           color: `var(--theme-header-text, ${isDarkHeader ? "#ffffff" : "#111111"})`,
         }}
       >
-        <div className="flex items-center gap-3 flex-shrink-0">
-          {settings.logoUrl && (
-            <img src={settings.logoUrl} alt={businessName} className="h-8 w-auto object-contain" />
+        {/* Logo + business name group — position controlled by logoAlignment */}
+        <div
+          className="flex items-center gap-3 flex-shrink-0"
+          style={
+            logoAlignment === "center"
+              ? { position: "absolute", left: "50%", transform: "translateX(-50%)" }
+              : logoAlignment === "right"
+              ? { order: 3 }
+              : {}
+          }
+        >
+          {showLogo && settings.logoUrl && (
+            <img
+              src={settings.logoUrl}
+              alt={businessName}
+              style={{ height: logoHeightPx, width: "auto", objectFit: "contain" }}
+            />
           )}
-          <span
-            className="font-bold text-sm md:text-base"
-            style={{ color: `var(--theme-header-text, ${isDarkHeader ? "#ffffff" : "#111111"})` }}
-          >{businessName}</span>
+          {showBusinessName && (
+            <span
+              className="font-bold text-sm md:text-base"
+              style={{ color: `var(--theme-header-text, ${isDarkHeader ? "#ffffff" : "#111111"})` }}
+            >{businessName}</span>
+          )}
+          {showVeteranBadge && (
+            <span
+              className="hidden md:inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded border"
+              style={{
+                borderColor: isDarkHeader ? "rgba(255,255,255,0.5)" : "#6b7280",
+                color: isDarkHeader ? "rgba(255,255,255,0.7)" : "#6b7280",
+              }}
+            >
+              Veteran-Owned
+            </span>
+          )}
+          {showSdvosbBadge && (
+            <span
+              className="hidden md:inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded border"
+              style={{
+                borderColor: isDarkHeader ? "rgba(255,255,255,0.5)" : "#6b7280",
+                color: isDarkHeader ? "rgba(255,255,255,0.7)" : "#6b7280",
+              }}
+            >
+              SDVOSB
+            </span>
+          )}
         </div>
 
-        {navLinks.length > 0 && (
+        {showNav && navLinks.length > 0 && (
           <nav className="hidden md:flex items-center gap-6">
             {navLinks.map(link => (
               link.href.startsWith("/") ? (
@@ -382,7 +433,16 @@ export default function PublicSite() {
         )}
 
         <div className="flex items-center gap-3 flex-shrink-0">
-          {headerPhone && (
+          {showEmail && (
+            <a
+              href={`mailto:${headerEmail}`}
+              className="hidden md:block text-sm font-medium hover:opacity-80 transition-opacity"
+              style={{ color: `var(--theme-header-link, ${isDarkHeader ? "rgba(255,255,255,0.7)" : "#4b5563"})` }}
+            >
+              {headerEmail}
+            </a>
+          )}
+          {showPhone && headerPhone && (
             <a
               href={`tel:${headerPhone.replace(/\D/g, "")}`}
               className="hidden md:block text-sm font-medium hover:opacity-80 transition-opacity"
@@ -391,19 +451,21 @@ export default function PublicSite() {
               {headerPhone}
             </a>
           )}
-          <a
-            href={ctaUrl}
-            className="px-4 py-2 text-sm text-white transition-opacity hover:opacity-90"
-            style={{
-              backgroundColor: settings.brandColor,
-              borderRadius: "var(--theme-btn-radius, 9999px)",
-              fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
-              boxShadow: "var(--theme-btn-shadow, none)",
-            }}
-          >
-            {ctaLabel}
-          </a>
-          {navLinks.length > 0 && (
+          {showCta && (
+            <a
+              href={ctaUrl}
+              className="px-4 py-2 text-sm text-white transition-opacity hover:opacity-90"
+              style={{
+                backgroundColor: settings.brandColor,
+                borderRadius: "var(--theme-btn-radius, 9999px)",
+                fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+                boxShadow: "var(--theme-btn-shadow, none)",
+              }}
+            >
+              {ctaLabel}
+            </a>
+          )}
+          {showNav && navLinks.length > 0 && (
             <button
               className="md:hidden p-1"
               style={{ color: `var(--theme-header-text, ${isDarkHeader ? "#ffffff" : "#111111"})` }}
@@ -417,7 +479,7 @@ export default function PublicSite() {
       </header>
 
       {/* Mobile nav drawer */}
-      {mobileMenuOpen && navLinks.length > 0 && (
+      {showNav && mobileMenuOpen && navLinks.length > 0 && (
         <div
           className={`md:hidden border-b ${mobileBorder} px-6 py-4 space-y-3 shadow-md`}
           style={{ backgroundColor: `var(--theme-header-bg, ${isDarkHeader ? "#111827" : "#ffffff"})` }}

@@ -187,6 +187,8 @@ function renderSection(
     onContentComponentContextMenu?: (sectionId: string, compId: string, compType: string, e: React.MouseEvent) => void;
     onRowComponentContextMenu?: (sectionId: string, colId: string, compId: string, compType: string, e: React.MouseEvent) => void;
     onColumnContextMenu?: (sectionId: string, colId: string, e: React.MouseEvent) => void;
+    /** Called when the header's "Advanced" toolbar tab is clicked — opens InspectorPanel. */
+    onHeaderAdvanced?: () => void;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
@@ -263,7 +265,7 @@ function renderSection(
         onOpenMediaLibrary={extras?.onOpenMediaLibrary}
       />
     );
-    case "header": return <HeaderSection content={section.content as any} settings={settings} isEditing={isEditing} onChange={onChange as any} businessName={extras?.businessName} siteSlug={extras?.siteSlug} pages={extras?.pages} />;
+    case "header": return <HeaderSection content={section.content as any} settings={settings} isEditing={isEditing} onChange={onChange as any} businessName={extras?.businessName} siteSlug={extras?.siteSlug} pages={extras?.pages} onAdvanced={extras?.onHeaderAdvanced} />;
     case "content": return (
       <ContentSection
         {...props}
@@ -1131,6 +1133,8 @@ function WebsiteEditor() {
   const [faviconUploading, setFaviconUploading] = useState(false);
   const [copiedBlockStyle, setCopiedBlockStyle] = useState<BlockStyle | null>(null);
   const [copiedComponent, setCopiedComponent] = useState<SiteComponent | null>(null);
+  /** When true, the Advanced tab was clicked in the header floating toolbar — show InspectorPanel for header. */
+  const [headerAdvancedOpen, setHeaderAdvancedOpen] = useState(false);
   const [copiedComponentStyle, setCopiedComponentStyle] = useState<Record<string, unknown> | null>(null);
   const [copiedColumn, setCopiedColumn] = useState<RowColumn | null>(null);
   const [copiedColumnStyle, setCopiedColumnStyle] = useState<{ widthRatio: number } | null>(null);
@@ -1178,6 +1182,14 @@ function WebsiteEditor() {
     localStorage.setItem("website-editor-left-collapsed", String(leftCollapsed));
     leftCollapsedRef.current = leftCollapsed;
   }, [leftCollapsed]);
+
+  // Reset headerAdvancedOpen when the user navigates away from the header section.
+  useEffect(() => {
+    const sec = sections.find(s => s.id === activeSection);
+    if (sec && sec.type !== "header") {
+      setHeaderAdvancedOpen(false);
+    }
+  }, [activeSection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-switch inspector to the most useful tab when a new section is selected.
   // Only fires when the section changes — manual tab switches within the same section are preserved.
@@ -3800,6 +3812,10 @@ function WebsiteEditor() {
         e.stopPropagation();
         openColumnContextMenu(e.clientX, e.clientY, sectionId, colId);
       },
+      /** Opens InspectorPanel for the header section when Advanced tab is clicked */
+      onHeaderAdvanced: () => {
+        setHeaderAdvancedOpen(true);
+      },
     };
 
     function renderWrapped(s: Section, opts: { isHeader?: boolean; isFirst?: boolean; isLast?: boolean }) {
@@ -5303,7 +5319,7 @@ function WebsiteEditor() {
           {/* Docked inspector panel — desktop only, auto-sizes beside canvas as flex sibling */}
           {!editorNarrow && activeSection && activeTab === "editor" && !focusMode && !previewMode && (() => {
             const sec = sections.find(s => s.id === activeSection);
-            if (!sec || sec.type === "header") return null;
+            if (!sec || (sec.type === "header" && !headerAdvancedOpen)) return null;
 
             let selectedComponent: SiteComponent | undefined;
             let rowData: RowSectionData | undefined;
@@ -5598,7 +5614,7 @@ function WebsiteEditor() {
           {/* Narrow screen: fixed bottom drawer (position:fixed escapes any overflow clipping) */}
           {editorNarrow && activeSection && activeTab === "editor" && !focusMode && (() => {
             const sec = sections.find(s => s.id === activeSection);
-            if (!sec || sec.type === "header") return null;
+            if (!sec || (sec.type === "header" && !headerAdvancedOpen)) return null;
 
             let selectedComponent: SiteComponent | undefined;
             let rowData: RowSectionData | undefined;

@@ -1,6 +1,5 @@
-import { useState } from "react";
-import { Plus, Trash2, GripVertical, Phone, Menu, FileText, ChevronDown, Eye } from "lucide-react";
-import { ButtonEditor, type ButtonConfig } from "./ButtonEditor";
+import { useRef } from "react";
+import { HeaderFloatingToolbar } from "./HeaderFloatingToolbar";
 
 export interface NavLink {
   id: string;
@@ -13,15 +12,24 @@ export type LogoSize = "sm" | "md" | "lg";
 export interface HeaderContent {
   navLinks: NavLink[];
   phone?: string;
+  email?: string;
   ctaLabel?: string;
-  ctaConfig?: ButtonConfig;
+  ctaConfig?: import("./ButtonEditor").ButtonConfig;
   sticky?: boolean;
   showLogo?: boolean;
   showBusinessName?: boolean;
   showNav?: boolean;
   showPhone?: boolean;
   showCta?: boolean;
-  logoSize?: LogoSize;
+  showEmail?: boolean;
+  showVeteranBadge?: boolean;
+  showSdvosbBadge?: boolean;
+  /** Accepts legacy string aliases (sm/md/lg/small/medium/large) or a pixel number (40–120). */
+  logoSize?: string | number;
+  /** Logo horizontal position in the header. Default: "left". */
+  logoAlignment?: "left" | "center" | "right";
+  /** Optional content-level header style override (supersedes settings.headerStyle). */
+  headerStyle?: "light" | "dark" | "transparent";
 }
 
 export interface SitePageRef {
@@ -55,53 +63,57 @@ export function defaultHeaderContent(): HeaderContent {
   };
 }
 
-const LOGO_SIZE_H: Record<LogoSize, string> = {
-  sm: "h-6",
-  md: "h-8",
-  lg: "h-12",
+// ── Logo height resolution ─────────────────────────────────────────────────────
+
+const LOGO_SIZE_PX: Record<string, number> = {
+  sm: 48, small: 48,
+  md: 64, medium: 64,
+  lg: 80, large: 80,
 };
+
+export function resolveLogoHeightPx(logoSize: string | number | undefined): number {
+  if (logoSize === undefined) return 64;
+  if (typeof logoSize === "number") return Math.max(24, Math.min(160, logoSize));
+  return LOGO_SIZE_PX[logoSize] ?? 64;
+}
+
+// ── HeaderSectionProps ─────────────────────────────────────────────────────────
+
+export interface HeaderSectionSettings {
+  brandColor: string;
+  accentColor?: string;
+  logoUrl?: string;
+  headerStyle?: "light" | "dark" | "transparent";
+}
 
 interface HeaderSectionProps {
   content: HeaderContent;
-  settings: {
-    brandColor: string;
-    accentColor?: string;
-    logoUrl?: string;
-    headerStyle?: "light" | "dark" | "transparent";
-  };
+  settings: HeaderSectionSettings;
   isEditing?: boolean;
   onChange?: (content: HeaderContent) => void;
   businessName?: string;
   siteSlug?: string;
   pages?: SitePageRef[];
+  /** Called when the "Advanced" tab is clicked in the floating toolbar. */
+  onAdvanced?: () => void;
 }
 
-function ToggleRow({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
+// ── Small badge ───────────────────────────────────────────────────────────────
+
+function HeaderBadge({ label, color }: { label: string; color: string }) {
   return (
-    <div className="flex items-center justify-between py-0.5">
-      <span className="text-xs text-white/70">{label}</span>
-      <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-        <input
-          type="checkbox"
-          className="sr-only peer"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <div className="w-8 h-4 bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary" />
-      </label>
-    </div>
+    <span
+      className="hidden md:inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded border"
+      style={{ borderColor: color, color }}
+    >
+      {label}
+    </span>
   );
 }
 
-function HeaderPreviewBar({
+// ── HeaderPreviewBar ───────────────────────────────────────────────────────────
+
+export function HeaderPreviewBar({
   content,
   settings,
   businessName,
@@ -110,7 +122,8 @@ function HeaderPreviewBar({
   settings: HeaderSectionProps["settings"];
   businessName?: string;
 }) {
-  const headerStyle = settings.headerStyle ?? "light";
+  // Content-level headerStyle overrides settings.headerStyle
+  const headerStyle = content.headerStyle ?? settings.headerStyle ?? "light";
   const isDark = headerStyle === "dark" || headerStyle === "transparent";
   const borderClass =
     headerStyle === "dark"
@@ -118,7 +131,8 @@ function HeaderPreviewBar({
       : headerStyle === "transparent"
       ? "border-white/10"
       : "border-gray-100";
-  const transparentBgClass = headerStyle === "transparent" ? "bg-white/10 backdrop-blur-sm" : "";
+  const transparentBgClass =
+    headerStyle === "transparent" ? "bg-white/10 backdrop-blur-sm" : "";
 
   const darkFallbackBg = headerStyle === "dark" ? "#111827" : "#ffffff";
   const darkFallbackText = isDark ? "#ffffff" : "#111111";
@@ -126,6 +140,7 @@ function HeaderPreviewBar({
 
   const navLinks = content.navLinks ?? [];
   const phone = content.phone ?? "";
+  const email = content.email ?? "";
   const ctaLabel = content.ctaLabel ?? "Get a Quote";
 
   const showLogo = content.showLogo !== false;
@@ -133,29 +148,59 @@ function HeaderPreviewBar({
   const showNav = content.showNav !== false;
   const showPhone = content.showPhone !== false;
   const showCta = content.showCta !== false;
-  const logoSize = content.logoSize ?? "md";
-  const logoH = LOGO_SIZE_H[logoSize];
+  const showEmail = content.showEmail === true && !!email;
+  const showVeteranBadge = content.showVeteranBadge === true;
+  const showSdvosbBadge = content.showSdvosbBadge === true;
+
+  const logoHeightPx = resolveLogoHeightPx(content.logoSize);
+  const logoAlignment = content.logoAlignment ?? "left";
+
+  // Logo section positioning
+  const logoContainerStyle: React.CSSProperties =
+    logoAlignment === "center"
+      ? { position: "absolute", left: "50%", transform: "translateX(-50%)" }
+      : logoAlignment === "right"
+      ? { order: 3 }
+      : {};
 
   return (
     <div
-      className={`px-6 py-3 flex items-center justify-between border-b ${transparentBgClass} ${borderClass}`}
+      className={`relative px-6 py-3 flex items-center justify-between border-b ${transparentBgClass} ${borderClass}`}
       style={{
-        backgroundColor: headerStyle !== "transparent" ? `var(--theme-header-bg, ${darkFallbackBg})` : undefined,
+        backgroundColor:
+          headerStyle !== "transparent"
+            ? `var(--theme-header-bg, ${darkFallbackBg})`
+            : undefined,
         color: `var(--theme-header-text, ${darkFallbackText})`,
       }}
     >
-      <div className="flex items-center gap-3 flex-shrink-0">
+      <div className="flex items-center gap-3 flex-shrink-0" style={logoContainerStyle}>
         {showLogo && settings.logoUrl && (
           <img
             src={settings.logoUrl}
             alt={businessName ?? "Logo"}
-            className={`${logoH} w-auto object-contain`}
+            style={{ height: logoHeightPx, width: "auto", objectFit: "contain" }}
           />
         )}
         {showBusinessName && (
-          <span className="font-bold text-sm" style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}>
+          <span
+            className="font-bold text-sm"
+            style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}
+          >
             {businessName ?? "Your Business"}
           </span>
+        )}
+        {showVeteranBadge && (
+          <HeaderBadge
+            label="Veteran-Owned"
+            color={isDark ? "rgba(255,255,255,0.7)" : "#4b5563"}
+          />
+        )}
+        {showSdvosbBadge && (
+          <HeaderBadge
+            label="SDVOSB"
+            color={isDark ? "rgba(255,255,255,0.7)" : "#4b5563"}
+          />
         )}
       </div>
 
@@ -174,6 +219,15 @@ function HeaderPreviewBar({
       )}
 
       <div className="flex items-center gap-3 flex-shrink-0">
+        {showEmail && (
+          <a
+            href={`mailto:${email}`}
+            className="hidden md:block text-sm font-medium hover:opacity-80 transition-opacity"
+            style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
+          >
+            {email}
+          </a>
+        )}
         {showPhone && phone && (
           <span
             className="hidden md:block text-sm font-medium"
@@ -195,13 +249,18 @@ function HeaderPreviewBar({
             {ctaLabel}
           </span>
         )}
-        <span className="md:hidden cursor-pointer" style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}>
-          <Menu className="w-5 h-5" />
+        <span
+          className="md:hidden cursor-pointer"
+          style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}
+        >
+          ☰
         </span>
       </div>
     </div>
   );
 }
+
+// ── HeaderSection ─────────────────────────────────────────────────────────────
 
 export function HeaderSection({
   content,
@@ -211,313 +270,38 @@ export function HeaderSection({
   businessName,
   siteSlug,
   pages = [],
+  onAdvanced,
 }: HeaderSectionProps) {
-  const navLinks = content.navLinks ?? [];
-  const phone = content.phone ?? "";
-  const ctaLabel = content.ctaLabel ?? "Get a Quote";
-  const ctaConfig = content.ctaConfig;
-  const sticky = content.sticky ?? true;
-
-  const showLogo = content.showLogo !== false;
-  const showBusinessName = content.showBusinessName !== false;
-  const showNav = content.showNav !== false;
-  const showPhone = content.showPhone !== false;
-  const showCta = content.showCta !== false;
-  const logoSize = content.logoSize ?? "md";
-
-  const [showPagesPicker, setShowPagesPicker] = useState(false);
-
-  const extraPages = pages.filter(p => p.id !== "home");
-
-  function update(patch: Partial<HeaderContent>) {
-    onChange?.({ ...content, ...patch });
-  }
-
-  function updateNavLink(id: string, patch: Partial<NavLink>) {
-    update({ navLinks: navLinks.map((l) => (l.id === id ? { ...l, ...patch } : l)) });
-  }
-
-  function addNavLink(pageOption?: SitePageRef) {
-    if (pageOption && siteSlug) {
-      update({
-        navLinks: [...navLinks, {
-          id: uid(),
-          label: pageOption.name,
-          href: `/site/${siteSlug}/${pageOption.slug}`,
-        }],
-      });
-    } else {
-      update({
-        navLinks: [...navLinks, { id: uid(), label: "New Link", href: "#" }],
-      });
-    }
-    setShowPagesPicker(false);
-  }
-
-  function fillLinkFromPage(linkId: string, page: SitePageRef) {
-    if (!siteSlug) return;
-    updateNavLink(linkId, {
-      label: page.name,
-      href: `/site/${siteSlug}/${page.slug}`,
-    });
-  }
-
-  function removeNavLink(id: string) {
-    update({ navLinks: navLinks.filter((l) => l.id !== id) });
-  }
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   if (!isEditing) {
     return (
-      <HeaderPreviewBar content={content} settings={settings} businessName={businessName} />
+      <HeaderPreviewBar
+        content={content}
+        settings={settings}
+        businessName={businessName}
+      />
     );
   }
 
   return (
-    <div>
-      <HeaderPreviewBar content={content} settings={settings} businessName={businessName} />
-
-      <div
-        className="bg-slate-900 border-t border-white/10 px-4 py-4 space-y-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
-          Header Settings
-        </p>
-
-        {/* Visibility toggles */}
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
-            <Eye className="w-3 h-3" />
-            Visibility
-          </p>
-          <div className="bg-white/5 rounded-lg px-3 py-1.5 space-y-1">
-            <ToggleRow label="Logo" checked={showLogo} onChange={v => update({ showLogo: v })} />
-            <ToggleRow label="Business Name" checked={showBusinessName} onChange={v => update({ showBusinessName: v })} />
-            <ToggleRow label="Navigation Links" checked={showNav} onChange={v => update({ showNav: v })} />
-            <ToggleRow label="Phone Number" checked={showPhone} onChange={v => update({ showPhone: v })} />
-            <ToggleRow label="CTA Button" checked={showCta} onChange={v => update({ showCta: v })} />
-          </div>
-        </div>
-
-        {/* Logo size — only shown when a logo is uploaded */}
-        {settings.logoUrl && (
-          <div className="space-y-1.5">
-            <p className="text-xs font-semibold text-white/70">Logo Size</p>
-            <div className="flex items-center gap-2">
-              {(["sm", "md", "lg"] as LogoSize[]).map(size => (
-                <button
-                  key={size}
-                  type="button"
-                  onClick={() => update({ logoSize: size })}
-                  className={`flex-1 py-1.5 text-xs rounded border transition-colors ${
-                    logoSize === size
-                      ? "bg-primary border-primary text-white"
-                      : "bg-white/5 border-white/20 text-white/60 hover:border-white/40 hover:text-white"
-                  }`}
-                >
-                  {size === "sm" ? "Small" : size === "md" ? "Medium" : "Large"}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Nav links */}
-        {showNav && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-white/70">Navigation Links</p>
-            <div className="space-y-1.5">
-              {navLinks.map((link) => {
-                const isPageLink = link.href.startsWith("/site/");
-                return (
-                  <div key={link.id} className="flex items-center gap-2">
-                    <GripVertical className="w-3.5 h-3.5 text-white/20 flex-shrink-0" />
-                    <input
-                      type="text"
-                      value={link.label}
-                      onChange={(e) => updateNavLink(link.id, { label: e.target.value })}
-                      placeholder="Label"
-                      className="flex-1 min-w-0 text-xs bg-white/10 border border-white/20 text-white placeholder-white/30 rounded px-2 py-1.5 outline-none focus:border-white/50"
-                    />
-                    <div className="flex-1 min-w-0 flex items-center gap-1">
-                      <input
-                        type="text"
-                        value={link.href}
-                        onChange={(e) => updateNavLink(link.id, { href: e.target.value })}
-                        placeholder="#section or /page"
-                        className={`flex-1 min-w-0 text-xs bg-white/10 border text-white/70 placeholder-white/20 rounded px-2 py-1.5 outline-none focus:border-white/50 ${
-                          isPageLink ? "border-primary/50 text-primary/80" : "border-white/20"
-                        }`}
-                      />
-                      {extraPages.length > 0 && (
-                        <div className="relative flex-shrink-0">
-                          <PageLinkPicker
-                            pages={extraPages}
-                            onSelect={(page) => fillLinkFromPage(link.id, page)}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeNavLink(link.id)}
-                      className="p-1 text-white/30 hover:text-red-400 hover:bg-red-400/10 rounded transition-colors flex-shrink-0"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Add link — smart picker if pages exist */}
-            <div className="relative">
-              {extraPages.length > 0 ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setShowPagesPicker(v => !v)}
-                    className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add link
-                    <ChevronDown className="w-3 h-3" />
-                  </button>
-                  {showPagesPicker && (
-                    <div className="absolute top-full left-0 mt-1 z-30 bg-gray-800 border border-white/10 rounded-lg shadow-xl overflow-hidden min-w-[180px]">
-                      <div className="px-3 py-1.5 border-b border-white/10">
-                        <p className="text-[10px] text-white/40 font-semibold uppercase tracking-wide">Your Pages</p>
-                      </div>
-                      {extraPages.map(page => (
-                        <button
-                          key={page.id}
-                          type="button"
-                          onClick={() => addNavLink(page)}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-white hover:bg-white/10 transition-colors"
-                        >
-                          <FileText className="w-3 h-3 text-primary/70 flex-shrink-0" />
-                          {page.name}
-                        </button>
-                      ))}
-                      <div className="border-t border-white/10">
-                        <button
-                          type="button"
-                          onClick={() => addNavLink()}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-white/60 hover:bg-white/10 transition-colors"
-                        >
-                          <Plus className="w-3 h-3 flex-shrink-0" />
-                          Custom link
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => addNavLink()}
-                  className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add link
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Phone number */}
-        {showPhone && (
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
-              <Phone className="w-3 h-3" />
-              Phone Number
-            </label>
-            <input
-              type="text"
-              value={phone}
-              onChange={(e) => update({ phone: e.target.value })}
-              placeholder="(555) 555-5555"
-              className="w-full text-xs bg-white/10 border border-white/20 text-white placeholder-white/30 rounded px-2 py-1.5 outline-none focus:border-white/50"
-            />
-          </div>
-        )}
-
-        {/* CTA button */}
-        {showCta && (
-          <div className="space-y-1.5">
-            <p className="text-xs font-semibold text-white/70">CTA Button</p>
-            <input
-              type="text"
-              value={ctaLabel}
-              onChange={(e) => update({ ctaLabel: e.target.value })}
-              placeholder="Button label"
-              className="w-full text-xs bg-white/10 border border-white/20 text-white placeholder-white/30 rounded px-2 py-1.5 outline-none focus:border-white/50"
-            />
-            <ButtonEditor
-              config={ctaConfig}
-              onChange={(cfg) => update({ ctaConfig: cfg })}
-            />
-          </div>
-        )}
-
-        {/* Sticky toggle */}
-        <div className="flex items-center gap-3 pt-1 border-t border-white/10">
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              className="sr-only peer"
-              checked={!!sticky}
-              onChange={(e) => update({ sticky: e.target.checked })}
-            />
-            <div className="w-8 h-4 bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary" />
-          </label>
-          <span className="text-xs text-white/70">
-            Sticky header (stays visible on scroll)
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PageLinkPicker({
-  pages,
-  onSelect,
-}: {
-  pages: SitePageRef[];
-  onSelect: (page: SitePageRef) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        title="Fill from page"
-        onClick={() => setOpen(v => !v)}
-        className="p-1.5 text-white/30 hover:text-primary hover:bg-primary/10 rounded transition-colors"
-      >
-        <FileText className="w-3 h-3" />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute top-full right-0 mt-1 z-30 bg-gray-800 border border-white/10 rounded-lg shadow-xl overflow-hidden min-w-[140px]">
-            <div className="px-2.5 py-1.5 border-b border-white/10">
-              <p className="text-[9px] text-white/40 font-semibold uppercase tracking-wide">Fill from page</p>
-            </div>
-            {pages.map(page => (
-              <button
-                key={page.id}
-                type="button"
-                onClick={() => { onSelect(page); setOpen(false); }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs text-white hover:bg-white/10 transition-colors"
-              >
-                {page.name}
-              </button>
-            ))}
-          </div>
-        </>
+    <div ref={wrapperRef}>
+      <HeaderPreviewBar
+        content={content}
+        settings={settings}
+        businessName={businessName}
+      />
+      {onChange && (
+        <HeaderFloatingToolbar
+          content={content}
+          settings={settings}
+          onChange={onChange}
+          businessName={businessName}
+          siteSlug={siteSlug}
+          pages={pages}
+          headerRef={wrapperRef as React.RefObject<HTMLElement>}
+          onAdvanced={onAdvanced}
+        />
       )}
     </div>
   );
