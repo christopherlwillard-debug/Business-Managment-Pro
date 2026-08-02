@@ -56,6 +56,7 @@ import { ServiceAreaSection, defaultServiceAreaContent } from "./sections/Servic
 import { CertificationsSection, defaultCertificationsContent } from "./sections/CertificationsSection";
 import { BeforeAfterSection, defaultBeforeAfterContent } from "./sections/BeforeAfterSection";
 import { WhyChooseUsSection, defaultWhyChooseUsContent } from "./sections/WhyChooseUsSection";
+import { MeetOwnerSection, defaultMeetOwnerContent } from "./sections/MeetOwnerSection";
 import { type BlockStyle } from "./sections/BlockStyleWrapper";
 import { SectionStylePanel } from "./SectionStylePanel";
 import { InspectorPanel } from "./InspectorPanel";
@@ -116,7 +117,7 @@ class WebsiteEditorErrorBoundary extends Component<{ children: ReactNode }, { er
 
 interface Section {
   id: string;
-  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us" | "legal";
+  type: "header" | "hero" | "services" | "about" | "contact" | "footer" | "portfolio" | "deposit" | "columns" | "testimonials" | "faq" | "cta" | "stats" | "content" | "row" | "text" | "gallery" | "image" | "featured-clients" | "partners" | "service-area" | "certifications" | "before-after" | "why-choose-us" | "legal" | "meet-owner";
   enabled: boolean;
   order: number;
   content: Record<string, unknown>;
@@ -347,6 +348,13 @@ function renderSection(
         onOpenMediaLibrary={extras?.onOpenMediaLibrary}
       />
     );
+    case "meet-owner": return (
+      <MeetOwnerSection
+        {...props}
+        sectionId={extras?.sectionId}
+        onOpenMediaLibrary={extras?.onOpenMediaLibrary}
+      />
+    );
     default: return null;
   }
 }
@@ -377,6 +385,7 @@ const SECTION_LABELS: Record<string, string> = {
   "before-after": "Before & After Gallery",
   "why-choose-us": "Why Choose Us",
   legal: "Legal / Disclaimer",
+  "meet-owner": "Owner / Team Story",
 };
 
 let _sectionTypeIcons: Record<string, React.ReactNode> | null = null;
@@ -408,6 +417,7 @@ function getSectionTypeIcons(): Record<string, React.ReactNode> {
       "before-after":     <ArrowLeftRight className="w-3 h-3 flex-shrink-0" />,
       "why-choose-us":    <ThumbsUp  className="w-3 h-3 flex-shrink-0" />,
       legal:              <FileText  className="w-3 h-3 flex-shrink-0" />,
+      "meet-owner":       <Users     className="w-3 h-3 flex-shrink-0" />,
     };
   }
   return _sectionTypeIcons;
@@ -426,6 +436,7 @@ let _addableSectionTypes: AddableSectionEntry[] | null = null;
 function getAddableSectionTypes(): AddableSectionEntry[] {
   if (!_addableSectionTypes) {
     _addableSectionTypes = [
+      { category: "About Your Business", type: "meet-owner", label: "Owner / Team Story",  description: "Introduce yourself or your crew with photo, bio, stats, and badges", icon: <Users className="w-4 h-4" />, allowMultiple: true },
       { category: "Contractor", type: "why-choose-us",    label: "Why Choose Us",           description: "Selling points that explain why customers should hire you",  icon: <ThumbsUp   className="w-4 h-4" />, allowMultiple: true },
       { category: "Contractor", type: "certifications",   label: "Certifications & Badges", description: "Show licenses, awards, and industry credentials",            icon: <Award      className="w-4 h-4" />, allowMultiple: true },
       { category: "Contractor", type: "service-area",     label: "Coverage Map",            description: "Interactive US state map showing where you work",             icon: <MapPin     className="w-4 h-4" />, allowMultiple: true },
@@ -2695,6 +2706,8 @@ function WebsiteEditor() {
       content = defaultBeforeAfterContent() as unknown as Record<string, unknown>;
     } else if (type === "why-choose-us") {
       content = defaultWhyChooseUsContent() as unknown as Record<string, unknown>;
+    } else if (type === "meet-owner") {
+      content = defaultMeetOwnerContent() as unknown as Record<string, unknown>;
     } else if (type === "legal") {
       content = { heading: "Legal Notices", body: "Privacy Policy | Terms of Service\n\nBy using our services, you agree to our terms and conditions. We respect your privacy and handle your personal information in accordance with applicable laws.\n\n© " + new Date().getFullYear() + " All rights reserved." } as unknown as Record<string, unknown>;
     } else if (type === "contact") {
@@ -2746,7 +2759,7 @@ function WebsiteEditor() {
     const sectionId = Math.random().toString(36).slice(2, 9);
     const newSection: Section = {
       id: sectionId,
-      type: "row",
+      type: (tpl.sectionType as Section["type"]) ?? "row",
       enabled: true,
       order: sections.length,
       content: tpl.content() as unknown as Record<string, unknown>,

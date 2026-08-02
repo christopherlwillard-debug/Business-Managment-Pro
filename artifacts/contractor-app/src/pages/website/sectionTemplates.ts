@@ -12,7 +12,13 @@ export interface SectionTemplate {
   emoji: string;
   /** Library category for the Section Library panel (e.g. "Hero", "Layout"). */
   category: string;
-  content: () => RowSectionData;
+  /**
+   * The section type this template produces. When absent the template creates a
+   * "row" section (the historical default). When present the template's content
+   * is used with that specific section type instead.
+   */
+  sectionType?: string;
+  content: () => RowSectionData | Record<string, unknown>;
   blockStyle?: BlockStyle;
 }
 
@@ -384,5 +390,77 @@ export const SECTION_TEMPLATES: SectionTemplate[] = [
       verticalAlign: "start",
     }),
     blockStyle: { paddingTop: 48, paddingBottom: 48 },
+  },
+
+  {
+    id: "meet-owner-split",
+    name: "Owner Story — Split",
+    description: "Photo left, bio right — great for owner-operated businesses",
+    emoji: "👤",
+    category: "About Your Business",
+    sectionType: "meet-owner",
+    content: () => ({
+      layout: "split",
+      heading: "Meet the Owner",
+      subheading: "The person behind every job we complete.",
+      ownerName: "Willard Smith",
+      ownerTitle: "Owner & Lead Installer",
+      bio: "I started this company after 20 years in the manufactured housing industry because I saw too many families getting poor service from companies that didn't care. Every home we install is treated like it's our own family moving in.",
+      quote: "If my name is on it, I stand behind it. Period.",
+      signature: "Willard Smith",
+      photoUrl: "",
+      stats: [
+        { id: "s1", value: "20+", label: "Years Experience" },
+        { id: "s2", value: "500+", label: "Homes Completed" },
+        { id: "s3", value: "5★",   label: "Average Rating" },
+      ],
+      badges: [
+        { id: "b1", label: "Veteran Owned", icon: "🪖" },
+        { id: "b2", label: "Licensed",      icon: "📋" },
+        { id: "b3", label: "Fully Insured", icon: "🛡️" },
+      ],
+      ctaText: "Request a Free Estimate",
+      ctaUrl: "#contact",
+      showQuote: true,
+      showSignature: true,
+      showStats: true,
+      showBadges: true,
+    }),
+    blockStyle: { paddingTop: 64, paddingBottom: 64 },
+  },
+
+  {
+    id: "meet-owner-centered",
+    name: "Owner Story — Centered",
+    description: "Circular portrait above centered bio — personal and approachable",
+    emoji: "🙋",
+    category: "About Your Business",
+    sectionType: "meet-owner",
+    content: () => ({
+      layout: "centered",
+      heading: "Meet the Owner",
+      ownerName: "Willard Smith",
+      ownerTitle: "Owner & Lead Installer",
+      bio: "Twenty years of hands-on experience and a commitment to getting it right the first time. Based right here in the community I serve.",
+      quote: "Your home is your biggest investment. We treat it that way.",
+      signature: "Willard Smith",
+      photoUrl: "",
+      stats: [
+        { id: "s1", value: "20+", label: "Years" },
+        { id: "s2", value: "500+", label: "Homes" },
+        { id: "s3", value: "5★",   label: "Rating" },
+      ],
+      badges: [
+        { id: "b1", label: "Veteran Owned", icon: "🪖" },
+        { id: "b2", label: "Licensed & Insured", icon: "🛡️" },
+      ],
+      ctaText: "Get a Free Estimate",
+      ctaUrl: "#contact",
+      showQuote: true,
+      showSignature: false,
+      showStats: true,
+      showBadges: true,
+    }),
+    blockStyle: { paddingTop: 80, paddingBottom: 80 },
   },
 ];
