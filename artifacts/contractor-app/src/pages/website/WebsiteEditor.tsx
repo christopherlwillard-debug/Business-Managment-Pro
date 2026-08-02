@@ -90,7 +90,7 @@ import { computeAlignmentGuides, type AlignmentGuide, type SimpleRect } from "./
 import { ComponentLibraryPanel, COMPONENT_TYPE_LABELS } from "./ComponentLibraryPanel";
 import { HeaderBuilderPanel } from "./HeaderBuilderPanel";
 import { nanoid } from "nanoid";
-import type { SiteSettings, CardComponent } from "./website-types";
+import type { SiteSettings, CardComponent, SavedSection } from "./website-types";
 import { reportCrash } from "@/lib/reportCrash";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1498,6 +1498,9 @@ function WebsiteEditor() {
   const [copiedColumnStyle, setCopiedColumnStyle] = useState<{ widthRatio: number } | null>(null);
   const [copiedSection, setCopiedSection] = useState<Section | null>(null);
   const [contextInspectorTab, setContextInspectorTab] = useState<{ tab: InspectorTab; id: number } | undefined>(undefined);
+  /** The section targeted by "Save to Library…" — opening this triggers the name dialog */
+  const [saveSectionTarget, setSaveSectionTarget] = useState<Section | null>(null);
+  const [saveSectionName, setSaveSectionName] = useState("");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; groups: ContextMenuGroup[] } | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(
     () => localStorage.getItem("website-editor-left-collapsed") === "true"
@@ -2086,6 +2089,16 @@ function WebsiteEditor() {
     },
   });
 
+  const { data: savedSectionsData } = useQuery<SavedSection[]>({
+    queryKey: ["saved-sections", bizId],
+    enabled: !!bizId,
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/website/saved-sections?businessId=${bizId}`, { credentials: "include" });
+      return res.ok ? (res.json() as Promise<SavedSection[]>) : [];
+    },
+  });
+  const savedSections: SavedSection[] = savedSectionsData ?? [];
+
   // Derived constants — declared here, after useQuery, so they are in scope
   // for every hook and callback that follows. Never reference these in a hook
   // dep array above this line or you will hit a TDZ crash.
@@ -2250,6 +2263,39 @@ function WebsiteEditor() {
       savedTimerRef.current = setTimeout(() => setShowSaved(false), 2500);
     },
     onError: () => toast({ title: "Save failed", variant: "destructive" }),
+  });
+
+  const createSavedSectionMutation = useMutation({
+    mutationFn: async (data: { name: string; sectionType: string; content: Record<string, unknown>; blockStyle?: Record<string, unknown> }) => {
+      const res = await fetch(`${BASE}/api/website/saved-sections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ businessId: bizId, ...data }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      return res.json() as Promise<SavedSection>;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["saved-sections", bizId] });
+      toast({ title: "Section saved to library", duration: 2000 });
+      setSaveSectionTarget(null);
+    },
+    onError: () => toast({ title: "Failed to save section", variant: "destructive" }),
+  });
+
+  const deleteSavedSectionMutation = useMutation({
+    mutationFn: async (savedId: number) => {
+      await fetch(`${BASE}/api/website/saved-sections/${savedId}?businessId=${bizId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["saved-sections", bizId] });
+      toast({ title: "Saved section deleted", duration: 1500 });
+    },
+    onError: () => toast({ title: "Failed to delete saved section", variant: "destructive" }),
   });
 
   useEffect(() => {
@@ -3270,6 +3316,56 @@ function WebsiteEditor() {
     setInsertAfterSectionId(undefined);
   }
 
+  function addSectionFromSaved(saved: SavedSection) {
+    const sectionId = nanoid(7);
+    const newSection: Section = {
+      id: sectionId,
+      type: saved.sectionType as Section["type"],
+      enabled: true,
+      order: sections.length,
+      content: JSON.parse(JSON.stringify(saved.content)),
+      ...(saved.blockStyle ? { blockStyle: JSON.parse(JSON.stringify(saved.blockStyle)) as BlockStyle } : {}),
+    };
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+    setHasUnpublishedChanges(true);
+    const afterId = insertAfterSectionId;
+    if (afterId === null) {
+      updatePageSections([newSection, ...sections].map((s, i) => ({ ...s, order: i })));
+    } else if (afterId !== undefined) {
+      const idx = sections.findIndex(s => s.id === afterId);
+      if (idx >= 0) {
+        const inserted = [...sections.slice(0, idx + 1), newSection, ...sections.slice(idx + 1)];
+        updatePageSections(inserted.map((s, i) => ({ ...s, order: i })));
+      } else {
+        const footerIdx = sections.findIndex(s => s.type === "footer");
+        const base = footerIdx >= 0
+          ? [...sections.slice(0, footerIdx), newSection, ...sections.slice(footerIdx)]
+          : [...sections, newSection];
+        updatePageSections(base.map((s, i) => ({ ...s, order: i })));
+      }
+    } else {
+      const footerIdx = sections.findIndex(s => s.type === "footer");
+      const base = footerIdx >= 0
+        ? [...sections.slice(0, footerIdx), newSection, ...sections.slice(footerIdx)]
+        : [...sections, newSection];
+      updatePageSections(base.map((s, i) => ({ ...s, order: i })));
+    }
+    setActiveSection(sectionId);
+    setShowAddSection(false);
+    setInsertAfterSectionId(undefined);
+  }
+
+  function handleConfirmSaveToLibrary() {
+    if (!saveSectionTarget) return;
+    createSavedSectionMutation.mutate({
+      name: saveSectionName.trim() || (SECTION_LABELS[saveSectionTarget.type] ?? saveSectionTarget.type),
+      sectionType: saveSectionTarget.type,
+      content: saveSectionTarget.content,
+      blockStyle: saveSectionTarget.blockStyle as Record<string, unknown> | undefined,
+    });
+  }
+
   function switchPage(pageId: string) {
     if (pageId === activePageId) return;
     setActivePageId(pageId);
@@ -4041,6 +4137,7 @@ function WebsiteEditor() {
         requestAnimationFrame(() => selectSectionAndScroll(s.id));
       },
       onMoveToPage: (targetPageId: string) => moveSectionToPage(s.id, targetPageId),
+      onSaveToLibrary: () => { setSaveSectionTarget(s); setSaveSectionName(SECTION_LABELS[s.type] ?? s.type); },
     });
 
     setContextMenu({ x, y, groups });
@@ -5047,6 +5144,9 @@ function WebsiteEditor() {
       onClose={() => { setShowAddSection(false); setInsertAfterSectionId(undefined); }}
       onAddSection={type => addSection(type as Parameters<typeof addSection>[0])}
       onAddSectionFromTemplate={addSectionFromTemplate}
+      savedSections={savedSections}
+      onInsertSaved={addSectionFromSaved}
+      onDeleteSaved={id => deleteSavedSectionMutation.mutate(id)}
     />
     {mediaPickerState && bizId && (
       <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6">
@@ -6857,6 +6957,52 @@ function WebsiteEditor() {
         groups={contextMenu.groups}
         onClose={() => setContextMenu(null)}
       />
+    )}
+
+    {/* ── Save to Library dialog ─────────────────────────────────── */}
+    {saveSectionTarget && (
+      <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/50">
+        <div
+          className="bg-card border border-border rounded-2xl shadow-2xl p-6 w-full max-w-sm space-y-4 mx-4"
+          onClick={e => e.stopPropagation()}
+        >
+          <div>
+            <h3 className="font-semibold text-foreground text-base">Save Section to Library</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Give this <span className="font-medium text-foreground">{SECTION_LABELS[saveSectionTarget.type] ?? saveSectionTarget.type}</span> section a name so you can reuse it later.
+            </p>
+          </div>
+          <input
+            type="text"
+            autoFocus
+            value={saveSectionName}
+            onChange={e => setSaveSectionName(e.target.value)}
+            placeholder={SECTION_LABELS[saveSectionTarget.type] ?? saveSectionTarget.type}
+            className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/50"
+            onKeyDown={e => {
+              if (e.key === "Enter") handleConfirmSaveToLibrary();
+              if (e.key === "Escape") setSaveSectionTarget(null);
+            }}
+          />
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={() => setSaveSectionTarget(null)}
+              className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmSaveToLibrary}
+              disabled={createSavedSectionMutation.isPending}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60"
+            >
+              {createSavedSectionMutation.isPending ? "Saving…" : "Save to Library"}
+            </button>
+          </div>
+        </div>
+      </div>
     )}
     </>
   );

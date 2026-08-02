@@ -80,3 +80,16 @@ export const websiteMediaTable = pgTable("website_media", {
 
 export type WebsiteMedia = typeof websiteMediaTable.$inferSelect;
 export type InsertWebsiteMedia = typeof websiteMediaTable.$inferInsert;
+
+/** Per-business library of user-saved reusable section snapshots. */
+export const savedSectionsTable = pgTable("saved_sections", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").notNull().references(() => businessesTable.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  /** JSONB snapshot: { type: string, content: object, blockStyle?: object } */
+  sectionJson: jsonb("section_json").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type SavedSectionRow = typeof savedSectionsTable.$inferSelect;
+export type InsertSavedSectionRow = typeof savedSectionsTable.$inferInsert;

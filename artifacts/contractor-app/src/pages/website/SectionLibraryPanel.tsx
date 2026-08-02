@@ -33,8 +33,8 @@ export interface SectionLibraryPanelProps {
   savedSections?: SavedSection[];
   /** Insert a previously-saved section */
   onInsertSaved?: (saved: SavedSection) => void;
-  /** Delete a saved section by its saved-entry ID */
-  onDeleteSaved?: (savedId: string) => void;
+  /** Delete a saved section by its DB id */
+  onDeleteSaved?: (savedId: number) => void;
 }
 
 // ─── Static data ──────────────────────────────────────────────────────────────
@@ -445,6 +445,26 @@ export function SectionLibraryPanel({
             )}
           </button>
 
+          {/* Saved tab */}
+          <button
+            type="button"
+            onClick={() => { setShowSaved(true); setShowFavs(false); setActiveCategory("All"); }}
+            className={cn(
+              "flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap",
+              showSaved
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+          >
+            <Bookmark className={cn("w-3 h-3", showSaved && "fill-current")} />
+            Saved
+            {savedSections.length > 0 && (
+              <span className="bg-primary/10 text-primary rounded-full px-1 text-[9px] font-bold">
+                {savedSections.length}
+              </span>
+            )}
+          </button>
+
           <div className="w-px h-3.5 bg-border flex-shrink-0 mx-1" />
 
           {CATEGORIES.map(cat => (
@@ -466,7 +486,22 @@ export function SectionLibraryPanel({
 
         {/* ── Card grid ────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto px-3 py-3">
-          {filteredItems.length === 0 ? (
+          {showSaved ? (
+            filteredSaved.length === 0 ? (
+              <SavedEmptyState search={q} />
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {filteredSaved.map(saved => (
+                  <SavedSectionCard
+                    key={saved.id}
+                    saved={saved}
+                    onInsert={() => { onInsertSaved?.(saved); onClose(); }}
+                    onDelete={() => onDeleteSaved?.(saved.id)}
+                  />
+                ))}
+              </div>
+            )
+          ) : filteredItems.length === 0 ? (
             <EmptyState search={q} showFavs={showFavs} />
           ) : groupedItems ? (
             /* All-category grouped view */
@@ -905,7 +940,101 @@ function SectionCard({
   );
 }
 
+// ─── Saved section card ───────────────────────────────────────────────────────
+
+const SECTION_TYPE_EMOJIS: Record<string, string> = {
+  hero: "🚀", services: "🔧", about: "👋", contact: "📬", footer: "📄",
+  portfolio: "🖼️", testimonials: "💬", faq: "❓", cta: "📣", stats: "📊",
+  content: "📝", row: "📐", text: "✍️", gallery: "🖼️",
+  "featured-clients": "🤝", partners: "🏭", "service-area": "🗺️",
+  certifications: "🎖️", "before-after": "↔️", "why-choose-us": "🏆",
+  "meet-owner": "👤", process: "➡️", divider: "➖", spacer: "↕️",
+  "alert-bar": "📢", "business-hours": "🕐", "trust-counter": "🔢",
+  "sticky-cta": "📌", "map-embed": "📍", "quote-form": "📋",
+  legal: "⚖️", header: "🔝",
+};
+
+function SavedSectionCard({
+  saved,
+  onInsert,
+  onDelete,
+}: {
+  saved: SavedSection;
+  onInsert: () => void;
+  onDelete?: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const emoji = SECTION_TYPE_EMOJIS[saved.sectionType] ?? "🧩";
+  const label = saved.sectionType.replace(/-/g, " ");
+
+  return (
+    <div className="relative flex flex-col rounded-xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all overflow-hidden">
+      <button
+        type="button"
+        onClick={onInsert}
+        className="flex-1 p-3 text-left flex flex-col gap-1.5 min-h-[72px] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <span className="text-xl leading-none">{emoji}</span>
+        <p className="text-xs font-semibold text-foreground leading-tight line-clamp-2 mt-0.5">{saved.name}</p>
+        <p className="text-[10px] text-muted-foreground capitalize">{label}</p>
+      </button>
+      <div className="flex items-center gap-1.5 px-2 pb-2">
+        <button
+          type="button"
+          onClick={onInsert}
+          className="flex-1 text-[10px] font-medium py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+        >
+          Insert
+        </button>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={() => {
+              if (confirming) { onDelete(); setConfirming(false); }
+              else setConfirming(true);
+            }}
+            onBlur={() => setConfirming(false)}
+            title={confirming ? "Click again to confirm" : "Delete saved section"}
+            className={cn(
+              "p-1.5 rounded-lg transition-colors",
+              confirming
+                ? "bg-destructive/10 text-destructive"
+                : "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            )}
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Empty states ─────────────────────────────────────────────────────────────
+
+function SavedEmptyState({ search }: { search: string }) {
+  if (search) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+        <Search className="w-10 h-10 text-muted-foreground/20 mb-3" />
+        <p className="text-sm font-semibold text-foreground mb-1">No saved sections match</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          No results for <span className="font-medium text-foreground">"{search}"</span>.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+      <Bookmark className="w-10 h-10 text-muted-foreground/20 mb-3" />
+      <p className="text-sm font-semibold text-foreground mb-1">No saved sections yet</p>
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        Right-click any section on the canvas and choose{" "}
+        <span className="font-medium text-foreground">Save to Library…</span> to save it for reuse.
+      </p>
+    </div>
+  );
+}
 
 function EmptyState({ search, showFavs }: { search: string; showFavs: boolean }) {
   if (showFavs) {

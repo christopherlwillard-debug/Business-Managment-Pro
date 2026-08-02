@@ -5,7 +5,7 @@ import { createHmac, createHash } from "crypto";
 import OpenAI from "openai";
 import { BUILDPRO_AI_MINI_MODEL } from "../ai-models";
 import { db } from "@workspace/db";
-import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable, depositSubmissionsTable, contactsTable } from "@workspace/db/schema";
+import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable, depositSubmissionsTable, contactsTable, savedSectionsTable } from "@workspace/db/schema";
 import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
@@ -1482,6 +1482,81 @@ router.get("/preview-by-slug/:slug", wrapAsync(async (req, res) => {
 
   const normalizedSections = normalizeSections(config.sections as SectionRow[]);
   res.json({ ...config, sections: normalizedSections, businessName: biz.name, businessSlug: biz.slug });
+}));
+
+// ── Saved Sections — CRUD ─────────────────────────────────────────────────────
+
+router.get("/saved-sections", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId) return res.status(400).json({ error: "businessId required" });
+  const rows = await db
+    .select()
+    .from(savedSectionsTable)
+    .where(eq(savedSectionsTable.businessId, businessId))
+    .orderBy(desc(savedSectionsTable.createdAt));
+  return res.json(rows.map(r => {
+    const json = r.sectionJson as { type: string; content: unknown; blockStyle?: unknown };
+    return {
+      id: r.id,
+      name: r.name,
+      sectionType: json.type,
+      content: json.content ?? {},
+      blockStyle: json.blockStyle ?? undefined,
+      createdAt: r.createdAt.toISOString(),
+    };
+  }));
+}));
+
+router.post("/saved-sections", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.body.businessId);
+  const { name, sectionType, content, blockStyle } = req.body as {
+    name: string; sectionType: string;
+    content: Record<string, unknown>; blockStyle?: Record<string, unknown>;
+  };
+  if (!businessId || !name || !sectionType) {
+    return res.status(400).json({ error: "businessId, name, sectionType required" });
+  }
+  const [row] = await db
+    .insert(savedSectionsTable)
+    .values({
+      businessId,
+      name: name.trim().slice(0, 255),
+      sectionJson: { type: sectionType, content: content ?? {}, blockStyle: blockStyle ?? null },
+    })
+    .returning();
+  const json = row.sectionJson as { type: string; content: unknown; blockStyle?: unknown };
+  return res.json({
+    id: row.id,
+    name: row.name,
+    sectionType: json.type,
+    content: json.content ?? {},
+    blockStyle: json.blockStyle ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+  });
+}));
+
+router.patch("/saved-sections/:id", wrapAsync(async (req, res) => {
+  const id = parseInt(req.params.id as string);
+  const businessId = parseInt(req.body.businessId);
+  const { name } = req.body as { name: string };
+  if (!name?.trim()) return res.status(400).json({ error: "name required" });
+  const [row] = await db
+    .update(savedSectionsTable)
+    .set({ name: name.trim().slice(0, 255) })
+    .where(and(eq(savedSectionsTable.id, id), eq(savedSectionsTable.businessId, businessId)))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Not found" });
+  return res.json({ id: row.id, name: row.name });
+}));
+
+router.delete("/saved-sections/:id", wrapAsync(async (req, res) => {
+  const id = parseInt(req.params.id as string);
+  const businessId = parseInt((Array.isArray(req.query.businessId) ? req.query.businessId[0] : req.query.businessId ?? req.body.businessId) as string);
+  if (!businessId) return res.status(400).json({ error: "businessId required" });
+  await db
+    .delete(savedSectionsTable)
+    .where(and(eq(savedSectionsTable.id, id), eq(savedSectionsTable.businessId, businessId)));
+  return res.json({ ok: true });
 }));
 
 export { router as websiteRouter, publicRouter as websitePublicRouter };
