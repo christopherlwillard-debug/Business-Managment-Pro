@@ -552,11 +552,14 @@ function SortableRow({
   active,
   onToggle,
   onActivate,
+  leadingContent,
 }: {
   section: Section;
   active: boolean;
   onToggle: () => void;
   onActivate: () => void;
+  /** Optional element rendered before the drag handle (e.g. child-list expand chevron). */
+  leadingContent?: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
   return (
@@ -568,6 +571,7 @@ function SortableRow({
       }`}
       onClick={onActivate}
     >
+      {leadingContent}
       <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground" onClick={e => e.stopPropagation()}>
         <GripVertical className="w-3 h-3" />
       </div>
@@ -815,14 +819,73 @@ function CustomDomainPanel({
   );
 }
 
+// ── Section child extractor ────────────────────────────────────────────────────
+// Returns a flat list of { id, label } for sections that have card/item arrays.
+// Returns [] for all other section types.
+
+function truncateLabel(str: string, max = 28): string {
+  const clean = str.trim();
+  return clean.length > max ? clean.slice(0, max).trimEnd() + "…" : clean;
+}
+
+function getSectionChildren(section: Section): { id: string; label: string }[] {
+  const c = section.content as Record<string, unknown>;
+  switch (section.type) {
+    case "services":
+    case "certifications":
+    case "why-choose-us":
+    case "featured-clients": {
+      const items = (c.items as Array<{ id: string; title?: string; name?: string }> | undefined) ?? [];
+      return items.map((item, idx) => ({ id: item.id, label: truncateLabel(item.title ?? item.name ?? `Item ${idx + 1}`) }));
+    }
+    case "partners": {
+      const items = (c.items as Array<{ id: string; title?: string; name?: string }> | undefined) ?? [];
+      return items.map((item, idx) => ({ id: item.id, label: truncateLabel(item.title ?? item.name ?? `Partner ${idx + 1}`) }));
+    }
+    case "testimonials": {
+      // items is CardComponent[]; title = reviewer name
+      const items = (c.items as Array<{ id: string; title?: string }> | undefined) ?? [];
+      return items.map((item, idx) => ({ id: item.id, label: truncateLabel(item.title ?? `Review ${idx + 1}`) }));
+    }
+    case "stats": {
+      const items = (c.items as Array<{ id: string; label?: string; value?: string }> | undefined) ?? [];
+      return items.map((item, idx) => ({ id: item.id, label: truncateLabel(item.label ?? item.value ?? `Stat ${idx + 1}`) }));
+    }
+    case "faq": {
+      // accordion mode uses items[].question; cards mode uses cards[].title
+      const mode = (c.displayMode as string | undefined) ?? "accordion";
+      if (mode === "cards") {
+        const cards = (c.cards as Array<{ id: string; title?: string }> | undefined) ?? [];
+        return cards.map((card, idx) => ({ id: card.id, label: truncateLabel(card.title ?? `FAQ ${idx + 1}`) }));
+      }
+      const items = (c.items as Array<{ id: string; question?: string }> | undefined) ?? [];
+      return items.map((item, idx) => ({ id: item.id, label: truncateLabel(item.question ?? `Q${idx + 1}`) }));
+    }
+    case "before-after": {
+      const pairs = (c.pairs as Array<{ id: string; label?: string; title?: string }> | undefined) ?? [];
+      return pairs.map((pair, idx) => ({ id: pair.id, label: truncateLabel(pair.label ?? pair.title ?? `Pair ${idx + 1}`) }));
+    }
+    case "portfolio": {
+      const projects = (c.projects as Array<{ id: string; name?: string; title?: string }> | undefined) ?? [];
+      return projects.map((p, idx) => ({ id: p.id, label: truncateLabel(p.name ?? p.title ?? `Project ${idx + 1}`) }));
+    }
+    default:
+      return [];
+  }
+}
+
+// ── Tree data types ────────────────────────────────────────────────────────────
+
 interface TreeNodeData {
   id: string;
-  type: "page" | "section";
+  type: "page" | "section" | "item";
   label: string;
   icon: React.ReactNode;
   section?: Section;
   page?: SitePage;
   pageId?: string;
+  /** For item nodes: the section that owns this item. */
+  parentSectionId?: string;
   children: TreeNodeData[];
 }
 
@@ -849,6 +912,13 @@ type SiteTreeNodeProps = {
   setAddSectionTab: (tab: "sections" | "templates") => void;
   addSection: (type: Section["type"]) => void;
   addSectionFromTemplate: (id: string) => void;
+  /** Sections whose child item lists are expanded in the tree. */
+  expandedSectionIds: Set<string>;
+  onToggleSectionExpand: (id: string) => void;
+  /** Callback to select a specific card within a section from the tree. */
+  onSelectSectionCard: (sectionId: string, cardId: string) => void;
+  /** Currently active card id (used to highlight the matching item row). */
+  activeCardId: string | null;
 };
 
 function PageNodeWithSortable(props: SiteTreeNodeProps) {
@@ -860,6 +930,7 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
     sensors, handleDragEnd, toggleSection, setActiveSection, sections: activeSections,
     setInsertAfterSectionId, setShowAddSection, showAddSection,
     addSectionTab, setAddSectionTab, addSection, addSectionFromTemplate,
+    expandedSectionIds, onToggleSectionExpand, onSelectSectionCard, activeCardId,
   } = props;
 
   const isExpanded = expandedIds.has(node.id);
@@ -881,6 +952,7 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
     sensors, handleDragEnd, toggleSection, setActiveSection, sections: activeSections,
     setInsertAfterSectionId, setShowAddSection, showAddSection,
     addSectionTab, setAddSectionTab, addSection, addSectionFromTemplate,
+    expandedSectionIds, onToggleSectionExpand, onSelectSectionCard, activeCardId,
   };
 
   return (
@@ -989,13 +1061,42 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
 
 function SiteTreeNode(props: SiteTreeNodeProps) {
   const { node, depth, expandedIds, onToggleExpand, activePageId, activeSection,
-    switchPage, toggleSection, setActiveSection, sections: activeSections } = props;
+    switchPage, toggleSection, setActiveSection, sections: activeSections,
+    expandedSectionIds, onToggleSectionExpand, onSelectSectionCard, activeCardId,
+  } = props;
 
   const isActiveSection = node.type === "section" && activeSection === node.id;
 
+  // ── Item row (child of a section) ─────────────────────────────────────────
+  if (node.type === "item") {
+    const isActive = !!activeCardId && activeCardId === node.id;
+    return (
+      <div
+        className={`flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-md cursor-pointer transition-colors text-[10px] ${
+          isActive
+            ? "bg-primary/10 text-primary font-medium"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+        }`}
+        onClick={() => {
+          if (node.parentSectionId) {
+            setActiveSection(node.parentSectionId);
+            onSelectSectionCard(node.parentSectionId, node.id);
+          }
+        }}
+      >
+        <span className="w-1 h-1 rounded-full bg-current flex-shrink-0 opacity-70" />
+        <span className="flex-1 truncate">{node.label}</span>
+      </div>
+    );
+  }
+
+  // ── Section row ───────────────────────────────────────────────────────────
   if (node.type === "section") {
     const parentPageId = node.pageId ?? "";
     if (parentPageId === activePageId) {
+      const hasChildren = node.children.length > 0;
+      const isSectionExpanded = expandedSectionIds.has(node.id);
+
       return (
         <div data-section-id={node.id}>
           <SortableRow
@@ -1003,7 +1104,24 @@ function SiteTreeNode(props: SiteTreeNodeProps) {
             active={isActiveSection}
             onToggle={() => toggleSection(node.id)}
             onActivate={() => setActiveSection(node.id)}
+            leadingContent={hasChildren ? (
+              <button
+                type="button"
+                className="flex-shrink-0 p-0.5 rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted-foreground/10 transition-colors"
+                onClick={e => { e.stopPropagation(); onToggleSectionExpand(node.id); }}
+                title={isSectionExpanded ? "Collapse items" : "Expand items"}
+              >
+                <ChevronRight className={`w-2.5 h-2.5 transition-transform duration-150 ${isSectionExpanded ? "rotate-90" : ""}`} />
+              </button>
+            ) : undefined}
           />
+          {hasChildren && isSectionExpanded && (
+            <div className="ml-5 space-y-0.5 border-l border-border/40 pl-1.5 pb-0.5 mt-0.5">
+              {node.children.map(child => (
+                <SiteTreeNode key={child.id} {...props} node={child} depth={depth + 1} />
+              ))}
+            </div>
+          )}
         </div>
       );
     }
@@ -1398,6 +1516,7 @@ function WebsiteEditor() {
   const [showFullscreenPreview, setShowFullscreenPreview] = useState(false);
   const preFocusSidebarState = useRef<{ left: boolean } | null>(null);
   const [expandedPageIds, setExpandedPageIds] = useState<Set<string>>(() => new Set(["home"]));
+  const [expandedSectionIds, setExpandedSectionIds] = useState<Set<string>>(new Set());
   const [treeSearch, setTreeSearch] = useState("");
   const [previewViewport, setPreviewViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const leftCollapsedRef = useRef(leftCollapsed);
@@ -5461,16 +5580,29 @@ function WebsiteEditor() {
                 children: (p.id === activePageId ? sections : (p.sections ?? []))
                   .filter(s => s.type !== "header")
                   .filter(s => !treeSearch || (SECTION_LABELS[s.type] ?? s.type).toLowerCase().includes(q))
-                  .map(s => ({
-                    id: s.id,
-                    type: "section" as const,
-                    label: SECTION_LABELS[s.type] ?? s.type,
-                    icon: getSectionTypeIcons()[s.type] ?? <Layers className="w-3 h-3 flex-shrink-0" />,
-                    section: s,
-                    page: p,
-                    pageId: p.id,
-                    children: [],
-                  })),
+                  .map(s => {
+                    const sectionChildItems = getSectionChildren(s);
+                    return {
+                      id: s.id,
+                      type: "section" as const,
+                      label: SECTION_LABELS[s.type] ?? s.type,
+                      icon: getSectionTypeIcons()[s.type] ?? <Layers className="w-3 h-3 flex-shrink-0" />,
+                      section: s,
+                      page: p,
+                      pageId: p.id,
+                      children: sectionChildItems.map(item => ({
+                        id: item.id,
+                        type: "item" as const,
+                        label: item.label,
+                        icon: null,
+                        section: s,
+                        page: p,
+                        pageId: p.id,
+                        parentSectionId: s.id,
+                        children: [],
+                      })),
+                    };
+                  }),
               }));
               const treeNodeProps = {
                 expandedIds: expandedPageIds,
@@ -5487,6 +5619,34 @@ function WebsiteEditor() {
                 sensors, handleDragEnd, toggleSection, setActiveSection: selectSectionAndScroll, sections,
                 setInsertAfterSectionId, setShowAddSection, showAddSection,
                 addSectionTab, setAddSectionTab, addSection, addSectionFromTemplate,
+                expandedSectionIds,
+                onToggleSectionExpand: (id: string) => setExpandedSectionIds(prev => {
+                  const next = new Set(prev);
+                  if (next.has(id)) next.delete(id); else next.add(id);
+                  return next;
+                }),
+                onSelectSectionCard: (sectionId: string, cardId: string) => {
+                  selectSectionAndScroll(sectionId);
+                  const sec = sections.find(s => s.id === sectionId);
+                  let cardData: CardComponent | null = null;
+                  if (sec) {
+                    const sc = sec.content as Record<string, unknown>;
+                    if (["services","stats","certifications","partners","why-choose-us","featured-clients"].includes(sec.type)) {
+                      const items = (sc.items as CardComponent[] | undefined) ?? [];
+                      cardData = items.find(i => i.id === cardId) ?? null;
+                    } else if (sec.type === "testimonials") {
+                      const items = (sc.items as CardComponent[] | undefined) ?? [];
+                      cardData = items.find(i => i.id === cardId) ?? null;
+                    } else if (sec.type === "faq") {
+                      const raw = sc as { cards?: CardComponent[] };
+                      cardData = (raw.cards ?? []).find(ci => ci.id === cardId) ?? null;
+                    }
+                  }
+                  setSelectedCardState({ sectionId, cardId });
+                  setSelectedCardData(cardData);
+                  setContextInspectorTab({ tab: "content", id: Date.now() });
+                },
+                activeCardId: selectedCardState?.cardId ?? null,
               };
               const sortablePageIds = treeData
                 .filter(n => n.type === "page" && n.id !== "home")
