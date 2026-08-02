@@ -86,6 +86,7 @@ import { FloatingTextToolbar } from "./FloatingTextToolbar";
 import { SelectionHandles } from "./SelectionHandles";
 import { AlignmentGuides } from "./AlignmentGuides";
 import { computeAlignmentGuides, type AlignmentGuide, type SimpleRect } from "./alignmentUtils";
+import { ComponentLibraryPanel, COMPONENT_TYPE_LABELS } from "./ComponentLibraryPanel";
 import { nanoid } from "nanoid";
 import type { SiteSettings, CardComponent } from "./website-types";
 import { reportCrash } from "@/lib/reportCrash";
@@ -212,6 +213,9 @@ function renderSection(
       draggedId: string,
       rect: { top: number; bottom: number; left: number; right: number; width: number; height: number } | null,
     ) => void;
+    /** When set, shows a blue drop-indicator line in ContentSection at this index.
+     *  Driven by the Components Library panel drag-to-canvas gesture. */
+    externalDropIndex?: number;
   }
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
@@ -307,6 +311,7 @@ function renderSection(
         onAlignmentDrag={extras?.onAlignmentDrag
           ? (draggedId, rect) => extras.onAlignmentDrag!(section.id, draggedId, rect)
           : undefined}
+        externalDropIndex={extras?.externalDropIndex}
       />
     );
     case "row": return (
@@ -1493,6 +1498,17 @@ function WebsiteEditor() {
   const [leftCollapsed, setLeftCollapsed] = useState(
     () => localStorage.getItem("website-editor-left-collapsed") === "true"
   );
+  const [leftPanelTab, setLeftPanelTab] = useState<"structure" | "components">("structure");
+  /** Active library-panel drag state — tracks ghost position and canvas drop target. */
+  const [libraryDrag, setLibraryDrag] = useState<{
+    type: ComponentType;
+    label: string;
+    x: number;
+    y: number;
+    targetSectionId: string | null;
+    insertIndex: number;
+  } | null>(null);
+  const libraryDragRef = useRef<typeof libraryDrag>(null);
   const [panelMode, setPanelMode] = useState<PanelMode>(() => {
     const s = localStorage.getItem('website-inspector-mode');
     return (s === 'pinned' || s === 'floating') ? s : 'auto';
@@ -1537,6 +1553,7 @@ function WebsiteEditor() {
   const selectedRowStateRef = useRef<{ sectionId: string; columnId: string; componentId?: string | null } | null>(null);
   selectedComponentStateRef.current = selectedComponentState;
   selectedRowStateRef.current = selectedRowState;
+  libraryDragRef.current = libraryDrag;
 
   // Tracks the in-progress component resize drag so live and commit handlers share context.
   const resizeDragBaseRef = useRef<{
@@ -2362,6 +2379,29 @@ function WebsiteEditor() {
         return p;
       });
     });
+  }
+
+  /** Inserts a component from the library panel into a content section at the given index. */
+  function addComponentFromLibrary(sectionId: string, type: ComponentType, insertIndex: number) {
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    isDirtyRef.current = true;
+    const newComp: SiteComponent = { id: nanoid(), type, props: defaultPropsForType(type) };
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => ({
+        ...p,
+        sections: p.sections.map(s => {
+          if (s.id !== sectionId) return s;
+          const cd = s.content as { components?: SiteComponent[]; maxWidth?: string };
+          const comps = [...(cd.components ?? [])];
+          comps.splice(insertIndex, 0, newComp);
+          return { ...s, content: { ...cd, components: comps } };
+        }),
+      }));
+    });
+    setActiveSection(sectionId);
+    setSelectedComponentState({ sectionId, componentId: newComp.id });
+    toast({ title: `${COMPONENT_TYPE_LABELS[type] ?? type} added`, duration: 1500 });
   }
 
   function updateBlockStyle(id: string, blockStyle: BlockStyle) {
@@ -3553,6 +3593,85 @@ function WebsiteEditor() {
     computeAndShowAlignmentGuides(sectionId, draggedId, rect);
   }
 
+  /** Starts a library-panel component drag.  Attaches global pointer listeners for 60fps tracking. */
+  function handleLibraryDragStart(type: ComponentType, label: string, e: React.PointerEvent<HTMLElement>) {
+    e.preventDefault();
+    setLibraryDrag({ type, label, x: e.clientX, y: e.clientY, targetSectionId: null, insertIndex: 0 });
+
+    function findTarget(x: number, y: number): { sectionId: string; insertIndex: number } | null {
+      const allSections = pagesRef.current.flatMap(p => p.sections);
+      const els = document.elementsFromPoint(x, y);
+      for (const elRaw of els) {
+        const el = elRaw as HTMLElement;
+        const id = el.getAttribute?.('data-section-canvas-id');
+        if (!id) continue;
+        const sec = allSections.find(s => s.id === id && s.type === 'content');
+        if (!sec) continue;
+        // Compute insert position from cursor Y vs component midpoints
+        const compEls = Array.from(el.querySelectorAll<HTMLElement>('[data-section-canvas-id]'))
+          .filter(c => c.getAttribute('data-section-canvas-id') !== id);
+        let insertAt = compEls.length;
+        for (let i = 0; i < compEls.length; i++) {
+          const r = compEls[i].getBoundingClientRect();
+          if (y < r.top + r.height / 2) { insertAt = i; break; }
+        }
+        return { sectionId: id, insertIndex: insertAt };
+      }
+      return null;
+    }
+
+    function onMove(ev: PointerEvent) {
+      const target = findTarget(ev.clientX, ev.clientY);
+      setLibraryDrag(prev => prev ? {
+        ...prev,
+        x: ev.clientX,
+        y: ev.clientY,
+        targetSectionId: target?.sectionId ?? null,
+        insertIndex: target?.insertIndex ?? 0,
+      } : null);
+    }
+
+    function onUp(ev: PointerEvent) {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      const drag = libraryDragRef.current;
+      setLibraryDrag(null);
+      if (drag?.targetSectionId) {
+        addComponentFromLibrary(drag.targetSectionId, drag.type, drag.insertIndex);
+      } else {
+        // Warn if dropped on a non-content section
+        const allSections = pagesRef.current.flatMap(p => p.sections);
+        const els = document.elementsFromPoint(ev.clientX, ev.clientY);
+        const hitOtherSection = els.some(elRaw => {
+          const el = elRaw as HTMLElement;
+          const id = el.getAttribute?.('data-section-canvas-id');
+          return id ? allSections.some(s => s.id === id && s.type !== 'content') : false;
+        });
+        if (hitOtherSection) {
+          toast({ title: "Drop onto a Content Block", description: "Drag onto a 'Content Block' section to add this component.", duration: 3000 });
+        }
+      }
+    }
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  /** Quick-inserts a component type at the end of the currently active content section. */
+  function handleLibraryDoubleClick(type: ComponentType) {
+    if (!activeSection) {
+      toast({ title: "Select a Content Block first", description: "Click on a Content Block section on the canvas, then double-click a component to add it.", duration: 3000 });
+      return;
+    }
+    const sec = sections.find(s => s.id === activeSection);
+    if (!sec || sec.type !== 'content') {
+      toast({ title: "Select a Content Block first", description: "Double-click adds components to Content Block sections.", duration: 3000 });
+      return;
+    }
+    const cd = sec.content as { components?: SiteComponent[] };
+    addComponentFromLibrary(activeSection, type, (cd.components ?? []).length);
+  }
+
   /** Apply live DOM style override for 60fps feedback — no React state update. */
   function handleResizeLive(edge: string, dx: number, dy: number) {
     const base = resizeDragBaseRef.current;
@@ -4645,6 +4764,7 @@ function WebsiteEditor() {
                 setSelectedCardData(null);
               }
             },
+            externalDropIndex: libraryDrag?.targetSectionId === s.id ? libraryDrag.insertIndex : undefined,
           })}
         </EditableWrapper>
       );
@@ -4697,6 +4817,22 @@ function WebsiteEditor() {
         )}
         {/* Alignment guide overlay — Canva-style blue lines during drag/resize */}
         {!previewMode && <AlignmentGuides guides={alignmentGuides} />}
+        {/* Component library drag ghost — fixed label follows cursor during panel→canvas drag */}
+        {libraryDrag && (
+          <div
+            className="fixed pointer-events-none z-[9997]"
+            style={{ left: libraryDrag.x + 14, top: libraryDrag.y + 14 }}
+          >
+            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-xl border ${
+              libraryDrag.targetSectionId
+                ? 'bg-primary text-primary-foreground border-primary/50'
+                : 'bg-card text-foreground border-border'
+            }`}>
+              <span>{libraryDrag.label}</span>
+              {libraryDrag.targetSectionId && <Check className="w-3 h-3" />}
+            </div>
+          </div>
+        )}
         {/* Spacer section — resize height by dragging top/bottom handles */}
         {!previewMode && !selectedComponentState && !selectedRowState && (() => {
           const spacerSec = activeSection
@@ -5769,39 +5905,59 @@ function WebsiteEditor() {
               <Layers className="w-4 h-4 text-muted-foreground/40" />
             </div>
           ) : (<>
-          {/* Panel header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Site Structure</p>
-            <div className="flex items-center gap-1">
+          {/* Panel header — tabbed: Structure / Components */}
+          <div className="flex-shrink-0 border-b border-border">
+            {/* Tab row */}
+            <div className="flex items-center">
               <button
                 type="button"
-                onClick={() => setExpandedPageIds(new Set(pages.map(p => p.id)))}
-                title="Expand all pages"
-                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setLeftPanelTab("structure")}
+                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${leftPanelTab === "structure" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
               >
-                <ChevronDown className="w-3 h-3" />
+                Structure
               </button>
               <button
                 type="button"
-                onClick={() => setExpandedPageIds(new Set())}
-                title="Collapse all pages"
-                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setLeftPanelTab("components")}
+                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${leftPanelTab === "components" ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
               >
-                <ChevronRight className="w-3 h-3" />
+                Components
               </button>
-              <button
-                type="button"
-                onClick={() => { setShowAddPage(false); setPageTemplatePickerMode("add"); setShowPageTemplatePicker(true); }}
-                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                title="Add page"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Page
-              </button>
+            </div>
+            {/* Action buttons row (structure-only helpers + always-visible hide button) */}
+            <div className="flex items-center gap-1 px-2 py-1">
+              {leftPanelTab === "structure" && (<>
+                <button
+                  type="button"
+                  onClick={() => setExpandedPageIds(new Set(pages.map(p => p.id)))}
+                  title="Expand all pages"
+                  className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpandedPageIds(new Set())}
+                  title="Collapse all pages"
+                  className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowAddPage(false); setPageTemplatePickerMode("add"); setShowPageTemplatePicker(true); }}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  title="Add page"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Page
+                </button>
+              </>)}
+              <div className="flex-1" />
               <button
                 type="button"
                 onClick={() => setLeftCollapsed(true)}
-                title="Hide structure panel"
+                title="Hide panel"
                 className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ChevronsLeft className="w-3.5 h-3.5" />
@@ -5809,8 +5965,8 @@ function WebsiteEditor() {
               </button>
             </div>
           </div>
-          {/* Tree search */}
-          <div className="px-2 py-1.5 border-b border-border/50 flex-shrink-0">
+          {/* Tree search — hidden when Components tab is active */}
+          <div className={`px-2 py-1.5 border-b border-border/50 flex-shrink-0 ${leftPanelTab === "components" ? "hidden" : ""}`}>
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
               <input
@@ -5834,8 +5990,19 @@ function WebsiteEditor() {
             </div>
           </div>
 
+          {/* Components library panel — shown only when Components tab is active */}
+          {leftPanelTab === "components" && (
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              <ComponentLibraryPanel
+                activeSectionType={activeSection ? (sections.find(s => s.id === activeSection)?.type ?? null) : null}
+                onDragStart={handleLibraryDragStart}
+                onDoubleClick={handleLibraryDoubleClick}
+              />
+            </div>
+          )}
+
           {/* Scrollable body — tree + theme designer scroll together; header & search stay sticky above */}
-          <div ref={sidebarListRef} className="flex-1 min-h-0 overflow-y-auto">
+          <div ref={sidebarListRef} className={`flex-1 min-h-0 overflow-y-auto ${leftPanelTab === "components" ? "hidden" : ""}`}>
 
           {/* Inline add-page form */}
           {showAddPage && (

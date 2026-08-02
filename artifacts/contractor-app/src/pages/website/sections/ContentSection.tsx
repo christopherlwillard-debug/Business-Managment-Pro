@@ -873,6 +873,12 @@ interface ContentSectionProps {
     draggedId: string,
     rect: { top: number; bottom: number; left: number; right: number; width: number; height: number } | null,
   ) => void;
+  /**
+   * When set, a blue drop-indicator line is shown before the component at this
+   * index (or after the last component when === components.length).
+   * Used by the Components Library panel drag-to-canvas feature.
+   */
+  externalDropIndex?: number;
 }
 
 export function ContentSection({
@@ -893,6 +899,7 @@ export function ContentSection({
   onMultiSelectComponent,
   multiSelectedIds,
   onAlignmentDrag,
+  externalDropIndex,
 }: ContentSectionProps) {
   const { toast } = useToast();
   const [showPicker, setShowPicker] = useState(false);
@@ -1032,8 +1039,16 @@ export function ContentSection({
           <SortableContext items={components.map(c => c.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-0">
               <QuickAddBetween onAdd={type => addComponentAt(0, type)} />
+              {/* Library external drop indicator at top of list */}
+              {externalDropIndex === 0 && (
+                <div className="h-0.5 bg-blue-500 rounded-full mx-4 mb-0.5 relative z-10 animate-pulse shadow-[0_0_6px_2px_rgba(59,130,246,0.5)]" />
+              )}
               {components.map((comp, index) => (
                 <React.Fragment key={comp.id}>
+                  {/* Library external drop indicator — shows before component at this index */}
+                  {externalDropIndex === index + 1 && (
+                    <div className="h-0.5 bg-blue-500 rounded-full mx-4 -mb-0.5 relative z-10 animate-pulse shadow-[0_0_6px_2px_rgba(59,130,246,0.5)]" />
+                  )}
                   {/* M7: Snap guide — glowing line shows where dragged item will land */}
                   {draggingId && overDropId === comp.id && comp.id !== draggingId && (
                     <div className="h-0.5 bg-primary rounded-full mx-4 -mb-0.5 relative z-10 animate-pulse shadow-[0_0_6px_2px_rgba(99,102,241,0.4)]" />
