@@ -1,0 +1,256 @@
+This is honestly the kind of task spec I'd expect from a senior product manager. It's gone from "make it look better" to a real product specification.
+
+I'd give it a 9.8/10.
+
+There are only a few things I'd still change before I let Replit build it.
+
+1. Add Success Metrics (Most Important)
+
+Right now you describe what to build.
+
+Also define how you'll know it succeeded.
+
+I'd add this section right after Performance Goals.
+
+Success Metrics
+
+A new user should be able to:
+
+• Replace text in under 5 seconds.
+• Replace an image in under 10 seconds.
+• Add a new section in under 15 seconds.
+• Rearrange sections using drag-and-drop without documentation.
+• Build a professional one-page website in under 20 minutes.
+
+Users should spend most of their time interacting with the canvas—not the inspector.
+
+That gives Replit a target beyond just implementing features.
+
+2. Define "Wix-Level Polish"
+
+This sounds silly...
+
+...until you realize AI can't read your mind.
+
+I'd literally add:
+
+Visual Quality Standard
+
+The editor should feel comparable to:
+
+• Wix Studio
+• Framer
+• Canva
+• Figma
+
+This refers to polish, spacing, responsiveness, hover states, animations, typography, and overall usability—not copying proprietary designs.
+
+Now Replit knows exactly what "premium" means.
+
+3. Add "Canvas First"
+
+This is probably the biggest philosophy I would add.
+
+Canvas First Rule
+
+If an action can reasonably happen directly on the canvas, it should.
+
+Examples:
+
+Editing text → Canvas
+
+Replacing images → Canvas
+
+Moving sections → Canvas
+
+Editing buttons → Canvas
+
+Changing links → Floating toolbar
+
+The inspector should only expose advanced controls.
+
+That one paragraph will influence hundreds of design decisions.
+
+4. Make the Section Library Searchable
+
+You're going to end up with 100+ sections.
+
+Don't wait.
+
+Section Library
+
+Include instant search.
+
+Typing filters templates live.
+
+Search by
+
+• Hero
+
+• Gallery
+
+• FAQ
+
+• Pricing
+
+• Reviews
+
+• Services
+
+• CTA
+
+etc.
+
+You'll thank yourself later.
+
+5. Add Favorites
+
+This is something Wix doesn't even do particularly well.
+
+Imagine using the same hero section all the time.
+
+⭐ Favorites
+
+My Hero
+
+My Footer
+
+My CTA
+
+My Pricing Table
+
+One click.
+
+6. Define Empty States
+
+Don't just define the welcome screen.
+
+Define every empty state.
+
+Example
+
+No Pages
+
+No Images
+
+No Components
+
+No Templates
+
+Each should feel intentional rather than looking broken.
+
+7. Selection Behavior
+
+This is one thing I didn't see.
+
+Selection Rules
+
+Single click = select
+
+Double click = edit
+
+Esc = exit editing
+
+Esc again = deselect
+
+Shift = multi-select
+
+Ctrl = additive selection
+
+Click canvas = deselect
+
+Those interaction rules make the editor predictable.
+
+8. Future Component Architecture
+
+This is huge.
+
+Even though reusable components aren't Phase 1...
+
+Prepare for them.
+
+I'd add:
+
+Every element should retain a stable unique ID.
+
+Every section should be component-compatible.
+
+The architecture should support reusable global components in future phases without refactoring.
+
+That sentence could save months later.
+
+9. Add Accessibility
+
+I'd absolutely include this now.
+
+Accessibility
+
+Keyboard navigable.
+
+Visible focus states.
+
+ARIA labels where appropriate.
+
+High contrast UI.
+
+Minimum touch target sizes.
+
+Support browser zoom.
+
+Much easier now than later.
+
+10. The One Thing I Think Is Missing...
+
+This is the biggest omission.
+
+Publish / Preview Mode
+
+Right now you're talking about editing.
+
+But every editor needs a workflow.
+
+I'd add:
+
+Preview
+
+Desktop
+
+Tablet
+
+Mobile
+
+Exit Preview
+
+Publish
+
+Save Draft
+
+View Live Website
+
+Even if publishing doesn't change technically, the editing experience should clearly separate:
+
+"I'm editing"
+
+from
+
+"I'm viewing"
+
+That's how users build confidence before they publish.
+
+I'd also change one sentence
+
+Right now you say:
+
+The goal is that when Willard clicks "Website," he feels like he launched a different application entirely.
+
+I'd make it more generic since this is a product specification:
+
+The goal is that when a user enters Studio, it feels like launching a dedicated professional website design application rather than opening another page within BuildPro.
+
+That keeps the spec product-focused.
+
+Overall Score
+
+I'd honestly rate this 10/10 after those additions.
+
+What's changed from the original idea is that you're no longer describing features—you're defining a design philosophy. That matters because every future phase can refer back to these principles. Whether you're adding AI, reusable components, responsive editing, or marketing tools later, the team has a consistent standard to build toward instead of just bolting on more functionality.
