@@ -42,12 +42,16 @@ export interface ButtonCompProps {
   label: string;
   config?: ButtonConfig;
   align?: "left" | "center" | "right";
+  /** Fixed pixel width set via canvas drag-resize. When set the button is block-level at that width. */
+  widthPx?: number;
 }
 export interface ImageCompProps {
   url?: string;
   alt?: string;
   objectFit?: "cover" | "contain";
   width?: "full" | "half" | "quarter" | "auto";
+  /** Fixed pixel width set via canvas drag-resize; overrides the class-based `width` preset when present. */
+  widthPx?: number;
   borderRadius?: number;
   caption?: string;
   link?: string;
@@ -263,7 +267,7 @@ export function renderSiteComponentEditable(
       const color = bStyle.color ?? "white";
       const radius = bStyle.borderRadius ?? "var(--theme-btn-radius, 9999px)";
       return (
-        <div style={{ textAlign: p.align ?? "left" }}>
+        <div style={{ textAlign: p.widthPx ? "left" : (p.align ?? "left") }}>
           <InlineEditableText
             id={`${sectionId}-${comp.id}-button`}
             value={p.label || ""}
@@ -278,6 +282,8 @@ export function renderSiteComponentEditable(
               borderRadius: radius,
               fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
               boxShadow: "var(--theme-btn-shadow, none)",
+              width: p.widthPx ? `${p.widthPx}px` : undefined,
+              textAlign: p.widthPx ? "center" : undefined,
             }}
             onCommit={(v) => onUpdateComp({ ...comp, props: { ...p, label: v } })}
           />
@@ -328,7 +334,7 @@ export function renderSiteComponent(
       const color = bStyle.color ?? "white";
       const radius = bStyle.borderRadius ?? "var(--theme-btn-radius, 9999px)";
       return (
-        <div style={{ textAlign: p.align ?? "left" }}>
+        <div style={{ textAlign: p.widthPx ? "left" : (p.align ?? "left") }}>
           <a
             href={p.config?.url || "#"}
             target={p.config?.newTab ? "_blank" : undefined}
@@ -340,6 +346,8 @@ export function renderSiteComponent(
               borderRadius: radius,
               fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
               boxShadow: "var(--theme-btn-shadow, none)",
+              width: p.widthPx ? `${p.widthPx}px` : undefined,
+              textAlign: p.widthPx ? "center" : undefined,
             }}
           >
             {p.label || "Click here"}
@@ -349,7 +357,7 @@ export function renderSiteComponent(
     }
     case "image": {
       const p = comp.props as ImageCompProps;
-      const widthClass: Record<string, string> = { full: "w-full", half: "w-1/2", quarter: "w-1/4", auto: "w-auto" };
+      const widthClassMap: Record<string, string> = { full: "w-full", half: "w-1/2", quarter: "w-1/4", auto: "w-auto" };
       if (!p.url) {
         return (
           <div className="w-full h-48 rounded-lg bg-gray-100 flex items-center justify-center">
@@ -362,8 +370,13 @@ export function renderSiteComponent(
           <img
             src={p.url}
             alt={p.alt || ""}
-            className={`${widthClass[p.width ?? "full"] ?? "w-full"} rounded-lg`}
-            style={{ objectFit: p.objectFit ?? "cover", borderRadius: p.borderRadius ? `${p.borderRadius}px` : undefined }}
+            className={p.widthPx ? "rounded-lg" : `${widthClassMap[p.width ?? "full"] ?? "w-full"} rounded-lg`}
+            style={{
+              objectFit: p.objectFit ?? "cover",
+              borderRadius: p.borderRadius ? `${p.borderRadius}px` : undefined,
+              width: p.widthPx ? `${p.widthPx}px` : undefined,
+              maxWidth: p.widthPx ? "100%" : undefined,
+            }}
           />
           {p.caption && <figcaption className="text-xs mt-1 text-center" style={{ color: "var(--theme-text-muted, #6b7280)" }}>{p.caption}</figcaption>}
         </figure>

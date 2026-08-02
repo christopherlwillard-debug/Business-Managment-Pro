@@ -6,9 +6,13 @@
  *
  * Positioning uses `position:fixed` + `getBoundingClientRect()` so it naturally
  * accounts for the canvas zoom transform and page scroll.
+ *
+ * Resize drag: when onResizeStart/Live/Commit are provided, each handle captures
+ * pointer events and fires deltas so the parent can apply live DOM overrides
+ * (during drag) and commit prop updates (on release).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 interface Rect {
@@ -23,6 +27,25 @@ export interface SelectionHandlesProps {
   selectedId: string | null;
   /** When true (preview mode) suppress the handles entirely. */
   hidden?: boolean;
+  /**
+   * Called once on the first pointer-down of a resize drag.
+   * Caller should push a history snapshot here.
+   * When undefined, handles are purely cosmetic (no drag behaviour).
+   */
+  onResizeStart?: (edge: string) => void;
+  /**
+   * Called on every pointermove during a drag.
+   * `deltaX` and `deltaY` are pixel offsets from the drag-start point in screen
+   * coordinates (already accounts for any CSS transform / canvas zoom via
+   * setPointerCapture).
+   */
+  onResizeLive?: (edge: string, deltaX: number, deltaY: number) => void;
+  /**
+   * Called on pointerup to commit the final resize.
+   * After this call the parent should clear any live DOM style overrides and
+   * apply the permanent prop update.
+   */
+  onResizeCommit?: (edge: string, deltaX: number, deltaY: number) => void;
 }
 
 // Eight handle descriptors: position is relative to the selection rect corners / mid-points.
@@ -37,8 +60,18 @@ const HANDLES = [
   { id: "w",  style: { top: "calc(50% - 5px)", left: -5 }, cursor: "w-resize"  },
 ] as const;
 
-export function SelectionHandles({ selectedId, hidden }: SelectionHandlesProps) {
+type HandleId = typeof HANDLES[number]["id"];
+
+export function SelectionHandles({
+  selectedId,
+  hidden,
+  onResizeStart,
+  onResizeLive,
+  onResizeCommit,
+}: SelectionHandlesProps) {
   const [rect, setRect] = useState<Rect | null>(null);
+  // Drag state tracked via ref (not state) to avoid re-renders on every pointermove.
+  const dragRef = useRef<{ edge: HandleId; startX: number; startY: number } | null>(null);
 
   useEffect(() => {
     if (!selectedId || hidden) { setRect(null); return; }
@@ -67,6 +100,33 @@ export function SelectionHandles({ selectedId, hidden }: SelectionHandlesProps) 
 
   if (!rect || !selectedId || hidden) return null;
 
+  const hasResize = !!(onResizeStart && onResizeLive && onResizeCommit);
+
+  function handlePointerDown(e: React.PointerEvent<HTMLDivElement>, edge: HandleId) {
+    if (!hasResize) return;
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { edge, startX: e.clientX, startY: e.clientY };
+    onResizeStart!(edge);
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLDivElement>, edge: HandleId) {
+    if (!dragRef.current || dragRef.current.edge !== edge) return;
+    e.stopPropagation();
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    onResizeLive!(edge, dx, dy);
+  }
+
+  function handlePointerUp(e: React.PointerEvent<HTMLDivElement>, edge: HandleId) {
+    if (!dragRef.current || dragRef.current.edge !== edge) return;
+    e.stopPropagation();
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    dragRef.current = null;
+    onResizeCommit!(edge, dx, dy);
+  }
+
   return createPortal(
     <div
       className="pointer-events-none fixed z-[9998]"
@@ -78,7 +138,7 @@ export function SelectionHandles({ selectedId, hidden }: SelectionHandlesProps) 
         style={{ boxShadow: "0 0 0 2px hsl(var(--primary) / 0.9), 0 0 0 4px hsl(var(--primary) / 0.15)" }}
       />
 
-      {/* Resize handles — pointer-events-auto so cursors still show */}
+      {/* Resize handles — pointer-events-auto so cursors still show and drag events fire */}
       {HANDLES.map(h => (
         <div
           key={h.id}
@@ -88,6 +148,9 @@ export function SelectionHandles({ selectedId, hidden }: SelectionHandlesProps) 
             cursor: h.cursor,
             borderColor: "hsl(var(--primary))",
           }}
+          onPointerDown={hasResize ? e => handlePointerDown(e, h.id) : undefined}
+          onPointerMove={hasResize ? e => handlePointerMove(e, h.id) : undefined}
+          onPointerUp={hasResize ? e => handlePointerUp(e, h.id) : undefined}
         />
       ))}
     </div>,

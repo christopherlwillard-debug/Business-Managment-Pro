@@ -39,7 +39,7 @@ import { FAQSection, defaultFAQContent } from "./sections/FAQSection";
 import { CTASection, defaultCTAContent } from "./sections/CTASection";
 import { StatsSection, defaultStatsContent } from "./sections/StatsSection";
 import { HeaderSection, defaultHeaderContent } from "./sections/HeaderSection";
-import { ContentSection, defaultContentSectionData, type SiteComponent, type ComponentType, type SiteComponentProps, defaultPropsForType } from "./sections/ContentSection";
+import { ContentSection, defaultContentSectionData, type SiteComponent, type ComponentType, type SiteComponentProps, type ImageCompProps, type ButtonCompProps, type IconCompProps, type DividerCompProps, defaultPropsForType } from "./sections/ContentSection";
 import { RowSection, defaultRowSectionData, type RowSectionData, type RowColumn } from "./sections/RowSection";
 import { CanvasContextMenu, type ContextMenuGroup } from "./CanvasContextMenu";
 import {
@@ -1525,6 +1525,25 @@ function WebsiteEditor() {
   const selectedRowStateRef = useRef<{ sectionId: string; columnId: string; componentId?: string | null } | null>(null);
   selectedComponentStateRef.current = selectedComponentState;
   selectedRowStateRef.current = selectedRowState;
+
+  // Tracks the in-progress component resize drag so live and commit handlers share context.
+  const resizeDragBaseRef = useRef<{
+    componentId: string;
+    sectionId: string;
+    columnId?: string;
+    edge: string;
+    initialWidthPx: number;
+    initialHeightPx: number;
+    componentType: string;
+    initialProps: SiteComponentProps;
+  } | null>(null);
+  // Tracks in-progress spacer-section resize.
+  const spacerResizeDragRef = useRef<{
+    sectionId: string;
+    edge: string;
+    initialContentHeight: number;
+  } | null>(null);
+
   const [editorNarrow, setEditorNarrow] = useState(false);
   const editorBodyRef = useRef<HTMLDivElement>(null);
 
@@ -3435,6 +3454,220 @@ function WebsiteEditor() {
     isDirtyRef.current = true;
   }
 
+  // ─── Component resize helpers (SelectionHandles drag) ────────────────────────
+
+  /** Maps an edge + pointer deltas to a signed "grow by N px" value.
+   *  Positive = element should grow; negative = element should shrink. */
+  function growthDelta(edge: string, dx: number, dy: number): { dw: number; dh: number } {
+    const dw =
+      (edge === "e" || edge === "ne" || edge === "se") ? dx :
+      (edge === "w" || edge === "nw" || edge === "sw") ? -dx : 0;
+    const dh =
+      (edge === "s" || edge === "se" || edge === "sw") ? dy :
+      (edge === "n" || edge === "nw" || edge === "ne") ? -dy : 0;
+    return { dw, dh };
+  }
+
+  /** Helper to find a SiteComponent in any section/column on the active page. */
+  function findComponentInPages(
+    sectionId: string,
+    componentId: string,
+    columnId?: string
+  ): SiteComponent | null {
+    const page = pagesRef.current.find(p => p.id === activePageIdRef.current);
+    if (!page) return null;
+    const sec = page.sections.find(s => s.id === sectionId);
+    if (!sec) return null;
+    if (columnId) {
+      const col = (sec.content as any).columns?.find((c: any) => c.id === columnId);
+      return (col?.components as SiteComponent[] | undefined)?.find(c => c.id === componentId) ?? null;
+    }
+    return ((sec.content as any).components as SiteComponent[] | undefined)?.find(c => c.id === componentId) ?? null;
+  }
+
+  /** Push history snapshot + record baseline dimensions for the upcoming resize drag. */
+  function handleResizeStart(edge: string) {
+    const compState = selectedComponentStateRef.current;
+    const rowState  = selectedRowStateRef.current;
+    let sectionId: string, componentId: string, columnId: string | undefined;
+    if (compState?.componentId) {
+      sectionId = compState.sectionId; componentId = compState.componentId;
+    } else if (rowState?.componentId) {
+      sectionId = rowState.sectionId; componentId = rowState.componentId; columnId = rowState.columnId;
+    } else return;
+
+    const comp = findComponentInPages(sectionId, componentId, columnId);
+    if (!comp) return;
+    const el = document.querySelector<HTMLElement>(`[data-section-canvas-id="${componentId}"]`);
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    resizeDragBaseRef.current = {
+      componentId, sectionId, columnId, edge,
+      initialWidthPx: r.width, initialHeightPx: r.height,
+      componentType: comp.type, initialProps: comp.props,
+    };
+  }
+
+  /** Apply live DOM style override for 60fps feedback — no React state update. */
+  function handleResizeLive(edge: string, dx: number, dy: number) {
+    const base = resizeDragBaseRef.current;
+    if (!base) return;
+    const el = document.querySelector<HTMLElement>(`[data-section-canvas-id="${base.componentId}"]`);
+    if (!el) return;
+    const { dw, dh } = growthDelta(edge, dx, dy);
+    const type = base.componentType;
+
+    if (type === "image") {
+      const img = el.querySelector<HTMLElement>("img");
+      if (img) {
+        const newW = Math.max(50, base.initialWidthPx + dw);
+        img.style.width    = `${newW}px`;
+        img.style.maxWidth = "100%";
+        // corner drag: lock aspect ratio
+        const isCorner = ["nw","ne","sw","se"].includes(edge);
+        if (isCorner && base.initialWidthPx > 0) {
+          const ratio = base.initialHeightPx / base.initialWidthPx;
+          img.style.height = `${Math.round(newW * ratio)}px`;
+        } else {
+          img.style.height = "";
+        }
+      }
+    } else if (type === "button") {
+      const btn = el.querySelector<HTMLElement>("a.inline-block, span.inline-block");
+      if (btn && dw !== 0) {
+        const newW = Math.max(60, base.initialWidthPx + dw);
+        btn.style.width     = `${newW}px`;
+        btn.style.textAlign = "center";
+      }
+    } else if (type === "icon") {
+      const span = el.querySelector<HTMLElement>("div > span");
+      if (span) {
+        const initSize = (base.initialProps as { size?: number }).size ?? 40;
+        const net = (dw + dh) / 2;
+        const newSize = Math.max(16, Math.min(200, Math.round(initSize + net * 0.8)));
+        span.style.fontSize = `${newSize}px`;
+      }
+    } else if (type === "divider") {
+      const hr = el.querySelector<HTMLElement>("hr");
+      if (hr && dh !== 0) {
+        const initMY = (base.initialProps as { marginY?: number }).marginY ?? 8;
+        const newMY = Math.max(0, Math.min(80, Math.round(initMY + dh * 0.5)));
+        hr.style.marginTop    = `${newMY}px`;
+        hr.style.marginBottom = `${newMY}px`;
+      }
+    }
+  }
+
+  /** Clear live DOM overrides and commit the permanent prop update. */
+  function handleResizeCommit(edge: string, dx: number, dy: number) {
+    const base = resizeDragBaseRef.current;
+    resizeDragBaseRef.current = null;
+    if (!base) return;
+
+    // Clear any live style overrides so React's re-render takes over.
+    const el = document.querySelector<HTMLElement>(`[data-section-canvas-id="${base.componentId}"]`);
+    if (el) {
+      const img  = el.querySelector<HTMLElement>("img");
+      if (img)  { img.style.width = ""; img.style.height = ""; img.style.maxWidth = ""; }
+      const btn  = el.querySelector<HTMLElement>("a.inline-block, span.inline-block");
+      if (btn)  { btn.style.width = ""; btn.style.textAlign = ""; }
+      const span = el.querySelector<HTMLElement>("div > span");
+      if (span) span.style.fontSize = "";
+      const hr   = el.querySelector<HTMLElement>("hr");
+      if (hr)   { hr.style.marginTop = ""; hr.style.marginBottom = ""; }
+    }
+
+    const { dw, dh } = growthDelta(edge, dx, dy);
+    const type = base.componentType;
+
+    if (type === "image") {
+      const newW = Math.max(50, Math.round(base.initialWidthPx + dw));
+      updateComponentInSection(base.sectionId, base.columnId, base.componentId, c => ({
+        ...c, props: { ...(c.props as ImageCompProps), widthPx: newW } as ImageCompProps,
+      }));
+    } else if (type === "button") {
+      if (dw !== 0) {
+        const newW = Math.max(60, Math.round(base.initialWidthPx + dw));
+        updateComponentInSection(base.sectionId, base.columnId, base.componentId, c => ({
+          ...c, props: { ...(c.props as ButtonCompProps), widthPx: newW } as ButtonCompProps,
+        }));
+      }
+    } else if (type === "icon") {
+      const initSize = (base.initialProps as { size?: number }).size ?? 40;
+      const net = (dw + dh) / 2;
+      const newSize = Math.max(16, Math.min(200, Math.round(initSize + net * 0.8)));
+      if (newSize !== initSize) {
+        updateComponentInSection(base.sectionId, base.columnId, base.componentId, c => ({
+          ...c, props: { ...(c.props as IconCompProps), size: newSize } as IconCompProps,
+        }));
+      }
+    } else if (type === "divider") {
+      if (dh !== 0) {
+        const initMY = (base.initialProps as { marginY?: number }).marginY ?? 8;
+        const newMY = Math.max(0, Math.min(80, Math.round(initMY + dh * 0.5)));
+        updateComponentInSection(base.sectionId, base.columnId, base.componentId, c => ({
+          ...c, props: { ...(c.props as DividerCompProps), marginY: newMY } as DividerCompProps,
+        }));
+      }
+    }
+  }
+
+  /** Spacer section: push history and record baseline height. */
+  function handleSpacerResizeStart(edge: string) {
+    if (!activeSection) return;
+    const page = pagesRef.current.find(p => p.id === activePageIdRef.current);
+    const sec = page?.sections.find(s => s.id === activeSection);
+    if (!sec || sec.type !== "spacer") return;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
+    spacerResizeDragRef.current = {
+      sectionId: activeSection,
+      edge,
+      initialContentHeight: (sec.content as { height?: number }).height ?? 64,
+    };
+  }
+
+  /** Live spacer height update via React state (the spacer editing UI updates in real time). */
+  function handleSpacerResizeLive(_edge: string, _dx: number, dy: number) {
+    const base = spacerResizeDragRef.current;
+    if (!base) return;
+    const { dh } = growthDelta(base.edge, 0, dy);
+    const newH = Math.max(8, Math.min(400, Math.round(base.initialContentHeight + dh)));
+    isDirtyRef.current = true;
+    setLocalPages(prev => prev
+      ? prev.map(p => ({
+          ...p,
+          sections: p.sections.map(s =>
+            s.id === base.sectionId ? { ...s, content: { ...s.content, height: newH } } : s
+          ),
+        }))
+      : prev
+    );
+  }
+
+  /** Spacer commit — state is already current from live updates; just clear ref. */
+  function handleSpacerResizeCommit(_edge: string, _dx: number, dy: number) {
+    const base = spacerResizeDragRef.current;
+    spacerResizeDragRef.current = null;
+    if (!base) return;
+    // Final commit: same math as live, ensures the last frame is applied.
+    const { dh } = growthDelta(base.edge, 0, dy);
+    const newH = Math.max(8, Math.min(400, Math.round(base.initialContentHeight + dh)));
+    isDirtyRef.current = true;
+    setHasUnpublishedChanges(true);
+    setLocalPages(prev => prev
+      ? prev.map(p => ({
+          ...p,
+          sections: p.sections.map(s =>
+            s.id === base.sectionId ? { ...s, content: { ...s.content, height: newH } } : s
+          ),
+        }))
+      : prev
+    );
+  }
+
+  // ─── End component resize helpers ────────────────────────────────────────────
+
   function insertComponentAfterInSection(
     sectionId: string,
     columnId: string | undefined,
@@ -4393,10 +4626,40 @@ function WebsiteEditor() {
     return (
       <InlineEditContext.Provider value={contextValue}>
         {!previewMode && <FloatingTextToolbar />}
-        {/* M6: Selection handles — portal-rendered ring + resize dots around selected component */}
-        {!previewMode && selectedComponentState?.componentId && (
-          <SelectionHandles selectedId={selectedComponentState.componentId} />
+        {/* M6: Selection handles — portal-rendered ring + resize handles around selected component */}
+        {/* Content-section components */}
+        {!previewMode && selectedComponentState?.componentId && !selectedRowState && (
+          <SelectionHandles
+            selectedId={selectedComponentState.componentId}
+            onResizeStart={handleResizeStart}
+            onResizeLive={handleResizeLive}
+            onResizeCommit={handleResizeCommit}
+          />
         )}
+        {/* Row-section components */}
+        {!previewMode && selectedRowState?.componentId && (
+          <SelectionHandles
+            selectedId={selectedRowState.componentId}
+            onResizeStart={handleResizeStart}
+            onResizeLive={handleResizeLive}
+            onResizeCommit={handleResizeCommit}
+          />
+        )}
+        {/* Spacer section — resize height by dragging top/bottom handles */}
+        {!previewMode && !selectedComponentState && !selectedRowState && (() => {
+          const spacerSec = activeSection
+            ? sections.find(s => s.id === activeSection && s.type === "spacer")
+            : null;
+          if (!spacerSec) return null;
+          return (
+            <SelectionHandles
+              selectedId={spacerSec.id}
+              onResizeStart={handleSpacerResizeStart}
+              onResizeLive={handleSpacerResizeLive}
+              onResizeCommit={handleSpacerResizeCommit}
+            />
+          );
+        })()}
         <div style={previewBodyStyle} data-editing={editingId || undefined}>
           {settings.headingFont && (
             <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
