@@ -1,0 +1,291 @@
+I actually think you've uncovered a design problem, not just a UI problem.
+
+Looking at both screens, I see two different concepts being mixed together.
+
+Screen 1
+
+Owner Pay Dashboard
+
+This is saying:
+
+Money the business has paid you.
+
+Examples:
+
+Owner Draw
+Owner Pay
+Owner Withdrawal
+
+This is basically your cash paid to you.
+
+That makes sense.
+
+Screen 2
+
+Owner Capital
+
+This starts correctly.
+
+It tracks:
+
+Initial investment
+Capital contributions
+Money injected
+Net capital invested
+
+That's accounting.
+
+But then...
+
+It suddenly becomes another Owner Pay page.
+
+It lists:
+
+Owner Draw
+Owner Withdrawal
+Owner Draw
+Owner Draw
+
+again.
+
+That's the duplicate.
+
+These are NOT the same thing
+
+This is where accounting gets confusing.
+
+Owner Capital
+
+Should answer:
+
+How much of your own money have you put into the business?
+
+Example
+
+Capital Contributed
+
+$7,200
+
+Capital Returned
+
+$0
+
+Net Capital
+
+$7,200
+
+Done.
+
+Owner Pay
+
+Should answer:
+
+How much money has the business paid you?
+
+Example
+
+Owner Draws
+
+$4,500
+
+Owner Salary
+
+$2,000
+
+Owner Distribution
+
+$500
+
+Total Paid
+
+$7,000
+
+Completely separate.
+
+They shouldn't repeat transactions
+
+Right now
+
+Owner Draw
+
+appears
+
+HERE
+
+and
+
+HERE
+
+That immediately makes me wonder
+
+"Am I counting this twice?"
+
+Exactly like you said.
+
+I would redesign it
+
+Instead of two pages doing almost the same thing...
+
+I'd have
+
+Owner Equity
+
+This becomes your balance sheet.
+
+Owner Equity
+
+Capital Contributed
+
+$7,200
+
+Business Profit
+
+$2,123
+
+--------------------
+
+Owner Equity
+
+$9,323
+
+Done.
+
+No draws.
+
+No pay.
+
+Owner Pay
+
+Separate page.
+
+Owner Pay
+
+Paid YTD
+
+$6,875
+
+Average Monthly
+
+$687
+
+Last Draw
+
+June 26
+
+History
+
+Owner Draw
+
+Owner Salary
+
+Owner Distribution
+
+...
+
+Done.
+
+Then connect them
+
+At the bottom of Owner Equity
+
+Simply show
+
+Owner Pay
+
+Paid This Year
+
+$6,875
+
+View Details →
+
+Don't duplicate every transaction.
+
+Another thing I noticed...
+
+This equation
+
+Business Profit
+
+↓
+
+Owner Equity
+
+↓
+
+Business Owes You
+
+isn't necessarily true.
+
+The business doesn't owe you because it made profit.
+
+Profit belongs to equity until it's distributed.
+
+I'd actually rename
+
+Business Owes You
+
+to something like
+
+Remaining Owner Equity
+
+or
+
+Owner Equity After Draws
+
+Much more accurate.
+
+My recommendation
+
+If I were redesigning BuildPro...
+
+I'd completely eliminate Owner Draws from the Owner Capital page.
+
+The page would simply be
+
+Owner Equity
+
+Capital Contributions
+
+Capital Returned
+
+Current Net Capital
+
+Current Business Profit
+
+Current Equity
+
+That's it.
+
+Then Owner Pay becomes
+
+Owner Pay
+
+Everything the business has paid you.
+
+Draws
+
+Salary
+
+Distributions
+
+Withdrawals
+
+History
+
+No duplication.
+
+No wondering which number is right.
+
+I think there's one more thing to clarify in your app
+
+You mentioned:
+
+"what I'm paid is different than what I have taken from what I have put in."
+
+That's an important distinction. In accounting there are really three separate buckets:
+
+Capital Contributions – Money you personally invest into the business.
+Owner Pay/Draws/Distributions – Money you take out of the business.
+Business Profit (Equity) – The accumulated profit the business has earned.
+
+Those three values should be tracked independently and related by accounting rules—not by duplicating transactions across multiple screens. I think BuildPro will be much easier to understand if each page answers one question instead of trying to answer all three.

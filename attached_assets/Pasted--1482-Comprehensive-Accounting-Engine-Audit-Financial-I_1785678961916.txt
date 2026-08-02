@@ -1,0 +1,377 @@
+#1482 - Comprehensive Accounting Engine Audit & Financial Integrity Review
+
+Design Principles
+
+BuildPro must have one authoritative accounting engine.
+
+Every financial number displayed anywhere in the application must originate from a single source of truth. No page should calculate its own totals independently if the same value already exists elsewhere.
+
+Every financial transaction should be classified exactly once, affect the correct accounts exactly once, and never be double-counted.
+
+This task is an audit first, not a feature task.
+
+Do not redesign the UI until the accounting engine has been verified.
+
+What & Why
+
+As BuildPro has grown, accounting logic has been added across many different modules including Jobs, Invoices, Banking, Expenses, Payroll, Owner Pay, Owner Capital, Investments, Accounting & Tax, Reports, Dashboard, and Profit calculations.
+
+Before adding more accounting features, perform a complete audit of every financial calculation in the application to ensure:
+
+• No double counting
+• No missing transactions
+• No inconsistent formulas
+• No duplicated business logic
+• One source of truth for every financial value
+
+The objective is to ensure every number shown anywhere in BuildPro can be traced back to a single calculation path.
+
+Done looks like
+
+Every financial calculation has been audited.
+
+Every financial page has a documented source of truth.
+
+Duplicate calculations have been eliminated.
+
+No transaction can affect financial reports more than once unless intentionally designed.
+
+Owner Capital, Owner Pay, Banking, Investments, Payroll, Expenses, Invoices, Profit & Loss, Dashboard, Tax Reports, and Equity all reconcile correctly.
+
+Every displayed number can be traced through the application.
+
+No page performs independent calculations that disagree with another page.
+
+Audit Scope
+
+Audit every financial module including but not limited to:
+
+• Dashboard
+
+• Accounting & Tax
+
+• Profit & Loss
+
+• Balance Sheet (if present)
+
+• Banking
+
+• Expenses
+
+• Income
+
+• Invoices
+
+• Estimates (where converted)
+
+• Jobs
+
+• Job Profit
+
+• Materials
+
+• Payroll
+
+• Subcontractor Pay
+
+• Owner Pay
+
+• Owner Capital
+
+• Investments
+
+• Reports
+
+• Tax Estimates
+
+• Business Overview cards
+
+• Website payment tracking (if applicable)
+
+Audit Checklist
+
+1. Transaction Flow Audit
+
+Trace every financial transaction from creation until final reporting.
+
+Document:
+
+Transaction Created
+
+↓
+
+Database Tables Updated
+
+↓
+
+Ledger Entries
+
+↓
+
+Reports Affected
+
+↓
+
+Dashboard Values
+
+↓
+
+Tax Reports
+
+Confirm every transaction flows through the system exactly once.
+
+--------------------------------------------------
+
+2. Calculation Audit
+
+Identify every location where calculations occur.
+
+Examples:
+
+Net Profit
+
+Gross Profit
+
+Job Profit
+
+Owner Equity
+
+Owner Capital
+
+Owner Draws
+
+Payroll Totals
+
+Outstanding Invoices
+
+Sales Tax
+
+Taxable Income
+
+Cash Balance
+
+Account Balance
+
+Investment Balance
+
+Depreciation
+
+Verify whether multiple pages calculate these independently.
+
+If duplicates exist:
+
+Replace them with one shared calculation.
+
+--------------------------------------------------
+
+3. Double Counting Audit
+
+Search for every situation where a transaction could be counted twice.
+
+Examples:
+
+Expense also reducing Job Profit twice
+
+Invoice counted as revenue before payment
+
+Owner Draw reducing equity multiple times
+
+Capital Contribution also treated as revenue
+
+Investment Transfer treated as Expense
+
+Payroll affecting profit twice
+
+Transfer between bank accounts counted as income
+
+Owner Pay appearing on multiple pages
+
+Job Payment affecting Dashboard and P&L separately
+
+--------------------------------------------------
+
+4. Owner Accounting Audit
+
+Carefully review:
+
+Owner Capital
+
+Owner Contributions
+
+Owner Withdrawals
+
+Owner Draws
+
+Owner Pay
+
+Owner Equity
+
+Retained Earnings
+
+Business Profit
+
+Determine whether these concepts are being mixed together.
+
+Owner Pay should represent:
+
+Money actually paid from the business to the owner.
+
+Owner Capital should represent:
+
+Money personally invested into the business.
+
+Owner Equity should represent:
+
+Capital plus retained business profit.
+
+Owner Draws should never be duplicated across multiple pages unless intentionally referenced.
+
+Verify that these concepts are separated correctly.
+
+--------------------------------------------------
+
+5. Banking Audit
+
+Verify:
+
+Transfers
+
+Deposits
+
+Payments
+
+Reconciliation
+
+Investment Transfers
+
+Credit Card Payments
+
+Loan Payments
+
+Ensure transfers never become income or expenses.
+
+--------------------------------------------------
+
+6. Job Profit Audit
+
+Verify every job calculates:
+
+Revenue
+
+Materials
+
+Labor
+
+Subcontractors
+
+Expenses
+
+Travel
+
+Bonuses
+
+Profit
+
+Only once.
+
+Ensure documentation-only expenses never reduce profit when configured not to.
+
+--------------------------------------------------
+
+7. Tax Audit
+
+Verify Schedule C categories.
+
+Verify depreciation.
+
+Verify owner activity.
+
+Verify tax estimates.
+
+Verify deductions.
+
+Ensure reports reconcile with accounting totals.
+
+--------------------------------------------------
+
+8. Dashboard Audit
+
+Every dashboard card must use shared accounting calculations.
+
+No dashboard card should independently calculate financial values.
+
+--------------------------------------------------
+
+9. Source of Truth Audit
+
+For every major financial value identify:
+
+Single calculation function
+
+Database source
+
+Pages using it
+
+Pages displaying it
+
+If multiple implementations exist:
+
+Consolidate into one.
+
+--------------------------------------------------
+
+10. Code Audit
+
+Search for duplicate financial logic.
+
+Examples:
+
+calculateProfit()
+
+calculateNetProfit()
+
+computeProfit()
+
+ownerEquity()
+
+dashboardProfit()
+
+taxProfit()
+
+Replace duplicate implementations with shared accounting services wherever practical.
+
+Engineering Requirements
+
+This task is primarily an audit.
+
+Do not rewrite large portions of the accounting system unless an error is confirmed.
+
+Reuse existing accounting services whenever possible.
+
+If multiple implementations exist, consolidate them into one shared calculation rather than maintaining parallel logic.
+
+Every financial calculation should have one authoritative implementation.
+
+Deliverables
+
+Provide a written audit report identifying:
+
+• Duplicate calculations
+
+• Double-counting risks
+
+• Missing transactions
+
+• Incorrect accounting treatment
+
+• Inconsistent formulas
+
+• Pages using outdated calculations
+
+• Recommended consolidations
+
+• High-risk financial bugs
+
+Do not silently change financial logic.
+
+Document every recommended correction before implementing major accounting changes.
