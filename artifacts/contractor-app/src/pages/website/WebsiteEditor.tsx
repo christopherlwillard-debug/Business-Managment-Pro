@@ -87,6 +87,7 @@ import { SelectionHandles } from "./SelectionHandles";
 import { AlignmentGuides } from "./AlignmentGuides";
 import { computeAlignmentGuides, type AlignmentGuide, type SimpleRect } from "./alignmentUtils";
 import { ComponentLibraryPanel, COMPONENT_TYPE_LABELS } from "./ComponentLibraryPanel";
+import { HeaderBuilderPanel } from "./HeaderBuilderPanel";
 import { nanoid } from "nanoid";
 import type { SiteSettings, CardComponent } from "./website-types";
 import { reportCrash } from "@/lib/reportCrash";
@@ -6302,10 +6303,33 @@ function WebsiteEditor() {
           {/* Docked inspector panel — desktop only, width-transitions as flex sibling */}
           {!editorNarrow && activeTab === "editor" && !focusMode && !previewMode && panelMode !== 'floating' && (() => {
             const sec = activeSection ? sections.find(s => s.id === activeSection) : null;
-            const hasValidSec = !!sec && !(sec.type === "header" && !headerAdvancedOpen);
+            const hasValidSec = !!sec;
             const _savedW = parseInt(localStorage.getItem("inspector-panel-width") ?? "280", 10);
             const dockW = Math.max(240, Math.min(300, isNaN(_savedW) ? 280 : _savedW));
             const dockVisible = panelMode === 'pinned' || (panelMode === 'auto' && hasValidSec);
+
+            // Header section: show Header Builder instead of generic InspectorPanel
+            if (sec?.type === "header") {
+              return (
+                <div
+                  className="flex-shrink-0 border-l border-border bg-card overflow-hidden transition-[width] duration-200 ease-in-out flex flex-col"
+                  style={{ width: dockVisible ? dockW : 0 }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  {dockVisible && (
+                    <HeaderBuilderPanel
+                      content={sec.content as any}
+                      settings={settings}
+                      onChange={c => updateContent(sec.id, c as any)}
+                      businessName={activeBusiness?.name}
+                      siteSlug={activeBusiness?.slug}
+                      pages={pages.filter(p => p.id !== "home").map(p => ({ id: p.id, name: p.name, slug: p.slug }))}
+                      onOpenMediaLibrary={openMediaLibrary}
+                    />
+                  )}
+                </div>
+              );
+            }
 
             let selectedComponent: SiteComponent | undefined;
             let rowData: RowSectionData | undefined;
@@ -6629,7 +6653,39 @@ function WebsiteEditor() {
           {/* Floating inspector — detached draggable window */}
           {!editorNarrow && panelMode === 'floating' && activeSection && activeTab === "editor" && !focusMode && !previewMode && (() => {
             const sec = sections.find(s => s.id === activeSection);
-            if (!sec || (sec.type === "header" && !headerAdvancedOpen)) return null;
+            if (!sec) return null;
+            // Header section: show Header Builder in a floating window
+            if (sec.type === "header") {
+              const savedW = parseInt(localStorage.getItem("inspector-panel-width") ?? "280", 10);
+              const floatW = Math.max(240, Math.min(300, isNaN(savedW) ? 280 : savedW));
+              return (
+                <div
+                  className="fixed z-[9990]"
+                  style={{ top: 64, right: 8, width: floatW, maxHeight: "calc(100vh - 80px)" }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div className="flex flex-col bg-card border border-border rounded-xl shadow-2xl overflow-hidden h-full">
+                    <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 flex-shrink-0">
+                      <p className="text-xs font-semibold text-foreground">Header Builder</p>
+                      <button type="button" onClick={() => setActiveSection(null)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto min-h-0">
+                      <HeaderBuilderPanel
+                        content={sec.content as any}
+                        settings={settings}
+                        onChange={c => updateContent(sec.id, c as any)}
+                        businessName={activeBusiness?.name}
+                        siteSlug={activeBusiness?.slug}
+                        pages={pages.filter(p => p.id !== "home").map(p => ({ id: p.id, name: p.name, slug: p.slug }))}
+                        onOpenMediaLibrary={openMediaLibrary}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            }
 
             let selectedComponent: SiteComponent | undefined;
             let rowData: RowSectionData | undefined;
@@ -6895,7 +6951,31 @@ function WebsiteEditor() {
           {/* Narrow screen: fixed bottom drawer (position:fixed escapes any overflow clipping) */}
           {editorNarrow && activeSection && activeTab === "editor" && !focusMode && (() => {
             const sec = sections.find(s => s.id === activeSection);
-            if (!sec || (sec.type === "header" && !headerAdvancedOpen)) return null;
+            if (!sec) return null;
+            // Header section: show Header Builder in the bottom drawer
+            if (sec.type === "header") {
+              const drawerCls = "fixed bottom-0 left-0 right-0 z-50 rounded-t-xl shadow-2xl border-t border-border bg-card flex flex-col overflow-hidden max-h-[60vh]";
+              return (
+                <div className={drawerCls}>
+                  <div className="flex items-center justify-end px-2 py-1.5 flex-shrink-0 border-b border-border/50 bg-muted/20">
+                    <button type="button" onClick={() => setActiveSection(null)} className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Close">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto min-h-0">
+                    <HeaderBuilderPanel
+                      content={sec.content as any}
+                      settings={settings}
+                      onChange={c => updateContent(sec.id, c as any)}
+                      businessName={activeBusiness?.name}
+                      siteSlug={activeBusiness?.slug}
+                      pages={pages.filter(p => p.id !== "home").map(p => ({ id: p.id, name: p.name, slug: p.slug }))}
+                      onOpenMediaLibrary={openMediaLibrary}
+                    />
+                  </div>
+                </div>
+              );
+            }
 
             let selectedComponent: SiteComponent | undefined;
             let rowData: RowSectionData | undefined;

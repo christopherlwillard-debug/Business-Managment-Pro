@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { HeaderFloatingToolbar, type TabId } from "./HeaderFloatingToolbar";
 
 export interface NavLink {
@@ -30,6 +30,12 @@ export interface HeaderContent {
   logoAlignment?: "left" | "center" | "right";
   /** Optional content-level header style override (supersedes settings.headerStyle). */
   headerStyle?: "light" | "dark" | "transparent";
+  /** Zone assignment for the Header Builder. Absent = DEFAULT_HEADER_ZONES (backward compat). */
+  blockZones?: { left: string[]; center: string[]; right: string[] };
+  /** Short tagline or subtext shown in the header. */
+  tagline?: string;
+  /** Whether the tagline block is visible. Default: false. */
+  showTagline?: boolean;
 }
 
 export interface SitePageRef {
@@ -76,6 +82,18 @@ export function resolveLogoHeightPx(logoSize: string | number | undefined): numb
   if (typeof logoSize === "number") return Math.max(24, Math.min(160, logoSize));
   return LOGO_SIZE_PX[logoSize] ?? 64;
 }
+
+// ── Block zones ────────────────────────────────────────────────────────────────
+
+export type HeaderBlockId =
+  | "logo" | "nav" | "phone" | "email" | "cta"
+  | "tagline" | "veteran-badge" | "sdvosb-badge";
+
+export const DEFAULT_HEADER_ZONES: { left: HeaderBlockId[]; center: HeaderBlockId[]; right: HeaderBlockId[] } = {
+  left: ["logo", "tagline", "veteran-badge", "sdvosb-badge"],
+  center: ["nav"],
+  right: ["email", "phone", "cta"],
+};
 
 // ── HeaderSectionProps ─────────────────────────────────────────────────────────
 
@@ -255,106 +273,107 @@ export function HeaderPreviewBar({
     }
   }
 
-  return (
-    <div
-      className={`relative px-6 py-3 flex items-center justify-between border-b ${transparentBgClass} ${borderClass}`}
-      style={{
-        backgroundColor:
-          headerStyle !== "transparent"
-            ? `var(--theme-header-bg, ${darkFallbackBg})`
-            : undefined,
-        color: `var(--theme-header-text, ${darkFallbackText})`,
-      }}
-    >
-      {/* ── Logo / business name ──────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 flex-shrink-0" style={logoContainerStyle}>
-        {showLogo && settings.logoUrl && (
-          <EditHint isEditing={isEditing} onClick={handleLogoClick} title="Click to edit logo settings">
-            <img
-              src={settings.logoUrl}
-              alt={businessName ?? "Logo"}
-              style={{ height: logoHeightPx, width: "auto", objectFit: "contain" }}
-            />
-          </EditHint>
-        )}
-        {/* When no logo is set and in edit mode, show a logo placeholder */}
-        {showLogo && !settings.logoUrl && isEditing && (
-          <span
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded border-2 border-dashed border-primary/30 text-xs text-primary/50 cursor-pointer hover:border-primary/60 hover:text-primary/70 transition-colors"
-            onClick={(e) => { e.stopPropagation(); onFocusTab?.("logo"); }}
-            title="Click to manage logo"
-          >
-            🖼 Logo
-          </span>
-        )}
-        {showBusinessName && (
-          <span
-            className="font-bold text-sm"
-            style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}
-          >
-            {businessName ?? "Your Business"}
-          </span>
-        )}
-        {showVeteranBadge && (
-          <HeaderBadge
-            label="Veteran-Owned"
-            color={isDark ? "rgba(255,255,255,0.7)" : "#4b5563"}
-          />
-        )}
-        {showSdvosbBadge && (
-          <HeaderBadge
-            label="SDVOSB"
-            color={isDark ? "rgba(255,255,255,0.7)" : "#4b5563"}
-          />
-        )}
-      </div>
+  // ── Zone-based rendering ────────────────────────────────────────────────────
+  const effectiveZones: { left: string[]; center: string[]; right: string[] } =
+    content.blockZones ?? DEFAULT_HEADER_ZONES;
 
-      {/* ── Navigation links ─────────────────────────────────────────────── */}
-      {showNav && (
-        <nav className="hidden md:flex items-center gap-6">
-          {navLinks.map((link) => {
-            if (isEditing && editingLinkId === link.id) {
-              // Inline input for this link's label
-              return (
-                <input
-                  key={link.id}
-                  type="text"
-                  value={linkDraft}
-                  autoFocus
-                  onChange={(e) => setLinkDraft(e.target.value)}
-                  onBlur={commitLinkEdit}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); commitLinkEdit(); }
-                    if (e.key === "Escape") { e.preventDefault(); setEditingLinkId(null); }
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-sm font-medium bg-transparent border-b-2 border-primary outline-none min-w-0 w-20 text-center"
-                  style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
+  /** Renders one header block by ID. Returns null when the block is hidden. */
+  function renderZoneBlock(blockId: string): React.ReactNode {
+    switch (blockId) {
+      case "logo":
+        if (!showLogo && !showBusinessName) return null;
+        return (
+          <>
+            {showLogo && settings.logoUrl && (
+              <EditHint isEditing={isEditing} onClick={handleLogoClick} title="Click to edit logo settings">
+                <img
+                  src={settings.logoUrl}
+                  alt={businessName ?? "Logo"}
+                  style={{ height: logoHeightPx, width: "auto", objectFit: "contain" }}
                 />
-              );
-            }
-            return (
-              <EditHint
-                key={link.id}
-                isEditing={isEditing}
-                onClick={(e) => startEditingLink(link, e)}
-                title={isEditing ? "Click to edit link label" : undefined}
-              >
-                <span
-                  className="text-sm font-medium transition-opacity hover:opacity-80"
-                  style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
-                >
-                  {link.label}
-                </span>
               </EditHint>
-            );
-          })}
-        </nav>
-      )}
+            )}
+            {showLogo && !settings.logoUrl && isEditing && (
+              <span
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded border-2 border-dashed border-primary/30 text-xs text-primary/50 cursor-pointer hover:border-primary/60 hover:text-primary/70 transition-colors"
+                onClick={(e) => { e.stopPropagation(); onFocusTab?.("logo"); }}
+                title="Click to manage logo"
+              >
+                🖼 Logo
+              </span>
+            )}
+            {showBusinessName && (
+              <span className="font-bold text-sm" style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}>
+                {businessName ?? "Your Business"}
+              </span>
+            )}
+          </>
+        );
 
-      {/* ── Right-side controls ───────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 flex-shrink-0">
-        {showEmail && (
+      case "tagline":
+        if (!content.showTagline || !content.tagline) return null;
+        return (
+          <span className="hidden md:block text-xs opacity-60 whitespace-nowrap" style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}>
+            {content.tagline}
+          </span>
+        );
+
+      case "veteran-badge":
+        return showVeteranBadge ? (
+          <HeaderBadge label="Veteran-Owned" color={isDark ? "rgba(255,255,255,0.7)" : "#4b5563"} />
+        ) : null;
+
+      case "sdvosb-badge":
+        return showSdvosbBadge ? (
+          <HeaderBadge label="SDVOSB" color={isDark ? "rgba(255,255,255,0.7)" : "#4b5563"} />
+        ) : null;
+
+      case "nav":
+        if (!showNav) return null;
+        return (
+          <>
+            {navLinks.map((link) => {
+              if (isEditing && editingLinkId === link.id) {
+                return (
+                  <input
+                    key={link.id}
+                    type="text"
+                    value={linkDraft}
+                    autoFocus
+                    onChange={(e) => setLinkDraft(e.target.value)}
+                    onBlur={commitLinkEdit}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); commitLinkEdit(); }
+                      if (e.key === "Escape") { e.preventDefault(); setEditingLinkId(null); }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-sm font-medium bg-transparent border-b-2 border-primary outline-none min-w-0 w-20 text-center"
+                    style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
+                  />
+                );
+              }
+              return (
+                <EditHint
+                  key={link.id}
+                  isEditing={isEditing}
+                  onClick={(e) => startEditingLink(link, e)}
+                  title={isEditing ? "Click to edit link label" : undefined}
+                >
+                  <span
+                    className="text-sm font-medium transition-opacity hover:opacity-80"
+                    style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
+                  >
+                    {link.label}
+                  </span>
+                </EditHint>
+              );
+            })}
+          </>
+        );
+
+      case "email":
+        if (!showEmail) return null;
+        return (
           <EditHint
             isEditing={isEditing}
             onClick={(e) => { e.stopPropagation(); onFocusTab?.("phone"); }}
@@ -369,25 +388,27 @@ export function HeaderPreviewBar({
               {email}
             </a>
           </EditHint>
-        )}
+        );
 
-        {showPhone && (phone || isEditing) && (
+      case "phone":
+        if (!showPhone && !isEditing) return null;
+        if (!showPhone) return null;
+        return (
           <EditHint
             isEditing={isEditing}
             onClick={(e) => { e.stopPropagation(); onFocusTab?.("phone"); }}
             title="Click to edit phone number"
           >
-            <span
-              className="hidden md:block text-sm font-medium"
-              style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}
-            >
+            <span className="hidden md:block text-sm font-medium" style={{ color: `var(--theme-header-link, ${darkFallbackLink})` }}>
               {phone || (isEditing ? <em className="opacity-40 not-italic">Add phone…</em> : null)}
             </span>
           </EditHint>
-        )}
+        );
 
-        {showCta && (
-          editingCta && isEditing ? (
+      case "cta":
+        if (!showCta) return null;
+        if (editingCta && isEditing) {
+          return (
             <input
               type="text"
               value={ctaDraft}
@@ -407,28 +428,68 @@ export function HeaderPreviewBar({
                 boxShadow: "var(--theme-btn-shadow, none)",
               }}
             />
-          ) : (
-            <EditHint
-              isEditing={isEditing}
-              onClick={startEditingCta}
-              title="Click to edit button text"
+          );
+        }
+        return (
+          <EditHint isEditing={isEditing} onClick={startEditingCta} title="Click to edit button text">
+            <span
+              className="px-4 py-2 text-sm text-white transition-opacity hover:opacity-90"
+              style={{
+                cursor: isEditing ? "text" : "pointer",
+                backgroundColor: settings.brandColor,
+                borderRadius: "var(--theme-btn-radius, 9999px)",
+                fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
+                boxShadow: "var(--theme-btn-shadow, none)",
+              }}
             >
-              <span
-                className="px-4 py-2 text-sm text-white transition-opacity hover:opacity-90"
-                style={{
-                  cursor: isEditing ? "text" : "pointer",
-                  backgroundColor: settings.brandColor,
-                  borderRadius: "var(--theme-btn-radius, 9999px)",
-                  fontWeight: "var(--theme-btn-font-weight, 600)" as React.CSSProperties["fontWeight"],
-                  boxShadow: "var(--theme-btn-shadow, none)",
-                }}
-              >
-                {ctaLabel}
-              </span>
-            </EditHint>
-          )
-        )}
+              {ctaLabel}
+            </span>
+          </EditHint>
+        );
 
+      default:
+        return null;
+    }
+  }
+
+  /** Render a zone's blocks, skipping nulls and adding stable keys. */
+  function renderZone(ids: string[]): React.ReactNode {
+    return ids.map(id => {
+      const el = renderZoneBlock(id);
+      return el ? <React.Fragment key={id}>{el}</React.Fragment> : null;
+    });
+  }
+
+  const logoInLeft = effectiveZones.left.includes("logo");
+
+  return (
+    <div
+      className={`relative px-6 py-3 flex items-center justify-between border-b ${transparentBgClass} ${borderClass}`}
+      style={{
+        backgroundColor:
+          headerStyle !== "transparent"
+            ? `var(--theme-header-bg, ${darkFallbackBg})`
+            : undefined,
+        color: `var(--theme-header-text, ${darkFallbackText})`,
+      }}
+    >
+      {/* Left zone */}
+      <div
+        className="flex items-center gap-3 flex-shrink-0"
+        style={logoInLeft ? logoContainerStyle : {}}
+      >
+        {renderZone(effectiveZones.left)}
+      </div>
+
+      {/* Center zone */}
+      <div className="hidden md:flex items-center gap-6">
+        {renderZone(effectiveZones.center)}
+      </div>
+
+      {/* Right zone */}
+      <div className="flex items-center gap-3 flex-shrink-0">
+        {renderZone(effectiveZones.right)}
+        {/* Mobile hamburger is always last-right */}
         <span
           className="md:hidden cursor-pointer"
           style={{ color: `var(--theme-header-text, ${darkFallbackText})` }}
