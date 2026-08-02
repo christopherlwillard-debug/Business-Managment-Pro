@@ -38,7 +38,7 @@ const BLANK_ITEMS: LibraryItem[] = [
   // Contractor
   { id: "b:why-choose-us",   kind: "blank", label: "Why Choose Us",          description: "Selling points explaining why customers should hire you",      emoji: "🏆", category: "Contractor",   sectionType: "why-choose-us" },
   { id: "b:certifications",  kind: "blank", label: "Certifications",         description: "Show licenses, awards, and industry credentials",              emoji: "🎖️", category: "Contractor",   sectionType: "certifications" },
-  { id: "b:service-area",    kind: "blank", label: "Service Area",           description: "List the cities, counties, or regions you serve",              emoji: "📍", category: "Contractor",   sectionType: "service-area" },
+  { id: "b:service-area",    kind: "blank", label: "Coverage Map",           description: "Interactive US state map showing where you work",              emoji: "🗺️", category: "Contractor",   sectionType: "service-area" },
   { id: "b:before-after",    kind: "blank", label: "Before & After",         description: "Side-by-side before/after photo pairs from real jobs",         emoji: "↔️", category: "Contractor",   sectionType: "before-after" },
   { id: "b:featured-clients",kind: "blank", label: "Featured Clients",       description: "Highlight companies and organizations you've worked with",     emoji: "🤝", category: "Contractor",   sectionType: "featured-clients" },
   { id: "b:partners",        kind: "blank", label: "Partners & Brands",      description: "Manufacturers, suppliers, and brands you install or service",  emoji: "🏭", category: "Contractor",   sectionType: "partners" },

@@ -63,6 +63,7 @@ import { type InspectorTab } from "./inspectorFields";
 import { DepositSubmissionsPanel } from "./DepositSubmissionsPanel";
 import { CardItemEditorPanel } from "./CardItemEditorPanel";
 import { LogoSectionInspector } from "./LogoSectionInspector";
+import { CoverageMapInspector } from "./CoverageMapInspector";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
 import { SectionLibraryPanel } from "./SectionLibraryPanel";
@@ -368,7 +369,7 @@ const SECTION_LABELS: Record<string, string> = {
   image: "Image",
   "featured-clients": "Featured Clients",
   partners: "Partners & Brands",
-  "service-area": "Service Area",
+  "service-area": "Coverage Map",
   certifications: "Certifications & Badges",
   "before-after": "Before & After Gallery",
   "why-choose-us": "Why Choose Us",
@@ -424,7 +425,7 @@ function getAddableSectionTypes(): AddableSectionEntry[] {
     _addableSectionTypes = [
       { category: "Contractor", type: "why-choose-us",    label: "Why Choose Us",           description: "Selling points that explain why customers should hire you",  icon: <ThumbsUp   className="w-4 h-4" />, allowMultiple: true },
       { category: "Contractor", type: "certifications",   label: "Certifications & Badges", description: "Show licenses, awards, and industry credentials",            icon: <Award      className="w-4 h-4" />, allowMultiple: true },
-      { category: "Contractor", type: "service-area",     label: "Service Area",            description: "List the cities, counties, or regions you serve",            icon: <MapPin     className="w-4 h-4" />, allowMultiple: true },
+      { category: "Contractor", type: "service-area",     label: "Coverage Map",            description: "Interactive US state map showing where you work",             icon: <MapPin     className="w-4 h-4" />, allowMultiple: true },
       { category: "Contractor", type: "before-after",     label: "Before & After Gallery",  description: "Side-by-side before/after photo pairs from real jobs",        icon: <ArrowLeftRight className="w-4 h-4" />, allowMultiple: true },
       { category: "Contractor", type: "featured-clients", label: "Featured Clients",        description: "Highlight companies and organizations you've worked with",    icon: <Users      className="w-4 h-4" />, allowMultiple: true },
       { category: "Contractor", type: "partners",         label: "Partners & Brands",       description: "Manufacturers, suppliers, and brands you install or service", icon: <Handshake  className="w-4 h-4" />, allowMultiple: true },
@@ -5385,32 +5386,12 @@ function WebsiteEditor() {
             } else if (sec.type === "deposit") {
               specialContent = <DepositSubmissionsPanel businessId={bizId} />;
             } else if (sec.type === "service-area") {
-              const sa = sec.content as { heading?: string; subheading?: string; areas?: string[] };
-              const saAreas = sa.areas ?? [];
+              const raw = sec.content as unknown as Parameters<typeof CoverageMapInspector>[0]["content"];
               specialContent = (
-                <div className="p-3 space-y-2.5 overflow-y-auto">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Service Areas</p>
-                  <div className="space-y-1.5">
-                    {saAreas.map((area, idx) => (
-                      <div key={idx} className="flex items-center gap-1.5">
-                        <input
-                          className="flex-1 text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                          value={area}
-                          onChange={e => { const next = [...saAreas]; next[idx] = e.target.value; updateContent(sec.id, { ...sa, areas: next }); }}
-                        />
-                        <button type="button" onClick={() => updateContent(sec.id, { ...sa, areas: saAreas.filter((_, i) => i !== idx) })}
-                          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive flex-shrink-0">
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <button type="button"
-                    onClick={() => updateContent(sec.id, { ...sa, areas: [...saAreas, "New Location"] })}
-                    className="text-xs w-full border border-dashed border-border rounded px-2 py-1.5 hover:bg-muted text-muted-foreground transition-colors">
-                    + Add Area
-                  </button>
-                </div>
+                <CoverageMapInspector
+                  content={raw}
+                  onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
+                />
               );
             } else if (sec.type === "before-after") {
               const ba = sec.content as { heading?: string; pairs?: Array<{ id: string; caption?: string; beforeUrl?: string; afterUrl?: string; beforeLabel?: string; afterLabel?: string }> };
@@ -5700,32 +5681,12 @@ function WebsiteEditor() {
             } else if (sec.type === "deposit") {
               specialContent = <DepositSubmissionsPanel businessId={bizId} />;
             } else if (sec.type === "service-area") {
-              const sa = sec.content as { heading?: string; subheading?: string; areas?: string[] };
-              const saAreas = sa.areas ?? [];
+              const raw = sec.content as unknown as Parameters<typeof CoverageMapInspector>[0]["content"];
               specialContent = (
-                <div className="p-3 space-y-2.5 overflow-y-auto">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Service Areas</p>
-                  <div className="space-y-1.5">
-                    {saAreas.map((area, idx) => (
-                      <div key={idx} className="flex items-center gap-1.5">
-                        <input
-                          className="flex-1 text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                          value={area}
-                          onChange={e => { const next = [...saAreas]; next[idx] = e.target.value; updateContent(sec.id, { ...sa, areas: next }); }}
-                        />
-                        <button type="button" onClick={() => updateContent(sec.id, { ...sa, areas: saAreas.filter((_, i) => i !== idx) })}
-                          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive flex-shrink-0">
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <button type="button"
-                    onClick={() => updateContent(sec.id, { ...sa, areas: [...saAreas, "New Location"] })}
-                    className="text-xs w-full border border-dashed border-border rounded px-2 py-1.5 hover:bg-muted text-muted-foreground transition-colors">
-                    + Add Area
-                  </button>
-                </div>
+                <CoverageMapInspector
+                  content={raw}
+                  onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
+                />
               );
             } else if (sec.type === "before-after") {
               const ba = sec.content as { heading?: string; pairs?: Array<{ id: string; caption?: string; beforeUrl?: string; afterUrl?: string; beforeLabel?: string; afterLabel?: string }> };
