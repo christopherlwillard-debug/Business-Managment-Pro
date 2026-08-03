@@ -1584,7 +1584,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`${BASE}/api/expense-import/parse-receipt`, { method: "POST", body: fd });
+      const res = await fetch(`${BASE}/api/portal/${token}/parse-receipt`, { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) {
         setScanError(data.error ?? "Couldn't read this receipt. Fill in the details manually.");
