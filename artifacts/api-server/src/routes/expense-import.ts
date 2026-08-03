@@ -122,7 +122,7 @@ function buildVisionMessages(dataUrl: string): OpenAI.ChatCompletionMessageParam
     role: "user",
     content: [
       { type: "text", text: RECEIPT_SYSTEM_PROMPT },
-      { type: "image_url", image_url: { url: dataUrl } },
+      { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
     ],
   }];
 }
