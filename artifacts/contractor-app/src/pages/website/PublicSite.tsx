@@ -225,6 +225,17 @@ export default function PublicSite() {
     if (!res.ok) throw new Error("Submission failed");
   }
 
+  // Hooks must be called unconditionally before any early returns
+  const isMobile = useMediaQuery("(max-width: 767px)");
+  const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
+
+  function getEffectiveBlockStyle(section: Section): BlockStyle | undefined {
+    const bp = section.breakpoints;
+    if (isMobile && bp?.mobile) return { ...(section.blockStyle ?? {}), ...bp.mobile };
+    if (isTablet && bp?.tablet) return { ...(section.blockStyle ?? {}), ...bp.tablet };
+    return section.blockStyle;
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -243,16 +254,6 @@ export default function PublicSite() {
         </div>
       </div>
     );
-  }
-
-  const isMobile = useMediaQuery("(max-width: 767px)");
-  const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
-
-  function getEffectiveBlockStyle(section: Section): BlockStyle | undefined {
-    const bp = section.breakpoints;
-    if (isMobile && bp?.mobile) return { ...(section.blockStyle ?? {}), ...bp.mobile };
-    if (isTablet && bp?.tablet) return { ...(section.blockStyle ?? {}), ...bp.tablet };
-    return section.blockStyle;
   }
 
   const { sections, settings, businessName } = data;
