@@ -1999,17 +1999,29 @@ function RecurringModal({
   open,
   onClose,
   jobs,
+  expense = null,
 }: {
   open: boolean;
   onClose: () => void;
   jobs: any[];
+  expense?: RecurringExpense | null;
 }) {
+  const isEdit = expense != null;
   const { activeBusiness, businesses } = useBusiness();
   const createRecurring = useCreateRecurring();
+  const updateRecurring = useUpdateRecurring();
   const saveVendor      = useSaveVendor();
-  const [vendor, setVendor]     = useState("");
-  const [category, setCategory] = useState(CATEGORIES[0]);
+  // Controlled fields — synced whenever the expense prop changes
+  const [vendor, setVendor]     = useState(expense?.vendor ?? "");
+  const [category, setCategory] = useState(expense?.category ?? CATEGORIES[0]);
   const [error, setError]       = useState("");
+
+  // Re-sync controlled fields when switching between add / edit / different rows
+  useEffect(() => {
+    setVendor(expense?.vendor ?? "");
+    setCategory(expense?.category ?? CATEGORIES[0]);
+    setError("");
+  }, [expense]);
 
   function resetForm() {
     setVendor("");
@@ -2023,18 +2035,35 @@ function RecurringModal({
     const fd = new FormData(e.currentTarget);
 
     try {
-      await createRecurring.mutateAsync({
-        description: fd.get("description") as string,
-        amount:      parseFloat(fd.get("amount") as string),
-        category,
-        vendor:      vendor.trim() || undefined,
-        jobId:       fd.get("jobId") ? parseInt(fd.get("jobId") as string) : undefined,
-        notes:       fd.get("notes") as string || undefined,
-        frequency:   fd.get("frequency") as string,
-        startDate:   fd.get("startDate") as string,
-        endDate:     (fd.get("endDate") as string) || undefined,
-        businessId:  activeBusiness?.id ?? businesses?.[0]?.id ?? undefined,
-      });
+      if (isEdit) {
+        await updateRecurring.mutateAsync({
+          id: expense.id,
+          data: {
+            description: fd.get("description") as string,
+            amount:      parseFloat(fd.get("amount") as string),
+            category,
+            vendor:      vendor.trim() || null,
+            jobId:       fd.get("jobId") ? parseInt(fd.get("jobId") as string) : null,
+            notes:       (fd.get("notes") as string) || null,
+            frequency:   fd.get("frequency") as string,
+            startDate:   fd.get("startDate") as string,
+            endDate:     (fd.get("endDate") as string) || null,
+          },
+        });
+      } else {
+        await createRecurring.mutateAsync({
+          description: fd.get("description") as string,
+          amount:      parseFloat(fd.get("amount") as string),
+          category,
+          vendor:      vendor.trim() || undefined,
+          jobId:       fd.get("jobId") ? parseInt(fd.get("jobId") as string) : undefined,
+          notes:       (fd.get("notes") as string) || undefined,
+          frequency:   fd.get("frequency") as string,
+          startDate:   fd.get("startDate") as string,
+          endDate:     (fd.get("endDate") as string) || undefined,
+          businessId:  activeBusiness?.id ?? businesses?.[0]?.id ?? undefined,
+        });
+      }
 
       if (vendor.trim()) {
         await saveVendor.mutateAsync(vendor.trim()).catch(() => {});
@@ -2047,16 +2076,19 @@ function RecurringModal({
     }
   }
 
+  const isPending = createRecurring.isPending || updateRecurring.isPending;
+
   return (
     <Dialog open={open} onOpenChange={open => { if (!open) { resetForm(); onClose(); } }}>
       <DialogContent className="max-w-md bg-card border-border shadow-2xl p-6 rounded-2xl flex flex-col max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="text-2xl font-display flex items-center gap-2">
             <RotateCcw className="w-5 h-5 text-blue-500" />
-            Add Recurring Expense
+            {isEdit ? "Edit Recurring Expense" : "Add Recurring Expense"}
           </DialogTitle>
         </DialogHeader>
-        <form id="recurring-form" onSubmit={handleSubmit} className="space-y-4 mt-4 overflow-y-auto flex-1">
+        {/* key forces uncontrolled inputs to remount with correct defaultValues when switching expense */}
+        <form key={expense?.id ?? "new"} id="recurring-form" onSubmit={handleSubmit} className="space-y-4 mt-4 overflow-y-auto flex-1">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Amount *</label>
@@ -2064,6 +2096,7 @@ function RecurringModal({
                 <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">$</span>
                 <input
                   name="amount" type="number" step="0.01" required min="0"
+                  defaultValue={expense ? String(expense.amount) : undefined}
                   className="w-full pl-7 pr-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
                   placeholder="0.00"
                 />
@@ -2074,7 +2107,7 @@ function RecurringModal({
               <select
                 name="frequency" required
                 className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none"
-                defaultValue="monthly"
+                defaultValue={expense?.frequency ?? "monthly"}
               >
                 {(Object.entries(FREQUENCY_LABELS) as [RecurringExpenseFrequency, string][]).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
@@ -2087,6 +2120,7 @@ function RecurringModal({
             <label className="block text-sm font-medium mb-1">Description *</label>
             <input
               name="description" required
+              defaultValue={expense?.description ?? ""}
               className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
               placeholder="e.g. General liability insurance"
             />
@@ -2113,7 +2147,8 @@ function RecurringModal({
             <div>
               <label className="block text-sm font-medium mb-1">Start Date *</label>
               <input
-                name="startDate" type="date" required defaultValue={localDateString()}
+                name="startDate" type="date" required
+                defaultValue={expense?.startDate ?? localDateString()}
                 className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
               />
             </div>
@@ -2124,6 +2159,7 @@ function RecurringModal({
               </label>
               <input
                 name="endDate" type="date"
+                defaultValue={expense?.endDate ?? ""}
                 className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
               />
             </div>
@@ -2131,7 +2167,7 @@ function RecurringModal({
 
           <div>
             <label className="block text-sm font-medium mb-1">Allocate to Job <span className="font-normal text-muted-foreground">(Optional)</span></label>
-            <select name="jobId" className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none">
+            <select name="jobId" defaultValue={expense?.jobId ?? ""} className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none">
               <option value="">— None (Overhead) —</option>
               {jobs?.map(j => <option key={j.id} value={j.id}>{formatJobLabel(j)}</option>)}
             </select>
@@ -2141,6 +2177,7 @@ function RecurringModal({
             <label className="block text-sm font-medium mb-1">Notes</label>
             <input
               name="notes"
+              defaultValue={expense?.notes ?? ""}
               className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none focus:ring-2 focus:ring-primary/20"
               placeholder="Optional notes"
             />
@@ -2157,11 +2194,11 @@ function RecurringModal({
           <button
             type="submit"
             form="recurring-form"
-            disabled={createRecurring.isPending}
+            disabled={isPending}
             className="px-6 py-2 rounded-xl font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-md flex items-center gap-2"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            {createRecurring.isPending ? "Saving…" : "Save Recurring"}
+            {isPending ? "Saving…" : isEdit ? "Save Changes" : "Save Recurring"}
           </button>
         </div>
       </DialogContent>
@@ -2184,10 +2221,11 @@ function RecurringSection({
   const { data: templates = [], isLoading } = useRecurringExpenses(activeBiz?.id);
   const updateRecurring = useUpdateRecurring();
   const deleteRecurring = useDeleteRecurring();
-  const [modalOpen,   setModalOpen]   = useState(false);
-  const [collapsed,   setCollapsed]   = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<RecurringExpense | null>(null);
-  const [deletingId,  setDeletingId]  = useState<number | null>(null);
+  const [modalOpen,     setModalOpen]     = useState(false);
+  const [editingExpense, setEditingExpense] = useState<RecurringExpense | null>(null);
+  const [collapsed,     setCollapsed]     = useState(false);
+  const [deleteTarget,  setDeleteTarget]  = useState<RecurringExpense | null>(null);
+  const [deletingId,    setDeletingId]    = useState<number | null>(null);
 
   useEffect(() => {
     if (!highlightedTemplateId) return;
@@ -2247,7 +2285,7 @@ function RecurringSection({
             {canEdit("expenses") && (
               <button
                 type="button"
-                onClick={e => { e.stopPropagation(); setModalOpen(true); }}
+                onClick={e => { e.stopPropagation(); setEditingExpense(null); setModalOpen(true); }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
               >
                 <Plus className="w-3.5 h-3.5" /> Add Recurring
@@ -2377,6 +2415,13 @@ function RecurringSection({
                         <td className="px-6 py-3 text-center">
                           <div className="flex items-center justify-center gap-2">
                             <button
+                              onClick={() => { setEditingExpense(t); setModalOpen(true); }}
+                              className="text-muted-foreground hover:text-blue-600 transition-colors"
+                              title="Edit template"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
                               onClick={() => toggleActive(t)}
                               className="text-muted-foreground hover:text-primary transition-colors"
                               title={t.active ? "Pause" : "Resume"}
@@ -2402,7 +2447,12 @@ function RecurringSection({
         )}
       </Card>
 
-      <RecurringModal open={modalOpen} onClose={() => setModalOpen(false)} jobs={jobs} />
+      <RecurringModal
+        open={modalOpen}
+        onClose={() => { setModalOpen(false); setEditingExpense(null); }}
+        jobs={jobs}
+        expense={editingExpense}
+      />
 
       {/* Delete confirmation */}
       {deleteTarget && (
