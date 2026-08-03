@@ -1573,7 +1573,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
   const setF = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
   // ── AI receipt scan ──────────────────────────────────────────────────────────
-  const scanInputRef = useRef<HTMLInputElement>(null);
+  const [scanSheetOpen, setScanSheetOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
 
@@ -1604,7 +1604,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
       setScanError("Couldn't connect. Please fill in the details manually.");
     } finally {
       setScanning(false);
-      if (scanInputRef.current) scanInputRef.current.value = "";
+      setScanSheetOpen(false);
     }
   }
 
@@ -1676,15 +1676,13 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
         )}
       </div>
 
-      {/* Hidden file inputs — shared between the form and the empty-state scan button */}
-      <input
-        ref={scanInputRef}
-        type="file"
-        accept="image/jpeg,image/jpg,image/png,image/heic,image/heif,image/gif,image/webp,image/bmp,image/tiff,.pdf"
-        capture="environment"
-        className="hidden"
-        onChange={e => { const f = e.target.files?.[0]; if (f) handleScanFile(f); }}
-      />
+      {/* Hidden file inputs for the scan action sheet */}
+      <input id="portal-scan-camera" type="file" accept="image/*" capture="environment" className="sr-only"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleScanFile(f); e.currentTarget.value = ""; }} />
+      <input id="portal-scan-image" type="file" accept="image/*,.heic,.heif" className="sr-only"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleScanFile(f); e.currentTarget.value = ""; }} />
+      <input id="portal-scan-pdf" type="file" accept="application/pdf,.pdf" className="sr-only"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleScanFile(f); e.currentTarget.value = ""; }} />
       <input
         ref={receiptInputRef}
         type="file"
@@ -1692,6 +1690,33 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
         className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptFile(f); }}
       />
+
+      {/* Scan action sheet */}
+      {scanSheetOpen && !scanning && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/60" onClick={() => setScanSheetOpen(false)}>
+          <div className="w-full bg-card rounded-t-2xl p-6 pb-10 shadow-2xl space-y-3 animate-in slide-in-from-bottom duration-300"
+            onClick={e => e.stopPropagation()}>
+            <p className="text-center text-sm font-semibold text-muted-foreground mb-1">Scan a Receipt</p>
+            <label htmlFor="portal-scan-camera"
+              className="flex items-center gap-3 w-full px-5 py-4 rounded-2xl bg-amber-500 text-white font-semibold text-sm cursor-pointer hover:bg-amber-600 active:scale-[0.98] transition-all shadow">
+              <Camera className="w-5 h-5 shrink-0" /> 📷 Take Photo
+            </label>
+            <label htmlFor="portal-scan-image"
+              className="flex items-center gap-3 w-full px-5 py-4 rounded-2xl bg-secondary text-secondary-foreground font-semibold text-sm cursor-pointer hover:bg-secondary/80 active:scale-[0.98] transition-all shadow border border-border">
+              <ImageIcon className="w-5 h-5 shrink-0" /> 🖼 Upload Image
+            </label>
+            <label htmlFor="portal-scan-pdf"
+              className="flex items-center gap-3 w-full px-5 py-4 rounded-2xl bg-secondary text-secondary-foreground font-semibold text-sm cursor-pointer hover:bg-secondary/80 active:scale-[0.98] transition-all shadow border border-border">
+              <FileText className="w-5 h-5 shrink-0" /> 📄 Upload PDF
+            </label>
+            <button type="button"
+              className="w-full px-5 py-3 rounded-2xl text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setScanSheetOpen(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {formOpen && (
         <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-4">
@@ -1736,17 +1761,17 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
               </div>
             ) : (
               <>
-                {/* Primary CTA — AI scan */}
+                {/* Primary CTA — opens scan action sheet */}
                 <button
                   type="button"
-                  onClick={() => scanInputRef.current?.click()}
+                  onClick={() => { setFormOpen(true); setScanSheetOpen(true); }}
                   disabled={scanning}
                   className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-amber-500 text-white font-semibold text-sm hover:bg-amber-600 disabled:opacity-50 transition-colors shadow-sm"
                 >
                   {scanning ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
                   Scan Receipt with AI
                 </button>
-                {/* Secondary — manual file upload */}
+                {/* Secondary — manual file upload (no AI scan) */}
                 <button type="button" onClick={() => receiptInputRef.current?.click()}
                   className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors">
                   <Upload className="w-4 h-4" /> Upload from files
@@ -1806,7 +1831,7 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
           </div>
           <div className="space-y-2">
             <button
-              onClick={() => { setFormOpen(true); scanInputRef.current?.click(); }}
+              onClick={() => { setFormOpen(true); setScanSheetOpen(true); }}
               className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-amber-500 text-white font-semibold text-sm hover:bg-amber-600 transition-colors shadow-sm"
             >
               <Camera className="w-5 h-5" /> Scan a Receipt

@@ -9,8 +9,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { computeYtd } from "./subcontractors";
-import OpenAI from "openai";
-import { BUILDPRO_AI_MODEL } from "../ai-models";
+import { parseReceiptFile } from "./receipt-parser";
 
 const portalUploadsDir = path.resolve("uploads");
 if (!fs.existsSync(portalUploadsDir)) fs.mkdirSync(portalUploadsDir, { recursive: true });
@@ -815,73 +814,23 @@ tokenRouter.post("/upload", portalUpload.single("file"), async (req, res) => {
 
 // ─── POST /:token/parse-receipt — AI receipt scan for portal subs ─────────────
 // Gated by requirePinSession (applied to all tokenRouter routes).
-// Uses in-memory multer so we can base64 the buffer for vision — does NOT persist to disk.
-const portalReceiptParse = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
-
-const _portalOpenai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+// Uses in-memory multer (images + PDFs) — does NOT persist to disk.
+const portalReceiptParse = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
 });
-
-const PORTAL_RECEIPT_PROMPT = `You are a receipt/invoice parser for a contractor expense tracking app.
-
-Extract expense information and return ONLY valid JSON (no markdown, no explanation):
-
-{
-  "description": "short description of what was purchased",
-  "vendor": "store or company name",
-  "amount": 0.00,
-  "date": "YYYY-MM-DD",
-  "category": "one of: Materials, Advertising, Fuel/Travel, Subcontractor, Insurance, Professional Services, Office/Admin, Rent/Lease, Repairs/Maintenance, Tools/Equipment, Utilities, Other",
-  "notes": "any useful notes (optional, empty string if none)"
-}
-
-If a field cannot be determined, use reasonable defaults (today's date, empty string for optional fields, 0 for amount).`;
 
 tokenRouter.post("/parse-receipt", portalReceiptParse.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ errorType: "unsupported_file", error: "No file uploaded." });
     }
-    const { mimetype, buffer } = req.file;
-    if (!mimetype.startsWith("image/")) {
-      return res.status(422).json({ errorType: "unsupported_file", error: "Please upload a JPG or PNG receipt photo." });
+    const result = await parseReceiptFile(req.file as { mimetype: string; buffer: Buffer; originalname: string });
+    if (!result.ok) {
+      const status = result.errorType === "unsupported_file" ? 422 : result.errorType === "unreadable_receipt" ? 422 : 422;
+      return res.status(status).json({ errorType: result.errorType, error: result.error });
     }
-
-    const dataUrl = `data:${mimetype};base64,${buffer.toString("base64")}`;
-    const completion = await _portalOpenai.chat.completions.create({
-      model: BUILDPRO_AI_MODEL,
-      max_completion_tokens: 512,
-      messages: [{
-        role: "user",
-        content: [
-          { type: "text", text: PORTAL_RECEIPT_PROMPT },
-          { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
-        ],
-      }],
-    }, { signal: AbortSignal.timeout(30_000) });
-
-    const raw = completion.choices[0]?.message?.content ?? "{}";
-    let parsed: any = {};
-    try { parsed = JSON.parse(raw.replace(/```json|```/g, "").trim()); } catch { parsed = {}; }
-
-    const hasUsefulData = !!(parsed.description || parsed.vendor || (parsed.amount && parsed.amount !== 0));
-    if (!hasUsefulData) {
-      return res.status(422).json({
-        errorType: "ai_extraction_failed",
-        error: "The receipt was read, but we couldn't identify the vendor or totals. Fill in the fields and save.",
-      });
-    }
-
-    const today = new Date().toISOString().slice(0, 10);
-    res.json({
-      description: parsed.description ?? "",
-      vendor:      parsed.vendor      ?? "",
-      amount:      typeof parsed.amount === "number" ? parsed.amount : parseFloat(String(parsed.amount).replace(/[$,\s]/g, "")) || 0,
-      date:        parsed.date         ?? today,
-      category:    parsed.category    ?? "Other",
-      notes:       parsed.notes        ?? "",
-    });
+    res.json(result.data);
   } catch (err) {
     console.error("[portal/parse-receipt]", err);
     res.status(500).json({ errorType: "ai_extraction_failed", error: "Receipt scan failed. Please fill in the details manually." });
