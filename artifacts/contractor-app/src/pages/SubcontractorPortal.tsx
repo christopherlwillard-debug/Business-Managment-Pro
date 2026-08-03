@@ -2321,9 +2321,41 @@ function TaxReportsTab({ token }: { token: string }) {
                 <span className="text-primary">{formatCurrency(data.federalTaxableIncome)}</span>
               </div>
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-              <p className="text-xs text-amber-800">
-                <strong>Disclaimer:</strong> These are estimates based on your logged income, expenses, and mileage. Consult a CPA or tax professional for accurate tax filing advice.
+          </div>
+
+          {/* Estimated Tax Owed */}
+          <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Estimated Tax Owed</p>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Federal income tax (2026 brackets)</span>
+                <span className="font-semibold">{formatCurrency(data.estimatedFederalIncomeTax ?? 0)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Self-employment tax</span>
+                <span className="font-semibold">{formatCurrency(data.seTaxEstimate)}</span>
+              </div>
+              <div className="border-t border-border/50 pt-2 flex justify-between font-bold text-base">
+                <span>Total Estimated Tax Owed</span>
+                <span className="text-destructive">{formatCurrency(data.estimatedTotalTax ?? 0)}</span>
+              </div>
+            </div>
+
+            {/* Quarterly payment callout */}
+            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-3 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-blue-800 dark:text-blue-300">≈ Quarterly Payment</p>
+                <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-0.5">if paying estimated taxes</p>
+              </div>
+              <p className="text-xl font-display font-bold text-blue-700 dark:text-blue-300">
+                {formatCurrency(data.estimatedQuarterlyPayment ?? 0)}
+              </p>
+            </div>
+
+            {/* Disclaimer */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
+              <p className="text-xs text-amber-800 leading-relaxed">
+                <strong>Estimate only — not tax advice.</strong> Assumes single filing status and the $15,000 standard deduction. Actual taxes depend on your full return, other income, credits, and deductions. Consult a CPA or tax professional before making any tax payments.
               </p>
             </div>
           </div>

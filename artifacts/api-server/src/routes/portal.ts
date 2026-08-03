@@ -673,11 +673,38 @@ tokenRouter.get("/tax-report", async (req, res) => {
     const seDeduction = seTaxEstimate / 2;
     const federalTaxableIncome = Math.max(0, netIncome - seDeduction);
 
+    // 2026 federal income tax estimate — single filer, standard deduction $15,000
+    const STANDARD_DEDUCTION_2026 = 15_000;
+    const brackets2026: [number, number][] = [
+      [11_925,  0.10],
+      [48_475,  0.12],
+      [103_350, 0.22],
+      [197_300, 0.24],
+      [250_525, 0.32],
+      [626_350, 0.35],
+      [Infinity, 0.37],
+    ];
+    function calcFederalTax(income: number): number {
+      const taxable = Math.max(0, income - STANDARD_DEDUCTION_2026);
+      let tax = 0;
+      let prev = 0;
+      for (const [ceiling, rate] of brackets2026) {
+        if (taxable <= prev) break;
+        tax += (Math.min(taxable, ceiling) - prev) * rate;
+        prev = ceiling;
+      }
+      return tax;
+    }
+    const estimatedFederalIncomeTax = calcFederalTax(federalTaxableIncome);
+    const estimatedTotalTax = seTaxEstimate + estimatedFederalIncomeTax;
+    const estimatedQuarterlyPayment = estimatedTotalTax / 4;
+
     res.json({
       year, grossIncome, qualifyingIncome,
       expenses: { total: totalExpenses, byCategory: expensesByCategory, count: expenses.length },
       mileage: { totalMiles: totalBusinessMiles, ratePerMile: rate, deduction: mileageDeduction, count: businessMiles.length },
       totalDeductions, netIncome, seTaxEstimate, seDeduction, federalTaxableIncome,
+      estimatedFederalIncomeTax, estimatedTotalTax, estimatedQuarterlyPayment,
       subName: sub.name, w9LegalName: sub.w9LegalName,
     });
   } catch (err) {
