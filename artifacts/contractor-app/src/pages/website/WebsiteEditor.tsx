@@ -13,7 +13,7 @@ import {
   Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette, Briefcase,
   ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText, X, Search,
   Users, Handshake, MapPin, Award, ArrowLeftRight, ThumbsUp, Sparkles, ArrowUpDown,
-  Minus, Clock, Phone,
+  Minus, Clock, Phone, ShieldCheck,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -103,6 +103,9 @@ import { ImagePickerModal } from "./ImagePickerModal";
 import { WebsiteScorePanel } from "./WebsiteScorePanel";
 import { scoreWebsite } from "./websiteScorer";
 import type { ScoreFixAction } from "./websiteScorer";
+import { AccessibilityPanel } from "./AccessibilityPanel";
+import { checkAccessibility } from "./accessibilityChecker";
+import type { A11yFixAction } from "./accessibilityChecker";
 import { reportCrash } from "@/lib/reportCrash";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1457,6 +1460,7 @@ function WebsiteEditor() {
   const [generatingStep, setGeneratingStep] = useState("");
   const [showLayoutAssistant, setShowLayoutAssistant] = useState(false);
   const [showScorePanel, setShowScorePanel] = useState(false);
+  const [showA11yPanel, setShowA11yPanel] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
   const { contextValue, editingId, editingIdRef } = useInlineEdit();
   const pagesRef = useRef<SitePage[]>([]);
@@ -2191,6 +2195,12 @@ function WebsiteEditor() {
   // M13: compute the website score from the current sections + settings (instant, no network)
   const websiteScoreResult = useMemo(
     () => scoreWebsite(sections as Parameters<typeof scoreWebsite>[0], settings),
+    [sections, settings], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // M14: compute accessibility findings from the current sections + settings (instant, no network)
+  const websiteA11yResult = useMemo(
+    () => checkAccessibility(sections as Parameters<typeof checkAccessibility>[0], settings),
     [sections, settings], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
@@ -3770,6 +3780,38 @@ function WebsiteEditor() {
         addSection(action.sectionType as Parameters<typeof addSection>[0]);
         setShowScorePanel(false);
         break;
+      case "open-settings":
+        setActiveTab("theme");
+        break;
+    }
+  }
+
+  // M14: handle accessibility fix / review actions from the Accessibility Panel
+  function handleA11yAction(action: A11yFixAction) {
+    switch (action.kind) {
+      case "content-patch": {
+        const target = sections.find(s => s.id === action.sectionId);
+        if (!target) return;
+        history.pushSnapshot({ sections: pagesRef.current, settings });
+        isDirtyRef.current = true;
+        setHasUnpublishedChanges(true);
+        updatePageSections(sections.map(s =>
+          s.id === action.sectionId
+            ? { ...s, content: { ...s.content, ...action.contentPatch } }
+            : s,
+        ));
+        break;
+      }
+      case "navigate-to-section": {
+        const target = sections.find(s => s.id === action.sectionId);
+        if (target) {
+          setActiveSection(target.id);
+          setTimeout(() => {
+            document.getElementById(`section-card-${target.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 80);
+        }
+        break;
+      }
       case "open-settings":
         setActiveTab("theme");
         break;
@@ -5928,6 +5970,28 @@ function WebsiteEditor() {
               <span className="hidden sm:inline">Score</span>
             </button>
 
+            {/* Accessibility Checker */}
+            <button
+              type="button"
+              onClick={() => setShowA11yPanel(v => !v)}
+              title="Accessibility Check — WCAG issues and auto-fixes"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors text-xs font-medium ${
+                showA11yPanel
+                  ? "border-violet-500 bg-violet-500/10 text-violet-600"
+                  : websiteA11yResult.findings.some(f => f.severity === "error")
+                  ? "border-red-300 text-red-600 hover:bg-red-50"
+                  : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">A11y</span>
+              {websiteA11yResult.findings.filter(f => f.severity === "error").length > 0 && !showA11yPanel && (
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
+                  {websiteA11yResult.findings.filter(f => f.severity === "error").length}
+                </span>
+              )}
+            </button>
+
             {/* AI Layout Assistant */}
             <button
               type="button"
@@ -7742,6 +7806,16 @@ function WebsiteEditor() {
         result={websiteScoreResult}
         onFixAction={handleScoreFixAction}
         onRefresh={() => setShowScorePanel(true)}
+      />
+    )}
+
+    {showA11yPanel && (
+      <AccessibilityPanel
+        show={showA11yPanel}
+        onClose={() => setShowA11yPanel(false)}
+        result={websiteA11yResult}
+        onAction={handleA11yAction}
+        onRefresh={() => setShowA11yPanel(true)}
       />
     )}
 

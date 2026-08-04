@@ -3535,6 +3535,149 @@ router.post("/score", wrapAsync(async (req, res) => {
   res.json(result);
 }));
 
+// ── M14: Accessibility Checker ────────────────────────────────────────────────
+// POST /api/website/check-accessibility?businessId=N
+// Pure rule-based WCAG inspection — no AI required.
+// Accepts { sections?, settings? }; falls back to loading from DB if omitted.
+
+function checkAccessibilitySections(
+  sections: SectionInput[],
+  settings: Record<string, unknown>,
+): {
+  findings: unknown[];
+  passedChecks: number;
+  totalChecks: number;
+  completionPct: number;
+  byCategory: Record<string, unknown[]>;
+} {
+  function findEnabled(type: string) {
+    return sections.find(s => s.type === type && s.enabled);
+  }
+  function str(v: unknown): string {
+    return typeof v === "string" ? v.trim() : "";
+  }
+
+  function hexToRgb(hex: string): [number, number, number] | null {
+    const h = hex.replace("#", "").trim();
+    if (h.length === 6) {
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      return isNaN(r) || isNaN(g) || isNaN(b) ? null : [r, g, b];
+    }
+    return null;
+  }
+  function relativeLuminance(r: number, g: number, b: number): number {
+    const lin = (c: number) => {
+      const s = c / 255;
+      return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  }
+  function contrastRatio(hex1: string, hex2: string): number | null {
+    const rgb1 = hexToRgb(hex1);
+    const rgb2 = hexToRgb(hex2);
+    if (!rgb1 || !rgb2) return null;
+    const L1 = relativeLuminance(...rgb1);
+    const L2 = relativeLuminance(...rgb2);
+    return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+  }
+
+  type Finding = { id: string; category: string; severity: string; label: string; description: string; fixable: boolean };
+  const findings: Finding[] = [];
+  let totalChecks = 0;
+
+  const check = (passed: boolean, finding: Finding) => {
+    totalChecks++;
+    if (!passed) findings.push(finding);
+  };
+
+  const textColor   = str(settings.textColor)  || "#1a1a2e";
+  const bgColor     = str(settings.bgColor)     || "#ffffff";
+  const mutedColor  = str(settings.textMutedColor) || "#64748b";
+  const brandColor  = str(settings.brandColor)  || "#1a1a2e";
+
+  const tcRatio = contrastRatio(textColor, bgColor);
+  check(tcRatio === null || tcRatio >= 4.5, { id: "contrast-text-bg", category: "Contrast", severity: "error", fixable: false, label: "Text has insufficient contrast", description: `Text achieves only ${tcRatio?.toFixed(1) ?? "?"}:1 contrast (WCAG AA requires 4.5:1).` });
+
+  const brandRatio = contrastRatio(brandColor, "#ffffff");
+  check(brandRatio === null || brandRatio >= 3.0, { id: "contrast-brand-btn", category: "Contrast", severity: "warning", fixable: false, label: "Brand color hard to read on white buttons", description: `${brandRatio?.toFixed(1) ?? "?"}:1 contrast (minimum 3:1 for large text).` });
+
+  const mutedRatio = contrastRatio(mutedColor, bgColor);
+  check(mutedRatio === null || mutedRatio >= 3.0, { id: "contrast-muted-text", category: "Contrast", severity: "warning", fixable: false, label: "Muted text is too faint", description: `Muted text achieves ${mutedRatio?.toFixed(1) ?? "?"}:1 contrast.` });
+
+  const hero = findEnabled("hero");
+  check(!hero || !!str(hero.content.headline), { id: "hero-headline-empty", category: "Headings", severity: "error", fixable: false, label: "Hero has no headline (H1)", description: "Every page needs a clear H1 heading for screen readers." });
+
+  const services = findEnabled("services");
+  check(!services || !!str(services.content.heading), { id: "services-heading-empty", category: "Headings", severity: "warning", fixable: true, label: "Services section missing heading", description: "Section headings help screen readers navigate." });
+
+  check(!hero || !!str(hero.content.ctaLabel), { id: "hero-cta-empty", category: "Buttons", severity: "error", fixable: true, label: "Hero CTA button has no label", description: "Unlabeled buttons are inaccessible to keyboard/screen-reader users." });
+
+  const cta = findEnabled("cta");
+  check(!cta || !!str(cta.content.buttonLabel), { id: "cta-button-empty", category: "Buttons", severity: "error", fixable: true, label: "CTA banner has no button label", description: "Screen readers announce unlabeled buttons as 'button' with no context." });
+
+  if (services) {
+    type Item = { mediaType?: string; imageUrl?: string; imageAlt?: string };
+    const items = (services.content.items as Item[] | undefined) ?? [];
+    const missing = items.filter(i => i.mediaType === "image" && str(i.imageUrl) && !str(i.imageAlt));
+    check(missing.length === 0, { id: "service-images-alt", category: "Images", severity: "warning", fixable: true, label: `${missing.length} service image${missing.length !== 1 ? "s" : ""} missing alt text`, description: "Screen readers can't describe images without alt text." });
+  } else { totalChecks++; }
+
+  const gallery = findEnabled("gallery");
+  if (gallery) {
+    type GImg = { url?: string; alt?: string };
+    const imgs = (gallery.content.images as GImg[] | undefined) ?? [];
+    const missing = imgs.filter(i => str(i.url) && !str(i.alt));
+    check(missing.length === 0, { id: "gallery-images-alt", category: "Images", severity: "warning", fixable: true, label: `${missing.length} gallery image${missing.length !== 1 ? "s" : ""} missing alt text`, description: "Alt text improves SEO and assistive technology support." });
+  } else { totalChecks++; }
+
+  const about = findEnabled("about");
+  check(!about || !str(about.content.photoUrl as string) || !!str(about.content.photoAlt), { id: "about-photo-alt", category: "Images", severity: "info", fixable: true, label: "About section photo has no alt text", description: "Screen readers skip images without alt text." });
+
+  const contact = findEnabled("contact") ?? findEnabled("quote-form");
+  check(!contact || !!str(contact.content.heading), { id: "contact-heading-empty", category: "Forms", severity: "warning", fixable: true, label: "Contact form has no heading", description: "Forms need a visible heading so screen reader users understand their purpose." });
+
+  const footer = findEnabled("footer");
+  const hasContact = footer && (!!str(footer.content.phone) || !!str(footer.content.email));
+  check(!footer || !!hasContact, { id: "footer-no-contact", category: "Links", severity: "warning", fixable: false, label: "Footer has no phone or email link", description: "Without contact info the footer is a dead end for visitors." });
+
+  const CATEGORIES = ["Contrast", "Headings", "Buttons", "Images", "Forms", "Links"];
+  const passedChecks = totalChecks - findings.length;
+  const completionPct = totalChecks > 0 ? Math.round((passedChecks / totalChecks) * 100) : 100;
+  const byCategory = Object.fromEntries(
+    CATEGORIES.map(cat => [cat, findings.filter(f => f.category === cat)]),
+  );
+
+  return { findings, passedChecks, totalChecks, completionPct, byCategory };
+}
+
+router.post("/check-accessibility", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  const { sections, settings } = req.body as {
+    sections?: SectionInput[];
+    settings?: Record<string, unknown>;
+  };
+
+  let finalSections = sections;
+  let finalSettings = settings;
+
+  if (!finalSections || !finalSettings) {
+    const [config] = await db
+      .select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+      .from(websiteConfigsTable)
+      .where(eq(websiteConfigsTable.businessId, businessId));
+    if (!finalSections) finalSections = ((config?.sections ?? []) as SectionInput[]);
+    if (!finalSettings) finalSettings = ((config?.settings ?? {}) as Record<string, unknown>);
+  }
+
+  res.json(checkAccessibilitySections(finalSections, finalSettings));
+}));
+
 // ── M5: Suggest Images ────────────────────────────────────────────────────────
 // GET /api/website/suggest-images?businessType=X&sectionType=Y&businessId=Z
 // Returns own uploaded photos (prepended) + curated industry suggestions.
