@@ -4321,6 +4321,174 @@ router.post("/marketing-pdf", wrapAsync(async (req, res) => {
   return res.end(pdfBuffer);
 }));
 
+// ── POST /refresh-analysis ────────────────────────────────────────────────────
+// Body: { sectionSummary, settings, businessContext?, lastRefreshedAt? }
+// Returns: { suggestions: RefreshSuggestion[], analyzedAt: string }
+//
+// AI scans the current site structure and returns targeted improvement suggestions
+// across 6 categories: Hero, Copy, Layout, SEO, Services, Trust, Missing Section.
+// Stateless — no DB writes. Rate limit: owner enforced on frontend (30-day window).
+
+type RefreshCategory = "Hero" | "Copy" | "Layout" | "SEO" | "Services" | "Trust" | "Missing Section";
+
+interface RefreshSuggestion {
+  id: string;
+  category: RefreshCategory;
+  priority: "high" | "medium" | "low";
+  label: string;
+  description: string;
+  sectionId?: string;
+  contentPatch?: Record<string, unknown>;
+  blockStylePatch?: Record<string, unknown>;
+  action: "update" | "add";
+  newSectionType?: string;
+  newSectionContent?: Record<string, unknown>;
+}
+
+type SectionSummaryItem = {
+  id: string;
+  type: string;
+  headline: string | null;
+  itemCount: number | null;
+};
+
+function buildRefreshPrompt(
+  sectionSummary: SectionSummaryItem[],
+  settings: { brandColor?: string; fontFamily?: string; logoUrl?: string },
+  bizCtx: { name?: string; businessType?: string; location?: string; services?: string[] } | null,
+  lastRefreshedAt: string | null,
+): string {
+  const sectionList = sectionSummary
+    .map(s => {
+      const parts = [`[${s.id}] type="${s.type}"`];
+      if (s.headline) parts.push(`headline="${s.headline.slice(0, 80)}"`);
+      if (s.itemCount !== null) parts.push(`items=${s.itemCount}`);
+      return parts.join(" ");
+    })
+    .join("\n");
+
+  const hasLogo = !!(settings.logoUrl && settings.logoUrl.length > 5);
+  const sectionTypes = sectionSummary.map(s => s.type);
+  const missingCommon = ["testimonials", "stats", "faq", "service-area", "certifications"]
+    .filter(t => !sectionTypes.includes(t));
+
+  const monthsOld = lastRefreshedAt
+    ? Math.floor((Date.now() - new Date(lastRefreshedAt).getTime()) / (1000 * 60 * 60 * 24 * 30))
+    : null;
+
+  return [
+    `You are a professional web strategist reviewing a contractor business website.`,
+    ``,
+    `Business: ${bizCtx?.name || "Unknown"} (${bizCtx?.businessType || "Contractor"})`,
+    `Location: ${bizCtx?.location || "Not specified"}`,
+    `Services: ${bizCtx?.services?.join(", ") || "Not specified"}`,
+    `Has logo: ${hasLogo}`,
+    `Last refreshed: ${monthsOld !== null ? `${monthsOld} months ago` : "never"}`,
+    ``,
+    `Current site sections:`,
+    sectionList,
+    `Missing sections (common for this industry): ${missingCommon.join(", ") || "none"}`,
+    ``,
+    `Return a JSON array of 4 to 8 specific improvement suggestions. Each item must have:`,
+    `{`,
+    `  "id": "unique-string",`,
+    `  "category": one of "Hero"|"Copy"|"Layout"|"SEO"|"Services"|"Trust"|"Missing Section",`,
+    `  "priority": "high"|"medium"|"low",`,
+    `  "label": "Short action title (5-8 words)",`,
+    `  "description": "1-2 sentences explaining what to change and why",`,
+    `  "sectionId": "section id from the list above (if updating an existing section)",`,
+    `  "action": "update" or "add",`,
+    `  "contentPatch": { ...only the fields that need to change... },`,
+    `  "newSectionType": "type name (only when action=add)",`,
+    `  "newSectionContent": { ...initial content for new section... }`,
+    `}`,
+    ``,
+    `Guidelines:`,
+    `- Focus on high-impact, specific changes — not vague advice`,
+    `- For Hero category: suggest headline improvements with actual proposed text`,
+    `- For Copy category: suggest about/services text improvements`,
+    `- For SEO category: suggest missing alt text patterns, heading hierarchy, or meta descriptions`,
+    `- For Missing Section: only suggest if truly valuable (testimonials, trust counter, FAQ)`,
+    `- contentPatch should only include the specific fields changing (e.g. {"headline": "New text"})`,
+    `- Priority "high" = measurable conversion impact; "medium" = user experience; "low" = polish`,
+    `- Return ONLY the JSON array, no markdown fences`,
+  ].join("\n");
+}
+
+router.post("/refresh-analysis", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  const {
+    sectionSummary,
+    settings: clientSettings,
+    businessContext,
+    lastRefreshedAt,
+  } = req.body as {
+    sectionSummary?: SectionSummaryItem[];
+    settings?: { brandColor?: string; fontFamily?: string; logoUrl?: string };
+    businessContext?: { name?: string; businessType?: string; location?: string; services?: string[] } | null;
+    lastRefreshedAt?: string | null;
+  };
+
+  if (!Array.isArray(sectionSummary) || sectionSummary.length === 0) {
+    return res.status(400).json({ error: "sectionSummary array required" });
+  }
+
+  // Augment context from DB if businessContext is minimal
+  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId));
+  const bizCtx = {
+    name: businessContext?.name || biz?.name || "Our Business",
+    businessType: businessContext?.businessType || biz?.type || undefined,
+    location: businessContext?.location || [biz?.city, biz?.state].filter(Boolean).join(", ") || undefined,
+    services: businessContext?.services || undefined,
+  };
+
+  const prompt = buildRefreshPrompt(
+    sectionSummary,
+    clientSettings ?? {},
+    bizCtx,
+    lastRefreshedAt ?? null,
+  );
+
+  const completion = await openai.chat.completions.create({
+    model: BUILDPRO_AI_MINI_MODEL,
+    messages: [
+      {
+        role: "system",
+        content: "You are a professional web strategist. Return ONLY valid JSON array (no markdown, no fences). Each suggestion must include all required fields.",
+      },
+      { role: "user", content: prompt },
+    ],
+    max_tokens: 1500,
+    temperature: 0.7,
+  });
+
+  const raw = completion.choices[0]?.message?.content?.trim() ?? "[]";
+  let suggestions: RefreshSuggestion[] = [];
+  try {
+    const parsed = JSON.parse(raw);
+    suggestions = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    // If JSON is still wrapped in fences, try to extract it
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (match) {
+      try { suggestions = JSON.parse(match[0]); } catch { suggestions = []; }
+    }
+  }
+
+  // Ensure every suggestion has a stable id
+  suggestions = suggestions.map((s, i) => ({
+    ...s,
+    id: s.id || `refresh-${i}-${Date.now()}`,
+    action: s.action ?? "update",
+  }));
+
+  return res.json({ suggestions, analyzedAt: new Date().toISOString() });
+}));
+
 // ── POST /generate-dealer-pages ───────────────────────────────────────────────
 // Body: { manufacturers: string[], businessContext?: BusinessContext | null }
 // Returns: { pages: SitePage[], progress: Record<string, "done"|"error"> }

@@ -13,7 +13,7 @@ import {
   Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette, Briefcase,
   ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText, X, Search,
   Users, Handshake, MapPin, Award, ArrowLeftRight, ThumbsUp, Sparkles, ArrowUpDown,
-  Minus, Clock, Phone, ShieldCheck, Zap,
+  Minus, Clock, Phone, ShieldCheck, Zap, RefreshCw,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -110,6 +110,8 @@ import { PerformancePanel } from "./PerformancePanel";
 import { analyzePerformance } from "./performanceAnalyzer";
 import type { PerfFixAction } from "./performanceAnalyzer";
 import { MarketingPanel } from "./MarketingPanel";
+import { RefreshPanel } from "./RefreshPanel";
+import type { RefreshSuggestion } from "./website-types";
 import { DealerPageGenerator } from "./DealerPageGenerator";
 import { reportCrash } from "@/lib/reportCrash";
 
@@ -1468,6 +1470,7 @@ function WebsiteEditor() {
   const [showA11yPanel, setShowA11yPanel] = useState(false);
   const [showPerfPanel, setShowPerfPanel] = useState(false);
   const [showMarketingPanel, setShowMarketingPanel] = useState(false);
+  const [showRefreshPanel, setShowRefreshPanel] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
   const { contextValue, editingId, editingIdRef } = useInlineEdit();
   const pagesRef = useRef<SitePage[]>([]);
@@ -2758,6 +2761,77 @@ function WebsiteEditor() {
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
     setLocalSettings({ ...settings, ...patch });
+  }
+
+  /**
+   * M18 – AI Website Refresh apply handler.
+   * Applies accepted suggestions as a batch, then records the refresh timestamp.
+   * One undo snapshot covers all changes (sections + settings).
+   */
+  function handleRefreshApply(acceptedSuggestions: RefreshSuggestion[], newTimestamp: string) {
+    if (acceptedSuggestions.length === 0) return;
+
+    // Capture the active page ID synchronously (before any async state updates)
+    const targetPageId = activePageIdRef.current;
+
+    // Aggregate ALL accepted "update" patches per sectionId so every accepted
+    // suggestion is applied even when multiple target the same section.
+    const patchBySectionId = new Map<string, { content: Record<string, unknown>; blockStyle: Record<string, unknown> }>();
+    for (const sug of acceptedSuggestions) {
+      if (sug.action !== "update" || !sug.sectionId) continue;
+      const existing = patchBySectionId.get(sug.sectionId) ?? { content: {}, blockStyle: {} };
+      if (sug.contentPatch) Object.assign(existing.content, sug.contentPatch);
+      if (sug.blockStylePatch) Object.assign(existing.blockStyle, sug.blockStylePatch);
+      patchBySectionId.set(sug.sectionId, existing);
+    }
+
+    // Single history snapshot for the whole batch
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+
+    // Apply section patches (update + add) to the currently active page only
+    setLocalPages(prev => {
+      if (!prev) return prev;
+      return prev.map(p => {
+        if (p.id !== targetPageId) return p;
+
+        let newSections = p.sections.map(s => {
+          const patch = patchBySectionId.get(s.id);
+          if (!patch) return s;
+          const newContent = Object.keys(patch.content).length
+            ? { ...s.content, ...patch.content }
+            : s.content;
+          const newBlockStyle = Object.keys(patch.blockStyle).length
+            ? { ...(s.blockStyle ?? {}), ...patch.blockStyle }
+            : s.blockStyle;
+          return {
+            ...s,
+            content: newContent,
+            ...(newBlockStyle && Object.keys(newBlockStyle).length ? { blockStyle: newBlockStyle } : {}),
+          };
+        });
+
+        // Append new sections (action = "add")
+        const addSuggestions = acceptedSuggestions.filter(sg => sg.action === "add" && sg.newSectionType);
+        for (const sug of addSuggestions) {
+          newSections = [
+            ...newSections,
+            {
+              id: nanoid(),
+              type: sug.newSectionType!,
+              enabled: true,
+              order: newSections.length,
+              content: sug.newSectionContent ?? {},
+            } as typeof newSections[0],
+          ];
+        }
+
+        return { ...p, sections: newSections };
+      });
+    });
+
+    // Update lastRefreshedAt in settings without a second history push
+    setLocalSettings({ ...settings, lastRefreshedAt: newTimestamp });
   }
 
   /**
@@ -6063,6 +6137,35 @@ function WebsiteEditor() {
               <span className="hidden sm:inline">Perf</span>
             </button>
 
+            {/* AI Website Refresh */}
+            {(() => {
+              const lastRefreshed = settings.lastRefreshedAt;
+              const monthsAgo = lastRefreshed
+                ? (Date.now() - new Date(lastRefreshed).getTime()) / (1000 * 60 * 60 * 24 * 30)
+                : Infinity;
+              const isStale = monthsAgo >= 6;
+              return (
+                <button
+                  type="button"
+                  onClick={() => setShowRefreshPanel(v => !v)}
+                  title="AI Website Refresh — scan your site for targeted improvements"
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors text-xs font-medium ${
+                    showRefreshPanel
+                      ? "border-teal-500 bg-teal-500/10 text-teal-600"
+                      : isStale
+                      ? "border-amber-300 text-amber-600 hover:bg-amber-50"
+                      : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Refresh</span>
+                  {isStale && !showRefreshPanel && (
+                    <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  )}
+                </button>
+              );
+            })()}
+
             {/* AI Marketing Assistant */}
             <button
               type="button"
@@ -7932,6 +8035,18 @@ function WebsiteEditor() {
         businessName={activeBusiness?.name ?? ""}
         brandColor={settings.brandColor}
         logoUrl={settings.logoUrl || undefined}
+      />
+    )}
+
+    {showRefreshPanel && (
+      <RefreshPanel
+        show={showRefreshPanel}
+        onClose={() => setShowRefreshPanel(false)}
+        businessId={bizId!}
+        sections={sections as any}
+        settings={settings}
+        lastRefreshedAt={settings.lastRefreshedAt ?? null}
+        onApply={handleRefreshApply}
       />
     )}
 

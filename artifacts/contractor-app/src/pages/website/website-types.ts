@@ -51,6 +51,47 @@ export interface SeoSettings {
   generatedAt?: string;
 }
 
+// ── AI Website Refresh ────────────────────────────────────────────────────────
+
+export type RefreshCategory =
+  | "Hero"
+  | "Copy"
+  | "Layout"
+  | "SEO"
+  | "Services"
+  | "Trust"
+  | "Missing Section";
+
+/**
+ * A single improvement suggestion returned by POST /api/website/refresh-analysis.
+ * The editor applies accepted suggestions as a batch before the user publishes.
+ */
+export interface RefreshSuggestion {
+  /** Stable client-side ID for tracking accept/skip state. */
+  id: string;
+  category: RefreshCategory;
+  priority: "high" | "medium" | "low";
+  /** Short action label shown as the card title, e.g. "Sharpen the hero headline". */
+  label: string;
+  /** 1–2 sentences describing what to change and why. */
+  description: string;
+  /** ID of the section to patch. Required for action "update". */
+  sectionId?: string;
+  /** Shallow-merged into section.content when accepted. */
+  contentPatch?: Record<string, unknown>;
+  /** Shallow-merged into section.blockStyle when accepted. */
+  blockStylePatch?: Record<string, unknown>;
+  /**
+   * "update" — patch an existing section.
+   * "add"    — append a new section of newSectionType.
+   */
+  action: "update" | "add";
+  /** Section type to add (required when action = "add"). */
+  newSectionType?: string;
+  /** Initial content for the new section (action = "add"). */
+  newSectionContent?: Record<string, unknown>;
+}
+
 export interface SiteSettings {
   brandColor: string;
   secondaryColor?: string;
@@ -85,6 +126,8 @@ export interface SiteSettings {
   headerStyle?: "light" | "dark" | "transparent";
   footerBgColor?: string;
   themeId?: string;
+  /** ISO timestamp of the last completed AI Website Refresh session. */
+  lastRefreshedAt?: string;
 }
 
 /**
