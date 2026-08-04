@@ -1026,6 +1026,68 @@ router.post("/upload-portfolio-photo", wrapAsync(async (req, res) => {
   res.json({ uploadURL, objectPath });
 }));
 
+// ── Industry Intelligence (Phase 5 M3) ────────────────────────────────────────
+
+import { INDUSTRY_PROFILES, FALLBACK_PROFILE, matchIndustryProfile, buildIndustrySections } from "../lib/industryProfiles";
+
+/** Returns the full registry as a lightweight list for the wizard UI. */
+router.get("/industry-profiles", wrapAsync(async (_req, res) => {
+  res.json({
+    profiles: INDUSTRY_PROFILES.map(p => ({
+      id: p.id,
+      name: p.name,
+      emoji: p.emoji,
+      tagline: p.tagline,
+      aliases: p.aliases,
+      trustSignals: p.trustSignals,
+      serviceKeywords: p.serviceKeywords,
+      sectionCount: p.sections.filter(s => s.priority !== "optional").length,
+    })),
+    fallbackId: FALLBACK_PROFILE.id,
+  });
+}));
+
+/**
+ * POST /generate-full-site
+ * Returns an industry-appropriate section skeleton for a new website.
+ * M1 (AI Website Wizard) calls this to get the page structure, then uses
+ * OpenAI to replace placeholder copy with industry-tailored content.
+ *
+ * Body: { businessType, businessName?, phone?, email?, includeOptional? }
+ * Response: { profile, sections, settings }
+ */
+router.post("/generate-full-site", wrapAsync(async (req, res) => {
+  const { businessType, businessName, phone, email, includeOptional } = req.body as {
+    businessType?: string;
+    businessName?: string;
+    phone?: string;
+    email?: string;
+    includeOptional?: boolean;
+  };
+
+  const profile = matchIndustryProfile(businessType ?? "");
+  const biz = { name: businessName, phone, email };
+  const sections = buildIndustrySections(profile, biz, includeOptional ?? false);
+
+  res.json({
+    profile: {
+      id: profile.id,
+      name: profile.name,
+      emoji: profile.emoji,
+      tagline: profile.tagline,
+      aiDescription: profile.aiDescription,
+      trustSignals: profile.trustSignals,
+      serviceKeywords: profile.serviceKeywords,
+    },
+    sections,
+    settings: {
+      brandColor: "#1a1a2e",
+      fontFamily: "Inter",
+      logoUrl: "",
+    },
+  });
+}));
+
 router.post("/upload-section-bg", wrapAsync(async (req, res) => {
   const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
   if (!name || !size || !contentType) {
