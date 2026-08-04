@@ -113,6 +113,7 @@ import { MarketingPanel } from "./MarketingPanel";
 import { RefreshPanel } from "./RefreshPanel";
 import type { RefreshSuggestion } from "./website-types";
 import { DealerPageGenerator } from "./DealerPageGenerator";
+import { AITemplateBuilder } from "./AITemplateBuilder";
 import { reportCrash } from "@/lib/reportCrash";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1364,12 +1365,18 @@ function TemplatePicker({
   onSelect,
   onScratch,
   applying,
+  onCreateWithAI,
+  savedTemplates,
+  onDeleteSaved,
 }: {
   businessName: string;
   isReset: boolean;
   onSelect: (t: WebsiteTemplate) => void;
   onScratch: () => void;
   applying: boolean;
+  onCreateWithAI: () => void;
+  savedTemplates: WebsiteTemplate[];
+  onDeleteSaved: (id: string) => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 overflow-y-auto">
@@ -1387,7 +1394,8 @@ function TemplatePicker({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        {/* Built-in templates */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
           {WEBSITE_TEMPLATES.map(t => (
             <button
               key={t.id}
@@ -1408,7 +1416,62 @@ function TemplatePicker({
               <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t.description}</p>
             </button>
           ))}
+
+          {/* Create with AI card */}
+          <button
+            onClick={() => !applying && onCreateWithAI()}
+            disabled={applying}
+            className="text-left rounded-xl border-2 border-dashed border-primary/40 hover:border-primary hover:shadow-md transition-all p-4 group disabled:opacity-60 disabled:cursor-not-allowed bg-primary/5 hover:bg-primary/10"
+          >
+            <div className="w-full h-20 rounded-lg mb-3 flex flex-col items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20">
+              <Sparkles className="w-6 h-6 text-primary mb-1" />
+              <p className="text-primary font-bold text-[10px] uppercase tracking-wide">AI Builder</p>
+            </div>
+            <p className="font-semibold text-primary text-sm">Create with AI ✨</p>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">Describe your business and get a custom template</p>
+          </button>
         </div>
+
+        {/* Saved / AI-generated templates */}
+        {savedTemplates.length > 0 && (
+          <div className="mb-6">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Your saved templates</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {savedTemplates.map(t => (
+                <div key={t.id} className="relative group">
+                  <button
+                    onClick={() => !applying && onSelect(t)}
+                    disabled={applying}
+                    className="w-full text-left rounded-xl border-2 border-border hover:border-violet-400 hover:shadow-md transition-all p-4 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <div
+                      className="w-full h-16 rounded-lg mb-3 flex flex-col justify-center px-3 py-2"
+                      style={{ backgroundColor: t.brandColor }}
+                    >
+                      <p className="text-white font-bold text-[10px] leading-snug line-clamp-2">
+                        {(t.sections.find(s => s.type === "hero")?.content?.headline as string) ?? t.name}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles className="w-3 h-3 text-violet-500 flex-shrink-0" />
+                      <p className="font-semibold text-foreground text-xs leading-snug">{t.name}</p>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug line-clamp-1">{t.description}</p>
+                  </button>
+                  {/* Delete button */}
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); onDeleteSaved(t.id); }}
+                    className="absolute top-2 right-2 p-1 rounded-md bg-background/80 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all border border-border"
+                    title="Delete saved template"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="text-center">
           <button
@@ -1505,6 +1568,7 @@ function WebsiteEditor() {
   const [activeTab, setActiveTab] = useState<"editor" | "analytics" | "media" | "theme" | "seo">("editor");
   const [showLandingPageGenerator, setShowLandingPageGenerator] = useState(false);
   const [showDealerPageGenerator, setShowDealerPageGenerator] = useState(false);
+  const [showAITemplateBuilder, setShowAITemplateBuilder] = useState(false);
   const [mediaPickerState, setMediaPickerState] = useState<{
     onSelect: (url: string) => void;
     sectionType?: string;
@@ -1681,6 +1745,36 @@ function WebsiteEditor() {
   const dataInitializedRef = useRef(false);
 
   const bizId = activeBusiness?.id;
+
+  // ── Saved AI templates query ───────────────────────────────────────────────
+  const { data: savedTemplatesRaw, refetch: refetchSavedTemplates } = useQuery<unknown[]>({
+    queryKey: ["website-templates", bizId],
+    enabled: !!bizId,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/website/templates?businessId=${bizId}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  // Normalize DB rows into WebsiteTemplate shape (snake_case → camelCase)
+  const savedTemplates: WebsiteTemplate[] = (savedTemplatesRaw ?? []).map((row: any) => ({
+    id: String((row as any).id),
+    name: (row as any).name ?? "Untitled",
+    description: (row as any).description ?? "",
+    brandColor: (row as any).brand_color ?? "#1a1a2e",
+    settings: (row as any).settings ?? {},
+    sections: (row as any).sections ?? [],
+  }));
+
+  async function deleteSavedTemplate(id: string) {
+    await fetch(`${BASE}/api/website/templates/${id}?businessId=${bizId}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    refetchSavedTemplates();
+  }
 
   useEffect(() => {
     setLocalPages(null);
@@ -5742,6 +5836,20 @@ function WebsiteEditor() {
         onSelect={handleTemplatePickerSelect}
         onScratch={() => setShowTemplatePicker(false)}
         applying={applyingTemplate}
+        onCreateWithAI={() => { setShowAITemplateBuilder(true); }}
+        savedTemplates={savedTemplates}
+        onDeleteSaved={deleteSavedTemplate}
+      />
+    )}
+    {showAITemplateBuilder && bizId && (
+      <AITemplateBuilder
+        show={showAITemplateBuilder}
+        onClose={() => setShowAITemplateBuilder(false)}
+        businessId={bizId}
+        onSelect={t => {
+          setShowAITemplateBuilder(false);
+          handleTemplatePickerSelect(t);
+        }}
       />
     )}
     <AlertDialog open={showApplyConfirm} onOpenChange={v => { if (!v && !applyingTemplate) { setShowApplyConfirm(false); setPendingTemplate(null); } }}>

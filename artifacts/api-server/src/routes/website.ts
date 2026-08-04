@@ -4489,6 +4489,251 @@ router.post("/refresh-analysis", wrapAsync(async (req, res) => {
   return res.json({ suggestions, analyzedAt: new Date().toISOString() });
 }));
 
+// ── GET /templates ────────────────────────────────────────────────────────────
+// Returns AI-generated templates saved by this business (+ any global ones).
+router.get("/templates", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+  const rows = await db.execute(sql`
+    SELECT id, business_id, name, description, brand_color, settings, sections, ai_generated, created_at
+    FROM website_templates
+    WHERE business_id = ${businessId} OR business_id IS NULL
+    ORDER BY created_at DESC
+  `);
+  return res.json(rows.rows);
+}));
+
+// ── POST /templates ────────────────────────────────────────────────────────────
+// Saves an AI-generated template (or any custom template) for this business.
+router.post("/templates", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+  const { name, description, brandColor, settings, sections } = req.body as {
+    name: string;
+    description?: string;
+    brandColor?: string;
+    settings?: Record<string, unknown>;
+    sections?: unknown[];
+  };
+  if (!name || !Array.isArray(sections)) {
+    return res.status(400).json({ error: "name and sections required" });
+  }
+  const [row] = await db.execute(sql`
+    INSERT INTO website_templates (business_id, name, description, brand_color, settings, sections, ai_generated)
+    VALUES (
+      ${businessId},
+      ${name},
+      ${description ?? ""},
+      ${brandColor ?? "#1a1a2e"},
+      ${JSON.stringify(settings ?? {})}::jsonb,
+      ${JSON.stringify(sections)}::jsonb,
+      true
+    )
+    RETURNING id, business_id, name, description, brand_color, settings, sections, ai_generated, created_at
+  `).then(r => r.rows);
+  return res.json(row);
+}));
+
+// ── DELETE /templates/:id ─────────────────────────────────────────────────────
+router.delete("/templates/:id", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  const templateId = parseInt(req.params.id as string);
+  if (!businessId || isNaN(businessId) || isNaN(templateId)) {
+    return res.status(400).json({ error: "businessId and id required" });
+  }
+  await db.execute(sql`
+    DELETE FROM website_templates WHERE id = ${templateId} AND business_id = ${businessId}
+  `);
+  return res.json({ ok: true });
+}));
+
+// ── POST /generate-template ───────────────────────────────────────────────────
+// Body: { description, businessType?, style? }
+// Returns: a WebsiteTemplate JSON object (not saved — caller saves separately).
+
+const VALID_SECTION_TYPES = [
+  "header", "hero", "services", "about", "testimonials", "stats",
+  "portfolio", "faq", "cta", "contact", "footer",
+  "process", "why-choose-us", "trust-counter", "gallery",
+] as const;
+
+const THEME_PRESETS: Record<string, { headingFont: string; bodyFont: string }> = {
+  Modern:    { headingFont: "Montserrat",     bodyFont: "Open Sans" },
+  Elegant:   { headingFont: "Playfair Display", bodyFont: "Lato" },
+  Friendly:  { headingFont: "Raleway",        bodyFont: "Nunito" },
+  Bold:      { headingFont: "Oswald",         bodyFont: "Open Sans" },
+  Minimal:   { headingFont: "Inter",          bodyFont: "Inter" },
+  Classic:   { headingFont: "Merriweather",   bodyFont: "Source Sans 3" },
+};
+
+function buildGenerateTemplatePrompt(description: string, businessType?: string, style?: string): string {
+  const sectionTypeList = VALID_SECTION_TYPES.join(", ");
+  return [
+    `You are a professional web designer creating a contractor/business website template.`,
+    ``,
+    `Description: "${description}"`,
+    businessType ? `Business type: ${businessType}` : "",
+    style ? `Visual style: ${style}` : "",
+    ``,
+    `Return a single JSON object that exactly matches this TypeScript interface:`,
+    ``,
+    `{`,
+    `  "id": string,            // lowercase slug, e.g. "luxury-roofing"`,
+    `  "name": string,          // display name, e.g. "Luxury Roofing"`,
+    `  "description": string,   // 5-10 words describing the template`,
+    `  "brandColor": string,    // hex color, e.g. "#7f1d1d"`,
+    `  "settings": {`,
+    `    "brandColor": string,`,
+    `    "secondaryColor": string,`,
+    `    "accentColor": string,`,
+    `    "fontFamily": string,  // one of: "Inter", "Raleway", "Nunito", "Montserrat", "Open Sans", "Lato", "Oswald", "Merriweather", "Playfair Display"`,
+    `    "headingFont": string,`,
+    `    "bodyFont": string,`,
+    `    "logoUrl": "",`,
+    `    "headerStyle": "light" | "dark" | "transparent",`,
+    `    "footerBgColor": string`,
+    `  },`,
+    `  "sections": Array<{`,
+    `    "id": string,           // unique slug e.g. "hero", "services"`,
+    `    "type": string,         // MUST be one of: ${sectionTypeList}`,
+    `    "enabled": true,`,
+    `    "order": number,        // starts at -1 for header, 0 for first visible section`,
+    `    "content": object       // see the content schema below`,
+    `  }>`,
+    `}`,
+    ``,
+    `Content schema by section type:`,
+    `- header: { navLinks: [{id, label, href}], phone: "", ctaLabel: string, ctaConfig: {url: "#contact"}, sticky: true }`,
+    `- hero: { headline: string, subheadline: string, ctaLabel: string }`,
+    `- services: { heading: string, items: [{id, title, description}] }  // 3-5 items`,
+    `- about: { heading: string, body: string, photoUrl: "" }`,
+    `- testimonials: { heading: string, subheading: string, testimonials: [{id, name, location, rating, quote}] }  // 3 items`,
+    `- stats: { heading: string, stats: [{id, value, label}] }  // 4 items`,
+    `- portfolio: { heading: string, projects: [] }`,
+    `- faq: { heading: string, items: [{id, question, answer}] }  // 4 items`,
+    `- cta: { heading: string, subheading: string, primaryLabel: string, primaryConfig: {url: "#contact"}, secondaryLabel: string, secondaryConfig: {url: "tel:"} }`,
+    `- contact: { heading: string, subheading: string, serviceTypes: [string] }  // 4-7 service names`,
+    `- footer: { phone: "", email: "", licenseNumber: "", copyright: "" }`,
+    `- process: { heading: string, subheading: string, layout: "horizontal", steps: [{id, icon, title, description}] }  // 4 steps`,
+    `- why-choose-us: { heading: string, subheading: string, items: [{id, title, description}] }`,
+    `- trust-counter: { heading: string, subheading: string, stats: [{id, value, label, icon}] }`,
+    `- gallery: { heading: string, subheading: string, images: [] }`,
+    ``,
+    `Rules:`,
+    `- Every template MUST start with a header (order:-1) and end with footer`,
+    `- Include 6-10 sections total`,
+    `- Write specific, compelling copy — not generic placeholder text`,
+    `- Choose brand colors that match the described vibe`,
+    `- Return ONLY the JSON object, no markdown, no fences`,
+  ].filter(l => l !== undefined).join("\n");
+}
+
+router.post("/generate-template", wrapAsync(async (req, res) => {
+  const { description, businessType, style } = req.body as {
+    description: string;
+    businessType?: string;
+    style?: string;
+  };
+  if (!description || description.trim().length < 5) {
+    return res.status(400).json({ error: "description required (min 5 chars)" });
+  }
+
+  const prompt = buildGenerateTemplatePrompt(description.trim(), businessType, style);
+
+  const completion = await openai.chat.completions.create({
+    model: BUILDPRO_AI_MINI_MODEL,
+    messages: [
+      {
+        role: "system",
+        content: "You are a professional web designer. Return ONLY valid JSON — no markdown, no code fences, no extra text.",
+      },
+      { role: "user", content: prompt },
+    ],
+    max_tokens: 2500,
+    temperature: 0.85,
+  });
+
+  const raw = (completion.choices[0]?.message?.content ?? "").trim();
+
+  // Try to parse; strip fences if the model added them anyway
+  let template: Record<string, unknown> | null = null;
+  try {
+    template = JSON.parse(raw);
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) {
+      try { template = JSON.parse(match[0]); } catch { /* fall through */ }
+    }
+  }
+
+  if (!template || typeof template !== "object") {
+    return res.status(500).json({ error: "AI returned unparseable output. Please try again." });
+  }
+
+  // ── Strict schema validation + normalization ────────────────────────────────
+
+  // Required string fields with safe defaults
+  if (!template.id || typeof template.id !== "string") {
+    template.id = `ai-${Date.now()}`;
+  }
+  if (!template.name || typeof template.name !== "string" || !(template.name as string).trim()) {
+    template.name = "AI Template";
+  }
+  if (!template.description || typeof template.description !== "string") {
+    template.description = "";
+  }
+  if (
+    !template.brandColor ||
+    typeof template.brandColor !== "string" ||
+    !/^#[0-9A-Fa-f]{3,6}$/.test(template.brandColor as string)
+  ) {
+    template.brandColor = "#1a1a2e";
+  }
+
+  // settings must be a plain object
+  if (!template.settings || typeof template.settings !== "object" || Array.isArray(template.settings)) {
+    template.settings = {};
+  }
+  // Ensure brandColor is mirrored inside settings
+  (template.settings as Record<string, unknown>).brandColor =
+    (template.settings as Record<string, unknown>).brandColor ?? template.brandColor;
+
+  // sections must be a non-empty array
+  if (!Array.isArray(template.sections)) {
+    return res.status(422).json({
+      error: "AI output is missing a sections array. Please try again.",
+    });
+  }
+
+  // Filter to valid section types and normalise each entry
+  const rawSections = (template.sections as Array<Record<string, unknown>>).filter(
+    s => s && typeof s === "object" && VALID_SECTION_TYPES.includes(s.type as typeof VALID_SECTION_TYPES[number]),
+  );
+
+  if (rawSections.length === 0) {
+    return res.status(422).json({
+      error: "AI output contained no recognised section types. Please rephrase your description and try again.",
+    });
+  }
+
+  template.sections = rawSections.map((s, i) => ({
+    ...s,
+    id: String(s.id || s.type || `s${i}`),
+    enabled: true,
+    order: typeof s.order === "number" ? s.order : i - 1,
+    // content must be an object
+    content: (s.content && typeof s.content === "object" && !Array.isArray(s.content))
+      ? s.content
+      : {},
+  }));
+
+  return res.json(template);
+}));
+
 // ── POST /generate-dealer-pages ───────────────────────────────────────────────
 // Body: { manufacturers: string[], businessContext?: BusinessContext | null }
 // Returns: { pages: SitePage[], progress: Record<string, "done"|"error"> }

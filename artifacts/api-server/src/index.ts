@@ -365,6 +365,27 @@ async function ensureTripNotesColumn() {
 }
 
 /** M16: AI Marketing Assistant — create marketing_content table if missing. */
+async function ensureWebsiteTemplatesTable(): Promise<void> {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS website_templates (
+        id SERIAL PRIMARY KEY,
+        business_id INTEGER REFERENCES businesses(id) ON DELETE CASCADE,
+        name VARCHAR(200) NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        brand_color VARCHAR(20) NOT NULL DEFAULT '#1a1a2e',
+        settings JSONB NOT NULL DEFAULT '{}',
+        sections JSONB NOT NULL DEFAULT '[]',
+        ai_generated BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
+    `);
+    console.log("[startup] ensureWebsiteTemplatesTable: website_templates OK.");
+  } catch (err) {
+    console.error("[startup] ensureWebsiteTemplatesTable failed (non-fatal):", err);
+  }
+}
+
 async function ensureMarketingContentTable(): Promise<void> {
   try {
     await db.execute(sql`
@@ -387,6 +408,7 @@ async function start() {
   await ensureBankingSchema();
   await ensureTripNotesColumn();
   await ensureMarketingContentTable();
+  await ensureWebsiteTemplatesTable();
   await clearDraftInvoiceNumbers();
   await syncInvoiceCounter();
   await recomputePartialSubPaymentStatuses();
