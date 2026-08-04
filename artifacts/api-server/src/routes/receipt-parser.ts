@@ -179,8 +179,27 @@ export async function parseReceiptFile(file: {
       }
     }
   } else {
-    const b64 = buffer.toString("base64");
-    messages = buildVisionMessages(`data:${mimetype};base64,${b64}`);
+    // OpenAI Vision only accepts JPEG, PNG, GIF, WebP.
+    // Convert HEIC, TIFF, BMP, and any other format to JPEG via sharp.
+    const WEB_VISION_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"]);
+    let imageBuffer = buffer;
+    let imageMime   = mimetype;
+    if (!WEB_VISION_TYPES.has(mimetype.toLowerCase())) {
+      try {
+        const sharp = (await import("sharp")).default;
+        imageBuffer = await sharp(buffer).jpeg({ quality: 90 }).toBuffer();
+        imageMime   = "image/jpeg";
+      } catch (convErr) {
+        console.warn("[parse-receipt] format conversion failed:", (convErr as any)?.message);
+        return {
+          ok: false,
+          errorType: "unsupported_file",
+          error: "Couldn't process that image format — please save as JPEG or PNG and try again.",
+        };
+      }
+    }
+    const b64 = imageBuffer.toString("base64");
+    messages = buildVisionMessages(`data:${imageMime};base64,${b64}`);
   }
 
   // ── Step 2: AI extraction ───────────────────────────────────────────────────
@@ -193,6 +212,7 @@ export async function parseReceiptFile(file: {
   const raw = completion.choices[0]?.message?.content ?? "{}";
   const cleaned = raw.replace(/```json|```/g, "").trim();
 
+  console.log("[parse-receipt] model response:", cleaned);
   let parsed: any = {};
   try { parsed = JSON.parse(cleaned); } catch { parsed = {}; }
 
