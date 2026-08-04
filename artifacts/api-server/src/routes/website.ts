@@ -3243,6 +3243,170 @@ Return slug as a clean URL slug (lowercase, hyphens only, no spaces or special c
   res.json({ page });
 }));
 
+// ── M12: AI Section Builder ───────────────────────────────────────────────────
+//
+// POST /build-section?businessId=N
+// Body: { prompt, businessContext? }
+// Returns: { section: { type, content }, description, sectionLabel, sectionEmoji }
+//
+// Steps:
+//   1. Validate prompt + resolve business context
+//   2. Ask OpenAI to pick the best section type and generate content JSON
+//   3. Validate sectionType is in allowed list
+//   4. Return the assembled section JSON
+
+const VALID_AI_SECTION_TYPES = new Set([
+  "hero", "services", "why-choose-us", "stats", "faq", "testimonials",
+  "cta", "alert-bar", "process", "text", "trust-counter", "about", "contact",
+]);
+
+const AI_SECTION_LABELS: Record<string, string> = {
+  "hero": "Hero Banner", "services": "Services", "why-choose-us": "Why Choose Us",
+  "stats": "Stats / Numbers", "faq": "FAQ", "testimonials": "Testimonials",
+  "cta": "CTA Banner", "alert-bar": "Alert Bar", "process": "How We Work",
+  "text": "Text Block", "trust-counter": "Trust Counter", "about": "About Us",
+  "contact": "Contact Form",
+};
+
+const AI_SECTION_EMOJIS: Record<string, string> = {
+  "hero": "🚀", "services": "🔧", "why-choose-us": "🏆", "stats": "📊",
+  "faq": "❓", "testimonials": "💬", "cta": "📣", "alert-bar": "📢",
+  "process": "➡️", "text": "✍️", "trust-counter": "🔢", "about": "👋",
+  "contact": "📬",
+};
+
+const SECTION_CATALOG_FOR_AI = `
+GENERATABLE SECTION TYPES — pick the most relevant one for the user's request:
+
+hero: Full-width headline + CTA button
+  Schema: {"headline":"...","subheadline":"...","ctaLabel":"...","ctaUrl":"#contact","layout":"centered"}
+
+services: Grid of service cards (2-4 items)
+  Schema: {"heading":"...","subheading":"...","items":[{"id":"abc1234","title":"...","description":"...","mediaType":"none","layout":"card","textAlign":"left","hoverEffect":"none","clickAction":"none"}]}
+
+why-choose-us: Value proposition benefit cards (3 items)
+  Schema: {"heading":"...","subheading":"...","items":[{"id":"abc1234","title":"...","description":"...","mediaType":"icon","iconName":"CheckCircle2","layout":"icon-top","textAlign":"center","hoverEffect":"lift","clickAction":"none"}],"columns":3}
+
+stats: Key achievement numbers (3-4 stats)
+  Schema: {"heading":"...","stats":[{"id":"abc1234","value":"500+","label":"Projects Completed"}]}
+
+faq: FAQ accordion (3-5 questions)
+  Schema: {"heading":"...","items":[{"id":"abc1234","question":"...","answer":"..."}]}
+
+testimonials: Customer review cards (2-3 reviews)
+  Schema: {"heading":"...","subheading":"...","items":[{"id":"abc1234","title":"Customer Name","description":"\\"Review text.\\"\n\n— City, State","mediaType":"image","iconSize":"lg","layout":"horizontal","textAlign":"left","hoverEffect":"none","clickAction":"none","templateType":"testimonial","badgeEnabled":true,"badgeText":"★★★★★","badgeColor":"#f59e0b","badgeTextColor":"#ffffff","badgePosition":"top-right"}]}
+
+cta: Bold call-to-action banner
+  Schema: {"heading":"...","subheading":"...","primaryLabel":"...","primaryConfig":{"url":"#contact","style":"solid","rounding":"full"},"secondaryLabel":"...","secondaryConfig":{"url":"#contact","style":"outline","rounding":"full"}}
+
+alert-bar: Top announcement banner
+  Schema: {"message":"...","ctaLabel":"...","ctaUrl":"#contact","bgColor":"#1e293b","textColor":"#ffffff","showDismiss":true,"visible":true}
+
+process: Step-by-step how-it-works (3-4 steps)
+  Schema: {"heading":"...","subheading":"...","layout":"horizontal","connector":"arrow","steps":[{"id":"abc1234","icon":"📋","title":"...","description":"..."}]}
+
+text: Simple heading + paragraph
+  Schema: {"heading":"...","body":"..."}
+
+trust-counter: Animated counter stats (4 items)
+  Schema: {"heading":"...","items":[{"id":"abc1234","value":500,"suffix":"+","label":"Homes Finished","icon":"🏠"}],"layout":"row"}
+
+about: About us text section
+  Schema: {"heading":"...","body":"..."}
+
+contact: Contact/quote form heading
+  Schema: {"heading":"...","subheading":"..."}
+
+IDs must be 7-character random alphanumeric strings like "abc1234".
+Generate specific, realistic content — no placeholder text.
+`;
+
+router.post("/build-section", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  const { prompt: userPrompt, businessContext: ctxBody } = req.body as {
+    prompt?: string;
+    businessContext?: BusinessContext;
+  };
+
+  if (!userPrompt?.trim()) {
+    return res.status(400).json({ error: "prompt required" });
+  }
+
+  // Resolve business context — prefer caller-supplied; fall back to DB
+  let ctx: BusinessContext = ctxBody as BusinessContext;
+  if (!ctx?.businessName) {
+    const [biz] = await db
+      .select()
+      .from(businessesTable)
+      .where(eq(businessesTable.id, businessId));
+    if (!biz) return res.status(404).json({ error: "Business not found" });
+    ctx = {
+      businessName: biz.name,
+      businessType: biz.type ?? undefined,
+      location: [biz.city, biz.state].filter(Boolean).join(", ") || undefined,
+      phone: biz.phone ?? undefined,
+      email: biz.email ?? undefined,
+    };
+  }
+
+  const summary = bizSummary(ctx);
+  const phoneHint = ctx.phone ? ` Phone: ${ctx.phone}.` : "";
+
+  const completion = await openai.chat.completions.create({
+    model: BUILDPRO_AI_MINI_MODEL,
+    max_completion_tokens: 1200,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: `${COPY_SYSTEM_PROMPT}
+You are also a website section builder. Given a user request, pick the BEST section type and generate content.
+Return a JSON object with exactly these keys:
+  "sectionType" — string, must be one of the generatable types listed below
+  "description" — string, one sentence describing what you built and why it fits the request
+  "content"     — object, the content matching the schema for the chosen sectionType
+${SECTION_CATALOG_FOR_AI}`,
+      },
+      {
+        role: "user",
+        content: `Business: ${summary}${phoneHint}\n\nUser request: "${userPrompt.trim()}"\n\nPick the best section type and generate specific, realistic content for this business.`,
+      },
+    ],
+  });
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(completion.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
+  } catch {
+    return res.status(500).json({ error: "AI returned invalid JSON. Please try again." });
+  }
+
+  const sectionType = ((parsed.sectionType as string) ?? "").trim();
+  const description = ((parsed.description as string) ?? "Generated section").trim();
+  const content     = parsed.content as Record<string, unknown> | undefined;
+
+  if (!sectionType || !VALID_AI_SECTION_TYPES.has(sectionType)) {
+    return res.status(422).json({
+      error: `AI returned an unrecognised section type "${sectionType || "(none)"}". Please try a different prompt.`,
+    });
+  }
+
+  if (!content || typeof content !== "object" || Array.isArray(content)) {
+    return res.status(422).json({ error: "AI returned invalid section content. Please try again." });
+  }
+
+  return res.json({
+    section:      { type: sectionType, content },
+    description,
+    sectionLabel: AI_SECTION_LABELS[sectionType] ?? sectionType,
+    sectionEmoji: AI_SECTION_EMOJIS[sectionType] ?? "✨",
+  });
+}));
+
 // ── M5: Suggest Images ────────────────────────────────────────────────────────
 // GET /api/website/suggest-images?businessType=X&sectionType=Y&businessId=Z
 // Returns own uploaded photos (prepended) + curated industry suggestions.

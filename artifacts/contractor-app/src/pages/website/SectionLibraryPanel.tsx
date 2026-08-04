@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { Search, Star, X, Sparkles, Bookmark, Trash2 } from "lucide-react";
+import { Search, Star, X, Sparkles, Bookmark, Trash2, Loader2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
-import type { SavedSection } from "./website-types";
+import type { SavedSection, BusinessContext } from "./website-types";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +37,12 @@ export interface SectionLibraryPanelProps {
   onInsertSaved?: (saved: SavedSection) => void;
   /** Delete a saved section by its DB id */
   onDeleteSaved?: (savedId: number) => void;
+  /** Business ID — enables the AI Section Builder */
+  businessId?: number;
+  /** Business context for AI prompts */
+  businessContext?: BusinessContext;
+  /** Insert an AI-generated section */
+  onInsertAISection?: (built: { type: string; content: Record<string, unknown>; description: string }) => void;
 }
 
 // ─── Static data ──────────────────────────────────────────────────────────────
@@ -277,6 +285,15 @@ function saveFavs(favs: Set<string>) {
 
 // ─── Main panel component ─────────────────────────────────────────────────────
 
+type AiState = "idle" | "loading" | "done" | "error";
+
+interface AiResult {
+  section: { type: string; content: Record<string, unknown> };
+  description: string;
+  sectionLabel: string;
+  sectionEmoji: string;
+}
+
 export function SectionLibraryPanel({
   show,
   onClose,
@@ -285,6 +302,9 @@ export function SectionLibraryPanel({
   savedSections = [],
   onInsertSaved,
   onDeleteSaved,
+  businessId,
+  businessContext,
+  onInsertAISection,
 }: SectionLibraryPanelProps) {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
@@ -292,6 +312,55 @@ export function SectionLibraryPanel({
   const [showSaved, setShowSaved] = useState(false);
   const [favIds, setFavIds] = useState<Set<string>>(() => loadFavs());
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // ── AI Section Builder state ──────────────────────────────────────────────
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiState, setAiState] = useState<AiState>("idle");
+  const [aiResult, setAiResult] = useState<AiResult | null>(null);
+  const [aiError, setAiError] = useState("");
+  const aiInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleAIBuild(promptText: string) {
+    if (!promptText.trim() || !businessId || !onInsertAISection) return;
+    setAiState("loading");
+    setAiError("");
+    setAiResult(null);
+    try {
+      const body: Record<string, unknown> = { prompt: promptText.trim() };
+      if (businessContext) body.businessContext = businessContext;
+      const resp = await fetch(
+        `${BASE}/api/website/build-section?businessId=${businessId}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(body),
+        }
+      );
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? `Server error ${resp.status}`);
+      }
+      const data = await resp.json() as AiResult;
+      setAiResult(data);
+      setAiState("done");
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setAiState("error");
+    }
+  }
+
+  function handleAIInsert() {
+    if (!aiResult || !onInsertAISection) return;
+    onInsertAISection({
+      type: aiResult.section.type,
+      content: aiResult.section.content,
+      description: aiResult.description,
+    });
+    setAiState("idle");
+    setAiPrompt("");
+    setAiResult(null);
+  }
 
   // Reset and focus on open
   useEffect(() => {
@@ -423,6 +492,100 @@ export function SectionLibraryPanel({
           </button>
         </div>
 
+        {/* ── AI Section Builder ───────────────────────────────── */}
+        {onInsertAISection && businessId && (
+          <div className="flex-shrink-0 border-b border-border bg-gradient-to-b from-violet-50/60 to-transparent dark:from-violet-950/20 px-3 pt-2.5 pb-2.5">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+              <span className="text-xs font-semibold text-foreground">Ask AI ✨</span>
+              {aiState !== "idle" && aiState !== "loading" && (
+                <button
+                  type="button"
+                  onClick={() => { setAiState("idle"); setAiResult(null); setAiError(""); }}
+                  className="ml-auto p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+                  title="Clear"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* Idle: input row */}
+            {(aiState === "idle" || aiState === "error") && (
+              <>
+                <div className="flex gap-1.5">
+                  <input
+                    ref={aiInputRef}
+                    type="text"
+                    value={aiPrompt}
+                    onChange={e => setAiPrompt(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && aiPrompt.trim()) {
+                        e.preventDefault();
+                        handleAIBuild(aiPrompt);
+                      }
+                    }}
+                    placeholder="e.g. 'three financing options with monthly payments'"
+                    className="flex-1 min-w-0 bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-violet-400 placeholder:text-muted-foreground/60"
+                  />
+                  <button
+                    type="button"
+                    disabled={!aiPrompt.trim()}
+                    onClick={() => handleAIBuild(aiPrompt)}
+                    className="flex-shrink-0 px-2.5 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    Build
+                  </button>
+                </div>
+                {aiState === "error" && (
+                  <p className="mt-1.5 text-[11px] text-destructive leading-snug">{aiError}</p>
+                )}
+              </>
+            )}
+
+            {/* Loading */}
+            {aiState === "loading" && (
+              <div className="flex items-center gap-2 py-0.5">
+                <Loader2 className="w-3.5 h-3.5 text-violet-500 animate-spin flex-shrink-0" />
+                <span className="text-xs text-muted-foreground">Building your section…</span>
+              </div>
+            )}
+
+            {/* Done: result card */}
+            {aiState === "done" && aiResult && (
+              <div>
+                <div className="flex items-start gap-2 mb-2">
+                  <span className="text-lg leading-none mt-0.5">{aiResult.sectionEmoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-foreground leading-snug">{aiResult.sectionLabel}</p>
+                    <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2 mt-0.5">{aiResult.description}</p>
+                  </div>
+                </div>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleAIInsert}
+                    className="flex-1 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    Insert Section
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAIBuild(aiPrompt)}
+                    className="flex-shrink-0 px-2.5 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:bg-muted transition-colors flex items-center gap-1"
+                    title="Generate a different section for the same prompt"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Try Again
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Category tabs ────────────────────────────────────── */}
         <div className="flex-shrink-0 flex items-center gap-1 px-3 py-2 border-b border-border overflow-x-auto scrollbar-none">
           {/* Favorites tab */}
@@ -539,19 +702,14 @@ export function SectionLibraryPanel({
           )}
         </div>
 
-        {/* ── Footer — AI teaser ───────────────────────────────── */}
-        <div className="flex-shrink-0 border-t border-border p-3">
-          <button
-            type="button"
-            disabled
-            title="Coming in a future release"
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-dashed border-border/60 bg-muted/20 text-muted-foreground/60 cursor-not-allowed text-sm select-none"
-          >
-            <Sparkles className="w-4 h-4 text-purple-400/60" />
-            Generate section with AI
-            <span className="ml-1 text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground/50">Coming Soon</span>
-          </button>
-        </div>
+        {/* ── Footer — prompt hint (only when AI is available and idle) ── */}
+        {onInsertAISection && businessId && aiState === "idle" && (
+          <div className="flex-shrink-0 border-t border-border px-3 py-2">
+            <p className="text-[10px] text-muted-foreground/60 text-center">
+              Use <span className="font-medium text-violet-500/80">Ask AI ✨</span> above to generate any section from a description
+            </p>
+          </div>
+        )}
       </div>
     </>,
     document.body,

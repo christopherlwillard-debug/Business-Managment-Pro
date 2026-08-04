@@ -3696,6 +3696,45 @@ function WebsiteEditor() {
     setInsertAfterSectionId(undefined);
   }
 
+  function addSectionFromAI(built: { type: string; content: Record<string, unknown>; description?: string }) {
+    const sectionId = nanoid(7);
+    const newSection: Section = {
+      id: sectionId,
+      type: built.type as Section["type"],
+      enabled: true,
+      order: sections.length,
+      content: built.content,
+    };
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+    setHasUnpublishedChanges(true);
+    const afterId = insertAfterSectionId;
+    if (afterId === null) {
+      updatePageSections([newSection, ...sections].map((s, i) => ({ ...s, order: i })));
+    } else if (afterId !== undefined) {
+      const idx = sections.findIndex(s => s.id === afterId);
+      if (idx >= 0) {
+        const inserted = [...sections.slice(0, idx + 1), newSection, ...sections.slice(idx + 1)];
+        updatePageSections(inserted.map((s, i) => ({ ...s, order: i })));
+      } else {
+        const footerIdx = sections.findIndex(s => s.type === "footer");
+        const base = footerIdx >= 0
+          ? [...sections.slice(0, footerIdx), newSection, ...sections.slice(footerIdx)]
+          : [...sections, newSection];
+        updatePageSections(base.map((s, i) => ({ ...s, order: i })));
+      }
+    } else {
+      const footerIdx = sections.findIndex(s => s.type === "footer");
+      const base = footerIdx >= 0
+        ? [...sections.slice(0, footerIdx), newSection, ...sections.slice(footerIdx)]
+        : [...sections, newSection];
+      updatePageSections(base.map((s, i) => ({ ...s, order: i })));
+    }
+    setActiveSection(sectionId);
+    setShowAddSection(false);
+    setInsertAfterSectionId(undefined);
+  }
+
   function addSectionFromSaved(saved: SavedSection) {
     const sectionId = nanoid(7);
     const newSection: Section = {
@@ -5596,6 +5635,9 @@ function WebsiteEditor() {
       savedSections={savedSections}
       onInsertSaved={addSectionFromSaved}
       onDeleteSaved={id => deleteSavedSectionMutation.mutate(id)}
+      businessId={bizId ?? undefined}
+      businessContext={websiteBusinessContext}
+      onInsertAISection={addSectionFromAI}
     />
     {isGenerating && (
       <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center gap-6">
