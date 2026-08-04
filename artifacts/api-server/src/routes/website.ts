@@ -989,26 +989,424 @@ router.get("/analytics", wrapAsync(async (req, res) => {
   });
 }));
 
+// ── AI Copywriter (Phase 5 M4) ────────────────────────────────────────────────
+
+/** Shared BusinessContext type (mirrors frontend website-types.ts — keep in sync). */
+interface BusinessContext {
+  businessName: string;
+  businessType?: string;
+  location?: string;
+  phone?: string;
+  email?: string;
+  services?: string[];
+  yearsInBusiness?: number;
+  isVeteranOwned?: boolean;
+  ownerName?: string;
+  tagline?: string;
+  serviceArea?: string;
+  trustSignals?: string[];
+  serviceKeywords?: string[];
+}
+
+/** One-sentence business summary injected into every copy prompt. */
+function bizSummary(ctx: BusinessContext): string {
+  const parts: string[] = [`${ctx.businessName}`];
+  if (ctx.businessType) parts.push(`a ${ctx.businessType} contractor`);
+  if (ctx.location)     parts.push(`based in ${ctx.location}`);
+  if (ctx.services?.length) parts.push(`specializing in ${ctx.services.slice(0, 4).join(", ")}`);
+  return parts.join(", ") + ".";
+}
+
+const COPY_SYSTEM_PROMPT = `You are a professional copywriter for contractor and trade business websites.
+Write clear, confident, trustworthy copy that appeals to homeowners and property managers.
+Rules: Be concise and direct. No fluff. No hype words like "premier", "unparalleled", or "world-class".
+Include the business name, location, and trade naturally where it adds value.
+Return ONLY the copy text, no quotes, no explanation, no markdown.`;
+
+/**
+ * POST /generate-copy
+ *
+ * Two modes:
+ *   1. Legacy: { prompt: string } — free-form prompt, returns { result }
+ *   2. Structured: { field, businessContext, currentText? } — returns { result }
+ */
 router.post("/generate-copy", wrapAsync(async (req, res) => {
-  const { prompt } = req.body as { prompt?: string };
-  if (!prompt?.trim()) {
-    return res.status(400).json({ error: "prompt is required" });
+  const body = req.body as {
+    prompt?: string;
+    field?: string;
+    businessContext?: BusinessContext;
+    currentText?: string;
+  };
+
+  let userPrompt: string;
+
+  if (body.businessContext && body.field) {
+    // Structured mode — targeted, context-aware copy for a specific field
+    const ctx = body.businessContext;
+    const summary = bizSummary(ctx);
+    const currentHint = body.currentText
+      ? `\n\nExisting text to improve or replace:\n"${body.currentText.slice(0, 300)}"`
+      : "";
+    const trust = ctx.trustSignals?.length ? `\nTrust signals: ${ctx.trustSignals.join(", ")}.` : "";
+    const area = ctx.serviceArea ? `\nService area: ${ctx.serviceArea}.` : "";
+
+    switch (body.field) {
+      case "hero-headline":
+        userPrompt = `Write a hero headline (8–12 words) for: ${summary}${area}${trust}
+Make it specific to their trade and location. Lead with the service or a key benefit, not the company name.${currentHint}`;
+        break;
+      case "hero-subheadline":
+        userPrompt = `Write a hero subheading (1–2 sentences, 20–35 words) for: ${summary}${area}
+Expand on the headline — mention licensed/insured, free estimates, or response time if relevant.${currentHint}`;
+        break;
+      case "cta-label":
+        userPrompt = `Write a CTA button label (3–6 words) for a ${ctx.businessType ?? "contractor"} website. Be action-oriented. Examples: "Get a Free Estimate", "Schedule Service Today", "Call for Emergency Help".${currentHint}`;
+        break;
+      case "section-heading":
+        userPrompt = `Write a section heading (3–7 words) for: ${summary}${currentHint}`;
+        break;
+      case "section-subheading":
+        userPrompt = `Write a section subheading (1–2 sentences) for: ${summary}${currentHint}`;
+        break;
+      case "service-description":
+        userPrompt = `Write a service description (2–3 sentences) for a "${body.currentText ?? "service"}" offered by: ${summary}
+Focus on what the customer gets — not features, but outcomes and peace of mind.${currentHint}`;
+        break;
+      case "about-body":
+        userPrompt = `Write an About Us paragraph (4–6 sentences) for: ${summary}${area}
+${ctx.yearsInBusiness ? `In business for ${ctx.yearsInBusiness} years.` : ""}
+${ctx.isVeteranOwned ? "Veteran-owned business." : ""}
+${ctx.ownerName ? `Founded by ${ctx.ownerName}.` : ""}
+Be authentic, warm, and trust-building. Mention community, reliability, and pride in workmanship.${currentHint}`;
+        break;
+      case "faq-answer":
+        userPrompt = `Write a concise FAQ answer (2–4 sentences) for a ${ctx.businessType ?? "contractor"} business. Business: ${summary}
+Question: "${body.currentText ?? "question"}"
+Be direct and reassuring. Address common customer concerns.`;
+        break;
+      default:
+        userPrompt = `Write copy for a "${body.field ?? "text"}" field on a contractor website. Business: ${summary}${currentHint}`;
+    }
+  } else if (body.prompt?.trim()) {
+    // Legacy free-form prompt mode
+    userPrompt = body.prompt.trim();
+  } else {
+    return res.status(400).json({ error: "prompt or (field + businessContext) is required" });
   }
 
   const completion = await openai.chat.completions.create({
     model: BUILDPRO_AI_MINI_MODEL,
-    max_completion_tokens: 300,
+    max_completion_tokens: 400,
     messages: [
-      {
-        role: "system",
-        content: `You are a professional copywriter for contractor and trade business websites. Write clear, confident, trustworthy copy that appeals to homeowners and property managers hiring a contractor. Be concise and direct — no fluff, no hype words like "premier" or "unparalleled". Return ONLY the copy text, no quotes, no explanation, no markdown formatting.`,
-      },
-      { role: "user", content: prompt.trim() },
+      { role: "system", content: COPY_SYSTEM_PROMPT },
+      { role: "user",   content: userPrompt },
     ],
   });
 
   const result = completion.choices[0]?.message?.content?.trim() ?? "";
   res.json({ result });
+}));
+
+// ── generate-site-copy: batch copy for all sections ───────────────────────────
+
+type SectionForCopy = { id: string; type: string; content: Record<string, unknown> };
+
+/** Build a targeted OpenAI call for each section type, returns partial content to merge. */
+async function generateSectionCopy(
+  section: SectionForCopy,
+  ctx: BusinessContext,
+): Promise<Record<string, unknown> | null> {
+  const summary = bizSummary(ctx);
+  const trust = ctx.trustSignals?.length ? `Trust signals: ${ctx.trustSignals.join(", ")}. ` : "";
+  const area  = ctx.serviceArea ? `Service area: ${ctx.serviceArea}. ` : "";
+  const sys   = COPY_SYSTEM_PROMPT;
+
+  // Per-type schema + prompt pairs
+  let prompt: string;
+  let schema: Record<string, unknown>;
+
+  switch (section.type) {
+    case "hero": {
+      prompt = `Write hero section copy for: ${summary}${area}${trust}
+Return JSON with: headline (8-12 words, trade + location specific, not starting with business name), subheadline (20-35 words, benefit-focused), ctaLabel (3-6 words, action-oriented).`;
+      schema = {
+        name: "hero_copy", strict: true,
+        schema: { type: "object", properties: { headline: { type: "string" }, subheadline: { type: "string" }, ctaLabel: { type: "string" } }, required: ["headline", "subheadline", "ctaLabel"], additionalProperties: false },
+      };
+      break;
+    }
+    case "services": {
+      const items = (section.content.items as Array<{ title?: string }> | undefined) ?? [];
+      const titles = items.map((it, i) => it.title ?? `Service ${i + 1}`);
+      prompt = `Write services section copy for: ${summary}
+Return JSON with: heading (4-7 words), subheading (1-2 sentences), items (array of {title, description} — one per service).
+Services to describe: ${JSON.stringify(titles)}
+Each description: 2-3 sentences, outcome-focused, no generic filler.`;
+      schema = {
+        name: "services_copy", strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            heading:    { type: "string" },
+            subheading: { type: "string" },
+            items: { type: "array", items: { type: "object", properties: { title: { type: "string" }, description: { type: "string" } }, required: ["title", "description"], additionalProperties: false } },
+          },
+          required: ["heading", "subheading", "items"], additionalProperties: false,
+        },
+      };
+      break;
+    }
+    case "about": {
+      prompt = `Write an About Us section for: ${summary}${area}
+${ctx.yearsInBusiness ? `In business ${ctx.yearsInBusiness}+ years. ` : ""}${ctx.isVeteranOwned ? "Veteran-owned. " : ""}${ctx.ownerName ? `Founded by ${ctx.ownerName}. ` : ""}
+Return JSON with: heading (3-5 words), body (4-6 sentences, authentic and trust-building, mention community and reliability).`;
+      schema = {
+        name: "about_copy", strict: true,
+        schema: { type: "object", properties: { heading: { type: "string" }, body: { type: "string" } }, required: ["heading", "body"], additionalProperties: false },
+      };
+      break;
+    }
+    case "stats": {
+      prompt = `Write a stats section heading (5-8 words) for: ${summary}${trust}
+The heading introduces trust-building numbers. Return JSON with: heading.`;
+      schema = {
+        name: "stats_copy", strict: true,
+        schema: { type: "object", properties: { heading: { type: "string" } }, required: ["heading"], additionalProperties: false },
+      };
+      break;
+    }
+    case "testimonials": {
+      prompt = `Write testimonials section intro for: ${summary}
+Return JSON with: heading (5-8 words), subheading (1-2 sentences about customer satisfaction).`;
+      schema = {
+        name: "testimonials_copy", strict: true,
+        schema: { type: "object", properties: { heading: { type: "string" }, subheading: { type: "string" } }, required: ["heading", "subheading"], additionalProperties: false },
+      };
+      break;
+    }
+    case "cta": {
+      prompt = `Write a CTA section for: ${summary}${trust}
+Return JSON with: heading (6-10 words, action-driven), subheading (1-2 sentences, remove hesitation), primaryLabel (3-6 words), secondaryLabel (3-6 words).`;
+      schema = {
+        name: "cta_copy", strict: true,
+        schema: { type: "object", properties: { heading: { type: "string" }, subheading: { type: "string" }, primaryLabel: { type: "string" }, secondaryLabel: { type: "string" } }, required: ["heading", "subheading", "primaryLabel", "secondaryLabel"], additionalProperties: false },
+      };
+      break;
+    }
+    case "contact": {
+      prompt = `Write a contact section for: ${summary}
+Return JSON with: heading (3-6 words), subheading (1-2 sentences, set expectation for response time).`;
+      schema = {
+        name: "contact_copy", strict: true,
+        schema: { type: "object", properties: { heading: { type: "string" }, subheading: { type: "string" } }, required: ["heading", "subheading"], additionalProperties: false },
+      };
+      break;
+    }
+    case "faq": {
+      const bizType = ctx.businessType ?? "contractor";
+      prompt = `Write 6 FAQ questions and answers for: ${summary}${area}
+Questions should cover: pricing/quotes, licensing/insurance, scheduling, project timeline, payment, and a ${bizType}-specific concern.
+Return JSON with: heading (3-5 words), items (array of {question, answer} — answer is 2-4 sentences each).`;
+      schema = {
+        name: "faq_copy", strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            heading: { type: "string" },
+            items: { type: "array", items: { type: "object", properties: { question: { type: "string" }, answer: { type: "string" } }, required: ["question", "answer"], additionalProperties: false } },
+          },
+          required: ["heading", "items"], additionalProperties: false,
+        },
+      };
+      break;
+    }
+    case "process": {
+      const steps = (section.content.steps as Array<{ title?: string }> | undefined) ?? [];
+      const stepCount = steps.length || 4;
+      prompt = `Write process steps for: ${summary}
+Return JSON with: heading (3-6 words), subheading (1 sentence), steps (${stepCount} items, each {title (2-4 words), description (1-2 sentences)}).
+Steps should walk a customer from first contact to project completion.`;
+      schema = {
+        name: "process_copy", strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            heading:    { type: "string" },
+            subheading: { type: "string" },
+            steps: { type: "array", items: { type: "object", properties: { title: { type: "string" }, description: { type: "string" } }, required: ["title", "description"], additionalProperties: false } },
+          },
+          required: ["heading", "subheading", "steps"], additionalProperties: false,
+        },
+      };
+      break;
+    }
+    case "alert-bar": {
+      prompt = `Write a short, urgent alert bar message (8-14 words) for: ${summary}
+${trust}Examples: "Emergency available 24/7 — call now!", "Storm damage? Free inspections available today."
+Return JSON with: message.`;
+      schema = {
+        name: "alert_bar_copy", strict: true,
+        schema: { type: "object", properties: { message: { type: "string" } }, required: ["message"], additionalProperties: false },
+      };
+      break;
+    }
+    case "why-choose-us": {
+      prompt = `Write "Why Choose Us" section for: ${summary}${trust}
+Return JSON with: heading (3-6 words), items (4 items, each {title (3-5 words), description (2-3 sentences)}).
+Items should highlight: free estimates, licensing, quality guarantee, communication.`;
+      schema = {
+        name: "why_choose_us_copy", strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            heading: { type: "string" },
+            items: { type: "array", items: { type: "object", properties: { title: { type: "string" }, description: { type: "string" } }, required: ["title", "description"], additionalProperties: false } },
+          },
+          required: ["heading", "items"], additionalProperties: false,
+        },
+      };
+      break;
+    }
+    case "meet-owner": {
+      prompt = `Write a Meet the Owner bio for: ${summary}${area}
+${ctx.ownerName ? `Owner: ${ctx.ownerName}. ` : ""}${ctx.yearsInBusiness ? `${ctx.yearsInBusiness}+ years experience. ` : ""}${ctx.isVeteranOwned ? "Veteran-owned business. " : ""}
+Return JSON with: heading (3-5 words), bio (4-5 sentences, personal, honest, community-focused).`;
+      schema = {
+        name: "meet_owner_copy", strict: true,
+        schema: { type: "object", properties: { heading: { type: "string" }, bio: { type: "string" } }, required: ["heading", "bio"], additionalProperties: false },
+      };
+      break;
+    }
+    case "trust-counter": {
+      prompt = `Write a trust counter section heading (5-8 words) for: ${summary}${trust}
+Return JSON with: heading.`;
+      schema = {
+        name: "trust_counter_copy", strict: true,
+        schema: { type: "object", properties: { heading: { type: "string" } }, required: ["heading"], additionalProperties: false },
+      };
+      break;
+    }
+    default:
+      return null; // section type has no text to generate
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: BUILDPRO_AI_MINI_MODEL,
+      max_completion_tokens: 800,
+      response_format: { type: "json_schema", json_schema: schema as any },
+      messages: [
+        { role: "system", content: sys },
+        { role: "user",   content: prompt },
+      ],
+    });
+    const raw = completion.choices[0]?.message?.content?.trim() ?? "{}";
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * POST /generate-site-copy
+ *
+ * Takes the section skeleton from generate-full-site (M3) + a businessContext,
+ * generates copy for all text-bearing sections in parallel, and returns the
+ * sections with copy injected.
+ *
+ * Called by the AI Website Wizard (M1) and the AI Website Generator (M20)
+ * after building the industry skeleton.
+ *
+ * Body: { sections, businessContext }
+ * Response: { sections }
+ */
+router.post("/generate-site-copy", wrapAsync(async (req, res) => {
+  const { sections, businessContext } = req.body as {
+    sections?: SectionForCopy[];
+    businessContext?: BusinessContext;
+  };
+
+  if (!Array.isArray(sections) || sections.length === 0) {
+    return res.status(400).json({ error: "sections array is required" });
+  }
+  if (!businessContext?.businessName) {
+    return res.status(400).json({ error: "businessContext.businessName is required" });
+  }
+
+  // Generate copy for all sections in parallel
+  const results = await Promise.allSettled(
+    sections.map(s => generateSectionCopy(s, businessContext)),
+  );
+
+  // Merge generated copy back into sections immutably
+  const enriched = sections.map((section, i) => {
+    const outcome = results[i];
+    if (outcome?.status !== "fulfilled" || !outcome.value) return section;
+
+    const copy = outcome.value;
+
+    // For services, merge item descriptions into existing items (preserve IDs)
+    if (section.type === "services" && Array.isArray(copy.items)) {
+      const existingItems = (section.content.items as Array<Record<string, unknown>> | undefined) ?? [];
+      const copyItems = copy.items as Array<{ title: string; description: string }>;
+      const mergedItems = existingItems.map((item, idx) => ({
+        ...item,
+        title:       copyItems[idx]?.title       ?? item.title,
+        description: copyItems[idx]?.description ?? item.description,
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { items: _items, ...restCopy } = copy;
+      return { ...section, content: { ...section.content, ...restCopy, items: mergedItems } };
+    }
+
+    // For process, merge step descriptions into existing steps (preserve icons + IDs)
+    if (section.type === "process" && Array.isArray(copy.steps)) {
+      const existingSteps = (section.content.steps as Array<Record<string, unknown>> | undefined) ?? [];
+      const copySteps = copy.steps as Array<{ title: string; description: string }>;
+      const mergedSteps = existingSteps.map((step, idx) => ({
+        ...step,
+        title:       copySteps[idx]?.title       ?? step.title,
+        description: copySteps[idx]?.description ?? step.description,
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { steps: _steps, ...restCopy } = copy;
+      return { ...section, content: { ...section.content, ...restCopy, steps: mergedSteps } };
+    }
+
+    // For faq, merge question/answer pairs (preserve IDs if present)
+    if (section.type === "faq" && Array.isArray(copy.items)) {
+      const copyItems = copy.items as Array<{ question: string; answer: string }>;
+      const faqItems = copyItems.map((q, idx) => ({ id: `faq-${idx + 1}`, ...q }));
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { items: _items, ...restCopy } = copy;
+      return { ...section, content: { ...section.content, ...restCopy, items: faqItems } };
+    }
+
+    // For why-choose-us, merge items similarly
+    if (section.type === "why-choose-us" && Array.isArray(copy.items)) {
+      const existingItems = (section.content.items as Array<Record<string, unknown>> | undefined) ?? [];
+      const copyItems = copy.items as Array<{ title: string; description: string }>;
+      const mergedItems = copyItems.map((item, idx) => ({
+        id: (existingItems[idx] as any)?.id ?? `why-${idx + 1}`,
+        icon: (existingItems[idx] as any)?.icon ?? "✓",
+        ...item,
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { items: _items, ...restCopy } = copy;
+      return { ...section, content: { ...section.content, ...restCopy, items: mergedItems } };
+    }
+
+    // For meet-owner, map bio → bio (content field name)
+    if (section.type === "meet-owner") {
+      const { bio, ...restCopy } = copy;
+      return { ...section, content: { ...section.content, ...restCopy, ...(bio ? { bio } : {}) } };
+    }
+
+    // Default: shallow merge copy into content
+    return { ...section, content: { ...section.content, ...copy } };
+  });
+
+  res.json({ sections: enriched });
 }));
 
 // ── AI Layout Assistant ────────────────────────────────────────────────────────

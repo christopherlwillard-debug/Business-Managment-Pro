@@ -210,6 +210,42 @@ export interface CardComponent {
   analyticsLabel?: string;
 }
 
+// ── AI Copywriter — Business Context ─────────────────────────────────────────
+
+/**
+ * Business profile passed to all copy-generation endpoints.
+ * Drives specificity: the AI uses these fields to write copy that names
+ * the business, location, trade, and services rather than generic placeholders.
+ */
+export interface BusinessContext {
+  /** Company name, e.g. "Smith HVAC Services" */
+  businessName: string;
+  /** Industry / trade label used in the prompt, e.g. "HVAC", "Manufactured Home" */
+  businessType?: string;
+  /** City + state, e.g. "Nashville, TN" */
+  location?: string;
+  /** Phone number for CTAs */
+  phone?: string;
+  /** Contact email */
+  email?: string;
+  /** Service titles offered, e.g. ["AC Repair", "Furnace Installation", "Maintenance Plans"] */
+  services?: string[];
+  /** Number of years in business — used in About / stats copy */
+  yearsInBusiness?: number;
+  /** Whether the business is veteran-owned — surfaced in About Us and trust signals */
+  isVeteranOwned?: boolean;
+  /** Optional owner / founder name */
+  ownerName?: string;
+  /** Optional short tagline or value proposition */
+  tagline?: string;
+  /** Human-readable service area description, e.g. "Middle Tennessee and surrounding counties" */
+  serviceArea?: string;
+  /** Trust signals from the industry profile, e.g. ["24/7 Emergency Service", "Licensed & Insured"] */
+  trustSignals?: string[];
+  /** SEO seed keywords from the industry profile */
+  serviceKeywords?: string[];
+}
+
 // ── AI Layout Assistant ───────────────────────────────────────────────────────
 
 /**

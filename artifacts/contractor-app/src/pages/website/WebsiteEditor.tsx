@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Component, type ReactNode } from "react";
+import { useState, useRef, useEffect, useMemo, Component, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
@@ -95,7 +95,7 @@ import { computeAlignmentGuides, type AlignmentGuide, type SimpleRect } from "./
 import { ComponentLibraryPanel, COMPONENT_TYPE_LABELS } from "./ComponentLibraryPanel";
 import { HeaderBuilderPanel } from "./HeaderBuilderPanel";
 import { nanoid } from "nanoid";
-import type { SiteSettings, CardComponent, SavedSection } from "./website-types";
+import type { SiteSettings, CardComponent, SavedSection, BusinessContext } from "./website-types";
 import { AIWebsiteWizard, type WizardFormValues, type BusinessProfilePrefill } from "./AIWebsiteWizard";
 import { reportCrash } from "@/lib/reportCrash";
 
@@ -2131,6 +2131,47 @@ function WebsiteEditor() {
     : [{ id: "home", name: "Home", slug: "home", sections: [] }]);
   const activePage: SitePage = pages.find(p => p.id === activePageId) ?? pages[0] ?? { id: "home", name: "Home", slug: "home", sections: [] };
   const sections: Section[] = activePage.sections;
+
+  // ── AI Copywriter — business context for per-block Regenerate ────────────────
+  // Assembled once here so FloatingTextToolbar can call generate-copy with
+  // structured BusinessContext instead of a raw freeform prompt.
+  //
+  // Deps include the actual content values that flow into the context (service
+  // titles, service-area text) so the object stays fresh when those are edited,
+  // not just when the section count changes.
+  const _serviceTitlesKey = sections
+    .find(s => s.type === "services")
+    ?.content
+    ?.items
+    ? (sections.find(s => s.type === "services")!.content.items as Array<{ title?: string }>)
+        .map(i => i.title ?? "").join(",")
+    : "";
+  const _serviceAreaSection = sections.find(s => s.type === "service-area");
+  const _serviceAreaKey = [
+    (_serviceAreaSection?.content?.primaryCity as string | undefined) ?? "",
+    (_serviceAreaSection?.content?.state as string | undefined) ?? "",
+  ].join(",");
+
+  const websiteBusinessContext = useMemo((): BusinessContext | undefined => {
+    if (!activeBusiness) return undefined;
+    const svcItems = (sections.find(s => s.type === "services")
+      ?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+    const services = svcItems.map(i => i.title ?? "").filter(Boolean);
+    const saSection = sections.find(s => s.type === "service-area");
+    const saCity  = (saSection?.content?.primaryCity as string | undefined) ?? "";
+    const saState = (saSection?.content?.state      as string | undefined) ?? "";
+    const serviceArea = saCity || saState ? [saCity, saState].filter(Boolean).join(", ") : undefined;
+    const location = [activeBusiness.city, activeBusiness.state].filter(Boolean).join(", ") || undefined;
+    return {
+      businessName: activeBusiness.name,
+      businessType: activeBusiness.type || undefined,
+      location,
+      phone:   activeBusiness.phone ?? undefined,
+      email:   activeBusiness.email ?? undefined,
+      services: services.length > 0 ? services : undefined,
+      serviceArea,
+    };
+  }, [activeBusiness, activePageId, _serviceTitlesKey, _serviceAreaKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const settings: SiteSettings = localSettings ?? config?.settings ?? { brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" };
   pagesRef.current = pages;
   settingsRef.current = settings;
@@ -5086,7 +5127,7 @@ function WebsiteEditor() {
 
     return (
       <InlineEditContext.Provider value={contextValue}>
-        {!previewMode && <FloatingTextToolbar />}
+        {!previewMode && <FloatingTextToolbar businessContext={websiteBusinessContext} />}
         {/* Image floating toolbar — appears above selected image components */}
         {!previewMode && (() => {
           if (!selectedComponentState) return null;
