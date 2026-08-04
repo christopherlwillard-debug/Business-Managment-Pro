@@ -1447,6 +1447,8 @@ function WebsiteEditor() {
   const [addSectionTab, setAddSectionTab] = useState<"sections" | "templates">("sections");
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [showAIWizard, setShowAIWizard] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingStep, setGeneratingStep] = useState("");
   const [showLayoutAssistant, setShowLayoutAssistant] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
   const { contextValue, editingId, editingIdRef } = useInlineEdit();
@@ -2235,8 +2237,8 @@ function WebsiteEditor() {
     setLocalSettings(cleanSettings as SiteSettings);
     if (isNewSite && !pickerShownRef.current) {
       pickerShownRef.current = true;
-      setShowTemplatePicker(true);
-      setPickerIsReset(false);
+      // M1: open AI wizard for new sites (replaces template-picker-first flow)
+      setShowAIWizard(true);
     }
   }, [config]);
 
@@ -2713,6 +2715,150 @@ function WebsiteEditor() {
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
     setLocalSettings({ ...settings, ...patch });
+  }
+
+  /**
+   * M1 – AI Website Wizard generation handler.
+   * Called when Willard clicks "Generate Website" on the Review step.
+   * Orchestrates: generate-full-site (M3) → generate-site-copy (M4) →
+   * suggest-colors (M7) → apply to editor state.
+   */
+  async function handleAIGenerate(values: WizardFormValues, _prefill: BusinessProfilePrefill) {
+    setShowAIWizard(false);
+    setIsGenerating(true);
+    try {
+      // ── 1. Get industry-appropriate section skeleton ──────────────────────
+      setGeneratingStep("Analyzing your business type…");
+      const siteRes = await fetch(`${BASE}/api/website/generate-full-site`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          businessType: values.businessType || "",
+          businessName: values.businessName || undefined,
+          phone:        values.phone        || undefined,
+          email:        values.email        || undefined,
+          includeOptional: false,
+        }),
+      });
+      if (!siteRes.ok) throw new Error("generate-full-site failed");
+      const siteData = await siteRes.json() as {
+        sections: Section[];
+        settings: SiteSettings;
+        profile: { name: string; trustSignals?: string[]; serviceKeywords?: string[] };
+      };
+
+      // ── 2. Write AI copy into sections ────────────────────────────────────
+      setGeneratingStep("Writing personalized copy…");
+      const servicesList  = values.services.split("\n").filter(Boolean);
+      const coverageList  = values.coverageAreas.split("\n").filter(Boolean);
+      const businessContext = {
+        businessName:     values.businessName || "Your Business",
+        businessType:     values.businessType || siteData.profile.name,
+        location:         coverageList[0]     || values.address || "",
+        phone:            values.phone        || "",
+        email:            values.email        || "",
+        services:         servicesList,
+        yearsInBusiness:  values.yearsInBusiness ? parseInt(values.yearsInBusiness) : undefined,
+        isVeteranOwned:   values.isVeteranOwned,
+        serviceArea:      coverageList.join(", "),
+        trustSignals:     siteData.profile.trustSignals,
+        serviceKeywords:  siteData.profile.serviceKeywords,
+      };
+      const copyRes = await fetch(`${BASE}/api/website/generate-site-copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ sections: siteData.sections, businessContext }),
+      });
+      const copyData = copyRes.ok
+        ? await copyRes.json() as { sections: Section[] }
+        : { sections: siteData.sections };
+
+      // ── 3. Generate color palette from brand color ────────────────────────
+      setGeneratingStep("Choosing a color theme…");
+      const STYLE_TO_PALETTE_IDX: Record<string, number> = {
+        modern: 0, deep: 1, bold: 2, muted: 3,
+      };
+      let colorPalette: Partial<SiteSettings> = {};
+      try {
+        const colorRes = await fetch(`${BASE}/api/website/suggest-colors`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ baseColor: values.brandColor || "#1a1a2e" }),
+        });
+        if (colorRes.ok) {
+          const colorData = await colorRes.json() as {
+            suggestions: Array<{ id: string; palette: Partial<SiteSettings> }>;
+          };
+          const idx = STYLE_TO_PALETTE_IDX[values.preferredStyle] ?? 0;
+          colorPalette = colorData.suggestions?.[idx]?.palette
+            ?? colorData.suggestions?.[0]?.palette
+            ?? {};
+        }
+      } catch { /* color generation is optional */ }
+
+      // ── 4. Apply everything to editor state ───────────────────────────────
+      setGeneratingStep("Finalizing your website…");
+
+      // Inject contact info / social links / hours into the right sections
+      const socialLinks: Array<{ platform: string; url: string }> = [];
+      if (values.facebook)      socialLinks.push({ platform: "facebook",  url: values.facebook      });
+      if (values.instagram)     socialLinks.push({ platform: "instagram", url: values.instagram     });
+      if (values.linkedin)      socialLinks.push({ platform: "linkedin",  url: values.linkedin      });
+      if (values.twitter)       socialLinks.push({ platform: "twitter",   url: values.twitter       });
+      if (values.youtube)       socialLinks.push({ platform: "youtube",   url: values.youtube       });
+
+      const rawSections = copyData.sections ?? siteData.sections;
+      const enriched = rawSections.map(s => {
+        if (s.type === "footer") {
+          return {
+            ...s,
+            content: {
+              ...s.content,
+              phone: values.phone || (s.content.phone ?? ""),
+              email: values.email || (s.content.email ?? ""),
+              ...(socialLinks.length > 0 ? { socialLinks } : {}),
+            },
+          };
+        }
+        if (s.type === "contact") {
+          return { ...s, content: { ...s.content, phone: values.phone || "", email: values.email || "" } };
+        }
+        if (s.type === "business-hours" && values.workingHours?.length) {
+          return { ...s, content: { ...s.content, hours: values.workingHours } };
+        }
+        return s;
+      });
+
+      const newSettings: SiteSettings = {
+        brandColor: values.brandColor || "#1a1a2e",
+        fontFamily: values.fontFamily || "Inter",
+        logoUrl:    values.logoUrl    || "",
+        ...colorPalette,
+      };
+
+      setLocalSettings(newSettings);
+      updatePageSections(enriched as Section[]);
+      isDirtyRef.current = true;
+      setHasUnpublishedChanges(true);
+
+      toast({
+        title: "✨ Website generated!",
+        description: "Your site is ready to edit. Customize anything you like.",
+      });
+    } catch (err) {
+      console.error("[AI Wizard generate]", err);
+      toast({
+        title: "Generation failed",
+        description: "Something went wrong. Your blank site is ready to edit.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+      setGeneratingStep("");
+    }
   }
 
   function applyTheme(theme: SiteTheme) {
@@ -5429,14 +5575,27 @@ function WebsiteEditor() {
       onInsertSaved={addSectionFromSaved}
       onDeleteSaved={id => deleteSavedSectionMutation.mutate(id)}
     />
+    {isGenerating && (
+      <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center gap-6">
+        <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-purple-100 dark:bg-purple-900/30">
+          <Sparkles className="w-8 h-8 text-purple-600 dark:text-purple-400 animate-pulse" />
+        </div>
+        <div className="text-center space-y-1.5">
+          <p className="text-lg font-semibold text-foreground">Building your website…</p>
+          <p className="text-sm text-muted-foreground">{generatingStep || "Preparing…"}</p>
+        </div>
+        <div className="w-64 h-1.5 bg-muted rounded-full overflow-hidden">
+          <div className="h-full bg-purple-500 rounded-full animate-[pulse_1.5s_ease-in-out_infinite] w-1/2" />
+        </div>
+        <p className="text-xs text-muted-foreground">This takes about 15–20 seconds</p>
+      </div>
+    )}
     {showAIWizard && bizId && (
       <AIWebsiteWizard
         businessId={bizId}
         onClose={() => setShowAIWizard(false)}
-        onGenerate={(_values, _prefill) => {
-          // M1 will consume `_values` and `_prefill` to drive AI generation.
-          setShowAIWizard(false);
-        }}
+        onGenerate={handleAIGenerate}
+        onSkipToTemplate={() => { setShowAIWizard(false); setShowTemplatePicker(true); setPickerIsReset(false); }}
       />
     )}
     {mediaPickerState && bizId && (
