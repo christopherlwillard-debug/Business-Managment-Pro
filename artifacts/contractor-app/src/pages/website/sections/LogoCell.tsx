@@ -1,6 +1,59 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ImagePlus, Pencil, Copy, EyeOff, Eye, Trash2 } from "lucide-react";
 import type { CardComponent } from "../website-types";
+
+// ── Optical sizing cache ───────────────────────────────────────────────────────
+// Persists across renders; maps imageUrl → scale factor (naturalH / visibleH)
+const opticalScaleCache = new Map<string, number>();
+
+function measureOpticalScale(
+  imageUrl: string,
+  onResult: (scale: number) => void,
+): void {
+  const cached = opticalScaleCache.get(imageUrl);
+  if (cached !== undefined) { onResult(cached); return; }
+
+  const img = new window.Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    try {
+      const W = img.naturalWidth, H = img.naturalHeight;
+      if (W === 0 || H === 0) { onResult(1); return; }
+      const canvas = document.createElement("canvas");
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { onResult(1); return; }
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, W, H).data;
+
+      let topRow = 0, bottomRow = H - 1, found = false;
+      // First non-transparent row from top
+      top: for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          if (data[(y * W + x) * 4 + 3] > 10) { topRow = y; found = true; break top; }
+        }
+      }
+      if (!found) { opticalScaleCache.set(imageUrl, 1); onResult(1); return; }
+      // Last non-transparent row from bottom
+      bottom: for (let y = H - 1; y >= 0; y--) {
+        for (let x = 0; x < W; x++) {
+          if (data[(y * W + x) * 4 + 3] > 10) { bottomRow = y; break bottom; }
+        }
+      }
+
+      const visibleH = bottomRow - topRow + 1;
+      // scale = how much to magnify so visible content fills logoMaxHeight
+      // (applied via CSS transform; capped at 3× to prevent extreme blowup)
+      const scale = Math.min(3, H / Math.max(1, visibleH));
+      opticalScaleCache.set(imageUrl, scale);
+      onResult(scale);
+    } catch {
+      onResult(1);
+    }
+  };
+  img.onerror = () => onResult(1);
+  img.src = imageUrl;
+}
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
@@ -11,6 +64,8 @@ interface LogoCellProps {
   showHoverEffect: boolean;
   grayscaleUntilHover: boolean;
   roundedCorners: boolean;
+  /** When true, scales each logo so its visible artwork height ≈ logoMaxHeight */
+  opticalSizing?: boolean;
   isEditing?: boolean;
   selected?: boolean;
   onSelect: () => void;
@@ -31,6 +86,7 @@ export function LogoCell({
   showHoverEffect,
   grayscaleUntilHover,
   roundedCorners,
+  opticalSizing = false,
   isEditing,
   selected,
   onSelect,
@@ -41,6 +97,13 @@ export function LogoCell({
   onPickImage,
 }: LogoCellProps) {
   const [hovered, setHovered] = useState(false);
+  const [imgScale, setImgScale] = useState<number>(1);
+
+  // Measure optical scale whenever url or opticalSizing changes
+  useEffect(() => {
+    if (!opticalSizing || !item.imageUrl) { setImgScale(1); return; }
+    measureOpticalScale(item.imageUrl, setImgScale);
+  }, [opticalSizing, item.imageUrl]);
 
   // Hide non-editing hidden items
   if (!isEditing && item.hidden) return null;
@@ -62,13 +125,24 @@ export function LogoCell({
 
   // ── Image or placeholder ───────────────────────────────────────────────────
   const imgEl = item.imageUrl ? (
-    <img
-      src={item.imageUrl}
-      alt={item.imageAlt ?? item.title ?? "logo"}
-      className={`w-full object-contain ${grayCls}`}
-      style={{ maxHeight: logoMaxHeight, height: logoMaxHeight }}
-      draggable={false}
-    />
+    // Wrap in a fixed-height container so the optical scale transform clips cleanly
+    <div
+      style={{ height: logoMaxHeight, width: "100%", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}
+    >
+      <img
+        src={item.imageUrl}
+        alt={item.imageAlt ?? item.title ?? "logo"}
+        className={`object-contain ${grayCls}`}
+        style={{
+          height: logoMaxHeight,
+          maxWidth: "100%",
+          transform: opticalSizing && imgScale !== 1 ? `scale(${imgScale})` : undefined,
+          transformOrigin: "center",
+          transition: "transform 0.15s ease",
+        }}
+        draggable={false}
+      />
+    </div>
   ) : isEditing ? (
     <div
       className="w-full flex flex-col items-center justify-center gap-1 text-primary/50 hover:text-primary transition-colors"

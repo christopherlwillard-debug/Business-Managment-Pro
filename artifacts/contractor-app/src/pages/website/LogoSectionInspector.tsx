@@ -14,6 +14,8 @@ type LogoContent = (FeaturedClientsContent | PartnersContent) & {
   showHoverEffect?: boolean;
   grayscaleUntilHover?: boolean;
   roundedCorners?: boolean;
+  opticalSizing?: boolean;
+  sectionMode?: "generic" | "manufacturers" | "certifications";
 };
 
 interface Props {
@@ -21,6 +23,30 @@ interface Props {
   sectionType: "featured-clients" | "partners";
   onChange: (patch: Partial<LogoContent>) => void;
 }
+
+// ── Quick-fill UID helper ──────────────────────────────────────────────────────
+function uid() { return `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
+function makeCard(title: string) {
+  return { id: uid(), title, description: "", mediaType: "none" as const,
+    layout: "icon-top" as const, textAlign: "center" as const, hoverEffect: "lift" as const, clickAction: "none" as const };
+}
+
+// ── Mode presets ──────────────────────────────────────────────────────────────
+const MODE_PRESETS: Record<
+  "manufacturers" | "certifications",
+  { heading: string; subheading: string; items: ReturnType<typeof makeCard>[] }
+> = {
+  manufacturers: {
+    heading: "Manufacturers We Work With",
+    subheading: "Manufacturers, suppliers, and brands we install and service.",
+    items: ["Clayton Homes", "Cavco Industries", "Champion Homes", "Fleetwood", "TRU Homes"].map(makeCard),
+  },
+  certifications: {
+    heading: "Our Certifications",
+    subheading: "Credentials that set us apart.",
+    items: ["Veteran-Owned Business", "SDVOSB Certified", "SBA Certified", "Fully Insured", "Licensed & Bonded"].map(makeCard),
+  },
+};
 
 // ── Preset titles per section type ────────────────────────────────────────────
 
@@ -139,6 +165,44 @@ export function LogoSectionInspector({ content, sectionType, onChange }: Props) 
         </div>
       </div>
 
+      {/* ── Mode Presets (featured-clients only) ─────────────────────────── */}
+      {sectionType === "featured-clients" && isLogoMode && (
+        <div>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+            Quick Fill
+          </p>
+          <div className="grid grid-cols-3 gap-1">
+            {(["generic", "manufacturers", "certifications"] as const).map(mode => (
+              <ToggleBtn
+                key={mode}
+                active={content.sectionMode === mode || (mode === "generic" && !content.sectionMode)}
+                onClick={() => {
+                  if (mode === "generic") {
+                    onChange({ sectionMode: "generic" });
+                  } else {
+                    const preset = MODE_PRESETS[mode];
+                    onChange({
+                      sectionMode: mode,
+                      heading: preset.heading,
+                      subheading: preset.subheading,
+                      items: preset.items,
+                      displayMode: "logo",
+                    });
+                  }
+                }}
+              >
+                {mode === "generic" ? "Generic" : mode === "manufacturers" ? "Manufacturers" : "Certifications"}
+              </ToggleBtn>
+            ))}
+          </div>
+          {content.sectionMode && content.sectionMode !== "generic" && (
+            <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+              Preset loaded — click any logo cell to add an image.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ── Logo-specific controls (only in logo mode) ────────────────────── */}
       {isLogoMode && (
         <>
@@ -171,6 +235,11 @@ export function LogoSectionInspector({ content, sectionType, onChange }: Props) 
                   key:   "normalizePadding" as const,
                   label: "Normalize Logo Padding",
                   desc:  "Adds equal CSS padding around every logo so mixed-whitespace sets look balanced",
+                },
+                {
+                  key:   "opticalSizing" as const,
+                  label: "Optical Sizing",
+                  desc:  "Scales each logo so its visible artwork appears the same height — ignores whitespace in the source image",
                 },
                 {
                   key:   "roundedCorners" as const,

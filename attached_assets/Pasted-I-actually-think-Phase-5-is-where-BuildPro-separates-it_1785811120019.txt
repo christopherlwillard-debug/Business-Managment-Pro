@@ -1,0 +1,591 @@
+I actually think Phase 5 is where BuildPro separates itself from Wix, Squarespace, GoDaddy, and WordPress.
+
+They give you a website builder.
+
+BuildPro should become a Website Builder + Marketing Agency + AI Designer.
+
+I wouldn't call it simply "AI Website Generation." I'd call it:
+
+Phase 5 — AI Website Studio
+
+What & Why
+
+Most contractors don't know what makes a good website. They know how to build houses, pave driveways, install HVAC systems, or finish manufactured homes—not how to design high-converting websites.
+
+Phase 5 transforms Website Studio into an AI-powered website designer. Instead of starting with a blank canvas, the AI assembles a complete website using the existing Theme System (Phase 3) and Premium Component Library (Phase 4).
+
+Golden Rule: AI never creates custom HTML or new components. It only assembles, configures, and styles the components that already exist in Website Studio.
+
+M1 — AI Website Wizard
+
+Instead of:
+
+New Website
+
+The user sees:
+
+Let's build your website.
+
+Questions include:
+
+Business Name
+
+Business Type
+
+Service Area
+
+Phone
+
+Email
+
+Website Goal
+
+Commercial or Residential?
+
+Veteran Owned?
+
+Years in Business?
+
+Manufacturers
+
+Payment Options
+
+Services Offered
+
+Photos Available?
+
+Existing Logo?
+
+Social Media
+
+Google Business Profile
+
+Preferred Style
+
+After clicking Generate Website, AI assembles an entire website.
+
+M2 — Smart Business Profile
+
+The AI should already know much of this from BuildPro.
+
+Instead of asking again, pre-fill from:
+
+Business Settings
+Website Settings
+CRM
+Service Catalog
+Coverage Map
+Business Profile
+Logo
+Theme
+Contact Information
+Working Hours
+Social Accounts
+
+The user only confirms.
+
+M3 — Industry Intelligence
+
+Instead of generic websites...
+
+AI understands industries.
+
+Manufactured Home Contractor
+
+Gets:
+
+Hero
+
+Services
+
+Dealer Logos
+
+Coverage Map
+
+Before & After
+
+Warranty
+
+Quote Form
+
+Footer
+
+HVAC
+
+Gets:
+
+Emergency Service
+
+Maintenance Plans
+
+Financing
+
+Heating
+
+Cooling
+
+Etc.
+
+Roofing gets roofing sections.
+
+Plumbing gets plumbing sections.
+
+No blank pages.
+
+M4 — AI Copywriter
+
+Generate:
+
+Hero headlines
+
+Subheadings
+
+Service descriptions
+
+About Us
+
+Why Choose Us
+
+FAQs
+
+Footer copy
+
+CTA buttons
+
+SEO descriptions
+
+Meta titles
+
+Image alt text
+
+Google snippets
+
+Everything editable afterward.
+
+M5 — AI Image Suggestions
+
+Using the business type...
+
+Suggest images.
+
+Example:
+
+Manufactured Homes
+
+Interior trim
+
+Marriage line
+
+LVP flooring
+
+Decks
+
+Underpinning
+
+Punch list
+
+Service trucks
+
+Dealer partnerships
+
+Not stock office people.
+
+The user simply clicks:
+
+Replace Image
+
+Suggested images appear.
+
+M6 — AI Layout Assistant
+
+Instead of manually designing...
+
+AI recommends:
+
+Hero height
+
+Spacing
+
+Gallery layout
+
+Card style
+
+Footer layout
+
+Contact layout
+
+Service arrangement
+
+Coverage map placement
+
+Trust badge placement
+
+Everything built using existing components.
+
+M7 — AI Color Assistant
+
+Using logo colors...
+
+Suggest:
+
+Theme
+
+Accent
+
+Button colors
+
+Backgrounds
+
+Hover colors
+
+Trust colors
+
+Automatically.
+
+M8 — AI Content Improver
+
+Highlight text.
+
+Click
+
+Improve
+
+Options:
+
+Professional
+
+Luxury
+
+Friendly
+
+Commercial
+
+SEO Optimized
+
+Veteran
+
+Simple
+
+Sales Focused
+
+Shorter
+
+Longer
+
+M9 — AI Photo Optimizer
+
+Using uploaded photos.
+
+Automatically:
+
+Crop
+
+Straighten
+
+Brighten
+
+Compress
+
+Remove backgrounds
+
+Improve lighting
+
+Create thumbnails
+
+Generate WebP versions
+
+Do not overwrite originals.
+
+M10 — AI SEO Builder
+
+Automatically generates:
+
+Meta Titles
+
+Descriptions
+
+Keywords
+
+OpenGraph
+
+Twitter cards
+
+Schema
+
+Local Business Schema
+
+FAQ Schema
+
+Breadcrumbs
+
+Alt text
+
+Sitemap
+
+robots.txt
+
+M11 — AI Landing Pages
+
+Generate:
+
+Spring Promotion
+
+Winter Specials
+
+Financing
+
+Veteran Discount
+
+Dealer Program
+
+Employment
+
+Referral Program
+
+Emergency Service
+
+Only using existing components.
+
+M12 — AI Section Builder
+
+Instead of adding blank sections.
+
+User types:
+
+"I need a financing section."
+
+AI builds it.
+
+Using:
+
+Cards
+
+Icons
+
+Buttons
+
+Headings
+
+Existing components only.
+
+M13 — AI Homepage Score
+
+A scorecard.
+
+Example:
+
+Website Score
+
+91/100
+
+Suggestions:
+
+Missing CTA
+
+No Testimonials
+
+Few Photos
+
+No Trust Badges
+
+Weak Footer
+
+Hero Too Small
+
+Coverage Map Missing
+
+Too Many Colors
+
+Etc.
+
+M14 — AI Accessibility
+
+Automatically checks:
+
+Contrast
+
+Alt text
+
+Heading order
+
+Keyboard navigation
+
+Button labels
+
+Missing links
+
+ARIA
+
+M15 — AI Performance
+
+Analyze:
+
+Image size
+
+Animations
+
+Fonts
+
+Unused components
+
+Large videos
+
+Lazy loading
+
+Page speed
+
+Give recommendations.
+
+M16 — AI Marketing Assistant
+
+Knows the business.
+
+Can generate:
+
+Facebook posts
+
+Google posts
+
+Blog posts
+
+Newsletter
+
+Flyers
+
+Door hangers
+
+Business cards
+
+Estimate follow-ups
+
+Review requests
+
+All branded.
+
+M17 — AI Dealer Pages
+
+For businesses like yours.
+
+Automatically generate pages for:
+
+Clayton Homes
+
+Cavco
+
+Champion
+
+Fleetwood
+
+TRU
+
+Carpet One
+
+Dealer Programs
+
+Each page already uses your template.
+
+M18 — AI Website Refresh
+
+Once every 6 months.
+
+AI scans the website.
+
+Suggests:
+
+Better Hero
+
+New Photos
+
+Modern Layout
+
+Updated Copy
+
+SEO Improvements
+
+New Services
+
+Nothing changes automatically.
+
+The owner approves.
+
+M19 — AI Template Builder
+
+This is huge.
+
+Instead of manually designing templates...
+
+AI creates new templates using the component library.
+
+Example:
+
+"Create a luxury roofing website."
+
+It assembles:
+
+Hero
+
+Services
+
+Gallery
+
+Footer
+
+Contact
+
+Theme
+
+Using existing components.
+
+No custom code.
+
+M20 — AI Website Generator
+
+One click.
+
+Business Profile →
+
+Website.
+
+BuildPro knows:
+
+Logo
+
+Phone
+
+Hours
+
+Services
+
+Coverage
+
+CRM
+
+Manufacturers
+
+Colors
+
+Veteran Status
+
+Licenses
+
+Photos
+
+Reviews
+
+The AI builds an entire website in under a minute.
+
+BuildPro's Competitive Advantage
+
+The real differentiator isn't AI by itself—it's that AI has access to the business data BuildPro already manages. That means it can generate a website that is accurate and personalized without asking the user to re-enter information.
+
+Golden Rules
+
+Never generate raw HTML or CSS.
+Never create one-off components.
+Always use the existing Website Studio component library.
+Always use the existing Theme system.
+Every AI-generated website remains fully editable in Website Studio.
+Any AI-generated content is a starting point that the user can review, edit, or replace.
+Reuse existing business data from BuildPro wherever possible instead of asking for information twice.
+
+This approach keeps the system maintainable while making the AI feel like an experienced web designer that already understands the contractor's business.

@@ -27,6 +27,10 @@ export interface FeaturedClientsContent {
   showHoverEffect?: boolean;
   grayscaleUntilHover?: boolean;
   roundedCorners?: boolean;
+  /** Scale each logo so its visible artwork height ≈ logoMaxHeight */
+  opticalSizing?: boolean;
+  /** Last applied quick-fill preset */
+  sectionMode?: "generic" | "manufacturers" | "certifications";
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -96,7 +100,7 @@ function createNewCard(): CardComponent {
 
 function SortableCard({
   card, settings, isEditing, selected, displayMode,
-  logoMaxHeight, normalizePadding, showHoverEffect, grayscaleUntilHover, roundedCorners,
+  logoMaxHeight, normalizePadding, showHoverEffect, grayscaleUntilHover, roundedCorners, opticalSizing,
   onSelect, onDuplicate, onDelete, onToggleHide, onUpdateCard, onOpenMediaLibrary,
 }: {
   card: CardComponent;
@@ -109,6 +113,7 @@ function SortableCard({
   showHoverEffect: boolean;
   grayscaleUntilHover: boolean;
   roundedCorners: boolean;
+  opticalSizing: boolean;
   onSelect: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -148,6 +153,7 @@ function SortableCard({
           showHoverEffect={showHoverEffect}
           grayscaleUntilHover={grayscaleUntilHover}
           roundedCorners={roundedCorners}
+          opticalSizing={opticalSizing}
           isEditing={isEditing}
           selected={selected}
           onSelect={onSelect}
@@ -191,6 +197,7 @@ export function FeaturedClientsSection({
   const hoverFx       = content.showHoverEffect ?? false;
   const grayscale     = content.grayscaleUntilHover ?? false;
   const rounded       = content.roundedCorners ?? false;
+  const opticalSizing = content.opticalSizing ?? false;
 
   // Determine effective column count
   const cols: number = content.columns
@@ -267,6 +274,7 @@ export function FeaturedClientsSection({
                   showHoverEffect={hoverFx}
                   grayscaleUntilHover={grayscale}
                   roundedCorners={rounded}
+                  opticalSizing={opticalSizing}
                   onSelect={() => onSelectCard?.(card.id)}
                   onDuplicate={() => {
                     const duped = { ...card, id: uid() };
