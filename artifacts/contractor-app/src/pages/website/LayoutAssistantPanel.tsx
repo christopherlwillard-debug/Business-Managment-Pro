@@ -42,6 +42,10 @@ export function LayoutAssistantPanel({ isOpen, onClose, bizId, sections, busines
   if (!isOpen) return null;
 
   async function analyze() {
+    if (!sections || sections.length === 0) {
+      setError("Add some sections to your page first, then run Analyze Layout.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setSuggestions([]);
@@ -51,9 +55,13 @@ export function LayoutAssistantPanel({ isOpen, onClose, bizId, sections, busines
       const res = await fetch(`${BASE}/api/website/suggest-layout?businessId=${bizId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ sections, businessName }),
       });
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: `Server error ${res.status}` }));
+        throw new Error((body as any).error ?? `Server error ${res.status}`);
+      }
       const data = await res.json() as { suggestions: LayoutSuggestion[] };
       setSuggestions(data.suggestions ?? []);
       if (data.suggestions.length === 0) setError("No suggestions — your layout looks good!");

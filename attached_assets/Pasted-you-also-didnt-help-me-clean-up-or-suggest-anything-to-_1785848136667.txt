@@ -1,0 +1,541 @@
+you also didnt help me clean up or suggest anything to fix issues with my builder 
+
+Looking at your screenshots, I actually think you're much closer than you realize. The biggest weakness isn't the components—it's the editing experience. You have a lot of powerful functionality, but it's buried in side panels and settings instead of feeling direct and visual.
+
+Since I know your philosophy is "use what already exists; don't rebuild if we don't have to," here's what I would change before adding anything else.
+
+1. The biggest problem: Too many places to edit the same thing
+
+Right now I see:
+
+Left panel (Site Structure)
+Floating toolbar
+Right properties panel
+Theme page
+Header editor
+Section settings
+AI buttons
+
+A new user has no idea where they're supposed to click.
+
+I'd simplify it to this:
+Left = Structure
+
+Only manages:
+
+Pages
+Sections
+Search
+Add Section
+
+Nothing else.
+
+Center = Canvas
+
+Everything should be editable here.
+
+Click text → edit text.
+
+Click image → replace image.
+
+Click logo → resize handles appear.
+
+Click button → edit button.
+
+Exactly where you're looking.
+
+Right = Inspector
+
+Only shows settings for the selected item.
+
+Nothing global unless nothing is selected.
+
+2. Get rid of hidden settings
+
+For example, your header.
+
+Today:
+
+Click header
+
+↓
+
+Open settings
+
+↓
+
+Visibility
+
+↓
+
+Logo Size
+
+↓
+
+Phone
+
+↓
+
+etc.
+
+Instead...
+
+Click logo.
+
+Resize handles appear.
+
+Drag bigger.
+
+Done.
+
+No hunting through menus.
+
+3. Every image should behave the same
+
+Right now different sections treat images differently.
+
+They shouldn't.
+
+Every image should support:
+
+Drag to reposition
+Resize
+Crop
+Replace
+Border radius
+Shadow
+Opacity
+Overlay
+Aspect ratio
+Object fit
+
+One image editor.
+
+Everywhere.
+
+4. Logo Grid needs work
+
+I actually noticed this immediately.
+
+Carpet One
+
+Clayton
+
+Cavco
+
+all have different visual sizes.
+
+The cards are equal.
+
+The logos aren't.
+
+Instead I'd have:
+
+Logo Box
+
+Padding
+
+Logo Scale
+
+Fit Mode
+
+Max Width
+
+Max Height
+
+Normalize White Space
+
+Per logo.
+
+Not one size for every logo.
+
+Some logos are naturally tall.
+
+Some are wide.
+
+5. Header needs rebuilt (without rebuilding)
+
+You already have Header.
+
+I'd extend it.
+
+Instead of
+
+Logo Size
+
+Phone
+
+CTA
+
+I'd expose:
+
+Header Height
+
+Logo Width
+
+Logo Height
+
+Logo Max Height
+
+Navigation Alignment
+
+Navigation Gap
+
+Button Width
+
+Button Style
+
+Sticky
+
+Transparent
+
+Shadow
+
+Top Bar
+
+Bottom Border
+
+Announcement Bar
+
+Same component.
+
+Far more control.
+
+6. Footer
+
+I actually think your footer needs the most work.
+
+Right now it feels like one giant component.
+
+Instead I'd break it into blocks.
+
+Footer
+
+Logo Block
+
+Contact Block
+
+Links Block
+
+Social Block
+
+Hours Block
+
+Badges Block
+
+Copyright Block
+
+Legal Block
+
+Then let users:
+
+Hide
+
+Move
+
+Duplicate
+
+Delete
+
+Reorder
+
+No rebuilding.
+
+Just blocks.
+
+7. Coverage Map
+
+You already have the hardest part working.
+
+I'd add three display modes.
+
+USA
+
+Current
+
+Selected States
+
+Only shows
+
+Kentucky
+
+Indiana
+
+Illinois
+
+Centered.
+
+Much larger.
+
+Service Radius
+
+Future.
+
+Draw radius around business.
+
+Also...
+
+Remove Alaska/Hawaii unless selected.
+
+That border immediately caught my eye too.
+
+8. Typography
+
+This is probably missing.
+
+Every text should allow
+
+Font
+
+Weight
+
+Transform
+
+Letter spacing
+
+Line height
+
+Color
+
+Alignment
+
+Width
+
+Max width
+
+Animation
+
+Without opening Theme.
+
+9. Spacing
+
+Right now spacing feels technical.
+
+I'd make it visual.
+
+Hover between sections.
+
+A spacing handle appears.
+
+Drag.
+
+Done.
+
+Exactly like Webflow.
+
+10. Drag and drop everywhere
+
+This is the biggest improvement I'd make.
+
+Not just sections.
+
+Everything.
+
+Drag
+
+Cards
+
+Images
+
+Buttons
+
+Columns
+
+Text
+
+Logos
+
+Trust badges
+
+Icons
+
+Gallery items
+
+Footer blocks
+
+Header items
+
+11. Quick Actions
+
+Right click any object.
+
+Duplicate
+
+Move Up
+
+Move Down
+
+Hide
+
+Replace
+
+Ask AI
+
+Copy Style
+
+Paste Style
+
+Delete
+
+No hunting.
+
+12. Better Empty States
+
+Instead of
+
+Add Logo
+
+Show
+
+Drop Logo
+
+Browse
+
+Media Library
+
+Manufacturer Library
+
+AI Suggest
+
+Much more inviting.
+
+13. Section Templates
+
+Your builder already has sections.
+
+I would make every section swappable.
+
+Example
+
+Services
+
+↓
+
+Replace Layout
+
+Cards
+
+Horizontal
+
+Minimal
+
+Icons
+
+Premium
+
+Luxury
+
+Patriotic
+
+Without deleting data.
+
+14. Component Consistency
+
+One thing I noticed...
+
+Some components use:
+
+Visibility toggle
+
+Some use eye icon.
+
+Some use switch.
+
+Some use checkbox.
+
+Standardize them.
+
+Users subconsciously notice inconsistency.
+
+15. Canvas Controls
+
+I'd make the floating toolbar universal.
+
+Whenever anything is selected.
+
+Move
+
+Duplicate
+
+Hide
+
+Delete
+
+Bring Forward
+
+Send Back
+
+Ask AI
+
+Copy Style
+
+Never change location.
+
+Always available.
+
+16. Theme vs Component
+
+This is a confusion point.
+
+Ask yourself:
+
+Does this affect one thing or everything?
+
+If one thing...
+
+Component.
+
+If everything...
+
+Theme.
+
+Users shouldn't have to wonder where a setting lives.
+
+17. The one feature I think BuildPro is missing
+
+I think this is the biggest missing piece.
+
+Design Tokens Inspector
+
+Imagine selecting a button.
+
+Instead of showing
+
+Background
+
+Border
+
+Padding
+
+Radius
+
+Font
+
+
+It says
+
+Primary Button
+
+Using Theme Style
+
+
+You can then choose:
+
+Keep linked to theme
+Customize only this button
+
+That's how professional builders work. You keep consistency by default but can intentionally override when needed.
+
+My priority list before Phase 5 AI
+
+If I were prioritizing the Website Studio itself, I'd do it in this order:
+
+Direct canvas editing (drag, resize, inline editing) so users spend less time in side panels.
+Consistent image and logo controls across every component, with per-image sizing and normalization.
+Modular header and footer builders where each block can be reordered, hidden, or duplicated.
+Visual spacing and alignment tools with drag handles and snap guides.
+Component swapping (change a Services section from cards to icons without rebuilding it).
+Property consistency so every component exposes sizing, typography, spacing, and visibility in the same way.
+Then add the AI Website Builder to automate those same actions.
+
+That sequence follows your "don't rebuild what's already there" rule. You're not replacing your Website Studio—you'd be making the existing editor feel dramatically more powerful and intuitive by exposing the capabilities you already have in a much more visual way.

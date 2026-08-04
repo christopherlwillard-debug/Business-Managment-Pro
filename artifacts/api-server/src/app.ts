@@ -29,4 +29,16 @@ app.use(authMiddleware);
 
 app.use("/api", router);
 
+// ── Global JSON error handler ──────────────────────────────────────────────────
+// Catches any error passed to next(err) by wrapAsync and returns structured JSON
+// instead of Express's default HTML error page. Must be registered last.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: unknown, _req: import("express").Request, res: import("express").Response, _next: import("express").NextFunction) => {
+  const message = err instanceof Error ? err.message : "Internal server error";
+  const status = typeof (err as any)?.status === "number" ? (err as any).status : 500;
+  if (!res.headersSent) {
+    res.status(status).json({ error: message });
+  }
+});
+
 export default app;

@@ -4453,20 +4453,25 @@ router.post("/refresh-analysis", wrapAsync(async (req, res) => {
     lastRefreshedAt ?? null,
   );
 
-  const completion = await openai.chat.completions.create({
-    model: BUILDPRO_AI_MINI_MODEL,
-    messages: [
-      {
-        role: "system",
-        content: "You are a professional web strategist. Return ONLY valid JSON array (no markdown, no fences). Each suggestion must include all required fields.",
-      },
-      { role: "user", content: prompt },
-    ],
-    max_tokens: 1500,
-    temperature: 0.7,
-  });
+  let raw = "[]";
+  try {
+    const completion = await openai.chat.completions.create({
+      model: BUILDPRO_AI_MINI_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: "You are a professional web strategist. Return ONLY valid JSON array (no markdown, no fences). Each suggestion must include all required fields.",
+        },
+        { role: "user", content: prompt },
+      ],
+      max_completion_tokens: 1500,
+    });
+    raw = completion.choices[0]?.message?.content?.trim() ?? "[]";
+  } catch (aiErr) {
+    const msg = aiErr instanceof Error ? aiErr.message : "AI service unavailable";
+    return res.status(502).json({ error: `Analysis failed: ${msg}` });
+  }
 
-  const raw = completion.choices[0]?.message?.content?.trim() ?? "[]";
   let suggestions: RefreshSuggestion[] = [];
   try {
     const parsed = JSON.parse(raw);
