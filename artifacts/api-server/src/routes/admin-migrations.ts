@@ -1530,6 +1530,22 @@ router.post("/fix-owner-draw-dates", async (req: Request, res: Response): Promis
   }
 });
 
+// Add M9 Photo Optimizer columns to website_media table.
+// Safe to run multiple times — uses IF NOT EXISTS DDL.
+router.post("/add-website-media-optimizer-columns", async (_req: Request, res: Response) => {
+  try {
+    await db.execute(sql`
+      ALTER TABLE website_media
+        ADD COLUMN IF NOT EXISTS webp_object_path VARCHAR(512),
+        ADD COLUMN IF NOT EXISTS thumbnail_object_path VARCHAR(512),
+        ADD COLUMN IF NOT EXISTS display_object_path VARCHAR(512),
+        ADD COLUMN IF NOT EXISTS optimized BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+    res.json({ ok: true, message: "website_media optimizer columns ensured (webp_object_path, thumbnail_object_path, display_object_path, optimized)" });
+  } catch (err) {
+    console.error("[admin/migrations] add-website-media-optimizer-columns failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;
-
-

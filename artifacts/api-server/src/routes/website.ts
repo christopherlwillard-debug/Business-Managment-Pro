@@ -10,6 +10,7 @@ import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { getSuggestedImages } from "../lib/industryImageKeywords";
+import { createMediaVariants, applyEnhancements, type EnhancementOptions } from "../lib/imageProcessor";
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 
@@ -1986,6 +1987,37 @@ router.post("/media/upload", mediaUpload.single("file"), wrapAsync(async (req, r
     .values({ businessId, filename: originalname, objectPath, url, size: size ?? 0, folderId: folderId ?? null })
     .returning();
   res.json(item);
+
+  // ── Background variant generation ──────────────────────────────────────────
+  // Runs after the response is sent so the upload feels instant.
+  // Only processes image/* uploads; skips SVGs (no useful WebP conversion).
+  if (mimetype.startsWith("image/") && mimetype !== "image/svg+xml") {
+    const capturedBuffer = Buffer.from(buffer);
+    const capturedId = item.id;
+    const capturedUuid = uuid;
+    setImmediate(async () => {
+      try {
+        const { webpBuffer, thumbBuffer, displayBuffer } = await createMediaVariants(capturedBuffer);
+        const [webpPath, thumbPath, displayPath] = await Promise.all([
+          objectStorageService.uploadBufferWithFilename(
+            webpBuffer, "image/webp", "uploads/website-media-webp", `${capturedUuid}.webp`,
+          ),
+          objectStorageService.uploadBufferWithFilename(
+            thumbBuffer, "image/webp", "uploads/website-media-thumb", `${capturedUuid}.webp`,
+          ),
+          objectStorageService.uploadBufferWithFilename(
+            displayBuffer, "image/webp", "uploads/website-media-display", `${capturedUuid}.webp`,
+          ),
+        ]);
+        await db.update(websiteMediaTable)
+          .set({ webpObjectPath: webpPath, thumbnailObjectPath: thumbPath, displayObjectPath: displayPath, optimized: true })
+          .where(eq(websiteMediaTable.id, capturedId));
+      } catch (err) {
+        // Non-fatal — original is always available; variants are a best-effort enhancement.
+        console.error("[media-variants] Processing failed for", capturedUuid, err);
+      }
+    });
+  }
 }));
 
 router.post("/media", wrapAsync(async (req, res) => {
@@ -2039,6 +2071,95 @@ router.patch("/media/:id", wrapAsync(async (req, res) => {
     .returning();
   if (!updated) return res.status(404).json({ error: "Not found" });
   res.json(updated);
+}));
+
+// ── Enhance image — apply processing to create a derived image record ─────────
+//
+// POST /media/:id/enhance
+// Body: { businessId, enhancements: { brighten?, straighten?, crop?, removeBackground? } }
+// Returns: new WebsiteMedia record (original record is NEVER modified)
+//
+// Processing pipeline:
+//   1. Download original buffer from object storage
+//   2. Apply enhancements (straighten / brighten / crop) via sharp
+//   3. Upload enhanced JPEG as a new media object
+//   4. Generate WebP + thumbnail + display variants in background
+//   5. Insert a new DB record — original row is untouched
+//
+// The name of the derived file includes "_enhanced" so it is visually distinct
+// in the media library. The original is shown with an "Original" label alongside.
+
+router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  const id = parseInt(req.params.id as string);
+  if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
+
+  const { enhancements = {} } = req.body as { enhancements?: EnhancementOptions };
+
+  // Validate at least one enhancement is requested
+  if (!enhancements.brighten && !enhancements.straighten && !enhancements.crop) {
+    return res.status(400).json({ error: "No enhancements specified" });
+  }
+
+  // Load the source media record
+  const [item] = await db.select().from(websiteMediaTable)
+    .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
+  if (!item) return res.status(404).json({ error: "Media not found" });
+
+  // Download original buffer
+  const objectFile = await objectStorageService.getObjectEntityFile(item.objectPath);
+  const response   = await objectStorageService.downloadObject(objectFile);
+  const arrayBuf   = await response.arrayBuffer();
+  const sourceBuffer = Buffer.from(arrayBuf);
+
+  // Apply enhancements
+  const enhancedBuffer = await applyEnhancements(sourceBuffer, enhancements);
+
+  // Upload enhanced image — stored as WebP (applyEnhancements always returns WebP)
+  const baseFilename = item.filename.replace(/\.[^.]+$/, "");
+  const enhancedFilename = `${baseFilename}_enhanced.webp`;
+  const enhancedPath = await objectStorageService.uploadBufferWithFilename(
+    enhancedBuffer, "image/webp", "uploads/website-media", enhancedFilename,
+  );
+  const enhancedUuid = enhancedPath.split("/").pop()!;
+  const enhancedUrl  = `${BASE_URL}/api/public/site/media-image/${enhancedUuid}`;
+
+  const [newItem] = await db.insert(websiteMediaTable).values({
+    businessId,
+    filename:  enhancedFilename,
+    objectPath: enhancedPath,
+    url: enhancedUrl,
+    size: enhancedBuffer.length,
+    folderId: item.folderId ?? null,
+    displayName: `${item.displayName ?? baseFilename} (enhanced)`,
+  }).returning();
+
+  res.json(newItem);
+
+  // Background: generate WebP + thumbnail + display variants for the enhanced image too
+  const capturedId   = newItem.id;
+  const capturedUuid = enhancedUuid;
+  setImmediate(async () => {
+    try {
+      const { webpBuffer, thumbBuffer, displayBuffer } = await createMediaVariants(enhancedBuffer);
+      const [webpPath, thumbPath, displayPath] = await Promise.all([
+        objectStorageService.uploadBufferWithFilename(
+          webpBuffer, "image/webp", "uploads/website-media-webp", `${capturedUuid}.webp`,
+        ),
+        objectStorageService.uploadBufferWithFilename(
+          thumbBuffer, "image/webp", "uploads/website-media-thumb", `${capturedUuid}.webp`,
+        ),
+        objectStorageService.uploadBufferWithFilename(
+          displayBuffer, "image/webp", "uploads/website-media-display", `${capturedUuid}.webp`,
+        ),
+      ]);
+      await db.update(websiteMediaTable)
+        .set({ webpObjectPath: webpPath, thumbnailObjectPath: thumbPath, displayObjectPath: displayPath, optimized: true })
+        .where(eq(websiteMediaTable.id, capturedId));
+    } catch (err) {
+      console.error("[media-enhance-variants]", capturedUuid, err);
+    }
+  });
 }));
 
 // ── Media replace-everywhere ────────────────────────────────────────────────
@@ -2253,16 +2374,52 @@ router.delete("/media/folders/:folderId", wrapAsync(async (req, res) => {
 }));
 
 publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
-  const { uuid } = req.params;
-  // Serve directly from storage — no DB presence required so that deleting an
-  // image from the media library (which removes the DB row but NOT the object)
-  // does not break pages that still reference this URL.
-  const objectPath = `/objects/uploads/website-media/${uuid}`;
+  const { uuid } = req.params as { uuid: string };
+  // The original image is always served from a deterministic path derived from
+  // the uuid, with no DB query, so that deleted media records don't break
+  // published pages that still reference the URL.
+  //
+  // WebP content negotiation: when the browser sends Accept: image/webp, we
+  // look up the DB record by objectPath to find the actual webpObjectPath
+  // (which uses a different random UUID from the original upload). If a WebP
+  // variant exists, serve it; otherwise fall through to the original.
+  const originalObjectPath = `/objects/uploads/website-media/${uuid}`;
+  const acceptsWebP = (req.headers.accept ?? "").includes("image/webp");
+
+  if (acceptsWebP) {
+    try {
+      const [row] = await db
+        .select({ webpObjectPath: websiteMediaTable.webpObjectPath })
+        .from(websiteMediaTable)
+        .where(eq(websiteMediaTable.objectPath, originalObjectPath))
+        .limit(1);
+
+      if (row?.webpObjectPath) {
+        const objectFile = await objectStorageService.getObjectEntityFile(row.webpObjectPath);
+        const response   = await objectStorageService.downloadObject(objectFile);
+        res.status(response.status);
+        response.headers.forEach((value, key) => res.setHeader(key, value));
+        res.setHeader("Content-Type", "image/webp");
+        res.setHeader("Vary", "Accept");
+        if (response.body) {
+          const nodeStream = Readable.fromWeb(response.body as any);
+          nodeStream.pipe(res);
+        } else {
+          res.end();
+        }
+        return;
+      }
+    } catch {
+      // DB unavailable or variant missing — fall through to original
+    }
+  }
+
   try {
-    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-    const response = await objectStorageService.downloadObject(objectFile);
+    const objectFile = await objectStorageService.getObjectEntityFile(originalObjectPath);
+    const response   = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    if (acceptsWebP) res.setHeader("Vary", "Accept");
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);

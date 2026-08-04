@@ -76,6 +76,14 @@ export const websiteMediaTable = pgTable("website_media", {
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   folderId: integer("folder_id").references(() => websiteMediaFoldersTable.id, { onDelete: "set null" }),
   displayName: varchar("display_name", { length: 255 }),
+  /** WebP variant — same resolution, webp format (served to webp-capable browsers). */
+  webpObjectPath: varchar("webp_object_path", { length: 512 }),
+  /** 300×200 thumbnail WebP — used in media library grids. */
+  thumbnailObjectPath: varchar("thumbnail_object_path", { length: 512 }),
+  /** 1200px-wide display WebP — capped at display resolution. */
+  displayObjectPath: varchar("display_object_path", { length: 512 }),
+  /** True once background variant generation is complete. */
+  optimized: boolean("optimized").notNull().default(false),
 });
 
 export type WebsiteMedia = typeof websiteMediaTable.$inferSelect;

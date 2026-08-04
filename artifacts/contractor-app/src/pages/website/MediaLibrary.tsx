@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ImagePlus, Loader2, Trash2, X, Check, Images, Search, LayoutGrid, List,
   Folder, FolderPlus, FolderOpen, Pencil, AlertTriangle, RefreshCw, MapPin,
+  Sparkles, Wand2,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -37,6 +38,10 @@ interface MediaItem {
   size: number;
   uploadedAt: string;
   folderId: number | null;
+  /** True once WebP / thumbnail / display variants have been generated. */
+  optimized?: boolean;
+  /** Path to 300×200 thumbnail variant (for faster grid display). */
+  thumbnailObjectPath?: string | null;
 }
 
 interface MediaFolder {
@@ -626,6 +631,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
           {detailItem && mode === "browse" && (
             <DetailPanel
               item={detailItem}
+              businessId={businessId}
               usageDetails={usageDetails ?? null}
               isLoadingDetails={isLoadingDetails}
               folders={folders}
@@ -641,6 +647,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
               onMoveToFolder={folderId => moveMutation.mutate({ id: detailItem.id, folderId })}
               onDelete={() => deleteMutation.mutate(detailItem.id)}
               onReplace={() => replaceInputRef.current?.click()}
+              onEnhanceDone={() => qc.invalidateQueries({ queryKey: ["website-media", businessId] })}
             />
           )}
         </div>
@@ -776,6 +783,14 @@ function GridItem({ item, usageCount, selected, isActive, isDeleteConfirm, delet
             </div>
           )}
 
+          {item.optimized && (
+            <div className="absolute top-1 left-5 z-10" title="Photo optimized — WebP variant ready">
+              <span className="inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-semibold bg-emerald-500 text-white leading-4">
+                <Sparkles className="w-2 h-2" />Optimized
+              </span>
+            </div>
+          )}
+
           <button
             onClick={e => { e.stopPropagation(); onDeleteRequest(); }}
             className="absolute bottom-1 right-1 z-10 p-0.5 rounded bg-black/50 text-white/70 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -854,6 +869,11 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
 
       <div className="flex items-center gap-1.5 flex-shrink-0">
         <UsageBadge count={usageCount} />
+        {item.optimized && (
+          <span className="inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 leading-4" title="Optimized">
+            <Sparkles className="w-2 h-2" />
+          </span>
+        )}
         {folders.length > 0 && (
           <div onClick={e => e.stopPropagation()}>
             <select
@@ -880,11 +900,12 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
   );
 }
 
-function DetailPanel({ item, usageDetails, isLoadingDetails, folders, replacing,
+function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders, replacing,
   detailRenaming, detailRenameValue, isDeleting,
   onClose, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
-  onMoveToFolder, onDelete, onReplace }: {
+  onMoveToFolder, onDelete, onReplace, onEnhanceDone }: {
   item: MediaItem;
+  businessId: number;
   usageDetails: { locations: UsageLocation[]; total: number } | null;
   isLoadingDetails: boolean;
   folders: MediaFolder[];
@@ -900,7 +921,55 @@ function DetailPanel({ item, usageDetails, isLoadingDetails, folders, replacing,
   onMoveToFolder: (folderId: number | null) => void;
   onDelete: () => void;
   onReplace: () => void;
+  onEnhanceDone: () => void;
 }) {
+  // ── Enhance panel state ────────────────────────────────────────────────────
+  const [showEnhance, setShowEnhance] = useState(false);
+  const [enhBrighten, setEnhBrighten]       = useState(false);
+  const [enhStraighten, setEnhStraighten]   = useState(false);
+  const [enhCrop, setEnhCrop]               = useState<"16:9" | "4:3" | "1:1" | "">("");
+  const [isEnhancing, setIsEnhancing]       = useState(false);
+  const [enhError, setEnhError]             = useState<string | null>(null);
+
+  const hasEnhancement = enhBrighten || enhStraighten || enhCrop !== "";
+
+  async function handleApplyEnhance() {
+    if (!hasEnhancement || isEnhancing) return;
+    setIsEnhancing(true);
+    setEnhError(null);
+    try {
+      const res = await fetch(
+        `${BASE}/api/website/media/${item.id}/enhance?businessId=${businessId}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            enhancements: {
+              brighten:    enhBrighten    || undefined,
+              straighten:  enhStraighten  || undefined,
+              crop:        enhCrop || undefined,
+            },
+          }),
+        },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? "Enhance failed");
+      }
+      // Reset toggles and close panel
+      setEnhBrighten(false);
+      setEnhStraighten(false);
+      setEnhCrop("");
+      setShowEnhance(false);
+      onEnhanceDone();
+    } catch (e) {
+      setEnhError(e instanceof Error ? e.message : "Enhance failed");
+    } finally {
+      setIsEnhancing(false);
+    }
+  }
+
   return (
     <div className="w-52 flex-shrink-0 border-l border-border overflow-y-auto bg-muted/10 flex flex-col">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
@@ -911,8 +980,15 @@ function DetailPanel({ item, usageDetails, isLoadingDetails, folders, replacing,
       </div>
 
       <div className="p-2 border-b border-border/50 flex-shrink-0">
-        <div className="aspect-square rounded-lg overflow-hidden bg-muted border border-border">
+        <div className="aspect-square rounded-lg overflow-hidden bg-muted border border-border relative">
           <img src={item.url} alt={displayLabel(item)} className="w-full h-full object-cover" />
+          {item.optimized && (
+            <div className="absolute bottom-1 right-1">
+              <span className="inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-semibold bg-emerald-500 text-white leading-4">
+                <Sparkles className="w-2 h-2" />Optimized
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -983,10 +1059,81 @@ function DetailPanel({ item, usageDetails, isLoadingDetails, folders, replacing,
             </select>
           </div>
         )}
+
+        {/* ── Enhance panel ────────────────────────────────────────────────── */}
+        {showEnhance && (
+          <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/10 p-2.5 space-y-2">
+            <p className="text-[10px] font-semibold text-purple-700 dark:text-purple-400 flex items-center gap-1">
+              <Wand2 className="w-3 h-3" />Enhance Options
+            </p>
+
+            {/* Toggle: Straighten */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={enhStraighten} onChange={e => setEnhStraighten(e.target.checked)}
+                className="w-3 h-3 rounded border-border accent-purple-600" />
+              <span className="text-[11px] text-foreground">Straighten (fix EXIF rotation)</span>
+            </label>
+
+            {/* Toggle: Brighten */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={enhBrighten} onChange={e => setEnhBrighten(e.target.checked)}
+                className="w-3 h-3 rounded border-border accent-purple-600" />
+              <span className="text-[11px] text-foreground">Auto-Brighten</span>
+            </label>
+
+            {/* Crop ratio */}
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1">Crop to ratio</p>
+              <div className="flex flex-wrap gap-1">
+                {(["", "16:9", "4:3", "1:1"] as const).map(ratio => (
+                  <button key={ratio} type="button"
+                    onClick={() => setEnhCrop(ratio)}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors ${
+                      enhCrop === ratio
+                        ? "bg-purple-600 text-white border-purple-600"
+                        : "border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground"
+                    }`}
+                  >
+                    {ratio === "" ? "None" : ratio}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {enhError && <p className="text-[10px] text-destructive">{enhError}</p>}
+
+            <div className="flex gap-1.5 pt-0.5">
+              <button
+                type="button"
+                onClick={handleApplyEnhance}
+                disabled={!hasEnhancement || isEnhancing}
+                className="flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-md px-2 py-1.5 transition-colors disabled:opacity-50"
+              >
+                {isEnhancing
+                  ? <><Loader2 className="w-3 h-3 animate-spin" />Applying…</>
+                  : <><Sparkles className="w-3 h-3" />Apply</>}
+              </button>
+              <button type="button" onClick={() => setShowEnhance(false)}
+                className="px-2 py-1.5 rounded-md text-[11px] text-muted-foreground hover:text-foreground border border-border transition-colors">
+                Cancel
+              </button>
+            </div>
+            <p className="text-[9px] text-muted-foreground leading-tight">
+              Creates a new enhanced copy — original is preserved.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Actions */}
       <div className="p-3 border-t border-border space-y-2 flex-shrink-0">
+        {!showEnhance && (
+          <button onClick={() => { setShowEnhance(true); setEnhError(null); }}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors">
+            <Wand2 className="w-3 h-3" />
+            Enhance ✨
+          </button>
+        )}
         <button onClick={onReplace} disabled={replacing}
           className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-muted transition-colors disabled:opacity-60">
           {replacing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
