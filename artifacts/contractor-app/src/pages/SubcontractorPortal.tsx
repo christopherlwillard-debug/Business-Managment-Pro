@@ -1873,6 +1873,91 @@ function ExpensesTab({ token, jobs }: { token: string; jobs: any[] }) {
 }
 
 // ─── Mileage Tab ─────────────────────────────────────────────────────────────
+// ── Lightweight CSV parser for portal mileage import ────────────────────────
+function parsePortalMileageCsv(text: string): Array<{
+  date: string; miles: number; startLocation: string; endLocation: string;
+  classification: string; notes: string;
+}> {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+
+  // Parse a single CSV line, handling quoted fields
+  function parseLine(line: string): string[] {
+    const cols: string[] = [];
+    let cur = "";
+    let inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQuote = !inQuote; }
+      else if (ch === "," && !inQuote) { cols.push(cur.trim()); cur = ""; }
+      else { cur += ch; }
+    }
+    cols.push(cur.trim());
+    return cols;
+  }
+
+  const headers = parseLine(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ""));
+  const idx = (candidates: string[]) => {
+    for (const c of candidates) {
+      const i = headers.findIndex(h => h.includes(c));
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+
+  // Detect format by header content
+  const iDateIdx  = idx(["date"]);
+  const iMilesIdx = idx(["miles", "distance", "distancemi"]);
+  const iDestIdx  = idx(["destination", "dest"]);
+  const iStartIdx = idx(["start", "from", "startaddress"]);
+  const iEndIdx   = idx(["end", "to", "endaddress"]);
+  const iClsIdx   = idx(["classification", "business", "type"]);
+  const iNotesIdx = idx(["notes", "purpose", "businesspurpose"]);
+
+  if (iDateIdx < 0 || iMilesIdx < 0) return [];
+
+  const trips: ReturnType<typeof parsePortalMileageCsv> = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseLine(lines[i]);
+    const rawDate  = cols[iDateIdx]?.trim() ?? "";
+    const rawMiles = parseFloat((cols[iMilesIdx] ?? "").replace(/[^0-9.]/g, ""));
+    if (!rawDate || isNaN(rawMiles) || rawMiles <= 0) continue;
+
+    // Normalize date to YYYY-MM-DD
+    let date = rawDate;
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) {
+      const [m, d, y] = date.split("/");
+      date = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    } else if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(date)) {
+      const [m, d, y] = date.split("-");
+      date = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    }
+
+    // Format A (Destination column) vs Format B (Start + End columns)
+    let startLocation = "";
+    let endLocation   = "";
+    if (iDestIdx >= 0) {
+      endLocation = cols[iDestIdx]?.trim() ?? "";
+    } else {
+      startLocation = iStartIdx >= 0 ? (cols[iStartIdx]?.trim() ?? "") : "";
+      endLocation   = iEndIdx   >= 0 ? (cols[iEndIdx]?.trim()   ?? "") : "";
+    }
+
+    // Classification — MileIQ "Business" column is "1"/"Yes"/"Business"; default business
+    let classification = "business";
+    if (iClsIdx >= 0) {
+      const raw = (cols[iClsIdx] ?? "").toLowerCase().trim();
+      if (raw === "personal" || raw === "0" || raw === "no") classification = "personal";
+    }
+
+    const notes = iNotesIdx >= 0 ? (cols[iNotesIdx]?.trim() ?? "") : "";
+    trips.push({ date, miles: rawMiles, startLocation, endLocation, classification, notes });
+  }
+
+  return trips;
+}
+
 function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; ratePerMile: number }) {
   const qc = useQueryClient();
   const { data: logs = [] } = useQuery({
@@ -1892,6 +1977,57 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
     setForm({ date: today, miles: "", startLocation: "", endLocation: "", purpose: "", classification: "business", jobId: "" });
     setFormError("");
   };
+
+  // ── CSV import state ──────────────────────────────────────────────────────
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [csvPreview, setCsvPreview] = useState<{
+    trips: ReturnType<typeof parsePortalMileageCsv>;
+    filename: string;
+    bizMiles: number;
+    personalTrips: number;
+  } | null>(null);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvResult, setCsvResult]       = useState<{ imported: number; skipped: number } | null>(null);
+  const [csvError, setCsvError]         = useState<string | null>(null);
+
+  function handleCsvFile(file: File) {
+    setCsvError(null);
+    setCsvResult(null);
+    const reader = new FileReader();
+    reader.onload = e => {
+      const text = e.target?.result as string;
+      const trips = parsePortalMileageCsv(text);
+      if (trips.length === 0) {
+        setCsvError("Couldn't read any trips from that file. Make sure it has Date and Miles columns.");
+        return;
+      }
+      const bizMiles = trips.filter(t => t.classification === "business").reduce((s, t) => s + t.miles, 0);
+      const personalTrips = trips.filter(t => t.classification === "personal").length;
+      setCsvPreview({ trips, filename: file.name, bizMiles, personalTrips });
+    };
+    reader.readAsText(file);
+  }
+
+  async function confirmCsvImport() {
+    if (!csvPreview) return;
+    setCsvImporting(true);
+    try {
+      const result = await apiFetch(`/portal/${token}/mileage/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trips: csvPreview.trips }),
+      });
+      qc.invalidateQueries({ queryKey: ["portal-mileage", token] });
+      qc.invalidateQueries({ queryKey: ["portal", token] });
+      setCsvResult({ imported: result.imported, skipped: result.skipped });
+      setCsvPreview(null);
+      if (csvInputRef.current) csvInputRef.current.value = "";
+    } catch (err: any) {
+      setCsvError(err.message ?? "Import failed. Please try again.");
+    } finally {
+      setCsvImporting(false);
+    }
+  }
 
   const addMut = useMutation({
     mutationFn: (payload: Record<string, unknown>) => {
@@ -1939,19 +2075,78 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
 
   return (
     <div className="space-y-4">
+      {/* Hidden CSV file input */}
+      <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="sr-only"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleCsvFile(f); }} />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-display font-bold">Mileage Tracker</h2>
-          <p className="text-sm text-muted-foreground">Manual mileage entry</p>
+          <p className="text-sm text-muted-foreground">Log trips or import a CSV</p>
         </div>
-        <button
-          onClick={() => { setFormOpen(!formOpen); if (formOpen) resetForm(); }}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border bg-card text-foreground text-sm font-semibold hover:bg-muted transition-colors"
-        >
-          <PenLine className="w-4 h-4" /> Log Manually
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setCsvError(null); setCsvResult(null); csvInputRef.current?.click(); }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card text-foreground text-sm font-semibold hover:bg-muted transition-colors"
+          >
+            <Upload className="w-4 h-4" /> Import CSV
+          </button>
+          <button
+            onClick={() => { setFormOpen(!formOpen); if (formOpen) resetForm(); }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border bg-card text-foreground text-sm font-semibold hover:bg-muted transition-colors"
+          >
+            <PenLine className="w-4 h-4" /> Log Manually
+          </button>
+        </div>
       </div>
+
+      {/* CSV import feedback banners */}
+      {csvError && (
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-50 border border-red-100">
+          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700">{csvError}</p>
+        </div>
+      )}
+      {csvResult && (
+        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm">
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+          <span><strong>{csvResult.imported} trip{csvResult.imported !== 1 ? "s" : ""} imported</strong>{csvResult.skipped > 0 ? ` · ${csvResult.skipped} duplicates skipped` : ""}</span>
+        </div>
+      )}
+
+      {/* CSV preview + confirm card */}
+      {csvPreview && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <FileText className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-blue-900 truncate">{csvPreview.filename}</p>
+              <p className="text-xs text-blue-700 mt-0.5">
+                {csvPreview.trips.length} trips found
+                · {csvPreview.bizMiles.toFixed(1)} business miles
+                {csvPreview.personalTrips > 0 ? ` · ${csvPreview.personalTrips} personal (will be logged but not deducted)` : ""}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={confirmCsvImport}
+              disabled={csvImporting}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {csvImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {csvImporting ? "Importing…" : "Confirm Import"}
+            </button>
+            <button
+              onClick={() => { setCsvPreview(null); if (csvInputRef.current) csvInputRef.current.value = ""; }}
+              className="px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Summary bar */}
       <div className="grid grid-cols-3 gap-3">

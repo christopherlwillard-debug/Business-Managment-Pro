@@ -10,6 +10,7 @@ import path from "path";
 import fs from "fs";
 import { computeYtd } from "./subcontractors";
 import { parseReceiptFile } from "./receipt-parser";
+import { getIrsRateForDate } from "./mileage";
 
 const portalUploadsDir = path.resolve("uploads");
 if (!fs.existsSync(portalUploadsDir)) fs.mkdirSync(portalUploadsDir, { recursive: true });
@@ -935,6 +936,76 @@ tokenRouter.delete("/mileage/:id", async (req, res) => {
     res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: "Failed to delete mileage log" });
+  }
+});
+
+// POST /portal/:token/mileage/import — bulk CSV import for portal subs
+tokenRouter.post("/mileage/import", async (req, res) => {
+  try {
+    const sub = await getSubByToken((req.params as any).token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+
+    const { trips } = req.body as {
+      trips: Array<{
+        date: string;
+        miles: number;
+        startLocation?: string;
+        endLocation?: string;
+        classification?: string;
+        notes?: string;
+      }>;
+    };
+    if (!Array.isArray(trips) || trips.length === 0) {
+      return res.status(400).json({ error: "No trips provided" });
+    }
+
+    // Build dup-check set: date|miles(2dp)|endLocation(lowercase)
+    const existing = await db
+      .select({ date: mileageLogsTable.date, miles: mileageLogsTable.miles, endLocation: mileageLogsTable.endLocation })
+      .from(mileageLogsTable)
+      .where(eq(mileageLogsTable.subcontractorId, sub.id));
+
+    const dupSet = new Set(
+      existing.map(l => `${l.date}|${parseFloat(l.miles ?? "0").toFixed(2)}|${(l.endLocation ?? "").toLowerCase()}`)
+    );
+
+    const toInsert: typeof trips = [];
+    let duplicatesSkipped = 0;
+    for (const trip of trips) {
+      const key = `${trip.date}|${Number(trip.miles).toFixed(2)}|${(trip.endLocation ?? "").toLowerCase()}`;
+      if (dupSet.has(key)) { duplicatesSkipped++; continue; }
+      toInsert.push(trip);
+    }
+
+    if (toInsert.length > 0) {
+      const rows = toInsert.map(t => {
+        const rate = getIrsRateForDate(t.date);
+        const cls = (t.classification ?? "business").toLowerCase() === "personal" ? "personal" : "business";
+        return {
+          date: t.date,
+          miles: Number(t.miles).toString(),
+          startLocation: t.startLocation ?? null,
+          endLocation: t.endLocation ?? null,
+          classification: cls,
+          notes: t.notes ?? null,
+          ratePerMile: rate.toString(),
+          deductionAmount: (cls === "business" ? Number(t.miles) * rate : 0).toString(),
+          source: "csv_import",
+          subcontractorId: sub.id,
+        };
+      });
+      await db.insert(mileageLogsTable).values(rows);
+    }
+
+    const totalMiles = toInsert
+      .filter(t => (t.classification ?? "business").toLowerCase() !== "personal")
+      .reduce((s, t) => s + Number(t.miles), 0);
+
+    res.json({ imported: toInsert.length, skipped: duplicatesSkipped, totalMiles });
+  } catch (err) {
+    console.error("[portal/mileage/import]", err);
+    res.status(500).json({ error: "Failed to import mileage" });
   }
 });
 

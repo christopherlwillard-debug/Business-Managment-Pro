@@ -22,7 +22,7 @@ async function getRate() {
   return parseFloat(settings?.mileageRate ?? "0.725");
 }
 
-function getIrsRateForDate(dateStr: string): number {
+export function getIrsRateForDate(dateStr: string): number {
   const rates = [
     { effectiveDate: "2026-01-01", rate: 0.725 },
     { effectiveDate: "2025-01-01", rate: 0.700 },
