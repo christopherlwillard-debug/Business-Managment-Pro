@@ -9,6 +9,7 @@ import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsT
 import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { getSuggestedImages } from "../lib/industryImageKeywords";
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 
@@ -2291,6 +2292,42 @@ router.delete("/saved-sections/:id", wrapAsync(async (req, res) => {
     .delete(savedSectionsTable)
     .where(and(eq(savedSectionsTable.id, id), eq(savedSectionsTable.businessId, businessId)));
   return res.json({ ok: true });
+}));
+
+// ── M5: Suggest Images ────────────────────────────────────────────────────────
+// GET /api/website/suggest-images?businessType=X&sectionType=Y&businessId=Z
+// Returns own uploaded photos (prepended) + curated industry suggestions.
+
+router.get("/suggest-images", wrapAsync(async (req, res) => {
+  const businessType = (req.query.businessType as string | undefined) ?? "";
+  const sectionType  = (req.query.sectionType  as string | undefined) ?? "";
+  const businessId   = parseInt(req.query.businessId as string);
+
+  // ── Own uploaded photos ─────────────────────────────────────────────────────
+  let ownPhotos: Array<{ id: number; url: string; displayName: string | null; filename: string }> = [];
+  if (!isNaN(businessId) && businessId > 0) {
+    const media = await db
+      .select({
+        id:          websiteMediaTable.id,
+        url:         websiteMediaTable.url,
+        displayName: websiteMediaTable.displayName,
+        filename:    websiteMediaTable.filename,
+      })
+      .from(websiteMediaTable)
+      .where(and(
+        eq(websiteMediaTable.businessId, businessId),
+        // Only surface image files (filter out PDFs, etc.)
+        sql`lower(${websiteMediaTable.filename}) similar to '%(jpg|jpeg|png|gif|webp|avif|svg)'`,
+      ))
+      .orderBy(desc(websiteMediaTable.uploadedAt))
+      .limit(24);
+    ownPhotos = media;
+  }
+
+  // ── Curated suggestions ─────────────────────────────────────────────────────
+  const suggestions = getSuggestedImages(businessType, sectionType);
+
+  return res.json({ ownPhotos, suggestions });
 }));
 
 export { router as websiteRouter, publicRouter as websitePublicRouter };

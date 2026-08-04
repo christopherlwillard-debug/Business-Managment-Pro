@@ -97,6 +97,7 @@ import { HeaderBuilderPanel } from "./HeaderBuilderPanel";
 import { nanoid } from "nanoid";
 import type { SiteSettings, CardComponent, SavedSection, BusinessContext } from "./website-types";
 import { AIWebsiteWizard, type WizardFormValues, type BusinessProfilePrefill } from "./AIWebsiteWizard";
+import { ImagePickerModal } from "./ImagePickerModal";
 import { reportCrash } from "@/lib/reportCrash";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1482,10 +1483,14 @@ function WebsiteEditor() {
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [deleteSectionConfirm, setDeleteSectionConfirm] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"editor" | "analytics" | "media" | "theme">("editor");
-  const [mediaPickerState, setMediaPickerState] = useState<{ onSelect: (url: string) => void } | null>(null);
+  const [mediaPickerState, setMediaPickerState] = useState<{
+    onSelect: (url: string) => void;
+    sectionType?: string;
+    businessType?: string;
+  } | null>(null);
 
-  function openMediaLibrary(onSelect: (url: string) => void) {
-    setMediaPickerState({ onSelect });
+  function openMediaLibrary(onSelect: (url: string) => void, sectionType?: string) {
+    setMediaPickerState({ onSelect, sectionType, businessType: activeBusiness?.type ?? undefined });
   }
   const [insertAfterSectionId, setInsertAfterSectionId] = useState<string | null | undefined>(undefined);
   const [selectedComponentState, setSelectedComponentState] = useState<{ sectionId: string; componentId: string } | null>(null); // selection-critical
@@ -5188,6 +5193,8 @@ function WebsiteEditor() {
         >
           {renderSection(s, settings, isActive && !previewMode, content => updateContent(s.id, content), {
             ...sectionExtras,
+            // M5: capture per-section type so ImagePickerModal can surface industry-relevant suggestions
+            onOpenMediaLibrary: (onSelect: (url: string) => void) => openMediaLibrary(onSelect, s.type),
             sectionId: s.id,
             selectedComponentId: selectedComponentState?.sectionId === s.id ? selectedComponentState.componentId : null,
             onSelectComponent: (id: string | null) => {
@@ -5295,7 +5302,8 @@ function WebsiteEditor() {
                   updateComponentInSection(sectionId, undefined, componentId, c => ({
                     ...c, props: { ...(c.props as ImageCompProps), url },
                   }));
-                });
+                // M5: pass section type so suggested images are relevant
+                }, sec?.type);
               }}
               onUpdateProps={(partial, commit) => {
                 if (commit) {
@@ -5599,16 +5607,14 @@ function WebsiteEditor() {
       />
     )}
     {mediaPickerState && bizId && (
-      <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6">
-        <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl h-[70vh] flex flex-col overflow-hidden border border-border">
-          <MediaLibrary
-            businessId={bizId}
-            mode="select"
-            onSelect={url => { mediaPickerState.onSelect(url); setMediaPickerState(null); }}
-            onClose={() => setMediaPickerState(null)}
-          />
-        </div>
-      </div>
+      // M5: ImagePickerModal adds "✨ Suggested" tab with industry-relevant photos
+      <ImagePickerModal
+        businessId={bizId}
+        businessType={mediaPickerState.businessType ?? activeBusiness?.type ?? ""}
+        sectionType={mediaPickerState.sectionType ?? ""}
+        onSelect={url => { mediaPickerState.onSelect(url); setMediaPickerState(null); }}
+        onClose={() => setMediaPickerState(null)}
+      />
     )}
     {showFullscreenPreview && previewUrl && (
       <div className="fixed inset-0 z-[100] flex flex-col bg-black">
