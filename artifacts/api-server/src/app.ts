@@ -5,6 +5,7 @@ import { authMiddleware } from "./middlewares/authMiddleware";
 import router from "./routes";
 import squareWebhookRouter from "./routes/square-webhook";
 import publicStatusRouter from "./routes/public-status";
+import seoCrawlRouter from "./routes/seo-crawl";
 
 const app: Express = express();
 
@@ -12,6 +13,11 @@ app.use(cors({ credentials: true, origin: true }));
 app.use(cookieParser());
 
 app.use("/api/webhooks/square", squareWebhookRouter);
+
+// ── Root-level SEO crawl routes (sitemap.xml + robots.txt) ────────────────────
+// Registered before JSON body parsing and auth so that search-engine crawlers
+// on custom domains receive correct XML/plaintext instead of the SPA fallback.
+app.use(seoCrawlRouter);
 
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));

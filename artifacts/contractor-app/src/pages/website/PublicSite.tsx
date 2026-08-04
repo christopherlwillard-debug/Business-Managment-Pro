@@ -43,6 +43,23 @@ import { isPublishedWebsite } from "@/lib/runtimeMode";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+/**
+ * Sanitize a JSON string for safe injection into a <script type="application/ld+json"> block.
+ *
+ * Browsers stop parsing JSON and switch to HTML parsing the moment they see </script>
+ * inside a <script> element, regardless of nesting. Escaping `</` → `<\/` prevents
+ * tag breakout while keeping the JSON semantically identical (\/  is a valid JSON
+ * escape for /). We also escape `<!--` to prevent HTML comment injection.
+ *
+ * This is defense-in-depth on top of server-side sanitization.
+ */
+function safeJsonLd(json: string): string {
+  return json
+    .replace(/</g, "\\u003c")   // covers </script>, <script, <!--, and any other <
+    .replace(/>/g, "\\u003e")   // covers </script> closing >
+    .replace(/&/g, "\\u0026");  // covers HTML entity injection
+}
+
 interface SectionBreakpoints {
   tablet?: Partial<BlockStyle>;
   mobile?: Partial<BlockStyle>;
@@ -63,6 +80,30 @@ interface SitePage {
   name: string;
   slug: string;
   sections: Section[];
+}
+
+// ── SEO types (mirrors website-types.ts — keep in sync) ─────────────────────
+
+interface PageSeo {
+  metaTitle?: string;
+  metaDescription?: string;
+  keywords?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+}
+
+interface SeoSettings {
+  metaTitle?: string;
+  metaDescription?: string;
+  keywords?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  pagesSeo?: Record<string, PageSeo>;
+  localBusinessSchema?: string;
+  generated?: boolean;
+  generatedAt?: string;
 }
 
 interface SiteSettings {
@@ -97,6 +138,7 @@ interface SiteSettings {
   footerBgColor?: string;
   pages?: SitePage[];
   themeId?: string;
+  seo?: SeoSettings;
 }
 
 interface PublishedConfig {
@@ -326,6 +368,36 @@ export default function PublicSite() {
     ? { fontFamily: `'${settings.bodyFont}', system-ui, sans-serif` }
     : {};
 
+  // ── SEO: compute effective meta for this page ────────────────────────────────
+  const seo: SeoSettings | undefined = settings.seo;
+  const currentPageId = pageSlug
+    ? additionalPages.find(p => p.slug === pageSlug)?.id
+    : null;
+  const pageSeo: PageSeo = currentPageId ? (seo?.pagesSeo?.[currentPageId] ?? {}) : {};
+  const effectiveMetaTitle       = pageSeo.metaTitle       ?? seo?.metaTitle       ?? businessName;
+  const effectiveMetaDescription = pageSeo.metaDescription ?? seo?.metaDescription ?? "";
+  const effectiveKeywords        = pageSeo.keywords        ?? seo?.keywords        ?? "";
+  const effectiveOgTitle         = pageSeo.ogTitle         ?? seo?.ogTitle         ?? effectiveMetaTitle;
+  const effectiveOgDescription   = pageSeo.ogDescription   ?? seo?.ogDescription   ?? effectiveMetaDescription;
+  const effectiveOgImage         = pageSeo.ogImage         ?? seo?.ogImage         ?? "";
+
+  // ── FAQ JSON-LD: build if any FAQ sections are rendered on this page ─────────
+  const faqItems = bodySections
+    .filter(s => s.type === "faq" && s.enabled)
+    .flatMap(s => (s.content.items as Array<{ question?: string; answer?: string }> | undefined) ?? [])
+    .filter(i => i.question && i.answer);
+  const faqJsonLd = faqItems.length > 0
+    ? JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: faqItems.map(i => ({
+          "@type": "Question",
+          name: i.question,
+          acceptedAnswer: { "@type": "Answer", text: i.answer },
+        })),
+      })
+    : null;
+
   return (
     <div
       className="min-h-screen"
@@ -383,6 +455,28 @@ export default function PublicSite() {
                   : `${BASE}/api/public/site/by-host/manifest.json`
               }
             />
+          )}
+          {/* ── SEO meta tags ──────────────────────────────────────────────── */}
+          {effectiveMetaTitle       && <title>{effectiveMetaTitle}</title>}
+          {effectiveMetaDescription && <meta name="description" content={effectiveMetaDescription} />}
+          {effectiveKeywords        && <meta name="keywords" content={effectiveKeywords} />}
+          {/* OpenGraph */}
+          <meta property="og:type" content="website" />
+          {effectiveOgTitle       && <meta property="og:title"       content={effectiveOgTitle} />}
+          {effectiveOgDescription && <meta property="og:description" content={effectiveOgDescription} />}
+          {effectiveOgImage       && <meta property="og:image"       content={effectiveOgImage} />}
+          {/* Twitter card */}
+          <meta name="twitter:card" content="summary_large_image" />
+          {effectiveOgTitle       && <meta name="twitter:title"       content={effectiveOgTitle} />}
+          {effectiveOgDescription && <meta name="twitter:description" content={effectiveOgDescription} />}
+          {effectiveOgImage       && <meta name="twitter:image"       content={effectiveOgImage} />}
+          {/* Local Business JSON-LD — sanitized to prevent </script> tag breakout */}
+          {seo?.localBusinessSchema && (
+            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(seo.localBusinessSchema) }} />
+          )}
+          {/* FAQ JSON-LD — sanitized to prevent </script> tag breakout */}
+          {faqJsonLd && (
+            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }} />
           )}
         </>,
         document.head

@@ -84,6 +84,8 @@ export const websiteMediaTable = pgTable("website_media", {
   displayObjectPath: varchar("display_object_path", { length: 512 }),
   /** True once background variant generation is complete. */
   optimized: boolean("optimized").notNull().default(false),
+  /** Accessibility alt text for screen readers and SEO. Auto-filled by AI, editable by user. */
+  alt: varchar("alt", { length: 255 }),
 });
 
 export type WebsiteMedia = typeof websiteMediaTable.$inferSelect;

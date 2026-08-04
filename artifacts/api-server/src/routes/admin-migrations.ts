@@ -1548,4 +1548,18 @@ router.post("/add-website-media-optimizer-columns", async (_req: Request, res: R
   }
 });
 
+// ── Add alt column to website_media (M10: AI SEO Builder) ──────────────────
+router.post("/add-website-media-alt-column", async (_req: Request, res: Response) => {
+  try {
+    await db.execute(sql`
+      ALTER TABLE website_media
+        ADD COLUMN IF NOT EXISTS alt VARCHAR(255);
+    `);
+    res.json({ ok: true, message: "website_media.alt column ensured" });
+  } catch (err) {
+    console.error("[admin/migrations] add-website-media-alt-column failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;

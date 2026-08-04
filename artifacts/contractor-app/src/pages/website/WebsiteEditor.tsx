@@ -95,7 +95,8 @@ import { computeAlignmentGuides, type AlignmentGuide, type SimpleRect } from "./
 import { ComponentLibraryPanel, COMPONENT_TYPE_LABELS } from "./ComponentLibraryPanel";
 import { HeaderBuilderPanel } from "./HeaderBuilderPanel";
 import { nanoid } from "nanoid";
-import type { SiteSettings, CardComponent, SavedSection, BusinessContext } from "./website-types";
+import type { SiteSettings, SeoSettings, CardComponent, SavedSection, BusinessContext } from "./website-types";
+import { SeoPanel } from "./SeoPanel";
 import { AIWebsiteWizard, type WizardFormValues, type BusinessProfilePrefill } from "./AIWebsiteWizard";
 import { ImagePickerModal } from "./ImagePickerModal";
 import { reportCrash } from "@/lib/reportCrash";
@@ -1482,7 +1483,7 @@ function WebsiteEditor() {
   const [showApplyConfirm, setShowApplyConfirm] = useState(false);
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [deleteSectionConfirm, setDeleteSectionConfirm] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"editor" | "analytics" | "media" | "theme">("editor");
+  const [activeTab, setActiveTab] = useState<"editor" | "analytics" | "media" | "theme" | "seo">("editor");
   const [mediaPickerState, setMediaPickerState] = useState<{
     onSelect: (url: string) => void;
     sectionType?: string;
@@ -5706,6 +5707,15 @@ function WebsiteEditor() {
             <BarChart2 className="w-3 h-3" />
             <span className="hidden sm:inline">Analytics</span>
           </button>
+          <button
+            onClick={() => setActiveTab("seo")}
+            className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+              activeTab === "seo" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Search className="w-3 h-3" />
+            <span className="hidden sm:inline">SEO</span>
+          </button>
         </div>
 
         <div className="flex-1" />
@@ -6005,6 +6015,17 @@ function WebsiteEditor() {
       <div ref={editorBodyRef} className="flex-1 flex overflow-hidden">
         {activeTab === "analytics" ? (
           <WebsiteAnalytics businessId={bizId!} />
+        ) : activeTab === "seo" ? (
+          <SeoPanel
+            businessId={bizId!}
+            businessName={activeBusiness.name}
+            settings={settings}
+            pages={pages.filter(p => p.id !== "home")}
+            onSeoChange={(seo: SeoSettings) => patchSettings({ seo } as Partial<SiteSettings>)}
+            onSave={() => saveMutation.mutate()}
+            isSaving={saveMutation.isPending}
+            domain={(settings as any).customDomain ?? undefined}
+          />
         ) : activeTab === "media" ? (
           <MediaLibrary businessId={bizId!} />
         ) : activeTab === "theme" ? (

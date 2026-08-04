@@ -548,6 +548,105 @@ publicRouter.get("/:slug/manifest.json", wrapAsync(async (req, res) => {
   res.json(buildManifest(biz, config.settings as Record<string, unknown>));
 }));
 
+// ── Sitemap + robots ─────────────────────────────────────────────────────────
+//
+// These must be registered BEFORE the /:slug catch-all so Express routes them
+// correctly. Both by-host (custom domain) and slug-based variants are provided.
+
+function buildSitemapXml(baseUrl: string, pages: Array<{ slug: string; name: string }>): string {
+  const trimBase = baseUrl.replace(/\/$/, "");
+  const urls = [
+    `  <url><loc>${trimBase}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>`,
+    ...pages.map(p =>
+      `  <url><loc>${trimBase}/${p.slug}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`
+    ),
+  ];
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>`;
+}
+
+function buildRobotsTxt(sitemapUrl: string): string {
+  return `User-agent: *\nAllow: /\n\nSitemap: ${sitemapUrl}\n`;
+}
+
+publicRouter.get("/by-host/sitemap.xml", wrapAsync(async (req, res) => {
+  const rawHost = (req.headers["x-forwarded-host"] as string | undefined) || req.hostname || "";
+  const host = normalizeHost(rawHost);
+  if (!host) return res.status(400).send("Cannot determine host");
+
+  const [config] = await db
+    .select({ settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(and(
+      eq(websiteConfigsTable.published, true),
+      sql`lower(trim(trailing '.' from ${websiteConfigsTable.settings}->>'customDomain')) = ${host}`
+    ));
+
+  if (!config) return res.status(404).send("No site found for this domain");
+
+  const settings = config.settings as Record<string, unknown>;
+  const pages = (settings.pages as Array<{ slug: string; name: string }> | undefined) ?? [];
+  const baseUrl = `https://${host}`;
+  res.setHeader("Content-Type", "application/xml");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(buildSitemapXml(baseUrl, pages));
+}));
+
+publicRouter.get("/by-host/robots.txt", wrapAsync(async (req, res) => {
+  const rawHost = (req.headers["x-forwarded-host"] as string | undefined) || req.hostname || "";
+  const host = normalizeHost(rawHost);
+  if (!host) return res.status(400).send("Cannot determine host");
+  res.setHeader("Content-Type", "text/plain");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(buildRobotsTxt(`https://${host}/sitemap.xml`));
+}));
+
+publicRouter.get("/:slug/sitemap.xml", wrapAsync(async (req, res) => {
+  const slug = req.params.slug as string;
+  const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  if (!biz) return res.status(404).send("Not found");
+
+  const [config] = await db
+    .select({ settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(and(eq(websiteConfigsTable.businessId, biz.id), eq(websiteConfigsTable.published, true)));
+
+  if (!config) return res.status(404).send("Website not published");
+
+  const settings = config.settings as Record<string, unknown>;
+  const pages = (settings.pages as Array<{ slug: string; name: string }> | undefined) ?? [];
+  const customDomain = settings.customDomain as string | undefined;
+  const baseUrl = customDomain
+    ? `https://${customDomain}`
+    : `${BASE_URL}/site/${slug}`;
+
+  res.setHeader("Content-Type", "application/xml");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(buildSitemapXml(baseUrl, pages));
+}));
+
+publicRouter.get("/:slug/robots.txt", wrapAsync(async (req, res) => {
+  const slug = req.params.slug as string;
+  const [biz] = await db.select({ id: businessesTable.id, slug: businessesTable.slug }).from(businessesTable).where(eq(businessesTable.slug, slug));
+  if (!biz) return res.status(404).send("Not found");
+
+  const [config] = await db
+    .select({ settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(and(eq(websiteConfigsTable.businessId, biz.id), eq(websiteConfigsTable.published, true)));
+
+  if (!config) return res.status(404).send("Website not published");
+
+  const settings = config.settings as Record<string, unknown>;
+  const customDomain = settings.customDomain as string | undefined;
+  const sitemapUrl = customDomain
+    ? `https://${customDomain}/sitemap.xml`
+    : `${BASE_URL}/api/public/site/${slug}/sitemap.xml`;
+
+  res.setHeader("Content-Type", "text/plain");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(buildRobotsTxt(sitemapUrl));
+}));
+
 publicRouter.get("/by-host", wrapAsync(async (req, res) => {
   const rawHost = (req.headers["x-forwarded-host"] as string | undefined) || req.hostname || "";
   const host = normalizeHost(rawHost);
@@ -1199,6 +1298,158 @@ router.post("/improve-copy", wrapAsync(async (req, res) => {
 
   const result = completion.choices[0]?.message?.content?.trim() ?? "";
   res.json({ result });
+}));
+
+// ── generate-seo: AI-powered SEO metadata for the whole site ──────────────────
+//
+// POST /generate-seo?businessId=N
+// Body: { businessContext?: BusinessContext }
+// Returns: SeoSettings including localBusinessSchema JSON-LD string
+//
+// Steps:
+//   1. Load business profile (name, address, phone, email, city, state, zip)
+//   2. Load website config sections (services list, FAQ, footer phone/email)
+//   3. Ask OpenAI to generate meta title, description, keywords, OG fields
+//   4. Build Local Business JSON-LD from business profile data
+//   5. Return SeoSettings object ready to be stored in settings.seo
+
+router.post("/generate-seo", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId) return res.status(400).json({ error: "businessId required" });
+
+  // Load business row
+  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId));
+  if (!biz) return res.status(404).json({ error: "Business not found" });
+
+  // Load website config for section content
+  const [config] = await db
+    .select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+
+  const sections = (config?.sections ?? []) as Array<{ type: string; content: Record<string, unknown> }>;
+
+  // Extract services from services section
+  const servicesSection = sections.find(s => s.type === "services");
+  const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+  const services = serviceItems.map(i => i.title ?? "").filter(Boolean).slice(0, 6);
+
+  // Extract contact info from footer or business record
+  const footerSection = sections.find(s => s.type === "footer");
+  const phone = (footerSection?.content?.phone as string | undefined) || biz.phone || "";
+  const email = (footerSection?.content?.email as string | undefined) || biz.email || "";
+
+  const location = [biz.city, biz.state].filter(Boolean).join(", ");
+
+  // Merge any extra context the caller provided
+  const callerCtx = (req.body.businessContext ?? {}) as Partial<BusinessContext>;
+  const ctx: BusinessContext = {
+    businessName: biz.name,
+    businessType: callerCtx.businessType,
+    location: location || callerCtx.location,
+    services,
+    phone: phone || callerCtx.phone,
+    email: email || callerCtx.email,
+  };
+
+  const summary = bizSummary(ctx);
+  const serviceList = services.length ? `Services offered: ${services.join(", ")}.` : "";
+  const locLine = location ? `Located in ${location}.` : "";
+
+  // ── AI: generate meta fields ───────────────────────────────────────────────
+  const seoPrompt = `Generate SEO metadata for a local contractor business website.
+
+Business: ${summary}
+${serviceList}
+${locLine}
+
+Return ONLY a valid JSON object with exactly these keys (no markdown, no code fences, no explanation):
+{
+  "metaTitle": "60 chars max — business name + primary service/trade + city/state",
+  "metaDescription": "150–160 chars — compelling Google snippet covering what they do and where",
+  "keywords": "10–15 comma-separated keywords including trade, location, and common customer searches",
+  "ogTitle": "Same as metaTitle but can be slightly warmer / more conversational",
+  "ogDescription": "1–2 sentences for Facebook/iMessage previews — benefit-led"
+}`;
+
+  const completion = await openai.chat.completions.create({
+    model: BUILDPRO_AI_MINI_MODEL,
+    max_completion_tokens: 600,
+    messages: [
+      { role: "system", content: "You are an SEO specialist for local contractor businesses. Return only valid JSON with the exact keys requested." },
+      { role: "user",   content: seoPrompt },
+    ],
+  });
+
+  let seoFields: Record<string, string> = {};
+  try {
+    const raw = completion.choices[0]?.message?.content?.trim() ?? "{}";
+    const cleaned = raw.replace(/^```(?:json)?\n?|\n?```$/g, "").trim();
+    seoFields = JSON.parse(cleaned) as Record<string, string>;
+  } catch {
+    // Fall back to basic defaults if AI JSON is unparseable
+    seoFields = {
+      metaTitle: `${biz.name}${location ? ` | ${location}` : ""}`,
+      metaDescription: `${biz.name} — professional contractor services${location ? ` in ${location}` : ""}. Contact us for a free quote.`,
+      keywords: services.join(", "),
+    };
+  }
+
+  // ── Build Local Business JSON-LD ───────────────────────────────────────────
+  const localBusiness: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name: biz.name,
+  };
+  if (phone)    localBusiness.telephone = phone;
+  if (email)    localBusiness.email     = email;
+  if (biz.slug) localBusiness.url       = `https://${biz.slug}.buildpro.app`;
+
+  const addressParts = [biz.address, biz.city, biz.state, biz.zip].filter(Boolean);
+  if (addressParts.length > 0) {
+    localBusiness.address = {
+      "@type":          "PostalAddress",
+      streetAddress:    biz.address   || undefined,
+      addressLocality:  biz.city      || undefined,
+      addressRegion:    biz.state     || undefined,
+      postalCode:       biz.zip       || undefined,
+      addressCountry:   "US",
+    };
+  }
+  if (services.length > 0) {
+    localBusiness.hasOfferCatalog = {
+      "@type": "OfferCatalog",
+      name: `${biz.name} Services`,
+      itemListElement: services.map((s, i) => ({
+        "@type": "Offer",
+        position: i + 1,
+        itemOffered: { "@type": "Service", name: s },
+      })),
+    };
+  }
+
+  // ── Server-side sanitization: strip control chars and HTML from user-influenced fields ──
+  // These strings flow into JSON-LD <script> blocks on the published site.
+  // The frontend also escapes < > & via safeJsonLd(), but we sanitize here
+  // for defense-in-depth and to prevent poisoning stored settings.seo values.
+  function sanitizeSeoString(s: string, maxLen: number): string {
+    return s
+      .replace(/[<>"'`]/g, "")       // strip angle brackets and quotes
+      .replace(/[\x00-\x1F\x7F]/g, "") // strip control characters
+      .trim()
+      .slice(0, maxLen);
+  }
+
+  const result = {
+    metaTitle:           sanitizeSeoString((seoFields.metaTitle        ?? `${biz.name}`), 60),
+    metaDescription:     sanitizeSeoString((seoFields.metaDescription  ?? `${biz.name} — professional contractor services.`), 160),
+    keywords:            sanitizeSeoString((seoFields.keywords         ?? services.join(", ")), 500),
+    ogTitle:             sanitizeSeoString((seoFields.ogTitle          ?? seoFields.metaTitle   ?? biz.name), 60),
+    ogDescription:       sanitizeSeoString((seoFields.ogDescription    ?? seoFields.metaDescription ?? ""), 160),
+    localBusinessSchema: JSON.stringify(localBusiness),
+  };
+
+  res.json(result);
 }));
 
 // ── generate-site-copy: batch copy for all sections ───────────────────────────
@@ -2045,15 +2296,21 @@ router.delete("/media/:id", wrapAsync(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// ── Media PATCH (rename / move to folder) ──────────────────────────────────
+// ── Media PATCH (rename / move to folder / set alt text) ──────────────────────
 
 router.patch("/media/:id", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
   const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
-  const { displayName, folderId } = req.body as { displayName?: string | null; folderId?: number | null };
+  const { displayName, folderId, alt } = req.body as {
+    displayName?: string | null;
+    folderId?: number | null;
+    /** Accessibility alt text (max 255 chars). */
+    alt?: string | null;
+  };
   const updateValues: Record<string, unknown> = {};
   if (displayName !== undefined) updateValues.displayName = displayName || null;
+  if (alt !== undefined) updateValues.alt = alt ? alt.slice(0, 255) : null;
   if (folderId !== undefined) {
     if (folderId !== null) {
       const [folder] = await db.select({ id: websiteMediaFoldersTable.id })
@@ -2071,6 +2328,39 @@ router.patch("/media/:id", wrapAsync(async (req, res) => {
     .returning();
   if (!updated) return res.status(404).json({ error: "Not found" });
   res.json(updated);
+}));
+
+// ── Media alt text — AI auto-fill ─────────────────────────────────────────────
+//
+// POST /media/:id/generate-alt?businessId=N
+// Returns: { alt: string } — a short, descriptive alt text for the image.
+// Uses the filename and business context to generate accurate alt text.
+
+router.post("/media/:id/generate-alt", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  const id = parseInt(req.params.id as string);
+  if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
+
+  const [item] = await db
+    .select({ id: websiteMediaTable.id, filename: websiteMediaTable.filename, displayName: websiteMediaTable.displayName })
+    .from(websiteMediaTable)
+    .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
+  if (!item) return res.status(404).json({ error: "Media not found" });
+
+  const [biz] = await db.select({ name: businessesTable.name }).from(businessesTable).where(eq(businessesTable.id, businessId));
+  const label = item.displayName ?? item.filename.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
+
+  const completion = await openai.chat.completions.create({
+    model: BUILDPRO_AI_MINI_MODEL,
+    max_completion_tokens: 80,
+    messages: [
+      { role: "system", content: "Generate a concise, descriptive HTML image alt text (5–15 words) for a contractor business website photo. Return only the alt text, no quotes, no punctuation at the end." },
+      { role: "user",   content: `Business: ${biz?.name ?? "contractor business"}. Image label: "${label}". Write alt text that describes what a visitor would see.` },
+    ],
+  });
+
+  const alt = (completion.choices[0]?.message?.content?.trim() ?? label).slice(0, 255);
+  res.json({ alt });
 }));
 
 // ── Enhance image — apply processing to create a derived image record ─────────

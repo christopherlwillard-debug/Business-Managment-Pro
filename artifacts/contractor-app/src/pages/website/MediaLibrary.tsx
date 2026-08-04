@@ -42,6 +42,8 @@ interface MediaItem {
   optimized?: boolean;
   /** Path to 300×200 thumbnail variant (for faster grid display). */
   thumbnailObjectPath?: string | null;
+  /** Accessibility alt text — editable by user, auto-filled by AI. */
+  alt?: string | null;
 }
 
 interface MediaFolder {
@@ -630,6 +632,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
           {/* Detail panel */}
           {detailItem && mode === "browse" && (
             <DetailPanel
+              key={detailItem.id}
               item={detailItem}
               businessId={businessId}
               usageDetails={usageDetails ?? null}
@@ -931,6 +934,55 @@ function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders
   const [isEnhancing, setIsEnhancing]       = useState(false);
   const [enhError, setEnhError]             = useState<string | null>(null);
 
+  // ── Alt text state ─────────────────────────────────────────────────────────
+  const [altValue, setAltValue]         = useState(item.alt ?? "");
+  const [altSaving, setAltSaving]       = useState(false);
+  const [altGenerating, setAltGenerating] = useState(false);
+  const [altError, setAltError]         = useState<string | null>(null);
+  const [altSaved, setAltSaved]         = useState(false);
+
+  async function handleSaveAlt() {
+    if (altSaving) return;
+    setAltSaving(true);
+    setAltError(null);
+    setAltSaved(false);
+    try {
+      const res = await fetch(`${BASE}/api/website/media/${item.id}?businessId=${businessId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ alt: altValue || null }),
+      });
+      if (!res.ok) throw new Error("Failed to save alt text");
+      setAltSaved(true);
+      setTimeout(() => setAltSaved(false), 1800);
+      onEnhanceDone();
+    } catch {
+      setAltError("Failed to save");
+    } finally {
+      setAltSaving(false);
+    }
+  }
+
+  async function handleGenerateAlt() {
+    if (altGenerating) return;
+    setAltGenerating(true);
+    setAltError(null);
+    try {
+      const res = await fetch(`${BASE}/api/website/media/${item.id}/generate-alt?businessId=${businessId}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("AI generation failed");
+      const data = await res.json() as { alt: string };
+      setAltValue(data.alt);
+    } catch {
+      setAltError("AI generation failed");
+    } finally {
+      setAltGenerating(false);
+    }
+  }
+
   const hasEnhancement = enhBrighten || enhStraighten || enhCrop !== "";
 
   async function handleApplyEnhance() {
@@ -1059,6 +1111,45 @@ function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders
             </select>
           </div>
         )}
+
+        {/* ── Alt text ─────────────────────────────────────────────────────── */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Alt Text</p>
+            <button
+              type="button"
+              onClick={handleGenerateAlt}
+              disabled={altGenerating}
+              title="Generate with AI"
+              className="flex items-center gap-0.5 text-[9px] text-purple-600 hover:text-purple-700 disabled:opacity-50 font-medium"
+            >
+              {altGenerating
+                ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                : <Sparkles className="w-2.5 h-2.5" />}
+              AI
+            </button>
+          </div>
+          <textarea
+            rows={2}
+            value={altValue}
+            onChange={e => setAltValue(e.target.value)}
+            placeholder="Describe this image for screen readers and SEO…"
+            className="w-full text-xs border border-border rounded-md px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none leading-snug"
+          />
+          {altError && <p className="text-[9px] text-destructive mt-0.5">{altError}</p>}
+          <button
+            type="button"
+            onClick={handleSaveAlt}
+            disabled={altSaving}
+            className="mt-1 w-full flex items-center justify-center gap-1 text-[10px] font-medium border border-border rounded-md py-1 hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            {altSaving
+              ? <><Loader2 className="w-2.5 h-2.5 animate-spin" />Saving…</>
+              : altSaved
+              ? <><Check className="w-2.5 h-2.5 text-emerald-500" />Saved</>
+              : "Save Alt"}
+          </button>
+        </div>
 
         {/* ── Enhance panel ────────────────────────────────────────────────── */}
         {showEnhance && (
