@@ -2716,6 +2716,42 @@ function TaxReportsTab({ token }: { token: string }) {
             </div>
           </div>
 
+          {/* Tax Calculation Flow */}
+          <div className="bg-card border border-border rounded-2xl p-5 space-y-0">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">How Your Tax Was Calculated</p>
+            {(() => {
+              const stdDed = data.standardDeduction ?? 15000;
+              const fedTaxable = Math.max(0, data.federalTaxableIncome - stdDed);
+              const rows: { op: string; label: string; value: number; bold?: boolean; highlight?: "green" | "red" | "blue" }[] = [
+                { op: "",  label: "Gross Income",                  value: data.grossIncome,          highlight: "green" },
+                { op: "−", label: "Business Deductions",           value: data.totalDeductions,      highlight: "red" },
+                { op: "=", label: "Net Self-Employment Income",    value: data.netIncome,            bold: true },
+                { op: "−", label: "50% SE Tax Adjustment",         value: data.seDeduction,          highlight: "red" },
+                { op: "=", label: "Adjusted Gross Income",         value: data.federalTaxableIncome, bold: true },
+                { op: "−", label: "Standard Deduction",            value: stdDed,                    highlight: "red" },
+                { op: "=", label: "Estimated Federal Taxable Income", value: fedTaxable,             bold: true, highlight: "blue" },
+              ];
+              return (
+                <div className="space-y-0">
+                  {rows.map((row, i) => (
+                    <div key={i} className={`flex items-center gap-2 py-2 text-sm ${i < rows.length - 1 ? "border-b border-border/40" : ""}`}>
+                      <span className="w-4 text-center text-xs font-bold text-muted-foreground flex-shrink-0">{row.op}</span>
+                      <span className={`flex-1 ${row.bold ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{row.label}</span>
+                      <span className={`font-semibold tabular-nums ${
+                        row.highlight === "green" ? "text-emerald-700" :
+                        row.highlight === "red"   ? "text-red-600" :
+                        row.highlight === "blue"  ? "text-primary" :
+                        "text-foreground"
+                      }`}>
+                        {row.op === "−" ? "−" : ""}{formatCurrency(row.value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+
           {/* SE Tax Estimate */}
           <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Self-Employment Tax Estimate</p>
@@ -2762,6 +2798,12 @@ function TaxReportsTab({ token }: { token: string }) {
                 <div className="flex justify-between text-sm pt-1">
                   <span className="text-muted-foreground">Recommended Quarterly Estimated Payment</span>
                   <span className="font-semibold text-amber-700">{formatCurrency(data.estimatedQuarterlyPayment ?? (data.estimatedTotalTax / 4))} / qtr</span>
+                </div>
+              )}
+              {(data.grossIncome ?? 0) > 0 && (
+                <div className="flex justify-between text-sm pt-1 border-t border-border/50 mt-1">
+                  <span className="text-muted-foreground">Effective Tax Rate</span>
+                  <span className="font-semibold">{((data.estimatedTotalTax ?? 0) / data.grossIncome * 100).toFixed(1)}% <span className="text-xs font-normal text-muted-foreground">of gross income</span></span>
                 </div>
               )}
             </div>

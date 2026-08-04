@@ -705,6 +705,7 @@ tokenRouter.get("/tax-report", async (req, res) => {
       mileage: { totalMiles: totalBusinessMiles, ratePerMile: rate, deduction: mileageDeduction, count: businessMiles.length },
       totalDeductions, netIncome, seTaxEstimate, seDeduction, federalTaxableIncome,
       estimatedFederalIncomeTax, estimatedTotalTax, estimatedQuarterlyPayment,
+      standardDeduction: STANDARD_DEDUCTION_2026,
       subName: sub.name, w9LegalName: sub.w9LegalName,
     });
   } catch (err) {
