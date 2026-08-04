@@ -3678,6 +3678,138 @@ router.post("/check-accessibility", wrapAsync(async (req, res) => {
   res.json(checkAccessibilitySections(finalSections, finalSettings));
 }));
 
+// ── M15: Performance Analyzer ─────────────────────────────────────────────────
+// POST /api/website/analyze-performance?businessId=N
+// Heuristic page speed analysis — no AI, no Lighthouse. Returns findings with
+// impact scores, estimated image weight, and a Fast/Moderate/Slow rating.
+
+function analyzePerformanceSections(
+  sections: SectionInput[],
+  settings: Record<string, unknown>,
+): {
+  findings: unknown[];
+  passedChecks: number;
+  totalChecks: number;
+  pageSpeed: string;
+  estimatedImageCount: number;
+  estimatedImageKB: number;
+  byCategory: Record<string, unknown[]>;
+} {
+  function str(v: unknown): string { return typeof v === "string" ? v.trim() : ""; }
+  function isObjStore(url: string): boolean { return url.includes("/objects/") || url.includes("object-storage"); }
+  function estimateKB(url: string): number { return isObjStore(url) ? 55 : 190; }
+
+  // Collect all image URLs
+  const imageUrls: { url: string; sectionType: string; isExternal: boolean }[] = [];
+  const add = (url: string, type: string) => {
+    const u = str(url); if (!u || u.startsWith("data:")) return;
+    imageUrls.push({ url: u, sectionType: type, isExternal: !isObjStore(u) });
+  };
+  for (const s of sections.filter(s => s.enabled)) {
+    const c = s.content;
+    if (s.type === "hero")    { add(str(c.bgImage ?? c.imageUrl ?? c.heroImage), s.type); }
+    if (s.type === "about" || s.type === "meet-owner") { add(str(c.photoUrl), s.type); }
+    if (s.type === "image")   { add(str(c.imageUrl), s.type); }
+    if (s.type === "services") {
+      for (const item of (c.items as Array<{mediaType?:string;imageUrl?:string}>|undefined)??[]) {
+        if (item.mediaType === "image") add(str(item.imageUrl), s.type);
+      }
+    }
+    if (s.type === "gallery") {
+      for (const img of (c.images as Array<{url?:string}>|undefined)??[]) add(str(img.url), s.type);
+    }
+    if (s.type === "portfolio") {
+      for (const proj of (c.projects as Array<{photos?:Array<{url?:string}>}>|undefined)??[]) {
+        for (const ph of proj.photos??[]) add(str(ph.url), s.type);
+      }
+    }
+    if (s.type === "before-after") { add(str(c.beforeUrl), s.type); add(str(c.afterUrl), s.type); }
+    if (["featured-clients","partners","certifications"].includes(s.type)) {
+      for (const item of (c.items as Array<{imageUrl?:string;logoUrl?:string}>|undefined)??[]) {
+        add(str(item.imageUrl ?? item.logoUrl), s.type);
+      }
+    }
+  }
+  const estimatedImageCount = imageUrls.length;
+  const estimatedImageKB = Math.round(imageUrls.reduce((s, r) => s + estimateKB(r.url), 0));
+
+  type Finding = { id: string; category: string; severity: string; label: string; current: string; recommendation: string; fixable: boolean };
+  const findings: Finding[] = [];
+  let totalChecks = 0;
+  const check = (passed: boolean, f: Finding) => { totalChecks++; if (!passed) findings.push(f); };
+
+  const enabled = sections.filter(s => s.enabled);
+  const disabled = sections.filter(s => !s.enabled);
+
+  const imgCount = estimatedImageCount;
+  const kbStr = estimatedImageKB >= 1000 ? `${(estimatedImageKB/1000).toFixed(1)} MB` : `${estimatedImageKB} KB`;
+  check(imgCount <= 8, { id: "image-total-count", category: "Images", severity: imgCount > 15 ? "error" : "warning", fixable: false, label: imgCount > 15 ? "Too many images on one page" : "Image load weight above average", current: `${imgCount} images · ~${kbStr} estimated`, recommendation: "Use AI Photo Optimizer to compress images. Aim for under 10 images per page." });
+
+  const gallery = enabled.find(s => s.type === "gallery");
+  if (gallery) {
+    const gc = (gallery.content.images as Array<{url?:string}>|undefined)?.filter(i => str(i.url)).length ?? 0;
+    check(gc <= 6, { id: "gallery-image-count", category: "Images", severity: gc > 12 ? "error" : "warning", fixable: false, label: gc > 12 ? "Gallery loading too many images at once" : "Gallery has many images", current: `${gc} gallery images`, recommendation: "Keep 6–8 featured photos. Move extra to a Portfolio page." });
+  } else { totalChecks++; }
+
+  const externalCount = imageUrls.filter(r => r.isExternal && r.url.startsWith("http")).length;
+  check(externalCount <= 3, { id: "external-images", category: "Images", severity: "warning", fixable: false, label: `${externalCount} images cannot be auto-optimized`, current: `${externalCount} external image URLs`, recommendation: "Upload to Media Library for WebP optimization." });
+
+  const hero = enabled.find(s => s.type === "hero");
+  const hasHeroVideo = !!(hero && (str(hero.content.videoUrl ?? hero.content.bgVideo)));
+  check(!hasHeroVideo, { id: "hero-video-bg", category: "Video", severity: "warning", fixable: false, label: "Hero has a video background", current: "Video background detected", recommendation: "Replace with a static image — video backgrounds add 2–15 MB." });
+
+  const hasMap = !!enabled.find(s => s.type === "map-embed");
+  check(!hasMap, { id: "map-embed-js", category: "Video", severity: "info", fixable: false, label: "Google Maps embed adds JS overhead", current: "1 Google Maps embed", recommendation: "Replace with a screenshot + 'Get Directions' link." });
+
+  const fonts = new Set<string>();
+  if (settings.fontFamily) fonts.add(str(settings.fontFamily));
+  if (settings.headingFont && str(settings.headingFont) !== str(settings.fontFamily)) fonts.add(str(settings.headingFont as string));
+  if (settings.bodyFont && str(settings.bodyFont) !== str(settings.fontFamily)) fonts.add(str(settings.bodyFont as string));
+  check(fonts.size <= 2, { id: "font-family-count", category: "Fonts", severity: "warning", fixable: false, label: `${fonts.size} font families loading`, current: `${Array.from(fonts).join(", ")} (${fonts.size} families)`, recommendation: "Use 1–2 font families. Each extra font adds a network round-trip." });
+
+  check(disabled.length <= 3, { id: "disabled-sections", category: "Sections", severity: "info", fixable: false, label: `${disabled.length} disabled sections`, current: `${disabled.length} hidden sections`, recommendation: "Delete sections you'll never use to keep config lean." });
+  check(enabled.length <= 14, { id: "total-sections", category: "Sections", severity: enabled.length > 18 ? "error" : "warning", fixable: false, label: enabled.length > 18 ? "Page is very long" : "Page is getting long", current: `${enabled.length} enabled sections`, recommendation: "Aim for 8–12 sections. Move extra content to dedicated pages." });
+
+  const portfolio = enabled.find(s => s.type === "portfolio");
+  if (portfolio) {
+    const totalPhotos = ((portfolio.content.projects as Array<{photos?:Array<{url?:string}>}>|undefined)??[]).reduce((s,p) => s + (p.photos?.filter(ph => str(ph.url)).length ?? 0), 0);
+    check(totalPhotos <= 12, { id: "portfolio-photo-count", category: "Loading", severity: "warning", fixable: false, label: "Portfolio has many photos", current: `${totalPhotos} portfolio photos`, recommendation: "Show 3–4 best projects × 3 photos each (12 total max)." });
+  } else { totalChecks++; }
+
+  const beforeAfterCount = enabled.filter(s => s.type === "before-after").length;
+  check(beforeAfterCount <= 1, { id: "before-after-multiple", category: "Loading", severity: "info", fixable: false, label: `${beforeAfterCount} before/after sections`, current: `${beforeAfterCount} sections × 2 images each`, recommendation: "Keep 1 before/after section with your best transformation." });
+
+  const errCount = findings.filter(f => f.severity === "error").length;
+  const warnCount = findings.filter(f => f.severity === "warning").length;
+  const pageSpeed = errCount > 0 || warnCount >= 4 ? "Slow" : warnCount >= 1 ? "Moderate" : "Fast";
+
+  const CATS = ["Images","Video","Fonts","Sections","Loading","Animations"];
+  const passedChecks = totalChecks - findings.length;
+  const byCategory = Object.fromEntries(CATS.map(cat => [cat, findings.filter(f => f.category === cat)]));
+
+  return { findings, passedChecks, totalChecks, pageSpeed, estimatedImageCount, estimatedImageKB, byCategory };
+}
+
+router.post("/analyze-performance", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) return res.status(400).json({ error: "businessId required" });
+
+  const { sections, settings } = req.body as { sections?: SectionInput[]; settings?: Record<string, unknown> };
+  let finalSections = sections;
+  let finalSettings = settings;
+
+  if (!finalSections || !finalSettings) {
+    const [config] = await db
+      .select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+      .from(websiteConfigsTable)
+      .where(eq(websiteConfigsTable.businessId, businessId));
+    if (!finalSections) finalSections = (config?.sections ?? []) as SectionInput[];
+    if (!finalSettings) finalSettings = (config?.settings ?? {}) as Record<string, unknown>;
+  }
+
+  res.json(analyzePerformanceSections(finalSections, finalSettings));
+}));
+
 // ── M5: Suggest Images ────────────────────────────────────────────────────────
 // GET /api/website/suggest-images?businessType=X&sectionType=Y&businessId=Z
 // Returns own uploaded photos (prepended) + curated industry suggestions.

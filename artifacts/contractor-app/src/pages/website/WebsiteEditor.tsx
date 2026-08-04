@@ -13,7 +13,7 @@ import {
   Star, HelpCircle, Megaphone, Lock, Layers, LayoutGrid, AlignLeft, Images, Palette, Briefcase,
   ChevronsLeft, ChevronsRight, Maximize2, Minimize2, ChevronRight, FileText, X, Search,
   Users, Handshake, MapPin, Award, ArrowLeftRight, ThumbsUp, Sparkles, ArrowUpDown,
-  Minus, Clock, Phone, ShieldCheck,
+  Minus, Clock, Phone, ShieldCheck, Zap,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -106,6 +106,9 @@ import type { ScoreFixAction } from "./websiteScorer";
 import { AccessibilityPanel } from "./AccessibilityPanel";
 import { checkAccessibility } from "./accessibilityChecker";
 import type { A11yFixAction } from "./accessibilityChecker";
+import { PerformancePanel } from "./PerformancePanel";
+import { analyzePerformance } from "./performanceAnalyzer";
+import type { PerfFixAction } from "./performanceAnalyzer";
 import { reportCrash } from "@/lib/reportCrash";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1461,6 +1464,7 @@ function WebsiteEditor() {
   const [showLayoutAssistant, setShowLayoutAssistant] = useState(false);
   const [showScorePanel, setShowScorePanel] = useState(false);
   const [showA11yPanel, setShowA11yPanel] = useState(false);
+  const [showPerfPanel, setShowPerfPanel] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
   const { contextValue, editingId, editingIdRef } = useInlineEdit();
   const pagesRef = useRef<SitePage[]>([]);
@@ -2201,6 +2205,12 @@ function WebsiteEditor() {
   // M14: compute accessibility findings from the current sections + settings (instant, no network)
   const websiteA11yResult = useMemo(
     () => checkAccessibility(sections as Parameters<typeof checkAccessibility>[0], settings),
+    [sections, settings], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // M15: compute performance findings from the current sections + settings (instant, no network)
+  const websitePerfResult = useMemo(
+    () => analyzePerformance(sections as Parameters<typeof analyzePerformance>[0], settings),
     [sections, settings], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
@@ -3814,6 +3824,29 @@ function WebsiteEditor() {
       }
       case "open-settings":
         setActiveTab("theme");
+        break;
+    }
+  }
+
+  // M15: handle performance fix / review actions from the Performance Panel
+  function handlePerfAction(action: PerfFixAction) {
+    switch (action.kind) {
+      case "navigate-to-section": {
+        const target = sections.find(s => s.id === action.sectionId);
+        if (target) {
+          setActiveSection(target.id);
+          setTimeout(() => {
+            document.getElementById(`section-card-${target.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 80);
+        }
+        break;
+      }
+      case "open-settings":
+        setActiveTab("theme");
+        break;
+      case "open-photo-optimizer":
+        // Open the Media Library — nearest available tool for image management
+        openMediaLibrary(() => {});
         break;
     }
   }
@@ -5992,6 +6025,25 @@ function WebsiteEditor() {
               )}
             </button>
 
+            {/* Performance Analyzer */}
+            <button
+              type="button"
+              onClick={() => setShowPerfPanel(v => !v)}
+              title="Performance Analyzer — page speed heuristics and image weight"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors text-xs font-medium ${
+                showPerfPanel
+                  ? "border-amber-500 bg-amber-500/10 text-amber-600"
+                  : websitePerfResult.pageSpeed === "Slow"
+                  ? "border-red-300 text-red-600 hover:bg-red-50"
+                  : websitePerfResult.pageSpeed === "Moderate"
+                  ? "border-amber-300 text-amber-600 hover:bg-amber-50"
+                  : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Perf</span>
+            </button>
+
             {/* AI Layout Assistant */}
             <button
               type="button"
@@ -7816,6 +7868,16 @@ function WebsiteEditor() {
         result={websiteA11yResult}
         onAction={handleA11yAction}
         onRefresh={() => setShowA11yPanel(true)}
+      />
+    )}
+
+    {showPerfPanel && (
+      <PerformancePanel
+        show={showPerfPanel}
+        onClose={() => setShowPerfPanel(false)}
+        result={websitePerfResult}
+        onAction={handlePerfAction}
+        onRefresh={() => setShowPerfPanel(true)}
       />
     )}
 
