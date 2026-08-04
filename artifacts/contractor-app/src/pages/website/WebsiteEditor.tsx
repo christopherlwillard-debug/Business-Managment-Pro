@@ -97,6 +97,7 @@ import { HeaderBuilderPanel } from "./HeaderBuilderPanel";
 import { nanoid } from "nanoid";
 import type { SiteSettings, SeoSettings, CardComponent, SavedSection, BusinessContext } from "./website-types";
 import { SeoPanel } from "./SeoPanel";
+import { LandingPageGenerator } from "./LandingPageGenerator";
 import { AIWebsiteWizard, type WizardFormValues, type BusinessProfilePrefill } from "./AIWebsiteWizard";
 import { ImagePickerModal } from "./ImagePickerModal";
 import { reportCrash } from "@/lib/reportCrash";
@@ -1484,6 +1485,7 @@ function WebsiteEditor() {
   const [applyingTemplate, setApplyingTemplate] = useState(false);
   const [deleteSectionConfirm, setDeleteSectionConfirm] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"editor" | "analytics" | "media" | "theme" | "seo">("editor");
+  const [showLandingPageGenerator, setShowLandingPageGenerator] = useState(false);
   const [mediaPickerState, setMediaPickerState] = useState<{
     onSelect: (url: string) => void;
     sectionType?: string;
@@ -5474,6 +5476,17 @@ function WebsiteEditor() {
         onClose={() => setShowPageTemplatePicker(false)}
       />
     )}
+    {showLandingPageGenerator && bizId && (
+      <LandingPageGenerator
+        businessId={bizId}
+        businessContext={websiteBusinessContext}
+        onSuccess={page => {
+          addPage(page.name, page.slug, page.sections as Section[]);
+          setShowLandingPageGenerator(false);
+        }}
+        onClose={() => setShowLandingPageGenerator(false)}
+      />
+    )}
     {showTemplatePicker && (
       <TemplatePicker
         businessName={activeBusiness?.name ?? "your business"}
@@ -6104,10 +6117,19 @@ function WebsiteEditor() {
                   type="button"
                   onClick={() => { setShowAddPage(false); setPageTemplatePickerMode("add"); setShowPageTemplatePicker(true); }}
                   className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                  title="Add page"
+                  title="Add page from template"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Page
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowLandingPageGenerator(true)}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                  title="Generate AI landing page"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Generate
                 </button>
               </>)}
               <div className="flex-1" />

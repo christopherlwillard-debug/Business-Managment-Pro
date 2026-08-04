@@ -2833,6 +2833,416 @@ router.delete("/saved-sections/:id", wrapAsync(async (req, res) => {
   return res.json({ ok: true });
 }));
 
+// ── M11: Generate Landing Page ───────────────────────────────────────────────
+//
+// POST /generate-landing-page?businessId=N
+// Body: { type: string; customDescription?: string; businessContext?: BusinessContext }
+// Returns: { page: SitePage } — a fully populated page ready to insert
+//
+// Steps:
+//   1. Validate the landing page type (or accept "custom" with a description)
+//   2. Build a prompt from the profile's copy hints + business context
+//   3. Single OpenAI structured output call returns content for all sections
+//   4. Assemble Section objects from the AI response
+//   5. Return a SitePage with id, name, slug, sections
+
+// ── Profile definitions (mirrors landingPageProfiles.ts on the frontend) ──────
+
+interface LandingPageProfile {
+  id: string;
+  name: string;
+  defaultSlug: string;
+  sectionTypes: Array<"alert-bar" | "hero" | "features" | "stats" | "faq" | "cta" | "contact">;
+  copyHints: {
+    offerAngle: string;
+    urgencyLanguage?: string;
+    ctaCopy: string;
+    secondaryCta?: string;
+    targetAudience: string;
+    extraNotes?: string;
+  };
+}
+
+const LANDING_PAGE_PROFILES: Record<string, LandingPageProfile> = {
+  "spring-promotion": {
+    id: "spring-promotion", name: "Spring Promotion", defaultSlug: "spring-special",
+    sectionTypes: ["alert-bar", "hero", "features", "stats", "cta", "contact"],
+    copyHints: { offerAngle: "Limited-time spring promotion — book now to secure your spot before the season fills up.", urgencyLanguage: "spots are filling fast, limited spring availability, book by April 30", ctaCopy: "Claim Your Spring Discount", secondaryCta: "View Available Dates", targetAudience: "homeowners looking to refresh or repair their property after winter", extraNotes: "Emphasize seasonal timing, fresh start, and value. Mention a free estimate or spring discount." },
+  },
+  "winter-specials": {
+    id: "winter-specials", name: "Winter Specials", defaultSlug: "winter-special",
+    sectionTypes: ["alert-bar", "hero", "features", "stats", "cta", "contact"],
+    copyHints: { offerAngle: "Winter special pricing — lock in your rate before the cold hits.", urgencyLanguage: "limited winter slots, act before the cold season rush", ctaCopy: "Get Your Winter Estimate", secondaryCta: "Schedule a Winter Checkup", targetAudience: "homeowners preparing for winter or looking for off-season savings", extraNotes: "Focus on protection, preparedness, and peace of mind." },
+  },
+  "financing": {
+    id: "financing", name: "Financing Available", defaultSlug: "financing",
+    sectionTypes: ["hero", "features", "faq", "cta", "contact"],
+    copyHints: { offerAngle: "Don't let budget hold you back — flexible payment plans make the project affordable today.", urgencyLanguage: "don't wait on repairs that cost more later", ctaCopy: "Explore Financing Options", secondaryCta: "Get a Free Estimate", targetAudience: "homeowners who want the work done but are hesitant about upfront cost", extraNotes: "Keep tone reassuring and low-pressure. FAQ should cover: how financing works, credit requirements, how to apply." },
+  },
+  "veteran-discount": {
+    id: "veteran-discount", name: "Veteran Discount", defaultSlug: "veteran-discount",
+    sectionTypes: ["hero", "features", "stats", "faq", "cta", "contact"],
+    copyHints: { offerAngle: "A dedicated discount for veterans, active military, and their families — our way of saying thank you.", urgencyLanguage: "apply today, present ID at time of service", ctaCopy: "Claim Your Veteran Discount", secondaryCta: "Call Us Today", targetAudience: "veterans, active duty military, first responders, and their families", extraNotes: "Tone should be respectful, genuine, and grateful — never salesy. Include eligibility requirements." },
+  },
+  "dealer-program": {
+    id: "dealer-program", name: "Dealer Program", defaultSlug: "dealer-program",
+    sectionTypes: ["hero", "features", "stats", "cta", "contact"],
+    copyHints: { offerAngle: "Partner with us to grow your business — reliable service, competitive rates, and a team that delivers.", urgencyLanguage: "limited dealer territories available", ctaCopy: "Apply to Become a Dealer", secondaryCta: "Download Program Overview", targetAudience: "real estate agents, builders, developers, retailers, and referral partners", extraNotes: "Focus on mutual benefit. Use professional, B2B-appropriate language." },
+  },
+  "employment": {
+    id: "employment", name: "Employment / Careers", defaultSlug: "careers",
+    sectionTypes: ["hero", "features", "stats", "cta", "contact"],
+    copyHints: { offerAngle: "Join a team that values your skills, pays fairly, and treats you like family.", urgencyLanguage: "we're hiring now, positions filling quickly, apply today", ctaCopy: "Apply Now", secondaryCta: "Learn About Our Benefits", targetAudience: "skilled tradespeople, technicians, installers, and drivers looking for stable employment", extraNotes: "Emphasize: competitive pay, consistent work, tight-knit culture. Avoid corporate HR language." },
+  },
+  "referral-program": {
+    id: "referral-program", name: "Referral Program", defaultSlug: "refer-a-friend",
+    sectionTypes: ["hero", "features", "stats", "cta", "contact"],
+    copyHints: { offerAngle: "Know someone who needs our services? Send them our way and earn a reward — no catch.", urgencyLanguage: "refer today, earn on every completed job, no limit on referrals", ctaCopy: "Refer a Friend Now", secondaryCta: "Learn How It Works", targetAudience: "existing happy customers who know homeowners needing services", extraNotes: "Keep it simple. Explain the reward clearly. Show the 3-step process (refer → they get a quote → you earn)." },
+  },
+  "emergency-service": {
+    id: "emergency-service", name: "Emergency Service", defaultSlug: "emergency-service",
+    sectionTypes: ["alert-bar", "hero", "features", "stats", "cta", "contact"],
+    copyHints: { offerAngle: "24/7 emergency service — we respond fast, fix it right, and get you back to normal.", urgencyLanguage: "call now, available 24/7, same-day response, emergency dispatch standing by", ctaCopy: "Call for Emergency Service", secondaryCta: "Request Immediate Callback", targetAudience: "homeowners experiencing an urgent, stressful service failure right now", extraNotes: "Tone: calm, competent, and reassuring. Lead with phone number and response time. Don't waste words — panicked visitors scan, not read." },
+  },
+};
+
+/** Simple uid for section and item IDs */
+function lpUid(): string {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+router.post("/generate-landing-page", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  const { type, customDescription, businessContext: ctxBody } = req.body as {
+    type: string;
+    customDescription?: string;
+    businessContext?: BusinessContext;
+  };
+
+  // ── Resolve profile ─────────────────────────────────────────────────────────
+  const isCustom = type === "custom";
+  const profile = LANDING_PAGE_PROFILES[type];
+  if (!profile && !isCustom) {
+    return res.status(400).json({ error: `Unknown landing page type: ${type}` });
+  }
+  if (isCustom && !customDescription?.trim()) {
+    return res.status(400).json({ error: "customDescription required for type=custom" });
+  }
+
+  // ── Resolve business context ────────────────────────────────────────────────
+  // Prefer caller-supplied businessContext; fall back to loading from DB
+  let ctx: BusinessContext = ctxBody as BusinessContext;
+  if (!ctx?.businessName) {
+    const [biz] = await db
+      .select()
+      .from(businessesTable)
+      .where(eq(businessesTable.id, businessId));
+    if (!biz) return res.status(404).json({ error: "Business not found" });
+    ctx = {
+      businessName: biz.name,
+      businessType: biz.type ?? undefined,
+      location: [biz.city, biz.state].filter(Boolean).join(", ") || undefined,
+      phone: biz.phone ?? undefined,
+      email: biz.email ?? undefined,
+    };
+  }
+
+  const summary = bizSummary(ctx);
+  const phone = ctx.phone ? ` Phone: ${ctx.phone}.` : "";
+
+  // ── Build prompt ────────────────────────────────────────────────────────────
+  let promptContext: string;
+  let sectionTypes: LandingPageProfile["sectionTypes"];
+  let pageName: string;
+  let defaultSlug: string;
+
+  if (isCustom) {
+    promptContext = `Custom landing page for ${summary}\nPage concept: ${customDescription!.trim()}`;
+    sectionTypes = ["hero", "features", "cta", "contact"];
+    pageName = "Landing Page";
+    defaultSlug = "landing-page";
+  } else {
+    const p = profile!;
+    const hints = p.copyHints;
+    promptContext = `
+Landing page type: ${p.name}
+Business: ${summary}${phone}
+Offer angle: ${hints.offerAngle}
+${hints.urgencyLanguage ? `Urgency cues: ${hints.urgencyLanguage}` : ""}
+Primary CTA: ${hints.ctaCopy}
+Secondary CTA: ${hints.secondaryCta ?? "Learn More"}
+Target audience: ${hints.targetAudience}
+${hints.extraNotes ? `Content notes: ${hints.extraNotes}` : ""}
+`.trim();
+    sectionTypes = p.sectionTypes;
+    pageName = p.name;
+    defaultSlug = p.defaultSlug;
+  }
+
+  // ── OpenAI structured output call ───────────────────────────────────────────
+  // Always generate all section types; assembler picks what the profile needs.
+  const prompt = `Generate a complete promotional landing page for the following:
+
+${promptContext}
+
+Write compelling, specific copy tailored to this business and audience. No generic filler.
+Return all sections — they will be assembled based on the page type.`;
+
+  const responseSchema = {
+    name: "landing_page_content",
+    strict: true,
+    schema: {
+      type: "object" as const,
+      properties: {
+        pageName:    { type: "string" as const },
+        slug:        { type: "string" as const },
+        alertBar: {
+          type: "object" as const,
+          properties: {
+            message:  { type: "string" as const },
+            ctaLabel: { type: "string" as const },
+          },
+          required: ["message", "ctaLabel"] as const,
+          additionalProperties: false as const,
+        },
+        hero: {
+          type: "object" as const,
+          properties: {
+            headline:    { type: "string" as const },
+            subheadline: { type: "string" as const },
+            ctaLabel:    { type: "string" as const },
+          },
+          required: ["headline", "subheadline", "ctaLabel"] as const,
+          additionalProperties: false as const,
+        },
+        features: {
+          type: "object" as const,
+          properties: {
+            heading:    { type: "string" as const },
+            subheading: { type: "string" as const },
+            items: {
+              type: "array" as const,
+              items: {
+                type: "object" as const,
+                properties: {
+                  title:       { type: "string" as const },
+                  description: { type: "string" as const },
+                },
+                required: ["title", "description"] as const,
+                additionalProperties: false as const,
+              },
+            },
+          },
+          required: ["heading", "subheading", "items"] as const,
+          additionalProperties: false as const,
+        },
+        stats: {
+          type: "object" as const,
+          properties: {
+            heading: { type: "string" as const },
+            items: {
+              type: "array" as const,
+              items: {
+                type: "object" as const,
+                properties: {
+                  value: { type: "string" as const },
+                  label: { type: "string" as const },
+                },
+                required: ["value", "label"] as const,
+                additionalProperties: false as const,
+              },
+            },
+          },
+          required: ["heading", "items"] as const,
+          additionalProperties: false as const,
+        },
+        faq: {
+          type: "object" as const,
+          properties: {
+            heading: { type: "string" as const },
+            items: {
+              type: "array" as const,
+              items: {
+                type: "object" as const,
+                properties: {
+                  question: { type: "string" as const },
+                  answer:   { type: "string" as const },
+                },
+                required: ["question", "answer"] as const,
+                additionalProperties: false as const,
+              },
+            },
+          },
+          required: ["heading", "items"] as const,
+          additionalProperties: false as const,
+        },
+        cta: {
+          type: "object" as const,
+          properties: {
+            heading:        { type: "string" as const },
+            subheading:     { type: "string" as const },
+            primaryLabel:   { type: "string" as const },
+            secondaryLabel: { type: "string" as const },
+          },
+          required: ["heading", "subheading", "primaryLabel", "secondaryLabel"] as const,
+          additionalProperties: false as const,
+        },
+        contact: {
+          type: "object" as const,
+          properties: {
+            heading:    { type: "string" as const },
+            subheading: { type: "string" as const },
+          },
+          required: ["heading", "subheading"] as const,
+          additionalProperties: false as const,
+        },
+      },
+      required: ["pageName", "slug", "alertBar", "hero", "features", "stats", "faq", "cta", "contact"] as const,
+      additionalProperties: false as const,
+    },
+  };
+
+  const completion = await openai.chat.completions.create({
+    model: BUILDPRO_AI_MINI_MODEL,
+    max_completion_tokens: 2000,
+    messages: [
+      {
+        role: "system",
+        content: `${COPY_SYSTEM_PROMPT}
+When writing for promotional landing pages: be specific to the business type, address the target audience's real concerns, and make every CTA feel urgent and relevant.
+For stats sections: generate 4 realistic stats with values and labels (e.g. "500+", "Projects Completed").
+For FAQ sections: generate 4 relevant questions the target audience would actually ask.
+For features/benefits sections: generate 3 items, each with a clear title and 2-3 sentence description.
+Return slug as a clean URL slug (lowercase, hyphens only, no spaces or special chars).`,
+      },
+      { role: "user", content: prompt },
+    ],
+    response_format: { type: "json_schema", json_schema: responseSchema },
+  });
+
+  let ai: Record<string, unknown>;
+  try {
+    ai = JSON.parse(completion.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
+  } catch {
+    return res.status(500).json({ error: "AI returned invalid JSON" });
+  }
+
+  // ── Assemble sections ───────────────────────────────────────────────────────
+  type AiAlertBar  = { message: string; ctaLabel: string };
+  type AiHero      = { headline: string; subheadline: string; ctaLabel: string };
+  type AiFeatures  = { heading: string; subheading: string; items: Array<{ title: string; description: string }> };
+  type AiStats     = { heading: string; items: Array<{ value: string; label: string }> };
+  type AiFaq       = { heading: string; items: Array<{ question: string; answer: string }> };
+  type AiCta       = { heading: string; subheading: string; primaryLabel: string; secondaryLabel: string };
+  type AiContact   = { heading: string; subheading: string };
+
+  const aiAlertBar = ai.alertBar  as AiAlertBar;
+  const aiHero     = ai.hero      as AiHero;
+  const aiFeatures = ai.features  as AiFeatures;
+  const aiStats    = ai.stats     as AiStats;
+  const aiFaq      = ai.faq       as AiFaq;
+  const aiCta      = ai.cta       as AiCta;
+  const aiContact  = ai.contact   as AiContact;
+
+  const resolvedSlug = (ai.slug as string || pageName).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || defaultSlug;
+  const resolvedName = (ai.pageName as string || pageName).trim() || pageName;
+
+  const sectionBuilders: Record<string, () => Record<string, unknown>> = {
+    "alert-bar": () => ({
+      message:     aiAlertBar.message,
+      ctaLabel:    aiAlertBar.ctaLabel,
+      ctaUrl:      "#contact",
+      bgColor:     "#1e293b",
+      textColor:   "#ffffff",
+      showDismiss: true,
+      visible:     true,
+    }),
+    hero: () => ({
+      headline:    aiHero.headline,
+      subheadline: aiHero.subheadline,
+      ctaLabel:    aiHero.ctaLabel,
+      ctaUrl:      "#contact",
+      layout:      "centered",
+    }),
+    features: () => ({
+      heading:    aiFeatures.heading,
+      subheading: aiFeatures.subheading,
+      items: (aiFeatures.items ?? []).slice(0, 3).map(it => ({
+        id:          lpUid(),
+        title:       it.title,
+        description: it.description,
+        mediaType:   "icon",
+        iconName:    "CheckCircle2",
+        layout:      "icon-top",
+        textAlign:   "center",
+        hoverEffect: "lift",
+        clickAction: "none",
+      })),
+      columns: 3,
+    }),
+    stats: () => ({
+      heading: aiStats.heading,
+      stats:   (aiStats.items ?? []).slice(0, 4).map(it => ({
+        id:    lpUid(),
+        value: it.value,
+        label: it.label,
+      })),
+    }),
+    faq: () => ({
+      heading: aiFaq.heading,
+      items:   (aiFaq.items ?? []).slice(0, 5).map(it => ({
+        id:       lpUid(),
+        question: it.question,
+        answer:   it.answer,
+      })),
+    }),
+    cta: () => ({
+      heading:        aiCta.heading,
+      subheading:     aiCta.subheading,
+      primaryLabel:   aiCta.primaryLabel,
+      primaryConfig:  { url: "#contact", style: "solid",   rounding: "full" },
+      secondaryLabel: aiCta.secondaryLabel,
+      secondaryConfig: { url: phone ? `tel:${ctx.phone}` : "#contact", style: "outline", rounding: "full" },
+    }),
+    contact: () => ({
+      heading:    aiContact.heading,
+      subheading: aiContact.subheading,
+    }),
+  };
+
+  // Map "features" spec → "why-choose-us" section type
+  const specToSectionType: Record<string, string> = {
+    "alert-bar": "alert-bar",
+    "hero":      "hero",
+    "features":  "why-choose-us",
+    "stats":     "stats",
+    "faq":       "faq",
+    "cta":       "cta",
+    "contact":   "contact",
+  };
+
+  const sections = sectionTypes.map((spec, idx) => ({
+    id:      `s-${lpUid()}`,
+    type:    specToSectionType[spec] ?? spec,
+    enabled: true,
+    order:   idx,
+    content: sectionBuilders[spec]?.() ?? {},
+  }));
+
+  const page = {
+    id:       `page-${lpUid()}`,
+    name:     resolvedName,
+    slug:     resolvedSlug,
+    sections,
+  };
+
+  res.json({ page });
+}));
+
 // ── M5: Suggest Images ────────────────────────────────────────────────────────
 // GET /api/website/suggest-images?businessType=X&sectionType=Y&businessId=Z
 // Returns own uploaded photos (prepended) + curated industry suggestions.
