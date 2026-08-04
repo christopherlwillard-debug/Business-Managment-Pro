@@ -426,11 +426,31 @@ const HOME_OFFICE_EXPENSES = [
   { key: "repairs", label: "Repairs & Maintenance" },
 ];
 
-function HomeOfficeTab() {
-  const [method, setMethod]     = useState<"simplified" | "regular">("simplified");
-  const [homeSqft, setHomeSqft] = useState("");
-  const [officeSqft, setOfficeSqft] = useState("");
-  const [expenses, setExpenses] = useState<Record<string, string>>({});
+function HomeOfficeTab({ token }: { token: string }) {
+  const storageKey = `portal_home_office_${token}`;
+
+  const [method, setMethod] = useState<"simplified" | "regular">(() => {
+    try { return (JSON.parse(localStorage.getItem(storageKey) ?? "{}").method ?? "simplified") as "simplified" | "regular"; }
+    catch { return "simplified"; }
+  });
+  const [homeSqft, setHomeSqft] = useState<string>(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey) ?? "{}").homeSqft ?? ""; }
+    catch { return ""; }
+  });
+  const [officeSqft, setOfficeSqft] = useState<string>(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey) ?? "{}").officeSqft ?? ""; }
+    catch { return ""; }
+  });
+  const [expenses, setExpenses] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey) ?? "{}").expenses ?? {}; }
+    catch { return {}; }
+  });
+
+  // Persist to localStorage whenever any value changes
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, JSON.stringify({ method, homeSqft, officeSqft, expenses })); }
+    catch { /* ignore quota errors */ }
+  }, [method, homeSqft, officeSqft, expenses, storageKey]);
 
   const setExp = (k: string, v: string) => setExpenses(prev => ({ ...prev, [k]: v }));
 
@@ -3262,7 +3282,7 @@ export default function SubcontractorPortal() {
           <TaxReportsTab token={token!} />
         )}
         {activeTab === "home_office" && features.includes("home_office") && (
-          <HomeOfficeTab />
+          <HomeOfficeTab token={token!} />
         )}
         {activeTab === "settings" && (
           <PortalSettings token={token!} features={features} onChange={handleFeaturesChange} />
