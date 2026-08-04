@@ -77,6 +77,7 @@ import { ThemeVariablesPanel } from "./ThemeVariablesPanel";
 import { LogoSectionInspector } from "./LogoSectionInspector";
 import { CoverageMapInspector } from "./CoverageMapInspector";
 import { HeroInspector } from "./HeroInspector";
+import { ServicesInspector } from "./ServicesInspector";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
 import { SectionLibraryPanel } from "./SectionLibraryPanel";
@@ -6350,6 +6351,14 @@ function WebsiteEditor() {
                   onOpenMediaLibrary={openMediaLibrary}
                 />
               );
+            } else if (sec.type === "services") {
+              const svcRaw = sec.content as unknown as Parameters<typeof ServicesInspector>[0]["content"];
+              specialContent = (
+                <ServicesInspector
+                  content={svcRaw}
+                  onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
+                />
+              );
             } else if (sec.type === "service-area") {
               const raw = sec.content as unknown as Parameters<typeof CoverageMapInspector>[0]["content"];
               specialContent = (
@@ -6697,6 +6706,14 @@ function WebsiteEditor() {
                   onOpenMediaLibrary={openMediaLibrary}
                 />
               );
+            } else if (sec.type === "services") {
+              const svcRaw = sec.content as unknown as Parameters<typeof ServicesInspector>[0]["content"];
+              specialContent = (
+                <ServicesInspector
+                  content={svcRaw}
+                  onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
+                />
+              );
             } else if (sec.type === "service-area") {
               const raw = sec.content as unknown as Parameters<typeof CoverageMapInspector>[0]["content"];
               specialContent = (
@@ -7017,6 +7034,14 @@ function WebsiteEditor() {
                   content={heroRaw}
                   onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
                   onOpenMediaLibrary={openMediaLibrary}
+                />
+              );
+            } else if (sec.type === "services") {
+              const svcRaw = sec.content as unknown as Parameters<typeof ServicesInspector>[0]["content"];
+              specialContent = (
+                <ServicesInspector
+                  content={svcRaw}
+                  onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
                 />
               );
             } else if (sec.type === "service-area") {
