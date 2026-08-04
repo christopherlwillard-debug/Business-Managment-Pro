@@ -761,14 +761,20 @@ function portalGreeting(name: string): string {
 }
 
 // ─── Dashboard Tab ────────────────────────────────────────────────────────────
-function DashboardTab({ data, features, setTab }: { data: any; features: string[]; setTab: (t: string) => void }) {
+function DashboardTab({ data, features, setTab, token }: { data: any; features: string[]; setTab: (t: string) => void; token: string }) {
   const s = data.stats;
   const sub = data.subcontractor;
   const quickActions = ALL_FEATURES.filter(f => features.includes(f.key) && f.key !== "payments" && f.key !== "jobs");
 
+  // Read home office sq ft from localStorage to determine if it's been set up
+  const homeOfficeSetUp = (() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(`portal_home_office_${token}`) ?? "{}");
+      return parseFloat(stored.officeSqft ?? "0") > 0;
+    } catch { return false; }
+  })();
+
   // Tax readiness checklist — 4 core items + optional home office when feature is enabled.
-  // "Home Office Set Up" is always incomplete (done: false) because home office data is a
-  // local calculator with no server persistence — it remains an actionable deep link.
   type ReadinessItem = { label: string; done: boolean; Icon: React.ComponentType<{ className?: string }>; tab: string };
   const readinessItems: ReadinessItem[] = [
     { label: "Income Recorded",  done: s.ytdPayments > 0,                                         Icon: DollarSign, tab: "income_report" },
@@ -776,7 +782,7 @@ function DashboardTab({ data, features, setTab }: { data: any; features: string[
     { label: "W-9 Completed",    done: !!sub.w9Complete,                                          Icon: FileText,   tab: "w9"            },
     { label: "Expenses Logged",  done: features.includes("expenses") && s.expenseCount > 0,       Icon: Receipt,    tab: "expenses"      },
     ...(features.includes("home_office")
-      ? [{ label: "Home Office Set Up", done: false, Icon: Home, tab: "home_office" } as ReadinessItem]
+      ? [{ label: "Home Office Set Up", done: homeOfficeSetUp, Icon: Home, tab: "home_office" } as ReadinessItem]
       : []),
   ];
   const doneCount    = readinessItems.filter(i => i.done).length;
@@ -2600,11 +2606,59 @@ function TaxReportsTab({ token }: { token: string }) {
               )}
             </div>
 
+            {/* Home Office Deduction (from localStorage) */}
+            {(() => {
+              try {
+                const stored = JSON.parse(localStorage.getItem(`portal_home_office_${token}`) ?? "{}");
+                const officeSqft = parseFloat(stored.officeSqft ?? "0");
+                if (officeSqft <= 0) return null;
+                let homeOfficeDeduction = 0;
+                if (stored.method === "simplified" || !stored.method) {
+                  homeOfficeDeduction = Math.min(officeSqft, 300) * 5;
+                } else {
+                  const homeSqft = parseFloat(stored.homeSqft ?? "0");
+                  const pct = homeSqft > 0 ? Math.min(officeSqft / homeSqft, 1) : 0;
+                  const totalExp = Object.values((stored.expenses ?? {}) as Record<string, string>)
+                    .reduce((s, v) => s + (parseFloat(v) || 0), 0);
+                  homeOfficeDeduction = totalExp * pct;
+                }
+                if (homeOfficeDeduction <= 0) return null;
+                return (
+                  <>
+                    <div className="border-t border-border/50" />
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-sm font-semibold text-foreground">Home Office Deduction</p>
+                        <p className="text-sm font-bold text-red-600">−{formatCurrency(homeOfficeDeduction)}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground ml-1">
+                        {stored.method === "regular"
+                          ? `Regular method · ${(Math.min(parseFloat(stored.officeSqft ?? "0") / parseFloat(stored.homeSqft ?? "1"), 1) * 100).toFixed(1)}% business use`
+                          : `Simplified method · ${Math.min(officeSqft, 300)} sq ft × $5.00`}
+                      </p>
+                    </div>
+                  </>
+                );
+              } catch { return null; }
+            })()}
+
             <div className="border-t border-border/50" />
 
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-foreground">Total Deductions</p>
-              <p className="text-base font-bold text-red-600">−{formatCurrency(data.totalDeductions)}</p>
+              <p className="text-base font-bold text-red-600">−{formatCurrency(data.totalDeductions + (() => {
+                try {
+                  const stored = JSON.parse(localStorage.getItem(`portal_home_office_${token}`) ?? "{}");
+                  const officeSqft = parseFloat(stored.officeSqft ?? "0");
+                  if (officeSqft <= 0) return 0;
+                  if (stored.method === "simplified" || !stored.method) return Math.min(officeSqft, 300) * 5;
+                  const homeSqft = parseFloat(stored.homeSqft ?? "0");
+                  const pct = homeSqft > 0 ? Math.min(officeSqft / homeSqft, 1) : 0;
+                  const totalExp = Object.values((stored.expenses ?? {}) as Record<string, string>)
+                    .reduce((s, v) => s + (parseFloat(v) || 0), 0);
+                  return totalExp * pct;
+                } catch { return 0; }
+              })())}</p>
             </div>
           </div>
 
@@ -2613,7 +2667,19 @@ function TaxReportsTab({ token }: { token: string }) {
             <p className="text-xs font-bold text-violet-700 uppercase tracking-wide mb-3">Net Self-Employment Income</p>
             <div className="flex items-end justify-between">
               <p className="text-sm text-violet-700">After all deductions</p>
-              <p className="text-2xl font-display font-bold text-violet-700">{formatCurrency(data.netIncome)}</p>
+              <p className="text-2xl font-display font-bold text-violet-700">{formatCurrency(data.netIncome - (() => {
+                try {
+                  const stored = JSON.parse(localStorage.getItem(`portal_home_office_${token}`) ?? "{}");
+                  const officeSqft = parseFloat(stored.officeSqft ?? "0");
+                  if (officeSqft <= 0) return 0;
+                  if (stored.method === "simplified" || !stored.method) return Math.min(officeSqft, 300) * 5;
+                  const homeSqft = parseFloat(stored.homeSqft ?? "0");
+                  const pct = homeSqft > 0 ? Math.min(officeSqft / homeSqft, 1) : 0;
+                  const totalExp = Object.values((stored.expenses ?? {}) as Record<string, string>)
+                    .reduce((s, v) => s + (parseFloat(v) || 0), 0);
+                  return totalExp * pct;
+                } catch { return 0; }
+              })())}</p>
             </div>
           </div>
 
@@ -2652,17 +2718,6 @@ function TaxReportsTab({ token }: { token: string }) {
                 <span>Total Estimated Tax Owed</span>
                 <span className="text-destructive">{formatCurrency(data.estimatedTotalTax ?? 0)}</span>
               </div>
-            </div>
-
-            {/* Quarterly payment callout */}
-            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-3 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-blue-800 dark:text-blue-300">≈ Quarterly Payment</p>
-                <p className="text-[11px] text-blue-600 dark:text-blue-400 mt-0.5">if paying estimated taxes</p>
-              </div>
-              <p className="text-xl font-display font-bold text-blue-700 dark:text-blue-300">
-                {formatCurrency(data.estimatedQuarterlyPayment ?? 0)}
-              </p>
             </div>
 
             {/* Disclaimer */}
@@ -3263,7 +3318,7 @@ export default function SubcontractorPortal() {
     <div className="min-h-screen bg-muted/30">
       <Header name={subcontractor.name} trade={subcontractor.trade} />
       <div className="max-w-2xl mx-auto px-4 py-6 pb-28">
-        {activeTab === "dashboard" && <DashboardTab data={data} features={features} setTab={setActiveTab} />}
+        {activeTab === "dashboard" && <DashboardTab data={data} features={features} setTab={setActiveTab} token={token!} />}
         {activeTab === "payments" && features.includes("payments") && !features.includes("income_report") && <PaymentsTab data={data} />}
         {activeTab === "income_report" && features.includes("income_report") && (
           <IncomeReportTab token={token!} subName={subcontractor.name} ytdPayments={stats.ytdPayments} />
