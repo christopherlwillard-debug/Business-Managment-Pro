@@ -1,0 +1,145 @@
+Tax Reports Review & Improvements
+
+Overall
+The Tax Reports page is well organized and the calculations appear internally consistent. However, there are several improvements that will make the page more accurate, easier to understand, and more useful for subcontractors.
+
+1. Update 1099-NEC Notice (2026 Tax Year)
+
+The current notice should reflect the 2026 federal reporting threshold.
+
+Replace:
+
+"You may receive a 1099-NEC for 2026 — qualifying payments ≥ $2,000"
+
+With:
+
+"Payments from this contractor have exceeded the 2026 federal Form 1099-NEC reporting threshold of $2,000. If required, you should expect to receive a Form 1099-NEC after year end."
+
+Also include a small note:
+
+"Receiving or not receiving a 1099 does not change your obligation to report all taxable business income."
+
+2. Improve Federal Tax Section
+
+Current:
+
+Federal Income Tax
+$0.00
+
+Replace with:
+
+Federal Income Tax
+$0.00
+
+Reason:
+Your estimated taxable income is below the standard deduction.
+
+This immediately explains why no federal income tax is estimated.
+
+3. Improve Estimated Tax Owed Card
+
+Add:
+
+Recommended Quarterly Estimated Payment
+
+$165.25 per quarter
+
+(Based on current estimated self-employment tax. Recalculate automatically as income changes.)
+
+4. Rename Estimated Tax Savings Card
+
+Current title:
+
+Estimated Tax Savings
+
+Replace with:
+
+Estimated Tax Benefit From Deductions
+
+or
+
+Estimated Tax Reduction
+
+This is more technically accurate because deductions reduce taxable income rather than creating direct dollar-for-dollar savings.
+
+5. Break Down Tax Benefit
+
+Instead of displaying one large number, show:
+
+Mileage Deduction
+$2,845.63
+
+Home Office Deduction
+$1,500.00
+
+Business Expenses
+$10.69
+
+Estimated Tax Reduction
+$428.45
+
+Users can immediately see where the benefit comes from.
+
+6. Improve Tax Calculation Flow
+
+Show a simple calculation:
+
+Gross Income
+
+− Business Deductions
+
+= Net Self-Employment Income
+
+− 50% Self-Employment Tax Adjustment
+
+= Adjusted Gross Income
+
+− Standard Deduction
+
+= Estimated Federal Taxable Income
+
+This mirrors the actual tax return and is much easier to understand.
+
+7. Add Helpful Metrics
+
+Display:
+
+• Gross Income
+• Total Deductions
+• Net Self-Employment Income
+• Self-Employment Tax
+• Federal Income Tax
+• Effective Tax Rate
+• Estimated Quarterly Payment
+
+8. Add Download Options
+
+Allow users to export:
+
+• Tax Summary PDF
+• Income Summary
+• Schedule C Summary
+• Mileage Report
+• Expense Report
+
+9. Keep Existing Calculations
+
+The current calculations appear correct:
+
+✓ Gross Income
+✓ Mileage Deduction
+✓ Home Office Deduction
+✓ Business Expense Deduction
+✓ Net Self-Employment Income
+✓ Self-Employment Tax Estimate
+
+No changes are needed to the calculation logic.
+
+Goal
+
+The page should feel like a professional tax dashboard that clearly explains:
+• What was earned
+• What deductions were taken
+• How taxes were calculated
+• Why the estimated tax is what it is
+• What the subcontractor should do next

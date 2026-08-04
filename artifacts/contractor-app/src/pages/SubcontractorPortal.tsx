@@ -791,7 +791,20 @@ function DashboardTab({ data, features, setTab, token }: { data: any; features: 
   // Estimated tax savings — show once any deduction exists
   const mileageDed  = features.includes("mileage")   ? s.mileageDeduction : 0;
   const expenseDed  = features.includes("expenses")  ? s.totalExpenses    : 0;
-  const totalDed    = mileageDed + expenseDed;
+  const homeOfficeDed = (() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(`portal_home_office_${token}`) ?? "{}");
+      const officeSqft = parseFloat(stored.officeSqft ?? "0");
+      if (officeSqft <= 0) return 0;
+      if (stored.method === "simplified" || !stored.method) return Math.min(officeSqft, 300) * 5;
+      const homeSqft = parseFloat(stored.homeSqft ?? "0");
+      const pct = homeSqft > 0 ? Math.min(officeSqft / homeSqft, 1) : 0;
+      const totalExp = Object.values((stored.expenses ?? {}) as Record<string, string>)
+        .reduce((acc: number, v: string) => acc + (parseFloat(v) || 0), 0);
+      return totalExp * pct;
+    } catch { return 0; }
+  })();
+  const totalDed    = mileageDed + expenseDed + homeOfficeDed;
   const showSavings = totalDed > 0;
 
   return (
@@ -924,31 +937,46 @@ function DashboardTab({ data, features, setTab, token }: { data: any; features: 
         </div>
       </div>
 
-      {/* Estimated Tax Savings — appears once any deduction exists */}
+      {/* Estimated Tax Benefit From Deductions — appears once any deduction exists */}
       {showSavings && (
-        <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 space-y-2">
-          <p className="text-xs font-bold text-violet-800 uppercase tracking-wide">Estimated Tax Savings</p>
-          <div className="flex items-end justify-between gap-3">
-            <div className="space-y-1">
-              {mileageDed > 0 && (
-                <div className="flex items-center gap-2 text-xs text-violet-700">
+        <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 space-y-3">
+          <p className="text-xs font-bold text-violet-800 uppercase tracking-wide">Estimated Tax Benefit From Deductions</p>
+          <div className="space-y-1.5">
+            {mileageDed > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-violet-700">
                   <Navigation className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>Mileage deduction: {formatCurrency(mileageDed)}</span>
+                  <span>Mileage Deduction</span>
                 </div>
-              )}
-              {expenseDed > 0 && (
-                <div className="flex items-center gap-2 text-xs text-violet-700">
+                <span className="font-semibold text-violet-700">{formatCurrency(mileageDed)}</span>
+              </div>
+            )}
+            {homeOfficeDed > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-violet-700">
+                  <Home className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Home Office Deduction</span>
+                </div>
+                <span className="font-semibold text-violet-700">{formatCurrency(homeOfficeDed)}</span>
+              </div>
+            )}
+            {expenseDed > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-violet-700">
                   <Receipt className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>Expense deductions: {formatCurrency(expenseDed)}</span>
+                  <span>Business Expenses</span>
                 </div>
-              )}
-            </div>
-            <div className="text-right flex-shrink-0">
-              <p className="text-2xl font-display font-bold text-violet-700">{formatCurrency(totalDed * 0.15)}</p>
-              <p className="text-[10px] text-violet-500">est. savings</p>
+                <span className="font-semibold text-violet-700">{formatCurrency(expenseDed)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between pt-2 border-t border-violet-200/60">
+              <span className="text-xs font-semibold text-violet-800">Estimated Tax Reduction</span>
+              <div className="text-right">
+                <p className="text-xl font-display font-bold text-violet-700">{formatCurrency(totalDed * 0.15)}</p>
+              </div>
             </div>
           </div>
-          <p className="text-[10px] text-violet-500 border-t border-violet-200/60 pt-2">
+          <p className="text-[10px] text-violet-500">
             Based on estimated 15% self-employment tax rate. Consult a tax professional for accurate figures.
           </p>
         </div>
@@ -2549,9 +2577,14 @@ function TaxReportsTab({ token }: { token: string }) {
             </div>
             {data.qualifyingIncome != null ? (
               data.qualifyingIncome >= 2000 ? (
-                <p className="text-xs text-amber-700 mt-2 bg-amber-100 rounded-lg px-3 py-1.5">
-                  ⚠️ You may receive a 1099-NEC for {data.year} — qualifying payments ≥ $2,000
-                </p>
+                <div className="mt-2 bg-amber-100 rounded-lg px-3 py-2 space-y-1">
+                  <p className="text-xs text-amber-700 font-medium">
+                    ⚠️ Payments from this contractor have exceeded the {data.year} federal Form 1099-NEC reporting threshold of $2,000. If required, you should expect to receive a Form 1099-NEC after year end.
+                  </p>
+                  <p className="text-xs text-amber-600">
+                    Receiving or not receiving a 1099 does not change your obligation to report all taxable business income.
+                  </p>
+                </div>
               ) : data.qualifyingIncome >= 1500 ? (
                 <p className="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
                   Approaching threshold: {formatCurrency(data.qualifyingIncome)} of $2,000 in qualifying payments
@@ -2706,9 +2739,16 @@ function TaxReportsTab({ token }: { token: string }) {
           <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Estimated Tax Owed</p>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Federal income tax (2026 brackets)</span>
-                <span className="font-semibold">{formatCurrency(data.estimatedFederalIncomeTax ?? 0)}</span>
+              <div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Federal income tax (2026 brackets)</span>
+                  <span className="font-semibold">{formatCurrency(data.estimatedFederalIncomeTax ?? 0)}</span>
+                </div>
+                {(data.estimatedFederalIncomeTax ?? 0) === 0 && (
+                  <p className="text-xs text-muted-foreground mt-0.5 ml-0.5">
+                    Reason: Your estimated taxable income is below the standard deduction.
+                  </p>
+                )}
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Self-employment tax</span>
@@ -2718,6 +2758,12 @@ function TaxReportsTab({ token }: { token: string }) {
                 <span>Total Estimated Tax Owed</span>
                 <span className="text-destructive">{formatCurrency(data.estimatedTotalTax ?? 0)}</span>
               </div>
+              {(data.estimatedTotalTax ?? 0) > 0 && (
+                <div className="flex justify-between text-sm pt-1">
+                  <span className="text-muted-foreground">Recommended Quarterly Estimated Payment</span>
+                  <span className="font-semibold text-amber-700">{formatCurrency(data.estimatedQuarterlyPayment ?? (data.estimatedTotalTax / 4))} / qtr</span>
+                </div>
+              )}
             </div>
 
             {/* Disclaimer */}
