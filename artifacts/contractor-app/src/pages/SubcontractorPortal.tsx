@@ -427,93 +427,166 @@ const HOME_OFFICE_EXPENSES = [
 ];
 
 function HomeOfficeTab() {
+  const [method, setMethod]     = useState<"simplified" | "regular">("simplified");
   const [homeSqft, setHomeSqft] = useState("");
   const [officeSqft, setOfficeSqft] = useState("");
   const [expenses, setExpenses] = useState<Record<string, string>>({});
 
   const setExp = (k: string, v: string) => setExpenses(prev => ({ ...prev, [k]: v }));
 
-  const homeNum = parseFloat(homeSqft) || 0;
-  const officeNum = parseFloat(officeSqft) || 0;
-  const pct = homeNum > 0 && officeNum > 0 ? Math.min(officeNum / homeNum, 1) : 0;
+  // Simplified method calculations
+  const officeNum       = parseFloat(officeSqft) || 0;
+  const cappedSqft      = Math.min(officeNum, 300);
+  const simplifiedDeduction = cappedSqft * 5; // max $1,500
+
+  // Regular method calculations
+  const homeNum      = parseFloat(homeSqft) || 0;
+  const pct          = homeNum > 0 && officeNum > 0 ? Math.min(officeNum / homeNum, 1) : 0;
   const totalExpenses = HOME_OFFICE_EXPENSES.reduce((s, e) => s + (parseFloat(expenses[e.key] || "0") || 0), 0);
-  const totalDeduction = totalExpenses * pct;
+  const regularDeduction = totalExpenses * pct;
+
+  const segBtn = (active: boolean) =>
+    `flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
+      active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+    }`;
 
   return (
     <div className="space-y-5">
       <div>
         <h2 className="text-lg font-display font-bold">Home Office Calculator</h2>
-        <p className="text-sm text-muted-foreground">Estimate your Form 8829 deduction. Results are for reference only — consult a tax professional.</p>
+        <p className="text-sm text-muted-foreground">Estimate your Schedule C deduction. Results are for reference only — consult a tax professional.</p>
       </div>
 
-      <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-4">
-        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide border-b border-border pb-2">Square Footage</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Total Home Sq Ft</label>
-            <Input type="number" min="1" placeholder="e.g. 1800" value={homeSqft} onChange={e => setHomeSqft(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground">Office / Work Area Sq Ft</label>
-            <Input type="number" min="1" placeholder="e.g. 200" value={officeSqft} onChange={e => setOfficeSqft(e.target.value)} />
-          </div>
-        </div>
-        {pct > 0 && (
-          <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3 text-center">
-            <p className="text-xs text-muted-foreground">Business-use percentage</p>
-            <p className="text-3xl font-display font-bold text-primary">{(pct * 100).toFixed(1)}%</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{officeNum} ÷ {homeNum} sq ft</p>
-          </div>
-        )}
+      {/* Method toggle */}
+      <div className="bg-muted rounded-xl p-1 flex gap-1">
+        <button className={segBtn(method === "simplified")} onClick={() => setMethod("simplified")}>
+          Simplified Method
+        </button>
+        <button className={segBtn(method === "regular")} onClick={() => setMethod("regular")}>
+          Regular Method
+        </button>
       </div>
 
-      <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
-        <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide border-b border-border pb-2">Annual Home Expenses</h3>
-        {HOME_OFFICE_EXPENSES.map(exp => (
-          <div key={exp.key} className="flex items-center gap-3">
-            <label className="flex-1 text-sm text-foreground">{exp.label}</label>
-            <div className="w-32">
+      {/* ── Simplified Method ─────────────────────────────────────────────── */}
+      {method === "simplified" && (
+        <>
+          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-4">
+            <div className="flex items-start gap-2">
+              <div className="flex-1">
+                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide">IRS Simplified Method</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">$5 per square foot · 300 sq ft maximum · $1,500 max deduction</p>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground">Office / Work Area Sq Ft</label>
               <Input
                 type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                value={expenses[exp.key] || ""}
-                onChange={e => setExp(exp.key, e.target.value)}
+                min="1"
+                max="300"
+                placeholder="e.g. 150"
+                value={officeSqft}
+                onChange={e => setOfficeSqft(e.target.value)}
               />
+              {officeNum > 300 && (
+                <p className="text-xs text-amber-600">Capped at 300 sq ft per IRS rules.</p>
+              )}
             </div>
-            {pct > 0 && (
-              <span className="text-xs text-emerald-600 font-semibold w-20 text-right">
-                {formatCurrency((parseFloat(expenses[exp.key] || "0") || 0) * pct)}
-              </span>
-            )}
           </div>
-        ))}
-        {pct > 0 && (
-          <div className="border-t border-border pt-3 flex justify-between items-center">
-            <span className="text-sm font-medium text-muted-foreground">Total Annual Expenses</span>
-            <span className="font-semibold">{formatCurrency(totalExpenses)}</span>
-          </div>
-        )}
-      </div>
 
-      {pct > 0 && totalExpenses > 0 && (
-        <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-5 text-center space-y-1">
-          <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Estimated Form 8829 Deduction</p>
-          <p className="text-4xl font-display font-bold text-emerald-700">{formatCurrency(totalDeduction)}</p>
-          <p className="text-xs text-emerald-600">This amount goes to Schedule C, Line 30</p>
-        </div>
+          {officeNum > 0 ? (
+            <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-5 space-y-3">
+              <div className="text-center space-y-1">
+                <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Estimated Deduction</p>
+                <p className="text-4xl font-display font-bold text-emerald-700">{formatCurrency(simplifiedDeduction)}</p>
+                <p className="text-xs text-emerald-600">This amount goes to Schedule C, Line 30</p>
+              </div>
+              <div className="border-t border-emerald-200 pt-3 text-center">
+                <p className="text-xs text-emerald-700">
+                  {cappedSqft} sq ft × $5.00{officeNum > 300 ? " (capped at 300 sq ft)" : ""} = <strong>{formatCurrency(simplifiedDeduction)}</strong>
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-muted/50 border border-border rounded-xl px-4 py-3 text-sm text-muted-foreground text-center">
+              Enter your office square footage above to see your deduction.
+            </div>
+          )}
+        </>
       )}
 
-      {(!homeSqft || !officeSqft) && (
-        <div className="bg-muted/50 border border-border rounded-xl px-4 py-3 text-sm text-muted-foreground text-center">
-          Enter your square footage above to see your deduction estimate.
-        </div>
+      {/* ── Regular Method ────────────────────────────────────────────────── */}
+      {method === "regular" && (
+        <>
+          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-4">
+            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide border-b border-border pb-2">Square Footage</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Total Home Sq Ft</label>
+                <Input type="number" min="1" placeholder="e.g. 1800" value={homeSqft} onChange={e => setHomeSqft(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Office / Work Area Sq Ft</label>
+                <Input type="number" min="1" placeholder="e.g. 200" value={officeSqft} onChange={e => setOfficeSqft(e.target.value)} />
+              </div>
+            </div>
+            {pct > 0 && (
+              <div className="bg-primary/5 border border-primary/15 rounded-xl px-4 py-3 text-center">
+                <p className="text-xs text-muted-foreground">Business-use percentage</p>
+                <p className="text-3xl font-display font-bold text-primary">{(pct * 100).toFixed(1)}%</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{officeNum} ÷ {homeNum} sq ft</p>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-4 shadow-sm space-y-3">
+            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide border-b border-border pb-2">Annual Home Expenses</h3>
+            {HOME_OFFICE_EXPENSES.map(exp => (
+              <div key={exp.key} className="flex items-center gap-3">
+                <label className="flex-1 text-sm text-foreground">{exp.label}</label>
+                <div className="w-32">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={expenses[exp.key] || ""}
+                    onChange={e => setExp(exp.key, e.target.value)}
+                  />
+                </div>
+                {pct > 0 && (
+                  <span className="text-xs text-emerald-600 font-semibold w-20 text-right">
+                    {formatCurrency((parseFloat(expenses[exp.key] || "0") || 0) * pct)}
+                  </span>
+                )}
+              </div>
+            ))}
+            {pct > 0 && (
+              <div className="border-t border-border pt-3 flex justify-between items-center">
+                <span className="text-sm font-medium text-muted-foreground">Total Annual Expenses</span>
+                <span className="font-semibold">{formatCurrency(totalExpenses)}</span>
+              </div>
+            )}
+          </div>
+
+          {pct > 0 && totalExpenses > 0 ? (
+            <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-5 text-center space-y-1">
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Estimated Form 8829 Deduction</p>
+              <p className="text-4xl font-display font-bold text-emerald-700">{formatCurrency(regularDeduction)}</p>
+              <p className="text-xs text-emerald-600">This amount goes to Schedule C, Line 30</p>
+            </div>
+          ) : (
+            (!homeSqft || !officeSqft) && (
+              <div className="bg-muted/50 border border-border rounded-xl px-4 py-3 text-sm text-muted-foreground text-center">
+                Enter your square footage and expenses above to see your deduction estimate.
+              </div>
+            )
+          )}
+        </>
       )}
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
         <p className="text-xs text-amber-800">
-          <strong>Note:</strong> This calculator uses the regular method (actual expenses × business-use %). The IRS simplified method ($5/sq ft up to 300 sq ft) is also available. Consult a tax professional to determine which method is better for your situation.
+          <strong>Note:</strong> The simplified method is easier but may result in a smaller deduction than the regular method. Consult a tax professional to determine which is better for your situation.
         </p>
       </div>
     </div>
