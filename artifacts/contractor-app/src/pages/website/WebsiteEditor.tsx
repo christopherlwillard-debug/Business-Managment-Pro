@@ -100,6 +100,9 @@ import { SeoPanel } from "./SeoPanel";
 import { LandingPageGenerator } from "./LandingPageGenerator";
 import { AIWebsiteWizard, type WizardFormValues, type BusinessProfilePrefill } from "./AIWebsiteWizard";
 import { ImagePickerModal } from "./ImagePickerModal";
+import { WebsiteScorePanel } from "./WebsiteScorePanel";
+import { scoreWebsite } from "./websiteScorer";
+import type { ScoreFixAction } from "./websiteScorer";
 import { reportCrash } from "@/lib/reportCrash";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1453,6 +1456,7 @@ function WebsiteEditor() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStep, setGeneratingStep] = useState("");
   const [showLayoutAssistant, setShowLayoutAssistant] = useState(false);
+  const [showScorePanel, setShowScorePanel] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
   const { contextValue, editingId, editingIdRef } = useInlineEdit();
   const pagesRef = useRef<SitePage[]>([]);
@@ -2183,6 +2187,13 @@ function WebsiteEditor() {
     };
   }, [activeBusiness, activePageId, _serviceTitlesKey, _serviceAreaKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const settings: SiteSettings = localSettings ?? config?.settings ?? { brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" };
+
+  // M13: compute the website score from the current sections + settings (instant, no network)
+  const websiteScoreResult = useMemo(
+    () => scoreWebsite(sections as Parameters<typeof scoreWebsite>[0], settings),
+    [sections, settings], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   pagesRef.current = pages;
   settingsRef.current = settings;
   activePageIdRef.current = activePageId;
@@ -3733,6 +3744,36 @@ function WebsiteEditor() {
     setActiveSection(sectionId);
     setShowAddSection(false);
     setInsertAfterSectionId(undefined);
+  }
+
+  // M13: handle "Fix it" actions from the Website Score panel
+  function handleScoreFixAction(action: ScoreFixAction) {
+    switch (action.kind) {
+      case "open-library":
+        setShowAddSection(true);
+        break;
+      case "scroll-to-section": {
+        const target = sections.find(s => s.type === action.sectionType);
+        if (target) {
+          setActiveSection(target.id);
+          // Let the canvas render, then scroll the section card into view
+          setTimeout(() => {
+            document.getElementById(`section-card-${target.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 80);
+        } else {
+          // Section doesn't exist — open library so user can add it
+          setShowAddSection(true);
+        }
+        break;
+      }
+      case "add-section":
+        addSection(action.sectionType as Parameters<typeof addSection>[0]);
+        setShowScorePanel(false);
+        break;
+      case "open-settings":
+        setActiveTab("theme");
+        break;
+    }
   }
 
   function addSectionFromSaved(saved: SavedSection) {
@@ -5872,6 +5913,21 @@ function WebsiteEditor() {
               </button>
             </div>
 
+            {/* Website Score */}
+            <button
+              type="button"
+              onClick={() => setShowScorePanel(v => !v)}
+              title="Website Score — see what's missing and fix it"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors text-xs font-medium ${
+                showScorePanel
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <BarChart2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Score</span>
+            </button>
+
             {/* AI Layout Assistant */}
             <button
               type="button"
@@ -7676,6 +7732,16 @@ function WebsiteEditor() {
         sections={sections}
         businessName={activeBusiness?.name}
         onApplySuggestion={handleApplySuggestion}
+      />
+    )}
+
+    {showScorePanel && (
+      <WebsiteScorePanel
+        show={showScorePanel}
+        onClose={() => setShowScorePanel(false)}
+        result={websiteScoreResult}
+        onFixAction={handleScoreFixAction}
+        onRefresh={() => setShowScorePanel(true)}
       />
     )}
 

@@ -3407,6 +3407,134 @@ ${SECTION_CATALOG_FOR_AI}`,
   });
 }));
 
+// ── M13: Website Score ────────────────────────────────────────────────────────
+// POST /api/website/score?businessId=N
+// Accepts { sections, settings } and returns a 0–100 score with per-rule results.
+// The scoring engine is pure rule-based (no AI) — intentionally deterministic.
+
+type SectionInput = { type: string; enabled: boolean; content: Record<string, unknown> };
+
+function scoreSections(sections: SectionInput[], settings: Record<string, unknown>) {
+  function findEnabled(type: string) {
+    return sections.find(s => s.type === type && s.enabled);
+  }
+  function findAnyEnabled(types: string[]) {
+    return sections.find(s => types.includes(s.type) && s.enabled);
+  }
+  function itemCount(sec: SectionInput | undefined, field: string): number {
+    if (!sec) return 0;
+    const arr = sec.content[field];
+    return Array.isArray(arr) ? arr.filter(Boolean).length : 0;
+  }
+  function portfolioPhotos() {
+    const p = findEnabled("portfolio");
+    if (!p) return 0;
+    const projects = p.content.projects as Array<{ photos?: unknown[] }> | undefined;
+    return Array.isArray(projects)
+      ? projects.reduce((s, pr) => s + (Array.isArray(pr.photos) ? pr.photos.length : 0), 0)
+      : 0;
+  }
+
+  type Rule = { id: string; category: string; severity: string; label: string; description: string; points: number; passed: boolean; earned: number; fixHint: string };
+
+  const rules: Rule[] = [
+    { id: "hero-enabled", category: "Conversion", severity: "critical", points: 10,
+      label: "Hero section is present", fixHint: "Add or re-enable the Hero section.",
+      description: "Every high-converting site starts with a full-width hero.",
+      ...(() => { const ok = !!findEnabled("hero"); return { passed: ok, earned: ok ? 10 : 0 }; })() },
+    { id: "hero-cta", category: "Conversion", severity: "critical", points: 8,
+      label: "Hero has a CTA button", fixHint: "Fill in the CTA button label in your Hero section.",
+      description: "A hero without a CTA misses your best chance to convert visitors.",
+      ...(() => { const h = findEnabled("hero"); const ok = typeof h?.content.ctaLabel === "string" && (h.content.ctaLabel as string).trim().length > 0; return { passed: ok, earned: ok ? 8 : 0 }; })() },
+    { id: "contact-form", category: "Conversion", severity: "critical", points: 10,
+      label: "Contact or quote form is enabled", fixHint: "Add a Contact / Quote Form section.",
+      description: "Without a contact form, visitors have no easy way to reach you.",
+      ...(() => { const ok = !!findAnyEnabled(["contact", "quote-form"]); return { passed: ok, earned: ok ? 10 : 0 }; })() },
+    { id: "cta-section", category: "Conversion", severity: "recommended", points: 10,
+      label: "CTA banner section drives action", fixHint: "Add a CTA Banner section.",
+      description: "A dedicated CTA strip re-engages visitors who scrolled past the hero.",
+      ...(() => { const ok = !!findEnabled("cta"); return { passed: ok, earned: ok ? 10 : 0 }; })() },
+    { id: "testimonials", category: "Trust", severity: "critical", points: 10,
+      label: "Customer testimonials are shown", fixHint: "Add a Testimonials section with at least one review.",
+      description: "Testimonials are the #1 trust signal for local service businesses.",
+      ...(() => { const s = findEnabled("testimonials"); const ok = !!s && itemCount(s, "items") >= 1; return { passed: ok, earned: ok ? 10 : 0 }; })() },
+    { id: "portfolio-photos", category: "Trust", severity: "recommended", points: 8,
+      label: "Portfolio shows real project photos", fixHint: "Add photos to your Portfolio or Image Gallery section.",
+      description: "Seeing finished work removes doubt — aim for at least 3 photos.",
+      ...(() => { const ok = portfolioPhotos() >= 1 || itemCount(findEnabled("gallery"), "images") >= 1; return { passed: ok, earned: ok ? 8 : 0 }; })() },
+    { id: "trust-signals", category: "Trust", severity: "recommended", points: 7,
+      label: "Trust badges or credentials are displayed", fixHint: "Add a Certifications or Trust Counter section.",
+      description: "Licenses and certifications reassure visitors you're the real deal.",
+      ...(() => { const ok = !!findAnyEnabled(["certifications", "trust-counter", "why-choose-us"]); return { passed: ok, earned: ok ? 7 : 0 }; })() },
+    { id: "services-items", category: "Content", severity: "critical", points: 8,
+      label: "Services section lists what you offer", fixHint: "Open Services and add at least 2 service cards.",
+      description: "Visitors need to understand what you do right away.",
+      ...(() => { const s = findEnabled("services"); const ok = !!s && itemCount(s, "items") >= 2; return { passed: ok, earned: ok ? 8 : 0 }; })() },
+    { id: "faq", category: "Content", severity: "recommended", points: 7,
+      label: "FAQ answers common visitor questions", fixHint: "Add an FAQ section with 4+ questions.",
+      description: "An FAQ reduces pre-sale objections and helps prospects self-qualify.",
+      ...(() => { const s = findEnabled("faq"); const ok = !!s && itemCount(s, "items") >= 1; return { passed: ok, earned: ok ? 7 : 0 }; })() },
+    { id: "about-story", category: "Content", severity: "recommended", points: 7,
+      label: "About or owner story builds connection", fixHint: "Enable the About Us or add a Meet the Owner section.",
+      description: "People hire people they trust — a personal story helps.",
+      ...(() => { const ok = !!findAnyEnabled(["about", "meet-owner"]); return { passed: ok, earned: ok ? 7 : 0 }; })() },
+    { id: "logo-set", category: "Design", severity: "recommended", points: 7,
+      label: "Business logo is uploaded", fixHint: "Upload your logo in Theme & Design settings.",
+      description: "A logo makes your site look professional and memorable.",
+      ...(() => { const logo = settings.logoUrl as string | undefined; const ok = typeof logo === "string" && logo.trim().length > 0; return { passed: ok, earned: ok ? 7 : 0 }; })() },
+    { id: "footer-contact", category: "Design", severity: "recommended", points: 5,
+      label: "Footer shows phone and email", fixHint: "Add phone and email to your Footer section.",
+      description: "Visitors who scroll to the bottom are highly interested.",
+      ...(() => { const s = findEnabled("footer"); const p = s?.content.phone as string | undefined; const e = s?.content.email as string | undefined; const ok = (typeof p === "string" && p.trim().length > 0) || (typeof e === "string" && e.trim().length > 0); return { passed: ok, earned: ok ? 5 : 0 }; })() },
+    { id: "coverage-map", category: "Design", severity: "optional", points: 3,
+      label: "Coverage map shows your service area", fixHint: "Add a Coverage Map section.",
+      description: "Showing your service area reduces out-of-area inquiries.",
+      ...(() => { const ok = !!findEnabled("service-area"); return { passed: ok, earned: ok ? 3 : 0 }; })() },
+  ];
+
+  const totalPoints = rules.reduce((s, r) => s + r.points, 0);
+  const earnedPoints = rules.reduce((s, r) => s + r.earned, 0);
+  const score = totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 100) : 0;
+
+  const CATEGORIES = ["Conversion", "Trust", "Content", "Design"];
+  const byCategory = Object.fromEntries(
+    CATEGORIES.map(cat => {
+      const catRules = rules.filter(r => r.category === cat);
+      return [cat, { earned: catRules.reduce((s, r) => s + r.earned, 0), max: catRules.reduce((s, r) => s + r.points, 0), rules: catRules }];
+    }),
+  );
+
+  return { score, rules, passedCount: rules.filter(r => r.passed).length, totalCount: rules.length, byCategory };
+}
+
+router.post("/score", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  const { sections, settings } = req.body as {
+    sections?: SectionInput[];
+    settings?: Record<string, unknown>;
+  };
+
+  // If sections/settings not provided in body, load from DB
+  let finalSections = sections;
+  let finalSettings = settings;
+
+  if (!finalSections || !finalSettings) {
+    const [config] = await db
+      .select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+      .from(websiteConfigsTable)
+      .where(eq(websiteConfigsTable.businessId, businessId));
+    if (!finalSections) finalSections = ((config?.sections ?? []) as SectionInput[]);
+    if (!finalSettings) finalSettings = ((config?.settings ?? {}) as Record<string, unknown>);
+  }
+
+  const result = scoreSections(finalSections, finalSettings);
+  res.json(result);
+}));
+
 // ── M5: Suggest Images ────────────────────────────────────────────────────────
 // GET /api/website/suggest-images?businessType=X&sectionType=Y&businessId=Z
 // Returns own uploaded photos (prepended) + curated industry suggestions.
