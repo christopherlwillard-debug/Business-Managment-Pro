@@ -4,7 +4,7 @@
  */
 
 import OpenAI from "openai";
-import { BUILDPRO_AI_MODEL } from "../ai-models";
+import { BUILDPRO_VISION_MODEL } from "../ai-models";
 
 // ─── Shared OpenAI client ──────────────────────────────────────────────────────
 export const receiptOpenai = new OpenAI({
@@ -204,15 +204,24 @@ export async function parseReceiptFile(file: {
 
   // ── Step 2: AI extraction ───────────────────────────────────────────────────
   const completion = await receiptOpenai.chat.completions.create({
-    model: BUILDPRO_AI_MODEL,
+    model: BUILDPRO_VISION_MODEL,
     max_completion_tokens: 512,
     messages,
   }, { signal: AbortSignal.timeout(30_000) });
 
-  const raw = completion.choices[0]?.message?.content ?? "{}";
+  const raw = completion.choices[0]?.message?.content ?? "";
   const cleaned = raw.replace(/```json|```/g, "").trim();
 
   console.log("[parse-receipt] model response:", cleaned);
+
+  if (!cleaned) {
+    return {
+      ok: false,
+      errorType: "ai_extraction_failed",
+      error: "Receipt scan timed out or the AI didn't respond. Please try again.",
+    };
+  }
+
   let parsed: any = {};
   try { parsed = JSON.parse(cleaned); } catch { parsed = {}; }
 
