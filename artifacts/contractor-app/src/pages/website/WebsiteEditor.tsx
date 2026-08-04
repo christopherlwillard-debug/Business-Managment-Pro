@@ -109,6 +109,7 @@ import type { A11yFixAction } from "./accessibilityChecker";
 import { PerformancePanel } from "./PerformancePanel";
 import { analyzePerformance } from "./performanceAnalyzer";
 import type { PerfFixAction } from "./performanceAnalyzer";
+import { MarketingPanel } from "./MarketingPanel";
 import { reportCrash } from "@/lib/reportCrash";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1465,6 +1466,7 @@ function WebsiteEditor() {
   const [showScorePanel, setShowScorePanel] = useState(false);
   const [showA11yPanel, setShowA11yPanel] = useState(false);
   const [showPerfPanel, setShowPerfPanel] = useState(false);
+  const [showMarketingPanel, setShowMarketingPanel] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
   const { contextValue, editingId, editingIdRef } = useInlineEdit();
   const pagesRef = useRef<SitePage[]>([]);
@@ -6044,6 +6046,21 @@ function WebsiteEditor() {
               <span className="hidden sm:inline">Perf</span>
             </button>
 
+            {/* AI Marketing Assistant */}
+            <button
+              type="button"
+              onClick={() => setShowMarketingPanel(v => !v)}
+              title="AI Marketing Assistant — generate social posts, emails, flyers, and more"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors text-xs font-medium ${
+                showMarketingPanel
+                  ? "border-orange-500 bg-orange-500/10 text-orange-600"
+                  : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <Megaphone className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Marketing</span>
+            </button>
+
             {/* AI Layout Assistant */}
             <button
               type="button"
@@ -7878,6 +7895,17 @@ function WebsiteEditor() {
         result={websitePerfResult}
         onAction={handlePerfAction}
         onRefresh={() => setShowPerfPanel(true)}
+      />
+    )}
+
+    {showMarketingPanel && (
+      <MarketingPanel
+        show={showMarketingPanel}
+        onClose={() => setShowMarketingPanel(false)}
+        businessId={bizId!}
+        businessName={activeBusiness?.name ?? ""}
+        brandColor={settings.brandColor}
+        logoUrl={settings.logoUrl || undefined}
       />
     )}
 

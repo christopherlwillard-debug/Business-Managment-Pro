@@ -103,3 +103,19 @@ export const savedSectionsTable = pgTable("saved_sections", {
 
 export type SavedSectionRow = typeof savedSectionsTable.$inferSelect;
 export type InsertSavedSectionRow = typeof savedSectionsTable.$inferInsert;
+
+/** M16 – AI Marketing Assistant: history of generated marketing content. */
+export const marketingContentTable = pgTable("marketing_content", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").notNull().references(() => businessesTable.id, { onDelete: "cascade" }),
+  /** Content type: facebook-post, google-post, blog-post, newsletter, flyer, door-hanger, business-card, estimate-followup, review-request */
+  type: varchar("type", { length: 50 }).notNull(),
+  /** Optional promo hint the user typed before generating */
+  promoHint: text("promo_hint"),
+  /** The full generated content string */
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type MarketingContent = typeof marketingContentTable.$inferSelect;
+export type InsertMarketingContent = typeof marketingContentTable.$inferInsert;

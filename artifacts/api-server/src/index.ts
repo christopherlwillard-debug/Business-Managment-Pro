@@ -364,9 +364,29 @@ async function ensureTripNotesColumn() {
   }
 }
 
+/** M16: AI Marketing Assistant — create marketing_content table if missing. */
+async function ensureMarketingContentTable(): Promise<void> {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS marketing_content (
+        id SERIAL PRIMARY KEY,
+        business_id INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        promo_hint TEXT,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
+    `);
+    console.log("[startup] ensureMarketingContentTable: marketing_content OK.");
+  } catch (err) {
+    console.error("[startup] ensureMarketingContentTable failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await ensureBankingSchema();
   await ensureTripNotesColumn();
+  await ensureMarketingContentTable();
   await clearDraftInvoiceNumbers();
   await syncInvoiceCounter();
   await recomputePartialSubPaymentStatuses();

@@ -5,7 +5,7 @@ import { createHmac, createHash } from "crypto";
 import OpenAI from "openai";
 import { BUILDPRO_AI_MINI_MODEL } from "../ai-models";
 import { db } from "@workspace/db";
-import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable, depositSubmissionsTable, contactsTable, savedSectionsTable } from "@workspace/db/schema";
+import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable, depositSubmissionsTable, contactsTable, savedSectionsTable, marketingContentTable } from "@workspace/db/schema";
 import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
@@ -3844,6 +3844,481 @@ router.get("/suggest-images", wrapAsync(async (req, res) => {
   const suggestions = getSuggestedImages(businessType, sectionType);
 
   return res.json({ ownPhotos, suggestions });
+}));
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// M16 – AI Marketing Assistant
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Marketing content-type prompt templates (server-side) ─────────────────────
+
+type MarketingContentType =
+  | "facebook-post" | "google-post" | "blog-post" | "newsletter"
+  | "flyer" | "door-hanger" | "business-card"
+  | "estimate-followup" | "review-request";
+
+function buildMarketingPrompt(
+  type: MarketingContentType,
+  ctx: BusinessContext,
+  promoHint?: string,
+): string {
+  const biz = bizSummary(ctx);
+  const hint = promoHint ? `\n\nPromo/topic: ${promoHint}` : "";
+
+  switch (type) {
+    case "facebook-post":
+      return `Write an engaging Facebook Business post for ${biz}
+Rules:
+- 180–250 characters total (body + hashtags)
+- Friendly, conversational, local tone
+- End with 2–4 relevant hashtags (on a new line)
+- No corporate-speak; sound like a real local business
+- Make it feel timely and shareable
+${hint}
+Return ONLY the post text including hashtags. No explanation.`;
+
+    case "google-post":
+      return `Write a Google Business Profile post for ${biz}
+Rules:
+- 200–300 characters
+- Professional but approachable
+- Include a clear CTA (call, book, get a quote)
+- No hashtags
+- Focus on one clear message or offer
+${hint}
+Return ONLY the post text. No explanation.`;
+
+    case "blog-post":
+      return `Write a 450-600 word blog article for the website of ${biz}
+Format:
+# [Article Title]
+
+[Introductory paragraph — 2-3 sentences]
+
+## [Section 1 heading]
+[2-3 sentences]
+
+## [Section 2 heading]
+[2-3 sentences]
+
+## [Section 3 heading]
+[2-3 sentences]
+
+[Closing paragraph with CTA mentioning the business name]
+
+Rules:
+- SEO-friendly, uses natural language
+- Practical and helpful for homeowners
+- Mentions the business name and trade naturally
+- No fluff, no keyword stuffing
+${hint}
+Return ONLY the formatted article. No explanation.`;
+
+    case "newsletter":
+      return `Write a monthly email newsletter for customers of ${biz}
+Format:
+Subject: [Subject line here]
+
+Hi [First Name],
+
+[Personal opening — 1-2 sentences, seasonal or timely]
+
+[Main section — 2-3 sentences on a current service, tip, or offer]
+
+[Tip or helpful advice — 2-3 sentences relevant to the trade/season]
+
+[CTA paragraph — encourage booking or calling]
+
+[Sign-off]
+${ctx.businessName}
+${ctx.phone ? ctx.phone : ""}
+
+Rules:
+- Warm, personal tone
+- Around 200 words total
+- Subject line is catchy and specific (not generic)
+${hint}
+Return ONLY the formatted email. No explanation.`;
+
+    case "estimate-followup":
+      return `Write a professional estimate follow-up email for ${biz} to send after delivering a quote.
+Format:
+Subject: [Subject line]
+
+Hi [Customer Name],
+
+[Brief, warm acknowledgment that you provided an estimate — 1-2 sentences]
+
+[Key value reminder — why this is the right company for the job, 2-3 sentences]
+
+[Gentle urgency — scheduling, material costs, availability — 1-2 sentences, never pushy]
+
+[Clear next step — call, reply, or click a link — 1 sentence]
+
+Thank you,
+${ctx.businessName}
+${ctx.phone ? ctx.phone : ""}
+
+Rules:
+- Professional but warm
+- About 120-150 words
+- Never pressuring or salesy
+- Specific to the trade/service
+${hint}
+Return ONLY the formatted email. No explanation.`;
+
+    case "review-request":
+      return `Write two versions of a review request for ${biz}:
+
+== SMS VERSION (under 160 characters) ==
+[Short SMS text with a request to leave a Google review + placeholder link]
+
+== EMAIL VERSION ==
+Subject: [Subject line]
+
+Hi [First Name],
+
+[Thank customer for their business — 1 sentence]
+
+[Explain that reviews help the business — 1 sentence]
+
+[Direct ask with link placeholder — 1 sentence]
+
+[Brief thank you]
+
+${ctx.businessName}
+${ctx.phone ? ctx.phone : ""}
+
+Rules:
+- Genuine and friendly, never pushy
+- SMS: under 160 chars including link placeholder [REVIEW_LINK]
+- Email: under 100 words
+${hint}
+Return ONLY the formatted content with both sections. No explanation.`;
+
+    case "flyer":
+      return `Write content for a promotional 8.5×11 flyer for ${biz}
+Format:
+[MAIN HEADLINE — punchy, 6-10 words]
+
+[SUBHEADLINE — 1 sentence value prop]
+
+OUR SERVICES
+• [Service 1]
+• [Service 2]
+• [Service 3]
+
+WHY CHOOSE US
+• [Benefit 1]
+• [Benefit 2]
+• [Benefit 3]
+
+[CTA LINE — short and bold, e.g. "Call today for a FREE estimate!"]
+
+📞 [PHONE PLACEHOLDER]
+🌐 [WEBSITE PLACEHOLDER]
+
+Rules:
+- Punchy and scannable
+- Each bullet point is one line
+- No paragraphs — bullets and headers only
+- Sounds like a real local contractor, not a corporation
+${hint}
+Return ONLY the formatted flyer content. No explanation.`;
+
+    case "door-hanger":
+      return `Write content for a door hanger (3.5" × 8.5") for ${biz}
+Format:
+[BOLD HEADLINE — 5-8 words, attention-grabbing]
+
+[SUBHEADLINE — 1 sentence explaining what you do]
+
+✓ [Service or benefit 1]
+✓ [Service or benefit 2]
+✓ [Service or benefit 3]
+
+[OFFER LINE — e.g. "FREE estimate for your neighbors!"]
+
+📞 Call: [PHONE PLACEHOLDER]
+
+Rules:
+- Very short — door hangers are skimmed in 3 seconds
+- Headline must stop someone in their tracks
+- Mention neighborhood/local angle if possible
+- Total word count: 60-80 words max
+${hint}
+Return ONLY the formatted door hanger content. No explanation.`;
+
+    case "business-card":
+      return `Write business card copy for ${biz}
+Format:
+== FRONT ==
+[Business Name]
+[Owner Name or role, e.g. "Licensed Contractor"]
+[Tagline — 6-10 words]
+
+📞 [PHONE PLACEHOLDER]
+📧 [EMAIL PLACEHOLDER]
+🌐 [WEBSITE PLACEHOLDER]
+
+== BACK ==
+[Punchy headline for the back — 4-7 words]
+
+• [Service or specialty 1]
+• [Service or specialty 2]
+• [Service or specialty 3]
+
+[Trust signal — e.g. "Licensed & Insured · Est. 2005"]
+
+Rules:
+- Professional and clean
+- Tagline is memorable and specific to the trade
+- Back should give 3 reasons to call them
+${hint}
+Return ONLY the formatted business card content. No explanation.`;
+
+    default:
+      return `Generate marketing content for ${biz}.${hint}`;
+  }
+}
+
+// ── POST /generate-marketing ──────────────────────────────────────────────────
+// Body: { type: MarketingContentType; promoHint?: string }
+// Returns: { id, type, content, createdAt }
+
+router.post("/generate-marketing", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  const { type, promoHint } = req.body as { type?: string; promoHint?: string };
+  if (!type) return res.status(400).json({ error: "type required" });
+
+  const validTypes: MarketingContentType[] = [
+    "facebook-post", "google-post", "blog-post", "newsletter",
+    "flyer", "door-hanger", "business-card", "estimate-followup", "review-request",
+  ];
+  if (!validTypes.includes(type as MarketingContentType)) {
+    return res.status(400).json({ error: `Unknown marketing content type: ${type}` });
+  }
+
+  // ── Load business context from DB ────────────────────────────────────────────
+  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId));
+  if (!biz) return res.status(404).json({ error: "Business not found" });
+
+  const [config] = await db
+    .select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+
+  type SectionRow = { type: string; content: Record<string, unknown> };
+  const sections = (config?.sections ?? []) as SectionRow[];
+  const settings = (config?.settings ?? {}) as Record<string, unknown>;
+
+  const servicesSection = sections.find(s => s.type === "services");
+  const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+  const services = serviceItems.map(i => i.title ?? "").filter(Boolean);
+
+  const footerSection = sections.find(s => s.type === "footer");
+  const phone = (footerSection?.content?.phone as string | undefined) || biz.phone || "";
+  const email = (footerSection?.content?.email as string | undefined) || biz.email || "";
+
+  const cityStateZip = [biz.city, biz.state].filter(Boolean).join(", ");
+
+  const ctx: BusinessContext = {
+    businessName:  biz.name ?? "Our Business",
+    businessType:  biz.type ?? undefined,
+    location:      cityStateZip || undefined,
+    phone:         phone || undefined,
+    email:         email || undefined,
+    services:      services.length > 0 ? services : undefined,
+  };
+
+  // ── Call OpenAI ────────────────────────────────────────────────────────────
+  const prompt = buildMarketingPrompt(type as MarketingContentType, ctx, promoHint?.trim() || undefined);
+
+  const completion = await openai.chat.completions.create({
+    model: BUILDPRO_AI_MINI_MODEL,
+    messages: [
+      { role: "system", content: "You are a professional marketing copywriter for local contractor businesses. Follow formatting instructions exactly." },
+      { role: "user", content: prompt },
+    ],
+    max_tokens: 900,
+    temperature: 0.8,
+  });
+
+  const content = completion.choices[0]?.message?.content?.trim() ?? "";
+  if (!content) return res.status(500).json({ error: "AI returned empty response" });
+
+  // ── Persist to history ─────────────────────────────────────────────────────
+  const [saved] = await db.insert(marketingContentTable).values({
+    businessId,
+    type,
+    promoHint: promoHint?.trim() || null,
+    content,
+  }).returning();
+
+  return res.json({ id: saved.id, type: saved.type, content: saved.content, createdAt: saved.createdAt });
+}));
+
+// ── GET /marketing-history ────────────────────────────────────────────────────
+// Returns: { items: [...] } — up to 30 most recent generations for this business
+
+router.get("/marketing-history", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  const items = await db
+    .select()
+    .from(marketingContentTable)
+    .where(eq(marketingContentTable.businessId, businessId))
+    .orderBy(desc(marketingContentTable.createdAt))
+    .limit(30);
+
+  return res.json({ items });
+}));
+
+// ── POST /marketing-pdf ───────────────────────────────────────────────────────
+// Body: { type: string; content: string }
+// Returns: PDF buffer (application/pdf)
+// Renders a simple branded print layout for flyer, door-hanger, and business-card.
+
+router.post("/marketing-pdf", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  const { type, content } = req.body as { type?: string; content?: string };
+  if (!type || !content) return res.status(400).json({ error: "type and content required" });
+
+  const printTypes = ["flyer", "door-hanger", "business-card"];
+  if (!printTypes.includes(type)) {
+    return res.status(400).json({ error: "PDF export only available for print materials" });
+  }
+
+  // Load brand info
+  const [biz] = await db.select({ name: businessesTable.name }).from(businessesTable).where(eq(businessesTable.id, businessId));
+  const [config] = await db.select({ settings: websiteConfigsTable.settings }).from(websiteConfigsTable).where(eq(websiteConfigsTable.businessId, businessId));
+  const settings = (config?.settings ?? {}) as Record<string, unknown>;
+  const brandColor = (settings.brandColor as string | undefined) ?? "#1a1a2e";
+  const businessName = biz?.name ?? "Your Business";
+
+  // Parse brandColor hex to r,g,b
+  function hexToRgb(hex: string): [number, number, number] {
+    const h = hex.replace("#", "");
+    const n = parseInt(h.length === 3 ? h.split("").map(c => c + c).join("") : h, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const [br, bg, bb] = hexToRgb(brandColor);
+
+  // Dynamic import of pdfkit
+  const PDFDocument = (await import("pdfkit")).default;
+
+  // Choose page dimensions
+  const isDoorHanger = type === "door-hanger";
+  const isBizCard = type === "business-card";
+
+  const pageOptions: ConstructorParameters<typeof PDFDocument>[0] = isBizCard
+    ? { size: [252, 144], layout: "landscape", margins: { top: 10, bottom: 10, left: 14, right: 14 } }
+    : isDoorHanger
+    ? { size: [252, 612], layout: "portrait", margins: { top: 14, bottom: 14, left: 14, right: 14 } }
+    : { size: "LETTER", layout: "portrait", margins: { top: 36, bottom: 36, left: 54, right: 54 } };
+
+  const doc = new PDFDocument(pageOptions);
+  const chunks: Buffer[] = [];
+  doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+  const headerH = isBizCard ? 28 : isDoorHanger ? 40 : 60;
+
+  // ── Branded header band ────────────────────────────────────────────────────
+  doc.rect(0, 0, doc.page.width, headerH).fill(`rgb(${br},${bg},${bb})`);
+  doc.fillColor("#ffffff")
+     .fontSize(isBizCard ? 9 : isDoorHanger ? 11 : 18)
+     .font("Helvetica-Bold")
+     .text(businessName, 0, isBizCard ? 8 : isDoorHanger ? 12 : 18, {
+       align: "center",
+       width: doc.page.width,
+     });
+
+  // ── Body content ───────────────────────────────────────────────────────────
+  const contentFontSize = isBizCard ? 7 : isDoorHanger ? 9 : 11;
+  const headingFontSize = isBizCard ? 8 : isDoorHanger ? 10 : 13;
+
+  doc.fillColor("#1f2937");
+  let y = headerH + (isBizCard ? 8 : 12);
+
+  const lines = content.split("\n").filter(l => l.trim().length > 0);
+  const margin = isBizCard ? 14 : isDoorHanger ? 14 : 54;
+  const contentWidth = doc.page.width - margin * 2;
+
+  for (const line of lines) {
+    if (y > doc.page.height - (isBizCard ? 14 : 36)) break;
+
+    const trimmed = line.trim();
+
+    // Section headers (ALL CAPS, no bullet)
+    if (trimmed === trimmed.toUpperCase() && trimmed.length > 3 && !trimmed.startsWith("•") && !trimmed.startsWith("✓") && !trimmed.startsWith("📞") && !trimmed.startsWith("📧") && !trimmed.startsWith("🌐")) {
+      doc.font("Helvetica-Bold").fontSize(headingFontSize)
+         .fillColor(`rgb(${br},${bg},${bb})`)
+         .text(trimmed, margin, y, { width: contentWidth });
+      y += headingFontSize + 4;
+    }
+    // Main headline (first non-empty line if big)
+    else if (lines.indexOf(line) === 0 && !isBizCard) {
+      doc.font("Helvetica-Bold").fontSize(isBizCard ? 10 : isDoorHanger ? 13 : 20)
+         .fillColor("#111827")
+         .text(trimmed, margin, y, { width: contentWidth });
+      y += (isBizCard ? 10 : isDoorHanger ? 13 : 20) + 6;
+    }
+    // Bullets
+    else if (trimmed.startsWith("•") || trimmed.startsWith("✓") || trimmed.startsWith("-")) {
+      doc.font("Helvetica").fontSize(contentFontSize)
+         .fillColor("#374151")
+         .text(trimmed, margin + 6, y, { width: contentWidth - 6 });
+      y += contentFontSize + 3;
+    }
+    // Contact lines (emoji prefix)
+    else if (trimmed.startsWith("📞") || trimmed.startsWith("📧") || trimmed.startsWith("🌐")) {
+      doc.font("Helvetica-Bold").fontSize(contentFontSize)
+         .fillColor("#374151")
+         .text(trimmed, margin, y, { width: contentWidth });
+      y += contentFontSize + 3;
+    }
+    // == SECTION == markers (strip them)
+    else if (trimmed.startsWith("==") && trimmed.endsWith("==")) {
+      const label = trimmed.replace(/^==\s*/, "").replace(/\s*==$/, "");
+      doc.font("Helvetica-Bold").fontSize(headingFontSize)
+         .fillColor(`rgb(${br},${bg},${bb})`)
+         .text(label, margin, y, { width: contentWidth });
+      y += headingFontSize + 4;
+    }
+    // Regular body text
+    else {
+      doc.font("Helvetica").fontSize(contentFontSize)
+         .fillColor("#374151")
+         .text(trimmed, margin, y, { width: contentWidth });
+      y += contentFontSize + 3;
+    }
+  }
+
+  // ── Footer accent bar ──────────────────────────────────────────────────────
+  const footerY = doc.page.height - (isBizCard ? 6 : 10);
+  doc.rect(0, footerY, doc.page.width, isBizCard ? 6 : 10).fill(`rgb(${br},${bg},${bb})`);
+
+  doc.end();
+
+  await new Promise<void>(resolve => doc.on("end", resolve));
+
+  const pdfBuffer = Buffer.concat(chunks);
+  const typeLabel = type.replace("-", "_");
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${businessName.replace(/\s+/g, "_")}_${typeLabel}.pdf"`);
+  res.setHeader("Content-Length", String(pdfBuffer.length));
+  return res.end(pdfBuffer);
 }));
 
 export { router as websiteRouter, publicRouter as websitePublicRouter };
