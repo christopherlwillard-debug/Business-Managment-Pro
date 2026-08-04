@@ -182,6 +182,108 @@ function normalizeSections(existing: SectionRow[]): SectionRow[] {
   return result;
 }
 
+// ── Business Profile Pre-fill ─────────────────────────────────────────────────
+// Reads the user's existing BuildPro data and returns a flat object that the
+// AI Website Wizard uses to pre-populate its form fields. Read-only; never
+// writes back to any settings table.
+
+router.get("/business-profile-prefill", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  // ── 1. Core business row ────────────────────────────────────────────────────
+  const [biz] = await db
+    .select()
+    .from(businessesTable)
+    .where(eq(businessesTable.id, businessId));
+
+  if (!biz) {
+    return res.status(404).json({ error: "Business not found" });
+  }
+
+  // ── 2. Existing website config (sections + settings) ───────────────────────
+  const [config] = await db
+    .select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+
+  type SectionRow = { type: string; content: Record<string, unknown> };
+  const sections = (config?.sections ?? []) as SectionRow[];
+  const settings = (config?.settings ?? {}) as Record<string, unknown>;
+
+  // ── 3. Extract from sections ───────────────────────────────────────────────
+  // Services section items
+  const servicesSection = sections.find(s => s.type === "services");
+  const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+  const services = serviceItems.map(i => i.title ?? "").filter(Boolean);
+
+  // Service-area section
+  const serviceAreaSection = sections.find(s => s.type === "service-area");
+  const coverageAreas  = (serviceAreaSection?.content?.areas          as string[] | undefined) ?? [];
+  const coverageStates = (serviceAreaSection?.content?.selectedStates as string[] | undefined) ?? [];
+
+  // Footer section — social links
+  const footerSection = sections.find(s => s.type === "footer");
+  type SocialLink = { platform: string; url: string };
+  const socialLinks = (footerSection?.content?.socialLinks as SocialLink[] | undefined) ?? [];
+
+  // Business-hours section
+  type DayHours = { day: string; open: string; close: string; closed: boolean };
+  const hoursSection = sections.find(s => s.type === "business-hours");
+  const workingHours = (hoursSection?.content?.hours as DayHours[] | undefined) ?? null;
+
+  // ── 4. Brand settings ──────────────────────────────────────────────────────
+  const brandColor = (settings.brandColor as string | undefined) ?? null;
+  const fontFamily = (settings.fontFamily as string | undefined) ?? null;
+  const themeId    = (settings.themeId    as string | undefined) ?? null;
+  // Prefer website logoUrl from settings; fall back to the business row
+  const logoUrl    = (settings.logoUrl as string | undefined) || biz.logoUrl || null;
+
+  // ── 5. Build address string ────────────────────────────────────────────────
+  // Assemble full address: street + city/state + zip (omit blank parts)
+  const streetLine = [biz.address].filter(Boolean).join(" ");
+  const cityStateZip = [biz.city, biz.state, biz.zip].filter(Boolean).join(" ");
+  const addressParts = [streetLine, cityStateZip].filter(p => p.length > 0);
+  const address = addressParts.length > 0 ? addressParts.join(", ") : null;
+
+  // ── 6. Determine which fields were inferred (non-empty from existing data) ─
+  const inferred: string[] = [];
+  if (biz.name)            inferred.push("businessName");
+  if (biz.phone)           inferred.push("phone");
+  if (biz.email)           inferred.push("email");
+  if (address)             inferred.push("address");
+  if (services.length > 0) inferred.push("services");
+  if (coverageAreas.length > 0 || coverageStates.length > 0) inferred.push("coverageAreas");
+  if (brandColor)          inferred.push("brandColor");
+  if (fontFamily)          inferred.push("fontFamily");
+  if (logoUrl)             inferred.push("logoUrl");
+  if (socialLinks.length > 0) {
+    for (const sl of socialLinks) {
+      if (sl.url) inferred.push(sl.platform);
+    }
+  }
+
+  return res.json({
+    businessName:   biz.name   ?? null,
+    tagline:        null,
+    phone:          biz.phone  ?? null,
+    email:          biz.email  ?? null,
+    address,
+    services,
+    coverageAreas,
+    coverageStates,
+    brandColor,
+    fontFamily,
+    themeId,
+    logoUrl,
+    socialLinks,
+    workingHours,
+    inferred,
+  });
+}));
+
 router.get("/", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
   if (!businessId || isNaN(businessId)) {

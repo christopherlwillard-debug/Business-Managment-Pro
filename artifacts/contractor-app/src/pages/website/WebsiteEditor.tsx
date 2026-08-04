@@ -96,6 +96,7 @@ import { ComponentLibraryPanel, COMPONENT_TYPE_LABELS } from "./ComponentLibrary
 import { HeaderBuilderPanel } from "./HeaderBuilderPanel";
 import { nanoid } from "nanoid";
 import type { SiteSettings, CardComponent, SavedSection } from "./website-types";
+import { AIWebsiteWizard, type WizardFormValues, type BusinessProfilePrefill } from "./AIWebsiteWizard";
 import { reportCrash } from "@/lib/reportCrash";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1445,6 +1446,7 @@ function WebsiteEditor() {
   const [showAddSection, setShowAddSection] = useState(false);
   const [addSectionTab, setAddSectionTab] = useState<"sections" | "templates">("sections");
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [showAIWizard, setShowAIWizard] = useState(false);
   const [showLayoutAssistant, setShowLayoutAssistant] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
   const { contextValue, editingId, editingIdRef } = useInlineEdit();
@@ -5213,13 +5215,11 @@ function WebsiteEditor() {
                 </button>
                 <button
                   type="button"
-                  disabled
-                  title="Coming in a future release"
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-dashed border-border rounded-lg text-sm text-muted-foreground cursor-not-allowed select-none"
+                  onClick={() => setShowAIWizard(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-dashed border-purple-400/60 dark:border-purple-500/40 rounded-lg text-sm text-purple-700 dark:text-purple-400 hover:border-purple-500 hover:bg-purple-50/60 dark:hover:bg-purple-900/20 transition-colors"
                 >
-                  <Sparkles className="w-4 h-4 text-purple-400/60" />
+                  <Sparkles className="w-4 h-4 text-purple-500 dark:text-purple-400" />
                   Generate with AI
-                  <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground/60">Soon</span>
                 </button>
               </div>
             </div>
@@ -5388,6 +5388,16 @@ function WebsiteEditor() {
       onInsertSaved={addSectionFromSaved}
       onDeleteSaved={id => deleteSavedSectionMutation.mutate(id)}
     />
+    {showAIWizard && bizId && (
+      <AIWebsiteWizard
+        businessId={bizId}
+        onClose={() => setShowAIWizard(false)}
+        onGenerate={(_values, _prefill) => {
+          // M1 will consume `_values` and `_prefill` to drive AI generation.
+          setShowAIWizard(false);
+        }}
+      />
+    )}
     {mediaPickerState && bizId && (
       <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6">
         <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl h-[70vh] flex flex-col overflow-hidden border border-border">
