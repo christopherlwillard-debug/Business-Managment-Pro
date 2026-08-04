@@ -24,8 +24,8 @@ export interface ServiceAreaContent {
   ctaText?: string;
   ctaUrl?: string;
   ctaActionType?: "button" | "phone" | "form" | "directions";
-  /** "map" | "list" | "both" — default "both" */
-  displayMode?: "map" | "list" | "both";
+  /** "map" | "list" | "both" | "selected_only" — default "both" */
+  displayMode?: "map" | "list" | "both" | "selected_only";
   captionText?: string;
   captionHidden?: boolean;
   mapStyle?: "outline" | "filled" | "minimal" | "modern" | "dark" | "patriotic";
@@ -183,8 +183,9 @@ export function ServiceAreaSection({
     return content.ctaUrl ?? "#contact";
   }
 
-  const showMap  = displayMode === "map"  || displayMode === "both";
+  const showMap  = displayMode === "map"  || displayMode === "both" || displayMode === "selected_only";
   const showList = displayMode === "list" || displayMode === "both";
+  const focusMode = displayMode === "selected_only";
 
   // State names sorted alphabetically for the checkmark list
   const stateNames = [...selectedStates]
@@ -247,6 +248,7 @@ export function ServiceAreaSection({
               showLabels={showLabels}
               showBorders={showBorders}
               mapStyle={mapStyle}
+              focusMode={focusMode}
               className="max-w-2xl mx-auto"
             />
 

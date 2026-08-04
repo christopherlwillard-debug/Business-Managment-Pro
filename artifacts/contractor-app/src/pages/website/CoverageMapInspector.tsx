@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { Search, ChevronDown, ChevronRight, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ServiceAreaContent } from "./sections/ServiceAreaSection";
+// ServiceAreaContent.displayMode now accepts "selected_only" as a 4th mode
 import { REGIONS, STATE_CODE_TO_NAME, buildCaption, migrateAreas } from "./sections/USMapData";
 
 interface Props {
@@ -252,8 +253,8 @@ export function CoverageMapInspector({ content, onChange }: Props) {
           {/* Display mode */}
           <div>
             <p className="text-[10px] text-muted-foreground mb-1">Show</p>
-            <div className="grid grid-cols-3 gap-1">
-              {(["both", "map", "list"] as const).map(m => (
+            <div className="grid grid-cols-2 gap-1">
+              {(["both", "map", "list", "selected_only"] as const).map(m => (
                 <button
                   key={m}
                   type="button"
@@ -265,7 +266,10 @@ export function CoverageMapInspector({ content, onChange }: Props) {
                       : "border-border text-muted-foreground hover:bg-muted"
                   )}
                 >
-                  {m === "both" ? "Map + List" : m === "map" ? "Map Only" : "List Only"}
+                  {m === "both"          ? "Map + List"
+                   : m === "map"         ? "Map Only"
+                   : m === "list"        ? "List Only"
+                   : "Selected States ✦"}
                 </button>
               ))}
             </div>

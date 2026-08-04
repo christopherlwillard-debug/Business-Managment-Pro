@@ -329,6 +329,63 @@ export function migrateAreas(areas: string[]): { selectedStates: string[]; areas
   return { selectedStates, areas: remaining };
 }
 
+/**
+ * Compute the bounding box of a single SVG path `d` string.
+ * The paths here use only M/L/Z commands (Albers USA projection), so all
+ * numbers in the string are alternating x,y coordinate pairs.
+ */
+export function pathBBox(d: string): { x: number; y: number; w: number; h: number } {
+  const nums = (d.match(/-?\d+\.?\d*/g) ?? []).map(Number);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let i = 0; i + 1 < nums.length; i += 2) {
+    const x = nums[i], y = nums[i + 1];
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  if (!isFinite(minX)) return { x: 0, y: 0, w: 960, h: 600 };
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+/**
+ * Compute the SVG viewBox string that tightly fits the given state codes
+ * (excluding AK/HI which live in inset positions).  Falls back to the full
+ * map viewBox if no continental states are found.
+ */
+export function computeSelectedBBox(
+  codes: string[],
+  padding = 30,
+): { viewBox: string; isEmpty: boolean } {
+  // AK and HI occupy inset positions — exclude them from bbox when continental states are present
+  const INSET = new Set(["AK", "HI"]);
+  const continental = codes.filter(c => !INSET.has(c));
+  const focus = continental.length > 0 ? continental : codes.filter(c => !INSET.has(c));
+  if (focus.length === 0) return { viewBox: "0 0 960 600", isEmpty: true };
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const code of focus) {
+    const state = US_STATES.find(s => s.code === code);
+    if (!state) continue;
+    const bb = pathBBox(state.d);
+    if (bb.x < minX) minX = bb.x;
+    if (bb.y < minY) minY = bb.y;
+    if (bb.x + bb.w > maxX) maxX = bb.x + bb.w;
+    if (bb.y + bb.h > maxY) maxY = bb.y + bb.h;
+  }
+  if (!isFinite(minX)) return { viewBox: "0 0 960 600", isEmpty: true };
+
+  const rawW = maxX - minX;
+  const rawH = maxY - minY;
+  const padX = Math.max(padding, rawW * 0.08);
+  const padY = Math.max(padding, rawH * 0.10);
+
+  return {
+    viewBox: `${minX - padX} ${minY - padY} ${rawW + padX * 2} ${rawH + padY * 2}`,
+    isEmpty: false,
+  };
+}
+
 /** Generate an auto-caption from selected state codes. */
 export function buildCaption(codes: string[]): string {
   if (codes.length === 0) return "";

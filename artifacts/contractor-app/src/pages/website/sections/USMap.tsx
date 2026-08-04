@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { US_STATES } from "./USMapData";
+import { US_STATES, computeSelectedBBox } from "./USMapData";
 
 interface USMapProps {
   selectedStates: string[];
@@ -9,6 +9,8 @@ interface USMapProps {
   showBorders?: boolean;
   mapStyle?: "outline" | "filled" | "minimal" | "modern" | "dark" | "patriotic";
   className?: string;
+  /** When true, zoom into only the selected states and hide everything else. */
+  focusMode?: boolean;
 }
 
 const VIEWBOX = "0 0 960 600";
@@ -24,6 +26,7 @@ export function USMap({
   showBorders = true,
   mapStyle = "modern",
   className = "",
+  focusMode = false,
 }: USMapProps) {
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
   const isInteractive = !!onToggleState;
@@ -76,6 +79,119 @@ export function USMap({
     return "#6b7280";
   }
 
+  // ── Focus mode: render only selected states zoomed in ──────────────────────
+  if (focusMode && selectedStates.length > 0) {
+    const { viewBox: focusViewBox } = computeSelectedBBox(selectedStates);
+    const parts = focusViewBox.split(" ").map(Number);
+    const vbW = parts[2];
+    const vbH = parts[3];
+
+    const INSET_CODES = new Set(["AK", "HI"]);
+    const continental = selectedStates.filter(c => !INSET_CODES.has(c));
+    const focusCodes  = continental.length > 0 ? continental : selectedStates;
+    const focusStates = US_STATES.filter(s => focusCodes.includes(s.code));
+
+    const strokeW  = Math.max(0.4, vbW / 250);
+    const fontSize = Math.max(5, Math.min(14, vbW / 22));
+
+    return (
+      <svg
+        viewBox={focusViewBox}
+        className={`w-full h-auto select-none ${className}`}
+        aria-label="Selected service states"
+        style={{ fontFamily: "system-ui, sans-serif" }}
+      >
+        <defs>
+          <filter id="focus-glow" x="-10%" y="-10%" width="120%" height="120%">
+            <feDropShadow dx="0" dy="0" stdDeviation={vbW / 60} floodColor={brandColor} floodOpacity="0.40" />
+          </filter>
+          {/* Clip mask so the glow doesn't extend into the SVG background */}
+          <clipPath id="focus-clip">
+            {focusStates.map(s => (
+              <path key={s.code} d={s.d} />
+            ))}
+          </clipPath>
+        </defs>
+
+        {/* Background fill — all states same color, no internal borders */}
+        {focusStates.map(s => (
+          <path
+            key={s.code}
+            d={s.d}
+            fill={brandColor}
+            stroke="none"
+            filter="url(#focus-glow)"
+            style={{
+              cursor: isInteractive ? "pointer" : "default",
+              transition: "opacity 0.12s ease",
+              opacity: hoveredCode === s.code ? 0.85 : 1,
+            }}
+            onClick={() => onToggleState?.(s.code)}
+            onMouseEnter={() => setHoveredCode(s.code)}
+            onMouseLeave={() => setHoveredCode(null)}
+          >
+            <title>{s.name}</title>
+          </path>
+        ))}
+
+        {/* Thin white stroke on each state path so touching states show a hairline border */}
+        {focusStates.map(s => (
+          <path
+            key={`stroke-${s.code}`}
+            d={s.d}
+            fill="none"
+            stroke="rgba(255,255,255,0.55)"
+            strokeWidth={strokeW}
+            strokeLinejoin="round"
+            style={{ pointerEvents: "none" }}
+          />
+        ))}
+
+        {/* Outer perimeter glow rectangle — gives the cluster a clean edge */}
+        <rect
+          x={parts[0]} y={parts[1]} width={vbW} height={vbH}
+          fill="none"
+          stroke={brandColor}
+          strokeWidth={strokeW * 0.5}
+          strokeOpacity={0}
+        />
+
+        {/* State abbreviation labels */}
+        {showLabels && focusStates.map(s => (
+          <text
+            key={`label-${s.code}`}
+            x={s.lx}
+            y={s.ly + fontSize * 0.15}
+            fontSize={fontSize}
+            fontWeight="700"
+            fill="#ffffff"
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{ pointerEvents: "none", userSelect: "none" }}
+          >
+            {s.code}
+          </text>
+        ))}
+      </svg>
+    );
+  }
+
+  // ── Standard full-USA map ──────────────────────────────────────────────────
+  const akSelected = selectedStates.includes("AK");
+  const hiSelected = selectedStates.includes("HI");
+
+  // Inset border: visible only when the state is selected (for light styles);
+  // dark/patriotic always keep a subtle structural border.
+  function insetStroke(selected: boolean): string {
+    if (selected) return brandColor;
+    if (mapStyle === "dark")      return "#374151";
+    if (mapStyle === "patriotic") return "#243b6e";
+    return "transparent";
+  }
+  function insetStrokeWidth(selected: boolean): number {
+    return selected ? 1.5 : 0.8;
+  }
+
   return (
     <svg
       viewBox={VIEWBOX}
@@ -94,9 +210,15 @@ export function USMap({
         </filter>
       </defs>
 
-      {/* Inset boxes — sized to fit the Albers USA fitSize([960,600]) AK/HI insets */}
-      <rect x="0" y="440" width="252" height="142" rx="4" fill={mapStyle === "minimal" ? "transparent" : mapStyle === "dark" ? "#1e293b" : mapStyle === "patriotic" ? "#1e3a5f" : "#e5e7eb"} stroke={mapStyle === "dark" ? "#374151" : mapStyle === "patriotic" ? "#243b6e" : "#d1d5db"} strokeWidth="0.8" />
-      <rect x="254" y="500" width="120" height="84" rx="4" fill={mapStyle === "minimal" ? "transparent" : mapStyle === "dark" ? "#1e293b" : mapStyle === "patriotic" ? "#1e3a5f" : "#e5e7eb"} stroke={mapStyle === "dark" ? "#374151" : mapStyle === "patriotic" ? "#243b6e" : "#d1d5db"} strokeWidth="0.8" />
+      {/* Inset boxes — border only when the respective state is selected */}
+      <rect x="0" y="440" width="252" height="142" rx="4"
+        fill={mapStyle === "minimal" ? "transparent" : mapStyle === "dark" ? "#1e293b" : mapStyle === "patriotic" ? "#1e3a5f" : "#e5e7eb"}
+        stroke={insetStroke(akSelected)}
+        strokeWidth={insetStrokeWidth(akSelected)} />
+      <rect x="254" y="500" width="120" height="84" rx="4"
+        fill={mapStyle === "minimal" ? "transparent" : mapStyle === "dark" ? "#1e293b" : mapStyle === "patriotic" ? "#1e3a5f" : "#e5e7eb"}
+        stroke={insetStroke(hiSelected)}
+        strokeWidth={insetStrokeWidth(hiSelected)} />
 
       {/* State paths — render unselected first, then selected on top */}
       {[false, true].map(renderSelected =>
