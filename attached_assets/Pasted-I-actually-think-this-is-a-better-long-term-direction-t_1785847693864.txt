@@ -1,0 +1,461 @@
+I actually think this is a better long-term direction than the website scoring features.
+
+The website builder should have two modes:
+
+Designer Mode → You drag, resize, align, edit, and build manually.
+AI Builder Mode → You describe what you want, and the AI builds it using the exact same components.
+
+The important rule is the AI should never own the website. The user always does.
+
+Phase 5 — AI Website Builder (Not Website Analyzer)
+What & Why
+
+BuildPro already contains a Website Studio, Theme System, Component Library, business data, CRM, media library, service catalog, and design controls. The next step is not another analysis panel—it is an intelligent website builder.
+
+The AI should function as an experienced web designer that works inside Website Studio rather than outside of it. It should create, modify, rearrange, and improve websites using only existing BuildPro components and settings.
+
+Golden Rule: Never generate custom HTML or create a second rendering system. The AI must only use the same components, properties, layouts, and controls available to the user. Every AI change remains fully editable through the existing Website Studio.
+
+Core Principles
+AI builds.
+
+Users own.
+
+After every AI action the website becomes a normal BuildPro website.
+
+Nothing is locked.
+
+Nothing is AI-only.
+
+AI never replaces the editor.
+
+The visual editor remains the primary interface.
+
+AI is another way to use it.
+
+Every change is reversible.
+
+Every component remains editable.
+
+Reuse existing systems.
+
+Never invent HTML.
+
+Never generate CSS files.
+
+Never create hidden components.
+
+Never duplicate rendering logic.
+
+Everything must reuse:
+
+Theme System
+Component Library
+Section Library
+Property Inspector
+Existing drag-and-drop engine
+Existing responsive engine
+Existing design tokens
+AI Sidebar
+
+Replace multiple disconnected AI tools with one sidebar.
+
+AI Website Builder
+
+────────────────────
+
+Build
+
+Edit
+
+Layout
+
+Design
+
+Content
+
+Images
+
+Website
+
+History
+
+Every feature lives here.
+
+Build Tab
+
+The user simply talks.
+
+Example
+
+Build me a hero for a manufactured home contractor.
+
+AI responds
+
+"I'll create:
+
+✓ Hero
+
+✓ Background image
+
+✓ Overlay
+
+✓ Headline
+
+✓ CTA
+
+✓ Trust badges"
+
+Preview
+
+Apply
+
+Edit Tab
+
+Select any section.
+
+Prompt
+
+Make this look more premium.
+
+AI changes only that section.
+
+It may
+
+Increase spacing
+
+Change typography
+
+Improve card layout
+
+Resize icons
+
+Adjust padding
+
+Nothing else.
+
+Layout Tab
+
+Prompt
+
+Move the gallery above About Us.
+
+Done.
+
+Prompt
+
+Make the services four across.
+
+Done.
+
+Prompt
+
+Make my footer feel more balanced.
+
+Done.
+
+Design Tab
+
+Prompt
+
+Make this theme feel patriotic.
+
+AI adjusts
+
+Colors
+
+Buttons
+
+Cards
+
+Borders
+
+Spacing
+
+Typography
+
+Component variants
+
+Still using the current theme system.
+
+Content Tab
+
+Prompt
+
+Rewrite this for manufactured home dealers.
+
+Done.
+
+Prompt
+
+Shorten this.
+
+Done.
+
+Prompt
+
+Make this more professional.
+
+Done.
+
+Prompt
+
+Mention underpinning and custom decks.
+
+Done.
+
+Images
+
+Prompt
+
+Replace hero image.
+
+AI opens media picker.
+
+Suggests
+
+Current uploads
+
+Stock
+
+Manufacturer imagery
+
+Industry images
+
+Still user controlled.
+
+Website Tab
+
+This is the big one.
+
+Prompt
+
+Build my website.
+
+AI already knows
+
+Business
+
+Services
+
+Logo
+
+Phone
+
+Email
+
+Service Areas
+
+Manufacturers
+
+Photos
+
+Veteran status
+
+Then assembles
+
+Header
+
+Hero
+
+Services
+
+Manufacturers
+
+Gallery
+
+Coverage
+
+About
+
+Reviews
+
+Contact
+
+Footer
+
+using existing templates and components.
+
+AI understands the canvas
+
+Instead of
+
+"Build me a hero"
+
+You can literally click
+
+Hero
+
+and type
+
+Make this shorter.
+
+Done.
+
+Click footer
+
+Add social icons.
+
+Done.
+
+Click gallery
+
+Use masonry layout.
+
+Done.
+
+Click services
+
+Add underpinning and custom decks.
+
+Done.
+
+Everything stays editable.
+
+AI should understand selection
+
+When something is selected
+
+Prompt becomes
+
+What would you like to change?
+
+Examples
+
+Make logo larger
+
+Move this left
+
+Reduce padding
+
+Round corners
+
+Use dark background
+
+Center text
+
+Increase spacing
+
+Make this full width
+
+Turn into cards
+
+Add another row
+
+Replace icons
+
+Everything maps to existing properties.
+
+AI should never bypass the editor
+
+Example
+
+User:
+
+Make the logo bigger.
+
+AI should literally move the Logo Size slider internally.
+
+Not inject CSS.
+
+User:
+
+Increase heading size.
+
+AI updates Typography settings.
+
+User:
+
+Move this section higher.
+
+AI changes section order.
+
+Everything is still visible in the property panel afterward.
+
+Conversation History
+
+Every AI action becomes a history item.
+
+Added Testimonials
+
+Changed Hero
+
+Updated Footer
+
+Improved Services
+
+Moved Gallery
+
+Changed Colors
+
+
+Undo
+
+Redo
+
+Restore
+
+This gives users confidence to experiment.
+
+Suggested Prompts
+
+When nothing is selected:
+
+Build me a homepage.
+Create a hero.
+Add testimonials.
+Add a pricing section.
+Add a contact form.
+Add manufacturer logos.
+Improve my footer.
+Make this look more modern.
+
+When a section is selected:
+
+Make this more premium.
+Reduce spacing.
+Make the logo bigger.
+Add another button.
+Improve typography.
+Add animation.
+Replace layout.
+Make this mobile friendly.
+Keep Manual Editing
+
+This is the most important part.
+
+The canvas never goes away.
+
+Users can still:
+
+Drag sections.
+Resize images.
+Edit text inline.
+Change fonts.
+Adjust colors.
+Move components.
+Change spacing.
+Change alignment.
+Replace images.
+Resize logos.
+
+The AI is simply another tool, not a replacement for manual editing.
+
+One feature I would add before all of this
+
+If BuildPro is going to feel like a professional design tool, I'd add a Canvas Edit Mode that works much like Figma or Canva.
+
+When you click any element (text, image, logo, button, card, icon), it gets resize handles and alignment guides. You could:
+
+Drag to reposition within its container (respecting the layout system).
+Resize images and logos visually instead of typing pixel values.
+Drag spacing between elements with smart guides.
+Snap to grids and alignment lines.
+Right-click for common actions (Duplicate, Replace, Ask AI, Hide, Delete).
+
+That complements the AI perfectly:
+
+Manual: "I'll move this exactly where I want."
+AI: "Make this section look more premium."
+
+Those two workflows reinforce each other instead of competing. The AI does the heavy lifting, and the canvas gives the user precise control to fine-tune the result.
