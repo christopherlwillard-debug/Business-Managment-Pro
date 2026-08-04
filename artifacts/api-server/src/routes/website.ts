@@ -4734,6 +4734,249 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
   return res.json(template);
 }));
 
+// ── POST /generate-from-profile ──────────────────────────────────────────────
+// M20: AI Website Generator — one-click full site generation from business data.
+// Streams server-sent events so the client can show meaningful progress steps.
+//
+// Query: businessId=N
+// SSE events:
+//   { type:"progress", step:string, pct:number }
+//   { type:"complete", sections:[...], settings:{...} }
+//   { type:"error", message:string }
+router.post("/generate-from-profile", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  // SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  function emit(data: Record<string, unknown>) {
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (typeof (res as any).flush === "function") (res as any).flush();
+    }
+  }
+
+  try {
+    emit({ type: "progress", step: "Analyzing your business profile…", pct: 5 });
+
+    // ── 1. Fetch business row ────────────────────────────────────────────────
+    const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId));
+    if (!biz) {
+      emit({ type: "error", message: "Business not found." });
+      return res.end();
+    }
+
+    // ── 2. Fetch existing website config for extracted data ──────────────────
+    const [config] = await db
+      .select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+      .from(websiteConfigsTable)
+      .where(eq(websiteConfigsTable.businessId, businessId));
+
+    type ExRow = { type: string; content: Record<string, unknown> };
+    const existingSections = (config?.sections ?? []) as ExRow[];
+    const existingSettings = (config?.settings ?? {}) as Record<string, unknown>;
+
+    // Extract services from existing sections
+    const existingServicesSection = existingSections.find(s => s.type === "services");
+    const serviceItems = (existingServicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+    const services = serviceItems.map(i => i.title ?? "").filter(Boolean);
+
+    // Extract coverage areas
+    const serviceAreaSection = existingSections.find(s => s.type === "service-area");
+    const coverageAreas = (serviceAreaSection?.content?.areas as string[] | undefined) ?? [];
+
+    // Extract working hours
+    type DayHours = { day: string; open: string; close: string; closed: boolean };
+    const hoursSection = existingSections.find(s => s.type === "business-hours");
+    const workingHours = (hoursSection?.content?.hours as DayHours[] | undefined) ?? null;
+
+    // Extract social links from existing footer
+    type SocialLink = { platform: string; url: string };
+    const existingFooter = existingSections.find(s => s.type === "footer");
+    const socialLinks = (existingFooter?.content?.socialLinks as SocialLink[] | undefined) ?? [];
+
+    const cityState = [biz.city, biz.state].filter(Boolean).join(", ");
+    const brandColor = (existingSettings.brandColor as string | undefined) ?? "#1a1a2e";
+    const logoUrl = (existingSettings.logoUrl as string | undefined) || biz.logoUrl || null;
+
+    emit({ type: "progress", step: "Selecting the right layout for your industry…", pct: 20 });
+
+    // ── 3. Industry profile → section skeleton ───────────────────────────────
+    const profile = matchIndustryProfile(biz.type ?? "");
+    const rawSections = buildIndustrySections(
+      profile,
+      { name: biz.name ?? undefined, phone: biz.phone ?? undefined, email: biz.email ?? undefined },
+      false,
+    ) as Array<{ id: string; type: string; enabled: boolean; order: number; content: Record<string, unknown> }>;
+
+    emit({ type: "progress", step: "Writing personalized copy for your business…", pct: 35 });
+
+    // ── 4. Generate copy for all sections in parallel ────────────────────────
+    const businessCtx: BusinessContext = {
+      businessName:    biz.name ?? "Your Business",
+      businessType:    biz.type ?? profile.name,
+      location:        cityState || coverageAreas[0] || "",
+      phone:           biz.phone ?? "",
+      email:           biz.email ?? "",
+      services:        services.length > 0 ? services : undefined,
+      serviceArea:     coverageAreas.length > 0 ? coverageAreas.join(", ") : cityState || undefined,
+      trustSignals:    profile.trustSignals,
+      serviceKeywords: profile.serviceKeywords,
+    };
+
+    const copyResults = await Promise.allSettled(
+      rawSections.map(s => generateSectionCopy(s, businessCtx)),
+    );
+
+    emit({ type: "progress", step: "Choosing colors from your brand…", pct: 65 });
+
+    // ── 5. Merge copy into sections (mirrors generate-site-copy merge logic) ──
+    const withCopy = rawSections.map((section, i) => {
+      const outcome = copyResults[i];
+      if (outcome?.status !== "fulfilled" || !outcome.value) return section;
+      const copy = outcome.value;
+
+      if (section.type === "services" && Array.isArray(copy.items)) {
+        const ex = (section.content.items as Array<Record<string, unknown>> | undefined) ?? [];
+        const ci = copy.items as Array<{ title: string; description: string }>;
+        const merged = ex.map((item, idx) => ({ ...item, title: ci[idx]?.title ?? item.title, description: ci[idx]?.description ?? item.description }));
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { items: _i, ...rest } = copy;
+        return { ...section, content: { ...section.content, ...rest, items: merged } };
+      }
+      if (section.type === "faq" && Array.isArray(copy.items)) {
+        const ci = copy.items as Array<{ question: string; answer: string }>;
+        const faqItems = ci.map((q, idx) => ({ id: `faq-${idx + 1}`, ...q }));
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { items: _i, ...rest } = copy;
+        return { ...section, content: { ...section.content, ...rest, items: faqItems } };
+      }
+      if (section.type === "process" && Array.isArray(copy.steps)) {
+        const ex = (section.content.steps as Array<Record<string, unknown>> | undefined) ?? [];
+        const cs = copy.steps as Array<{ title: string; description: string }>;
+        const merged = ex.map((step, idx) => ({ ...step, title: cs[idx]?.title ?? step.title, description: cs[idx]?.description ?? step.description }));
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { steps: _s, ...rest } = copy;
+        return { ...section, content: { ...section.content, ...rest, steps: merged } };
+      }
+      if (section.type === "why-choose-us" && Array.isArray(copy.items)) {
+        const ex = (section.content.items as Array<Record<string, unknown>> | undefined) ?? [];
+        const ci = copy.items as Array<{ title: string; description: string }>;
+        const merged = ci.map((item, idx) => ({ id: (ex[idx] as any)?.id ?? `why-${idx + 1}`, icon: (ex[idx] as any)?.icon ?? "✓", ...item }));
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { items: _i, ...rest } = copy;
+        return { ...section, content: { ...section.content, ...rest, items: merged } };
+      }
+      if (section.type === "meet-owner") {
+        const { bio, ...rest } = copy;
+        return { ...section, content: { ...section.content, ...rest, ...(bio ? { bio } : {}) } };
+      }
+      return { ...section, content: { ...section.content, ...copy } };
+    });
+
+    // ── 6. Generate color palette ─────────────────────────────────────────────
+    let colorPalette: Record<string, unknown> = {};
+    try {
+      let imageBuffer: Buffer | null = null;
+      const logoObjectPath = existingSettings.logoObjectPath as string | undefined;
+
+      if (logoObjectPath?.startsWith("/objects/uploads/")) {
+        try {
+          const objectFile = await objectStorageService.getObjectEntityFile(logoObjectPath);
+          const response = await objectStorageService.downloadObject(objectFile);
+          if (response.body) {
+            const chunks: Buffer[] = [];
+            const nodeStream = Readable.fromWeb(response.body as any);
+            await new Promise<void>((resolve, reject) => {
+              nodeStream.on("data", (c: Buffer) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+              nodeStream.on("end", resolve);
+              nodeStream.on("error", reject);
+            });
+            imageBuffer = Buffer.concat(chunks);
+          }
+        } catch { /* non-fatal */ }
+      }
+
+      if (!imageBuffer && logoUrl && /^https?:\/\//.test(logoUrl)) {
+        try {
+          const fr = await fetch(logoUrl);
+          if (fr.ok) imageBuffer = Buffer.from(await fr.arrayBuffer());
+        } catch { /* non-fatal */ }
+      }
+
+      let dominantColors: string[] = [];
+      if (imageBuffer && imageBuffer.length > 0) {
+        dominantColors = await extractDominantColors(imageBuffer);
+      }
+      if (dominantColors.length === 0 && /^#[0-9a-fA-F]{6}$/.test(brandColor)) {
+        dominantColors = [brandColor];
+      }
+      const suggestions = generateColorPalettes(dominantColors);
+      colorPalette = (suggestions[0]?.palette ?? {}) as Record<string, unknown>;
+    } catch { /* color generation is non-fatal */ }
+
+    emit({ type: "progress", step: "Finalizing your website…", pct: 90 });
+
+    // ── 7. Enrich sections with real business data ────────────────────────────
+    const year = new Date().getFullYear();
+    const finalSections = withCopy.map(s => {
+      if (s.type === "footer") {
+        return {
+          ...s,
+          content: {
+            ...s.content,
+            phone:         biz.phone ?? (s.content.phone ?? ""),
+            email:         biz.email ?? (s.content.email ?? ""),
+            licenseNumber: biz.licenseNumber ?? (s.content.licenseNumber ?? ""),
+            copyright:     `© ${year} ${biz.name ?? ""}. All rights reserved.`,
+            ...(socialLinks.length > 0 ? { socialLinks } : {}),
+          },
+        };
+      }
+      if (s.type === "contact") {
+        return {
+          ...s,
+          content: {
+            ...s.content,
+            phone: biz.phone ?? "",
+            email: biz.email ?? "",
+            ...(services.length > 0 ? { serviceTypes: services } : {}),
+          },
+        };
+      }
+      if (s.type === "business-hours" && workingHours?.length) {
+        return { ...s, content: { ...s.content, hours: workingHours } };
+      }
+      return s;
+    });
+
+    const finalSettings: Record<string, unknown> = {
+      brandColor:  (colorPalette.brandColor as string | undefined) ?? brandColor,
+      fontFamily:  (existingSettings.fontFamily as string | undefined) ?? "Inter",
+      logoUrl:     logoUrl ?? "",
+      ...(existingSettings.logoObjectPath ? { logoObjectPath: existingSettings.logoObjectPath } : {}),
+      ...(existingSettings.faviconUrl     ? { faviconUrl:     existingSettings.faviconUrl     } : {}),
+      ...(existingSettings.faviconObjectPath ? { faviconObjectPath: existingSettings.faviconObjectPath } : {}),
+      ...colorPalette,
+    };
+
+    emit({ type: "complete", sections: finalSections, settings: finalSettings });
+
+  } catch (err) {
+    try {
+      emit({ type: "error", message: err instanceof Error ? err.message : "Generation failed. Please try again." });
+    } catch { /* response may already be ended */ }
+  } finally {
+    if (!res.writableEnded) res.end();
+  }
+}));
+
 // ── POST /generate-dealer-pages ───────────────────────────────────────────────
 // Body: { manufacturers: string[], businessContext?: BusinessContext | null }
 // Returns: { pages: SitePage[], progress: Record<string, "done"|"error"> }

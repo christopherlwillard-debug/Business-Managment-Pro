@@ -99,6 +99,7 @@ import type { SiteSettings, SeoSettings, CardComponent, SavedSection, BusinessCo
 import { SeoPanel } from "./SeoPanel";
 import { LandingPageGenerator } from "./LandingPageGenerator";
 import { AIWebsiteWizard, type WizardFormValues, type BusinessProfilePrefill } from "./AIWebsiteWizard";
+import { AIWebsiteGenerator, type GeneratedSiteData } from "./AIWebsiteGenerator";
 import { ImagePickerModal } from "./ImagePickerModal";
 import { WebsiteScorePanel } from "./WebsiteScorePanel";
 import { scoreWebsite } from "./websiteScorer";
@@ -1526,6 +1527,10 @@ function WebsiteEditor() {
   const [addSectionTab, setAddSectionTab] = useState<"sections" | "templates">("sections");
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
   const [showAIWizard, setShowAIWizard] = useState(false);
+  const [showGeneratorScreen, setShowGeneratorScreen] = useState(false);
+  const [generatorMode, setGeneratorMode] = useState<"new" | "regenerate">("new");
+  const [showReadyOverlay, setShowReadyOverlay] = useState(false);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingStep, setGeneratingStep] = useState("");
   const [showLayoutAssistant, setShowLayoutAssistant] = useState(false);
@@ -1754,6 +1759,18 @@ function WebsiteEditor() {
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/website/templates?businessId=${bizId}`, { credentials: "include" });
       if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  // Prefill data for the AI Generator confirm screen
+  const { data: generatorPrefill } = useQuery<BusinessProfilePrefill | null>({
+    queryKey: ["generator-prefill", bizId],
+    enabled: !!bizId && (showGeneratorScreen || showReadyOverlay),
+    staleTime: 120_000,
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/website/business-profile-prefill?businessId=${bizId}`, { credentials: "include" });
+      if (!res.ok) return null;
       return res.json();
     },
   });
@@ -2377,8 +2394,9 @@ function WebsiteEditor() {
     setLocalSettings(cleanSettings as SiteSettings);
     if (isNewSite && !pickerShownRef.current) {
       pickerShownRef.current = true;
-      // M1: open AI wizard for new sites (replaces template-picker-first flow)
-      setShowAIWizard(true);
+      // M20: open AI Generator for new sites (no-wizard, one-click flow)
+      setGeneratorMode("new");
+      setShowGeneratorScreen(true);
     }
   }, [config]);
 
@@ -3066,6 +3084,67 @@ function WebsiteEditor() {
         description: "Something went wrong. Your blank site is ready to edit.",
         variant: "destructive",
       });
+    } finally {
+      setIsGenerating(false);
+      setGeneratingStep("");
+    }
+  }
+
+  // ── M20: AI Website Generator complete handler ────────────────────────────────
+  async function handleGeneratorComplete(data: GeneratedSiteData) {
+    setShowGeneratorScreen(false);
+    setIsGenerating(true);
+    setGeneratingStep("Applying your website…");
+    try {
+      const sections = (data.sections ?? []) as Section[];
+      // Build new settings: generated values first, then preserve existing logo/favicon/domain
+      const generatedSettings = data.settings as Partial<SiteSettings>;
+      const preservedLogoUrl = settings.logoUrl || generatedSettings.logoUrl || "";
+      const newSettings: SiteSettings = {
+        brandColor: "#1a1a2e",
+        fontFamily: "Inter",
+        ...generatedSettings,
+        // Always preserve these from the current site (overwrite any AI-generated values)
+        logoUrl: preservedLogoUrl,
+        ...(settings.logoObjectPath ? { logoObjectPath: settings.logoObjectPath } : generatedSettings.logoObjectPath ? { logoObjectPath: generatedSettings.logoObjectPath } : {}),
+        ...(settings.faviconUrl ? { faviconUrl: settings.faviconUrl } : {}),
+        ...(settings.faviconObjectPath ? { faviconObjectPath: settings.faviconObjectPath } : {}),
+        ...(settings.customDomain ? { customDomain: settings.customDomain } : {}),
+      };
+
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+
+      const payload = {
+        sections: sections.map((s, i) => ({ ...s, order: i })),
+        settings: newSettings,
+      };
+
+      const saveRes = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      if (saveRes.ok) {
+        setLocalPages([{ id: "home", name: "Home", slug: "home", sections }]);
+        setActivePageId("home");
+        setLocalSettings(newSettings);
+        isDirtyRef.current = false;
+        setHasUnpublishedChanges(true);
+        qc.invalidateQueries({ queryKey: ["website-config", bizId] });
+        setShowReadyOverlay(true);
+      } else {
+        // Fall back to local-only apply
+        setLocalPages([{ id: "home", name: "Home", slug: "home", sections }]);
+        setLocalSettings(newSettings);
+        isDirtyRef.current = true;
+        setHasUnpublishedChanges(true);
+        toast({ title: "✨ Website generated!", description: "Click Save to keep your changes." });
+      }
+    } catch (err) {
+      console.error("[AI Generator apply]", err);
+      toast({ title: "Generation failed", description: "Something went wrong. Please try again.", variant: "destructive" });
     } finally {
       setIsGenerating(false);
       setGeneratingStep("");
@@ -5979,6 +6058,101 @@ function WebsiteEditor() {
         onSkipToTemplate={() => { setShowAIWizard(false); setShowTemplatePicker(true); setPickerIsReset(false); }}
       />
     )}
+
+    {/* M20: AI Website Generator — one-click generation from business profile */}
+    {bizId && (
+      <AIWebsiteGenerator
+        show={showGeneratorScreen}
+        businessId={bizId}
+        mode={generatorMode}
+        prefill={generatorPrefill ?? null}
+        onComplete={handleGeneratorComplete}
+        onOpenWizard={() => { setShowGeneratorScreen(false); setShowAIWizard(true); }}
+        onClose={() => {
+          setShowGeneratorScreen(false);
+          // If this was for a new site, fall back to showing the wizard
+          if (generatorMode === "new") setShowAIWizard(true);
+        }}
+      />
+    )}
+
+    {/* M20: Regenerate from scratch — confirmation dialog */}
+    {showRegenerateConfirm && (
+      <div className="fixed inset-0 z-[350] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="bg-background border border-border rounded-2xl shadow-xl w-full max-w-sm p-6 flex flex-col gap-4">
+          <div>
+            <h3 className="text-base font-semibold">Regenerate Website?</h3>
+            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+              This will replace all current content — sections, copy, and colors — with a fresh AI-generated version using your latest business data. Your logo and uploaded photos will be preserved.
+            </p>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={() => setShowRegenerateConfirm(false)}
+              className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowRegenerateConfirm(false);
+                setGeneratorMode("regenerate");
+                setShowGeneratorScreen(true);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Regenerate
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* M20: Post-generation welcome overlay */}
+    {showReadyOverlay && (
+      <div className="fixed inset-0 z-[300] flex items-end justify-center pb-8 pointer-events-none px-4">
+        <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-lg p-5 pointer-events-auto">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
+              <span className="text-lg">🎉</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold">Your website is ready!</p>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                Review each section, then click <strong>Publish</strong> when you're happy with the result.
+              </p>
+              <div className="flex items-center gap-2 mt-2.5">
+                <button
+                  type="button"
+                  onClick={() => { setShowReadyOverlay(false); setShowScorePanel(true); }}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 transition-colors font-medium"
+                >
+                  Check Score
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowReadyOverlay(false); setActiveTab("seo"); }}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 transition-colors font-medium"
+                >
+                  SEO Builder
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowReadyOverlay(false)}
+              className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     {mediaPickerState && bizId && (
       // M5: ImagePickerModal adds "✨ Suggested" tab with industry-relevant photos
       <ImagePickerModal
@@ -6509,6 +6683,7 @@ function WebsiteEditor() {
             handleLogoUpload={handleLogoUpload}
             handleFaviconUpload={handleFaviconUpload}
             openResetPicker={openResetPicker}
+            onRegenerateWithAI={() => setShowRegenerateConfirm(true)}
             publicUrl={publicUrl}
             appHost={window.location.host}
             onCopy={text => { navigator.clipboard.writeText(text).then(() => toast({ title: "Copied!" })); }}

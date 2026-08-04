@@ -31,6 +31,7 @@ export interface ThemeVariablesPanelProps {
   handleLogoUpload: (file: File) => void;
   handleFaviconUpload: (file: File) => void;
   openResetPicker: () => void;
+  onRegenerateWithAI?: () => void;
   publicUrl: string;
   appHost: string;
   onCopy: (text: string) => void;
@@ -371,6 +372,7 @@ export function ThemeVariablesPanel({
   handleLogoUpload,
   handleFaviconUpload,
   openResetPicker,
+  onRegenerateWithAI,
   publicUrl,
   appHost,
   onCopy,
@@ -709,6 +711,16 @@ export function ThemeVariablesPanel({
             <LayoutTemplate className="w-4 h-4" />
             Apply Template…
           </button>
+          {onRegenerateWithAI && (
+            <button
+              type="button"
+              onClick={onRegenerateWithAI}
+              className="flex items-center justify-center gap-2 w-full text-sm border border-dashed border-purple-400/60 dark:border-purple-500/40 rounded-lg px-3 py-2.5 cursor-pointer transition-colors hover:bg-purple-50/60 dark:hover:bg-purple-900/20 text-purple-700 dark:text-purple-400 hover:border-purple-500"
+            >
+              <Sparkles className="w-4 h-4" />
+              Regenerate with AI…
+            </button>
+          )}
         </div>
 
         {/* ── Custom domain ───────────────────────────────────────────────── */}
