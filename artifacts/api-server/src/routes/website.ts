@@ -1108,6 +1108,98 @@ Be direct and reassuring. Address common customer concerns.`;
   res.json({ result });
 }));
 
+// ── improve-copy: rewrite existing text in a chosen voice ─────────────────────
+//
+// POST /improve-copy
+// Body: { text: string; tone: string; context?: BusinessContext }
+// Returns: { result: string }
+//
+// Tones: Professional | Luxury | Friendly | Commercial | SEO Optimized |
+//        Veteran | Simple | Sales Focused | Shorter | Longer
+//
+// The endpoint rewrites ONLY the provided text (it never generates from scratch).
+// "context" is optional — when present it lets the AI keep brand voice consistent.
+
+const IMPROVE_TONE_INSTRUCTIONS: Record<string, string> = {
+  "Professional":
+    "Rewrite in a formal, professional tone. Use clear, authoritative, industry-standard language. " +
+    "Sound like a well-established business — confident and credible, never casual.",
+  "Luxury":
+    "Rewrite in a luxury, premium tone. Use elevated, refined language. " +
+    "Evoke quality craftsmanship, exclusivity, and white-glove service without sounding pretentious.",
+  "Friendly":
+    "Rewrite in a warm, friendly, conversational tone. Sound like a trusted neighbor — " +
+    "approachable and personable, like you're talking directly to a homeowner face-to-face.",
+  "Commercial":
+    "Rewrite targeting commercial and business clients. Emphasize reliability, ROI, scale, " +
+    "project management capability, and professional partnerships. Less emotional, more logical.",
+  "SEO Optimized":
+    "Rewrite to be search-engine friendly. Naturally weave in service-specific keywords and " +
+    "location phrases that people actually search for. Keep it readable — not keyword-stuffed.",
+  "Veteran":
+    "Rewrite to highlight veteran ownership with pride. Reflect military values: discipline, " +
+    "integrity, reliability, and mission-first service. Natural and genuine, not forced.",
+  "Simple":
+    "Rewrite in plain, simple English. Use short sentences and common words. " +
+    "Anyone should understand it immediately — no jargon, no fluff.",
+  "Sales Focused":
+    "Rewrite to maximize conversions. Lead with clear benefits and outcomes. " +
+    "Use persuasive language and a strong, direct call to action. " +
+    "Create mild urgency without sounding pushy.",
+  "Shorter":
+    "Condense this text to roughly 40–60% of its original length. " +
+    "Keep the most important information and the core message. " +
+    "Cut filler words, redundant phrases, and secondary details.",
+  "Longer":
+    "Expand this text with more detail, supporting context, and explanation. " +
+    "Roughly double its length while staying tightly on-topic. " +
+    "Add concrete benefits, reassuring details, or supporting evidence.",
+};
+
+const VALID_TONES = new Set(Object.keys(IMPROVE_TONE_INSTRUCTIONS));
+
+router.post("/improve-copy", wrapAsync(async (req, res) => {
+  const { text, tone, context } = req.body as {
+    text?: string;
+    tone?: string;
+    context?: BusinessContext;
+  };
+
+  if (!text?.trim()) {
+    return res.status(400).json({ error: "text is required" });
+  }
+  if (!tone || !VALID_TONES.has(tone)) {
+    return res.status(400).json({
+      error: `tone must be one of: ${[...VALID_TONES].join(", ")}`,
+    });
+  }
+
+  const instruction = IMPROVE_TONE_INSTRUCTIONS[tone];
+  const contextHint = context
+    ? `\nBusiness context: ${bizSummary(context as BusinessContext)}${
+        context.isVeteranOwned ? " Veteran-owned." : ""
+      }`
+    : "";
+
+  const userPrompt =
+    `Task: ${instruction}\n` +
+    contextHint +
+    `\n\nOriginal text:\n"${text.trim().slice(0, 800)}"` +
+    `\n\nReturn ONLY the rewritten text — no quotes, no explanation, no prefix.`;
+
+  const completion = await openai.chat.completions.create({
+    model: BUILDPRO_AI_MINI_MODEL,
+    max_completion_tokens: 600,
+    messages: [
+      { role: "system", content: COPY_SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
+    ],
+  });
+
+  const result = completion.choices[0]?.message?.content?.trim() ?? "";
+  res.json({ result });
+}));
+
 // ── generate-site-copy: batch copy for all sections ───────────────────────────
 
 type SectionForCopy = { id: string; type: string; content: Record<string, unknown> };
