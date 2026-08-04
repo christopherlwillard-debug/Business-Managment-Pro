@@ -210,6 +210,27 @@ export interface CardComponent {
   analyticsLabel?: string;
 }
 
+// ── AI Layout Assistant ───────────────────────────────────────────────────────
+
+/**
+ * A single layout recommendation returned by POST /api/website/suggest-layout.
+ * The patch fields are merged into the matching section in-place.
+ */
+export interface LayoutSuggestion {
+  id: string;
+  category: "Hero" | "Services" | "Gallery" | "Footer" | "Trust Signals" | "Structure";
+  label: string;
+  description: string;
+  /** ID of the section this suggestion targets */
+  sectionId?: string;
+  /** Shallow-merged into section.content */
+  contentPatch?: Record<string, unknown>;
+  /** Shallow-merged into section.blockStyle */
+  blockStylePatch?: Record<string, unknown>;
+  /** Move sectionId immediately before this section ID (reorder) */
+  moveBeforeSectionId?: string;
+}
+
 /**
  * CardCollection — section-level primitive for multi-card layouts with
  * filtering, pagination, categories, and rich grid controls. Planned for a

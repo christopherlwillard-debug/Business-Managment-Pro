@@ -909,6 +909,96 @@ router.post("/generate-copy", wrapAsync(async (req, res) => {
   res.json({ result });
 }));
 
+// ── AI Layout Assistant ────────────────────────────────────────────────────────
+
+import { condenseSectionsForAI } from "../lib/layoutSuggestion";
+
+const LAYOUT_SUGGESTION_SCHEMA = {
+  name: "layout_suggestions",
+  strict: true,
+  schema: {
+    type: "object",
+    properties: {
+      suggestions: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id:                  { type: "string" },
+            category:            { type: "string", enum: ["Hero", "Services", "Gallery", "Footer", "Trust Signals", "Structure"] },
+            label:               { type: "string" },
+            description:         { type: "string" },
+            sectionId:           { type: "string" },
+            contentPatch:        { type: "object", additionalProperties: true },
+            blockStylePatch:     { type: "object", additionalProperties: true },
+            moveBeforeSectionId: { type: "string" },
+          },
+          required: ["id", "category", "label", "description"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["suggestions"],
+    additionalProperties: false,
+  },
+};
+
+router.post("/suggest-layout", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  const { sections, businessName } = req.body as { sections?: any[]; businessName?: string };
+  if (!Array.isArray(sections) || sections.length === 0) {
+    return res.status(400).json({ error: "sections array required" });
+  }
+
+  const condensed = condenseSectionsForAI(sections);
+
+  const completion = await openai.chat.completions.create({
+    model: BUILDPRO_AI_MINI_MODEL,
+    max_completion_tokens: 1200,
+    response_format: { type: "json_schema", json_schema: LAYOUT_SUGGESTION_SCHEMA },
+    messages: [
+      {
+        role: "system",
+        content: `You are an expert contractor website layout consultant. Analyze the section tree and return actionable layout improvements. Focus ONLY on layout, structure, ordering, and numeric configuration — never text content, colors, or fonts.
+
+Valid contentPatch keys by section type (use ONLY these exact keys and allowed values):
+- hero: layout ("centered"|"split"|"minimal"), trustBar {"enabled":true} to enable the trust strip below the hero, secondaryCta {"enabled":true} to enable a secondary CTA button
+  → For hero height: use blockStylePatch {"minHeight": <number 60-100>} — NOT contentPatch
+- services: columns (1|2|3|4), layout ("cards"|"icon_row"|"feature_grid"), hoverLift (true|false)
+- gallery: columns (2|3|4), aspectRatio ("square"|"video"|"auto")
+- service-area: displayMode ("map"|"list"|"both"|"selected_only")
+- stats: columns (2|3|4)
+- For section reordering: set moveBeforeSectionId to move sectionId directly before that target section
+
+Important: trustBar and secondaryCta patches are deep-merged with existing values, so {"trustBar":{"enabled":true}} safely enables the feature without wiping any existing items the user has configured.
+
+Rules:
+- sectionId must exactly match a real id from the input sections list
+- moveBeforeSectionId must exactly match a real id from the input sections list
+- Suggest 3–7 focused, actionable improvements
+- Prioritize: poor section ordering (contact form near the top, trust signals after the footer), services section with only 1–2 columns when 5+ services exist, hero with no background image, no testimonials/stats/certifications sections present
+- Each description must be exactly one sentence explaining the specific benefit to the contractor`,
+      },
+      {
+        role: "user",
+        content: `Business: ${businessName ?? "a contractor business"}\n\nSections (sorted by order):\n${JSON.stringify(condensed, null, 2)}`,
+      },
+    ],
+  });
+
+  const raw = completion.choices[0]?.message?.content?.trim() ?? "{}";
+  try {
+    const parsed = JSON.parse(raw) as { suggestions: unknown[] };
+    res.json({ suggestions: parsed.suggestions ?? [] });
+  } catch {
+    res.json({ suggestions: [] });
+  }
+}));
+
 router.post("/upload-logo", wrapAsync(async (req, res) => {
   const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
   if (!name || !size || !contentType) {

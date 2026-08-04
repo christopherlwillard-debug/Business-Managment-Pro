@@ -78,6 +78,8 @@ import { LogoSectionInspector } from "./LogoSectionInspector";
 import { CoverageMapInspector } from "./CoverageMapInspector";
 import { HeroInspector } from "./HeroInspector";
 import { ServicesInspector } from "./ServicesInspector";
+import { LayoutAssistantPanel } from "./LayoutAssistantPanel";
+import type { LayoutSuggestion } from "./website-types";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
 import { SectionLibraryPanel } from "./SectionLibraryPanel";
@@ -1443,6 +1445,7 @@ function WebsiteEditor() {
   const [showAddSection, setShowAddSection] = useState(false);
   const [addSectionTab, setAddSectionTab] = useState<"sections" | "templates">("sections");
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [showLayoutAssistant, setShowLayoutAssistant] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
   const { contextValue, editingId, editingIdRef } = useInlineEdit();
   const pagesRef = useRef<SitePage[]>([]);
@@ -2709,6 +2712,68 @@ function WebsiteEditor() {
       setLocalPages(next.sections);
       setLocalSettings(next.settings);
     }
+  }
+
+  /** Deep-merge known nested content objects (trustBar, secondaryCta, badge)
+   *  so the AI can enable a feature without wiping user-configured sub-fields. */
+  function applyContentPatch(
+    existing: Record<string, unknown>,
+    patch: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const DEEP_KEYS = new Set(["trustBar", "secondaryCta", "badge"]);
+    const result: Record<string, unknown> = { ...existing };
+    for (const [k, v] of Object.entries(patch)) {
+      if (
+        DEEP_KEYS.has(k) &&
+        existing[k] != null &&
+        typeof existing[k] === "object" && !Array.isArray(existing[k]) &&
+        typeof v === "object" && v !== null && !Array.isArray(v)
+      ) {
+        result[k] = { ...(existing[k] as Record<string, unknown>), ...(v as Record<string, unknown>) };
+      } else {
+        result[k] = v;
+      }
+    }
+    return result;
+  }
+
+  function handleApplySuggestion(suggestion: LayoutSuggestion) {
+    // Push current state to undo history so this is undoable
+    history.pushSnapshot({ sections: pagesRef.current, settings });
+    isDirtyRef.current = true;
+
+    const currentSections = activePage?.sections ?? sections;
+
+    // Apply content/blockStyle patch
+    let newSections: Section[] = currentSections.map(sec => {
+      if (sec.id !== suggestion.sectionId) return sec;
+      return {
+        ...sec,
+        content: suggestion.contentPatch
+          ? applyContentPatch(sec.content, suggestion.contentPatch)
+          : sec.content,
+        blockStyle: suggestion.blockStylePatch
+          ? { ...(sec.blockStyle ?? {}), ...(suggestion.blockStylePatch as import("./sections/BlockStyleWrapper").BlockStyle) }
+          : sec.blockStyle,
+      };
+    });
+
+    // Apply reorder: move sectionId to immediately before moveBeforeSectionId
+    if (suggestion.moveBeforeSectionId && suggestion.sectionId) {
+      const sorted = [...newSections].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      const fromIdx = sorted.findIndex(s => s.id === suggestion.sectionId);
+      const toIdx   = sorted.findIndex(s => s.id === suggestion.moveBeforeSectionId);
+      if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
+        const [moved] = sorted.splice(fromIdx, 1);
+        const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx;
+        sorted.splice(insertAt, 0, moved);
+        // Reassign order immutably — never mutate objects from pagesRef.current
+        // (history snapshots hold references; in-place mutation would corrupt undo)
+        newSections = sorted.map((s, i) => ({ ...s, order: i }));
+      }
+    }
+
+    updatePageSections(newSections);
   }
 
   function moveSection(id: string, direction: "up" | "down") {
@@ -5526,6 +5591,21 @@ function WebsiteEditor() {
               </button>
             </div>
 
+            {/* AI Layout Assistant */}
+            <button
+              type="button"
+              onClick={() => setShowLayoutAssistant(v => !v)}
+              title="AI Layout Assistant"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors text-xs font-medium ${
+                showLayoutAssistant
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Layout AI</span>
+            </button>
+
             {/* Focus mode toggle */}
             <button
               type="button"
@@ -7286,6 +7366,17 @@ function WebsiteEditor() {
     )}
 
     {/* ── Save to Library dialog ─────────────────────────────────── */}
+    {showLayoutAssistant && bizId && (
+      <LayoutAssistantPanel
+        isOpen={showLayoutAssistant}
+        onClose={() => setShowLayoutAssistant(false)}
+        bizId={bizId}
+        sections={sections}
+        businessName={activeBusiness?.name}
+        onApplySuggestion={handleApplySuggestion}
+      />
+    )}
+
     {saveSectionTarget && (
       <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/50">
         <div
