@@ -1588,6 +1588,88 @@ router.post("/generate-full-site", wrapAsync(async (req, res) => {
   });
 }));
 
+// ── AI Color Assistant (Phase 5 M7) ──────────────────────────────────────────
+
+import { extractDominantColors } from "../lib/colorExtraction";
+import { generateColorPalettes } from "../lib/colorPalette";
+
+/**
+ * POST /api/website/suggest-colors
+ *
+ * Extracts dominant colors from the business logo (or falls back to a
+ * user-supplied base color) and returns 4 named ThemeOverrides suggestions.
+ *
+ * Body (at least one of the three required):
+ *   businessId?:  number  — if set, server fetches the logo from object storage
+ *   logoUrl?:     string  — public http/https URL to fetch directly
+ *   baseColor?:   string  — hex color used when no logo is available
+ */
+router.post("/suggest-colors", wrapAsync(async (req, res) => {
+  const { businessId, logoUrl, baseColor } = req.body as {
+    businessId?: number;
+    logoUrl?: string;
+    baseColor?: string;
+  };
+
+  let dominantColors: string[] = [];
+
+  // ── 1. Resolve image buffer from one of the three inputs ─────────────────
+  try {
+    let imageBuffer: Buffer | null = null;
+
+    if (businessId && !isNaN(businessId)) {
+      // Fetch logo from object storage via the business's website config
+      const [config] = await db
+        .select({ settings: websiteConfigsTable.settings })
+        .from(websiteConfigsTable)
+        .where(eq(websiteConfigsTable.businessId, businessId));
+
+      const settings = (config?.settings ?? {}) as Record<string, unknown>;
+      const logoObjectPath = settings.logoObjectPath as string | undefined;
+
+      if (logoObjectPath?.startsWith("/objects/uploads/")) {
+        const objectFile = await objectStorageService.getObjectEntityFile(logoObjectPath);
+        const response = await objectStorageService.downloadObject(objectFile);
+        if (response.body) {
+          const chunks: Buffer[] = [];
+          const nodeStream = Readable.fromWeb(response.body as any);
+          await new Promise<void>((resolve, reject) => {
+            nodeStream.on("data", (chunk: Buffer) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+            nodeStream.on("end", resolve);
+            nodeStream.on("error", reject);
+          });
+          imageBuffer = Buffer.concat(chunks);
+        }
+      }
+    }
+
+    if (!imageBuffer && logoUrl && /^https?:\/\//.test(logoUrl)) {
+      // Fetch logo from a public URL
+      const fetchRes = await fetch(logoUrl);
+      if (fetchRes.ok) {
+        imageBuffer = Buffer.from(await fetchRes.arrayBuffer());
+      }
+    }
+
+    if (imageBuffer && imageBuffer.length > 0) {
+      dominantColors = await extractDominantColors(imageBuffer);
+    }
+  } catch {
+    // Extraction failure is non-fatal — fall through to baseColor or defaults
+    dominantColors = [];
+  }
+
+  // ── 2. Fall back to baseColor if extraction yielded nothing ──────────────
+  if (dominantColors.length === 0 && baseColor && /^#[0-9a-fA-F]{6}$/.test(baseColor)) {
+    dominantColors = [baseColor];
+  }
+
+  // ── 3. Generate 4 themed palette suggestions ─────────────────────────────
+  const suggestions = generateColorPalettes(dominantColors);
+
+  res.json({ suggestions, extractedColors: dominantColors });
+}));
+
 router.post("/upload-section-bg", wrapAsync(async (req, res) => {
   const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
   if (!name || !size || !contentType) {

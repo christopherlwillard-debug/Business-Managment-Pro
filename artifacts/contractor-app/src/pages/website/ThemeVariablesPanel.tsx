@@ -5,12 +5,23 @@
  * buttons, cards, forms, header/footer tints, and site assets. Includes
  * a live mini-preview strip so Willard can see the effect of each change
  * before committing.
+ *
+ * Phase 5 M7 — AI Color Assistant:
+ *   The Colors accordion now has a "✨ Suggest Colors" button that calls
+ *   POST /api/website/suggest-colors. If a logo is uploaded, dominant colors
+ *   are extracted server-side (via sharp). If not, the user picks a base color.
+ *   The response is shown as 4 swatch preview cards; clicking one calls
+ *   patchSettings(suggestion.palette) through the existing theme system.
  */
-import { ChevronRight, ImagePlus, Loader2, LayoutTemplate } from "lucide-react";
+import { useState } from "react";
+import { ChevronRight, ImagePlus, Loader2, LayoutTemplate, Sparkles, CheckCircle2, X } from "lucide-react";
 import type { SiteSettings } from "./website-types";
 import { SITE_THEMES, HEADING_SCALES, BODY_SIZES } from "./themes";
+import type { ThemeOverrides } from "./themes";
 import { HEADING_FONTS, BODY_FONTS } from "./useFontLoader";
 import { CustomDomainPanel } from "./CustomDomainPanel";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export interface ThemeVariablesPanelProps {
   settings: SiteSettings;
@@ -23,6 +34,8 @@ export interface ThemeVariablesPanelProps {
   publicUrl: string;
   appHost: string;
   onCopy: (text: string) => void;
+  /** Business ID — used by the AI Color Assistant to fetch the logo from object storage. */
+  bizId?: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -169,6 +182,185 @@ function ThemePreviewStrip({ settings }: { settings: SiteSettings }) {
   );
 }
 
+// ── AI Color Suggestion Card ──────────────────────────────────────────────────
+
+interface ColorSuggestion {
+  id: string;
+  name: string;
+  description: string;
+  swatchColors: string[];
+  palette: ThemeOverrides;
+}
+
+function ColorSuggestionCard({
+  suggestion,
+  applied,
+  onApply,
+}: {
+  suggestion: ColorSuggestion;
+  applied: boolean;
+  onApply: (palette: ThemeOverrides) => void;
+}) {
+  return (
+    <div
+      className={`rounded-xl border transition-all ${
+        applied ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border bg-card hover:border-primary/40"
+      }`}
+    >
+      {/* Swatch row */}
+      <div className="flex h-8 rounded-t-xl overflow-hidden">
+        {suggestion.swatchColors.map((c, i) => (
+          <div key={i} className="flex-1" style={{ backgroundColor: c }} title={c} />
+        ))}
+      </div>
+
+      {/* Info + apply */}
+      <div className="px-3 py-2.5 flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-foreground truncate">{suggestion.name}</p>
+          <p className="text-[11px] text-muted-foreground leading-snug mt-0.5 line-clamp-2">{suggestion.description}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onApply(suggestion.palette)}
+          className={`flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+            applied
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground hover:bg-primary hover:text-primary-foreground"
+          }`}
+        >
+          {applied ? <CheckCircle2 className="w-3.5 h-3.5" /> : null}
+          {applied ? "Applied" : "Apply"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── AI Color Assistant panel ─────────────────────────────────────────────────
+
+function AiColorAssistant({
+  settings,
+  bizId,
+  onApply,
+}: {
+  settings: SiteSettings;
+  bizId?: number;
+  onApply: (palette: ThemeOverrides) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<ColorSuggestion[]>([]);
+  const [appliedId, setAppliedId] = useState<string | null>(null);
+  const [baseColor, setBaseColor] = useState(settings.brandColor ?? "#1a56db");
+
+  const hasLogo = !!(settings.logoObjectPath || settings.logoUrl);
+
+  async function handleGenerate() {
+    setLoading(true);
+    setError(null);
+    setSuggestions([]);
+    setAppliedId(null);
+    try {
+      const body: Record<string, unknown> = {};
+      if (bizId && settings.logoObjectPath) {
+        body.businessId = bizId;
+      } else if (settings.logoUrl && /^https?:\/\//.test(settings.logoUrl)) {
+        body.logoUrl = settings.logoUrl;
+      } else if (bizId) {
+        body.businessId = bizId;
+      }
+      if (!body.businessId && !body.logoUrl) {
+        body.baseColor = baseColor;
+      }
+
+      const res = await fetch(`${BASE}/api/website/suggest-colors`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Server error");
+      const data = await res.json() as { suggestions: ColorSuggestion[] };
+      setSuggestions(data.suggestions ?? []);
+      setOpen(true);
+    } catch {
+      setError("Could not generate suggestions. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleApply(suggestion: ColorSuggestion) {
+    onApply(suggestion.palette);
+    setAppliedId(suggestion.id);
+  }
+
+  return (
+    <div className="pt-2 border-t border-border mt-1">
+      {/* Trigger row */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={loading}
+          className="flex items-center gap-1.5 text-xs font-semibold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-60 disabled:pointer-events-none"
+        >
+          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+          {loading ? "Analyzing…" : hasLogo ? "Suggest from Logo" : "Suggest Colors"}
+        </button>
+
+        {/* Base color picker — shown when no logo is uploaded */}
+        {!hasLogo && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-muted-foreground">Base:</span>
+            <input
+              type="color"
+              value={baseColor}
+              onChange={e => setBaseColor(e.target.value)}
+              className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent"
+              title="Pick a base color for suggestions"
+            />
+          </div>
+        )}
+
+        {/* Dismiss button when suggestions are shown */}
+        {suggestions.length > 0 && (
+          <button
+            type="button"
+            onClick={() => { setSuggestions([]); setOpen(false); setAppliedId(null); }}
+            className="ml-auto text-muted-foreground hover:text-foreground p-1 rounded"
+            title="Dismiss suggestions"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {/* Error */}
+      {error && <p className="text-[11px] text-red-500 mt-1">{error}</p>}
+
+      {/* Suggestion cards */}
+      {open && suggestions.length > 0 && (
+        <div className="mt-3 space-y-2">
+          <p className="text-[11px] text-muted-foreground font-medium">
+            {hasLogo ? "Palettes from your logo — click to apply:" : "Palettes from your base color — click to apply:"}
+          </p>
+          {suggestions.map(s => (
+            <ColorSuggestionCard
+              key={s.id}
+              suggestion={s}
+              applied={appliedId === s.id}
+              onApply={() => handleApply(s)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export function ThemeVariablesPanel({
@@ -182,6 +374,7 @@ export function ThemeVariablesPanel({
   publicUrl,
   appHost,
   onCopy,
+  bizId,
 }: ThemeVariablesPanelProps) {
   const theme = settings.themeId ? SITE_THEMES.find(t => t.id === settings.themeId) : undefined;
 
@@ -237,6 +430,13 @@ export function ThemeVariablesPanel({
           >
             Reset to theme defaults
           </button>
+
+          {/* ── AI Color Assistant ─────────────────────────────────────── */}
+          <AiColorAssistant
+            settings={settings}
+            bizId={bizId}
+            onApply={palette => patchSettings(palette as Partial<SiteSettings>)}
+          />
         </Accordion>
 
         {/* ── Typography ─────────────────────────────────────────────────── */}

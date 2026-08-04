@@ -5854,6 +5854,7 @@ function WebsiteEditor() {
             publicUrl={publicUrl}
             appHost={window.location.host}
             onCopy={text => { navigator.clipboard.writeText(text).then(() => toast({ title: "Copied!" })); }}
+            bizId={bizId}
           />
         ) : (<>
         {/* Left panel — collapsible Site Structure + Brand */}
