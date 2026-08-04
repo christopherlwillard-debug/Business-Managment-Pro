@@ -76,6 +76,7 @@ import { CardItemEditorPanel } from "./CardItemEditorPanel";
 import { ThemeVariablesPanel } from "./ThemeVariablesPanel";
 import { LogoSectionInspector } from "./LogoSectionInspector";
 import { CoverageMapInspector } from "./CoverageMapInspector";
+import { HeroInspector } from "./HeroInspector";
 import { type WebsiteTemplate, WEBSITE_TEMPLATES } from "./websiteTemplates";
 import { SECTION_TEMPLATES } from "./sectionTemplates";
 import { SectionLibraryPanel } from "./SectionLibraryPanel";
@@ -223,7 +224,7 @@ function renderSection(
 ) {
   const props = { content: section.content as any, settings, isEditing, onChange: onChange as any, blockStyle: section.blockStyle };
   switch (section.type) {
-    case "hero":    return <HeroSection {...props} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
+    case "hero":    return <HeroSection {...props} businessName={extras?.businessName} sectionId={extras?.sectionId} onOpenMediaLibrary={extras?.onOpenMediaLibrary} />;
     case "services": return (
       <ServicesSection
         {...props}
@@ -6340,6 +6341,15 @@ function WebsiteEditor() {
               }
             } else if (sec.type === "deposit") {
               specialContent = <DepositSubmissionsPanel businessId={bizId} />;
+            } else if (sec.type === "hero") {
+              const heroRaw = sec.content as unknown as Parameters<typeof HeroInspector>[0]["content"];
+              specialContent = (
+                <HeroInspector
+                  content={heroRaw}
+                  onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
+                  onOpenMediaLibrary={openMediaLibrary}
+                />
+              );
             } else if (sec.type === "service-area") {
               const raw = sec.content as unknown as Parameters<typeof CoverageMapInspector>[0]["content"];
               specialContent = (
@@ -6678,6 +6688,15 @@ function WebsiteEditor() {
               }
             } else if (sec.type === "deposit") {
               specialContent = <DepositSubmissionsPanel businessId={bizId} />;
+            } else if (sec.type === "hero") {
+              const heroRaw = sec.content as unknown as Parameters<typeof HeroInspector>[0]["content"];
+              specialContent = (
+                <HeroInspector
+                  content={heroRaw}
+                  onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
+                  onOpenMediaLibrary={openMediaLibrary}
+                />
+              );
             } else if (sec.type === "service-area") {
               const raw = sec.content as unknown as Parameters<typeof CoverageMapInspector>[0]["content"];
               specialContent = (
@@ -6991,6 +7010,15 @@ function WebsiteEditor() {
               }
             } else if (sec.type === "deposit") {
               specialContent = <DepositSubmissionsPanel businessId={bizId} />;
+            } else if (sec.type === "hero") {
+              const heroRaw = sec.content as unknown as Parameters<typeof HeroInspector>[0]["content"];
+              specialContent = (
+                <HeroInspector
+                  content={heroRaw}
+                  onChange={patch => updateContent(sec.id, { ...(sec.content as Record<string, unknown>), ...patch })}
+                  onOpenMediaLibrary={openMediaLibrary}
+                />
+              );
             } else if (sec.type === "service-area") {
               const raw = sec.content as unknown as Parameters<typeof CoverageMapInspector>[0]["content"];
               specialContent = (
