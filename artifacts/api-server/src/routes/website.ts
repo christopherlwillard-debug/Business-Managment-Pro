@@ -4321,4 +4321,321 @@ router.post("/marketing-pdf", wrapAsync(async (req, res) => {
   return res.end(pdfBuffer);
 }));
 
+// ── POST /generate-dealer-pages ───────────────────────────────────────────────
+// Body: { manufacturers: string[], businessContext?: BusinessContext | null }
+// Returns: { pages: SitePage[], progress: Record<string, "done"|"error"> }
+//
+// Generates one fully-populated SitePage per manufacturer brand using AI
+// to write custom partnership copy for hero, about, model showcase, and CTA.
+
+const DEALER_BRANDS: Record<string, {
+  name: string; slug: string; brandColor: string; tagline: string;
+  description: string; productLines: string[];
+}> = {
+  "clayton-homes": {
+    name: "Clayton Homes", slug: "clayton-homes", brandColor: "#005BAC",
+    tagline: "America's #1 Home Builder",
+    description: "Clayton Homes is the nation's largest builder of manufactured and modular homes, owned by Berkshire Hathaway and known for quality construction, energy efficiency, and financing options.",
+    productLines: ["Breeze", "Advantage", "Freedom", "Heritage", "Inspiration"],
+  },
+  "cavco": {
+    name: "Cavco", slug: "cavco", brandColor: "#1B5E20",
+    tagline: "Quality Built. Value Priced.",
+    description: "Cavco Industries builds HUD-code manufactured homes and modular homes recognized for quality craftsmanship, customizable floor plans, and strong dealer programs.",
+    productLines: ["Park Model", "Single-Section", "Double-Section", "Modular"],
+  },
+  "champion-homes": {
+    name: "Champion Homes", slug: "champion-homes", brandColor: "#B71C1C",
+    tagline: "Built to Impress. Priced to Fit.",
+    description: "Champion Homes has been building manufactured and modular homes for over 65 years, offering single-section, double-section, and multi-section homes with modern designs.",
+    productLines: ["Majestic", "Legend", "Advantage", "Commodore"],
+  },
+  "fleetwood-homes": {
+    name: "Fleetwood Homes", slug: "fleetwood-homes", brandColor: "#1A237E",
+    tagline: "Crafted for Life.",
+    description: "Fleetwood Homes has been a trusted name in manufactured housing for decades, offering durable construction, spacious layouts, and affordable luxury features.",
+    productLines: ["Weston", "Berkshire", "Westfield", "Everest"],
+  },
+  "tru": {
+    name: "TRU", slug: "tru", brandColor: "#4A148C",
+    tagline: "True to Quality. True to Value.",
+    description: "TRU is a modern manufactured home brand built on quality craftsmanship, innovative design, and transparent pricing — making home ownership more accessible.",
+    productLines: ["TRU Single", "TRU Double", "TRU Series", "TRU Plus"],
+  },
+  "carpet-one": {
+    name: "Carpet One", slug: "carpet-one", brandColor: "#4E342E",
+    tagline: "Beautiful Floors. Exceptional Service.",
+    description: "Carpet One Floor & Home is a member-owned cooperative offering carpet, hardwood, laminate, tile, and luxury vinyl with expert installation and design services.",
+    productLines: ["Carpet", "Hardwood", "Laminate", "Luxury Vinyl Plank"],
+  },
+  "generic-dealer": {
+    name: "Dealer Program", slug: "dealer-program", brandColor: "#37474F",
+    tagline: "Authorized Dealer Program",
+    description: "An authorized dealer program offering quality homes with factory-backed warranty and customer service support.",
+    productLines: ["Single-Section", "Double-Section", "Multi-Section", "Modular"],
+  },
+};
+
+function uid7(): string {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+function buildDealerPagePrompt(
+  brand: (typeof DEALER_BRANDS)[string],
+  biz: { name: string; location?: string; services?: string[] },
+): string {
+  const location = biz.location || "your area";
+  const services = biz.services?.slice(0, 4).join(", ") || "manufactured home installation and service";
+  return [
+    `You are writing content for ${biz.name}'s official ${brand.name} dealer page.`,
+    `${biz.name} is an authorized ${brand.name} dealer serving ${location}.`,
+    `Their services include: ${services}.`,
+    `Brand tagline: "${brand.tagline}"`,
+    `Brand description: ${brand.description}`,
+    ``,
+    `Return ONLY a JSON object (no markdown, no extra text) with these exact fields:`,
+    `{`,
+    `  "heroHeadline": "...",`,
+    `  "heroSubheadline": "...",`,
+    `  "partnershipStory": "...",`,
+    `  "model1Name": "...", "model1Desc": "...",`,
+    `  "model2Name": "...", "model2Desc": "...",`,
+    `  "model3Name": "...", "model3Desc": "...",`,
+    `  "whyBrand1Title": "...", "whyBrand1Body": "...",`,
+    `  "whyBrand2Title": "...", "whyBrand2Body": "...",`,
+    `  "whyBrand3Title": "...", "whyBrand3Body": "...",`,
+    `  "ctaHeading": "..."`,
+    `}`,
+    ``,
+    `Guidelines:`,
+    `- heroHeadline: 6-9 words, e.g. "Authorized Clayton Homes Dealer Serving Middle Tennessee"`,
+    `- heroSubheadline: 1-2 sentences mentioning ${biz.name}, the brand, and location`,
+    `- partnershipStory: 2 short paragraphs (no newlines, separated by \\n\\n) explaining why ${biz.name} chose ${brand.name} and what it means for customers`,
+    `- model1/2/3: real or representative home series names from ${brand.name} with compelling 1-sentence descriptions`,
+    `- whyBrand1/2/3: trust/quality reasons to choose ${brand.name} homes, title ~3-5 words, body ~1 sentence`,
+    `- ctaHeading: action-oriented, 6-10 words`,
+  ].join("\n");
+}
+
+function assembleDealerPage(
+  brand: (typeof DEALER_BRANDS)[string],
+  copy: Record<string, string>,
+  bizName: string,
+  phone: string,
+  email: string,
+): Record<string, unknown> {
+  return {
+    id: `page-${uid7()}`,
+    name: brand.name,
+    slug: brand.slug,
+    sections: [
+      {
+        id: uid7(), type: "hero", enabled: true, order: 0,
+        content: {
+          headline: copy.heroHeadline || `Authorized ${brand.name} Dealer`,
+          subheadline: copy.heroSubheadline || `${bizName} is proud to be your local ${brand.name} dealer.`,
+          ctaLabel: "Browse Our Homes",
+          ctaUrl: "#contact",
+          layout: "centered",
+        },
+        blockStyle: { bgType: "color", bgColor: brand.brandColor, paddingTop: 96, paddingBottom: 96 },
+      },
+      {
+        id: uid7(), type: "about", enabled: true, order: 1,
+        content: {
+          heading: `Our Partnership with ${brand.name}`,
+          body: copy.partnershipStory || brand.description,
+          photoUrl: "",
+        },
+      },
+      {
+        id: uid7(), type: "row", enabled: true, order: 2,
+        content: {
+          headerText: `${brand.name} Home Collections`,
+          headerSubtext: "Find the perfect floor plan for your family and budget.",
+          columns: [
+            {
+              id: uid7(), widthRatio: 1,
+              components: [
+                { id: uid7(), type: "heading", props: { text: copy.model1Name || brand.productLines[0], level: 4, align: "center" } },
+                { id: uid7(), type: "paragraph", props: { text: copy.model1Desc || "Explore our lineup of quality homes in this series.", align: "center" } },
+                { id: uid7(), type: "button", props: { label: "Learn More", config: { url: "#contact", variant: "outline", size: "md" }, align: "center" } },
+              ],
+            },
+            {
+              id: uid7(), widthRatio: 1,
+              components: [
+                { id: uid7(), type: "heading", props: { text: copy.model2Name || brand.productLines[1], level: 4, align: "center" } },
+                { id: uid7(), type: "paragraph", props: { text: copy.model2Desc || "Spacious layouts with modern finishes throughout.", align: "center" } },
+                { id: uid7(), type: "button", props: { label: "Learn More", config: { url: "#contact", variant: "outline", size: "md" }, align: "center" } },
+              ],
+            },
+            {
+              id: uid7(), widthRatio: 1,
+              components: [
+                { id: uid7(), type: "heading", props: { text: copy.model3Name || brand.productLines[2], level: 4, align: "center" } },
+                { id: uid7(), type: "paragraph", props: { text: copy.model3Desc || "The best value in our collection — built to last.", align: "center" } },
+                { id: uid7(), type: "button", props: { label: "Learn More", config: { url: "#contact", variant: "outline", size: "md" }, align: "center" } },
+              ],
+            },
+          ],
+          gap: 32, maxWidth: "xl", verticalAlign: "start",
+        },
+        blockStyle: { paddingTop: 72, paddingBottom: 72 },
+      },
+      {
+        id: uid7(), type: "row", enabled: true, order: 3,
+        content: {
+          headerText: `Why Choose ${brand.name}?`,
+          columns: [
+            {
+              id: uid7(), widthRatio: 1,
+              components: [
+                { id: uid7(), type: "icon", props: { emoji: "🏆", size: 36, align: "center" } },
+                { id: uid7(), type: "heading", props: { text: copy.whyBrand1Title || "Quality You Can See", level: 4, align: "center" } },
+                { id: uid7(), type: "paragraph", props: { text: copy.whyBrand1Body || "Every home is built to strict quality standards with durable materials.", align: "center" } },
+              ],
+            },
+            {
+              id: uid7(), widthRatio: 1,
+              components: [
+                { id: uid7(), type: "icon", props: { emoji: "🛡️", size: 36, align: "center" } },
+                { id: uid7(), type: "heading", props: { text: copy.whyBrand2Title || "Backed by Warranty", level: 4, align: "center" } },
+                { id: uid7(), type: "paragraph", props: { text: copy.whyBrand2Body || "Comprehensive warranty coverage gives you peace of mind.", align: "center" } },
+              ],
+            },
+            {
+              id: uid7(), widthRatio: 1,
+              components: [
+                { id: uid7(), type: "icon", props: { emoji: "💰", size: 36, align: "center" } },
+                { id: uid7(), type: "heading", props: { text: copy.whyBrand3Title || "Affordable Pricing", level: 4, align: "center" } },
+                { id: uid7(), type: "paragraph", props: { text: copy.whyBrand3Body || "More home for your money, with flexible financing available.", align: "center" } },
+              ],
+            },
+          ],
+          gap: 32, maxWidth: "xl", verticalAlign: "start",
+        },
+        blockStyle: { paddingTop: 64, paddingBottom: 64, bgType: "color", bgColor: "#f8fafc" },
+      },
+      {
+        id: uid7(), type: "cta", enabled: true, order: 4,
+        content: {
+          heading: copy.ctaHeading || `Schedule Your Free ${brand.name} Home Consultation`,
+          subheading: `Visit our showroom or call us today. ${bizName} is here to help you find the perfect home.`,
+          primaryLabel: "Request a Free Quote",
+          primaryConfig: { url: "#contact", style: "solid", rounding: "full" },
+          secondaryLabel: phone ? `Call ${phone}` : "Call Us Today",
+          secondaryConfig: { url: phone ? `tel:${phone}` : "tel:", style: "outline", rounding: "full" },
+        },
+        blockStyle: { bgType: "color", bgColor: brand.brandColor },
+      },
+      {
+        id: uid7(), type: "contact", enabled: true, order: 5,
+        content: {
+          heading: `Get in Touch About ${brand.name} Homes`,
+          subheading: "Fill out the form and we'll reach out within one business day.",
+          serviceTypes: [`${brand.name} Home Inquiry`, "Schedule a Showroom Visit", "Financing Questions", "General Inquiry"],
+        },
+      },
+    ],
+  };
+}
+
+router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
+  const businessId = parseInt(req.query.businessId as string);
+  if (!businessId || isNaN(businessId)) {
+    return res.status(400).json({ error: "businessId required" });
+  }
+
+  const { manufacturers, businessContext } = req.body as {
+    manufacturers?: string[];
+    businessContext?: { businessName?: string; location?: string; phone?: string; email?: string; services?: string[] } | null;
+  };
+
+  if (!Array.isArray(manufacturers) || manufacturers.length === 0) {
+    return res.status(400).json({ error: "manufacturers array required" });
+  }
+
+  // Validate brand IDs
+  const validIds = manufacturers.filter(id => DEALER_BRANDS[id]);
+  if (validIds.length === 0) {
+    return res.status(400).json({ error: "No valid manufacturer IDs provided" });
+  }
+
+  // ── Load business context from DB ────────────────────────────────────────────
+  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId));
+  if (!biz) return res.status(404).json({ error: "Business not found" });
+
+  const [config] = await db
+    .select({ sections: websiteConfigsTable.sections })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+
+  type SectionRow = { type: string; content: Record<string, unknown> };
+  const siteSections = (config?.sections ?? []) as SectionRow[];
+
+  const servicesSection = siteSections.find(s => s.type === "services");
+  const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+  const services = serviceItems.map(i => i.title ?? "").filter(Boolean);
+
+  const footerSection = siteSections.find(s => s.type === "footer");
+  const phone = (footerSection?.content?.phone as string | undefined) || biz.phone || "";
+  const email = (footerSection?.content?.email as string | undefined) || biz.email || "";
+  const location = [biz.city, biz.state].filter(Boolean).join(", ");
+
+  const bizContext = {
+    name: businessContext?.businessName || biz.name || "Our Business",
+    location: businessContext?.location || location || undefined,
+    phone: businessContext?.phone || phone || undefined,
+    email: businessContext?.email || email || undefined,
+    services: businessContext?.services || (services.length > 0 ? services : undefined),
+  };
+
+  // ── Generate pages in parallel ────────────────────────────────────────────
+  const progressMap: Record<string, "done" | "error"> = {};
+
+  const results = await Promise.allSettled(
+    validIds.map(async (brandId) => {
+      const brand = DEALER_BRANDS[brandId]!;
+      const prompt = buildDealerPagePrompt(brand, bizContext);
+
+      const completion = await openai.chat.completions.create({
+        model: BUILDPRO_AI_MINI_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: "You are a professional website copywriter for manufactured home dealers. Return ONLY valid JSON, no markdown fences.",
+          },
+          { role: "user", content: prompt },
+        ],
+        max_tokens: 600,
+        temperature: 0.75,
+        response_format: { type: "json_object" },
+      });
+
+      const raw = completion.choices[0]?.message?.content?.trim() ?? "{}";
+      let copy: Record<string, string> = {};
+      try { copy = JSON.parse(raw); } catch { /* use empty fallbacks */ }
+
+      return assembleDealerPage(brand, copy, bizContext.name, bizContext.phone ?? "", bizContext.email ?? "");
+    }),
+  );
+
+  const pages: Record<string, unknown>[] = [];
+  validIds.forEach((brandId, i) => {
+    const result = results[i];
+    if (result.status === "fulfilled") {
+      pages.push(result.value);
+      progressMap[brandId] = "done";
+    } else {
+      // Assemble with empty copy as graceful fallback
+      const brand = DEALER_BRANDS[brandId]!;
+      pages.push(assembleDealerPage(brand, {}, bizContext.name, bizContext.phone ?? "", bizContext.email ?? ""));
+      progressMap[brandId] = "done"; // still returns a page, just with defaults
+    }
+  });
+
+  return res.json({ pages, progress: progressMap });
+}));
+
 export { router as websiteRouter, publicRouter as websitePublicRouter };

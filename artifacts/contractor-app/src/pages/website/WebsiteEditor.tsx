@@ -110,6 +110,7 @@ import { PerformancePanel } from "./PerformancePanel";
 import { analyzePerformance } from "./performanceAnalyzer";
 import type { PerfFixAction } from "./performanceAnalyzer";
 import { MarketingPanel } from "./MarketingPanel";
+import { DealerPageGenerator } from "./DealerPageGenerator";
 import { reportCrash } from "@/lib/reportCrash";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -1500,6 +1501,7 @@ function WebsiteEditor() {
   const [deleteSectionConfirm, setDeleteSectionConfirm] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"editor" | "analytics" | "media" | "theme" | "seo">("editor");
   const [showLandingPageGenerator, setShowLandingPageGenerator] = useState(false);
+  const [showDealerPageGenerator, setShowDealerPageGenerator] = useState(false);
   const [mediaPickerState, setMediaPickerState] = useState<{
     onSelect: (url: string) => void;
     sectionType?: string;
@@ -5644,6 +5646,21 @@ function WebsiteEditor() {
         onClose={() => setShowLandingPageGenerator(false)}
       />
     )}
+    {showDealerPageGenerator && bizId && (
+      <DealerPageGenerator
+        businessId={bizId}
+        businessContext={websiteBusinessContext}
+        existingPages={pages}
+        onSuccess={generatedPages => {
+          history.pushSnapshot({ sections: pagesRef.current, settings });
+          isDirtyRef.current = true;
+          generatedPages.forEach(p =>
+            addPage(p.name, p.slug, p.sections as Section[]),
+          );
+        }}
+        onClose={() => setShowDealerPageGenerator(false)}
+      />
+    )}
     {showTemplatePicker && (
       <TemplatePicker
         businessName={activeBusiness?.name ?? "your business"}
@@ -6361,6 +6378,15 @@ function WebsiteEditor() {
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   Generate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDealerPageGenerator(true)}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-muted-foreground hover:text-teal-600 hover:bg-teal-500/10 transition-colors"
+                  title="Generate manufacturer dealer pages"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Dealer Pages
                 </button>
               </>)}
               <div className="flex-1" />
