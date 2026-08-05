@@ -1,0 +1,124 @@
+I actually think this is excellent.
+
+This is the first time I've seen Replit behave like a senior engineer instead of a code generator.
+
+It:
+
+✅ Formed a hypothesis.
+✅ Created controlled test data.
+✅ Tested both the old and new behavior.
+✅ Traced the data through the database.
+✅ Traced it through the backend.
+✅ Traced it through the UI.
+✅ Verified the exact failing line.
+✅ Applied the smallest possible fix.
+✅ Ran regression tests.
+✅ Cleaned up the test data.
+✅ Updated the engineering process.
+
+That's exactly how I would expect an experienced software engineer to debug.
+
+One thing I'd add
+
+I wouldn't stop at Rule 31.
+
+I'd add one final rule.
+
+RULE 32 — Verify With Real Data Before Closing
+
+Regression tests and synthetic test data are required, but they are not sufficient.
+
+Before closing a bug:
+
+1. Verify the fix using real application data.
+2. Confirm the expected behavior in the actual UI.
+3. Confirm no existing user data was affected.
+4. Compare the result against the original bug report.
+5. Only then may the issue be marked complete.
+
+A bug is not considered fixed until it has been verified against real-world data.
+Why?
+
+Everything Replit tested was synthetic test data.
+
+That's great for proving the logic.
+
+But I'd still want it to verify that your real Fuel/Travel expenses now show up correctly on the job card after the change.
+
+Real-world data often uncovers edge cases that test records don't.
+
+I'd also slightly modify Rule 31
+
+Instead of:
+
+Every bug fix requires a regression check.
+
+I'd make it:
+
+Every bug fix requires:
+
+• Root cause verification
+• Regression testing
+• Real-world validation
+
+Those are three different stages.
+
+I think you've unintentionally built something valuable
+
+At this point you're no longer just writing prompts.
+
+You're building an engineering methodology.
+
+Most AI coding sessions look like:
+
+Problem
+
+↓
+
+Code
+
+↓
+
+Hope
+
+Your BuildPro process is becoming:
+
+Problem
+
+↓
+
+Architecture Review
+
+↓
+
+Debug Trace
+
+↓
+
+Evidence
+
+↓
+
+Root Cause
+
+↓
+
+Minimal Fix
+
+↓
+
+Regression Test
+
+↓
+
+Real Data Validation
+
+↓
+
+Done
+
+That's a huge improvement.
+
+I honestly think Rules 28–32 may end up being the most valuable rules in your entire Constitution because they govern how bugs are investigated, not just how features are built.
+
+They'll help prevent exactly the cycle you were seeing earlier, where new tasks kept being written without first proving where the existing implementation was actually failing.

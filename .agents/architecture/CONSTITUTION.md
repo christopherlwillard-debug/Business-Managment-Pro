@@ -433,17 +433,36 @@ Only after all boxes are checked may implementation begin.
 
 ---
 
-### Rule 31 — Every Bug Fix Requires a Regression Check
+### Rule 31 — Every Bug Fix Requires Three Verification Stages
 
-After fixing a bug:
-1. Verify the original bug is fixed (with database and API evidence)
-2. Verify closely related features still work correctly
-3. Verify no existing workflow changed unintentionally
-4. Document the regression checks performed
+A bug fix is not complete until all three stages pass:
 
-A bug fix is not complete until the regression check passes. Fixing one case while silently breaking five others is not a fix.
+**Stage 1 — Root cause verification**
+Prove the fix addresses the confirmed failing line, not a symptom. Show the database record, API response, and exact code path before and after.
+
+**Stage 2 — Regression testing**
+For every category or workflow adjacent to the fix, verify behavior is unchanged. Create controlled test data, trace through all affected buckets, clean up after. Fixing one case while breaking five others is not a fix.
+
+**Stage 3 — Real-world validation**
+Verify the fix against real application data in the running app. Confirm the expected behavior is visible in the actual UI. Confirm no existing user data was affected. Compare against the original bug report. Only then may the issue be marked complete.
+
+Synthetic test data proves logic. Real data validates behavior.
+
+---
+
+---
+
+### Rule 32 — Verify With Real Data Before Closing
+
+Before marking any bug as fixed:
+1. Verify the fix using real application data (not only synthetic test records)
+2. Confirm the expected behavior is visible in the actual UI
+3. Confirm no existing user data was affected by the change
+4. Compare the result against the original bug report
+
+A bug is not considered fixed until it has been verified against real-world data. Synthetic test records prove the logic is correct. Real data confirms the experience is correct.
 
 ---
 
 *Last updated: 2026-08-05*  
-*Rules: 0–31 (32 total)*
+*Rules: 0–32 (33 total)*

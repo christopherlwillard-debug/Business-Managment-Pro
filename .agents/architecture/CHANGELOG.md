@@ -48,7 +48,7 @@ Created the four-document architecture governance system:
 - Root cause: `isTravelCategory()` in `Expenses.tsx` included `"fuel/travel"`, causing the form to auto-set `countsTowardJobProfit = false` whenever a Fuel/Travel expense was linked to a job (lines 3782, 3797). This silently routed all job-linked fuel expenses to the "Travel & Audit Docs" bucket instead of "Job Expenses."
 - Fix: Removed `"fuel/travel"` from `TRAVEL_CATEGORIES_LC`. Fuel is a car & truck operating expense (Schedule C Line 9), not IRS trip documentation.
 - Also added `"Fuel/Travel"` to `TRIP_RECEIPT_CATEGORIES` in `Jobs.tsx` so fuel receipts can be logged directly from the job card trip section.
-- Also added Rules 28–30 to `CONSTITUTION.md` (Debug Before Design, Evidence Before Conclusion, Do Not Solve Unknown Problems).
+- Also added Rules 28–32 to `CONSTITUTION.md` (Debug Before Design, Evidence Before Conclusion, Do Not Solve Unknown Problems, Three-Stage Bug Verification, Verify With Real Data Before Closing).
 
 ---
 
