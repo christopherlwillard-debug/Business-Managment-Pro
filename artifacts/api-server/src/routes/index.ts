@@ -77,6 +77,7 @@ import productionServiceTypesRouter from "./production-service-types";
 import tripsRouter from "./trips";
 import investmentsRouter from "./investments";
 import vehiclesRouter from "./vehicles";
+import propertyLookupRouter from "./property-lookup";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -294,6 +295,7 @@ router.use("/production-service-types", sectionGuard("jobs"), requireOwnerForWri
 router.use("/trips", requireOwner, tripsRouter);
 router.use("/investments", requireOwner, investmentsRouter);
 router.use("/vehicles", requireOwner, vehiclesRouter);
+router.use(requireOwner, propertyLookupRouter);
 
 router.get("/integrations/wix/config", requireOwner, (req, res) => {
   const token = process.env["WIX_WEBHOOK_SECRET"] ?? null;

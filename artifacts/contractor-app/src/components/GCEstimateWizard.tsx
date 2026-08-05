@@ -93,6 +93,19 @@ interface TradeItem {
 
 interface RiskFlag { level: "warn" | "info"; message: string }
 
+interface PropertyData {
+  address: string;
+  yearBuilt: number | null;
+  sqft: number | null;
+  beds: number | null;
+  baths: number | null;
+  stories: number | null;
+  propertyType: string | null;
+  preLeadPaint: boolean;
+  confidence: "high" | "medium" | "low";
+  note: string;
+}
+
 // ─── Job Types ────────────────────────────────────────────────────────────────
 
 const JOB_TYPES = [
@@ -643,15 +656,25 @@ function computeTrades(jobType: string, answers: Answers, calcDefaults?: CalcDef
 
 // ─── Risk Flags ───────────────────────────────────────────────────────────────
 
-function getRiskFlags(jobType: string, answers: Answers): RiskFlag[] {
+function getRiskFlags(jobType: string, answers: Answers, yearBuilt?: number | null): RiskFlag[] {
   const flags: RiskFlag[] = [];
 
-  // Asbestos / lead paint warning
-  if (["kitchen", "bathroom", "full_remodel", "ceiling_repair", "siding", "water_damage", "fire_restoration"].includes(jobType)) {
-    flags.push({ level: "info", message: "Pre-1980 home? Schedule asbestos inspection before demo — KY law requires testing before demolition of suspect materials." });
-  }
-  if (["windows_doors", "water_damage", "fire_restoration"].includes(jobType)) {
-    flags.push({ level: "warn", message: "Pre-1978 home: EPA RRP lead paint rules apply. Must be RRP-certified or hire a certified sub for disturbing painted surfaces." });
+  // Known year-built from property lookup — specific warnings
+  if (yearBuilt !== null && yearBuilt !== undefined) {
+    if (yearBuilt < 1978) {
+      flags.push({ level: "warn", message: `Built in ${yearBuilt} — EPA RRP lead paint rules apply when disturbing painted surfaces. You must be RRP-certified or hire a certified subcontractor.` });
+    }
+    if (yearBuilt < 1980) {
+      flags.push({ level: "warn", message: `Built in ${yearBuilt} — asbestos may be present in floor tiles, pipe wrap, insulation, and popcorn ceilings. Test before any demo (KY law requires testing before demolition of suspect materials).` });
+    }
+  } else {
+    // Generic warnings when year unknown
+    if (["kitchen", "bathroom", "full_remodel", "ceiling_repair", "siding", "water_damage", "fire_restoration"].includes(jobType)) {
+      flags.push({ level: "info", message: "Pre-1980 home? Schedule asbestos inspection before demo — KY law requires testing before demolition of suspect materials." });
+    }
+    if (["windows_doors", "water_damage", "fire_restoration"].includes(jobType)) {
+      flags.push({ level: "warn", message: "Pre-1978 home: EPA RRP lead paint rules apply. Must be RRP-certified or hire a certified sub for disturbing painted surfaces." });
+    }
   }
 
   // Dig safe
@@ -968,6 +991,11 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
   const [estimateTitle, setEstimateTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  // Property lookup
+  const [lookupAddress, setLookupAddress] = useState<string>(job.address ?? "");
+  const [propertyData, setPropertyData] = useState<PropertyData | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
   const [projectCity, setProjectCity] = useState<string>(() => {
     if (job.city) return job.city;
     if (job.address) {
@@ -979,20 +1007,58 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
   const [copiedTradeId, setCopiedTradeId] = useState<string | null>(null);
 
   const questions = (jobType ? SCOPE_QUESTIONS[jobType] ?? [] : []).filter(q => !q.condition || q.condition(answers));
-  const riskFlags = useMemo(() => jobType ? getRiskFlags(jobType, answers) : [], [jobType, answers]);
+  const riskFlags = useMemo(() => jobType ? getRiskFlags(jobType, answers, propertyData?.yearBuilt) : [], [jobType, answers, propertyData]);
 
-  function initAnswers(jt: string) {
+  function initAnswers(jt: string, propData?: PropertyData | null) {
     const qs = SCOPE_QUESTIONS[jt] ?? [];
     const init: Answers = {};
     for (const q of qs) {
       if (q.defaultValue !== undefined) init[q.id] = q.defaultValue;
     }
+    // Pre-fill from property lookup where applicable
+    if (propData?.sqft) {
+      const sf = propData.sqft;
+      if (jt === "kitchen")         init.sqft    = Math.max(Math.round(sf / 8), 60);
+      else if (jt === "siding")     init.wall_sf = Math.round(sf * 2.2);
+      else if (jt === "roofing")    init.sqft    = Math.round(sf * 1.3);
+      else if (!["deck", "windows_doors", "addition", "plumbing", "other"].includes(jt))
+        init.sqft = sf;
+    }
+    if (propData?.stories && jt === "roofing") {
+      init.stories = String(propData.stories);
+    }
     setAnswers(init);
+  }
+
+  async function handlePropertyLookup() {
+    const addr = lookupAddress.trim();
+    if (!addr) return;
+    setLookupLoading(true);
+    setLookupError(null);
+    setPropertyData(null);
+    try {
+      const res = await fetch("/api/property-lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ address: addr }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? "Lookup failed");
+      }
+      const data = await res.json() as PropertyData;
+      setPropertyData(data);
+    } catch (err) {
+      setLookupError(err instanceof Error ? err.message : "Property lookup failed. Please try again.");
+    } finally {
+      setLookupLoading(false);
+    }
   }
 
   function selectJobType(jt: string) {
     setJobType(jt);
-    initAnswers(jt);
+    initAnswers(jt, propertyData);
     const label = JOB_TYPES.find(x => x.id === jt)?.label ?? jt;
     setEstimateTitle(`${job.title} — ${label}`);
     setPhasesEditable(PHASE_TEMPLATES[jt] ?? []);
@@ -1166,7 +1232,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
             {step === 2 && "Step 2 of 6 — Scope Questions"}
             {step === 3 && "Step 3 of 6 — Trade Breakdown & KY Cost Ranges"}
             {step === 4 && "Step 4 of 6 — Project Phases"}
-            {step === 5 && "Step 5 of 6 — KY Permits & Bid Requests"}
+            {step === 5 && "Step 5 of 6 — Permit & Code Intelligence"}
             {step === 6 && "Step 6 of 6 — Review & Create Estimate"}
           </p>
         </div>
@@ -1177,6 +1243,71 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
           {/* ── Step 1: Job Type ─────────────────────────────────────── */}
           {step === 1 && (
             <div className="p-5">
+
+              {/* Property address lookup */}
+              <div className="mb-5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+                <p className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-0.5">📍 Property Analysis <span className="text-xs font-normal text-gray-400 dark:text-gray-500">(optional)</span></p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Enter the job address to auto-fill square footage and flag pre-1978 lead paint / asbestos risk before you choose a job type.</p>
+                <div className="flex gap-2">
+                  <input
+                    value={lookupAddress}
+                    onChange={e => setLookupAddress(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") handlePropertyLookup(); }}
+                    placeholder="123 Main St, Lexington, KY 40502"
+                    className="flex-1 px-3 py-2 border border-blue-200 dark:border-blue-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={handlePropertyLookup}
+                    disabled={lookupLoading || !lookupAddress.trim()}
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+                  >
+                    {lookupLoading ? "Analyzing…" : "Analyze"}
+                  </button>
+                </div>
+                {lookupError && (
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1.5">{lookupError}</p>
+                )}
+
+                {/* Results card */}
+                {propertyData && (
+                  <div className="mt-3 space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: "Year Built", value: propertyData.yearBuilt ? String(propertyData.yearBuilt) : "Unknown" },
+                        { label: "Living SF", value: propertyData.sqft ? propertyData.sqft.toLocaleString() + " SF" : "Unknown" },
+                        { label: "Beds / Baths", value: propertyData.beds ? `${propertyData.beds}bd / ${propertyData.baths}ba` : "Unknown" },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="bg-white dark:bg-gray-800 rounded-lg p-2 border border-blue-100 dark:border-blue-700 text-center">
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">{label}</p>
+                          <p className="text-xs font-bold text-gray-800 dark:text-gray-200">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {propertyData.preLeadPaint && (
+                      <div className="flex items-start gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+                        <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-700 dark:text-red-300 font-medium leading-relaxed">
+                          Pre-1978 home — EPA RRP lead paint rules apply. Asbestos testing required before demo.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500 italic leading-snug flex-1">
+                        AI estimate · {propertyData.confidence === "high" ? "High" : propertyData.confidence === "medium" ? "Medium" : "Low"} confidence — {propertyData.note}
+                      </p>
+                    </div>
+                    {propertyData.sqft && (
+                      <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">
+                        ✓ Square footage will be pre-filled in Step 2 when you pick a job type below.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">What type of job is this? Select the category that best fits.</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {JOB_TYPES.map(jt => (
