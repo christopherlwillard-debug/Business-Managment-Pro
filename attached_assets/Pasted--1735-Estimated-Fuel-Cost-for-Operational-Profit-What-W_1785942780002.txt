@@ -1,0 +1,109 @@
+#1735 - Estimated Fuel Cost for Operational Profit
+
+What & Why
+
+We use the IRS Standard Mileage Deduction for tax purposes, so fuel receipts are not required for accounting or taxes. However, we still need to understand the true profitability of each job.
+
+This feature adds an "Estimated Fuel Cost" to the Job Financials P&L tab. The value is informational only and is used to calculate a more realistic Operational Profit. It does not create an expense, affect accounting reports, or impact tax calculations.
+
+Instead of estimating a single round trip, the estimate should account for every day the crew traveled to and from the job site.
+
+Done Looks Like
+
+- Add an "Estimated Fuel Cost" line to the Job Financials → P&L tab.
+- Fuel cost is calculated automatically.
+- Estimated Fuel Cost is NOT an accounting expense.
+- Estimated Fuel Cost is NOT included in Job Expenses.
+- Estimated Fuel Cost is NOT used for tax reporting.
+- Operational Profit = Revenue - Job Expenses - Estimated Fuel Cost.
+
+Fuel Cost Calculation
+
+The estimate should use:
+
+- Business Address (already stored)
+- Job Address (already stored)
+- Default Vehicle MPG (Business Settings)
+- Current Kentucky average fuel price (API)
+- Number of actual workdays on the job
+
+Formula
+
+One-Way Route Distance
+× 2 (Round Trip)
+× Number of Workdays
+= Total Estimated Miles
+
+Total Estimated Miles
+÷ Vehicle MPG
+× Current Fuel Price
+= Estimated Fuel Cost
+
+Workday Calculation
+
+Do NOT use calendar days.
+
+Instead, use the number of days the crew actually worked.
+
+Priority:
+
+1. Count Daily Logs linked to the job.
+2. If Daily Logs are unavailable, fall back to Job Start Date → Completion Date.
+
+Example
+
+Business → Job:
+42 miles
+
+Round Trip:
+84 miles
+
+Crew Worked:
+4 days
+
+Estimated Miles:
+84 × 4 = 336 miles
+
+Truck MPG:
+17
+
+Fuel Price:
+$3.19
+
+Estimated Fuel Cost:
+$63.09
+
+Job Financials
+
+Revenue
+$2,500.00
+
+Job Expenses
+-$88.57
+
+Estimated Fuel Cost
+-$63.09
+
+Operational Profit
+$2,348.34
+
+Business Settings
+
+Vehicle Settings
+
+Default Vehicle MPG
+
+Fuel Price Source
+☑ Kentucky Average (Automatic API)
+
+Current Fuel Price
+
+Last Updated
+
+Notes
+
+- Estimated Fuel Cost is informational only.
+- Never creates an expense record.
+- Never appears on the P&L or tax reports.
+- Never affects IRS mileage calculations.
+- Designed solely to help owners understand the true operational profitability of each job.

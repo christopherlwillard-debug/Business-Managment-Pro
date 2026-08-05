@@ -12,6 +12,7 @@ import { invoicesTable, clientsTable, jobsTable, settingsTable, businessesTable,
 import { eq, and, gte, lte, desc, inArray, ne, getTableColumns, sql } from "drizzle-orm";
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { syncMaterialsToJobInvoice } from "./material-lists.js";
 
 const router = Router();
 
@@ -254,6 +255,10 @@ router.post("/", async (req, res) => {
       businessLine: businessLine || null,
     }).returning();
 
+    // Sync material lists into the new draft so materials appear immediately,
+    // regardless of whether they were added before or after the invoice was created.
+    if (jobId) await syncMaterialsToJobInvoice(jobId);
+
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, invoice.id));
     res.status(201).json(fmt(withJoins));
   } catch (err) {
@@ -325,7 +330,7 @@ router.put("/:id", async (req, res) => {
 
     // Guard: cancelled (voided) invoices are read-only
     const [currentInv] = await db
-      .select({ status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber })
+      .select({ status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber, jobId: invoicesTable.jobId })
       .from(invoicesTable)
       .where(eq(invoicesTable.id, id));
     if (!currentInv) return res.status(404).json({ error: "Invoice not found" });
@@ -364,6 +369,13 @@ router.put("/:id", async (req, res) => {
       ...(attachments !== undefined ? { attachments: Array.isArray(attachments) ? attachments : [] } : {}),
       ...(businessLine !== undefined ? { businessLine: businessLine || null } : {}),
     }).where(eq(invoicesTable.id, id));
+
+    // Keep material lists in sync whenever a draft invoice is saved.
+    // Resolve the effective jobId: prefer body value (if explicitly sent), else the pre-existing one.
+    const effectiveJobId = jobId !== undefined ? (jobId || null) : currentInv.jobId;
+    if (currentInv.status === "draft" && effectiveJobId) {
+      await syncMaterialsToJobInvoice(effectiveJobId);
+    }
 
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     if (!withJoins) return res.status(404).json({ error: "Invoice not found" });
