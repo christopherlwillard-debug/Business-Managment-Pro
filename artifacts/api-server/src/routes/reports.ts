@@ -6,7 +6,7 @@ import { eq, and, gte, lte, desc, sum, ne, inArray, sql, count, isNull } from "d
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
 import { getIrsMileageRate } from "../lib/irs-rates.js";
-import { computeAllocationSplitPools } from "../lib/allocation.js";
+import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 
 const router = Router();
 
@@ -159,7 +159,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         owed = parseFloat(r.amountOwed);
       } else if (r.compensationType === "allocation" && r.allocationPct != null && r.jobId != null) {
         const pool = splitPoolMap.get(r.jobId)?.splitPool ?? 0;
-        owed = pool * (parseFloat(r.allocationPct) / 100);
+        owed = computeSubOwed({ compensationType: "allocation", amountOwed: null, fixedAmount: null, allocationPct: r.allocationPct }, pool) ?? 0;
       } else {
         owed = parseFloat(r.computedOwed ?? "0");
       }
@@ -685,9 +685,9 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       let fullOwed: number | null;
       if (r.amountOwed != null) {
         fullOwed = parseFloat(r.amountOwed);
-      } else if (r.compensationType === "allocation" && r.allocationPct != null && r.jobId != null) {
+      } else if (r.compensationType === "allocation" && r.jobId != null) {
         const pool = outstandingPoolMap.get(r.jobId)?.splitPool ?? 0;
-        fullOwed = pool * (parseFloat(r.allocationPct) / 100);
+        fullOwed = computeSubOwed({ compensationType: "allocation", amountOwed: null, fixedAmount: r.fixedAmount, allocationPct: r.allocationPct }, pool);
       } else if (r.compensationType === "hourly" && r.jobId != null && r.subcontractorId != null) {
         fullOwed = hourlyHoursMap.get(`${r.jobId}:${r.subcontractorId}`) ?? null;
       } else if (r.fixedAmount != null) {

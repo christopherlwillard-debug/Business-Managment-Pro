@@ -1430,7 +1430,7 @@ router.put("/:jobId/sub-payments/:subId", async (req, res) => {
       if (hoursTotal > 0) effectiveOwed = hoursTotal;
     } else if (compType === "allocation" && row.allocationPct != null) {
       const pool = await computeAllocationSplitPool(jobId);
-      effectiveOwed = pool.splitPool * (parseFloat(row.allocationPct) / 100);
+      effectiveOwed = computeSubOwed({ compensationType: "allocation", amountOwed: null, fixedAmount: null, allocationPct: row.allocationPct }, pool.splitPool) ?? 0;
     }
 
     let newStatus: string;
@@ -1961,7 +1961,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
 
       if (lockAmountOwed === undefined && dbOwedOverride == null && compType === "allocation" && subRow.allocationPct != null) {
         const { splitPool: currentSplitPool } = await computeAllocationSplitPool(jobId);
-        const computed = currentSplitPool * (parseFloat(subRow.allocationPct) / 100);
+        const computed = computeSubOwed({ compensationType: "allocation", amountOwed: null, fixedAmount: null, allocationPct: subRow.allocationPct }, currentSplitPool) ?? 0;
         if (computed > 0) lockAmountOwed = computed.toFixed(2);
       }
 
@@ -2165,7 +2165,7 @@ router.post("/:id/record-sub-expenses", async (req, res) => {
       if (compType === "fixed") {
         amount = parseFloat(sub.fixedAmount ?? "0");
       } else if (compType === "allocation") {
-        amount = toSplit * (parseFloat(sub.allocationPct ?? "0") / 100);
+        amount = computeSubOwed({ compensationType: "allocation", amountOwed: null, fixedAmount: null, allocationPct: sub.allocationPct ?? "0" }, toSplit) ?? 0;
       }
       if (amount <= 0) continue; // skip allocation subs with no invoice yet
 

@@ -3,6 +3,8 @@ import { useParams, useLocation } from "wouter";
 import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCircle2, Pencil, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+import { computeSubOwed } from "@/lib/allocationUtils";
+
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
 
 type SubHourEntry = {
@@ -108,9 +110,7 @@ function WorkerPayCard({
   const isFixed  = p.compensationType === "fixed";
   const isAlloc  = p.compensationType === "allocation";
 
-  const owed = isAlloc
-    ? (p.amountOwed ?? splitPool * ((p.allocationPct ?? 0) / 100))
-    : (p.amountOwed ?? p.fixedAmount ?? p.computedOwed ?? 0);
+  const owed = computeSubOwed(p, splitPool) ?? p.computedOwed ?? 0;
   const paid    = p.amountPaid ?? 0;
   const appliedAdvances = (p.paymentHistory ?? []).reduce((s, h) => s + (h.advanceAmount ?? 0), 0);
   const balance = Math.max(0, owed - paid - appliedAdvances);
@@ -707,7 +707,7 @@ function WorkerPayCard({
                 </label>
                 <input type="number" value={simpleAmount} onChange={e => setSimpleAmount(e.target.value)}
                   className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="0.00" />
-                {isAlloc && <p className="text-xs text-purple-600 mt-1">Calc: ${fmt(splitPool * ((p.allocationPct ?? 0) / 100))}</p>}
+                {isAlloc && <p className="text-xs text-purple-600 mt-1">Calc: ${fmt(computeSubOwed({ compensationType: "allocation", amountOwed: null, fixedAmount: null, allocationPct: p.allocationPct }, splitPool) ?? 0)}</p>}
               </div>
             )}
           </div>

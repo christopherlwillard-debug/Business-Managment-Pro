@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
+import { computeSubOwed } from "@/lib/allocationUtils";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { Card } from "@/components/ui/card";
@@ -1293,11 +1294,8 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const splitSettingsLoaded = useRef(false);
   const splitSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function owedFor(p: SubPaymentRow, splitPool?: number): number {
-    if (p.amountOwed != null) return p.amountOwed;
-    if (p.compensationType === 'allocation') return splitPool != null ? splitPool * ((p.allocationPct ?? 0) / 100) : 0;
-    if (p.compensationType === 'fixed') return p.fixedAmount ?? p.computedOwed;
-    return p.computedOwed;
+  function owedFor(p: SubPaymentRow, splitPool = 0): number {
+    return computeSubOwed(p, splitPool) ?? p.computedOwed;
   }
 
   function notifySubsPaid(rows: SubPaymentRow[]) {
