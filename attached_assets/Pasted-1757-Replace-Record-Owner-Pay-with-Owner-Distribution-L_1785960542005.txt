@@ -1,0 +1,50 @@
+1757 - Replace 'Record Owner Pay' with Owner Distribution Ledger
+
+What & Why
+
+"Record Owner Pay" currently writes an Owner Compensation expense row. Even with the recent fix that excludes it from jobExpenses, the underlying model is wrong — an owner draw is not a business expense at all, it is a personal withdrawal from already-allocated profit. The correct model is a separate distribution ledger: each transfer Willard makes to himself is a dated record against the job's calculated share, and the calculation never changes because of it.
+
+The table is named owner_distributions (not owner_withdrawals) so the schema stays entity-agnostic as BuildPro adds more business types: Sole Prop/LLC → Owner Draw, Partnership → Partner Distribution, S-Corp → Shareholder Distribution.
+
+The Pay Breakdown tab answers two separate questions:
+
+"How much of my share is mine after taxes?" → Recommended Take Home (static — never changes)
+"How much have I already moved to my personal account?" → Distribution ledger (tracks partial transfers over time)
+Done looks like
+
+A new owner_distributions table: id, jobId, businessId, ownerId (nullable, for future multi-owner), amount, date, notes (nullable), createdAt
+The Pay Breakdown tab shows the full breakdown above the divider (unchanged), then below:
+My Share                $1,279.33
+Estimated Tax Reserve    -$319.83
+────────────────────────────────
+Recommended Take Home    $959.50
+Distributions
+  Aug 5   $500.00  [×]
+  Aug 8   $300.00  [×]
+Total Withdrawn          $800.00
+Remaining Recommended   $159.50
+  Take Home
+A "+ Record Owner Distribution" button (not "Owner Pay") opens an inline form: amount (pre-filled with remaining recommended take home), date (today default), optional notes — POSTs on submit
+Distributions never affect any number above the divider: no change to Revenue, Expenses, Growth, Hourly Workers, Split Pool, My Share, Tax Reserve, or Recommended Take Home
+"Remaining Recommended Take Home" = Recommended Take Home − total distributions. Wording clarifies you could withdraw more (including the tax reserve) but this tracks how much of the recommended amount is still untransferred
+The "Owner Activity" card on the P&L tab is removed — P&L ends cleanly at Net Business Profit (plus the fuel cost informational cards below it)
+The old record-owner-draw API endpoint and Owner Compensation expense path are left in place for historical records already in the DB, but the frontend no longer calls them for new entries
+Existing Owner Compensation expenses remain excluded from jobExpenses (the backend fix stays)
+Out of scope
+
+Migrating or deleting existing Owner Compensation expense records
+Showing distribution history on the Accounting page or owner dashboard (future)
+Multi-owner distributions (ownerId column added to schema but UI only handles single owner for now)
+Steps
+
+New DB table — add owner_distributions to lib/db/src/schema.ts with columns: id (serial PK), jobId (int FK), businessId (int FK), ownerId (int nullable), amount (numeric), date (text), notes (text nullable), createdAt. Apply via psql directly (avoid drizzle push interactive TTY — use ALTER TABLE / CREATE TABLE raw SQL against the dev DB).
+API routes — add GET, POST, DELETE at /api/jobs/:id/owner-distributions behind requireOwner. POST validates amount > 0 and date present. DELETE by distribution id verifying it belongs to the job.
+Remove Owner Activity from P&L tab — delete the amber "Owner Activity" card (ownerDrawTaken section) from the P&L tab. P&L tab ends at Net Business Profit.
+Pay Breakdown tab — distribution ledger UI — fetch /api/jobs/:id/owner-distributions on load alongside existing data. Below "Your Take Home", add a clear divider then: My Share / Tax Reserve / Recommended Take Home summary rows, then the distributions list with delete buttons, then Total Withdrawn and Remaining Recommended Take Home. Add the "+ Record Owner Distribution" inline form.
+Remove old "Record Owner Pay" button — delete the button that called record-owner-draw. No other changes to calculation variables.
+Typecheck + restart both workflows, verify P&L tab, Pay Breakdown tab, and distribution form all render correctly.
+Relevant files
+
+artifacts/api-server/src/routes/jobs.ts
+artifacts/contractor-app/src/pages/Jobs.tsx
+lib/db/src/schema.ts
