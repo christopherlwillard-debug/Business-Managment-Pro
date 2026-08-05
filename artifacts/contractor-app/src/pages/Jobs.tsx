@@ -1197,9 +1197,11 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const [expenseItems, setExpenseItems] = useState<ExpenseItem[] | null>(null);
   const [expensesLoading, setExpensesLoading] = useState(false);
 
-  // Owner distribution ledger state
-  type OwnerDist = { id: number; jobId: number; amount: string; date: string; notes: string | null };
-  const [distributions, setDistributions] = useState<OwnerDist[]>([]);
+  // Owner pay ledger — reads from owner_capital_entries filtered by jobId.
+  // This is the SAME ledger as the Accounting page; entries recorded here
+  // automatically appear under "Taken Out" on the Accounting page (ADR-001).
+  type OwnerPayEntry = { id: number; jobId: number | null; date: string; description: string; amount: number };
+  const [distributions, setDistributions] = useState<OwnerPayEntry[]>([]);
   const [distFormOpen, setDistFormOpen] = useState(false);
   const [distAmount, setDistAmount] = useState("");
   const [distDate, setDistDate] = useState(new Date().toISOString().split("T")[0]);
@@ -1209,9 +1211,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
 
   async function loadDistributions() {
     try {
-      const data = await fetch(`${BASE}/api/jobs/${job.id}/owner-distributions`, { credentials: "include" })
+      const data = await fetch(`${BASE}/api/owner-capital?jobId=${job.id}`, { credentials: "include" })
         .then(r => r.ok ? r.json() : []);
-      setDistributions(data as OwnerDist[]);
+      setDistributions(data as OwnerPayEntry[]);
     } catch {
       setDistributions([]);
     }
@@ -1222,10 +1224,11 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
     if (isNaN(amt) || amt <= 0) return;
     setDistSaving(true);
     try {
-      const res = await fetch(`${BASE}/api/jobs/${job.id}/owner-distributions`, {
+      const description = distNotes.trim() || `Owner Pay — ${job.title || `Job ${job.id}`}`;
+      const res = await fetch(`${BASE}/api/owner-capital`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: amt, date: distDate, notes: distNotes || null }),
+        body: JSON.stringify({ amount: amt, date: distDate, description, jobId: job.id }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -1235,9 +1238,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
       setDistFormOpen(false);
       setDistAmount("");
       setDistNotes("");
-      toast({ title: "Distribution recorded", description: `${formatCurrency(amt)} logged` });
+      toast({ title: "Owner pay recorded", description: `${formatCurrency(amt)} logged` });
     } catch (err) {
-      toast({ title: "Failed to record distribution", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+      toast({ title: "Failed to record owner pay", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
       setDistSaving(false);
     }
@@ -1246,7 +1249,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   async function handleDeleteDistribution(distId: number) {
     setDeletingDistId(distId);
     try {
-      const res = await fetch(`${BASE}/api/jobs/${job.id}/owner-distributions/${distId}`, {
+      const res = await fetch(`${BASE}/api/owner-capital/${distId}`, {
         method: "DELETE", credentials: "include",
       });
       if (!res.ok) {
@@ -1254,9 +1257,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
         throw new Error((err as any)?.error ?? `Server error ${res.status}`);
       }
       setDistributions(prev => prev.filter(d => d.id !== distId));
-      toast({ title: "Distribution removed" });
+      toast({ title: "Owner pay removed" });
     } catch (err) {
-      toast({ title: "Failed to delete distribution", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+      toast({ title: "Failed to remove owner pay", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
       setDeletingDistId(null);
     }
@@ -1381,7 +1384,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
     const fetches: Promise<any>[] = [
       fetch(`${BASE}/api/jobs/${job.id}/sub-payments`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
       fetch(`${BASE}/api/jobs/${job.id}/sub-hours`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
-      fetch(`${BASE}/api/jobs/${job.id}/owner-distributions`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/owner-capital?jobId=${job.id}`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
     ];
     if (!initialProfit) {
       fetches.push(fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" }).then(r => r.ok ? r.json() : null));
@@ -1708,30 +1711,33 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                 </div>
               </div>
 
-              {/* ── Owner Distribution Ledger ─────────────────────────────── */}
+              {/* ── Owner Pay Ledger ────────────────────────────────────────── */}
+              {/* Reads from owner_capital_entries filtered by jobId — the same   */}
+              {/* ledger as the Accounting page. Entries recorded here appear      */}
+              {/* automatically under "Taken Out" on the Accounting page (ADR-001) */}
               {(() => {
-                const totalDrawn = distributions.reduce((s, d) => s + parseFloat(d.amount), 0);
+                const totalDrawn = distributions.reduce((s, d) => s + d.amount, 0);
                 const remaining = ownerTakeHome - totalDrawn;
                 const today = new Date().toISOString().split("T")[0];
                 return (
                   <div className="rounded-xl border border-violet-200 bg-violet-50/40 overflow-hidden">
                     <div className="px-4 pt-3 pb-2 border-b border-violet-200/60 flex items-center justify-between">
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Owner Distributions</p>
-                        <p className="text-[10px] text-violet-600/80 mt-0.5">Tracks how much of your recommended take-home you've transferred</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Owner Pay</p>
+                        <p className="text-[10px] text-violet-600/80 mt-0.5">Tracks how much of your recommended take-home you've transferred · syncs with Accounting page</p>
                       </div>
                     </div>
                     <div className="px-4 py-3 space-y-3">
                       {distributions.length === 0 && !distFormOpen && (
-                        <p className="text-xs text-muted-foreground text-center py-1">No distributions recorded yet</p>
+                        <p className="text-xs text-muted-foreground text-center py-1">No owner pay recorded for this job yet</p>
                       )}
                       {distributions.map(d => (
                         <div key={d.id} className="flex items-center gap-2 py-1.5 border-b border-violet-100 last:border-0">
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-foreground">{formatCurrency(parseFloat(d.amount))}</p>
+                            <p className="text-sm font-semibold text-foreground">{formatCurrency(d.amount)}</p>
                             <p className="text-[10px] text-muted-foreground">
                               {d.date ? new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
-                              {d.notes ? ` · ${d.notes}` : ""}
+                              {d.description ? ` · ${d.description}` : ""}
                             </p>
                           </div>
                           <button
@@ -1764,7 +1770,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                             />
                           </div>
                           <input
-                            type="text" placeholder="Notes (optional)"
+                            type="text" placeholder="Notes (optional — defaults to job name)"
                             value={distNotes}
                             onChange={e => setDistNotes(e.target.value)}
                             className="w-full px-3 py-2 border border-violet-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300"
@@ -1791,7 +1797,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                       {distributions.length > 0 && (
                         <div className="pt-1 space-y-1.5 border-t border-violet-200/60">
                           <div className="flex items-center justify-between text-xs">
-                            <span className="text-violet-700 font-medium">Total Withdrawn</span>
+                            <span className="text-violet-700 font-medium">Total Paid</span>
                             <span className="font-bold text-violet-700 tabular-nums">{formatCurrency(totalDrawn)}</span>
                           </div>
                           <div className="flex items-center justify-between text-xs">
@@ -1804,7 +1810,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                       {!distFormOpen && (
                         <button
                           onClick={() => {
-                            const rem = Math.max(0, ownerTakeHome - distributions.reduce((s, d) => s + parseFloat(d.amount), 0));
+                            const rem = Math.max(0, ownerTakeHome - distributions.reduce((s, d) => s + d.amount, 0));
                             setDistAmount(rem > 0 ? rem.toFixed(2) : "");
                             setDistDate(today);
                             setDistNotes("");
@@ -1812,7 +1818,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                           }}
                           className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-violet-300 text-violet-700 text-xs font-semibold hover:bg-violet-100/60 transition-colors"
                         >
-                          <Plus className="w-3.5 h-3.5" /> Record Owner Distribution
+                          <Plus className="w-3.5 h-3.5" /> Record Owner Pay
                         </button>
                       )}
                     </div>
