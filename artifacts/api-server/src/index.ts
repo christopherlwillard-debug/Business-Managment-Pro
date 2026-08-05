@@ -404,11 +404,37 @@ async function ensureMarketingContentTable(): Promise<void> {
   }
 }
 
+/** Vehicle Profiles: creates vehicles table if it doesn't exist. */
+async function ensureVehiclesTable(): Promise<void> {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS vehicles (
+        id SERIAL PRIMARY KEY,
+        business_id INTEGER,
+        nickname TEXT NOT NULL DEFAULT 'My Truck',
+        year INTEGER,
+        make TEXT,
+        model TEXT,
+        avg_mpg INTEGER NOT NULL DEFAULT 17,
+        fuel_price_per_gallon NUMERIC(6,3),
+        fuel_price_updated_at TIMESTAMP,
+        is_default BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    console.log("[startup] ensureVehiclesTable: vehicles OK.");
+  } catch (err) {
+    console.error("[startup] ensureVehiclesTable failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await ensureBankingSchema();
   await ensureTripNotesColumn();
   await ensureMarketingContentTable();
   await ensureWebsiteTemplatesTable();
+  await ensureVehiclesTable();
   await clearDraftInvoiceNumbers();
   await syncInvoiceCounter();
   await recomputePartialSubPaymentStatuses();

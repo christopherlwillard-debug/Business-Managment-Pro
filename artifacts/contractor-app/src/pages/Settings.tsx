@@ -11,7 +11,7 @@ import {
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
   Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2,
-  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy, ClipboardList, BookOpen, Package, TrendingUp,
+  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy, ClipboardList, BookOpen, Package, TrendingUp, Car, Pencil, Star,
 } from "lucide-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
@@ -817,6 +817,401 @@ function LogoUpload({
 }
 
 // ─── Field helper ─────────────────────────────────────────────────────────────
+// ─── Vehicle Profiles Section ─────────────────────────────────────────────────
+interface VehicleProfile {
+  id: number;
+  nickname: string;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  avgMpg: number;
+  fuelPricePerGallon: number | null;
+  fuelPriceUpdatedAt: string | null;
+  isDefault: boolean;
+}
+
+function VehicleProfilesSection() {
+  const { toast } = useToast();
+  const [vehicles, setVehicles] = useState<VehicleProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<number | "new" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [refreshingId, setRefreshingId] = useState<number | null>(null);
+  const [form, setForm] = useState({ nickname: "", year: "", make: "", model: "", avgMpg: "17", fuelPricePerGallon: "" });
+
+  const loadVehicles = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE}/api/vehicles`, { credentials: "include" });
+      if (res.ok) setVehicles(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadVehicles(); }, [loadVehicles]);
+
+  function openNew() {
+    setForm({ nickname: "", year: "", make: "", model: "", avgMpg: "17", fuelPricePerGallon: "" });
+    setEditingId("new");
+  }
+
+  function openEdit(v: VehicleProfile) {
+    setForm({
+      nickname: v.nickname,
+      year: v.year != null ? String(v.year) : "",
+      make: v.make ?? "",
+      model: v.model ?? "",
+      avgMpg: String(v.avgMpg),
+      fuelPricePerGallon: v.fuelPricePerGallon != null ? String(v.fuelPricePerGallon) : "",
+    });
+    setEditingId(v.id);
+  }
+
+  async function handleSave() {
+    if (!form.nickname.trim()) {
+      toast({ title: "Nickname required", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        nickname: form.nickname.trim(),
+        year: form.year ? parseInt(form.year) : null,
+        make: form.make.trim() || null,
+        model: form.model.trim() || null,
+        avgMpg: parseInt(form.avgMpg) || 17,
+        fuelPricePerGallon: form.fuelPricePerGallon ? parseFloat(form.fuelPricePerGallon) : null,
+      };
+      const url = editingId === "new" ? `${BASE}/api/vehicles` : `${BASE}/api/vehicles/${editingId}`;
+      const method = editingId === "new" ? "POST" : "PUT";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        setEditingId(null);
+        await loadVehicles();
+        toast({ title: editingId === "new" ? "Vehicle added" : "Vehicle saved" });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Failed to save", description: err?.error ?? "An error occurred.", variant: "destructive" });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm("Delete this vehicle?")) return;
+    const res = await fetch(`${BASE}/api/vehicles/${id}`, { method: "DELETE", credentials: "include" });
+    if (res.ok) {
+      await loadVehicles();
+      toast({ title: "Vehicle removed" });
+    } else {
+      toast({ title: "Failed to delete", variant: "destructive" });
+    }
+  }
+
+  async function handleSetDefault(id: number) {
+    const res = await fetch(`${BASE}/api/vehicles/${id}/set-default`, { method: "POST", credentials: "include" });
+    if (res.ok) {
+      await loadVehicles();
+      toast({ title: "Default vehicle updated" });
+    } else {
+      toast({ title: "Failed to set default", variant: "destructive" });
+    }
+  }
+
+  async function handleFuelRefresh(id: number) {
+    setRefreshingId(id);
+    try {
+      const res = await fetch(`${BASE}/api/vehicles/${id}/fuel-price/refresh`, { method: "POST", credentials: "include" });
+      const data = await res.json();
+      if (res.ok) {
+        await loadVehicles();
+        toast({ title: `Fuel price updated: $${data.price.toFixed(3)}/gal (${data.state})` });
+      } else {
+        toast({ title: "Auto-fetch failed", description: data.error ?? "Enter price manually.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Auto-fetch failed", description: "Check your connection.", variant: "destructive" });
+    } finally {
+      setRefreshingId(null);
+    }
+  }
+
+  const VF = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
+
+  if (loading) {
+    return <div className="space-y-3">{[1, 2].map(i => <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />)}</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {vehicles.length === 0 && editingId !== "new" && (
+        <div className="border-2 border-dashed border-border rounded-xl py-10 text-center text-muted-foreground space-y-2">
+          <Car className="w-8 h-8 mx-auto text-muted-foreground/50" />
+          <p className="text-sm font-medium">No vehicles added yet.</p>
+          <p className="text-xs">Add your truck to enable fuel cost estimates on job P&amp;L cards.</p>
+        </div>
+      )}
+
+      {vehicles.map(v => (
+        <div key={v.id} className={`border rounded-xl overflow-hidden ${v.isDefault ? "border-primary/40 bg-primary/3" : "border-border bg-card"}`}>
+          {editingId === v.id ? (
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Nickname *</label>
+                  <input
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="e.g. F150, Big Truck"
+                    value={form.nickname}
+                    onChange={e => VF("nickname", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Year</label>
+                  <input
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    type="number" min="1900" max="2099" placeholder="2020"
+                    value={form.year}
+                    onChange={e => VF("year", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Make</label>
+                  <input
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Ford"
+                    value={form.make}
+                    onChange={e => VF("make", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Model</label>
+                  <input
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="F-150"
+                    value={form.model}
+                    onChange={e => VF("model", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Average MPG</label>
+                  <input
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    type="number" min="1" max="999" step="1"
+                    value={form.avgMpg}
+                    onChange={e => VF("avgMpg", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Fuel Price ($/gal)</label>
+                  <input
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    type="number" min="0" step="0.001" placeholder="3.199"
+                    value={form.fuelPricePerGallon}
+                    onChange={e => VF("fuelPricePerGallon", e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={handleSave}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                >
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingId(null)}
+                  className="px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-4 p-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Car className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-bold text-foreground">{v.nickname}</p>
+                  {v.isDefault && (
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
+                      <Star className="w-3 h-3" /> Default
+                    </span>
+                  )}
+                </div>
+                {(v.year || v.make || v.model) && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {[v.year, v.make, v.model].filter(Boolean).join(" ")}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-3 mt-2">
+                  <span className="text-xs text-muted-foreground"><span className="font-semibold text-foreground">{v.avgMpg}</span> MPG</span>
+                  {v.fuelPricePerGallon != null ? (
+                    <span className="text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">${v.fuelPricePerGallon.toFixed(3)}</span>/gal
+                      {v.fuelPriceUpdatedAt && (
+                        <span className="ml-1 text-muted-foreground/60">
+                          (updated {new Date(v.fuelPriceUpdatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-amber-600">No fuel price — estimates unavailable</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex-shrink-0 flex items-center gap-1">
+                <button
+                  type="button"
+                  title="Auto-fetch fuel price from EIA"
+                  disabled={refreshingId === v.id}
+                  onClick={() => handleFuelRefresh(v.id)}
+                  className="p-2 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors disabled:opacity-50"
+                >
+                  {refreshingId === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-base leading-none">↻</span>}
+                </button>
+                <button
+                  type="button"
+                  title="Edit"
+                  onClick={() => openEdit(v)}
+                  className="p-2 rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+                {!v.isDefault && (
+                  <button
+                    type="button"
+                    title="Set as default"
+                    onClick={() => handleSetDefault(v.id)}
+                    className="p-2 rounded-lg border border-border text-muted-foreground hover:text-amber-500 hover:border-amber-300 transition-colors"
+                  >
+                    <Star className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  title="Delete"
+                  onClick={() => handleDelete(v.id)}
+                  className="p-2 rounded-lg border border-border text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* New vehicle form */}
+      {editingId === "new" && (
+        <div className="border-2 border-primary/30 bg-primary/5 rounded-xl p-5 space-y-4">
+          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Car className="w-4 h-4 text-primary" /> New Vehicle
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2 space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Nickname *</label>
+              <input
+                className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="e.g. F150, Big Truck"
+                value={form.nickname}
+                onChange={e => VF("nickname", e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Year</label>
+              <input
+                className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                type="number" min="1900" max="2099" placeholder="2020"
+                value={form.year}
+                onChange={e => VF("year", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Make</label>
+              <input
+                className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="Ford"
+                value={form.make}
+                onChange={e => VF("make", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Model</label>
+              <input
+                className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="F-150"
+                value={form.model}
+                onChange={e => VF("model", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Average MPG</label>
+              <input
+                className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                type="number" min="1" max="999" step="1"
+                value={form.avgMpg}
+                onChange={e => VF("avgMpg", e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Fuel Price ($/gal)</label>
+              <input
+                className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                type="number" min="0" step="0.001" placeholder="3.199"
+                value={form.fuelPricePerGallon}
+                onChange={e => VF("fuelPricePerGallon", e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={handleSave}
+              className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              Add Vehicle
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditingId(null)}
+              className="px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {editingId !== "new" && (
+        <button
+          type="button"
+          onClick={openNew}
+          className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-border rounded-xl text-sm font-semibold text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
+        >
+          <Plus className="w-4 h-4" /> Add Vehicle
+        </button>
+      )}
+    </div>
+  );
+}
+
 function LF({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
@@ -1458,7 +1853,7 @@ export default function Settings() {
     companyAddress: "", companyCity: "", companyState: "KY", companyZip: "",
     defaultTaxRate: "", invoicePrefix: "INV-2026-",
     defaultPaymentTerms: "Net 30", lateFeePercent: "",
-    mileageRate: "0.725", thresholdAmount1099: "2000", vehicleMpg: "17", fuelPricePerGallon: "",
+    mileageRate: "0.725", thresholdAmount1099: "2000",
     invoiceLogoPosition: "top-left", invoiceLogoSize: "medium",
     // SMTP email delivery
     smtpHost: "", smtpPort: "587", smtpUser: "", smtpSecure: "0",
@@ -1493,9 +1888,6 @@ export default function Settings() {
   const [error, setError] = useState("");
   const [seeded, setSeeded] = useState(false);
   const [testEmailState, setTestEmailState] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [fuelPriceUpdatedAt, setFuelPriceUpdatedAt] = useState<string | null>(null);
-  const [refreshingFuelPrice, setRefreshingFuelPrice] = useState(false);
-  const [fuelRefreshMsg, setFuelRefreshMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   useEffect(() => {
     if (settings && !seeded) {
       const s = settings as AppSettings & Record<string, unknown>;
@@ -1517,8 +1909,6 @@ export default function Settings() {
         lateFeePercent: s.lateFeePercent != null ? String(s.lateFeePercent) : "",
         mileageRate: s.mileageRate != null ? String(s.mileageRate) : "0.725",
         thresholdAmount1099: s.thresholdAmount1099 != null ? String(s.thresholdAmount1099) : "2000",
-        vehicleMpg: (s as any).vehicleMpg != null ? String((s as any).vehicleMpg) : "17",
-        fuelPricePerGallon: (s as any).fuelPricePerGallon != null ? String((s as any).fuelPricePerGallon) : "",
         invoiceLogoPosition: s.invoiceLogoPosition ?? "top-left",
         invoiceLogoSize: s.invoiceLogoSize ?? "medium",
         smtpHost: (s.smtpHost as string | undefined) ?? "",
@@ -1541,7 +1931,6 @@ export default function Settings() {
       if ((s as any).plStepOrder) {
         try { setPlStepOrder(JSON.parse(String((s as any).plStepOrder))); } catch {}
       }
-      if ((s as any).fuelPriceUpdatedAt) setFuelPriceUpdatedAt((s as any).fuelPriceUpdatedAt);
       setLogoUrl(s.logoUrl ?? null);
       setSignatureUrl((s as any).signatureImage ?? null);
       const feat: Record<string, boolean> = {};
@@ -1584,8 +1973,6 @@ export default function Settings() {
           lateFeePercent: form.lateFeePercent ? parseFloat(form.lateFeePercent) : undefined,
           mileageRate: form.mileageRate ? parseFloat(form.mileageRate) : 0.725,
           thresholdAmount1099: form.thresholdAmount1099 ? parseFloat(form.thresholdAmount1099) : 2000,
-          vehicleMpg: form.vehicleMpg ? parseInt(form.vehicleMpg) : 17,
-          fuelPricePerGallon: form.fuelPricePerGallon ? parseFloat(form.fuelPricePerGallon) : null,
           invoiceLogoPosition: form.invoiceLogoPosition,
           invoiceLogoSize: form.invoiceLogoSize,
           mileageDefaultClassification: form.mileageDefaultClassification,
@@ -2536,84 +2923,16 @@ export default function Settings() {
                 </div>
               </CardContent>
             </Card>
-            {/* Vehicle & Fuel */}
+            {/* Vehicle Profiles */}
             <Card className="border-border/50 shadow-md bg-card">
               <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
                 <CardTitle className="font-display flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-primary" /> Vehicle & Fuel
+                  <Car className="w-5 h-5 text-primary" /> Vehicle Profiles
                 </CardTitle>
-                <CardDescription>Used to estimate fuel cost on the Job Financials P&L tab. Informational only — never affects accounting or tax reports.</CardDescription>
+                <CardDescription>Each profile stores a nickname, year/make/model, average MPG, and fuel price. The default vehicle is used for fuel cost estimates on the Job Financials P&amp;L tab. Informational only — never affects accounting or taxes.</CardDescription>
               </CardHeader>
-              <CardContent className="p-6 space-y-5">
-                <LF label="Default Vehicle MPG" hint="Used for all job fuel cost estimates. Update this if you switch trucks.">
-                  <input
-                    className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    type="number" min="1" max="99" step="1"
-                    value={form.vehicleMpg}
-                    onChange={e => setF("vehicleMpg", e.target.value)}
-                  />
-                </LF>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-foreground">Current Fuel Price ($/gal)</label>
-                  <p className="text-xs text-muted-foreground">
-                    Enter the current price per gallon for your state, or use the auto-fetch button to pull the latest weekly average from the U.S. Energy Information Administration (EIA).
-                  </p>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                      <input
-                        className="w-full pl-6 pr-3 py-2.5 border border-border rounded-xl text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        type="number" min="0" step="0.001" placeholder="3.199"
-                        value={form.fuelPricePerGallon}
-                        onChange={e => setF("fuelPricePerGallon", e.target.value)}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      disabled={refreshingFuelPrice}
-                      onClick={async () => {
-                        setRefreshingFuelPrice(true);
-                        setFuelRefreshMsg(null);
-                        try {
-                          const res = await fetch(`${BASE}/api/settings/fuel-price/refresh`, { method: "POST", credentials: "include" });
-                          const data = await res.json();
-                          if (!res.ok) {
-                            setFuelRefreshMsg({ type: "err", text: data.error ?? "Refresh failed" });
-                          } else {
-                            setF("fuelPricePerGallon", String(data.price));
-                            setFuelPriceUpdatedAt(data.updatedAt);
-                            setFuelRefreshMsg({ type: "ok", text: `Fetched $${data.price.toFixed(3)}/gal for ${data.state}` });
-                          }
-                        } catch {
-                          setFuelRefreshMsg({ type: "err", text: "Refresh failed. Check your connection." });
-                        } finally {
-                          setRefreshingFuelPrice(false);
-                        }
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-primary/40 text-xs font-semibold text-primary hover:bg-primary/5 transition-colors disabled:opacity-50 whitespace-nowrap"
-                    >
-                      {refreshingFuelPrice ? (
-                        <><div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" /> Fetching…</>
-                      ) : (
-                        <>↻ Auto-fetch</>
-                      )}
-                    </button>
-                  </div>
-                  {fuelPriceUpdatedAt && !fuelRefreshMsg && (
-                    <p className="text-xs text-muted-foreground">Last updated: {new Date(fuelPriceUpdatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
-                  )}
-                  {fuelRefreshMsg && (
-                    <p className={`text-xs font-medium ${fuelRefreshMsg.type === "ok" ? "text-emerald-600" : "text-red-600"}`}>
-                      {fuelRefreshMsg.text}
-                      {fuelRefreshMsg.type === "err" && " — You can enter the price manually above."}
-                    </p>
-                  )}
-                  {!form.fuelPricePerGallon && !fuelRefreshMsg && (
-                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                      No fuel price set. Estimated Fuel Cost won't appear on job cards until a price is saved here.
-                    </p>
-                  )}
-                </div>
+              <CardContent className="p-6">
+                <VehicleProfilesSection />
               </CardContent>
             </Card>
           </div>

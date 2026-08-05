@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { geocodeAddressString } from "../geocode-helpers.js";
 
@@ -441,20 +441,27 @@ router.get("/:id/profit", async (req, res) => {
     } | null = null;
 
     try {
-      const [settingsRow] = await db.select({
-        companyAddress: settingsTable.companyAddress,
-        companyCity: settingsTable.companyCity,
-        companyState: settingsTable.companyState,
-        vehicleMpg: settingsTable.vehicleMpg,
-        fuelPricePerGallon: settingsTable.fuelPricePerGallon,
-      }).from(settingsTable).limit(1);
+      const [[settingsRow], defaultVehicles] = await Promise.all([
+        db.select({
+          companyAddress: settingsTable.companyAddress,
+          companyCity: settingsTable.companyCity,
+          companyState: settingsTable.companyState,
+          vehicleMpg: settingsTable.vehicleMpg,
+          fuelPricePerGallon: settingsTable.fuelPricePerGallon,
+        }).from(settingsTable).limit(1),
+        db.select({
+          avgMpg: vehiclesTable.avgMpg,
+          fuelPricePerGallon: vehiclesTable.fuelPricePerGallon,
+        }).from(vehiclesTable).where(eq(vehiclesTable.isDefault, true)).limit(1),
+      ]);
 
-      const fuelPrice = settingsRow?.fuelPricePerGallon != null
-        ? parseFloat(String(settingsRow.fuelPricePerGallon))
-        : null;
+      // Prefer default vehicle; fall back to legacy settings fields for backward compatibility
+      const defaultVehicle = defaultVehicles[0] ?? null;
+      const rawFuelPrice = defaultVehicle?.fuelPricePerGallon ?? settingsRow?.fuelPricePerGallon ?? null;
+      const fuelPrice = rawFuelPrice != null ? parseFloat(String(rawFuelPrice)) : null;
 
       if (fuelPrice != null && fuelPrice > 0) {
-        const mpg = settingsRow?.vehicleMpg ?? 17;
+        const mpg = defaultVehicle?.avgMpg ?? settingsRow?.vehicleMpg ?? 17;
 
         const [jobRow] = await db.select({
           address: jobsTable.address, city: jobsTable.city, state: jobsTable.state,
