@@ -96,17 +96,21 @@ interface RiskFlag { level: "warn" | "info"; message: string }
 // ─── Job Types ────────────────────────────────────────────────────────────────
 
 const JOB_TYPES = [
-  { id: "manufactured_home", label: "Manufactured Home",    icon: "🏡", desc: "Uses your agreed-upon rates from Settings" },
-  { id: "full_remodel",   label: "Full Remodel",           icon: "🏠", desc: "Full interior gut and renovation" },
-  { id: "kitchen",        label: "Kitchen Remodel",         icon: "🍳", desc: "Kitchen cabinets, countertops, flooring" },
-  { id: "bathroom",       label: "Bathroom Remodel",        icon: "🚿", desc: "Tile, fixtures, plumbing, vanity" },
-  { id: "siding",         label: "Siding",                  icon: "🏗️", desc: "Vinyl, fiber cement, or wood siding" },
-  { id: "ceiling_repair", label: "Ceiling Repair",          icon: "🔨", desc: "Popcorn removal, cracks, skim coat" },
-  { id: "plumbing",       label: "Plumbing Hookup",         icon: "🔧", desc: "Fixtures, rough-in, service connection" },
-  { id: "deck",           label: "Deck / Porch",            icon: "🪵", desc: "New deck or porch build-out" },
-  { id: "windows_doors",  label: "Window/Door Replacement", icon: "🪟", desc: "Remove and replace windows and doors" },
-  { id: "addition",       label: "Addition",                icon: "📐", desc: "New room or structure added to home" },
-  { id: "other",          label: "Other",                   icon: "⚒️", desc: "Custom or mixed-scope project" },
+  { id: "full_remodel",    label: "Full Remodel",            icon: "🏠", desc: "Full interior gut and renovation" },
+  { id: "water_damage",    label: "Water Damage Restore",    icon: "💧", desc: "Leak, flood, or moisture — demo through finish" },
+  { id: "fire_restoration",label: "Fire Restoration",        icon: "🔥", desc: "Smoke, soot, and structural fire repair" },
+  { id: "kitchen",         label: "Kitchen Remodel",         icon: "🍳", desc: "Cabinets, countertops, flooring, plumbing" },
+  { id: "bathroom",        label: "Bathroom Remodel",        icon: "🚿", desc: "Tile, fixtures, plumbing, vanity" },
+  { id: "basement",        label: "Basement Finish",         icon: "⬇️", desc: "Frame, insulate, drywall, electrical, floor" },
+  { id: "roofing",         label: "Roofing",                 icon: "🏚️", desc: "Full replace, recover, or repair" },
+  { id: "siding",          label: "Siding",                  icon: "🏗️", desc: "Vinyl, fiber cement, or wood siding" },
+  { id: "deck",            label: "Deck / Porch",            icon: "🪵", desc: "New deck or porch build-out" },
+  { id: "windows_doors",   label: "Window/Door Replacement", icon: "🪟", desc: "Remove and replace windows and doors" },
+  { id: "addition",        label: "Addition",                icon: "📐", desc: "New room or structure added to home" },
+  { id: "ceiling_repair",  label: "Ceiling Repair",          icon: "🔨", desc: "Popcorn removal, cracks, skim coat" },
+  { id: "plumbing",        label: "Plumbing Hookup",         icon: "🔧", desc: "Fixtures, rough-in, service connection" },
+  { id: "manufactured_home",label: "Manufactured Home",      icon: "🏡", desc: "Uses your agreed-upon rates from Settings" },
+  { id: "other",           label: "Other",                   icon: "⚒️", desc: "Custom or mixed-scope project" },
 ];
 
 // ─── Scope Questions ──────────────────────────────────────────────────────────
@@ -171,11 +175,41 @@ const SCOPE_QUESTIONS: Record<string, Question[]> = {
     { id: "int_trim",   label: "Interior trim / casing included?", type: "boolean", defaultValue: true },
   ],
   full_remodel: [
-    { id: "sqft",       label: "Total remodel area (SF)",         type: "number", unit: "SF",  placeholder: "1000", defaultValue: 1000 },
-    { id: "wet_rooms",  label: "Number of wet rooms (kitchens + baths)", type: "number", unit: "rooms", placeholder: "2", defaultValue: 2 },
-    { id: "scope",      label: "Scope",                           type: "select", options: [{ value: "full_gut", label: "Full gut" }, { value: "partial", label: "Partial / selective demo" }], defaultValue: "full_gut" },
-    { id: "flooring",   label: "Flooring type",                   type: "select", options: [{ value: "lvp", label: "LVP throughout" }, { value: "carpet", label: "Carpet in bedrooms, LVP elsewhere" }, { value: "tile", label: "Tile" }], defaultValue: "lvp" },
-    { id: "structural", label: "Structural changes (walls moved)?", type: "boolean", defaultValue: false },
+    { id: "sqft",        label: "Total remodel area (SF)",        type: "number", unit: "SF",    placeholder: "1000", defaultValue: 1000 },
+    { id: "scope_depth", label: "Scope / depth of work",          type: "select", options: [{ value: "cosmetic", label: "Cosmetic — paint, flooring, trim only" }, { value: "partial", label: "Partial — selective demo, drywall patches, update finishes" }, { value: "full_gut", label: "Full Gut — down to studs, full mechanical refresh" }, { value: "insurance", label: "Insurance Restoration — full gut with moisture/mold remediation" }], defaultValue: "full_gut" },
+    { id: "wet_rooms",   label: "Number of wet rooms (kitchens + baths)", type: "number", unit: "rooms", placeholder: "2", defaultValue: 2, condition: (a) => a.scope_depth !== "cosmetic" },
+    { id: "flooring",    label: "Flooring type",                  type: "select", options: [{ value: "lvp", label: "LVP throughout" }, { value: "carpet", label: "Carpet in bedrooms, LVP elsewhere" }, { value: "tile", label: "Tile" }], defaultValue: "lvp" },
+    { id: "structural",  label: "Structural changes (walls moved)?", type: "boolean", defaultValue: false, condition: (a) => a.scope_depth === "full_gut" || a.scope_depth === "insurance" },
+  ],
+  water_damage: [
+    { id: "sqft",        label: "Affected area (SF)",             type: "number", unit: "SF",    placeholder: "800",  defaultValue: 800 },
+    { id: "severity",    label: "Damage severity",                type: "select", options: [{ value: "minor", label: "Minor — wet drywall, no structural damage" }, { value: "moderate", label: "Moderate — subfloor + drywall affected, mold possible" }, { value: "severe", label: "Severe — full gut, confirmed mold, structural damage" }], defaultValue: "moderate" },
+    { id: "mold",        label: "Mold confirmed or suspected?",   type: "boolean", defaultValue: false },
+    { id: "subfloor",    label: "Subfloor damaged?",              type: "boolean", defaultValue: false, condition: (a) => a.severity !== "minor" },
+    { id: "wet_rooms",   label: "Number of wet rooms affected",   type: "number", unit: "rooms", placeholder: "1", defaultValue: 1 },
+    { id: "flooring",    label: "Replacement flooring type",      type: "select", options: [{ value: "lvp", label: "LVP (recommended for moisture resistance)" }, { value: "carpet", label: "Carpet" }, { value: "tile", label: "Tile" }], defaultValue: "lvp" },
+  ],
+  fire_restoration: [
+    { id: "sqft",        label: "Affected area (SF)",             type: "number", unit: "SF",    placeholder: "1200", defaultValue: 1200 },
+    { id: "severity",    label: "Fire / smoke damage severity",   type: "select", options: [{ value: "smoke_only", label: "Smoke/Soot Only — no structural damage" }, { value: "partial", label: "Partial — some structural damage, localized burn" }, { value: "full_gut", label: "Full Gut — extensive structural damage" }], defaultValue: "partial" },
+    { id: "structural",  label: "Structural members (joists, studs) damaged?", type: "boolean", defaultValue: false },
+    { id: "wet_rooms",   label: "Number of wet rooms affected",   type: "number", unit: "rooms", placeholder: "1", defaultValue: 1 },
+    { id: "flooring",    label: "Replacement flooring type",      type: "select", options: [{ value: "lvp", label: "LVP" }, { value: "carpet", label: "Carpet" }, { value: "tile", label: "Tile" }], defaultValue: "lvp" },
+  ],
+  basement: [
+    { id: "sqft",        label: "Basement area to finish (SF)",   type: "number", unit: "SF",    placeholder: "800",  defaultValue: 800 },
+    { id: "scope",       label: "Finish scope",                   type: "select", options: [{ value: "full_finish", label: "Full finish — livable space (drywall, floor, elec, paint)" }, { value: "partial", label: "Partial — framing & utilities only" }, { value: "framing_only", label: "Framing only" }], defaultValue: "full_finish" },
+    { id: "bathroom",    label: "Basement bathroom included?",    type: "boolean", defaultValue: false },
+    { id: "egress",      label: "Egress window needed?",         type: "boolean", defaultValue: false },
+    { id: "bar_area",    label: "Wet bar / kitchenette?",         type: "boolean", defaultValue: false },
+  ],
+  roofing: [
+    { id: "sqft",        label: "Roof area (SF, or house footprint × 1.3)", type: "number", unit: "SF", placeholder: "1500", defaultValue: 1500 },
+    { id: "scope",       label: "Scope of work",                  type: "select", options: [{ value: "full_replace", label: "Full replacement — tear off existing shingles" }, { value: "recover", label: "Recover — install over existing (1 layer max)" }, { value: "repair", label: "Repair — patch damaged sections only" }], defaultValue: "full_replace" },
+    { id: "stories",     label: "Number of stories",              type: "select", options: [{ value: "1", label: "1 story" }, { value: "2", label: "2 stories" }], defaultValue: "1" },
+    { id: "decking",     label: "Replace damaged roof decking (OSB)?", type: "boolean", defaultValue: false },
+    { id: "gutters",     label: "Replace gutters?",               type: "boolean", defaultValue: false },
+    { id: "gutter_lf",  label: "Gutter length (LF)",             type: "number", unit: "LF", placeholder: "120", defaultValue: 120, condition: (a) => a.gutters === true },
   ],
   addition: [
     { id: "sqft",       label: "Addition area (SF)",              type: "number", unit: "SF",  placeholder: "400", defaultValue: 400 },
@@ -422,21 +456,156 @@ function computeTrades(jobType: string, answers: Answers, calcDefaults?: CalcDef
   else if (jobType === "full_remodel") {
     const sf = Math.max(n(answers, "sqft", 1000), 1);
     const wetRooms = n(answers, "wet_rooms", 0);
-    const isGut = answers.scope === "full_gut";
-    add({ trade: "Demo", description: isGut ? "Full interior demo — gut to studs" : "Selective demo — cabinets, flooring, fixtures", qty: sf, unit: "SF", lowCost: isGut ? 3 : 1.50, midCost: isGut ? 4.50 : 2.50, highCost: isGut ? 7 : 4, category: "Labor", tips: ["Asbestos / lead-based paint test recommended on pre-1978 homes", "Confirm haul-away included in price", "Stage dumpster close to access point"], riskNote: isGut ? "Full gut on older homes — asbestos & lead testing strongly recommended" : undefined });
-    if (wetRooms > 0) add({ trade: "Rough Plumbing", description: "Plumbing rough-in for wet rooms", qty: wetRooms, unit: "ROOM", lowCost: 2500, midCost: 4000, highCost: 7500, category: "Subcontractor", tips: ["Permit required — factor 2–4 weeks for KY inspection", "Confirm PEX or copper spec", "Rough-in inspection before drywall close-in"] });
-    add({ trade: "Rough Electrical", description: "New electrical rough-in", qty: sf, unit: "SF", lowCost: 4, midCost: 6.50, highCost: 10, category: "Subcontractor", tips: ["KY requires permit for new circuits", "Arc-fault breakers required in all habitable rooms (2023 NEC)", "Plan panel capacity before starting"] });
+    const depth = String(answers.scope_depth ?? "full_gut");
+    const isGut = depth === "full_gut" || depth === "insurance";
+    const isPartial = depth === "partial";
+    const isCosmetic = depth === "cosmetic";
+
+    // ── Demo ────────────────────────────────────────────────────────────────────
+    if (!isCosmetic) {
+      add({ trade: "Demo", description: isGut ? "Full interior demo — gut to studs" : "Selective demo — cabinets, flooring, fixtures only", qty: sf, unit: "SF", lowCost: isGut ? 3 : 1.25, midCost: isGut ? 4.50 : 2, highCost: isGut ? 7 : 3.50, category: "Labor", tips: ["Asbestos / lead-paint test on pre-1978 homes before demo", "Stage dumpster close to access point", "Confirm haul-away included"], riskNote: isGut ? "Full gut — asbestos & lead testing strongly recommended on older homes" : undefined });
+      add({ trade: "Dumpster", description: "Roll-off dumpster rental", qty: isGut ? 2 : 1, unit: "EACH", lowCost: 350, midCost: 550, highCost: 800, category: "Labor", tips: ["20-yard is standard for full-gut remodel", "Confirm allowed duration (usually 7–14 days)", "Driveway protection boards recommended"] });
+    }
+
+    // ── Insurance / water / mold extras ─────────────────────────────────────────
+    if (depth === "insurance") {
+      add({ trade: "Moisture Mitigation", description: "Industrial drying equipment & dehumidifiers", qty: sf, unit: "SF", lowCost: 1, midCost: 2, highCost: 3.50, category: "Subcontractor", tips: ["Requires certified water-damage remediation contractor", "Document with moisture readings before and after", "Insurance adjuster approval often required before starting"] });
+      add({ trade: "Mold Remediation", description: "Mold testing, treatment & encapsulation", qty: sf, unit: "SF", lowCost: 3, midCost: 5, highCost: 9, category: "Subcontractor", tips: ["Licensed mold remediation contractor required", "Third-party clearance test after remediation", "Document with photos for insurance claim"] });
+    }
+
+    // ── Structural ───────────────────────────────────────────────────────────────
     if (answers.structural) add({ trade: "Structural", description: "Wall removal / structural modifications", qty: 1, unit: "LOT", lowCost: 3500, midCost: 7000, highCost: 15000, category: "Labor", tips: ["Engineering stamp required for beam sizing in KY", "Permit required — allow 2–6 weeks", "Temporary shoring critical during header install"], riskNote: "Structural work requires permit and engineer sign-off in Kentucky" });
-    add({ trade: "Insulation", description: "Wall & ceiling insulation", qty: sf, unit: "SF", lowCost: 1.50, midCost: 2.50, highCost: 4, category: "Labor", tips: ["R-15 walls / R-38 ceiling is KY energy code minimum", "Spray foam at rim joists adds ~$500-800", "Confirm vapor barrier in crawl space"] });
-    add({ trade: "Drywall", description: "Hang, tape, finish drywall", qty: sf * 2.8, unit: "SF", lowCost: 2.50, midCost: 3.75, highCost: 5, category: "Labor", tips: ["Level-4 finish for smooth walls (painted)", "Double-layer 5/8\" on shared walls for fire rating", "Ask about texture matching in partial renovations"] });
+
+    // ── Rough mechanical ─────────────────────────────────────────────────────────
+    if (isGut && wetRooms > 0) add({ trade: "Rough Plumbing", description: "Plumbing rough-in for wet rooms", qty: wetRooms, unit: "ROOM", lowCost: 2500, midCost: 4000, highCost: 7500, category: "Subcontractor", tips: ["Permit required — factor 2–4 weeks for KY inspection", "Rough-in inspection before drywall close-in", "Confirm PEX spec and fixture count"] });
+    if (isGut) add({ trade: "Rough Electrical", description: "New electrical rough-in", qty: sf, unit: "SF", lowCost: 4, midCost: 6.50, highCost: 10, category: "Subcontractor", tips: ["KY requires permit for new circuits", "AFCI breakers required in all habitable rooms (2023 NEC)", "Check panel capacity before starting"] });
+
+    // ── Insulation + drywall ──────────────────────────────────────────────────────
+    if (isGut) add({ trade: "Insulation", description: "Wall & ceiling insulation", qty: sf, unit: "SF", lowCost: 1.50, midCost: 2.50, highCost: 4, category: "Labor", tips: ["R-15 walls / R-38 ceiling is KY energy code minimum", "Spray foam at rim joists adds $500–800", "Confirm vapor barrier in crawl space"] });
+    if (!isCosmetic) add({ trade: "Drywall", description: isGut ? "Hang, tape, finish drywall" : "Drywall patches — tape, mud, sand", qty: sf * (isGut ? 2.8 : 0.6), unit: "SF", lowCost: 2.50, midCost: 3.75, highCost: 5, category: "Labor", tips: ["Level-4 finish for smooth painted walls", "Ask about texture matching in partial renovations", "Sand between coats — no shortcuts on finish quality"] });
+
+    // ── Flooring ─────────────────────────────────────────────────────────────────
+    if (isGut && wetRooms > 0) add({ trade: "Subfloor Repair", description: "Subfloor leveling & damaged panel replacement", qty: sf * 0.20, unit: "SF", lowCost: 4, midCost: 6.50, highCost: 10, category: "Labor", tips: ["Check deflection spec — 3/4\" T&G OSB minimum", "Self-leveler in wet rooms before tile", "Screw (don't nail) panels to eliminate squeaks"] });
     const flType = answers.flooring;
     const flLo = flType === "tile" ? 7 : flType === "carpet" ? 2.50 : 3;
     const flMid = flType === "tile" ? 11 : flType === "carpet" ? 4 : 4.50;
     const flHi = flType === "tile" ? 16 : flType === "carpet" ? 6 : 6.50;
-    add({ trade: "Flooring", description: `Flooring — ${flType === "lvp" ? "LVP throughout" : flType === "carpet" ? "Carpet + LVP" : "Tile"}`, qty: sf, unit: "SF", lowCost: flLo, midCost: flMid, highCost: flHi, category: "Subcontractor", tips: ["Confirm subfloor prep in scope", "Add 10% waste allowance to SF order", "Transitions at doorways — confirm included"] });
-    add({ trade: "Paint", description: "Interior paint — all rooms", qty: sf * 1.8, unit: "SF", lowCost: 1.25, midCost: 1.80, highCost: 2.50, category: "Labor", tips: ["2 coats + primer on new drywall", "Cabinet paint is separate — confirm scope", "Caulk all trim/casings before final coat"] });
-    add({ trade: "Trim & Doors", description: "Base, casing, interior doors", qty: sf, unit: "SF", lowCost: 2, midCost: 3.25, highCost: 5, category: "Labor", tips: ["Pre-hung hollow core is KY standard residential", "Paint-grade MDF casing is most economical", "Confirm door hardware allowance with client"] });
-    add({ trade: "Cleanup", description: "Final punch & haul-off", qty: 1, unit: "LOT", lowCost: 500, midCost: 900, highCost: 1500, category: "Labor", tips: [] });
+    add({ trade: "Flooring", description: `Flooring — ${flType === "lvp" ? "LVP throughout" : flType === "carpet" ? "Carpet in bedrooms, LVP elsewhere" : "Tile"}`, qty: sf, unit: "SF", lowCost: flLo, midCost: flMid, highCost: flHi, category: "Subcontractor", tips: ["Confirm subfloor prep in scope", "Add 10% waste allowance", "Transitions at doorways — confirm included"] });
+
+    // ── Finishes ──────────────────────────────────────────────────────────────────
+    add({ trade: "Paint", description: "Interior paint — walls, ceilings, trim", qty: sf * 1.8, unit: "SF", lowCost: 1.25, midCost: 1.80, highCost: 2.50, category: "Labor", tips: ["2 coats + primer on new drywall", "Caulk all trim/casings before final coat", "Cabinet paint is a separate scope — confirm with client"] });
+    add({ trade: "Trim & Doors", description: "Baseboard, door casing, interior doors", qty: sf, unit: "SF", lowCost: 2, midCost: 3.25, highCost: 5, category: "Labor", tips: ["Pre-hung hollow-core is KY standard residential", "Paint-grade MDF casing is most economical", "Confirm door hardware allowance with client"] });
+    add({ trade: "Cleanup", description: "Final punch & haul-off", qty: 1, unit: "LOT", lowCost: 400, midCost: 750, highCost: 1400, category: "Labor", tips: ["Walk-through punch list before final payment", "Document photo record at completion"] });
+  }
+
+  else if (jobType === "water_damage") {
+    const sf = Math.max(n(answers, "sqft", 800), 1);
+    const severity = String(answers.severity ?? "moderate");
+    const hasMold = answers.mold === true;
+    const subfloorDamaged = answers.subfloor === true || severity === "severe";
+    const wetRooms = n(answers, "wet_rooms", 1);
+    const flType = String(answers.flooring ?? "lvp");
+    const isFullGut = severity === "severe";
+
+    add({ trade: "Demo", description: isFullGut ? "Full demo — gut affected rooms to studs" : "Demo — remove damaged drywall, flooring, trim", qty: sf, unit: "SF", lowCost: isFullGut ? 3 : 1.50, midCost: isFullGut ? 4.50 : 2.25, highCost: isFullGut ? 7 : 3.50, category: "Labor", tips: ["Cut drywall 12–18\" above flood line minimum", "Document all damage with photos before demo", "Asbestos test if pre-1978 home"], riskNote: "Thoroughly document all damage with photos and moisture readings — critical for insurance claims" });
+    add({ trade: "Dumpster", description: "Roll-off dumpster — debris removal", qty: isFullGut ? 2 : 1, unit: "EACH", lowCost: 350, midCost: 500, highCost: 750, category: "Labor", tips: ["Separate non-salvageable materials for adjuster review", "Keep itemized debris log for claim documentation"] });
+    add({ trade: "Moisture Mitigation", description: "Industrial drying — air movers, dehumidifiers", qty: sf, unit: "SF", lowCost: 1, midCost: 1.75, highCost: 3.50, category: "Subcontractor", tips: ["Certified water-damage contractor (IICRC) recommended", "Minimum 3 days drying time — verify with moisture meter", "Insurance adjuster approval often required before proceeding", "Keep equipment logs for claim"], riskNote: "Do not close in walls until moisture readings reach acceptable levels — trapped moisture causes mold" });
+    if (hasMold || severity !== "minor") add({ trade: "Mold Remediation", description: "Mold inspection, treatment & clearance test", qty: sf, unit: "SF", lowCost: hasMold ? 3 : 1, midCost: hasMold ? 5 : 2, highCost: hasMold ? 9 : 3, category: "Subcontractor", tips: ["Licensed mold contractor required", "Third-party clearance air test after remediation", "Encapsulate framing if mold is present on wood", "Photograph all mold areas for insurance"], riskNote: hasMold ? "Confirmed mold — licensed remediator required. Do not disturb without proper containment." : undefined });
+    if (subfloorDamaged) add({ trade: "Subfloor Repair", description: "Remove & replace damaged subfloor panels", qty: sf * (severity === "severe" ? 0.60 : 0.30), unit: "SF", lowCost: 4.50, midCost: 7, highCost: 11, category: "Labor", tips: ["Replace full sheets — don't patch subfloor", "3/4\" T&G OSB is KY residential standard", "Use construction adhesive + screws (no nails)", "Self-leveler if floor has low spots"] });
+    if (severity !== "minor") add({ trade: "Insulation", description: "Replace wet/damaged insulation", qty: sf, unit: "SF", lowCost: 1.25, midCost: 2, highCost: 3.50, category: "Labor", tips: ["Wet batt insulation must be discarded — cannot dry in place", "Closed-cell spray foam at rim joists if budget allows", "R-15 wall / R-38 ceiling minimum (KY code)"] });
+    add({ trade: "Drywall", description: "Hang, tape, and finish replacement drywall", qty: sf * (isFullGut ? 2.8 : 1.6), unit: "SF", lowCost: 2.50, midCost: 3.75, highCost: 5.25, category: "Labor", tips: ["Moisture-resistant drywall in wet rooms", "Allow full cure before painting", "Level-4 finish for painted surfaces"] });
+    if (wetRooms > 0 && isFullGut) add({ trade: "Plumbing Reconnect", description: "Reconnect plumbing fixtures in wet rooms", qty: wetRooms, unit: "ROOM", lowCost: 600, midCost: 1200, highCost: 2500, category: "Subcontractor", tips: ["Replace supply lines and shut-off valves while walls are open", "Check P-traps, wax rings, and supply connections", "Pressure test before closing walls"] });
+    const flLo = flType === "tile" ? 7 : flType === "carpet" ? 2.50 : 3;
+    const flMid = flType === "tile" ? 11 : flType === "carpet" ? 3.75 : 4.50;
+    const flHi = flType === "tile" ? 16 : flType === "carpet" ? 5.50 : 6.50;
+    add({ trade: "Flooring", description: `Replacement flooring — ${flType === "lvp" ? "LVP (moisture resistant)" : flType === "carpet" ? "Carpet" : "Tile"}`, qty: sf, unit: "SF", lowCost: flLo, midCost: flMid, highCost: flHi, category: "Subcontractor", tips: [flType === "lvp" ? "LVP is the best choice after water damage — waterproof core" : "", "Add 10% waste factor to material order", "Acclimate flooring 48 hrs before install"] });
+    add({ trade: "Paint", description: "Interior paint — primer + 2 finish coats", qty: sf * 1.8, unit: "SF", lowCost: 1.25, midCost: 1.80, highCost: 2.50, category: "Labor", tips: ["Oil-based primer sealer on all repaired drywall before finish paint", "Mold-resistant paint (Zinsser Perma-White) in wet rooms", "2 finish coats minimum"] });
+    add({ trade: "Trim & Doors", description: "Replace baseboard, casing, interior doors", qty: sf, unit: "SF", lowCost: 1.75, midCost: 3, highCost: 4.50, category: "Labor", tips: ["Check door frames for square — water damage warps frames", "Caulk all trim before paint", "Match existing profiles if available"] });
+    add({ trade: "Cleanup", description: "Final punch, haul-off, and job-site cleaning", qty: 1, unit: "LOT", lowCost: 300, midCost: 600, highCost: 1000, category: "Labor", tips: ["Final moisture readings and documentation for insurance closeout", "Photo record at completion"] });
+  }
+
+  else if (jobType === "fire_restoration") {
+    const sf = Math.max(n(answers, "sqft", 1200), 1);
+    const severity = String(answers.severity ?? "partial");
+    const structuralDamage = answers.structural === true || severity === "full_gut";
+    const wetRooms = n(answers, "wet_rooms", 1);
+    const flType = String(answers.flooring ?? "lvp");
+    const isFullGut = severity === "full_gut";
+
+    add({ trade: "Demo", description: isFullGut ? "Full structural demo — gut to studs" : "Demo — remove burnt/smoke-damaged materials", qty: sf, unit: "SF", lowCost: isFullGut ? 4 : 2, midCost: isFullGut ? 6 : 3.50, highCost: isFullGut ? 9 : 5.50, category: "Labor", tips: ["Structural engineer evaluation before demo on severe fires", "Asbestos test required if pre-1978", "Document all damage thoroughly with photos before any removal"], riskNote: "Fire damage — structural evaluation required before starting demo on walls or ceilings with visible char" });
+    add({ trade: "Dumpster", description: "Roll-off dumpster — fire debris removal", qty: isFullGut ? 3 : 2, unit: "EACH", lowCost: 350, midCost: 550, highCost: 850, category: "Labor", tips: ["Fire debris is heavy — confirm weight limits with hauler", "Keep adjuster-approved salvage list before discarding anything", "Separate content vs. structural debris for claim"] });
+    add({ trade: "Soot & Smoke Remediation", description: "HEPA vacuuming, soda blasting, ozone treatment", qty: sf, unit: "SF", lowCost: 3, midCost: 5.50, highCost: 9, category: "Subcontractor", tips: ["IICRC-certified fire remediation contractor required", "Ozone treatment for smoke odor — must vacate during treatment", "Ductwork cleaning critical — smoke travels through HVAC", "Third-party air-quality clearance test after remediation"], riskNote: "Smoke odor — if HVAC was running during fire, ductwork must be professionally cleaned or replaced" });
+    add({ trade: "HVAC Ductwork Cleaning", description: "Full duct cleaning and odor treatment", qty: 1, unit: "LOT", lowCost: 500, midCost: 1200, highCost: 2500, category: "Subcontractor", tips: ["Smoke travels through entire duct system", "Replace filters and any visibly damaged flex duct", "Consider full replacement if duct is lined with fiberglass"] });
+    if (structuralDamage) add({ trade: "Structural Repair", description: "Sister or replace fire-damaged framing members", qty: sf * (isFullGut ? 0.80 : 0.30), unit: "SF", lowCost: 6, midCost: 10, highCost: 18, category: "Labor", tips: ["Engineer to specify repair vs. replace decision on each member", "Char depth test: >50% section loss = replace", "LVL or LSL sister members for load-bearing locations", "Permit required — structural repairs need inspection"], riskNote: "Char on structural members — engineer assessment required before covering with drywall" });
+    add({ trade: "Insulation", description: "Replace smoke/heat-damaged insulation", qty: sf, unit: "SF", lowCost: 1.50, midCost: 2.50, highCost: 4, category: "Labor", tips: ["Insulation absorbs smoke odor — all must be replaced", "Closed-cell spray foam option eliminates vapor barrier separately", "R-15 wall / R-38 ceiling (KY energy code)"] });
+    add({ trade: "Drywall", description: "Hang, tape, and finish new drywall", qty: sf * (isFullGut ? 2.8 : 2), unit: "SF", lowCost: 2.50, midCost: 3.75, highCost: 5.25, category: "Labor", tips: ["Oil-based primer sealer required on framing before drywall", "Level-4 finish for painted walls", "Moisture-resistant board in wet rooms"] });
+    if (wetRooms > 0) add({ trade: "Plumbing Reconnect", description: "Reconnect plumbing fixtures, supply lines, valves", qty: wetRooms, unit: "ROOM", lowCost: 800, midCost: 1500, highCost: 3000, category: "Subcontractor", tips: ["Plastic supply lines melt at fire temps — replace all", "Replace all shut-off valves while walls are open", "Check water heater and pressure relief valve"] });
+    add({ trade: "Electrical Rough-In", description: "Replace fire-damaged wiring and devices", qty: sf, unit: "SF", lowCost: 5, midCost: 8, highCost: 13, category: "Subcontractor", tips: ["All wiring in fire area must be replaced — heat compromises insulation", "AFCI breakers required in all living spaces (2023 NEC)", "Panel inspection required after fire", "Permit required — KY requires licensed electrician"], riskNote: "Electrical — all wiring in affected areas must be replaced; heat-damaged insulation is a fire risk" });
+    const flLo = flType === "tile" ? 7 : flType === "carpet" ? 2.50 : 3;
+    const flMid = flType === "tile" ? 11 : flType === "carpet" ? 3.75 : 4.50;
+    const flHi = flType === "tile" ? 16 : flType === "carpet" ? 5.50 : 6.50;
+    add({ trade: "Flooring", description: `Replacement flooring — ${flType === "lvp" ? "LVP" : flType === "carpet" ? "Carpet" : "Tile"}`, qty: sf, unit: "SF", lowCost: flLo, midCost: flMid, highCost: flHi, category: "Subcontractor", tips: ["Confirm subfloor structural integrity before install", "Add 10% waste factor", "Allow subfloor to off-gas before floating floor install"] });
+    add({ trade: "Paint", description: "Primer sealer + 2 finish coats — all surfaces", qty: sf * 1.8, unit: "SF", lowCost: 1.50, midCost: 2.25, highCost: 3.25, category: "Labor", tips: ["Oil-based or shellac sealer primer required on ALL surfaces — seals smoke odor", "Two finish coats minimum after sealer", "Zinsser BIN shellac primer is the gold standard for smoke sealing"] });
+    add({ trade: "Trim & Doors", description: "Replace baseboard, casing, and interior doors", qty: sf, unit: "SF", lowCost: 2, midCost: 3.25, highCost: 5, category: "Labor", tips: ["Replace all trim and doors in affected area — smoke odor impossible to eliminate from wood", "Caulk all trim before final paint", "Confirm hardware allowance with client"] });
+    add({ trade: "Cleanup", description: "Final cleaning, haul-off, and air-quality documentation", qty: 1, unit: "LOT", lowCost: 500, midCost: 1000, highCost: 2000, category: "Labor", tips: ["Professional cleaning with HEPA equipment after all trades complete", "Air quality clearance test recommended before client occupancy", "Photo record at completion for insurance closeout"] });
+  }
+
+  else if (jobType === "basement") {
+    const sf = Math.max(n(answers, "sqft", 800), 1);
+    const scope = String(answers.scope ?? "full_finish");
+    const hasBath = answers.bathroom === true;
+    const hasEgress = answers.egress === true;
+    const hasBar = answers.bar_area === true;
+    const isFull = scope === "full_finish";
+    const hasWalls = scope !== "framing_only";
+
+    add({ trade: "Framing", description: "Steel stud or PT wood framing — walls & soffits", qty: sf, unit: "SF", lowCost: 2.50, midCost: 4, highCost: 6.50, category: "Labor", tips: ["PT (pressure-treated) bottom plate required where in contact with concrete", "Steel stud is preferred — no rot, no warping", "Code minimum 7' clear ceiling height in livable space", "Frame around mechanical equipment with access panels"] });
+    if (hasEgress) add({ trade: "Egress Window", description: "Egress window cut & install (per bedroom)", qty: 1, unit: "EACH", lowCost: 1800, midCost: 2800, highCost: 4500, category: "Subcontractor", tips: ["KY code: minimum 5.7 SF net clear opening for egress", "Concrete saw cut + window well required for below-grade install", "Permit required — egress is a life-safety item", "Waterproof window well cover recommended"], riskNote: "Egress window required if adding a basement bedroom — non-negotiable life safety code requirement in KY" });
+    add({ trade: "Insulation", description: "Wall & rim joist insulation", qty: sf, unit: "SF", lowCost: 1.50, midCost: 2.50, highCost: 4.50, category: "Labor", tips: ["Closed-cell spray foam on rim joists is highly recommended", "Rigid foam board on concrete walls before framing (thermal break)", "R-13 batts in stud cavities minimum", "Vapor barrier on floor under LVP"] });
+    add({ trade: "Rough Electrical", description: "Circuits, outlets, lighting rough-in", qty: sf, unit: "SF", lowCost: 4, midCost: 6.50, highCost: 10, category: "Subcontractor", tips: ["KY requires permit for new circuits", "AFCI breakers for all habitable basement rooms", "Plan recessed can layout before drywall", "Include dedicated circuit for sump pump"] });
+    if (hasBath) add({ trade: "Rough Plumbing", description: "Basement bathroom rough-in", qty: 1, unit: "LOT", lowCost: 2500, midCost: 4500, highCost: 8000, category: "Subcontractor", tips: ["May require breaking concrete slab for drain rough-in", "Sewage ejector pump if below main drain line", "Permit required — plan 2–4 weeks for KY inspection", "Confirm: toilet, vanity, shower/tub scope"], riskNote: "Basement bathroom may require concrete saw cut for drain rough-in — confirm early, significant cost impact" });
+    if (hasBar) add({ trade: "Wet Bar Rough-In", description: "Bar sink plumbing rough-in", qty: 1, unit: "LOT", lowCost: 800, midCost: 1500, highCost: 2800, category: "Subcontractor", tips: ["May require concrete cut for drain", "Include dedicated 20A circuit for appliances", "Confirm countertop / cabinet scope"] });
+    if (hasWalls) {
+      add({ trade: "Drywall", description: "Hang, tape, and finish basement drywall", qty: sf * 2.2, unit: "SF", lowCost: 2.50, midCost: 3.50, highCost: 5, category: "Labor", tips: ["Moisture-resistant drywall on all basement walls", "Level-4 finish for painted surfaces", "No drywall against concrete — always frame first"] });
+      add({ trade: "Flooring", description: "LVP flooring — moisture-resistant", qty: sf, unit: "SF", lowCost: 3, midCost: 4.50, highCost: 6.50, category: "Subcontractor", tips: ["LVP with attached pad is the best basement choice — fully waterproof", "No glue-down hardwood below grade", "Acclimate material 48 hrs before install"] });
+    }
+    if (isFull) {
+      add({ trade: "Paint", description: "Basement paint — walls & ceilings", qty: sf * 1.8, unit: "SF", lowCost: 1, midCost: 1.75, highCost: 2.50, category: "Labor", tips: ["Moisture-resistant paint on all basement walls", "Seal concrete floors before LVP if using adhesive", "2 finish coats on drywall"] });
+      add({ trade: "Trim & Doors", description: "Baseboard, casing, and doors", qty: sf, unit: "SF", lowCost: 1.75, midCost: 3, highCost: 4.50, category: "Labor", tips: ["PVC baseboard recommended in basement — no rot or mold risk", "Caulk all trim before paint", "Pre-hung doors — confirm swing direction before ordering"] });
+      if (hasBath) add({ trade: "Bathroom Finish", description: "Vanity, toilet, fixtures & tile finish", qty: 1, unit: "LOT", lowCost: 2500, midCost: 4500, highCost: 9000, category: "Labor", tips: ["Schluter waterproofing in any tile shower", "Non-slip tile on floor", "Add grab bar blocking in walls during framing"] });
+    }
+    add({ trade: "Cleanup", description: "Final cleanup & debris removal", qty: 1, unit: "LOT", lowCost: 200, midCost: 400, highCost: 700, category: "Labor", tips: ["Final inspection walk-through before client acceptance"] });
+  }
+
+  else if (jobType === "roofing") {
+    const sf = Math.max(n(answers, "sqft", 1500), 1);
+    const scope = String(answers.scope ?? "full_replace");
+    const stories = String(answers.stories ?? "1");
+    const storyMult = stories === "2" ? 1.25 : 1;
+    const hasDeckingReplace = answers.decking === true;
+    const hasGutters = answers.gutters === true;
+    const gutterLf = n(answers, "gutter_lf", 120);
+    const isRepair = scope === "repair";
+    const isRecover = scope === "recover";
+
+    if (scope === "full_replace") {
+      add({ trade: "Tearoff", description: "Remove existing shingles — strip to decking", qty: sf, unit: "SF", lowCost: 1, midCost: 1.50, highCost: 2.25, category: "Labor", tips: ["Multiple layers? Add $0.35/SF per additional layer", "Dumpster or trailer for shingle disposal", "Protect landscaping & HVAC units before tearoff", "Inspect decking condition before loading new shingles"], riskNote: scope === "full_replace" ? "Inspect all decking after tearoff — don't load new shingles over soft spots" : undefined });
+    }
+    if (hasDeckingReplace) add({ trade: "Roof Decking Repair", description: "Replace damaged OSB / plywood sheathing", qty: sf * 0.15, unit: "SF", lowCost: 4, midCost: 6.50, highCost: 10, category: "Labor", tips: ["7/16\" or 1/2\" OSB is KY residential standard", "H-clips at unsupported edges", "Mark all damaged panels before tearoff for efficient workflow", "Factor in lead time if large area"] });
+    if (!isRepair) {
+      add({ trade: "Underlayment", description: "Synthetic underlayment or #30 felt", qty: sf, unit: "SF", lowCost: 0.35, midCost: 0.60, highCost: 0.90, category: "Labor", tips: ["Synthetic underlayment is far superior to felt in KY humidity", "Ice & water shield: first 3' from eave + all valleys (KY code)", "Overlap rows per manufacturer spec — typically 6\""] });
+    }
+    const shingLo = isRepair ? 5 : isRecover ? 3.50 : 4;
+    const shingMid = isRepair ? 8 : isRecover ? 5.50 : 6;
+    const shingHi = isRepair ? 14 : isRecover ? 8.50 : 10;
+    const shingMult = storyMult;
+    add({ trade: "Shingles", description: isRepair ? "Shingle repair / patch — match existing" : isRecover ? "Recover — new shingles over existing layer" : "30-year architectural shingles — supply & install", qty: sf, unit: "SF", lowCost: shingLo * shingMult, midCost: shingMid * shingMult, highCost: shingHi * shingMult, category: "Subcontractor", tips: ["30-year architectural (laminated) is KY residential standard", "Starter strip at eaves and rakes — do not skip", "Nail 6 nails per shingle in high-wind zones", stories === "2" ? "2-story: steeper pitch access adds 20–25% to labor" : ""] });
+    if (!isRepair) {
+      add({ trade: "Ridge, Hip & Flashing", description: "Ridge cap, hip shingles, step & counter flashing", qty: Math.sqrt(sf) * 6, unit: "LF", lowCost: 5, midCost: 9, highCost: 15, category: "Labor", tips: ["Pre-bent aluminum step flashing at all wall intersections", "Galvanized drip edge on all eaves and rakes", "Ridge cap — ventilated ridge cap (ridge vent) if attic venting needed"] });
+    }
+    add({ trade: "Ventilation", description: "Roof vents / soffit & ridge ventilation", qty: 1, unit: "LOT", lowCost: 300, midCost: 600, highCost: 1200, category: "Labor", tips: ["KY code: 1 SF net free vent area per 150 SF of attic floor", "Ridge vent + soffit vent is best system", "Power attic ventilators are secondary — prioritize passive venting"] });
+    if (hasGutters) add({ trade: "Gutters", description: "Seamless aluminum gutters — supply & install", qty: gutterLf, unit: "LF", lowCost: 8, midCost: 14, highCost: 22, category: "Labor", tips: ["6\" K-style gutter for most KY homes", "Downspouts every 40 LF maximum", "Gutter guards add $4–12/LF — ask client", "Extend downspouts 4' from foundation minimum"] });
+    add({ trade: "Cleanup", description: "Shingle cleanup — magnets, blow-off, haul", qty: 1, unit: "LOT", lowCost: 200, midCost: 400, highCost: 700, category: "Labor", tips: ["Magnetic sweeper for nail pickup — critical", "Walk entire perimeter twice", "Inspect driveway and landscaping for debris before leaving"] });
   }
 
   else if (jobType === "addition") {
@@ -476,38 +645,76 @@ function computeTrades(jobType: string, answers: Answers, calcDefaults?: CalcDef
 
 function getRiskFlags(jobType: string, answers: Answers): RiskFlag[] {
   const flags: RiskFlag[] = [];
-  if (["kitchen", "bathroom", "full_remodel", "ceiling_repair", "siding"].includes(jobType)) {
+
+  // Asbestos / lead paint warning
+  if (["kitchen", "bathroom", "full_remodel", "ceiling_repair", "siding", "water_damage", "fire_restoration"].includes(jobType)) {
     flags.push({ level: "info", message: "Pre-1980 home? Schedule asbestos inspection before demo — KY law requires testing before demolition of suspect materials." });
   }
-  if (["windows_doors"].includes(jobType)) {
-    flags.push({ level: "warn", message: "Pre-1978 home: EPA RRP lead paint rules apply. Willard must be RRP-certified or hire a certified sub." });
+  if (["windows_doors", "water_damage", "fire_restoration"].includes(jobType)) {
+    flags.push({ level: "warn", message: "Pre-1978 home: EPA RRP lead paint rules apply. Must be RRP-certified or hire a certified sub for disturbing painted surfaces." });
   }
+
+  // Dig safe
   if (jobType === "plumbing" && answers.trench) {
     flags.push({ level: "warn", message: "Call 811 before any digging — Kentucky law requires contacting Dig Safe at least 2 business days before excavation." });
   }
-  if (["deck", "addition", "full_remodel"].includes(jobType) || (jobType === "windows_doors" && answers.headers)) {
-    flags.push({ level: "warn", message: "Permit required in most KY counties for this scope. Budget 2–8 weeks for permit approval. Do not start structural work before permit is in hand." });
+
+  // Permit warnings
+  if (["deck", "addition", "full_remodel", "basement", "roofing"].includes(jobType) || (jobType === "windows_doors" && answers.headers)) {
+    flags.push({ level: "warn", message: "Permit likely required for this scope. Budget 2–8 weeks for KY permit approval. Do not start structural or rough-in work before permit is in hand." });
   }
+  if (jobType === "basement" && answers.egress) {
+    flags.push({ level: "warn", message: "Egress window is a life-safety requirement for any basement bedroom — non-negotiable in KY. Requires permit and inspection." });
+  }
+
+  // Ceiling popcorn
   if (jobType === "ceiling_repair" && answers.popcorn) {
     flags.push({ level: "warn", message: "Popcorn ceilings installed before 1978 may contain asbestos. Test before scraping — disturbing asbestos without proper controls is a KY EPA violation." });
   }
+
+  // Water damage specific
+  if (jobType === "water_damage") {
+    flags.push({ level: "warn", message: "Do NOT close in walls or floors until moisture meter readings confirm materials are fully dry — trapped moisture leads to mold and callbacks." });
+    if (answers.mold) flags.push({ level: "warn", message: "Confirmed mold: licensed mold remediation contractor required. Do not disturb mold without proper containment — IICRC S520 standard applies." });
+    flags.push({ level: "info", message: "Document everything with photos and moisture readings before, during, and after — critical for insurance claims and liability protection." });
+  }
+
+  // Fire restoration specific
+  if (jobType === "fire_restoration") {
+    flags.push({ level: "warn", message: "Structural evaluation required before starting demo — char depth and load capacity must be confirmed by a structural engineer." });
+    flags.push({ level: "warn", message: "All wiring in fire-affected areas must be replaced — heat compromises insulation even if wires look intact. Licensed electrician + permit required." });
+    flags.push({ level: "info", message: "HVAC ductwork carries smoke throughout the house — full duct cleaning or replacement is required even in areas with no visible fire damage." });
+  }
+
+  // Full remodel scope-specific
+  if (jobType === "full_remodel" && answers.structural) {
+    flags.push({ level: "warn", message: "Structural work (wall removal): engineering stamp required for beam sizing in KY. Permit required — allow 2–6 weeks. Use temporary shoring before removing any load-bearing wall." });
+  }
+  if (jobType === "full_remodel" && answers.scope_depth === "insurance") {
+    flags.push({ level: "warn", message: "Insurance restoration: get adjuster approval before starting work. Document all damage before any demo. Keep all receipts and daily labor logs for claim." });
+  }
+
   return flags;
 }
 
 // ─── Phase Templates ──────────────────────────────────────────────────────────
 
 const PHASE_TEMPLATES: Record<string, string[]> = {
-  manufactured_home: ["Site Prep & Delivery", "Plumbing Hookup", "Drywall / Wall Panels", "Flooring Install", "Trim & Doors", "Siding (if applicable)", "Paint & Touch-up", "Final Punch & Cleanup"],
-  kitchen:       ["Demo & Haul", "Rough Plumbing", "Rough Electrical", "Drywall", "Cabinet Install", "Countertops", "Flooring", "Fixtures & Appliances", "Paint & Trim", "Final Punch"],
-  bathroom:      ["Demo & Haul", "Rough Plumbing", "Rough Electrical", "Cement Board / Drywall", "Tile — Shower/Floor", "Vanity & Fixtures", "Paint", "Final Punch"],
-  siding:        ["Tearoff & Disposal", "Housewrap", "Siding Install", "Trim & Corners", "Caulk & Seal", "Final Cleanup"],
-  ceiling_repair:["Protect Floors & Furniture", "Popcorn Scrape", "Crack Repair", "Skim Coat & Sand", "Prime & Paint", "Final Cleanup"],
-  plumbing:      ["Locate Tie-in Points", "Rough-in / Trench", "Inspection", "Fixtures Connect", "Pressure Test", "Cleanup"],
-  deck:          ["Permit & Layout", "Footings & Posts", "Beam & Joist Framing", "Decking Install", "Railing & Stairs", "Seal / Stain", "Final Inspection"],
-  windows_doors: ["Order & Lead Time", "Remove Old Units", "Framing / Headers", "Install New Units", "Insulate & Seal", "Interior Trim & Casing", "Caulk, Paint & Touch-up"],
-  full_remodel:  ["Demo & Haul", "Rough Plumbing", "Rough Electrical", "Insulation", "Drywall Hang", "Drywall Finish", "Flooring", "Paint & Prime", "Cabinets & Fixtures", "Trim & Doors", "Final Punch"],
-  addition:      ["Permit & Survey", "Foundation / Footings", "Framing", "Roofing", "Windows & Exterior Doors", "Rough MEP (Mech/Elec/Plumb)", "Inspections", "Insulation", "Drywall", "Flooring", "Paint & Trim", "Final Inspection"],
-  other:         ["Scope & Materials Procurement", "Phase 1 Work", "Phase 2 Work", "Final Punch & Cleanup"],
+  manufactured_home:  ["Site Prep & Delivery", "Plumbing Hookup", "Drywall / Wall Panels", "Flooring Install", "Trim & Doors", "Siding (if applicable)", "Paint & Touch-up", "Final Punch & Cleanup"],
+  kitchen:            ["Demo & Haul", "Rough Plumbing", "Rough Electrical", "Drywall", "Cabinet Install", "Countertops", "Flooring", "Fixtures & Appliances", "Paint & Trim", "Final Punch"],
+  bathroom:           ["Demo & Haul", "Rough Plumbing", "Rough Electrical", "Cement Board / Drywall", "Tile — Shower/Floor", "Vanity & Fixtures", "Paint", "Final Punch"],
+  siding:             ["Tearoff & Disposal", "Housewrap", "Siding Install", "Trim & Corners", "Caulk & Seal", "Final Cleanup"],
+  ceiling_repair:     ["Protect Floors & Furniture", "Popcorn Scrape", "Crack Repair", "Skim Coat & Sand", "Prime & Paint", "Final Cleanup"],
+  plumbing:           ["Locate Tie-in Points", "Rough-in / Trench", "Inspection", "Fixtures Connect", "Pressure Test", "Cleanup"],
+  deck:               ["Permit & Layout", "Footings & Posts", "Beam & Joist Framing", "Decking Install", "Railing & Stairs", "Seal / Stain", "Final Inspection"],
+  windows_doors:      ["Order & Lead Time", "Remove Old Units", "Framing / Headers", "Install New Units", "Insulate & Seal", "Interior Trim & Casing", "Caulk, Paint & Touch-up"],
+  full_remodel:       ["Demo & Haul", "Dumpster Set", "Rough Plumbing", "Rough Electrical", "Insulation", "Drywall Hang", "Drywall Finish", "Flooring", "Paint & Prime", "Trim & Doors", "Final Punch & Cleanup"],
+  addition:           ["Permit & Survey", "Foundation / Footings", "Framing", "Roofing", "Windows & Exterior Doors", "Rough MEP (Mech/Elec/Plumb)", "Inspections", "Insulation", "Drywall", "Flooring", "Paint & Trim", "Final Inspection"],
+  water_damage:       ["Document & Photograph Damage", "Demo — Remove Damaged Materials", "Dumpster & Haul-Off", "Moisture Mitigation (Drying Equipment)", "Mold Remediation (if needed)", "Subfloor Repair", "Insulation Replacement", "Drywall Hang & Finish", "Flooring Install", "Paint & Prime", "Trim & Doors", "Final Cleanup & Documentation"],
+  fire_restoration:   ["Structural Engineer Evaluation", "Document & Photograph Damage", "Demo — Remove Damaged Materials", "Dumpster & Haul-Off", "Soot & Smoke Remediation", "HVAC Duct Cleaning", "Structural Repair (if needed)", "Insulation", "Rough Electrical", "Rough Plumbing (if needed)", "Drywall Hang & Finish", "Flooring", "Paint — Sealer + Finish Coats", "Trim & Doors", "Final Cleanup & Air-Quality Test"],
+  basement:           ["Permit & Plan", "Egress Window (if needed)", "Framing — Walls & Soffits", "Rough Electrical", "Rough Plumbing (if bathroom)", "Insulation", "Drywall Hang", "Drywall Finish", "Flooring", "Paint", "Trim & Doors", "Bathroom Finish (if included)", "Final Punch & Inspection"],
+  roofing:            ["Material Order & Staging", "Tearoff & Disposal", "Decking Repair (if needed)", "Underlayment & Ice Shield", "Shingle Install", "Ridge, Hip & Flashing", "Gutters (if included)", "Cleanup & Nail Sweep", "Final Inspection Walk"],
+  other:              ["Scope & Materials Procurement", "Phase 1 Work", "Phase 2 Work", "Final Punch & Cleanup"],
 };
 
 // ─── KY Permit Requirements ───────────────────────────────────────────────────
@@ -557,10 +764,45 @@ const KY_PERMITS: Record<string, PermitItem[]> = {
     { label: "EPA RRP lead-paint certification — required if pre-1978 home", required: true },
   ],
   full_remodel: [
-    { label: "Building permit — required", required: true },
-    { label: "Plumbing permit — required", required: true },
-    { label: "Electrical permit — required", required: true },
+    { label: "Building permit — required for gut remodel in most KY counties", required: true },
+    { label: "Plumbing permit — required for rough-in or fixture relocation", required: true },
+    { label: "Electrical permit — required for new circuits or panel work", required: true },
     { label: "HVAC permit — required if scope includes mechanical work", required: true },
+    { label: "No permit typically required for cosmetic work (paint, flooring only)", required: false },
+    { label: "Verify requirements with your local KY county building office", required: false },
+  ],
+  water_damage: [
+    { label: "No building permit required for like-for-like restoration in most KY counties", required: false },
+    { label: "Plumbing permit — required if relocating or adding new rough-in", required: true },
+    { label: "Electrical permit — required if replacing or adding circuits", required: true },
+    { label: "Mold remediation contractor license — required in KY for remediation scope", required: true },
+    { label: "EPA RRP certification — required if pre-1978 home and painted surfaces disturbed", required: false },
+    { label: "Verify with local building office — some counties require permit for drywall replacement", required: false },
+  ],
+  fire_restoration: [
+    { label: "Building permit — required in most KY counties for structural fire repair", required: true },
+    { label: "Electrical permit — required; all fire-area wiring must be replaced", required: true },
+    { label: "Plumbing permit — required if rough-in is disturbed or replaced", required: true },
+    { label: "HVAC permit — required if ductwork or equipment is replaced", required: true },
+    { label: "Structural engineer sign-off — required before closing in fire-damaged framing", required: true },
+    { label: "EPA RRP certification — required if pre-1978 home and painted surfaces disturbed", required: false },
+    { label: "Asbestos abatement permit — required if pre-1978 positive test result", required: false },
+  ],
+  basement: [
+    { label: "Building permit — required for basement finish in most KY counties", required: true },
+    { label: "Electrical permit — required for new circuits", required: true },
+    { label: "Plumbing permit — required if adding bathroom or wet bar", required: true },
+    { label: "Egress window permit — required as a life-safety item in KY", required: true },
+    { label: "Final inspection required before occupancy", required: true },
+    { label: "Verify ceiling height requirement — 7' minimum clear in habitable space (KY code)", required: false },
+  ],
+  roofing: [
+    { label: "Building permit — verify with local county; some KY jurisdictions require for full replacement", required: false },
+    { label: "No permit typically required for like-for-like shingle replacement in most rural KY counties", required: false },
+    { label: "Louisville/Jefferson County: permit required for full roof replacement", required: false },
+    { label: "Structural permit — required if replacing or repairing roof framing / trusses", required: true },
+    { label: "HOA architectural review — if community has HOA", required: false },
+    { label: "Verify with local building office before starting", required: false },
   ],
   addition: [
     { label: "Building permit — required", required: true },
