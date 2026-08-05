@@ -1,0 +1,210 @@
+You're exactly right, and this is a very common accounting mistake in contractor software.
+
+For a single-member LLC taxed as a sole proprietorship, your "owner pay" is not a business expense.
+
+Here's why:
+
+The business earns the profit.
+That profit is taxable to you whether you leave the money in the business or transfer it to your personal account.
+Moving money from the business account to yourself is an Owner's Draw, not payroll and not an expense.
+
+In your screenshot, the app is doing this:
+
+Revenue
+$3,606.32
+
+Expenses
+-$1,045.39   <-- includes Owner Pay ❌
+
+Net Profit
+$461.60
+
+That understates the job's true profitability.
+
+Instead, it should be:
+
+Revenue
+$3,606.32
+
+Business Expenses
+-$70.89
+
+Sub Labor
+-$800.00
+
+Net Business Profit
+$2,735.43
+
+Growth Reserve (5%)
+-$136.77
+
+Tax Reserve (example)
+-$410.31
+
+Available Owner Draw
+$2,188.35
+
+Owner Draw Taken
+-$974.50
+
+Remaining Owner Equity
+$1,213.85
+
+Notice what changed:
+
+Owner Draw never reduces Net Profit.
+It reduces Owner Equity, not business income.
+I think your P&L needs a new section.
+
+Instead of:
+
+Job Expenses
+
+• Owner Pay
+• Lumber
+• Screws
+
+It should be:
+
+Business Expenses
+Lumber
+Fuel
+Materials
+Dumpster
+Equipment
+Permits
+Travel
+Insurance Allocation
+Labor
+Employees
+Subcontractors
+Owner Activity (NEW)
+Owner Draw
+Owner Contribution
+Profit Distribution
+
+This section is below Net Profit because it doesn't affect profitability.
+
+This also fixes your profit split.
+
+You told me before your workflow is:
+
+Job Revenue
+
+↓
+
+Business Expenses
+
+↓
+
+Net Business Profit
+
+↓
+
+5% Growth Reserve
+
+↓
+
+Tax Reserve
+
+↓
+
+Remaining Profit
+
+↓
+
+Split Between Owners
+
+↓
+
+Record Owner Draw
+
+That means the app should never deduct Owner Draw before calculating profit.
+
+I'd actually redesign the entire financial summary.
+Revenue
+
+$3,606.32
+
+Business Expenses
+
+-$70.89
+
+Sub Labor
+
+-$800.00
+
+-------------------------
+
+Net Business Profit
+
+$2,735.43
+
+Growth Reserve (5%)
+
+-$136.77
+
+Estimated Tax Reserve
+
+-$410.31
+
+-------------------------
+
+Distributable Profit
+
+$2,188.35
+
+Owner Draw Taken
+
+$974.50
+
+Remaining Available Owner Draw
+
+$1,213.85
+
+Now the contractor instantly knows:
+
+How profitable the job was.
+How much was reserved for growth.
+How much should be reserved for taxes.
+How much they can safely take.
+How much they've already taken.
+
+That's a much more accurate reflection of how a sole proprietorship or single-member LLC works.
+
+I'd have Replit make this change
+# Financial Fix – Owner Draw vs Business Expense
+
+For businesses with a Tax Profile of:
+
+• Sole Proprietorship
+• Single-Member LLC (Disregarded Entity)
+
+Owner Draws must NOT be treated as business expenses.
+
+Changes Required
+
+1. Remove Owner Draws from the Job Expenses section and from all profit calculations.
+
+2. Create a new "Owner Activity" section below Net Business Profit.
+
+3. Record Owner Draws as equity withdrawals only.
+
+4. Net Profit should always be calculated before any Owner Draws.
+
+5. Add the following summary:
+
+• Net Business Profit
+• Growth Reserve
+• Estimated Tax Reserve
+• Distributable Profit
+• Owner Draws Taken
+• Remaining Available Owner Draw
+
+6. Profit & Loss reports should never reduce Net Profit because of Owner Draws.
+
+7. Continue tracking Owner Draw history for reporting purposes, but classify those transactions as equity withdrawals rather than expenses.
+
+This change should automatically apply to Sole Proprietorships and Single-Member LLCs based on the Business Tax Profile. Future entity types (Partnerships, S Corps, C Corps) can continue using entity-specific owner compensation rules.
+
+This also aligns perfectly with the Business Tax Profile system you've already been building. When the business type changes (for example, to an S corporation), the accounting treatment can change automatically without changing the rest of the job workflow.

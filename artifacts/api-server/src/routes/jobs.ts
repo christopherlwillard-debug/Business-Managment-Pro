@@ -395,8 +395,15 @@ router.get("/:id/profit", async (req, res) => {
     let tripTravelTotal = 0; // Subset of auditTrailTotal: expenses linked to a business trip
     let tripMealsDeductible = 0; // 50% of Meals-category trip expenses (IRS rule)
     let flatSubCost = 0; // Subcontractor-category expenses not linked to hours (legacy fallback)
+    let ownerDrawTaken = 0; // Owner draws/compensation — equity withdrawals, NEVER reduce Net Profit
+    // Owner-pay category set: "Owner Draw", "Owner Compensation", "Owner Withdrawal" are all equity withdrawals.
+    // record-owner-draw writes "Owner Compensation"; admin migrations may also leave "Owner Draw".
+    const OWNER_PAY_CATEGORIES = new Set(["Owner Draw", "Owner Compensation", "Owner Withdrawal"]);
     for (const exp of expRows) {
-      if (exp.category === "Owner Draw") continue;
+      if (OWNER_PAY_CATEGORIES.has(exp.category ?? "")) {
+        ownerDrawTaken += parseFloat(exp.amount ?? "0");
+        continue;
+      }
       if (exp.category === "Subcontractor") {
         flatSubCost += parseFloat(exp.amount ?? "0");
       } else if (exp.countsTowardJobProfit === false) {
@@ -533,7 +540,7 @@ router.get("/:id/profit", async (req, res) => {
     res.json({
       grossInvoiced, collected, jobExpenses, auditTrailTotal, tripTravelTotal, tripMealsDeductible,
       subLaborCost, allocPaid, totalSubHours,
-      netProfit,
+      netProfit, ownerDrawTaken,
       estimatedFuelCost,
       operationalProfit,
       fuelBreakdown,
@@ -572,12 +579,13 @@ router.get("/:id/expenses", async (req, res) => {
       .orderBy(desc(expensesTable.date));
 
     // Apply exactly the same exclusions as /:id/profit's jobExpenses bucket:
-    // - Skip Owner Draw
+    // - Skip owner-pay categories (equity withdrawals, not business expenses)
     // - Skip Subcontractor category (goes into sub labor bucket)
     // - Skip countsTowardJobProfit=false rows (those are audit/travel trail, not job expenses)
+    const OWNER_PAY_CATS = new Set(["Owner Draw", "Owner Compensation", "Owner Withdrawal"]);
     const items = rows
       .filter(r =>
-        r.category !== "Owner Draw" &&
+        !OWNER_PAY_CATS.has(r.category ?? "") &&
         r.category !== "Subcontractor" &&
         r.countsTowardJobProfit !== false
       )
@@ -681,7 +689,7 @@ router.get("/profit-summary", async (req, res) => {
       if (exp.jobId == null) continue;
       const r = result[exp.jobId];
       if (!r) continue;
-      if (exp.category === "Owner Draw") continue;
+      if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(exp.category ?? "")) continue;
       if (exp.category === "Subcontractor") {
         flatSubCostMap[exp.jobId] = (flatSubCostMap[exp.jobId] ?? 0) + parseFloat(exp.amount ?? "0");
         continue;

@@ -1008,6 +1008,7 @@ type JobProfit = {
   auditTrailTotal?: number; tripTravelTotal?: number; tripMealsDeductible?: number;
   subLaborCost?: number; allocPaid?: number; totalSubHours?: number; manHours?: number | null;
   netProfit: number;
+  ownerDrawTaken?: number;
   estimatedFuelCost?: number | null;
   operationalProfit?: number | null;
   fuelBreakdown?: {
@@ -1509,7 +1510,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                 )}
                 <div className={`rounded-xl border p-4 flex items-center justify-between ${isProfit ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
                   <div>
-                    <p className={`text-xs font-bold uppercase tracking-wide ${isProfit ? "text-emerald-700" : "text-red-700"}`}>Net Profit</p>
+                    <p className={`text-xs font-bold uppercase tracking-wide ${isProfit ? "text-emerald-700" : "text-red-700"}`}>Net Business Profit</p>
                     <p className={`text-2xl font-bold mt-0.5 ${isProfit ? "text-emerald-700" : "text-red-600"}`}>{isProfit ? "+" : ""}{formatCurrency(net)}</p>
                     {(subLaborCost > 0 || allocPaid > 0) && <p className={`text-[10px] mt-0.5 ${isProfit ? "text-emerald-600" : "text-red-500"}`}>After expenses + sub labor{allocPaid > 0 ? " + split payouts" : ""}</p>}
                   </div>
@@ -1518,6 +1519,29 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                 {profit.grossInvoiced > 0 && profit.collected < profit.grossInvoiced && (
                   <p className="text-xs text-muted-foreground text-center pt-1">{formatCurrency(profit.grossInvoiced - profit.collected)} outstanding (not yet collected)</p>
                 )}
+                {/* ── Owner Activity — below Net Profit because draws don't affect profitability ── */}
+                {(profit.ownerDrawTaken ?? 0) > 0 && (() => {
+                  const drawn = profit.ownerDrawTaken ?? 0;
+                  const remaining = net - drawn;
+                  return (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/60 overflow-hidden">
+                      <div className="px-4 pt-3 pb-2 border-b border-amber-200/60">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Owner Activity</p>
+                        <p className="text-[10px] text-amber-600/80 mt-0.5">Equity withdrawal — does not reduce business profit</p>
+                      </div>
+                      <div className="px-4 py-3 space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-amber-800 font-medium">Owner Draw Taken</span>
+                          <span className="font-bold text-amber-700 tabular-nums">-{formatCurrency(drawn)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm border-t border-amber-200/60 pt-2">
+                          <span className="text-amber-800 font-medium">Remaining Owner Equity</span>
+                          <span className={`font-bold tabular-nums ${remaining >= 0 ? "text-emerald-700" : "text-red-600"}`}>{remaining >= 0 ? "+" : ""}{formatCurrency(remaining)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {/* ── Estimated Fuel Cost (informational only) ── */}
                 {profit?.estimatedFuelCost != null && (
                   <div className="rounded-xl border border-amber-200/70 bg-amber-50/40 p-4 flex items-center justify-between">
