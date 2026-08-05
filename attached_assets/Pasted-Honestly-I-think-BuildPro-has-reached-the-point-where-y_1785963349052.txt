@@ -1,0 +1,511 @@
+Honestly, I think BuildPro has reached the point where you need engineering rules, not just coding tasks. Every hour you spend preventing bad architecture will save dozens of hours of cleanup later.
+
+If I were creating the BuildPro Constitution, these would be my top rules.
+
+1. Single Source of Truth (Highest Priority)
+
+Every business concept has exactly one authoritative system.
+
+Owner Pay → One ledger
+Expenses → One ledger
+Inventory → One inventory system
+Payroll → One payroll system
+Invoices → One invoice system
+Mileage → One mileage system
+Bank Transactions → One banking ledger
+Customers → One customer record
+
+Never duplicate a business concept.
+
+2. Search Before Build
+
+Before creating:
+
+Database table
+API
+React component
+Page
+Report
+Ledger
+
+The AI must search the project for an existing implementation.
+
+If one exists:
+
+Explain why it cannot be reused.
+Ask before creating another.
+3. Never Duplicate Data
+
+Example:
+
+Bad
+
+Invoice Total
+
+Job Revenue
+
+Accounting Revenue
+
+Dashboard Revenue
+
+Good
+
+Invoices
+
+↓
+
+Revenue Engine
+
+↓
+
+Everything else reads Revenue Engine
+
+Every number should originate from one calculation.
+
+4. One Calculation Engine
+
+Never calculate profit in five different places.
+
+Instead:
+
+computeJobProfit()
+
+↓
+
+P&L
+
+Dashboard
+
+Payroll
+
+Reports
+
+Taxes
+
+Owner Pay
+
+Everything calls one function.
+
+5. Every Feature Must Fit Existing Architecture
+
+Before coding:
+
+What system owns this feature?
+
+Jobs?
+
+Accounting?
+
+Inventory?
+
+Payroll?
+
+Website?
+
+CRM?
+
+Never invent a new subsystem because it's easier.
+
+6. Extend Before Create
+
+Always prefer:
+
+Reuse
+
+↓
+
+Extend
+
+↓
+
+Refactor
+
+↓
+
+Create New
+
+Creating new code should be the last option.
+
+7. Root Cause First
+
+Never fix symptoms.
+
+Always trace:
+
+UI
+
+↓
+
+API
+
+↓
+
+Backend
+
+↓
+
+Database
+
+↓
+
+Calculations
+
+↓
+
+Reports
+
+Then fix the source.
+
+8. One Financial Ledger Per Concept
+
+Examples
+
+Expenses
+
+One table
+
+Invoices
+
+One table
+
+Payroll
+
+One table
+
+Owner Pay
+
+One table
+
+Inventory
+
+One table
+
+Never store the same transaction twice.
+
+9. Never Store Calculated Values
+
+Don't save:
+
+Profit
+
+Net Profit
+
+Split Pool
+
+Tax Estimate
+
+Take Home
+
+Store only raw data.
+
+Calculate everything live.
+
+That prevents inconsistencies.
+
+10. Every New Table Requires Approval
+
+Before creating a table answer:
+
+Why?
+
+Existing table?
+
+Why can't it be extended?
+
+Will this duplicate anything?
+
+Future business types?
+11. Every Feature Must Support All Entity Types
+
+Instead of asking:
+
+How does a sole proprietor work?
+
+Ask:
+
+How does this work for
+
+Sole Prop
+
+LLC
+
+Partnership
+
+S Corp
+
+C Corp
+
+If different:
+
+Design for all.
+
+12. Never Hardcode Business Logic
+
+Never do this:
+
+if ownerDraw
+
+Instead:
+
+Business Settings
+
+↓
+
+Tax Profile
+
+↓
+
+Entity Type
+
+↓
+
+Rules Engine
+13. Build Engines, Not Screens
+
+Instead of
+
+Invoice Screen
+
+Payroll Screen
+
+Dashboard
+
+Think
+
+Invoice Engine
+
+↓
+
+Invoice Screen
+
+Dashboard
+
+Reports
+
+Customer Portal
+
+The engine powers everything.
+
+14. Every Feature Must Be Reusable
+
+If you build:
+
+PDF Export
+
+Every module should be able to use it.
+
+If you build:
+
+AI Assistant
+
+Every page should be able to use it.
+
+Avoid page-specific implementations.
+
+15. Architecture Impact Review
+
+Before every task answer:
+
+Tables affected
+
+APIs affected
+
+Pages affected
+
+Reports affected
+
+Accounting affected
+
+Permissions affected
+
+Multi-business affected
+
+Tax affected
+
+Inventory affected
+
+If something is forgotten...
+
+Stop.
+
+16. No Magic Numbers
+
+Bad
+
+Tax = 25%
+
+Growth = 5%
+
+Mileage = .725
+
+Good
+
+Business Settings
+
+↓
+
+Tax Settings
+
+↓
+
+Growth %
+
+↓
+
+IRS Mileage Rate
+
+Everything configurable.
+
+17. Every Calculation Must Be Explainable
+
+If BuildPro says:
+
+Split Pool
+
+$2,558.66
+
+The user should be able to expand it:
+
+Revenue
+
+Expenses
+
+Growth
+
+Hourly
+
+Remaining
+
+Split
+
+Nothing should feel like a black box.
+
+18. Every AI Feature Must Show Its Reasoning
+
+If AI recommends:
+
+Permit
+
+Price
+
+Markup
+
+Crew Size
+
+It should always explain why.
+
+19. Never Lose User Data
+
+Delete means:
+
+Archived first.
+
+Never permanently delete financial records.
+
+20. Every Financial Record Has an Audit Trail
+
+Track:
+
+Created By
+
+Created At
+
+Edited By
+
+Edited At
+
+Deleted By
+
+Deleted At
+
+Reason
+21. No Orphan Records
+
+If a Job is deleted:
+
+Don't leave:
+
+Expenses
+
+Photos
+
+Invoices
+
+Mileage
+
+Owner Pay
+
+Materials
+
+Everything should be archived or reassigned.
+
+22. Every Module Must Be Plug-and-Play
+
+Eventually you'll sell BuildPro as a SaaS.
+
+A module should be removable without breaking the app.
+
+Example:
+
+Website Builder
+
+Accounting
+
+Payroll
+
+Inventory
+
+CRM
+
+Knowledge Base
+
+Independent modules.
+
+23. Never Assume a Workflow
+
+Always ask:
+
+Can this be configured?
+
+Can another contractor do it differently?
+
+If yes...
+
+Make it a setting.
+
+24. Every Task Must End With Validation
+
+Before saying "Done," the AI must verify:
+
+✓ Typecheck passes
+
+✓ No duplicate tables
+
+✓ No duplicate APIs
+
+✓ Existing architecture reused
+
+✓ No financial regressions
+
+✓ Multi-business still works
+
+✓ Existing tests pass
+
+✓ Screenshots match expected behavior
+The rule I think will save you the most time
+
+If I had to pick just one additional rule, it would be this:
+
+RULE 0 — NO NEW DATABASE TABLES WITHOUT ARCHITECTURAL REVIEW
+
+Before creating any new table:
+
+1. Search the entire project for similar functionality.
+2. List all existing tables that overlap.
+3. Explain why each cannot be extended.
+4. Explain how the new table affects reports, accounting, payroll, inventory, and taxes.
+5. Wait for approval before creating the table.
+
+A new table is a last resort—not the default solution.
+
+That single rule would have prevented the owner_distributions proposal, because the review would have discovered your existing Owner Pay ledger first. Over time, it will help keep BuildPro coherent, easier to maintain, and much less expensive to evolve.
