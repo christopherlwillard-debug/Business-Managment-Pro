@@ -436,7 +436,7 @@ router.get("/:id/profit", async (req, res) => {
     let estimatedFuelCost: number | null = null;
     let operationalProfit: number | null = null;
     let fuelBreakdown: {
-      onewayMiles: number; roundTripMiles: number; workdays: number;
+      onewayMiles: number; roundTripMiles: number; daysOnJob: number;
       totalMiles: number; mpg: number; fuelPrice: number;
     } | null = null;
 
@@ -458,6 +458,7 @@ router.get("/:id/profit", async (req, res) => {
 
         const [jobRow] = await db.select({
           address: jobsTable.address, city: jobsTable.city, state: jobsTable.state,
+          daysOnJob: jobsTable.daysOnJob,
         }).from(jobsTable).where(eq(jobsTable.id, id));
 
         const businessAddr = [settingsRow?.companyAddress, settingsRow?.companyCity, settingsRow?.companyState]
@@ -495,25 +496,22 @@ router.get("/:id/profit", async (req, res) => {
           }
 
           if (miles != null) {
-            // Workday count: distinct daily log dates only.
-            // No calendar-day fallback — assume 1 workday if no logs exist (underestimate, not overestimate).
-            const logDates = await db.selectDistinct({ date: dailyLogsTable.date })
-              .from(dailyLogsTable)
-              .where(eq(dailyLogsTable.jobId, id));
-            const workdays = logDates.length > 0 ? logDates.length : 1;
+            // Days on Job: owner-set field on the job (defaults to 1).
+            // Replaces daily-log counting — informational only, no effect on accounting.
+            const daysOnJob = Math.max(1, jobRow?.daysOnJob ?? 1);
 
             // Formula:
-            //   One-way distance × 2 = Round trip
-            //   Round trip × Workdays = Total estimated miles
+            //   One-way distance × 2 = Round trip per day
+            //   Round trip × Days on Job = Total estimated miles
             //   Total miles ÷ MPG × Fuel price = Estimated fuel cost
             const onewayMiles = miles;
             const roundTripMiles = parseFloat((onewayMiles * 2).toFixed(1));
-            const totalMiles = parseFloat((roundTripMiles * workdays).toFixed(1));
+            const totalMiles = parseFloat((roundTripMiles * daysOnJob).toFixed(1));
             const cost = parseFloat(((totalMiles / mpg) * fuelPrice).toFixed(2));
 
             estimatedFuelCost = cost;
             operationalProfit = parseFloat((netProfit - cost).toFixed(2));
-            fuelBreakdown = { onewayMiles, roundTripMiles, workdays, totalMiles, mpg, fuelPrice };
+            fuelBreakdown = { onewayMiles, roundTripMiles, daysOnJob, totalMiles, mpg, fuelPrice };
           }
         }
       }
@@ -1286,7 +1284,7 @@ router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
-    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours } = req.body;
+    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, daysOnJob } = req.body;
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
 
@@ -1339,6 +1337,7 @@ router.put("/:id", async (req, res) => {
     if ("mfhConstructionType" in req.body) updates.mfhConstructionType = mfhConstructionType || null;
     if ("mhProductionServices" in req.body) updates.mhProductionServices = Array.isArray(mhProductionServices) ? mhProductionServices : null;
     if ("manHours" in req.body) updates.manHours = manHours != null ? String(manHours) : null;
+    if ("daysOnJob" in req.body) updates.daysOnJob = daysOnJob != null ? Math.max(1, parseInt(String(daysOnJob)) || 1) : 1;
 
     const [job] = await db.update(jobsTable).set(updates).where(eq(jobsTable.id, id)).returning();
     if (!job) return res.status(404).json({ error: "Job not found" });

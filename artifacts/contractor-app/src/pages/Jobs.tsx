@@ -1011,7 +1011,7 @@ type JobProfit = {
   estimatedFuelCost?: number | null;
   operationalProfit?: number | null;
   fuelBreakdown?: {
-    onewayMiles: number; roundTripMiles: number; workdays: number;
+    onewayMiles: number; roundTripMiles: number; daysOnJob: number;
     totalMiles: number; mpg: number; fuelPrice: number;
   } | null;
 };
@@ -1194,6 +1194,45 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   type ExpenseItem = { id: number; date: string | null; category: string | null; description: string | null; amount: string };
   const [expensesOpen, setExpensesOpen] = useState(false);
   const [fuelOpen, setFuelOpen] = useState(false);
+
+  // Days on Job — client-side override for instant fuel recalculation.
+  // Seeded from the server-returned fuelBreakdown.daysOnJob; persisted via debounced PUT.
+  const [localDays, setLocalDays] = useState<number>(profit?.fuelBreakdown?.daysOnJob ?? 1);
+  const [localFuelCost, setLocalFuelCost] = useState<number | null>(profit?.estimatedFuelCost ?? null);
+  const [localOpProfit, setLocalOpProfit] = useState<number | null>(profit?.operationalProfit ?? null);
+  const daysTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync local fuel state whenever the server data loads or changes
+  useEffect(() => {
+    if (profit?.fuelBreakdown) {
+      setLocalDays(profit.fuelBreakdown.daysOnJob);
+      setLocalFuelCost(profit.estimatedFuelCost ?? null);
+      setLocalOpProfit(profit.operationalProfit ?? null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profit?.fuelBreakdown?.daysOnJob, profit?.estimatedFuelCost]);
+
+  function changeDays(delta: number) {
+    if (!profit?.fuelBreakdown) return;
+    const bd = profit.fuelBreakdown;
+    const newDays = Math.max(1, localDays + delta);
+    setLocalDays(newDays);
+    // Instant client-side recalc — no round-trip needed
+    const totalMiles = parseFloat((bd.onewayMiles * 2 * newDays).toFixed(1));
+    const fuelCost = parseFloat(((totalMiles / bd.mpg) * bd.fuelPrice).toFixed(2));
+    setLocalFuelCost(fuelCost);
+    setLocalOpProfit(parseFloat((profit.netProfit - fuelCost).toFixed(2)));
+    // Debounced save so rapid tapping doesn't flood the server
+    if (daysTimerRef.current) clearTimeout(daysTimerRef.current);
+    daysTimerRef.current = setTimeout(() => {
+      fetch(`${BASE}/api/jobs/${job.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ daysOnJob: newDays }),
+      }).catch(() => { /* non-critical */ });
+    }, 600);
+  }
   const [expenseItems, setExpenseItems] = useState<ExpenseItem[] | null>(null);
   const [expensesLoading, setExpensesLoading] = useState(false);
 
@@ -1520,52 +1559,82 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <p className="text-xs text-muted-foreground text-center pt-1">{formatCurrency(profit.grossInvoiced - profit.collected)} outstanding (not yet collected)</p>
                 )}
                 {/* ── Estimated Fuel Cost (informational only) ── */}
-                {profit.estimatedFuelCost != null && (
+                {localFuelCost != null && profit?.fuelBreakdown && (
                   <>
-                    <div
-                      className="rounded-xl border border-amber-200/70 bg-amber-50/40 overflow-hidden cursor-pointer"
-                      onClick={() => setFuelOpen(v => !v)}
-                    >
-                      <div className="p-4 flex items-center justify-between hover:bg-amber-50/80 transition-colors active:bg-amber-100/60">
-                        <div>
-                          <p className="text-xs text-amber-700 font-medium uppercase tracking-wide">Estimated Fuel Cost</p>
-                          <p className="text-xl font-bold text-amber-700 mt-0.5">-{formatCurrency(profit.estimatedFuelCost)}</p>
-                          <p className="text-[10px] text-amber-600/70 mt-0.5">Informational — not in accounting reports</p>
+                    <div className="rounded-xl border border-amber-200/70 bg-amber-50/40 overflow-hidden">
+                      {/* Always-visible header: cost + Days on Job stepper */}
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-amber-700 font-medium uppercase tracking-wide">Estimated Fuel Cost</p>
+                            <p className="text-xl font-bold text-amber-700 mt-0.5">-{formatCurrency(localFuelCost)}</p>
+                            <p className="text-[10px] text-amber-600/70 mt-0.5">Informational — not in accounting reports</p>
+                          </div>
+                          <Fuel className="w-6 h-6 text-amber-300 flex-shrink-0 mt-0.5" />
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Fuel className="w-7 h-7 text-amber-200" />
-                          <div className="w-6 h-6 flex items-center justify-center rounded-full bg-amber-100">
-                            {fuelOpen ? <ChevronUp className="w-3.5 h-3.5 text-amber-600" /> : <ChevronDown className="w-3.5 h-3.5 text-amber-600" />}
+                        {/* Days on Job stepper — always visible */}
+                        <div className="mt-3 flex items-center justify-between bg-amber-100/60 rounded-xl px-3 py-2.5">
+                          <span className="text-xs font-semibold text-amber-800">Days on Job</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => changeDays(-1)}
+                              disabled={localDays <= 1}
+                              className="w-7 h-7 rounded-lg bg-white border border-amber-300 flex items-center justify-center text-amber-700 font-bold text-base leading-none disabled:opacity-30 active:bg-amber-50 transition-colors"
+                              aria-label="Decrease days"
+                            >−</button>
+                            <span className="w-6 text-center text-sm font-bold text-amber-900 tabular-nums">{localDays}</span>
+                            <button
+                              type="button"
+                              onClick={() => changeDays(1)}
+                              className="w-7 h-7 rounded-lg bg-white border border-amber-300 flex items-center justify-center text-amber-700 font-bold text-base leading-none active:bg-amber-50 transition-colors"
+                              aria-label="Increase days"
+                            >+</button>
                           </div>
                         </div>
+                        {/* Toggle for calculation breakdown */}
+                        <button
+                          type="button"
+                          onClick={() => setFuelOpen(v => !v)}
+                          className="mt-2 flex items-center gap-1 text-[11px] text-amber-700/70 font-medium hover:text-amber-800 transition-colors"
+                        >
+                          {fuelOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          {fuelOpen ? "Hide" : "Show"} calculation
+                        </button>
                       </div>
-                      {fuelOpen && profit.fuelBreakdown && (
+                      {/* Expandable breakdown */}
+                      {fuelOpen && (
                         <div className="border-t border-amber-200/60 bg-white/70 px-4 py-3 space-y-1.5">
                           <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700 mb-2">How it's calculated</p>
-                          {([
-                            { label: "Business → Job (one-way)", value: `${profit.fuelBreakdown.onewayMiles} mi` },
-                            { label: "Round trip", value: `${profit.fuelBreakdown.roundTripMiles} mi` },
-                            { label: `Workdays${profit.fuelBreakdown.workdays === 1 ? " (estimated)" : " (from daily logs)"}`, value: String(profit.fuelBreakdown.workdays) },
-                            { label: "Total estimated miles", value: `${profit.fuelBreakdown.totalMiles} mi`, bold: true },
-                            { label: "Vehicle MPG", value: String(profit.fuelBreakdown.mpg) },
-                            { label: "Fuel price", value: `$${profit.fuelBreakdown.fuelPrice.toFixed(3)}/gal` },
-                            { label: "Estimated fuel cost", value: formatCurrency(profit.estimatedFuelCost!), bold: true, accent: true },
-                          ] as const).map(row => (
-                            <div key={row.label} className={`flex items-center justify-between text-xs ${"accent" in row && row.accent ? "pt-1.5 border-t border-amber-200/60" : ""}`}>
-                              <span className={"bold" in row && row.bold ? "font-semibold text-foreground" : "text-muted-foreground"}>{row.label}</span>
-                              <span className={"bold" in row && row.bold ? "font-bold text-foreground tabular-nums" : "tabular-nums text-foreground"}>{row.value}</span>
-                            </div>
-                          ))}
+                          {(() => {
+                            const bd = profit.fuelBreakdown!;
+                            const totalMiles = parseFloat((bd.onewayMiles * 2 * localDays).toFixed(1));
+                            const rows = [
+                              { label: "Business → Job (one-way)", value: `${bd.onewayMiles} mi` },
+                              { label: "Round trip", value: `${bd.roundTripMiles} mi` },
+                              { label: "Days on Job", value: String(localDays) },
+                              { label: "Total estimated miles", value: `${totalMiles} mi`, bold: true },
+                              { label: "Vehicle MPG", value: String(bd.mpg) },
+                              { label: "Fuel price", value: `$${bd.fuelPrice.toFixed(3)}/gal` },
+                              { label: "Estimated fuel cost", value: formatCurrency(localFuelCost!), bold: true, accent: true },
+                            ] as const;
+                            return rows.map(row => (
+                              <div key={row.label} className={`flex items-center justify-between text-xs ${"accent" in row && row.accent ? "pt-1.5 border-t border-amber-200/60" : ""}`}>
+                                <span className={"bold" in row && row.bold ? "font-semibold text-foreground" : "text-muted-foreground"}>{row.label}</span>
+                                <span className={"bold" in row && row.bold ? "font-bold text-foreground tabular-nums" : "tabular-nums text-foreground"}>{row.value}</span>
+                              </div>
+                            ));
+                          })()}
                         </div>
                       )}
                     </div>
-                    {profit.operationalProfit != null && (() => {
-                      const isOp = profit.operationalProfit! >= 0;
+                    {localOpProfit != null && (() => {
+                      const isOp = localOpProfit >= 0;
                       return (
                         <div className={`rounded-xl border p-4 flex items-center justify-between ${isOp ? "border-emerald-200 bg-emerald-50/80" : "border-red-200 bg-red-50/80"}`}>
                           <div>
                             <p className={`text-xs font-bold uppercase tracking-wide ${isOp ? "text-emerald-700" : "text-red-700"}`}>Estimated Operational Profit</p>
-                            <p className={`text-2xl font-bold mt-0.5 ${isOp ? "text-emerald-700" : "text-red-600"}`}>{isOp ? "+" : ""}{formatCurrency(profit.operationalProfit!)}</p>
+                            <p className={`text-2xl font-bold mt-0.5 ${isOp ? "text-emerald-700" : "text-red-600"}`}>{isOp ? "+" : ""}{formatCurrency(localOpProfit)}</p>
                             <p className={`text-[10px] mt-0.5 ${isOp ? "text-emerald-600" : "text-red-500"}`}>Net profit minus estimated fuel cost</p>
                           </div>
                           <TrendingUp className={`w-8 h-8 ${isOp ? "text-emerald-300" : "text-red-300"}`} />
