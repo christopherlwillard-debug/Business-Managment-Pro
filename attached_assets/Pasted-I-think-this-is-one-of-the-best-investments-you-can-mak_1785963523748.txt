@@ -1,0 +1,128 @@
+I think this is one of the best investments you can make for BuildPro, and I'd add one more requirement that will pay for itself over and over.
+
+The Constitution tells Replit how to think.
+
+The System Registry tells Replit what already exists.
+
+But you're still missing why the system exists.
+
+I'd add a third document:
+
+.agents/architecture/DECISIONS.md
+
+This is an Architecture Decision Record (ADR) log.
+
+For example:
+
+## ADR-001
+
+Title:
+Owner Pay uses owner_capital_entries
+
+Decision:
+Do not create separate owner withdrawal tables.
+
+Reason:
+The application already has an Owner Pay ledger.
+Job-linked owner payments are stored in the existing ledger using a nullable jobId.
+This preserves a single source of truth.
+
+Rejected Alternatives:
+
+- owner_distributions
+- owner_withdrawals
+
+Status:
+Accepted
+
+Date:
+2026-08-05
+
+Then later:
+
+## ADR-002
+
+Inventory is the source of truth for material costs.
+
+Decision:
+Job material expenses are calculated from inventory cost when inventory is consumed.
+
+Reason:
+Avoids double charging and correctly values existing stock.
+
+Rejected Alternatives:
+
+Subtract billed material amounts from profit split.
+
+Status:
+Accepted
+
+After a year you'll have 50–100 of these decisions, and they're incredibly valuable because they explain why the architecture is the way it is.
+
+I'd also add one more rule to your Constitution.
+Rule 25 — Architectural Conflict Check
+Before implementing a feature, compare it against:
+
+• Constitution
+• System Registry
+• Architecture Decisions
+
+If the proposed implementation conflicts with an existing architectural decision:
+
+STOP.
+
+Do not code.
+
+Explain the conflict.
+
+Request approval before changing the architecture.
+
+That rule alone would have prevented the owner_distributions table, because Replit would have found:
+
+Owner Pay already exists.
+The System Registry says it's the source of truth.
+ADR-001 says don't create another ledger.
+
+It would have stopped before writing any code.
+
+I'd also require every task to begin with this checklist:
+Architecture Review
+
+□ Read Constitution
+
+□ Read System Registry
+
+□ Read Architecture Decisions
+
+□ Search existing implementation
+
+□ Check for duplicate tables
+
+□ Check for duplicate APIs
+
+□ Check for duplicate calculations
+
+□ Check for duplicate UI
+
+□ Verify source of truth
+
+Only after every box is checked may implementation begin.
+I think your task (#1761) is excellent, but I'd expand it slightly.
+
+I'd rename it to:
+
+#1761 – BuildPro Architecture Governance System
+
+and have it create three documents instead of two:
+
+CONSTITUTION.md — The rules.
+SYSTEM_REGISTRY.md — What exists and where.
+DECISIONS.md — Why key architectural choices were made.
+
+That combination gives future AI agents everything they need:
+
+Rules (what they're allowed to do),
+Inventory (what already exists),
+History (why it was designed that way).
+
+For a project that's becoming a full contractor ERP like BuildPro, that kind of governance will save a tremendous amount of time and help prevent duplicate systems, conflicting logic, and expensive refactoring as the application grows.
