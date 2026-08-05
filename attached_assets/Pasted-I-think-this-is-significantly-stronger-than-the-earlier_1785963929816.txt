@@ -1,0 +1,63 @@
+I think this is significantly stronger than the earlier version. The biggest improvement is that you've turned the architecture documents from "reference material" into a required workflow gate.
+
+There are only three things I'd change before making this your permanent standard.
+
+1. Don't seed the CHANGELOG with work that hasn't happened yet
+
+This line should be changed:
+
+"Seed with the entry for Task #1760 once that task is complete."
+
+Instead:
+
+CHANGELOG.md should only contain completed architectural changes.
+
+Do not create changelog entries for planned or in-progress work.
+
+Only record architectural changes after they have been implemented and verified.
+
+That keeps your changelog as a historical record rather than a plan.
+
+2. Make the System Registry read-only except through review
+
+Add this rule:
+
+The SYSTEM_REGISTRY.md file is an architectural inventory.
+
+It must only be updated when:
+
+• A new core system is added.
+• A source of truth changes.
+• A database table is renamed.
+• An API ownership changes.
+• An architecture review approves the modification.
+
+Do not modify SYSTEM_REGISTRY.md as part of normal feature development.
+
+Otherwise, over time, agents may casually edit it until it drifts from reality.
+
+3. Add an Architecture Completion Checklist
+
+Right now you have a pre-task gate.
+
+I'd also require a post-task verification.
+
+Architecture Completion Checklist
+
+□ Source of truth unchanged (or documented)
+□ SYSTEM_REGISTRY updated if required
+□ DECISIONS updated if architecture changed
+□ CHANGELOG updated if architecture changed
+□ No duplicate tables introduced
+□ No duplicate APIs introduced
+□ No duplicate calculations introduced
+□ No duplicate ledgers introduced
+□ Architecture review still passes
+
+This makes sure that if a task changes the architecture, the documentation stays synchronized.
+
+Overall
+
+I'd rate this 10/10 as an architecture governance system.
+
+Most small projects never need this. But BuildPro has grown into a platform with accounting, payroll, inventory, estimating, CRM, websites, banking, and AI. At that scale, this governance process is likely to save a lot of future debugging and refactoring by preventing duplicate systems and keeping a clear source of truth for each core concept.
