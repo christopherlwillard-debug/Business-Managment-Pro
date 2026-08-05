@@ -1,0 +1,209 @@
+now with all the rules can i make replit review the existing code with those rules
+
+Yes—and I actually think you should.
+
+But I wouldn't ask Replit to "review the code."
+
+That's too broad. You'll get a generic code review.
+
+Instead, make it perform an Architecture Audit against your Constitution. The audit should use the governance rules as a checklist and identify every place where the codebase violates them. That approach is much more actionable than a general review. The Constitution you drafted defines many of the criteria it should check.
+
+Here's the prompt I'd use:
+
+#1762 - BuildPro Architecture Audit
+
+Do NOT write any code.
+
+Do NOT create any tasks.
+
+Do NOT propose implementations.
+
+This is an Architecture Audit only.
+
+Read and follow:
+
+• .agents/architecture/CONSTITUTION.md
+• .agents/architecture/SYSTEM_REGISTRY.md
+• .agents/architecture/DECISIONS.md
+• .agents/architecture/CHANGELOG.md
+
+Review the ENTIRE codebase against every Constitution rule.
+
+For each rule:
+
+1. PASS
+2. WARNING
+3. FAIL
+
+For every WARNING or FAIL provide:
+
+• Rule number
+• Description
+• Existing implementation
+• Why it violates the Constitution
+• Files involved
+• Database tables involved
+• APIs involved
+• UI affected
+• Severity:
+    Critical
+    High
+    Medium
+    Low
+
+Do NOT suggest code.
+
+Do NOT create new architecture.
+
+Simply identify violations.
+
+Examples:
+
+Rule 1
+Single Source of Truth
+
+Status:
+FAIL
+
+Reason:
+Owner Pay exists in owner_capital_entries and another implementation.
+
+Files:
+...
+
+--------------------------------
+
+Rule 4
+One Calculation Engine
+
+Status:
+WARNING
+
+Reason:
+Profit is calculated in three different locations.
+
+--------------------------------
+
+Rule 8
+One Financial Ledger Per Concept
+
+Status:
+PASS
+
+--------------------------------
+
+At the end produce:
+
+1. Duplicate Systems
+2. Duplicate Calculations
+3. Duplicate Tables
+4. Duplicate APIs
+5. Duplicate UI
+6. Architecture Debt
+7. Highest Risk Areas
+8. Top 20 items to fix (ranked by impact)
+
+Do not fix anything.
+
+This is an audit only.
+Then I'd do a second audit.
+
+Instead of auditing architecture...
+
+Audit Accounting.
+
+Accounting Audit
+
+Review:
+
+Expenses
+
+Owner Pay
+
+Payroll
+
+Inventory
+
+Mileage
+
+Invoices
+
+Profit
+
+Growth
+
+Taxes
+
+Determine whether every dollar can be traced from:
+
+Bank
+
+↓
+
+Transaction
+
+↓
+
+Expense
+
+↓
+
+Job
+
+↓
+
+P&L
+
+↓
+
+Taxes
+
+↓
+
+Reports
+
+List every place where money can be double counted, lost, or classified incorrectly.
+
+Do not fix.
+
+Audit only.
+Then do one more.
+
+The one that will probably save you the most money.
+
+Dead Code Audit
+
+Find:
+
+Unused tables
+
+Unused APIs
+
+Unused routes
+
+Unused React components
+
+Duplicate pages
+
+Duplicate calculations
+
+Duplicate utility functions
+
+Duplicate hooks
+
+Dead endpoints
+
+Orphan database columns
+
+Legacy implementations
+
+Report only.
+
+No fixes.
+I actually think BuildPro should have four recurring audits that you rerun periodically as the project grows:
+Architecture Audit — validates compliance with the Constitution.
+Accounting Audit — validates financial correctness and money flow.
+Dead Code Audit — identifies unused or duplicate code.
+Performance Audit — looks for unnecessary queries, repeated calculations, and inefficient rendering.
+
+Running those before major releases will help you catch architectural drift and technical debt early, rather than after features have piled on.
