@@ -1,0 +1,97 @@
+I think this is very close, but I would change one thing because you've mentioned before that BuildPro is going to support multiple business types.
+
+I wouldn't call the table owner_withdrawals.
+
+I'd make it more future-proof.
+
+For example:
+
+profit_distributions
+owner_distributions
+equity_distributions
+
+Why?
+
+Sole Proprietor → Owner Draw
+Single-Member LLC → Owner Draw
+Partnership → Partner Distribution
+S Corporation → Shareholder Distribution
+C Corporation → Dividend / Distribution
+
+If you hardcode owner_withdrawals, you'll probably end up replacing it later.
+
+I'd also add one field
+
+Since this is job-based, every withdrawal should store:
+
+jobId
+businessId
+ownerId (future)
+amount
+date
+notes
+createdAt
+
+That gives you support for multiple owners later without changing the schema.
+
+One thing I would definitely add
+
+Right now it says:
+
+Remaining Available to Withdraw
+
+I'd also show:
+
+My Share
+$1,279.33
+
+Estimated Tax Reserve
+$319.83
+
+Recommended Take Home
+$959.50
+
+──────────────────────
+
+Withdrawn
+$500.00
+
+Remaining Recommended Take Home
+$459.50
+
+Notice I renamed it.
+
+"Remaining Available" can be confusing because technically you could still withdraw your tax reserve if you wanted to.
+
+What you're really tracking is:
+
+How much of my recommended take-home have I already transferred?
+
+That wording better matches your workflow.
+
+The only thing I'd send back to Replit is this
+Looks good overall.
+
+One requested change:
+
+Do not name the database table "owner_withdrawals."
+
+Instead, use a more generic name such as:
+
+- owner_distributions
+- profit_distributions
+- equity_distributions
+
+The accounting engine already supports multiple business entity types, so the data model should remain entity-agnostic.
+
+For a Sole Proprietorship or Single-Member LLC, these records represent Owner Draws.
+
+For Partnerships, they represent Partner Distributions.
+
+For S Corporations, they can represent Shareholder Distributions.
+
+This avoids future database migrations as additional entity types are supported.
+
+Everything else in the task looks good.
+
+I think that's the only architectural change I'd make. The overall workflow now matches what you've been describing: calculate your share, estimate what you should reserve for taxes, show your recommended take-home, and separately track how much you've actually transferred to yourself. That's a clean separation between profit allocation and cash movement.
