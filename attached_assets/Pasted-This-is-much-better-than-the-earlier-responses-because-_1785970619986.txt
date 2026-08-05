@@ -1,0 +1,65 @@
+This is much better than the earlier responses because it actually identifies specific code paths and specific line numbers instead of immediately writing another task.
+
+However, I'd challenge one assumption before declaring it fixed.
+
+What I like
+
+It now provides evidence:
+
+It traced the expense creation flow.
+It found the exact lines (3782, 3797) where countsTowardJobProfit(false) is being set.
+It explained why that happens (Fuel/Travel is treated as a travel category).
+It proposed a minimal change instead of a redesign.
+
+That's exactly the kind of debugging process your new Constitution is trying to enforce.
+
+What I would still verify
+
+It says:
+
+"The API then routed that expense to the 'Travel & Audit Docs' bucket — visible as a blue card on the job card, never in 'Job Expenses.'"
+
+I would ask one question:
+
+Do you actually see your fuel expenses in the blue "Travel & Audit Docs" section today?
+
+If yes, then I think Replit has found the real bug.
+If no, then there is still another issue somewhere after those lines.
+
+In other words:
+
+If the expenses are being classified into the wrong bucket, changing countsTowardJobProfit is the right fix.
+If they aren't showing up anywhere, this isn't the whole story.
+One thing I would question
+
+I don't completely agree with this statement:
+
+"Fuel is a Schedule C Line 9 car & truck operating expense, not IRS trip documentation."
+
+That may be true for your workflow, but it's not universally true.
+
+Your app already distinguishes between:
+
+Operational fuel (normal vehicle operating costs)
+Business trip travel (hotel, meals, parking, etc.)
+
+So I wouldn't make the change because of the tax category. I'd make it because BuildPro's business rule is:
+
+Fuel expenses linked to a job should participate in job costing unless the user explicitly marks them as documentation-only.
+
+That's a stronger justification than relying on tax terminology.
+
+My conclusion
+
+I'd say this is 90% likely to be the correct fix because:
+
+It identifies the exact execution path.
+It identifies the exact condition.
+It identifies the exact lines.
+It proposes a minimal change.
+
+The only thing I'd verify before celebrating is:
+
+After removing "fuel/travel" from TRAVEL_CATEGORIES_LC, does a new Fuel/Travel expense linked to a job actually appear under Job Expenses and affect the P&L exactly as you expect?
+
+If the answer is yes, then I think this is finally a real root-cause fix rather than another workaround.
