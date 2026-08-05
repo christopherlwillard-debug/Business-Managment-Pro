@@ -37,7 +37,7 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench, Navigation, Fuel,
+  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench, Navigation, Fuel, Truck,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 import { JobChecklistPanel } from "@/components/JobChecklistPanel";
@@ -3960,6 +3960,17 @@ function JobCard({
   });
   const routeMiles = routeDistData?.miles ?? null;
 
+  const { data: businessDistData } = useQuery<{ miles: number | null }>({
+    queryKey: ["business-distance", job.id],
+    queryFn: () =>
+      fetch(`${BASE}/api/business-distance?jobId=${job.id}`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : { miles: null }),
+    enabled: !!(job.address || job.city),
+    staleTime: 1000 * 60 * 60 * 24,
+    gcTime: 1000 * 60 * 60 * 24,
+  });
+  const businessMiles = businessDistData?.miles ?? null;
+
   const [showSmartEstimate, setShowSmartEstimate] = useState(false);
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
@@ -4171,6 +4182,12 @@ function JobCard({
             <div className="flex items-center gap-1.5 text-blue-600">
               <Navigation className="w-3 h-3 flex-shrink-0" />
               <span className="font-medium">{routeMiles} mi from client</span>
+            </div>
+          )}
+          {businessMiles != null && (
+            <div className="flex items-center gap-1.5 text-orange-600">
+              <Truck className="w-3 h-3 flex-shrink-0" />
+              <span className="font-medium">{businessMiles} mi from shop</span>
             </div>
           )}
           {job.startDate && (
