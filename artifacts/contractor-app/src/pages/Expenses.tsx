@@ -99,7 +99,10 @@ export const SCHEDULE_C_LINES: Record<string, string> = {
 };
 
 const TRAVEL_CATEGORIES_LC = [
-  "fuel/travel", "travel/lodging", "meals", "parking/tolls",
+  // "fuel/travel" intentionally excluded: fuel is a car & truck operating expense
+  // (Schedule C Line 9), not IRS trip documentation. It should count toward job
+  // profit when linked to a job, not be auto-flagged as audit trail.
+  "travel/lodging", "meals", "parking/tolls",
   "hotel/lodging", "airfare", "rental car", "taxi/rideshare",
   "campground/rv site", "other travel",
 ];

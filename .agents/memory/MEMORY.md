@@ -23,7 +23,8 @@
 - [API server TS error fix patterns](api-typecheck-fixes.md) — 204→0 errors; key patterns: getTableColumns not spread, query:any for conditional where chaining, req.params as string, response.body as any, Map<K,any[]> not typeof-result
 - [Bank reconciliation engine](bank-reconciliation-engine.md) — matchingEngine.ts has provider registry (expense/invoice/sub_payment/recurring); attemptAutoMatch only uses expense provider; reconcileExpense fires on expense create/edit; ScoredMatch.expense is now optional; sub_payment matching is informational only (no link endpoint yet)
 - [Studio 2.0 Phase 2 milestones](studio-phase2-milestones.md) — all 9 milestones done; M8 multi-select uses ReadonlySet in WebsiteEditor state; M9 canvas-first hint in both inspector IIFE blocks (replace_all)
-- [Architecture Constitution](./../architecture/CONSTITUTION.md) — 27 rules + mandatory pre/post checklists; READ BEFORE any financial/schema/business logic task
+- [Fuel/Travel audit-trail auto-flag](fuel-travel-audit-flag.md) — isTravelCategory() auto-sets countsTowardJobProfit=false for job-linked travel expenses; fuel/travel was wrongly included; removed in Aug 2026
+- [Architecture Constitution](./../architecture/CONSTITUTION.md) — 30 rules + mandatory pre/post checklists + Engineering Review Gate; READ BEFORE any financial/schema/business logic task
 - [System Registry](./../architecture/SYSTEM_REGISTRY.md) — authoritative table/route/UI for every core system; read-only except via architecture review
 - [Architecture Decisions](./../architecture/DECISIONS.md) — ADR log (ADR-001 through ADR-005); consult before touching any existing system
 - [Architecture Changelog](./../architecture/CHANGELOG.md) — completed structural changes only; add entry after any architectural change is verified

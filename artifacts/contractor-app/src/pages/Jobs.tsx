@@ -3300,7 +3300,7 @@ function JobPhasePanel({ job, onClose }: { job: Job; onClose: () => void }) {
 // ─── Job Trips Panel ───────────────────────────────────────────────────────────
 
 const TRIP_RECEIPT_CATEGORIES = [
-  "Hotel/Lodging", "Meals", "Parking/Tolls", "Airfare",
+  "Fuel/Travel", "Hotel/Lodging", "Meals", "Parking/Tolls", "Airfare",
   "Rental Car", "Taxi/Rideshare", "Campground/RV Site",
   "Supplies", "Tools", "Other Travel",
 ];

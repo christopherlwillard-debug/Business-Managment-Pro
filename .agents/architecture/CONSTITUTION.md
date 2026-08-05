@@ -378,5 +378,58 @@ No implementation may begin without answering all six.
 
 ---
 
+---
+
+### Rule 28 — Debug Before Design
+
+If an existing feature is not working, do **not** create a new task, redesign, table, API, workflow, or implementation until the existing implementation has been fully traced. The complete execution path must be walked:
+
+```
+UI → API → Backend → Database → Calculations → Response → Rendered UI
+```
+
+The exact failing line of code, query, filter, or calculation must be identified before proposing a solution. Do not redesign a feature until the current implementation has been proven incorrect.
+
+---
+
+### Rule 29 — Evidence Before Conclusion
+
+Do not state "Found the root cause," "Fixed," or "Resolved" unless evidence is immediately provided.
+
+Evidence must include:
+- The database record (if applicable)
+- The API response
+- The calculation output or frontend state
+- The **exact line of code** responsible
+
+If evidence cannot be provided, describe the finding as a **hypothesis**, not a confirmed root cause.
+
+---
+
+### Rule 30 — Do Not Solve Unknown Problems
+
+When the cause of a bug is unknown:
+- Do not create implementation tasks
+- Do not design replacement systems
+- Do not create workaround features
+
+Continue debugging until the cause is known. Tasks should only be created after the failing component has been identified.
+
+Every bug begins with this gate:
+
+```
+Engineering Review
+□ Is this a bug or a new feature?
+□ Does the existing implementation already handle this?
+□ Has the full execution path been traced?
+□ Has the failing line been identified?
+□ Is the proposed fix based on evidence, not assumption?
+□ Is a redesign actually necessary?
+
+Only after all boxes are checked may implementation begin.
+```
+
+---
+
 *Last updated: 2026-08-05*  
-*Rules: 0–27 (28 total)*
+*Rules: 0–30 (31 total)*
