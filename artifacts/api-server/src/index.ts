@@ -404,7 +404,7 @@ async function ensureMarketingContentTable(): Promise<void> {
   }
 }
 
-/** Vehicle Profiles: creates vehicles table if it doesn't exist. */
+/** Vehicle Profiles: creates vehicles table and seeds a default vehicle from settings if none exists. */
 async function ensureVehiclesTable(): Promise<void> {
   try {
     await db.execute(sql`
@@ -422,6 +422,15 @@ async function ensureVehiclesTable(): Promise<void> {
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
+    `);
+    // Seed a default vehicle from settings if none exists yet.
+    // This handles fresh deployments and production environments that skipped the SQL migration.
+    await db.execute(sql`
+      INSERT INTO vehicles (nickname, avg_mpg, fuel_price_per_gallon, fuel_price_updated_at, is_default)
+      SELECT 'My Truck', COALESCE(vehicle_mpg, 17), fuel_price_per_gallon, fuel_price_updated_at, true
+      FROM settings
+      WHERE NOT EXISTS (SELECT 1 FROM vehicles WHERE is_default = true)
+      LIMIT 1;
     `);
     console.log("[startup] ensureVehiclesTable: vehicles OK.");
   } catch (err) {

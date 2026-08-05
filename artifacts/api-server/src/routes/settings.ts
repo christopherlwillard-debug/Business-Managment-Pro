@@ -542,20 +542,11 @@ router.post("/fuel-price/refresh", async (req, res) => {
 
     const [s] = await db.select({
       id: settingsTable.id,
-      companyState: settingsTable.companyState,
     }).from(settingsTable).limit(1);
 
-    const stateAbbr = (s?.companyState ?? "KY").toUpperCase().slice(0, 2);
-    const eiaCode = STATE_TO_EIA_CODE[stateAbbr];
-
-    if (!eiaCode) {
-      return res.status(422).json({
-        error: `No EIA weekly gas price data available for state "${stateAbbr}". Enter a price manually.`,
-        canManual: true,
-      });
-    }
-
-    const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&frequency=weekly&data[0]=value&facets[product][]=EPMRR&facets[duoarea][]=${eiaCode}&sort[0][column]=period&sort[0][direction]=desc&length=1`;
+    // Use national average (NUS + EPM0 = All Grades, All Formulations).
+    // State-level weekly data is only surveyed for ~30 states; national is always available.
+    const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&frequency=weekly&data%5B0%5D=value&facets%5Bproduct%5D%5B%5D=EPM0&facets%5Bduoarea%5D%5B%5D=NUS&sort%5B0%5D%5Bcolumn%5D=period&sort%5B0%5D%5Bdirection%5D=desc&length=1`;
     const eiaRes = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!eiaRes.ok) throw new Error(`EIA API returned ${eiaRes.status}`);
 
@@ -579,7 +570,7 @@ router.post("/fuel-price/refresh", async (req, res) => {
         .where(eq(vehiclesTable.isDefault, true)),
     ]);
 
-    res.json({ price, updatedAt: updatedAt.toISOString(), state: stateAbbr });
+    res.json({ price, updatedAt: updatedAt.toISOString() });
   } catch (err: any) {
     console.error("[fuel-price/refresh]", err);
     res.status(500).json({

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, expensesTable, subPaymentRecordsTable, productionServiceTypesTable } from "@workspace/db";
-import { jobSubcontractorsTable, invoicesTable, materialListsTable, materialListItemsTable, clientBillingProfilesTable, settingsTable, jobSubHoursTable, subcontractorsTable } from "@workspace/db/schema";
+import { jobSubcontractorsTable, invoicesTable, materialListsTable, materialListItemsTable, clientBillingProfilesTable, settingsTable, jobSubHoursTable, subcontractorsTable, vehiclesTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, or, like, asc, desc, sql, ilike, eq, ne } from "drizzle-orm";
 import { recalcImportExpenses } from "./mileage";
 import { syncMaterialsToJobInvoice } from "./material-lists";
@@ -585,6 +585,38 @@ router.post("/clear-draft-invoice-numbers", async (_req: Request, res: Response)
     res.json({ ok: true, cleared: ids.length, invoices: cleared });
   } catch (err) {
     console.error("[admin/migrations] clear-draft-invoice-numbers failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
+// Seed default vehicle from settings if none exists, and set fuel price to 3.59 USD
+router.post("/seed-default-vehicle", async (_req: Request, res: Response) => {
+  try {
+    // Create table if missing (idempotent)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS vehicles (
+        id SERIAL PRIMARY KEY, business_id INTEGER,
+        nickname TEXT NOT NULL DEFAULT 'My Truck', year INTEGER, make TEXT, model TEXT,
+        avg_mpg INTEGER NOT NULL DEFAULT 17, fuel_price_per_gallon NUMERIC(6,3),
+        fuel_price_updated_at TIMESTAMP, is_default BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    const existing = await db.select({ id: vehiclesTable.id }).from(vehiclesTable).where(eq(vehiclesTable.isDefault, true)).limit(1);
+    if (existing.length > 0) {
+      // Update fuel price on existing default vehicle
+      await db.update(vehiclesTable).set({ fuelPricePerGallon: "3.590", updatedAt: new Date() }).where(eq(vehiclesTable.isDefault, true));
+      return res.json({ ok: true, action: "updated", vehicleId: existing[0].id });
+    }
+    const [s] = await db.select({ vehicleMpg: settingsTable.vehicleMpg, fuelPrice: settingsTable.fuelPricePerGallon }).from(settingsTable).limit(1);
+    const [v] = await db.insert(vehiclesTable).values({
+      nickname: "My Truck", avgMpg: s?.vehicleMpg ?? 17,
+      fuelPricePerGallon: s?.fuelPrice != null ? String(s.fuelPrice) : "3.590",
+      isDefault: true,
+    }).returning();
+    res.json({ ok: true, action: "created", vehicleId: v.id });
+  } catch (err) {
+    console.error("[admin/migrations] seed-default-vehicle failed:", err);
     res.status(500).json({ error: "Migration failed", detail: String(err) });
   }
 });
