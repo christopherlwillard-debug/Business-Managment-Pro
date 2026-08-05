@@ -10,7 +10,7 @@ import { jobsTable } from "./jobs";
 // below the "Recommended Take Home" line in the Pay Breakdown tab.
 export const ownerDistributionsTable = pgTable("owner_distributions", {
   id: serial("id").primaryKey(),
-  jobId: integer("job_id").references(() => jobsTable.id).notNull(),
+  jobId: integer("job_id").references(() => jobsTable.id, { onDelete: "cascade" }).notNull(),
   businessId: integer("business_id"),               // FK to businesses table (nullable for legacy)
   ownerId: integer("owner_id"),                     // nullable — reserved for multi-owner future
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),

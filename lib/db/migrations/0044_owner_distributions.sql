@@ -7,7 +7,7 @@
 
 CREATE TABLE IF NOT EXISTS owner_distributions (
   id          SERIAL PRIMARY KEY,
-  job_id      INTEGER NOT NULL REFERENCES jobs(id),
+  job_id      INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
   business_id INTEGER,
   owner_id    INTEGER,
   amount      NUMERIC(10, 2) NOT NULL,
