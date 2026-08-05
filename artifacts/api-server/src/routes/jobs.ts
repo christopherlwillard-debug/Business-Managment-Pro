@@ -458,7 +458,6 @@ router.get("/:id/profit", async (req, res) => {
 
         const [jobRow] = await db.select({
           address: jobsTable.address, city: jobsTable.city, state: jobsTable.state,
-          daysOnJob: jobsTable.daysOnJob,
         }).from(jobsTable).where(eq(jobsTable.id, id));
 
         const businessAddr = [settingsRow?.companyAddress, settingsRow?.companyCity, settingsRow?.companyState]
@@ -496,13 +495,17 @@ router.get("/:id/profit", async (req, res) => {
           }
 
           if (miles != null) {
-            // Days on Job: owner-set field on the job (defaults to 1).
-            // Replaces daily-log counting — informational only, no effect on accounting.
-            const daysOnJob = Math.max(1, jobRow?.daysOnJob ?? 1);
+            // Workdays: count distinct dates in daily_logs for this job (min 1).
+            // Uses actual logged days so the estimate reflects what really happened.
+            const [dlRow] = await db
+              .select({ n: sql<number>`count(distinct date)` })
+              .from(dailyLogsTable)
+              .where(eq(dailyLogsTable.jobId, id));
+            const daysOnJob = Math.max(1, Number(dlRow?.n ?? 0));
 
             // Formula:
             //   One-way distance × 2 = Round trip per day
-            //   Round trip × Days on Job = Total estimated miles
+            //   Round trip × Actual workdays = Total estimated miles
             //   Total miles ÷ MPG × Fuel price = Estimated fuel cost
             const onewayMiles = miles;
             const roundTripMiles = parseFloat((onewayMiles * 2).toFixed(1));
