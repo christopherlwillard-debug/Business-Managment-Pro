@@ -1,0 +1,133 @@
+I think this is excellent. The only changes I'd make are to strengthen it so it becomes mandatory, not just documentation.
+
+I'd add these sections.
+
+Step 5: Mandatory Architecture Review Gate
+
+Before any task involving:
+
+• Financial data
+• Database schema
+• Business logic
+• Accounting
+• Payroll
+• Inventory
+• Banking
+• Tax calculations
+• AI calculation engines
+
+the agent MUST perform an Architecture Review before writing code.
+
+The Architecture Review must include:
+
+1. Existing systems that overlap.
+2. Existing database tables.
+3. Existing API routes.
+4. Existing UI pages.
+5. Existing calculations.
+6. Existing reports.
+7. Existing source of truth.
+8. Potential duplicate implementations.
+9. Whether the feature extends an existing system or requires a new one.
+10. Recommendation.
+
+If this review is not completed, implementation must stop.
+
+This review should appear in the task conversation before any code modifications begin.
+
+Then I'd add another file.
+
+.agents/architecture/CHANGELOG.md
+
+This is different from DECISIONS.md.
+
+DECISIONS.md explains why architectural choices were made.
+CHANGELOG.md records what changed.
+
+Example:
+
+2026-08-05
+
+Task #1760
+
+Owner Pay
+
+• Removed owner_distributions
+• Reused owner_capital_entries
+• Job Pay Breakdown now writes to existing owner pay ledger
+
+Reason:
+
+Single Source of Truth
+
+That gives you a chronological history of architectural changes.
+
+I'd also add this rule to CONSTITUTION.md.
+
+RULE 26 — No Parallel Systems
+
+If a proposed implementation creates a second workflow, ledger, table, API, or calculation that represents an existing business concept:
+
+STOP.
+
+The existing implementation must be reused or extended.
+
+Parallel systems require explicit approval and documented justification in DECISIONS.md.
+
+This would have caught:
+
+owner_distributions
+owner_withdrawals
+duplicate owner pay
+duplicate payroll
+duplicate inventory
+
+And one final rule that I think will save you a huge amount of time:
+
+RULE 27 — Every Feature Must State Its Source of Truth
+
+Every feature proposal must explicitly answer:
+
+Source of Truth
+
+Database Table
+
+Primary API
+
+Calculation Engine
+
+Primary UI
+
+Reports Using This Data
+
+No implementation may begin without identifying these six items.
+
+That forces every task to start with:
+
+Owner Pay
+
+Source of Truth:
+owner_capital_entries
+
+API:
+owner-capital.ts
+
+UI:
+Accounting → Owner Pay
+
+Reports:
+Accounting Dashboard
+Job Pay Breakdown
+Tax Reports
+
+If Replit had been required to write that first, it would have immediately realized there was already an Owner Pay system and never proposed creating owner_distributions.
+
+My only caution
+
+One thing I wouldn't require is this line:
+
+"A future agent starting any financial task will immediately find and read all three documents before writing a line of code."
+
+That's a great goal, but don't assume every future agent or tool will automatically read those files. Instead, make it an explicit project rule that tasks involving financial data, database schema, or business logic must begin with the Architecture Review Gate, which includes consulting those documents. That way the requirement is part of your workflow rather than depending on implicit behavior.
+
+Overall, I think this governance system will be one of the highest-ROI improvements you can make. It won't add user-facing features, but it will reduce duplicate implementations, keep the accounting engine coherent, and save a significant amount of development and debugging time as BuildPro continues to grow.
