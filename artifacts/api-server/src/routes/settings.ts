@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { settingsTable, usersTable } from "@workspace/db/schema";
+import { settingsTable, usersTable, vehiclesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { sendEmail, escapeHtml } from "../lib/sendEmail";
 import multer from "multer";
@@ -567,11 +567,17 @@ router.post("/fuel-price/refresh", async (req, res) => {
     if (isNaN(price) || price <= 0) throw new Error("Invalid price in EIA response");
 
     const updatedAt = new Date();
-    if (s) {
-      await db.update(settingsTable)
+    // Write to both settings (legacy fallback) and the default vehicle (primary source).
+    await Promise.all([
+      s
+        ? db.update(settingsTable)
+            .set({ fuelPricePerGallon: String(price), fuelPriceUpdatedAt: updatedAt, updatedAt: new Date() })
+            .where(eq(settingsTable.id, s.id))
+        : Promise.resolve(),
+      db.update(vehiclesTable)
         .set({ fuelPricePerGallon: String(price), fuelPriceUpdatedAt: updatedAt, updatedAt: new Date() })
-        .where(eq(settingsTable.id, s.id));
-    }
+        .where(eq(vehiclesTable.isDefault, true)),
+    ]);
 
     res.json({ price, updatedAt: updatedAt.toISOString(), state: stateAbbr });
   } catch (err: any) {
