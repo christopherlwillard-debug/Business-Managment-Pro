@@ -1197,6 +1197,71 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const [expenseItems, setExpenseItems] = useState<ExpenseItem[] | null>(null);
   const [expensesLoading, setExpensesLoading] = useState(false);
 
+  // Owner distribution ledger state
+  type OwnerDist = { id: number; jobId: number; amount: string; date: string; notes: string | null };
+  const [distributions, setDistributions] = useState<OwnerDist[]>([]);
+  const [distFormOpen, setDistFormOpen] = useState(false);
+  const [distAmount, setDistAmount] = useState("");
+  const [distDate, setDistDate] = useState(new Date().toISOString().split("T")[0]);
+  const [distNotes, setDistNotes] = useState("");
+  const [distSaving, setDistSaving] = useState(false);
+  const [deletingDistId, setDeletingDistId] = useState<number | null>(null);
+
+  async function loadDistributions() {
+    try {
+      const data = await fetch(`${BASE}/api/jobs/${job.id}/owner-distributions`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : []);
+      setDistributions(data as OwnerDist[]);
+    } catch {
+      setDistributions([]);
+    }
+  }
+
+  async function handleAddDistribution() {
+    const amt = parseFloat(distAmount);
+    if (isNaN(amt) || amt <= 0) return;
+    setDistSaving(true);
+    try {
+      const res = await fetch(`${BASE}/api/jobs/${job.id}/owner-distributions`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: amt, date: distDate, notes: distNotes || null }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any)?.error ?? `Server error ${res.status}`);
+      }
+      await loadDistributions();
+      setDistFormOpen(false);
+      setDistAmount("");
+      setDistNotes("");
+      toast({ title: "Distribution recorded", description: `${formatCurrency(amt)} logged` });
+    } catch (err) {
+      toast({ title: "Failed to record distribution", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setDistSaving(false);
+    }
+  }
+
+  async function handleDeleteDistribution(distId: number) {
+    setDeletingDistId(distId);
+    try {
+      const res = await fetch(`${BASE}/api/jobs/${job.id}/owner-distributions/${distId}`, {
+        method: "DELETE", credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any)?.error ?? `Server error ${res.status}`);
+      }
+      setDistributions(prev => prev.filter(d => d.id !== distId));
+      toast({ title: "Distribution removed" });
+    } catch (err) {
+      toast({ title: "Failed to delete distribution", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setDeletingDistId(null);
+    }
+  }
+
   async function loadExpenses() {
     if (expenseItems !== null) return; // already fetched
     setExpensesLoading(true);
@@ -1316,18 +1381,20 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
     const fetches: Promise<any>[] = [
       fetch(`${BASE}/api/jobs/${job.id}/sub-payments`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
       fetch(`${BASE}/api/jobs/${job.id}/sub-hours`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${job.id}/owner-distributions`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
     ];
     if (!initialProfit) {
       fetches.push(fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" }).then(r => r.ok ? r.json() : null));
     }
     Promise.allSettled(fetches).then(results => {
-      const [pRes, hRes, profRes] = results;
+      const [pRes, hRes, dRes, profRes] = results;
       if (pRes.status === "fulfilled" && Array.isArray(pRes.value)) {
         const rows = pRes.value as SubPaymentRow[];
         setPayments(rows);
         notifySubsPaid(rows);
       }
       if (hRes.status === "fulfilled" && Array.isArray(hRes.value)) setSubHours(hRes.value as SubHourEntry[]);
+      if (dRes.status === "fulfilled" && Array.isArray(dRes.value)) setDistributions(dRes.value);
       if (profRes?.status === "fulfilled" && profRes.value) setProfit(profRes.value as JobProfit);
       setLoading(false);
     });
@@ -1519,29 +1586,6 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                 {profit.grossInvoiced > 0 && profit.collected < profit.grossInvoiced && (
                   <p className="text-xs text-muted-foreground text-center pt-1">{formatCurrency(profit.grossInvoiced - profit.collected)} outstanding (not yet collected)</p>
                 )}
-                {/* ── Owner Activity — below Net Profit because draws don't affect profitability ── */}
-                {(profit.ownerDrawTaken ?? 0) > 0 && (() => {
-                  const drawn = profit.ownerDrawTaken ?? 0;
-                  const remaining = net - drawn;
-                  return (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50/60 overflow-hidden">
-                      <div className="px-4 pt-3 pb-2 border-b border-amber-200/60">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Owner Activity</p>
-                        <p className="text-[10px] text-amber-600/80 mt-0.5">Equity withdrawal — does not reduce business profit</p>
-                      </div>
-                      <div className="px-4 py-3 space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-amber-800 font-medium">Owner Draw Taken</span>
-                          <span className="font-bold text-amber-700 tabular-nums">-{formatCurrency(drawn)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm border-t border-amber-200/60 pt-2">
-                          <span className="text-amber-800 font-medium">Remaining Owner Equity</span>
-                          <span className={`font-bold tabular-nums ${remaining >= 0 ? "text-emerald-700" : "text-red-600"}`}>{remaining >= 0 ? "+" : ""}{formatCurrency(remaining)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
                 {/* ── Estimated Fuel Cost (informational only) ── */}
                 {profit?.estimatedFuelCost != null && (
                   <div className="rounded-xl border border-amber-200/70 bg-amber-50/40 p-4 flex items-center justify-between">
@@ -1658,11 +1702,124 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   )}
                   {taxReservePct > 0 && <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Tax Reserve ({taxReservePct}%)</span><span className="text-sm font-bold text-red-500">−${fmt(taxReserve)}</span></div>}
                   <div className="flex items-center justify-between px-4 py-4 bg-emerald-50">
-                    <div><p className="text-sm font-black text-emerald-800">Your Take-Home</p>{taxReservePct > 0 && <p className="text-[10px] text-emerald-600">After {taxReservePct}% tax reserve</p>}</div>
+                    <div><p className="text-sm font-black text-emerald-800">Recommended Take Home</p>{taxReservePct > 0 && <p className="text-[10px] text-emerald-600">After {taxReservePct}% tax reserve</p>}</div>
                     <span className="text-xl font-black text-emerald-700">${fmt(ownerTakeHome)}</span>
                   </div>
                 </div>
               </div>
+
+              {/* ── Owner Distribution Ledger ─────────────────────────────── */}
+              {(() => {
+                const totalDrawn = distributions.reduce((s, d) => s + parseFloat(d.amount), 0);
+                const remaining = ownerTakeHome - totalDrawn;
+                const today = new Date().toISOString().split("T")[0];
+                return (
+                  <div className="rounded-xl border border-violet-200 bg-violet-50/40 overflow-hidden">
+                    <div className="px-4 pt-3 pb-2 border-b border-violet-200/60 flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Owner Distributions</p>
+                        <p className="text-[10px] text-violet-600/80 mt-0.5">Tracks how much of your recommended take-home you've transferred</p>
+                      </div>
+                    </div>
+                    <div className="px-4 py-3 space-y-3">
+                      {distributions.length === 0 && !distFormOpen && (
+                        <p className="text-xs text-muted-foreground text-center py-1">No distributions recorded yet</p>
+                      )}
+                      {distributions.map(d => (
+                        <div key={d.id} className="flex items-center gap-2 py-1.5 border-b border-violet-100 last:border-0">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-foreground">{formatCurrency(parseFloat(d.amount))}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {d.date ? new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+                              {d.notes ? ` · ${d.notes}` : ""}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleDeleteDistribution(d.id)}
+                            disabled={deletingDistId === d.id}
+                            className="p-1.5 rounded-lg text-muted-foreground/50 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                          >
+                            {deletingDistId === d.id
+                              ? <div className="w-3 h-3 border border-red-400 border-t-transparent rounded-full animate-spin" />
+                              : <X className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      ))}
+
+                      {/* Inline form */}
+                      {distFormOpen && (
+                        <div className="space-y-2 pt-1">
+                          <div className="flex gap-2">
+                            <input
+                              type="number" min="0.01" step="0.01" placeholder="Amount"
+                              value={distAmount}
+                              onChange={e => setDistAmount(e.target.value)}
+                              className="flex-1 px-3 py-2 border border-violet-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300"
+                            />
+                            <input
+                              type="date"
+                              value={distDate}
+                              onChange={e => setDistDate(e.target.value)}
+                              className="flex-1 px-3 py-2 border border-violet-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300"
+                            />
+                          </div>
+                          <input
+                            type="text" placeholder="Notes (optional)"
+                            value={distNotes}
+                            onChange={e => setDistNotes(e.target.value)}
+                            className="w-full px-3 py-2 border border-violet-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleAddDistribution}
+                              disabled={distSaving || !distAmount}
+                              className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-xs font-bold hover:bg-violet-700 transition-colors disabled:opacity-50"
+                            >
+                              {distSaving ? "Saving…" : "Record"}
+                            </button>
+                            <button
+                              onClick={() => setDistFormOpen(false)}
+                              className="px-4 py-2 rounded-lg border border-violet-200 text-xs text-violet-700 hover:bg-violet-100 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Summary rows */}
+                      {distributions.length > 0 && (
+                        <div className="pt-1 space-y-1.5 border-t border-violet-200/60">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-violet-700 font-medium">Total Withdrawn</span>
+                            <span className="font-bold text-violet-700 tabular-nums">{formatCurrency(totalDrawn)}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-violet-700 font-medium">Remaining Recommended Take Home</span>
+                            <span className={`font-bold tabular-nums ${remaining >= 0 ? "text-emerald-700" : "text-amber-600"}`}>{formatCurrency(Math.max(0, remaining))}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {!distFormOpen && (
+                        <button
+                          onClick={() => {
+                            const rem = Math.max(0, ownerTakeHome - distributions.reduce((s, d) => s + parseFloat(d.amount), 0));
+                            setDistAmount(rem > 0 ? rem.toFixed(2) : "");
+                            setDistDate(today);
+                            setDistNotes("");
+                            setDistFormOpen(true);
+                          }}
+                          className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-violet-300 text-violet-700 text-xs font-semibold hover:bg-violet-100/60 transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Record Owner Distribution
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {payments.length > 0 && (
                 <div className="rounded-xl border border-border/50 overflow-hidden">
                   <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50">
@@ -1742,23 +1899,6 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-xs hover:bg-amber-600 transition-colors shadow-sm">
                 <Timer className="w-3.5 h-3.5" /> Track Hours &amp; Manage Pay →
               </Link>
-              {ownerTakeHome > 0.01 && (
-                <button
-                  onClick={async () => {
-                    try {
-                      await fetch(`${BASE}/api/jobs/${job.id}/record-owner-draw`, {
-                        method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ amount: ownerTakeHome, description: `Owner Pay — ${job.title}` }),
-                      });
-                      toast({ title: "Owner pay recorded", description: `${formatCurrency(ownerTakeHome)} logged` });
-                    } catch { toast({ title: "Failed to record owner pay", variant: "destructive" }); }
-                  }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 text-xs font-semibold hover:bg-emerald-100 transition-colors"
-                >
-                  <DollarSign className="w-3.5 h-3.5" />
-                  Record Owner Pay ({formatCurrency(ownerTakeHome)})
-                </button>
-              )}
               {revenue === 0 && <p className="text-center text-xs text-muted-foreground py-4">Add an invoice to this job to see the breakdown.</p>}
             </div>
           ) : (

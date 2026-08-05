@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerDistributionsTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { geocodeAddressString } from "../geocode-helpers.js";
 
@@ -2075,6 +2075,66 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     }
     console.error(err);
     res.status(500).json({ error: "Failed to record payment" });
+  }
+});
+
+// ── Owner Distributions: GET / POST / DELETE ────────────────────────────────
+// These are equity withdrawals, NOT business expenses. They track how much of
+// the owner's calculated share has actually been transferred to a personal account.
+// They NEVER affect job expenses, net profit, or any P&L calculation.
+
+router.get("/:id/owner-distributions", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id as string);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
+    const rows = await db
+      .select()
+      .from(ownerDistributionsTable)
+      .where(eq(ownerDistributionsTable.jobId, jobId))
+      .orderBy(ownerDistributionsTable.date);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch owner distributions" });
+  }
+});
+
+router.post("/:id/owner-distributions", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id as string);
+    if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
+    const amount = parseFloat(String(req.body.amount ?? "0"));
+    if (isNaN(amount) || amount <= 0) return res.status(400).json({ error: "Amount must be positive" });
+    const date = String(req.body.date ?? "").trim();
+    if (!date) return res.status(400).json({ error: "Date is required" });
+    const notes = req.body.notes ? String(req.body.notes).trim() : null;
+    const [row] = await db.insert(ownerDistributionsTable).values({
+      jobId,
+      amount: String(amount),
+      date,
+      notes: notes || null,
+    }).returning();
+    res.status(201).json(row);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to record owner distribution" });
+  }
+});
+
+router.delete("/:id/owner-distributions/:distId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id as string);
+    const distId = parseInt(req.params.distId as string);
+    if (isNaN(jobId) || isNaN(distId)) return res.status(400).json({ error: "Invalid id" });
+    const [deleted] = await db
+      .delete(ownerDistributionsTable)
+      .where(and(eq(ownerDistributionsTable.id, distId), eq(ownerDistributionsTable.jobId, jobId)))
+      .returning();
+    if (!deleted) return res.status(404).json({ error: "Distribution not found" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete owner distribution" });
   }
 });
 

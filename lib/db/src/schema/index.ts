@@ -41,6 +41,7 @@ export * from "./website";
 export * from "./client-errors";
 export * from "./owner-capital";
 export * from "./sub-payment-records";
+export * from "./owner-distributions";
 export * from "./sub-advances";
 export * from "./job-checklists";
 export * from "./mfh";
