@@ -1458,7 +1458,7 @@ export default function Settings() {
     companyAddress: "", companyCity: "", companyState: "KY", companyZip: "",
     defaultTaxRate: "", invoicePrefix: "INV-2026-",
     defaultPaymentTerms: "Net 30", lateFeePercent: "",
-    mileageRate: "0.725", thresholdAmount1099: "2000",
+    mileageRate: "0.725", thresholdAmount1099: "2000", vehicleMpg: "17", fuelPricePerGallon: "",
     invoiceLogoPosition: "top-left", invoiceLogoSize: "medium",
     // SMTP email delivery
     smtpHost: "", smtpPort: "587", smtpUser: "", smtpSecure: "0",
@@ -1493,6 +1493,9 @@ export default function Settings() {
   const [error, setError] = useState("");
   const [seeded, setSeeded] = useState(false);
   const [testEmailState, setTestEmailState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [fuelPriceUpdatedAt, setFuelPriceUpdatedAt] = useState<string | null>(null);
+  const [refreshingFuelPrice, setRefreshingFuelPrice] = useState(false);
+  const [fuelRefreshMsg, setFuelRefreshMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   useEffect(() => {
     if (settings && !seeded) {
       const s = settings as AppSettings & Record<string, unknown>;
@@ -1514,6 +1517,8 @@ export default function Settings() {
         lateFeePercent: s.lateFeePercent != null ? String(s.lateFeePercent) : "",
         mileageRate: s.mileageRate != null ? String(s.mileageRate) : "0.725",
         thresholdAmount1099: s.thresholdAmount1099 != null ? String(s.thresholdAmount1099) : "2000",
+        vehicleMpg: (s as any).vehicleMpg != null ? String((s as any).vehicleMpg) : "17",
+        fuelPricePerGallon: (s as any).fuelPricePerGallon != null ? String((s as any).fuelPricePerGallon) : "",
         invoiceLogoPosition: s.invoiceLogoPosition ?? "top-left",
         invoiceLogoSize: s.invoiceLogoSize ?? "medium",
         smtpHost: (s.smtpHost as string | undefined) ?? "",
@@ -1536,6 +1541,7 @@ export default function Settings() {
       if ((s as any).plStepOrder) {
         try { setPlStepOrder(JSON.parse(String((s as any).plStepOrder))); } catch {}
       }
+      if ((s as any).fuelPriceUpdatedAt) setFuelPriceUpdatedAt((s as any).fuelPriceUpdatedAt);
       setLogoUrl(s.logoUrl ?? null);
       setSignatureUrl((s as any).signatureImage ?? null);
       const feat: Record<string, boolean> = {};
@@ -1578,6 +1584,8 @@ export default function Settings() {
           lateFeePercent: form.lateFeePercent ? parseFloat(form.lateFeePercent) : undefined,
           mileageRate: form.mileageRate ? parseFloat(form.mileageRate) : 0.725,
           thresholdAmount1099: form.thresholdAmount1099 ? parseFloat(form.thresholdAmount1099) : 2000,
+          vehicleMpg: form.vehicleMpg ? parseInt(form.vehicleMpg) : 17,
+          fuelPricePerGallon: form.fuelPricePerGallon ? parseFloat(form.fuelPricePerGallon) : null,
           invoiceLogoPosition: form.invoiceLogoPosition,
           invoiceLogoSize: form.invoiceLogoSize,
           mileageDefaultClassification: form.mileageDefaultClassification,
@@ -2524,6 +2532,86 @@ export default function Settings() {
                       </button>
                     )}
                   </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+            {/* Vehicle & Fuel */}
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" /> Vehicle & Fuel
+                </CardTitle>
+                <CardDescription>Used to estimate fuel cost on the Job Financials P&L tab. Informational only — never affects accounting or tax reports.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-5">
+                <LF label="Default Vehicle MPG" hint="Used for all job fuel cost estimates. Update this if you switch trucks.">
+                  <input
+                    className="w-full px-3 py-2.5 border border-border rounded-xl text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    type="number" min="1" max="99" step="1"
+                    value={form.vehicleMpg}
+                    onChange={e => setF("vehicleMpg", e.target.value)}
+                  />
+                </LF>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-foreground">Current Fuel Price ($/gal)</label>
+                  <p className="text-xs text-muted-foreground">
+                    Enter the current price per gallon for your state, or use the auto-fetch button to pull the latest weekly average from the U.S. Energy Information Administration (EIA).
+                  </p>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                      <input
+                        className="w-full pl-6 pr-3 py-2.5 border border-border rounded-xl text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        type="number" min="0" step="0.001" placeholder="3.199"
+                        value={form.fuelPricePerGallon}
+                        onChange={e => setF("fuelPricePerGallon", e.target.value)}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={refreshingFuelPrice}
+                      onClick={async () => {
+                        setRefreshingFuelPrice(true);
+                        setFuelRefreshMsg(null);
+                        try {
+                          const res = await fetch(`${BASE}/api/settings/fuel-price/refresh`, { method: "POST", credentials: "include" });
+                          const data = await res.json();
+                          if (!res.ok) {
+                            setFuelRefreshMsg({ type: "err", text: data.error ?? "Refresh failed" });
+                          } else {
+                            setF("fuelPricePerGallon", String(data.price));
+                            setFuelPriceUpdatedAt(data.updatedAt);
+                            setFuelRefreshMsg({ type: "ok", text: `Fetched $${data.price.toFixed(3)}/gal for ${data.state}` });
+                          }
+                        } catch {
+                          setFuelRefreshMsg({ type: "err", text: "Refresh failed. Check your connection." });
+                        } finally {
+                          setRefreshingFuelPrice(false);
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-primary/40 text-xs font-semibold text-primary hover:bg-primary/5 transition-colors disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {refreshingFuelPrice ? (
+                        <><div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" /> Fetching…</>
+                      ) : (
+                        <>↻ Auto-fetch</>
+                      )}
+                    </button>
+                  </div>
+                  {fuelPriceUpdatedAt && !fuelRefreshMsg && (
+                    <p className="text-xs text-muted-foreground">Last updated: {new Date(fuelPriceUpdatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+                  )}
+                  {fuelRefreshMsg && (
+                    <p className={`text-xs font-medium ${fuelRefreshMsg.type === "ok" ? "text-emerald-600" : "text-red-600"}`}>
+                      {fuelRefreshMsg.text}
+                      {fuelRefreshMsg.type === "err" && " — You can enter the price manually above."}
+                    </p>
+                  )}
+                  {!form.fuelPricePerGallon && !fuelRefreshMsg && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      No fuel price set. Estimated Fuel Cost won't appear on job cards until a price is saved here.
+                    </p>
                   )}
                 </div>
               </CardContent>

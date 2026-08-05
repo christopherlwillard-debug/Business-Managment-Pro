@@ -1,7 +1,12 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
+import { geocodeAddressString } from "../geocode-helpers.js";
+
+// In-memory route-distance cache for fuel cost estimates: "fromAddr|toAddr" → { miles, expiresAt }
+// 24-hour TTL — avoids repeated geocoding/OSRM calls without persisting stale data to DB.
+const fuelRouteCache = new Map<string, { miles: number; expiresAt: number }>();
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { computeAllocationSplitPool, computeSubOwed } from "../lib/allocation.js";
 import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
@@ -425,7 +430,106 @@ router.get("/:id/profit", async (req, res) => {
     // Sub labor: hourly (hours × rate + accrued bonus) + fixed (cash paid)
     const subLaborCost = hoursLaborCost + nonHoursCost + accruedBonusTotal;
 
-    res.json({ grossInvoiced, collected, jobExpenses, auditTrailTotal, tripTravelTotal, tripMealsDeductible, subLaborCost, allocPaid, totalSubHours, netProfit: collected - jobExpenses - subLaborCost - allocPaid });
+    const netProfit = collected - jobExpenses - subLaborCost - allocPaid;
+
+    // ── Estimated fuel cost (informational only — never affects accounting or tax) ──
+    let estimatedFuelCost: number | null = null;
+    let operationalProfit: number | null = null;
+    let fuelBreakdown: {
+      onewayMiles: number; roundTripMiles: number; workdays: number;
+      totalMiles: number; mpg: number; fuelPrice: number;
+    } | null = null;
+
+    try {
+      const [settingsRow] = await db.select({
+        companyAddress: settingsTable.companyAddress,
+        companyCity: settingsTable.companyCity,
+        companyState: settingsTable.companyState,
+        vehicleMpg: settingsTable.vehicleMpg,
+        fuelPricePerGallon: settingsTable.fuelPricePerGallon,
+      }).from(settingsTable).limit(1);
+
+      const fuelPrice = settingsRow?.fuelPricePerGallon != null
+        ? parseFloat(String(settingsRow.fuelPricePerGallon))
+        : null;
+
+      if (fuelPrice != null && fuelPrice > 0) {
+        const mpg = settingsRow?.vehicleMpg ?? 17;
+
+        const [jobRow] = await db.select({
+          address: jobsTable.address, city: jobsTable.city, state: jobsTable.state,
+        }).from(jobsTable).where(eq(jobsTable.id, id));
+
+        const businessAddr = [settingsRow?.companyAddress, settingsRow?.companyCity, settingsRow?.companyState]
+          .filter(Boolean).join(", ");
+        const jobAddr = [jobRow?.address, jobRow?.city, jobRow?.state]
+          .filter(Boolean).join(", ");
+
+        if (businessAddr.trim() && jobAddr.trim()) {
+          // In-memory route cache — 24h TTL, never stored in DB
+          const cacheKey = `${businessAddr}|${jobAddr}`;
+          let miles: number | null = null;
+          const cached = fuelRouteCache.get(cacheKey);
+          if (cached && cached.expiresAt > Date.now()) {
+            miles = cached.miles;
+          } else {
+            const [fromCoords, toCoords] = await Promise.all([
+              geocodeAddressString(businessAddr),
+              geocodeAddressString(jobAddr),
+            ]);
+            if (fromCoords && toCoords) {
+              const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${fromCoords.lng},${fromCoords.lat};${toCoords.lng},${toCoords.lat}?overview=false`;
+              const osrmRes = await fetch(osrmUrl, {
+                headers: { "User-Agent": "BuildPro/1.0 (Willards General Contracting)" },
+                signal: AbortSignal.timeout(8000),
+              });
+              if (osrmRes.ok) {
+                const osrmData = await osrmRes.json() as { routes?: Array<{ distance: number }> };
+                const distMeters = osrmData.routes?.[0]?.distance;
+                if (distMeters != null) {
+                  miles = Math.round((distMeters / 1609.344) * 10) / 10;
+                  fuelRouteCache.set(cacheKey, { miles, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
+                }
+              }
+            }
+          }
+
+          if (miles != null) {
+            // Workday count: distinct daily log dates only.
+            // No calendar-day fallback — assume 1 workday if no logs exist (underestimate, not overestimate).
+            const logDates = await db.selectDistinct({ date: dailyLogsTable.date })
+              .from(dailyLogsTable)
+              .where(eq(dailyLogsTable.jobId, id));
+            const workdays = logDates.length > 0 ? logDates.length : 1;
+
+            // Formula:
+            //   One-way distance × 2 = Round trip
+            //   Round trip × Workdays = Total estimated miles
+            //   Total miles ÷ MPG × Fuel price = Estimated fuel cost
+            const onewayMiles = miles;
+            const roundTripMiles = parseFloat((onewayMiles * 2).toFixed(1));
+            const totalMiles = parseFloat((roundTripMiles * workdays).toFixed(1));
+            const cost = parseFloat(((totalMiles / mpg) * fuelPrice).toFixed(2));
+
+            estimatedFuelCost = cost;
+            operationalProfit = parseFloat((netProfit - cost).toFixed(2));
+            fuelBreakdown = { onewayMiles, roundTripMiles, workdays, totalMiles, mpg, fuelPrice };
+          }
+        }
+      }
+    } catch (fuelErr) {
+      // Fuel cost is informational — never fail the profit endpoint
+      console.warn("[profit] fuel cost estimation skipped:", fuelErr);
+    }
+
+    res.json({
+      grossInvoiced, collected, jobExpenses, auditTrailTotal, tripTravelTotal, tripMealsDeductible,
+      subLaborCost, allocPaid, totalSubHours,
+      netProfit,
+      estimatedFuelCost,
+      operationalProfit,
+      fuelBreakdown,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch job profit" });

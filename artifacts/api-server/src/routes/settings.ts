@@ -328,6 +328,10 @@ function format(s: any) {
     operatingReserveMode: s.operatingReserveMode ?? "0",
     operatingReserveCustom: s.operatingReserveCustom != null ? parseFloat(String(s.operatingReserveCustom)) : null,
     includeGrowthFundInReserve: s.includeGrowthFundInReserve === 1 || s.includeGrowthFundInReserve === true,
+    // Vehicle & fuel cost estimation
+    vehicleMpg: s.vehicleMpg ?? 17,
+    fuelPricePerGallon: s.fuelPricePerGallon != null ? parseFloat(String(s.fuelPricePerGallon)) : null,
+    fuelPriceUpdatedAt: s.fuelPriceUpdatedAt instanceof Date ? s.fuelPriceUpdatedAt.toISOString() : (s.fuelPriceUpdatedAt ?? null),
   };
 }
 
@@ -487,6 +491,11 @@ router.put("/", async (req, res) => {
       operatingReserveMode: body.operatingReserveMode !== undefined ? String(body.operatingReserveMode) : (settings?.operatingReserveMode ?? "0"),
       operatingReserveCustom: body.operatingReserveCustom !== undefined ? (body.operatingReserveCustom != null ? String(parseFloat(body.operatingReserveCustom)) : null) : (settings?.operatingReserveCustom ?? null),
       includeGrowthFundInReserve: body.includeGrowthFundInReserve !== undefined ? (body.includeGrowthFundInReserve ? 1 : 0) : (settings?.includeGrowthFundInReserve ?? 0),
+      // Vehicle & fuel cost estimation
+      vehicleMpg: body.vehicleMpg !== undefined ? (parseInt(String(body.vehicleMpg)) || 17) : (settings?.vehicleMpg ?? 17),
+      fuelPricePerGallon: body.fuelPricePerGallon !== undefined
+        ? (body.fuelPricePerGallon != null && body.fuelPricePerGallon !== "" ? String(parseFloat(String(body.fuelPricePerGallon))) : null)
+        : (settings?.fuelPricePerGallon ?? null),
       updatedAt: new Date(),
     };
 
@@ -499,6 +508,78 @@ router.put("/", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update settings" });
+  }
+});
+
+// EIA duoarea codes for US states (used for state-level retail gasoline price lookup)
+const STATE_TO_EIA_CODE: Record<string, string> = {
+  AL: "SAL", AK: "SAK", AZ: "SAZ", AR: "SAR", CA: "SCA", CO: "SCO",
+  CT: "SCT", DE: "SDE", FL: "SFL", GA: "SGA", HI: "SHI", ID: "SID",
+  IL: "SIL", IN: "SIN", IA: "SIA", KS: "SKS", KY: "SKY", LA: "SLA",
+  ME: "SME", MD: "SMD", MA: "SMA", MI: "SMI", MN: "SMN", MS: "SMS",
+  MO: "SMO", MT: "SMT", NE: "SNE", NV: "SNV", NH: "SNH", NJ: "SNJ",
+  NM: "SNM", NY: "SNY", NC: "SNC", ND: "SND", OH: "SOH", OK: "SOK",
+  OR: "SOR", PA: "SPA", RI: "SRI", SC: "SSC", SD: "SSD", TN: "STN",
+  TX: "STX", UT: "SUT", VT: "SVT", VA: "SVA", WA: "SWA", WV: "SWV",
+  WI: "SWI", WY: "SWY", DC: "SDC",
+};
+
+// POST /api/settings/fuel-price/refresh
+// Fetches the latest weekly retail regular gasoline price for the business's state from EIA
+// and saves it to settings. POST is used (not GET) so it is covered by requireOwnerForWrites
+// and cannot be triggered by non-owner users.
+// Requires EIA_API_KEY env var (free registration at eia.gov).
+// Falls back gracefully: if API unavailable, the last stored price is used for calculations.
+router.post("/fuel-price/refresh", async (req, res) => {
+  try {
+    const apiKey = process.env.EIA_API_KEY;
+    if (!apiKey) {
+      return res.status(422).json({
+        error: "EIA_API_KEY not configured. Enter a fuel price manually, or add a free EIA API key (register at eia.gov/opendata) to enable auto-fetch.",
+        canManual: true,
+      });
+    }
+
+    const [s] = await db.select({
+      id: settingsTable.id,
+      companyState: settingsTable.companyState,
+    }).from(settingsTable).limit(1);
+
+    const stateAbbr = (s?.companyState ?? "KY").toUpperCase().slice(0, 2);
+    const eiaCode = STATE_TO_EIA_CODE[stateAbbr];
+
+    if (!eiaCode) {
+      return res.status(422).json({
+        error: `No EIA weekly gas price data available for state "${stateAbbr}". Enter a price manually.`,
+        canManual: true,
+      });
+    }
+
+    const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&frequency=weekly&data[0]=value&facets[product][]=EPMRR&facets[duoarea][]=${eiaCode}&sort[0][column]=period&sort[0][direction]=desc&length=1`;
+    const eiaRes = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!eiaRes.ok) throw new Error(`EIA API returned ${eiaRes.status}`);
+
+    const eiaData = await eiaRes.json() as { response?: { data?: Array<{ value?: string | number; period?: string }> } };
+    const raw = eiaData?.response?.data?.[0]?.value;
+    if (raw == null) throw new Error("No price data in EIA response");
+
+    const price = parseFloat(String(raw));
+    if (isNaN(price) || price <= 0) throw new Error("Invalid price in EIA response");
+
+    const updatedAt = new Date();
+    if (s) {
+      await db.update(settingsTable)
+        .set({ fuelPricePerGallon: String(price), fuelPriceUpdatedAt: updatedAt, updatedAt: new Date() })
+        .where(eq(settingsTable.id, s.id));
+    }
+
+    res.json({ price, updatedAt: updatedAt.toISOString(), state: stateAbbr });
+  } catch (err: any) {
+    console.error("[fuel-price/refresh]", err);
+    res.status(500).json({
+      error: "Failed to fetch fuel price from EIA. Enter a price manually.",
+      canManual: true,
+    });
   }
 });
 

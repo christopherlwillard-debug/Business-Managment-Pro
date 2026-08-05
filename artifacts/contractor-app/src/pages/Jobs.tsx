@@ -37,7 +37,7 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench, Navigation,
+  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench, Navigation, Fuel,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 import { JobChecklistPanel } from "@/components/JobChecklistPanel";
@@ -1003,7 +1003,18 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 }
 
 // ─── Job Profit Panel ──────────────────────────────────────────────────────────
-type JobProfit = { grossInvoiced: number; collected: number; jobExpenses: number; auditTrailTotal?: number; tripTravelTotal?: number; tripMealsDeductible?: number; subLaborCost?: number; allocPaid?: number; totalSubHours?: number; manHours?: number | null; netProfit: number };
+type JobProfit = {
+  grossInvoiced: number; collected: number; jobExpenses: number;
+  auditTrailTotal?: number; tripTravelTotal?: number; tripMealsDeductible?: number;
+  subLaborCost?: number; allocPaid?: number; totalSubHours?: number; manHours?: number | null;
+  netProfit: number;
+  estimatedFuelCost?: number | null;
+  operationalProfit?: number | null;
+  fuelBreakdown?: {
+    onewayMiles: number; roundTripMiles: number; workdays: number;
+    totalMiles: number; mpg: number; fuelPrice: number;
+  } | null;
+};
 
 
 function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
@@ -1182,6 +1193,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   // Expense drill-down state
   type ExpenseItem = { id: number; date: string | null; category: string | null; description: string | null; amount: string };
   const [expensesOpen, setExpensesOpen] = useState(false);
+  const [fuelOpen, setFuelOpen] = useState(false);
   const [expenseItems, setExpenseItems] = useState<ExpenseItem[] | null>(null);
   const [expensesLoading, setExpensesLoading] = useState(false);
 
@@ -1506,6 +1518,61 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                 </div>
                 {profit.grossInvoiced > 0 && profit.collected < profit.grossInvoiced && (
                   <p className="text-xs text-muted-foreground text-center pt-1">{formatCurrency(profit.grossInvoiced - profit.collected)} outstanding (not yet collected)</p>
+                )}
+                {/* ── Estimated Fuel Cost (informational only) ── */}
+                {profit.estimatedFuelCost != null && (
+                  <>
+                    <div
+                      className="rounded-xl border border-amber-200/70 bg-amber-50/40 overflow-hidden cursor-pointer"
+                      onClick={() => setFuelOpen(v => !v)}
+                    >
+                      <div className="p-4 flex items-center justify-between hover:bg-amber-50/80 transition-colors active:bg-amber-100/60">
+                        <div>
+                          <p className="text-xs text-amber-700 font-medium uppercase tracking-wide">Estimated Fuel Cost</p>
+                          <p className="text-xl font-bold text-amber-700 mt-0.5">-{formatCurrency(profit.estimatedFuelCost)}</p>
+                          <p className="text-[10px] text-amber-600/70 mt-0.5">Informational — not in accounting reports</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Fuel className="w-7 h-7 text-amber-200" />
+                          <div className="w-6 h-6 flex items-center justify-center rounded-full bg-amber-100">
+                            {fuelOpen ? <ChevronUp className="w-3.5 h-3.5 text-amber-600" /> : <ChevronDown className="w-3.5 h-3.5 text-amber-600" />}
+                          </div>
+                        </div>
+                      </div>
+                      {fuelOpen && profit.fuelBreakdown && (
+                        <div className="border-t border-amber-200/60 bg-white/70 px-4 py-3 space-y-1.5">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700 mb-2">How it's calculated</p>
+                          {([
+                            { label: "Business → Job (one-way)", value: `${profit.fuelBreakdown.onewayMiles} mi` },
+                            { label: "Round trip", value: `${profit.fuelBreakdown.roundTripMiles} mi` },
+                            { label: `Workdays${profit.fuelBreakdown.workdays === 1 ? " (estimated)" : " (from daily logs)"}`, value: String(profit.fuelBreakdown.workdays) },
+                            { label: "Total estimated miles", value: `${profit.fuelBreakdown.totalMiles} mi`, bold: true },
+                            { label: "Vehicle MPG", value: String(profit.fuelBreakdown.mpg) },
+                            { label: "Fuel price", value: `$${profit.fuelBreakdown.fuelPrice.toFixed(3)}/gal` },
+                            { label: "Estimated fuel cost", value: formatCurrency(profit.estimatedFuelCost!), bold: true, accent: true },
+                          ] as const).map(row => (
+                            <div key={row.label} className={`flex items-center justify-between text-xs ${"accent" in row && row.accent ? "pt-1.5 border-t border-amber-200/60" : ""}`}>
+                              <span className={"bold" in row && row.bold ? "font-semibold text-foreground" : "text-muted-foreground"}>{row.label}</span>
+                              <span className={"bold" in row && row.bold ? "font-bold text-foreground tabular-nums" : "tabular-nums text-foreground"}>{row.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {profit.operationalProfit != null && (() => {
+                      const isOp = profit.operationalProfit! >= 0;
+                      return (
+                        <div className={`rounded-xl border p-4 flex items-center justify-between ${isOp ? "border-emerald-200 bg-emerald-50/80" : "border-red-200 bg-red-50/80"}`}>
+                          <div>
+                            <p className={`text-xs font-bold uppercase tracking-wide ${isOp ? "text-emerald-700" : "text-red-700"}`}>Estimated Operational Profit</p>
+                            <p className={`text-2xl font-bold mt-0.5 ${isOp ? "text-emerald-700" : "text-red-600"}`}>{isOp ? "+" : ""}{formatCurrency(profit.operationalProfit!)}</p>
+                            <p className={`text-[10px] mt-0.5 ${isOp ? "text-emerald-600" : "text-red-500"}`}>Net profit minus estimated fuel cost</p>
+                          </div>
+                          <TrendingUp className={`w-8 h-8 ${isOp ? "text-emerald-300" : "text-red-300"}`} />
+                        </div>
+                      );
+                    })()}
+                  </>
                 )}
               </>)}
               <Link href={`/trip-packet/${job.id}`}

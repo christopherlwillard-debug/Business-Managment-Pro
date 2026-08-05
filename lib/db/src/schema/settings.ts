@@ -67,6 +67,10 @@ export const settingsTable = pgTable("settings", {
   includeGrowthFundInReserve: integer("include_growth_fund_in_reserve").default(0),
   // Home office deduction settings — JSON object keyed by year string, e.g. {"2026": {...}}
   homeOfficeSettings: jsonb("home_office_settings"),
+  // Vehicle & fuel cost estimation (informational only — not used for accounting or taxes)
+  vehicleMpg: integer("vehicle_mpg").default(17),
+  fuelPricePerGallon: numeric("fuel_price_per_gallon", { precision: 6, scale: 3 }),
+  fuelPriceUpdatedAt: timestamp("fuel_price_updated_at"),
   // Team access
   ownerUserId: text("owner_user_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

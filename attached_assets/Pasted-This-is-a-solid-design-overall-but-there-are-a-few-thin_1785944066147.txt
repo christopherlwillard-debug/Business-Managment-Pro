@@ -1,0 +1,147 @@
+This is a solid design overall, but there are a few things I'd change before sending it to Replit.
+
+1. Don't cache the estimated miles on the job ❌
+
+I would remove this:
+
+Cache the result on the job row (add estimatedFuelMiles numeric column to jobs table)
+
+Why?
+
+If the business address changes, every cached value becomes wrong.
+If the job address is corrected, it's wrong.
+If routing changes, it's wrong.
+It's only one route lookup when viewing the financials.
+
+Instead:
+
+Calculate the route distance when needed and cache it in memory (or with a short-lived server cache), not permanently in the database.
+
+No new database column needed.
+
+2. Don't fall back to calendar days ❌
+
+This is the biggest issue.
+
+Example:
+
+Start Monday
+Finish Friday
+Rain Tuesday
+Crew works Wednesday and Friday only
+
+Calendar days = 5
+
+Actual trips = 3
+
+That estimate is way off.
+
+Instead use:
+
+Count unique Daily Log dates.
+If none exist, use Job Schedule workdays (if available).
+If neither exists, assume 1 workday.
+
+I'd rather underestimate than overestimate.
+
+3. Don't hardcode Kentucky
+
+You're building SaaS.
+
+Instead of:
+
+Kentucky/PADD-2 average
+
+Make it:
+
+State average based on the Business Address.
+
+If someone in Tennessee buys your app, it just works.
+
+4. Rename "Operational Profit"
+
+I'd actually call it:
+
+Estimated Operational Profit
+
+Because fuel is estimated.
+
+That wording sets the right expectation.
+
+5. Add a breakdown
+
+Instead of only showing:
+
+Estimated Fuel
+$63.09
+
+Allow clicking it.
+
+Show:
+
+Business → Job
+
+One-way distance
+42.1 mi
+
+Round trip
+84.2 mi
+
+Workdays
+4
+
+Total miles
+336.8
+
+MPG
+17
+
+Fuel price
+$3.19
+
+Estimated Fuel Cost
+$63.09
+
+No editing.
+
+Read-only.
+
+That makes the calculation transparent.
+
+6. Don't expose fuel price as required
+
+If the API fails:
+
+Use the last saved price.
+
+If none exists:
+
+Estimated Fuel
+
+Unavailable
+
+instead of throwing an error.
+
+I'd also simplify the formula in the task.
+
+Instead of writing:
+
+(estimatedFuelMiles * 2 * workdays / vehicleMpg) * fuelPricePerGallon
+
+Define the variables first:
+
+One-way distance
+× 2
+× Workdays
+= Total Estimated Miles
+
+Total Estimated Miles
+÷ Vehicle MPG
+× Fuel Price
+= Estimated Fuel Cost
+
+It's much easier for another developer to understand.
+
+Overall, I'd rate the feature 9.5/10. The only thing I'd definitely change is not storing estimatedFuelMiles in the database. Everything else fits your app well and keeps the feature focused on answering one simple question:
+
+"After accounting for what it likely cost to drive there each workday, how much money did this job actually make?"
