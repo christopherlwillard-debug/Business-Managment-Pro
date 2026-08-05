@@ -2487,6 +2487,9 @@ function MileageTab({ token, jobs, ratePerMile }: { token: string; jobs: any[]; 
 function TaxReportsTab({ token }: { token: string }) {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
+  const [dlOpen, setDlOpen] = useState(false);
+  const [dlLoading, setDlLoading] = useState<string | null>(null);
+  const dlRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["portal-tax-report", token, year],
@@ -2505,6 +2508,41 @@ function TaxReportsTab({ token }: { token: string }) {
   const years = [currentYear, currentYear - 1, currentYear - 2];
 
   function handlePrint() { window.print(); }
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!dlOpen) return;
+    function handler(e: MouseEvent) {
+      if (dlRef.current && !dlRef.current.contains(e.target as Node)) setDlOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [dlOpen]);
+
+  async function downloadPdf(type: "tax-report" | "mileage-report" | "expense-report") {
+    setDlLoading(type);
+    setDlOpen(false);
+    try {
+      const res = await fetch(`${BASE}/api/portal/${token}/${type}/pdf?year=${year}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const names: Record<string, string> = {
+        "tax-report":     `Tax_Summary_${year}.pdf`,
+        "mileage-report": `Mileage_Report_${year}.pdf`,
+        "expense-report": `Expense_Report_${year}.pdf`,
+      };
+      a.download = names[type];
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // silent — user will see nothing downloaded
+    } finally {
+      setDlLoading(null);
+    }
+  }
 
   function download1099(doc: any) {
     apiFetch(`/portal/${token}/1099s/${doc.id}/pdf`)
@@ -2537,6 +2575,45 @@ function TaxReportsTab({ token }: { token: string }) {
           >
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
+
+          {/* Download dropdown */}
+          <div className="relative" ref={dlRef}>
+            <button
+              onClick={() => setDlOpen(v => !v)}
+              disabled={!!dlLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
+            >
+              {dlLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Download
+              <ChevronDown className={`w-3 h-3 transition-transform ${dlOpen ? "rotate-180" : ""}`} />
+            </button>
+            {dlOpen && (
+              <div className="absolute right-0 top-full mt-1 z-30 bg-white border border-border rounded-xl shadow-lg py-1 min-w-[190px]">
+                <button
+                  onClick={() => downloadPdf("tax-report")}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted/50 transition-colors text-left"
+                >
+                  <FileText className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                  Tax Summary PDF
+                </button>
+                <button
+                  onClick={() => downloadPdf("mileage-report")}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted/50 transition-colors text-left"
+                >
+                  <Navigation className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                  Mileage Report
+                </button>
+                <button
+                  onClick={() => downloadPdf("expense-report")}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted/50 transition-colors text-left"
+                >
+                  <Receipt className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                  Expense Report
+                </button>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={handlePrint}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted/60 transition-colors"

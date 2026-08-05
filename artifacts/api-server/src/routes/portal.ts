@@ -1337,6 +1337,203 @@ tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId/skip", async (req, res) 
   }
 });
 
+// ─── PDF downloads ────────────────────────────────────────────────────────────
+
+// GET /:token/tax-report/pdf — Tax Summary PDF
+tokenRouter.get("/tax-report/pdf", async (req, res) => {
+  try {
+    const sub = await getSubByToken((req.params as any).token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+
+    const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+    const yearStr = String(year);
+    const startDate = `${yearStr}-01-01`;
+    const endDate   = `${yearStr}-12-31`;
+
+    const [expenses, mileage] = await Promise.all([
+      db.select().from(expensesTable).where(
+        and(
+          eq(expensesTable.subcontractorId, sub.id),
+          gte(expensesTable.date, startDate),
+          lte(expensesTable.date, endDate),
+          sql`LOWER(${expensesTable.category}) != 'subcontractor'`
+        )
+      ),
+      db.select().from(mileageLogsTable).where(
+        and(eq(mileageLogsTable.subcontractorId, sub.id), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))
+      ),
+    ]);
+
+    const [qualifyingPayRow] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${paymentsTable.amount}), 0)` })
+      .from(paymentsTable)
+      .where(and(eq(paymentsTable.subcontractorId, sub.id), eq(paymentsTable.year, year)));
+    const [qualifyingSprRow] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), 0)` })
+      .from(subPaymentRecordsTable)
+      .where(and(
+        eq(subPaymentRecordsTable.subcontractorId, sub.id),
+        gte(subPaymentRecordsTable.paymentDate, startDate),
+        lte(subPaymentRecordsTable.paymentDate, endDate),
+        sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+      ));
+    const qualifyingIncome = parseFloat(qualifyingPayRow?.total ?? "0") + parseFloat(qualifyingSprRow?.total ?? "0");
+
+    const [rate, grossIncome] = await Promise.all([getRate(), computeYtd(sub.id, year)]);
+
+    const expensesByCategory: Record<string, number> = {};
+    let totalExpenses = 0;
+    for (const e of expenses) {
+      const amt = parseFloat(e.amount);
+      expensesByCategory[e.category] = (expensesByCategory[e.category] ?? 0) + amt;
+      totalExpenses += amt;
+    }
+
+    const businessMiles = mileage.filter(m => m.classification === "business");
+    const totalBusinessMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles), 0);
+    const mileageDeduction = totalBusinessMiles * rate;
+    const totalDeductions = totalExpenses + mileageDeduction;
+    const netIncome = Math.max(0, grossIncome - totalDeductions);
+    const seTaxEstimate = netIncome * 0.9235 * 0.153;
+    const seDeduction = seTaxEstimate / 2;
+    const federalTaxableIncome = Math.max(0, netIncome - seDeduction);
+
+    const STANDARD_DEDUCTION = 15_000;
+    const brackets: [number, number][] = [
+      [11_925, 0.10], [48_475, 0.12], [103_350, 0.22], [197_300, 0.24],
+      [250_525, 0.32], [626_350, 0.35], [Infinity, 0.37],
+    ];
+    function calcFederalTax(income: number): number {
+      const taxable = Math.max(0, income - STANDARD_DEDUCTION);
+      let tax = 0; let prev = 0;
+      for (const [ceiling, r] of brackets) {
+        if (taxable <= prev) break;
+        tax += (Math.min(taxable, ceiling) - prev) * r;
+        prev = ceiling;
+      }
+      return tax;
+    }
+    const estimatedFederalIncomeTax = calcFederalTax(federalTaxableIncome);
+    const estimatedTotalTax = seTaxEstimate + estimatedFederalIncomeTax;
+    const estimatedQuarterlyPayment = estimatedTotalTax / 4;
+
+    const { generateTaxSummaryPdf } = await import("../lib/generatePortalPdfs.js");
+    const pdfBuffer = await generateTaxSummaryPdf({
+      year, subName: sub.name, w9LegalName: sub.w9LegalName,
+      grossIncome, qualifyingIncome,
+      expenses: { total: totalExpenses, byCategory: expensesByCategory, count: expenses.length },
+      mileage: { totalMiles: totalBusinessMiles, ratePerMile: rate, deduction: mileageDeduction, count: businessMiles.length },
+      totalDeductions, netIncome, seTaxEstimate, seDeduction, federalTaxableIncome,
+      estimatedFederalIncomeTax, estimatedTotalTax, estimatedQuarterlyPayment,
+      standardDeduction: STANDARD_DEDUCTION,
+    });
+
+    const safeName = (sub.w9LegalName || sub.name).replace(/[^a-zA-Z0-9]/g, "_");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="Tax_Summary_${year}_${safeName}.pdf"`);
+    res.setHeader("Content-Length", String(pdfBuffer.length));
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error("[portal/tax-report/pdf]", err);
+    res.status(500).json({ error: "Failed to generate tax summary PDF" });
+  }
+});
+
+// GET /:token/mileage-report/pdf — Mileage Report PDF
+tokenRouter.get("/mileage-report/pdf", async (req, res) => {
+  try {
+    const sub = await getSubByToken((req.params as any).token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+
+    const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+    const startDate = `${year}-01-01`;
+    const endDate   = `${year}-12-31`;
+
+    const [logs, rate] = await Promise.all([
+      db.select().from(mileageLogsTable).where(
+        and(eq(mileageLogsTable.subcontractorId, sub.id), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))
+      ).orderBy(mileageLogsTable.date),
+      getRate(),
+    ]);
+
+    const { generateMileageReportPdf } = await import("../lib/generatePortalPdfs.js");
+    const pdfBuffer = await generateMileageReportPdf(
+      sub.name,
+      year,
+      logs.map(m => ({
+        id: m.id,
+        date: m.date,
+        miles: parseFloat(m.miles),
+        startLocation: m.startLocation,
+        endLocation: m.endLocation,
+        purpose: m.purpose,
+        classification: m.classification ?? "business",
+        ratePerMile: parseFloat(m.ratePerMile),
+        deductionAmount: parseFloat(m.deductionAmount),
+        notes: m.notes,
+      })),
+      rate,
+    );
+
+    const safeName = sub.name.replace(/[^a-zA-Z0-9]/g, "_");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="Mileage_Report_${year}_${safeName}.pdf"`);
+    res.setHeader("Content-Length", String(pdfBuffer.length));
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error("[portal/mileage-report/pdf]", err);
+    res.status(500).json({ error: "Failed to generate mileage report PDF" });
+  }
+});
+
+// GET /:token/expense-report/pdf — Expense Report PDF
+tokenRouter.get("/expense-report/pdf", async (req, res) => {
+  try {
+    const sub = await getSubByToken((req.params as any).token);
+    if (!sub) return res.status(404).json({ error: "Invalid portal link" });
+    if (!sub.portalApproved) return res.status(403).json({ error: "Portal access not yet approved" });
+
+    const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+    const startDate = `${year}-01-01`;
+    const endDate   = `${year}-12-31`;
+
+    const expenses = await db.select().from(expensesTable).where(
+      and(
+        eq(expensesTable.subcontractorId, sub.id),
+        gte(expensesTable.date, startDate),
+        lte(expensesTable.date, endDate),
+        sql`LOWER(${expensesTable.category}) != 'subcontractor'`
+      )
+    ).orderBy(expensesTable.date);
+
+    const { generateExpenseReportPdf } = await import("../lib/generatePortalPdfs.js");
+    const pdfBuffer = await generateExpenseReportPdf(
+      sub.name,
+      year,
+      expenses.map(e => ({
+        id: e.id,
+        date: e.date,
+        category: e.category,
+        description: e.description,
+        amount: parseFloat(e.amount),
+        vendor: e.vendor,
+        notes: e.notes,
+      })),
+    );
+
+    const safeName = sub.name.replace(/[^a-zA-Z0-9]/g, "_");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="Expense_Report_${year}_${safeName}.pdf"`);
+    res.setHeader("Content-Length", String(pdfBuffer.length));
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error("[portal/expense-report/pdf]", err);
+    res.status(500).json({ error: "Failed to generate expense report PDF" });
+  }
+});
+
 // Mount token sub-router — MUST come after all static routes
 router.use("/:token", tokenRouter);
 
