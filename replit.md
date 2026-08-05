@@ -1,5 +1,22 @@
 # Workspace
 
+## Architecture Governance — Read Before Coding
+
+BuildPro has a formal Architecture Governance System. **Any task touching financial data, database schema, or business logic must begin with the Mandatory Architecture Review Gate** defined in `.agents/architecture/CONSTITUTION.md`.
+
+Consult all four documents before writing any code:
+
+| Document | Purpose |
+|---|---|
+| `.agents/architecture/CONSTITUTION.md` | 27 rules + mandatory pre/post checklists |
+| `.agents/architecture/SYSTEM_REGISTRY.md` | Every core system — table, API, UI, source of truth (read-only) |
+| `.agents/architecture/DECISIONS.md` | ADR log — why key choices were made |
+| `.agents/architecture/CHANGELOG.md` | Completed architectural changes |
+
+The Architecture Review Gate is **explicit and mandatory** — not an implicit suggestion. If the review is not written in the task conversation before code is modified, implementation must stop.
+
+---
+
 ## Golden Rule: Extend Before You Create
 
 > **Reuse before rebuild. Every duplicate implementation is technical debt unless there is a documented architectural reason for creating it.**

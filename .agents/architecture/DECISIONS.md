@@ -1,0 +1,95 @@
+# BuildPro Architecture Decisions
+
+This log records key architectural choices — what was decided and why. It is the "history" layer of the governance system. Consult it before implementing any feature that touches existing systems to understand prior decisions that must be respected.
+
+For the rules that govern decisions, see `CONSTITUTION.md`.  
+For the current state of each system, see `SYSTEM_REGISTRY.md`.  
+For a chronological list of what changed, see `CHANGELOG.md`.
+
+---
+
+## ADR-001
+
+**Title:** Owner Pay uses `owner_capital_entries` — not a separate withdrawal table
+
+**Decision:** Do not create separate owner withdrawal tables (e.g., `owner_distributions`, `owner_withdrawals`).
+
+**Reason:** The application already has an Owner Pay ledger (`owner_capital_entries`) that powers the Accounting page (Earned / Taken Out / Owed To You), reports, and the Owner Capital section. Job-linked owner payments are stored in the existing ledger using a nullable `job_id` column. This preserves a single source of truth and keeps the Accounting page and job Pay Breakdown tab automatically synchronized.
+
+**Rejected Alternatives:**
+- `owner_distributions` table (created in error, subsequently removed)
+- `owner_withdrawals` table
+- Any other separate owner pay ledger
+
+**Status:** Accepted  
+**Date:** 2026-08-05
+
+---
+
+## ADR-002
+
+**Title:** Subcontractor pay ledger is `sub_payment_records` — not the `expenses` table
+
+**Decision:** Subcontractor pay is recorded exclusively in `sub_payment_records`.
+
+**Reason:** An earlier implementation of the `pay-worker` endpoint dual-wrote to both `sub_payment_records` and the `expenses` table (with category "Subcontractor"). This caused double-counting in P&L calculations — subcontractor labor appeared as both a payroll line and a business expense. The `expenses` table is for business operating costs; payroll is a separate concept with its own ledger.
+
+**Rejected Alternatives:**
+- Writing sub pay to `expenses` as category "Subcontractor"
+- Any dual-write approach
+
+**Status:** Accepted  
+**Date:** 2026-08-05
+
+---
+
+## ADR-003
+
+**Title:** Owner capital investment uses `owner_capital_entries` — not a settings field
+
+**Decision:** Owner personal investment is tracked as a ledger entry in `owner_capital_entries`, not as a single value in the `settings` table.
+
+**Reason:** A single `ownerPersonalInvestment` settings value cannot represent multiple investments over time, partial investments, or investments linked to specific jobs. The ledger model supports the full history and is auto-migrated from the legacy single value on first access.
+
+**Rejected Alternatives:**
+- `settings.calculatorDefaults.ownerPersonalInvestment` (legacy, migrated away from)
+
+**Status:** Accepted  
+**Date:** 2026-08-05
+
+---
+
+## ADR-004
+
+**Title:** Mileage imports create one expense per month — not one per trip
+
+**Decision:** When a mileage import batch is processed, one consolidated expense entry is created per calendar month (linked via `expenses.mileage_import_id`), not one expense row per trip.
+
+**Reason:** Individual trip expenses created hundreds of rows for active months, making the expense list unusable. Monthly consolidation via `recalcImportExpenses` keeps the ledger clean while preserving full trip detail in `mileage_logs`.
+
+**Rejected Alternatives:**
+- One `expenses` row per imported trip
+
+**Status:** Accepted  
+**Date:** 2026-08-05
+
+---
+
+## ADR-005
+
+**Title:** PDF generation uses PDFKit (pure Node.js) — not Puppeteer/Chrome
+
+**Decision:** All server-side PDF generation uses PDFKit.
+
+**Reason:** Puppeteer/Chrome is broken in the production environment. PDFKit is a pure Node.js library that works reliably in both development and production without requiring a headless browser.
+
+**Rejected Alternatives:**
+- Puppeteer + headless Chrome (broken in production)
+
+**Status:** Accepted  
+**Date:** 2026-08-05
+
+---
+
+*Add new ADRs here as architectural decisions are made. Number sequentially (ADR-006, ADR-007, ...).*  
+*Format: Title | Decision | Reason | Rejected Alternatives | Status | Date*
