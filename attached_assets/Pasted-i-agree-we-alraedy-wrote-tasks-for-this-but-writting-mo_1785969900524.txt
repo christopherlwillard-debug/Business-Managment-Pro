@@ -1,0 +1,261 @@
+i agree we alraedy wrote tasks for this but writting more isnt fixing the issue
+
+I agree. At this point, writing another task is probably just creating more work without increasing confidence that the actual bug will be fixed.
+
+From what you've shown over the last few days, the pattern has been:
+
+Replit forms a theory.
+It writes a task.
+It changes code.
+The symptom changes, but the underlying issue often remains.
+
+That's a debugging process problem, not a coding problem.
+
+I think you need a different workflow
+
+Instead of asking:
+
+"Write a task to fix it."
+
+You need to ask:
+
+"Debug it until you can prove the exact line that's wrong."
+
+For example:
+
+Do not create a task.
+
+Do not propose a solution.
+
+Debug the existing implementation.
+
+For this issue, I want evidence, not a theory.
+
+Show me:
+
+1. The database record.
+2. The API response.
+3. The calculation using that record.
+4. The frontend component receiving that data.
+5. The exact line where the expected value disappears or changes.
+
+Do not modify any code until the exact failing line has been identified.
+
+If you cannot identify the exact line, continue debugging instead of proposing another implementation.
+
+That changes Replit's job from architect to debugger.
+
+I think another rule belongs in your Constitution
+RULE 28 — Debug Before Design
+
+If an existing feature is not working:
+
+Do not redesign it.
+
+Do not create replacement tables.
+
+Do not create replacement APIs.
+
+Do not create replacement workflows.
+
+First identify the exact point where the existing implementation fails.
+
+Only after the root cause is proven may architectural changes be proposed.
+
+That rule would have prevented:
+
+Creating owner_distributions.
+Proposing another gas expense workflow.
+Adding duplicate financial logic.
+
+Because the first step would always be:
+
+"Show me where the current implementation breaks."
+
+I also think Replit needs to stop using this phrase:
+
+"Found the root cause."
+
+Unless it can immediately prove it with:
+
+The database row.
+The API payload.
+The frontend state.
+The exact line of code.
+
+Otherwise, it's really saying:
+
+"Here's my current hypothesis."
+
+Those are not the same thing.
+
+So I think your instinct is right. Don't let it spend another hour writing tasks. Have it spend that hour walking the existing code path until it can point to the exact statement or condition that's causing the bug. Once that point is identified, the actual fix is often small. Until then, every new task risks treating another symptom instead of the underlying cause.
+
+Ad
+this should have been in the rules from earlier that it doesnt need to just write tasks just to solve issues 
+
+I completely agree. This is actually a governance rule, not a coding rule.
+
+The Constitution currently tells Replit how to build. It doesn't tell it when not to build.
+
+I would add these rules.
+
+RULE 28 — Debug Before Design
+
+If an existing feature is not working:
+
+Do NOT create a new task, redesign, table, API, workflow, or implementation until the existing implementation has been fully debugged.
+
+The agent must trace the complete execution path:
+
+UI
+↓
+
+API
+
+↓
+
+Backend
+
+↓
+
+Database
+
+↓
+
+Calculations
+
+↓
+
+Response
+
+↓
+
+Rendered UI
+
+The exact failing line of code, query, filter, or calculation must be identified before proposing a solution.
+
+Do not redesign a feature until the current implementation has been proven incorrect.
+
+Then I'd add another one.
+
+RULE 29 — Evidence Before Conclusion
+
+Do not state:
+
+• "Found the root cause"
+• "Fixed"
+• "Resolved"
+
+unless evidence is provided.
+
+Evidence must include:
+
+• Database record (if applicable)
+• API response
+• Calculation output
+• Frontend state or rendered data
+• Exact line of code responsible
+
+If evidence cannot be provided, describe the finding as a hypothesis rather than a confirmed root cause.
+
+And probably the biggest one...
+
+RULE 30 — Do Not Solve Unknown Problems
+
+When the cause of a bug is unknown:
+
+Do not create implementation tasks.
+
+Do not design replacement systems.
+
+Do not create workaround features.
+
+Continue debugging until the cause is known.
+
+Tasks should only be created after the failing component has been identified.
+
+I'd also change your Mandatory Architecture Review Gate into a broader Engineering Review Gate.
+
+Every bug would begin with:
+
+Engineering Review
+
+□ Is this a bug or a new feature?
+
+□ Does this already exist?
+
+□ Has the current implementation been traced?
+
+□ Has the failing line been identified?
+
+□ Is the proposed fix based on evidence instead of assumptions?
+
+□ Is a redesign actually necessary?
+
+Only after these questions are answered may implementation begin.
+I think this is the biggest lesson from the last few days
+
+You haven't really had a coding problem.
+
+You've had an engineering process problem.
+
+The pattern has been:
+
+Bug
+
+↓
+
+Theory
+
+↓
+
+Task
+
+↓
+
+Implementation
+
+↓
+
+Still broken
+
+↓
+
+Another theory
+
+↓
+
+Another task
+
+Instead, it should be:
+
+Bug
+
+↓
+
+Trace
+
+↓
+
+Evidence
+
+↓
+
+Exact failing line
+
+↓
+
+One small fix
+
+↓
+
+Verify
+
+↓
+
+Done
+
+That's a huge difference.
+
+I would honestly add these three rules to the Constitution before you write another financial feature. They don't just improve BuildPro—they fundamentally change how Replit approaches debugging so it spends less time inventing new solutions and more time fixing the one that's already there.

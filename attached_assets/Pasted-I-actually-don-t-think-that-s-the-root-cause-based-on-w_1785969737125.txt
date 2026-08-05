@@ -1,0 +1,109 @@
+I actually don't think that's the root cause based on what you've described.
+
+Replit is assuming:
+
+"The expense exists, but the UI filters it out."
+
+But you said:
+
+"I'm still not seeing the gas expenses on the job card."
+
+Those are different problems.
+
+Before building Task #1764, I'd want Replit to prove the expense exists.
+
+There are three possibilities:
+
+Scenario 1 (Replit's theory)
+Gas Expense
+    ↓
+Saved to database ✅
+    ↓
+Linked to job ✅
+    ↓
+countsTowardJobProfit = false ✅
+    ↓
+UI filters it out ❌
+
+Then their proposed fix makes sense.
+
+Scenario 2
+Gas Expense
+    ↓
+Saved to database ✅
+    ↓
+Never linked to the job ❌
+
+Then changing the UI won't fix anything.
+
+Scenario 3
+Gas Expense
+    ↓
+Never created at all ❌
+
+Again, changing the UI won't help.
+
+I would push back before approving Task #1764.
+
+Tell Replit:
+
+Before creating Task #1764, prove the diagnosis.
+
+For one gas expense that should appear on the job card, show:
+
+1. The database record.
+2. The jobId it is linked to.
+3. The countsTowardJobProfit value.
+4. The API response returned to the Job Card.
+5. The exact frontend filter that removes it from the UI.
+
+If the expense is not present in the API response, then the bug is not the UI filter.
+
+If the expense is present in the API response but hidden by the UI, then Task #1764 is correct.
+
+Do not assume the root cause—trace the data from the database to the Job Card.
+There's another thing that concerns me...
+
+You have Estimated Fuel Cost and Actual Fuel Expense.
+
+Those are not the same thing.
+
+For example:
+
+Estimated Fuel Cost
+$18.42
+
+comes from mileage.
+
+But if you actually bought:
+
+Gas Receipt
+$62.18
+
+that is an actual expense.
+
+Personally, I'd show both:
+
+Estimated Fuel Cost
+$18.42
+
+Actual Fuel Expenses
+$62.18
+
+Variance
++$43.76
+
+That gives you valuable insight into whether your estimates are matching reality.
+
+My recommendation
+
+I would not approve Task #1764 until Replit proves the data flow.
+
+After everything you've been through with the owner pay issue, I'd want evidence that the gas expense:
+
+exists in the database,
+is linked to the correct job,
+is returned by the API,
+and is only hidden by the UI.
+
+Otherwise, you risk spending time fixing the wrong layer again.
