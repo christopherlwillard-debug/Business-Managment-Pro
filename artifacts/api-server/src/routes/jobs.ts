@@ -432,6 +432,52 @@ router.get("/:id/profit", async (req, res) => {
   }
 });
 
+// Job expense line items: GET /:id/expenses
+// Returns individual expense rows that feed the "Job Expenses" total on the P&L tab.
+// Mirrors the filtering logic in /:id/profit: excludes sub-hours auto-expenses,
+// Owner Draw, Subcontractor category, and countsTowardJobProfit=false rows.
+router.get("/:id/expenses", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+
+    const rows = await db
+      .select({
+        id: expensesTable.id,
+        date: expensesTable.date,
+        category: expensesTable.category,
+        description: expensesTable.description,
+        amount: expensesTable.amount,
+        countsTowardJobProfit: expensesTable.countsTowardJobProfit,
+      })
+      .from(expensesTable)
+      .where(
+        and(
+          eq(expensesTable.jobId, id),
+          isNull(expensesTable.jobSubHoursId),
+        )
+      )
+      .orderBy(desc(expensesTable.date));
+
+    // Apply exactly the same exclusions as /:id/profit's jobExpenses bucket:
+    // - Skip Owner Draw
+    // - Skip Subcontractor category (goes into sub labor bucket)
+    // - Skip countsTowardJobProfit=false rows (those are audit/travel trail, not job expenses)
+    const items = rows
+      .filter(r =>
+        r.category !== "Owner Draw" &&
+        r.category !== "Subcontractor" &&
+        r.countsTowardJobProfit !== false
+      )
+      .map(({ countsTowardJobProfit: _ctp, ...rest }) => rest);
+
+    res.json(items);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch job expenses" });
+  }
+});
+
 // Batch profit summary: GET /profit-summary?jobIds=1,2,3
 router.get("/profit-summary", async (req, res) => {
   try {

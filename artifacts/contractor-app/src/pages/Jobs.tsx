@@ -1179,6 +1179,31 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const [subHours, setSubHours] = useState<SubHourEntry[]>([]);
   const [deletingHourId, setDeletingHourId] = useState<number | null>(null);
 
+  // Expense drill-down state
+  type ExpenseItem = { id: number; date: string | null; category: string | null; description: string | null; amount: string };
+  const [expensesOpen, setExpensesOpen] = useState(false);
+  const [expenseItems, setExpenseItems] = useState<ExpenseItem[] | null>(null);
+  const [expensesLoading, setExpensesLoading] = useState(false);
+
+  async function loadExpenses() {
+    if (expenseItems !== null) return; // already fetched
+    setExpensesLoading(true);
+    try {
+      const data = await fetch(`${BASE}/api/jobs/${job.id}/expenses`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : []);
+      setExpenseItems(data);
+    } catch {
+      setExpenseItems([]);
+    } finally {
+      setExpensesLoading(false);
+    }
+  }
+
+  function toggleExpenses() {
+    if (!expensesOpen) loadExpenses();
+    setExpensesOpen(v => !v);
+  }
+
   const [ownerSplitPct, setOwnerSplitPct] = useState(50);
   const [taxReservePct, setTaxReservePct] = useState(25);
   const [useCollected, setUseCollected] = useState(false);
@@ -1377,9 +1402,53 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <div><p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Collected</p><p className="text-xl font-bold text-emerald-600 mt-0.5">{formatCurrency(profit.collected)}</p></div>
                   <DollarSign className="w-7 h-7 text-emerald-200" />
                 </div>
-                <div className="rounded-xl border border-border/50 bg-muted/20 p-4 flex items-center justify-between">
-                  <div><p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Job Expenses</p><p className="text-xl font-bold text-red-500 mt-0.5">{formatCurrency(profit.jobExpenses)}</p></div>
-                  <Briefcase className="w-7 h-7 text-red-100" />
+                {/* Job Expenses — tappable to expand line items */}
+                <div className={`rounded-xl border border-border/50 bg-muted/20 overflow-hidden ${profit.jobExpenses > 0 ? "cursor-pointer" : ""}`}>
+                  <div
+                    className={`p-4 flex items-center justify-between ${profit.jobExpenses > 0 ? "hover:bg-muted/40 transition-colors active:bg-muted/60" : ""}`}
+                    onClick={profit.jobExpenses > 0 ? toggleExpenses : undefined}
+                  >
+                    <div>
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Job Expenses</p>
+                      <p className="text-xl font-bold text-red-500 mt-0.5">{formatCurrency(profit.jobExpenses)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Briefcase className="w-7 h-7 text-red-100" />
+                      {profit.jobExpenses > 0 && (
+                        <div className="w-6 h-6 flex items-center justify-center rounded-full bg-muted/60">
+                          {expensesOpen ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {expensesOpen && (
+                    <div className="border-t border-border/50 bg-background/60">
+                      {expensesLoading ? (
+                        <div className="p-4 space-y-2">
+                          {[1,2,3].map(i => <div key={i} className="h-8 rounded-lg bg-muted/40 animate-pulse" />)}
+                        </div>
+                      ) : !expenseItems || expenseItems.length === 0 ? (
+                        <div className="px-4 py-5 text-center text-xs text-muted-foreground">No expense line items found</div>
+                      ) : (
+                        <div className="divide-y divide-border/40">
+                          {expenseItems.map(e => (
+                            <div key={e.id} className="px-4 py-2.5 flex items-center gap-3">
+                              <span className="text-[10px] font-semibold bg-muted px-1.5 py-0.5 rounded text-muted-foreground flex-shrink-0 max-w-[80px] truncate">{e.category ?? "Other"}</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-foreground truncate">{e.description || e.category || "Expense"}</p>
+                                {e.date && <p className="text-[10px] text-muted-foreground">{formatDate(e.date)}</p>}
+                              </div>
+                              <span className="text-xs font-semibold text-red-600 tabular-nums flex-shrink-0">{formatCurrency(parseFloat(e.amount))}</span>
+                            </div>
+                          ))}
+                          <div className="px-4 py-2.5 flex items-center justify-between bg-muted/30">
+                            <span className="text-xs font-semibold text-muted-foreground">Total</span>
+                            <span className="text-sm font-bold text-red-600 tabular-nums">{formatCurrency(profit.jobExpenses)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {(profit.auditTrailTotal ?? 0) > 0 && (
                   <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
