@@ -1,0 +1,126 @@
+but its still not showing on my job cards
+
+Exactly. That's because Replit treated this as a replacement instead of an addition.
+
+Looking at your job card, there is only one mileage field:
+
+📍 2.8 mi from client
+
+What you actually want is two separate mileage rows.
+
+For example:
+
+📍 Client → Job
+0.0 mi
+
+🚚 Business → Job
+41.8 mi
+
+Or even cleaner:
+
+📍 From Client
+0.0 mi
+
+🚚 From Shop
+41.8 mi
+
+For another Clayton job:
+
+📍 From Client
+59.0 mi
+
+🚚 From Shop
+81.4 mi
+
+Now every job immediately tells you:
+
+Client Distance → Can I charge mileage?
+Business Distance → What is it costing me to get there?
+
+Those should always be visible on the job card because they're part of deciding whether to take or schedule the job.
+
+I would send this to Replit
+The mileage implementation is still incorrect.
+
+Do NOT replace the existing "Miles from Client" field.
+
+The Job Card should display TWO completely separate mileage values.
+
+1. Client Distance (existing)
+
+Icon: 📍
+
+Label:
+From Client
+
+Calculation:
+Client Address → Job Site
+
+Purpose:
+Determine mileage surcharge eligibility.
+
+Examples:
+
+Clayton lot job:
+0.0 mi from client
+
+Field job:
+59.0 mi from client
+
+This is existing behavior and must remain unchanged.
+
+--------------------------------------------------
+
+2. Business Distance (new)
+
+Icon: 🚚
+
+Label:
+From Shop
+
+Calculation:
+2504 Krauss Ct (Business Address) → Job Site
+
+Purpose:
+Operational fuel estimate and travel distance only.
+
+Examples:
+
+Clayton lot:
+41.2 mi from shop
+
+Field job:
+81.6 mi from shop
+
+This value NEVER affects mileage surcharge calculations.
+
+--------------------------------------------------
+
+Both values should appear on every Job Card.
+
+Example:
+
+📍 From Client
+59.0 mi
+
+🚚 From Shop
+81.6 mi
+
+or
+
+📍 From Client
+0.0 mi
+
+🚚 From Shop
+41.2 mi
+
+Do not overwrite one calculation with the other.
+
+Store and calculate them independently.
+
+I actually think having both distances visible on the card is a better workflow than hiding the business distance inside Job Financials. When you're looking at your Jobs page, you can immediately answer two important questions without opening the job:
+
+Can I charge the customer a mileage surcharge? (From Client)
+How far am I driving from my shop? (From Shop)
+
+That's valuable information while you're scheduling and pricing jobs, not just after the work is done.

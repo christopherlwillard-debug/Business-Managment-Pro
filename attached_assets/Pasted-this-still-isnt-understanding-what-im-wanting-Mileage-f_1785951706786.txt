@@ -1,0 +1,200 @@
+this still isnt understanding what im wanting. Mileage from my business address is 2504 krauss ct and clayton evansville is the one i need to have in there as well because it will show if i can charge mileage surcharge. so both need to show distance from my business and clayton evansville address for jobs that are for clayton evansville but all clients should show from their location to jobsite along with my business address to jobsite but on one job is on claytons lot and now says 2.8 miles which is now wrong where it said 0 before. also the settings for gas calculation is now manual so not sure why 
+
+I think I finally understand what you're trying to build, and I think Replit misunderstood the architecture.
+
+You do not have one mileage calculation. You have two independent distance calculations.
+
+Distance #1 - Client Distance (Billing)
+
+From:
+Client Location → Job Site
+
+Purpose:
+
+Determines mileage surcharge eligibility.
+Different for every client.
+
+Examples:
+
+Clayton Evansville → Job Site
+Cavco Lafayette → Job Site
+Champion Homes → Job Site
+
+This distance belongs to the client, not your business.
+
+Example:
+
+Clayton Evansville
+↓
+Job Site
+
+59.0 miles
+
+Mileage Surcharge
+YES
+
+If the job is on Clayton's lot, then:
+
+Clayton Evansville
+↓
+Clayton Evansville
+
+0.0 miles
+
+That should stay 0. The new feature should never change that calculation.
+
+Distance #2 - Business Distance (Operations)
+
+From:
+2504 Krauss Ct → Job Site
+
+Purpose:
+
+Fuel estimate
+Operational profit
+Internal business only
+
+Example:
+
+Willard's General Contracting
+2504 Krauss Ct
+
+↓
+
+Clayton Evansville
+
+41.3 miles
+
+That has absolutely nothing to do with Clayton's mileage surcharge.
+
+Replit accidentally merged them
+
+That's why your Clayton lot job now says 2.8 miles from client.
+
+They replaced
+
+Client Address → Job
+
+with
+
+Business Address → Job
+
+Those are two different calculations.
+
+The job should actually have BOTH values.
+
+For every job:
+
+Client Distance
+
+Client Address
+↓
+
+Job Site
+
+Used for billing
+
+AND
+
+Business Distance
+
+2504 Krauss Ct
+↓
+
+Job Site
+
+Used for operational costs
+
+Neither one should overwrite the other.
+
+Settings shouldn't ask for fuel manually
+
+I also think they misunderstood this.
+
+Settings should look more like:
+
+Vehicle
+
+Default Vehicle
+
+2019 Ford F150
+
+Average MPG
+
+17
+
+Fuel Price
+
+Current:
+$3.59
+
+Source:
+☑ Auto (EIA)
+
+Last Updated:
+Today
+
+[Refresh]
+
+The manual box should only be a fallback if the API can't be reached—not the primary workflow.
+
+I would send this back to Replit
+The mileage architecture is incorrect.
+
+There are TWO completely separate distance calculations that must coexist.
+
+1. Client Distance (existing feature)
+
+Origin:
+Client address
+
+Destination:
+Job site
+
+Purpose:
+Determine mileage surcharge for billing.
+
+Examples:
+
+Clayton Evansville → Job Site
+
+Cavco → Job Site
+
+Champion → Job Site
+
+If the job is on the client's property, this distance should remain 0.0 miles.
+
+This calculation must NOT use my business address.
+
+2. Business Distance (new feature)
+
+Origin:
+My business address
+2504 Krauss Ct
+
+Destination:
+Job site
+
+Purpose:
+Estimate fuel cost and operational profitability only.
+
+This value is never shown as "miles from client" and never affects mileage surcharge calculations.
+
+Do not replace or modify the existing client distance calculation.
+
+Instead, maintain both independently.
+
+Client Distance = Billing
+
+Business Distance = Operational Profit
+
+These are two different routing calculations with two different purposes.
+
+Also, the Vehicle Settings should default to automatically retrieving fuel prices from the EIA API. Manual fuel price entry should only be a fallback or override, not the default workflow.
+
+I think this is the key distinction. The current implementation is treating mileage as a single value, when your business actually depends on two separate origins:
+
+Client → Job = what you may bill.
+Your Shop → Job = what it costs you to perform the work.
+
+Once those are modeled separately, the rest of the feature becomes much simpler and the Clayton lot jobs will correctly show 0.0 miles from client while still calculating your operational travel from 2504 Krauss Ct.
