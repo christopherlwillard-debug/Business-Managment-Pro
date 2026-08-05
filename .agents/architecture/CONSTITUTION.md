@@ -4,6 +4,22 @@ These rules govern every implementation decision in BuildPro. They take preceden
 
 ---
 
+## Engineering Priorities
+
+When rules conflict, resolve the conflict by following this priority order:
+
+| Priority | Principle | Meaning |
+|---|---|---|
+| 1 | **Financial Integrity** | Never compromise accounting accuracy. A wrong number is worse than no number. |
+| 2 | **Data Integrity** | Never duplicate or lose data. Every record must be traceable and recoverable. |
+| 3 | **Single Source of Truth** | Reuse before creating. If it already exists, extend it. |
+| 4 | **Architectural Consistency** | Extend existing systems. New systems require documented justification. |
+| 5 | **User Trust** | Every number must be explainable. No black boxes. |
+| 6 | **Simplicity** | The simplest correct solution wins. Complexity is a liability. |
+| 7 | **Performance** | Optimize only after correctness is confirmed. |
+
+---
+
 ## Core Principles
 
 These are the philosophy behind every rule. When two rules seem to conflict, the Core Principles determine which direction to choose.
@@ -707,5 +723,23 @@ Do not continue implementing a solution designed for a problem that no longer ex
 
 ---
 
-*Last updated: 2026-08-05*  
-*Rules: 0–50 (51 total) + 10 Core Principles*
+---
+
+## Rule Tiers
+
+Rules are classified into three tiers. Higher tiers require explicit approval to override.
+
+**Tier 1 — Non-Negotiable** *(explicit approval required to override)*
+Rules 0, 1, 4, 8, 19, 20, 28, 29, 30, 40, 50
+
+**Tier 2 — Architecture Standards** *(normal engineering rules; deviations must be documented in DECISIONS.md)*
+Rules 2, 3, 5, 6, 7, 9, 10, 13, 15, 21, 24, 25, 26, 27, 33, 34, 35, 36, 38, 41, 42, 44, 49
+
+**Tier 3 — Best Practices** *(strong guidelines; use judgment when context makes them impractical)*
+Rules 11, 12, 14, 16, 17, 18, 22, 23, 31, 32, 37, 39, 43, 45, 46, 47, 48
+
+---
+
+*Constitution v1.0 — Frozen 2026-08-05*  
+*51 rules (0–50) + 10 Core Principles + 7 Engineering Priorities + 3-tier classification*  
+*To amend: revise an existing rule if it needs clarification; add a new rule only if a recurring problem demonstrably falls outside all existing rules. Version the document when amended (v1.1, v1.2, ...).*

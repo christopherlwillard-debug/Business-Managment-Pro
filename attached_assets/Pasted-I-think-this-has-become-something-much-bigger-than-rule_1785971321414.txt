@@ -1,0 +1,152 @@
+I think this has become something much bigger than "rules for Replit."
+
+You're creating an engineering operating system for BuildPro.
+
+That said, I would stop at this point.
+
+Not because there aren't more good ideas—but because after about 50 rules, you start getting diminishing returns. The biggest risk becomes that nobody (including the AI) consistently applies them.
+
+Instead, I'd add one final section that sits above everything else.
+
+BuildPro Engineering Priorities
+
+When rules conflict, follow them in this order:
+
+Priority 1 — Financial Integrity
+
+Never compromise accounting accuracy.
+
+Priority 2 — Data Integrity
+
+Never duplicate or lose data.
+
+Priority 3 — Single Source of Truth
+
+Reuse before creating.
+
+Priority 4 — Architectural Consistency
+
+Extend existing systems.
+
+Priority 5 — User Trust
+
+Every number must be explainable.
+
+Priority 6 — Simplicity
+
+The simplest correct solution wins.
+
+Priority 7 — Performance
+
+Optimize only after correctness.
+
+That solves the inevitable situation where two rules appear to point in different directions.
+
+One thing I would change
+
+You now have:
+
+10 Core Principles
+51 Rules
+
+I'd actually split them into three tiers.
+
+Tier 1 – Non-Negotiable (must never be violated)
+
+These are the ones that protect the integrity of the application.
+
+Examples:
+
+Rule 0
+Rule 1
+Rule 4
+Rule 8
+Rule 19
+Rule 20
+Rule 28
+Rule 29
+Rule 30
+Rule 50
+
+These should require explicit approval to override.
+
+Tier 2 – Architecture Standards
+
+Examples:
+
+Naming
+Configuration
+Reuse
+Plug-and-play
+One calculation engine
+
+These are the normal engineering rules.
+
+Tier 3 – Best Practices
+
+Examples:
+
+Explain calculations
+AI reasoning
+Feature ownership
+Performance
+Reusable UI
+
+These are guidelines rather than hard stops.
+
+That prioritization makes the Constitution easier to apply in practice.
+
+The last document I'd add
+
+Not more rules—examples.
+
+.agents/architecture/PATTERNS.md
+
+Instead of telling the AI what not to do, show it what good looks like.
+
+Examples:
+
+"Correct way to add a financial ledger."
+"Correct way to build a calculation engine."
+"Correct way to add a configurable business rule."
+"Correct way to extend an existing module."
+"Correct debugging workflow."
+
+Future agents can copy proven patterns instead of inventing new ones.
+
+My biggest recommendation
+
+At this point, freeze the Constitution.
+
+Version it.
+
+Constitution v1.0
+
+Don't keep adding rules every week.
+
+Instead:
+
+If a rule needs clarification, revise it.
+If a new problem doesn't fit any existing rule, then consider adding one.
+
+Otherwise, you'll eventually end up with 150 rules, many overlapping or contradictory.
+
+I think you've reached the point where the bottleneck isn't coding anymore.
+
+The bottleneck is governance.
+
+Most projects fail because:
+
+They don't have enough rules.
+They duplicate systems.
+Nobody knows the source of truth.
+
+BuildPro is moving toward the opposite problem:
+
+Plenty of rules.
+Strong architecture.
+Consistent engineering process.
+
+That's a much healthier place to be.
+
+If you keep the Constitution stable and let the team (or AI) work within it, you'll spend more time building features and less time undoing accidental architectural drift.
