@@ -1,0 +1,124 @@
+This is the first response I've seen that I would call a proper root-cause analysis.
+
+Here's why:
+
+✅ It created test data.
+✅ It tested both the pre-fix and post-fix scenarios.
+✅ It identified the exact database difference.
+✅ It identified the exact backend filter (jobs.ts:593).
+✅ It traced the data all the way to the UI behavior.
+✅ It cleaned up its test data afterward.
+
+That's exactly the engineering process you've been trying to enforce.
+
+One thing I would still ask before closing it
+
+I would ask Replit to verify one more thing:
+
+Regression Test
+
+Verify that changing Fuel/Travel no longer breaks the intended behavior for:
+
+• Hotel/Lodging
+• Meals
+• Parking/Tolls
+• Airfare
+• Rental Car
+• Taxi/Rideshare
+• Campground/RV Site
+• Other Travel
+
+Confirm that these categories still automatically enter Audit Trail mode when appropriate.
+
+Only Fuel/Travel should change behavior.
+
+That's because it removed "fuel/travel" from TRAVEL_CATEGORIES_LC.
+
+I want to be sure that change doesn't accidentally affect the rest of the travel documentation workflow.
+
+This is another Constitution rule I'd add
+
+This debugging session uncovered something important.
+
+RULE 31 — Every Bug Fix Requires a Regression Check
+
+After fixing a bug:
+
+1. Verify the original bug is fixed.
+2. Verify closely related features still work.
+3. Verify no existing workflow changed unintentionally.
+4. Document the regression checks performed.
+
+A bug fix is not complete until regression testing passes.
+
+That prevents fixing one category while accidentally breaking five others.
+
+Overall
+
+I think this debugging session is exactly the model you want future agents to follow.
+
+Compare the two approaches:
+
+Old process:
+
+Bug
+
+↓
+
+Theory
+
+↓
+
+Task
+
+↓
+
+Implementation
+
+↓
+
+Hope
+
+New process:
+
+Bug
+
+↓
+
+Trace
+
+↓
+
+Database
+
+↓
+
+API
+
+↓
+
+Backend
+
+↓
+
+UI
+
+↓
+
+Exact failing line
+
+↓
+
+Minimal fix
+
+↓
+
+Regression test
+
+↓
+
+Done
+
+The second process is far more likely to produce reliable fixes.
+
+If Replit consistently follows that workflow—and your Constitution requires it—you'll spend much less time chasing recurring bugs and much more time building new features.

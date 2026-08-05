@@ -431,5 +431,19 @@ Only after all boxes are checked may implementation begin.
 
 ---
 
+---
+
+### Rule 31 — Every Bug Fix Requires a Regression Check
+
+After fixing a bug:
+1. Verify the original bug is fixed (with database and API evidence)
+2. Verify closely related features still work correctly
+3. Verify no existing workflow changed unintentionally
+4. Document the regression checks performed
+
+A bug fix is not complete until the regression check passes. Fixing one case while silently breaking five others is not a fix.
+
+---
+
 *Last updated: 2026-08-05*  
-*Rules: 0–30 (31 total)*
+*Rules: 0–31 (32 total)*
