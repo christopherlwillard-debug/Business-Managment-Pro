@@ -1,0 +1,334 @@
+Seeing the whole screen changes things.
+
+I think there are two separate problems.
+
+Problem #1 (The big one)
+
+You're recording Owner Compensation as a material/business expense somewhere upstream.
+
+Look at your breakdown:
+
+Revenue: $3,606.32
+Materials & Expenses: -$1,045.39
+
+But earlier we saw those expenses were:
+
+Owner Compensation: $974.50
+Lumber: $32.40
+Screws: $38.49
+
+That equals $1,045.39.
+
+So your pay breakdown is still starting with bad data.
+
+It should actually be:
+
+Revenue
+$3,606.32
+
+Business Materials & Expenses
+-$70.89
+
+Job Income
+$3,535.43
+
+Hourly Workers
+-$800.00
+
+Remaining Profit
+$2,735.43
+
+Everything after that is currently being calculated from the wrong starting number.
+
+Problem #2
+
+This one is a design issue.
+
+Your pay breakdown is showing:
+
+Tax Reserve
+
+↓
+
+Your Share
+
+↓
+
+Your Take Home
+
+But that's backwards.
+
+Your taxes are not based on your share.
+
+As a single-member LLC:
+
+The IRS taxes all business profit.
+It doesn't matter how much you withdraw.
+
+So if your business made:
+
+Net Profit
+$2,735.43
+
+Your estimated tax reserve should be based on $2,735.43, not $836.44.
+
+I think the workflow should be:
+Revenue
+
+↓
+
+Business Expenses
+
+↓
+
+Sub Labor
+
+↓
+
+Net Business Profit
+
+↓
+
+Growth Reserve
+
+↓
+
+Tax Reserve
+
+↓
+
+Remaining Profit
+
+↓
+
+Split Between Owners
+
+↓
+
+Owner Draw
+
+NOT
+
+Revenue
+
+↓
+
+Expenses
+
+↓
+
+Split
+
+↓
+
+Tax Reserve
+The biggest thing I noticed
+
+Why is James Willard only getting 50%?
+
+A few conversations ago, your workflow was:
+
+Dewayne gets hourly.
+Hourly workers get paid first.
+Growth reserve comes out.
+Taxes come out.
+You get the remaining profit unless there's another profit-sharing owner.
+
+If this is your business and James isn't actually a 50% equity owner, then this screen is fundamentally wrong.
+
+Questions I'd ask are:
+
+Is "James Willard (50%)" supposed to represent you as the business owner?
+Or is this a true partner who owns half the company?
+
+Because if you're a single-member LLC, there shouldn't be a permanent 50/50 ownership split. A subcontractor or employee shouldn't automatically receive 50% of profits simply because they're working on the job.
+
+What I think your real workflow is
+
+Based on everything we've worked on over the last few weeks, I believe it should be:
+
+Revenue
+
+↓
+
+Business Expenses
+
+↓
+
+Hourly Employees
+
+↓
+
+Subcontractors
+
+↓
+
+Net Business Profit
+
+↓
+
+5% Growth Reserve
+
+↓
+
+Tax Reserve
+
+↓
+
+Remaining Profit
+
+↓
+
+(Optional)
+
+Profit Sharing
+
+↓
+
+Owner Draw
+
+That aligns with both your accounting and the way you've described running your business.
+
+One question
+
+The answer will change how I'd redesign this page:
+
+Why is James Willard set to receive 50% of the split pool?
+
+Is he:
+
+You, the owner of the business?
+A true business partner with 50% ownership?
+Just being used as a placeholder while you're building the feature?
+
+The answer determines whether this screen should be built around owner distributions or profit-sharing participants.
+
+no its revenue, expenses, growth (i changed), hourly, then split. thats it then it goes into letting me see how much i get which is part of the split and from there i see what i need to keep back for taxes and what i get to take home from the split
+
+Ah, now I understand. You're not trying to build GAAP accounting on this screen. You're building a profit allocation tool.
+
+Those are two different things.
+
+Your workflow is intentionally:
+
+Job Revenue
+
+↓
+
+Business Expenses
+
+↓
+
+Growth Reserve
+
+↓
+
+Hourly Workers
+
+↓
+
+Split Pool
+
+↓
+
+My Share
+
+↓
+
+Tax Reserve (on my share)
+
+↓
+
+My Take Home
+
+That's actually a perfectly valid cash allocation workflow. The tax reserve is not being used to calculate business taxes—it's simply telling you:
+
+"Out of the money I'm about to pay myself, how much should I leave in the business account for taxes?"
+
+That makes sense.
+
+The only thing that's wrong
+
+The "Materials & Expenses" line is still including your Owner Pay.
+
+Your breakdown should be:
+
+Revenue
+$3,606.32
+
+Business Expenses
+-$70.89
+
+Remaining
+$3,535.43
+
+Growth Reserve (5%)
+-$176.77
+
+Hourly Workers
+-$800.00
+
+Split Pool
+$2,558.66
+
+James (50%)
+$1,279.33
+
+Tax Reserve (25%)
+-$319.83
+
+Take Home
+$959.50
+
+Notice:
+
+✅ Owner Pay never appears in this calculation.
+✅ The Tax Reserve is only applied to your share, because that's the cash you're deciding to distribute.
+✅ The P&L still reports the correct business profit separately.
+I think the real bug is this:
+
+When you click "Record Owner Pay ($627.33)", the app is writing an Expense record.
+
+It should instead create an Owner Distribution (or Owner Draw) record.
+
+That record should:
+
+Be visible in the Owner Activity ledger.
+Reduce the amount still available to draw from that job.
+Not flow into Expenses.
+Not reduce Net Business Profit.
+Not change the split calculations.
+This is what I'd send Replit
+The Pay Breakdown workflow is correct and should remain:
+
+Revenue
+→ Business Expenses
+→ Growth Reserve
+→ Hourly Workers
+→ Split Pool
+→ My Share
+→ Tax Reserve
+→ Take Home
+
+The bug is that "Record Owner Pay" is being saved as a Business Expense (Owner Compensation), causing it to flow back into Job Expenses and reduce future profit calculations.
+
+Instead:
+
+1. Record Owner Pay as an Owner Distribution / Owner Draw transaction.
+2. Exclude Owner Distribution records from all expense totals and P&L calculations.
+3. Keep a separate Owner Activity ledger for reporting all owner draws.
+4. Do not allow Owner Draws to affect:
+   - Business Expenses
+   - Remaining Profit
+   - Split Pool
+   - Growth Reserve
+   - Job Profit
+5. Owner Draws should only reduce the remaining amount available to withdraw from that job and appear in the Owner Activity history.
+
+The Pay Breakdown page is a cash allocation workflow, not a Profit & Loss statement. Preserve the workflow exactly as designed while correcting the accounting classification of owner pay.
+
+I actually like your workflow. It's easy to understand because it answers the question you care about after every job:
+
+"After paying the business, paying my crew, setting aside growth, and reserving taxes, how much cash can I safely take home?"
+
+That's a much more practical view for an owner-operator than a traditional accounting report—as long as the underlying owner draw is classified correctly.

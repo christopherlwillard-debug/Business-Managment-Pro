@@ -462,12 +462,15 @@ router.get("/:id/profit", async (req, res) => {
         }).from(vehiclesTable).where(eq(vehiclesTable.isDefault, true)).limit(1),
       ]);
 
-      // Prefer default vehicle; fall back to legacy settings fields for backward compatibility
+      // Prefer default vehicle; fall back to legacy settings fields for backward compatibility.
+      // Default to $3.50/gal if no price is configured so the estimate always shows when
+      // mileage is available, rather than silently returning nothing.
+      const DEFAULT_FUEL_PRICE = 3.50;
       const defaultVehicle = defaultVehicles[0] ?? null;
       const rawFuelPrice = defaultVehicle?.fuelPricePerGallon ?? settingsRow?.fuelPricePerGallon ?? null;
-      const fuelPrice = rawFuelPrice != null ? parseFloat(String(rawFuelPrice)) : null;
+      const fuelPrice = rawFuelPrice != null ? parseFloat(String(rawFuelPrice)) : DEFAULT_FUEL_PRICE;
 
-      if (fuelPrice != null && fuelPrice > 0) {
+      if (fuelPrice > 0) {
         const mpg = defaultVehicle?.avgMpg ?? settingsRow?.vehicleMpg ?? 17;
 
         const [jobRow] = await db.select({
