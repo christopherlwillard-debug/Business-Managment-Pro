@@ -1,0 +1,232 @@
+I think Replit is still misunderstanding what Record Owner Pay is supposed to be.
+
+Based on everything we've discussed, I would not make it just a status marker.
+
+Here's why:
+
+If you pay yourself in three separate transfers, a simple "Paid" status is wrong.
+
+Example:
+
+My Share
+$1,299.33
+
+Transfer #1
+$500
+
+Transfer #2
+$300
+
+Transfer #3
+$499.33
+
+A single "Paid" flag can't represent that.
+
+What I would build instead
+Owner Withdrawals
+
+Transfer #1
+$500.00
+Aug 5
+
+Transfer #2
+$300.00
+Aug 8
+
+Transfer #3
+$499.33
+Aug 12
+
+--------------------
+
+Total Withdrawn
+$1,299.33
+
+Remaining Available
+$0.00
+
+Notice something important...
+
+This is NOT an expense.
+
+It's also NOT just a status.
+
+It's a withdrawal ledger.
+
+I'd also remove this from the P&L
+
+I don't like:
+
+Owner Activity
+
+Remaining Owner Equity
+
+That belongs on an equity report or owner dashboard, not on a job P&L.
+
+The P&L should stop at:
+
+Revenue
+
+Business Expenses
+
+Growth
+
+Hourly Workers
+
+Net Business Profit
+
+Everything after that belongs in Pay Breakdown, because that's where you're allocating the profit.
+
+This is what I'd send Replit
+Do NOT change "Record Owner Pay" into a simple paid/not paid status.
+
+A job may have multiple owner withdrawals over time.
+
+Instead, replace it with an Owner Withdrawal Ledger.
+
+Requirements:
+
+1. "Record Owner Pay" must NOT create a business expense.
+
+2. It must create an Owner Withdrawal record associated with the job.
+
+3. Each withdrawal records:
+   • Amount
+   • Date
+   • Notes (optional)
+
+4. The Pay Breakdown tab should display:
+
+My Share
+
+Estimated Tax Reserve
+
+Take Home
+
+-------------------------
+
+Owner Withdrawals
+
+Withdrawal #1
+$500.00
+
+Withdrawal #2
+$300.00
+
+Total Withdrawn
+$800.00
+
+Remaining Available to Withdraw
+$499.33
+
+5. Withdrawals must NEVER affect:
+   • Business Expenses
+   • Growth Reserve
+   • Hourly Worker calculations
+   • Split Pool
+   • Net Business Profit
+
+6. Remove the "Owner Activity" card from the P&L tab.
+
+Owner withdrawals belong in the Pay Breakdown workflow, not on the Profit & Loss statement.
+
+The Pay Breakdown page should answer one question:
+
+"How much of my share have I already withdrawn, and how much is still available to withdraw?"
+One more thought
+
+I actually think the button shouldn't even be called "Record Owner Pay."
+
+I'd rename it to:
+
+Record Owner Withdrawal
+Withdraw Profit
+Transfer to Personal
+Record Owner Draw
+
+"Owner Pay" sounds like payroll, and that's exactly what's causing the confusion. A sole proprietor isn't paying themselves wages—they're withdrawing money they already own. Using "Owner Withdrawal" or "Owner Draw" makes the intent much clearer and aligns with the workflow you're building.
+
+Ad
+will it still show me my split and what i can take after taxeds
+
+Yes. In fact, I think it should show it better than it does now.
+
+The Pay Breakdown shouldn't change at all. It should still calculate exactly what you want:
+
+Revenue
+$3,606.32
+
+Business Expenses
+-$70.89
+
+Growth Reserve (5%)
+-$176.77
+
+Hourly Workers
+-$800.00
+
+────────────────────
+
+Split Pool
+$2,558.66
+
+James (50%)
+$1,279.33
+
+Estimated Tax Reserve (25%)
+-$319.83
+
+Take Home
+$959.50
+
+That answers the question:
+
+"If I paid myself today, how much should I actually move to my personal account after setting taxes aside?"
+
+Then below that, I'd add a completely separate section:
+
+────────────────────
+
+Owner Withdrawals
+
+Withdrawn to Date
+$500.00
+
+Remaining Available to Withdraw
+$779.33
+
+Notice something important:
+
+Take Home = $959.50 → This never changes unless the job finances change.
+Remaining Available to Withdraw = $779.33 → This changes as you record withdrawals.
+
+Those are answering two different questions:
+
+Take Home: "How much of my share is actually mine after setting taxes aside?"
+Remaining Available to Withdraw: "How much of that share have I not transferred to myself yet?"
+
+For example:
+
+My Share
+$1,279.33
+
+Tax Reserve
+$319.83
+
+Take Home
+$959.50
+
+You transfer yourself $400.
+
+Take Home
+$959.50    ← stays the same
+
+Withdrawn
+$400.00
+
+Remaining Available
+$559.50
+
+That's the behavior I think you're after.
+
+The calculation of your split and your estimated take-home after taxes should never change because you recorded a withdrawal. Recording a withdrawal is just tracking that you've already moved some of that money from the business account to your personal account.
