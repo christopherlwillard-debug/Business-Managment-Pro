@@ -1,0 +1,436 @@
+Honestly? I think you're about 80% of the way to something that most software companies don't even have.
+
+The next rules I'd add aren't about coding—they're about protecting BuildPro from itself as it grows.
+
+These are the ones I think you'll thank yourself for in a year.
+
+RULE 33 — No Breaking Changes Without Migration
+If a table, API, calculation, or business rule changes:
+
+1. Existing data must continue to work.
+2. Existing APIs must continue to function or provide a migration path.
+3. Existing UI must not silently break.
+4. Data migrations must be documented.
+
+Breaking changes require approval.
+RULE 34 — Every Feature Must Have an Owner
+Every feature belongs to exactly one module.
+
+Examples:
+
+Accounting owns:
+
+• Expenses
+• Owner Pay
+• Taxes
+
+Jobs owns:
+
+• Job Cards
+• Scheduling
+• Photos
+
+Website owns:
+
+• Websites
+• SEO
+• Landing Pages
+
+No feature may belong to multiple modules.
+
+This prevents "Who owns this logic?"
+
+RULE 35 — No Hidden Business Logic
+
+This one will save you a TON.
+
+Business rules must never be hidden inside UI components.
+
+Business logic belongs in services or engines.
+
+React components should display information—not decide accounting rules.
+RULE 36 — One Naming Standard
+
+You have already hit this.
+
+Owner Draw
+
+Owner Pay
+
+Owner Compensation
+
+Owner Withdrawal
+
+Owner Distribution
+
+Those are five names for the same thing.
+
+I'd require:
+
+Every business concept has one official name.
+
+Aliases may exist for display purposes only.
+
+Database
+
+API
+
+UI
+
+Reports
+
+AI
+
+must reference the official terminology.
+RULE 37 — AI Cannot Invent Business Rules
+
+This one is huge.
+
+If a business rule is not documented:
+
+Do not invent one.
+
+Ask.
+
+Never assume:
+
+Tax rates
+
+Profit split
+
+Payroll
+
+Permits
+
+Accounting rules
+
+Pricing
+
+Mileage
+
+Business workflows.
+
+This would have prevented SO MANY issues.
+
+RULE 38 — Configuration Over Code
+
+Instead of:
+
+if SCorp
+
+Everything becomes:
+
+Business Settings
+
+↓
+
+Entity Type
+
+↓
+
+Tax Profile
+
+↓
+
+Rule Engine
+
+Nothing should require code changes.
+
+RULE 39 — Every Number Must Be Traceable
+
+If BuildPro shows:
+
+Profit
+
+$2,735.43
+
+There must be a button:
+
+Explain Calculation
+
+That expands to
+
+Revenue
+
+Expenses
+
+Growth
+
+Payroll
+
+Split
+
+Profit
+
+Every financial number.
+
+RULE 40 — Financial Records Are Immutable
+
+Never edit.
+
+Instead
+
+Correction
+
+Adjustment
+
+Void
+
+Replacement
+
+Accounting systems love immutable records.
+
+RULE 41 — No Circular Dependencies
+
+Example
+
+Jobs depends on Accounting
+
+Accounting depends on Jobs
+
+BAD
+
+Instead
+
+Jobs
+
+↓
+
+Accounting
+
+↓
+
+Reports
+
+One direction.
+
+RULE 42 — No Duplicate Settings
+
+This happens constantly.
+
+Growth %
+
+Business Settings
+
+Payroll Settings
+
+Accounting Settings
+
+Job Settings
+
+There should be ONE place.
+
+RULE 43 — Every Feature Must Answer One Question
+
+This one sounds weird.
+
+Example:
+
+Job Card
+
+Answers:
+
+"What's happening on this job?"
+
+Accounting
+
+Answers:
+
+"Where is my money?"
+
+Payroll
+
+Answers:
+
+"What do I owe people?"
+
+If a page answers six questions...
+
+Split it.
+
+RULE 44 — Every Feature Needs a Reason
+
+Before coding:
+
+Problem
+
+↓
+
+Why
+
+↓
+
+Benefit
+
+↓
+
+Cost
+
+↓
+
+Alternatives
+
+↓
+
+Decision
+
+No coding until this exists.
+
+RULE 45 — Every New Feature Must Improve an Existing Workflow
+
+Instead of
+
+"We need AI"
+
+Ask
+
+"What workflow becomes faster?"
+
+If none...
+
+Don't build it.
+
+RULE 46 — AI Must Challenge Bad Ideas
+
+This is one I wish more AI systems followed.
+
+If a requested implementation violates the Constitution...
+
+Do not implement it.
+
+Explain why.
+
+Offer alternatives.
+RULE 47 — No Feature Islands
+
+This is HUGE.
+
+Every feature must integrate with existing systems.
+
+Example
+
+Website
+
+↓
+
+CRM
+
+↓
+
+Jobs
+
+↓
+
+Invoices
+
+↓
+
+Accounting
+
+↓
+
+Taxes
+
+Not five separate apps.
+
+RULE 48 — Every Feature Must Be Reportable
+
+If information exists...
+
+Reports should be able to access it.
+
+No hidden data.
+
+RULE 49 — Everything Starts With Raw Data
+
+Store:
+
+Mileage
+
+Receipts
+
+Photos
+
+Hours
+
+GPS
+
+Never store:
+
+Profit
+
+Tax
+
+Split
+
+Commission
+
+Those are computed.
+
+RULE 50 — Stop Building If the Architecture Changes
+
+This is probably my favorite.
+
+If, during implementation, the architecture changes from the approved plan...
+
+STOP.
+
+Return to Architecture Review.
+
+Do not continue coding.
+
+Explain why.
+
+Get approval.
+
+Resume only after approval.
+
+This would have stopped:
+
+"I accidentally created owner_distributions..."
+
+before it ever happened.
+
+The one thing I think you're still missing
+
+I would create a Core Principles page that sits above the Constitution.
+
+Something like:
+
+BuildPro Core Principles
+
+1. Protect Financial Integrity
+
+2. One Source of Truth
+
+3. Explain Every Number
+
+4. Configuration Over Hardcoding
+
+5. Extend Before Create
+
+6. Evidence Before Conclusions
+
+7. Debug Before Design
+
+8. Preserve User Data
+
+9. Minimize Complexity
+
+10. Build Platforms, Not Features
+
+Those become the philosophy behind every rule. When two rules seem to conflict, the Core Principles tell the AI which direction to choose.
+
+My favorite new rule
+
+If I could add only one more, it would be:
+
+RULE 50 — Stop Building When Assumptions Change
+
+If new information discovered during implementation changes the understanding of the problem, stop implementation and return to the Architecture Review Gate.
+
+Do not continue implementing a solution designed for a problem that no longer exists.
+
+Re-evaluate the architecture before writing additional code.
+
+That single rule would have prevented the owner_distributions detour entirely. The moment Replit discovered your existing Owner Pay ledger, it would have been required to stop, revisit the architecture, and ask whether extending the existing system was the better approach before writing any new code.

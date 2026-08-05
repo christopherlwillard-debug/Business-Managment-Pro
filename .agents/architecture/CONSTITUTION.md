@@ -4,6 +4,23 @@ These rules govern every implementation decision in BuildPro. They take preceden
 
 ---
 
+## Core Principles
+
+These are the philosophy behind every rule. When two rules seem to conflict, the Core Principles determine which direction to choose.
+
+1. **Protect Financial Integrity** — Every number must be accurate, traceable, and trustworthy. No shortcuts in financial logic.
+2. **One Source of Truth** — Every business concept lives in exactly one place. Duplication is a defect.
+3. **Explain Every Number** — Any figure shown to the user must be expandable to show how it was calculated.
+4. **Configuration Over Hardcoding** — Business rules belong in settings, not code. Code changes should never be required to change a rate, percentage, or workflow.
+5. **Extend Before Create** — The default answer to any new requirement is to reuse or extend what already exists.
+6. **Evidence Before Conclusions** — Never state a root cause without database records, API responses, and exact line numbers to support it.
+7. **Debug Before Design** — Trace the full execution path before proposing any solution. Do not redesign what has not been proven broken.
+8. **Preserve User Data** — No financial record is ever permanently deleted. Archive, void, or correct — never destroy.
+9. **Minimize Complexity** — Every feature added is complexity added. Build only what improves an existing workflow.
+10. **Build Platforms, Not Features** — Every capability should power multiple surfaces. A receipt scanner powers expenses, jobs, trips, and taxes — not just one screen.
+
+---
+
 ## Mandatory Architecture Review Gate
 
 Any task involving **financial data, database schema, business logic, accounting, payroll, inventory, banking, tax calculations, or AI calculation engines** MUST produce a written Architecture Review in the task conversation BEFORE any code is modified. This is an explicit gate — not an implicit expectation.
@@ -464,5 +481,231 @@ A bug is not considered fixed until it has been verified against real-world data
 
 ---
 
+---
+
+### Rule 33 — No Breaking Changes Without Migration
+
+If a table, API, calculation, or business rule changes:
+1. Existing data must continue to work
+2. Existing APIs must continue to function or provide a documented migration path
+3. Existing UI must not silently break
+4. Data migrations must be documented before deployment
+
+Breaking changes require explicit approval.
+
+---
+
+### Rule 34 — Every Feature Must Have an Owner
+
+Every feature belongs to exactly one module. No feature may belong to multiple modules.
+
+| Module | Owns |
+|---|---|
+| Accounting | Expenses, Owner Pay, Taxes, Growth Reserve |
+| Jobs | Job Cards, Scheduling, Photos, Materials |
+| Payroll | Subcontractor Pay, Hours, Advances |
+| Invoicing | Invoices, Estimates, Payments |
+| Website | Websites, SEO, Landing Pages |
+| CRM | Clients, Prospects, Leads |
+| Banking | Bank Transactions, Reconciliation |
+
+This prevents "who owns this logic?" conflicts and duplicate implementations.
+
+---
+
+### Rule 35 — No Hidden Business Logic
+
+Business rules must never live inside React components. Components display information — they do not decide accounting rules.
+
+```
+Wrong:  if (category === "Fuel/Travel" && jobId) setCountsTowardJobProfit(false)  ← in a React component
+Right:  Server-side rule in a shared calculation engine or service
+```
+
+Business logic belongs in API route handlers or shared engines. UI components receive already-decided values.
+
+---
+
+### Rule 36 — One Naming Standard Per Concept
+
+Every business concept has one official name used across database, API, UI, reports, and AI. Display aliases are permitted only as labels.
+
+**Example violation:** "Owner Draw" / "Owner Pay" / "Owner Compensation" / "Owner Withdrawal" / "Owner Distribution" — five names for one concept.  
+**Correct:** Official name is **Owner Pay**. Database column: `owner_capital_entries`. Display label may vary but underlying reference must be consistent.
+
+When adding a new concept, define its official name first. Document it in `SYSTEM_REGISTRY.md`.
+
+---
+
+### Rule 37 — AI Cannot Invent Business Rules
+
+If a business rule is not explicitly documented, do not invent one. Ask.
+
+Never assume:
+- Tax rates or thresholds
+- Profit split percentages
+- Payroll calculation methods
+- Permit requirements
+- Accounting treatment
+- Pricing logic
+- Mileage reimbursement rules
+- Any workflow that affects money
+
+Undocumented business rules must be confirmed before implementation begins.
+
+---
+
+### Rule 38 — Configuration Over Code
+
+Entity-type logic, tax rules, growth rates, and business workflows must never require code changes to modify. Everything routes through:
+
+```
+Business Settings → Entity Type → Tax Profile → Rule Engine
+```
+
+If changing a rate, percentage, or threshold requires a code deploy — that is an architectural defect.
+
+---
+
+### Rule 39 — Every Number Must Be Traceable
+
+If BuildPro displays any financial figure, the user must be able to expand it to see the full calculation:
+
+```
+Profit $2,735.43
+  Revenue:        $8,000.00
+  Job Expenses:  −$3,200.00
+  Sub Labor:     −$1,841.34
+  Growth (5%):   −$  223.23
+  Net Profit:    +$2,735.43
+```
+
+No black-box numbers. Every figure shown has an "Explain Calculation" path.
+
+---
+
+### Rule 40 — Financial Records Are Immutable
+
+Never edit a posted financial record in place. Instead:
+- **Void** the original record
+- **Create** a correcting record
+- **Link** correction to original for audit trail
+
+Accounting systems depend on immutable history. Silent edits to financial records destroy auditability.
+
+---
+
+### Rule 41 — No Circular Dependencies
+
+Module dependencies must flow in one direction only:
+
+```
+Jobs → Accounting → Reports → Taxes
+```
+
+Never: Accounting depends on Jobs AND Jobs depends on Accounting. If a circular dependency appears, extract the shared logic into a standalone engine that both modules consume.
+
+---
+
+### Rule 42 — No Duplicate Settings
+
+Every configurable value has exactly one location. No setting may appear in multiple places.
+
+**Example violation:** Growth % in Business Settings, Payroll Settings, Accounting Settings, and Job Settings simultaneously.  
+**Correct:** One growth % setting. All modules read from that one location.
+
+---
+
+### Rule 43 — Every Page Answers One Question
+
+Each page or major UI surface should answer exactly one question:
+
+| Page | Question |
+|---|---|
+| Job Card | What's happening on this job? |
+| Accounting | Where is my money? |
+| Payroll | What do I owe people? |
+| Reports | How is the business performing? |
+| Banking | Does the bank match the books? |
+
+If a page answers six questions, split it. Scope creep in UI mirrors scope creep in architecture.
+
+---
+
+### Rule 44 — Every Feature Needs a Reason
+
+Before writing any code, document:
+1. **Problem** — What is broken or missing?
+2. **Why** — Why does it matter to the user?
+3. **Benefit** — What workflow improves?
+4. **Cost** — What complexity does this add?
+5. **Alternatives** — What other approaches exist?
+6. **Decision** — Why this approach over alternatives?
+
+No implementation begins without this documented.
+
+---
+
+### Rule 45 — Every New Feature Must Improve an Existing Workflow
+
+Before building anything new, identify which existing workflow becomes faster, clearer, or more accurate. If no existing workflow improves — do not build it.
+
+"We need AI" is not a reason. "Invoice matching takes 20 minutes and AI reduces it to 30 seconds" is a reason.
+
+---
+
+### Rule 46 — AI Must Challenge Bad Ideas
+
+If a requested implementation violates the Constitution, do not implement it silently. Explain the conflict, cite the rule, and offer compliant alternatives. Compliance with the user's request is never a reason to violate the architecture.
+
+---
+
+### Rule 47 — No Feature Islands
+
+Every feature must integrate with existing systems. BuildPro is one platform, not five separate apps:
+
+```
+Website → CRM → Jobs → Invoices → Accounting → Taxes → Reports
+```
+
+A feature that cannot connect to this chain should not be built as a standalone island. Identify the integration points first.
+
+---
+
+### Rule 48 — Every Feature Must Be Reportable
+
+If data exists in the system, reports must be able to access it. No hidden data. If a feature stores information that cannot surface in Reports, either connect it to the reporting layer or reconsider whether it should be stored at all.
+
+---
+
+### Rule 49 — Everything Starts With Raw Data
+
+Store raw inputs. Calculate derived values on demand. Never persist computed results.
+
+| Store (raw) | Never store (computed) |
+|---|---|
+| Mileage logs | Mileage deduction |
+| Receipts | Tax estimate |
+| Hours worked | Payroll total |
+| Invoice amounts | Profit |
+| GPS coordinates | Route distance |
+
+Stored calculations go stale. Raw data never does.
+
+---
+
+### Rule 50 — Stop Building When the Architecture Changes
+
+If, during implementation, new information changes the understanding of the problem:
+
+1. **STOP** — do not continue coding
+2. Return to the Architecture Review Gate
+3. Explain what changed and why
+4. Get approval before resuming
+
+Do not continue implementing a solution designed for a problem that no longer exists. This single rule would have prevented the `owner_distributions` detour: the moment an existing Owner Pay ledger was discovered, implementation should have stopped and the architecture revisited before a new table was created.
+
+---
+
 *Last updated: 2026-08-05*  
-*Rules: 0–32 (33 total)*
+*Rules: 0–50 (51 total) + 10 Core Principles*
