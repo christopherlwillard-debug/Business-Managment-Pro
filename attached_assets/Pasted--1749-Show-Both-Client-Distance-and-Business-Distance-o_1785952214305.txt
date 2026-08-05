@@ -1,0 +1,146 @@
+#1749 - Show Both Client Distance and Business Distance on Every Job Card
+
+Background
+
+Every job has TWO completely independent distance calculations that serve different business purposes.
+
+Client Distance
+Origin:
+Client address (Clayton, Cavco, Champion, homeowner, etc.)
+
+Destination:
+Job site
+
+Purpose:
+Mileage surcharge eligibility and customer billing.
+
+Business Distance
+Origin:
+Business address (2504 Krauss Ct)
+
+Destination:
+Job site
+
+Purpose:
+Operational travel distance, estimated fuel cost, and profitability analysis.
+
+These calculations are independent and must never overwrite or replace each other.
+
+--------------------------------------------------
+
+Done Looks Like
+
+Every Job Card always displays BOTH distances.
+
+Example (Clayton lot job)
+
+📍 From Client
+0.0 mi
+
+🚚 From Shop
+41.8 mi
+
+Example (Field job)
+
+📍 From Client
+59.0 mi
+
+🚚 From Shop
+81.6 mi
+
+Client Distance continues to determine mileage surcharge eligibility.
+
+Business Distance is informational only and is used by the fuel estimate / operational profit calculations.
+
+--------------------------------------------------
+
+Critical Requirement
+
+Do NOT replace the existing Client Distance calculation.
+
+There should now be TWO separate calculations on every job.
+
+Client Distance
+
+Client Address
+↓
+
+Job Site
+
+Business Distance
+
+Business Address (2504 Krauss Ct)
+↓
+
+Job Site
+
+Neither value should ever overwrite or modify the other.
+
+--------------------------------------------------
+
+Regression Fix
+
+Investigate why the Clayton Lot Model 7/29 job now displays:
+
+2.8 mi from client
+
+instead of
+
+0.0 mi from client
+
+This indicates the existing Client Distance calculation has changed unexpectedly.
+
+Verify:
+
+• Client address is still Clayton Evansville.
+• Job address is still the Clayton Evansville lot.
+• Client Distance continues using Client Address → Job Site.
+• Business Distance uses Business Address → Job Site.
+
+If both addresses are identical, Client Distance must display 0.0 miles.
+
+Also clear any stale server/browser cache if necessary.
+
+--------------------------------------------------
+
+Implementation
+
+Do not create another API endpoint.
+
+The Job Card already requests the Job Financials / Profit data.
+
+Reuse the existing Business Distance (fuelBreakdown.onewayMiles) already returned by the profit endpoint.
+
+Continue using the existing Client Distance field for billing.
+
+Simply render BOTH values independently.
+
+--------------------------------------------------
+
+Job Card UI
+
+Current
+
+📍 59.0 mi from client
+
+New
+
+📍 From Client
+59.0 mi
+
+🚚 From Shop
+81.6 mi
+
+Both rows should always be visible.
+
+--------------------------------------------------
+
+Out of Scope
+
+• Database schema changes
+• Invoice changes
+• Estimate changes
+• Mileage surcharge calculations
+• Fuel calculation logic
+
+This task is only about displaying the two independent distance calculations correctly.
