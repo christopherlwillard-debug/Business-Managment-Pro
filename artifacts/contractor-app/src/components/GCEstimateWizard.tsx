@@ -717,103 +717,189 @@ const PHASE_TEMPLATES: Record<string, string[]> = {
   other:              ["Scope & Materials Procurement", "Phase 1 Work", "Phase 2 Work", "Final Punch & Cleanup"],
 };
 
-// ─── KY Permit Requirements ───────────────────────────────────────────────────
+// ─── KY Permit & Code Intelligence ───────────────────────────────────────────
 
-interface PermitItem { label: string; required: boolean }
+type PermitStatus = "likely_required" | "may_be_required" | "not_required";
 
-const KY_PERMITS: Record<string, PermitItem[]> = {
+interface PermitDetail {
+  permitName: string;
+  status: PermitStatus;
+  requiredReason: string;
+  whoPullsPermit: string;
+  estimatedFeeLow: number;
+  estimatedFeeHigh: number;
+  approvalTime: string;
+  requiredInspections: string[];
+  buildingDepartmentNotes: string;
+}
+
+// Rich permit cards per job type. Designed so county-specific data can later
+// override these Kentucky defaults without changing the UI.
+const KY_PERMITS: Record<string, PermitDetail[]> = {
   manufactured_home: [
-    { label: "Manufactured home installation permit — required in most KY counties", required: true },
-    { label: "Plumbing permit — required for hookup to utilities", required: true },
-    { label: "Electrical permit — required if connecting or extending circuits", required: true },
-    { label: "HUD label / data plate verification — confirm home is HUD-compliant", required: false },
+    { permitName: "Manufactured Home Installation Permit", status: "likely_required", requiredReason: "KY requires an installation permit for manufactured homes in most counties to ensure proper tie-downs, utility connections, and site compliance.", whoPullsPermit: "General Contractor or Installer", estimatedFeeLow: 100, estimatedFeeHigh: 350, approvalTime: "1–5 business days", requiredInspections: ["Site Preparation", "Foundation / Tie-Down", "Utility Connections", "Final Inspection"], buildingDepartmentNotes: "Contact your county judge-executive's office or local building department. Some rural KY counties handle MH permits through the county courthouse rather than a building department." },
+    { permitName: "Plumbing Permit", status: "likely_required", requiredReason: "Required for connecting the home to water supply and drain systems.", whoPullsPermit: "Licensed KY Plumber", estimatedFeeLow: 50, estimatedFeeHigh: 175, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Plumbing", "Final Plumbing"], buildingDepartmentNotes: "KY requires a licensed plumber to pull and pass the plumbing permit. Confirm whether water/sewer is public utility or private well/septic." },
+    { permitName: "Electrical Permit", status: "likely_required", requiredReason: "Required for connecting the home to utility power and any circuit additions.", whoPullsPermit: "Licensed KY Electrician", estimatedFeeLow: 50, estimatedFeeHigh: 150, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Electrical", "Service Entrance", "Final Electrical"], buildingDepartmentNotes: "Utility company (LG&E, Owen Electric, etc.) must inspect service entrance connection before power is turned on." },
   ],
   kitchen: [
-    { label: "Building permit — required for full gut or any structural change", required: true },
-    { label: "Plumbing permit — required if relocating or adding new rough-in", required: true },
-    { label: "Electrical permit — required for new circuits or panel work", required: true },
-    { label: "No permit needed for cosmetic-only updates (swap fixtures, paint)", required: false },
+    { permitName: "Building Permit", status: "may_be_required", requiredReason: "Required for full gut remodels or any structural change (wall removal, new openings). Cosmetic-only work (cabinet swap, paint, new appliances) typically does not require a permit.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 75, estimatedFeeHigh: 300, approvalTime: "1–5 business days", requiredInspections: ["Framing (if structural)", "Insulation (if applicable)", "Drywall (if applicable)", "Final Inspection"], buildingDepartmentNotes: "Most cosmetic kitchen remodels do not require a building permit in KY. If you are removing or adding walls, relocating plumbing, or adding new circuits, a permit is required." },
+    { permitName: "Plumbing Permit", status: "may_be_required", requiredReason: "Required if relocating the sink drain, adding new plumbing rough-in, or moving supply lines.", whoPullsPermit: "Licensed KY Plumber", estimatedFeeLow: 50, estimatedFeeHigh: 200, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Plumbing", "Final Plumbing"], buildingDepartmentNotes: "Simply swapping a faucet or dishwasher does not require a permit. Relocating the sink drain or adding a new water line does." },
+    { permitName: "Electrical Permit", status: "may_be_required", requiredReason: "Required for adding new circuits, GFCI outlets, or under-cabinet lighting circuits.", whoPullsPermit: "Licensed KY Electrician", estimatedFeeLow: 50, estimatedFeeHigh: 175, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Electrical", "Final Electrical"], buildingDepartmentNotes: "Replacing an existing outlet in-kind does not require a permit. Adding a new circuit or moving an outlet does. AFCI/GFCI protection is required per 2023 NEC." },
   ],
   bathroom: [
-    { label: "Building permit — required for full gut remodel", required: true },
-    { label: "Plumbing permit — required for any rough-in or fixture relocation", required: true },
-    { label: "Electrical permit — required for GFCI and exhaust fan circuits", required: true },
+    { permitName: "Building Permit", status: "likely_required", requiredReason: "Full bathroom remodels involving drywall, subfloor, or structural changes require a building permit in most KY jurisdictions.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 75, estimatedFeeHigh: 250, approvalTime: "1–5 business days", requiredInspections: ["Framing / Waterproofing", "Rough MEP", "Insulation (if applicable)", "Final Inspection"], buildingDepartmentNotes: "Cosmetic bathroom work (new toilet, vanity swap, paint) generally does not need a permit. Full gut remodels typically do." },
+    { permitName: "Plumbing Permit", status: "likely_required", requiredReason: "Required for any rough-in work, drain relocation, or new fixture additions.", whoPullsPermit: "Licensed KY Plumber", estimatedFeeLow: 50, estimatedFeeHigh: 200, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Plumbing", "Final Plumbing"], buildingDepartmentNotes: "Swapping a toilet or faucet without disturbing rough-in usually does not require a permit. Rough-in inspection must pass before walls are closed." },
+    { permitName: "Electrical Permit", status: "likely_required", requiredReason: "GFCI protection and exhaust fan circuits require a permit in most KY counties.", whoPullsPermit: "Licensed KY Electrician", estimatedFeeLow: 50, estimatedFeeHigh: 150, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Electrical", "Final Electrical"], buildingDepartmentNotes: "KY code requires GFCI protection on all outlets within 6 ft of a water source. Exhaust fan must vent to the exterior — not into the attic." },
   ],
   siding: [
-    { label: "Building permit — required in most KY counties for re-siding", required: true },
-    { label: "HOA architectural review — if community has HOA", required: false },
+    { permitName: "Building Permit", status: "may_be_required", requiredReason: "Re-siding is required in many KY counties, especially if sheathing or housewrap is being replaced. Some rural counties do not require it for like-for-like replacement.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 75, estimatedFeeHigh: 250, approvalTime: "1–5 business days", requiredInspections: ["Sheathing / Housewrap", "Final Inspection"], buildingDepartmentNotes: "Verify with your local county building office before starting. HOA approval may also be required if the property is in a community with deed restrictions." },
   ],
   ceiling_repair: [
-    { label: "No permit typically required for cosmetic ceiling repair", required: false },
-    { label: "Asbestos abatement permit — required if pre-1978 and positive test", required: true },
+    { permitName: "Building Permit", status: "not_required", requiredReason: "Cosmetic ceiling repair (popcorn scrape, crack repair, paint) does not require a permit in KY.", whoPullsPermit: "N/A", estimatedFeeLow: 0, estimatedFeeHigh: 0, approvalTime: "N/A", requiredInspections: [], buildingDepartmentNotes: "No permit required for cosmetic ceiling work. If asbestos is confirmed, a licensed abatement contractor must be used and abatement may require notification to the KY Division of Air Quality." },
+    { permitName: "Asbestos Abatement Permit", status: "may_be_required", requiredReason: "Required if popcorn ceiling tests positive for asbestos in a home built before 1978.", whoPullsPermit: "Licensed Asbestos Abatement Contractor", estimatedFeeLow: 0, estimatedFeeHigh: 100, approvalTime: "3–10 business days", requiredInspections: ["Pre-Abatement Survey", "Clearance Air Test"], buildingDepartmentNotes: "KY EPA and the Division of Air Quality regulate asbestos abatement. A licensed contractor must perform testing and removal. Do not disturb suspect material before testing." },
   ],
   plumbing: [
-    { label: "Plumbing permit — required for any rough-in or line relocation in KY", required: true },
-    { label: "Licensed KY plumber must pull permit and pass inspection", required: true },
-    { label: "811 Dig-Safe notification — required before any trenching", required: true },
+    { permitName: "Plumbing Permit", status: "likely_required", requiredReason: "KY law requires a permit for any new plumbing rough-in, line relocation, or new fixture connection beyond simple like-for-like swap.", whoPullsPermit: "Licensed KY Plumber (required)", estimatedFeeLow: 50, estimatedFeeHigh: 250, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Plumbing", "Pressure Test", "Final Plumbing"], buildingDepartmentNotes: "Only a Kentucky-licensed plumber may pull a plumbing permit. Rough-in inspection must pass before any walls or floors are closed in. 811 Dig-Safe notification is required by law before any trenching." },
   ],
   deck: [
-    { label: "Building permit — required in most KY counties for new decks", required: true },
-    { label: "Zoning setback compliance — verify property lines with county", required: true },
-    { label: "Final inspection after completion — required before use", required: true },
-    { label: "HOA approval — if community has HOA", required: false },
+    { permitName: "Building Permit", status: "likely_required", requiredReason: "New decks and porches require a building permit in most KY counties. The permit ensures footings meet frost depth requirements and that railings and ledger attachment meet code.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 100, estimatedFeeHigh: 350, approvalTime: "3–10 business days", requiredInspections: ["Footing / Pier Inspection (before concrete)", "Framing Inspection", "Final Inspection"], buildingDepartmentNotes: "KY frost depth is 12–18\". Footings must extend below frost line. Ledger attachment to the house is the most common code failure — use proper lag screws and flashing." },
+    { permitName: "Zoning / Setback Review", status: "likely_required", requiredReason: "Most KY jurisdictions require that decks meet minimum setback distances from property lines before a building permit is issued.", whoPullsPermit: "Property Owner (part of permit application)", estimatedFeeLow: 0, estimatedFeeHigh: 75, approvalTime: "Included with building permit", requiredInspections: [], buildingDepartmentNotes: "Verify property lines with your county assessor or a survey before submitting permit application. Setback requirements vary by zoning district." },
   ],
   windows_doors: [
-    { label: "Building permit — required if adding or enlarging structural headers", required: true },
-    { label: "No permit needed for like-for-like replacement in most KY counties", required: false },
-    { label: "EPA RRP lead-paint certification — required if pre-1978 home", required: true },
+    { permitName: "Building Permit", status: "may_be_required", requiredReason: "Like-for-like window and door replacement typically does not require a permit in most KY counties. A permit IS required if you are enlarging or adding openings, or installing structural headers.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 75, estimatedFeeHigh: 250, approvalTime: "1–5 business days", requiredInspections: ["Framing / Header (if structural)", "Final Inspection"], buildingDepartmentNotes: "Pre-1978 homes: EPA RRP (Renovation, Repair, and Painting) rules apply if painted surfaces are disturbed. You must be RRP-certified or hire a certified subcontractor." },
   ],
   full_remodel: [
-    { label: "Building permit — required for gut remodel in most KY counties", required: true },
-    { label: "Plumbing permit — required for rough-in or fixture relocation", required: true },
-    { label: "Electrical permit — required for new circuits or panel work", required: true },
-    { label: "HVAC permit — required if scope includes mechanical work", required: true },
-    { label: "No permit typically required for cosmetic work (paint, flooring only)", required: false },
-    { label: "Verify requirements with your local KY county building office", required: false },
+    { permitName: "Building Permit", status: "likely_required", requiredReason: "Full gut remodels require a building permit in most KY counties. Cosmetic-only work (paint, flooring, trim) typically does not.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 150, estimatedFeeHigh: 600, approvalTime: "3–10 business days", requiredInspections: ["Framing", "Rough MEP", "Insulation", "Drywall (in some counties)", "Final Inspection"], buildingDepartmentNotes: "Permit fees are often calculated as a percentage of project value. Verify with your local building office. Inspections must be scheduled in order — do not close in walls before rough-in inspection passes." },
+    { permitName: "Plumbing Permit", status: "likely_required", requiredReason: "Required for rough-in, fixture relocation, or new plumbing additions.", whoPullsPermit: "Licensed KY Plumber", estimatedFeeLow: 75, estimatedFeeHigh: 250, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Plumbing", "Final Plumbing"], buildingDepartmentNotes: "Rough-in inspection must pass before walls are closed. Replace supply lines and shut-off valves while walls are open." },
+    { permitName: "Electrical Permit", status: "likely_required", requiredReason: "Required for new circuits, panel work, or rewiring.", whoPullsPermit: "Licensed KY Electrician", estimatedFeeLow: 75, estimatedFeeHigh: 300, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Electrical", "Final Electrical"], buildingDepartmentNotes: "AFCI breakers required in all habitable rooms per 2023 NEC. Check panel capacity before adding circuits." },
+    { permitName: "Mechanical / HVAC Permit", status: "may_be_required", requiredReason: "Required if HVAC equipment, ductwork, or mechanical systems are being replaced or extended.", whoPullsPermit: "Licensed HVAC Contractor", estimatedFeeLow: 50, estimatedFeeHigh: 200, approvalTime: "1–3 business days", requiredInspections: ["Rough Mechanical", "Final Mechanical"], buildingDepartmentNotes: "Not required for cosmetic remodels that do not touch HVAC. Manual J load calculation may be required for equipment replacements." },
   ],
   water_damage: [
-    { label: "No building permit required for like-for-like restoration in most KY counties", required: false },
-    { label: "Plumbing permit — required if relocating or adding new rough-in", required: true },
-    { label: "Electrical permit — required if replacing or adding circuits", required: true },
-    { label: "Mold remediation contractor license — required in KY for remediation scope", required: true },
-    { label: "EPA RRP certification — required if pre-1978 home and painted surfaces disturbed", required: false },
-    { label: "Verify with local building office — some counties require permit for drywall replacement", required: false },
+    { permitName: "Building Permit", status: "may_be_required", requiredReason: "Like-for-like restoration typically does not require a permit. However, if drywall is being replaced throughout or structural changes are made, some KY counties require a permit.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 75, estimatedFeeHigh: 300, approvalTime: "1–5 business days", requiredInspections: ["Framing (if structural)", "Final Inspection"], buildingDepartmentNotes: "Verify with your local building office. Insurance companies often require a permit record for restoration claims. Document everything with photos for the adjuster." },
+    { permitName: "Plumbing Permit", status: "may_be_required", requiredReason: "Required if water lines, drain lines, or supply connections are relocated or replaced.", whoPullsPermit: "Licensed KY Plumber", estimatedFeeLow: 50, estimatedFeeHigh: 200, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Plumbing", "Pressure Test"], buildingDepartmentNotes: "Replace supply lines and shut-off valves while walls are open — this is best practice regardless of permit requirements." },
+    { permitName: "Electrical Permit", status: "may_be_required", requiredReason: "Required if wiring, outlets, or circuits were damaged by water and need replacement.", whoPullsPermit: "Licensed KY Electrician", estimatedFeeLow: 50, estimatedFeeHigh: 175, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Electrical", "Final Electrical"], buildingDepartmentNotes: "Inspect all wiring in the affected area — moisture compromises wire insulation and junction boxes over time." },
   ],
   fire_restoration: [
-    { label: "Building permit — required in most KY counties for structural fire repair", required: true },
-    { label: "Electrical permit — required; all fire-area wiring must be replaced", required: true },
-    { label: "Plumbing permit — required if rough-in is disturbed or replaced", required: true },
-    { label: "HVAC permit — required if ductwork or equipment is replaced", required: true },
-    { label: "Structural engineer sign-off — required before closing in fire-damaged framing", required: true },
-    { label: "EPA RRP certification — required if pre-1978 home and painted surfaces disturbed", required: false },
-    { label: "Asbestos abatement permit — required if pre-1978 positive test result", required: false },
+    { permitName: "Building Permit", status: "likely_required", requiredReason: "Fire restoration involving structural repair, drywall replacement, or mechanical replacement requires a building permit in most KY counties.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 150, estimatedFeeHigh: 600, approvalTime: "3–10 business days", requiredInspections: ["Structural / Framing", "Rough MEP", "Insulation", "Final Inspection"], buildingDepartmentNotes: "A structural engineer evaluation is typically required before the building department will issue a permit for fire-damaged structures. The engineer must certify framing is sound before walls close in." },
+    { permitName: "Electrical Permit", status: "likely_required", requiredReason: "All wiring in fire-affected areas must be replaced — heat compromises insulation even if wires appear undamaged. A permit is required.", whoPullsPermit: "Licensed KY Electrician", estimatedFeeLow: 100, estimatedFeeHigh: 400, approvalTime: "1–3 business days", requiredInspections: ["Rough Electrical", "Panel Inspection", "Final Electrical"], buildingDepartmentNotes: "The panel must be inspected by a licensed electrician after a fire. Breakers and bus bars may be compromised by heat even with no visible damage." },
+    { permitName: "Plumbing Permit", status: "may_be_required", requiredReason: "Required if plumbing rough-in or supply lines were damaged and need replacement.", whoPullsPermit: "Licensed KY Plumber", estimatedFeeLow: 75, estimatedFeeHigh: 250, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Plumbing", "Final Plumbing"], buildingDepartmentNotes: "Plastic supply lines can melt or deform at fire temperatures even without direct flame exposure. Replace all supply lines in the affected area." },
+    { permitName: "Mechanical / HVAC Permit", status: "likely_required", requiredReason: "HVAC ductwork and equipment must be inspected and often replaced after fire. Smoke travels through the entire duct system.", whoPullsPermit: "Licensed HVAC Contractor", estimatedFeeLow: 75, estimatedFeeHigh: 250, approvalTime: "1–3 business days", requiredInspections: ["Rough Mechanical", "Final Mechanical"], buildingDepartmentNotes: "Do not operate the HVAC system after a fire until it has been professionally cleaned and inspected. Running it distributes smoke and soot throughout the home." },
   ],
   basement: [
-    { label: "Building permit — required for basement finish in most KY counties", required: true },
-    { label: "Electrical permit — required for new circuits", required: true },
-    { label: "Plumbing permit — required if adding bathroom or wet bar", required: true },
-    { label: "Egress window permit — required as a life-safety item in KY", required: true },
-    { label: "Final inspection required before occupancy", required: true },
-    { label: "Verify ceiling height requirement — 7' minimum clear in habitable space (KY code)", required: false },
+    { permitName: "Building Permit", status: "likely_required", requiredReason: "Finishing a basement — framing, insulation, drywall, and adding living space — requires a building permit in most KY jurisdictions.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 100, estimatedFeeHigh: 400, approvalTime: "3–10 business days", requiredInspections: ["Framing", "Rough MEP", "Insulation", "Egress Window (if applicable)", "Final Inspection"], buildingDepartmentNotes: "7-foot minimum ceiling height is required for habitable basement space in KY. If adding a bedroom, an egress window is a non-negotiable life-safety requirement." },
+    { permitName: "Electrical Permit", status: "likely_required", requiredReason: "New circuits for outlets, lighting, and appliances require a permit.", whoPullsPermit: "Licensed KY Electrician", estimatedFeeLow: 75, estimatedFeeHigh: 250, approvalTime: "Same day – 3 business days", requiredInspections: ["Rough Electrical", "Final Electrical"], buildingDepartmentNotes: "AFCI breakers required in all habitable basement rooms per 2023 NEC. Include a dedicated circuit for the sump pump — this is best practice in KY." },
+    { permitName: "Plumbing Permit", status: "may_be_required", requiredReason: "Required if adding a bathroom, wet bar, or any new plumbing rough-in.", whoPullsPermit: "Licensed KY Plumber", estimatedFeeLow: 75, estimatedFeeHigh: 300, approvalTime: "1–3 business days", requiredInspections: ["Rough Plumbing", "Slab (if concrete is cut)", "Final Plumbing"], buildingDepartmentNotes: "If the drain is below the main sewer line, a sewage ejector pump is required. Concrete slab cutting may be needed for drain rough-in — confirm early, as this has significant cost impact." },
+    { permitName: "Egress Window Permit", status: "may_be_required", requiredReason: "An egress window is a life-safety requirement for any basement bedroom in KY. The window installation and concrete cut requires a permit.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 50, estimatedFeeHigh: 150, approvalTime: "1–3 business days", requiredInspections: ["Egress Opening", "Window Installation"], buildingDepartmentNotes: "KY code: minimum 5.7 SF net clear opening, minimum 24\" height, minimum 20\" width. A window well must be large enough to allow full egress. This is non-negotiable for occupancy." },
   ],
   roofing: [
-    { label: "Building permit — verify with local county; some KY jurisdictions require for full replacement", required: false },
-    { label: "No permit typically required for like-for-like shingle replacement in most rural KY counties", required: false },
-    { label: "Louisville/Jefferson County: permit required for full roof replacement", required: false },
-    { label: "Structural permit — required if replacing or repairing roof framing / trusses", required: true },
-    { label: "HOA architectural review — if community has HOA", required: false },
-    { label: "Verify with local building office before starting", required: false },
+    { permitName: "Building Permit", status: "may_be_required", requiredReason: "Most rural KY counties do not require a permit for like-for-like shingle replacement. However, Jefferson County (Louisville), Fayette County (Lexington), and some others do require permits for full replacements.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 75, estimatedFeeHigh: 250, approvalTime: "1–5 business days", requiredInspections: ["Decking (if replaced)", "Final Inspection"], buildingDepartmentNotes: "Always verify with your specific county building office before starting. Some counties require a permit for full tear-offs but not for repairs. A permit ensures the work meets current code if the home is sold." },
+    { permitName: "Structural Permit", status: "may_be_required", requiredReason: "Required if roof framing, trusses, or rafters are being replaced or repaired.", whoPullsPermit: "General Contractor", estimatedFeeLow: 100, estimatedFeeHigh: 350, approvalTime: "3–10 business days", requiredInspections: ["Framing / Truss Inspection", "Final Structural"], buildingDepartmentNotes: "Structural repairs require an engineer's assessment if trusses or rafters show significant damage. Do not cover structural framing before inspection." },
   ],
   addition: [
-    { label: "Building permit — required", required: true },
-    { label: "Zoning variance — may be required depending on setbacks", required: true },
-    { label: "Plumbing permit", required: true },
-    { label: "Electrical permit", required: true },
-    { label: "HVAC permit", required: true },
-    { label: "Certificate of Occupancy — issued after final inspections", required: true },
+    { permitName: "Building Permit", status: "likely_required", requiredReason: "All residential additions require a building permit in Kentucky. This is non-negotiable.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 300, estimatedFeeHigh: 1200, approvalTime: "2–8 weeks (plan review required)", requiredInspections: ["Foundation / Footing", "Framing", "Rough MEP", "Insulation", "Drywall (some counties)", "Final Inspection"], buildingDepartmentNotes: "Stamped architectural and structural drawings are required. Budget 8–16 weeks for permit approval. A land survey may be required to verify setbacks. Do not break ground before permit is in hand." },
+    { permitName: "Zoning / Setback Variance", status: "may_be_required", requiredReason: "An addition that does not meet required setbacks from property lines requires a variance from the local Board of Zoning Adjustment.", whoPullsPermit: "Property Owner", estimatedFeeLow: 100, estimatedFeeHigh: 500, approvalTime: "4–12 weeks (board hearing)", requiredInspections: [], buildingDepartmentNotes: "Variance hearings require neighbor notification and a public meeting. Allow extra time if a variance is needed — this can delay your start date significantly." },
+    { permitName: "Plumbing Permit", status: "likely_required", requiredReason: "Required for all new plumbing rough-in in the addition.", whoPullsPermit: "Licensed KY Plumber", estimatedFeeLow: 100, estimatedFeeHigh: 400, approvalTime: "1–3 business days", requiredInspections: ["Rough Plumbing", "Final Plumbing"], buildingDepartmentNotes: "Tie-in to existing drain system location is the most complex part — confirm before starting framing." },
+    { permitName: "Electrical Permit", status: "likely_required", requiredReason: "Required for all new electrical rough-in.", whoPullsPermit: "Licensed KY Electrician", estimatedFeeLow: 100, estimatedFeeHigh: 400, approvalTime: "1–3 business days", requiredInspections: ["Rough Electrical", "Final Electrical"], buildingDepartmentNotes: "Check panel capacity before starting. AFCI and GFCI per 2023 NEC. The addition may require a panel upgrade." },
+    { permitName: "Mechanical / HVAC Permit", status: "likely_required", requiredReason: "Required for extending or installing HVAC systems in the addition.", whoPullsPermit: "Licensed HVAC Contractor", estimatedFeeLow: 75, estimatedFeeHigh: 250, approvalTime: "1–3 business days", requiredInspections: ["Rough Mechanical", "Final Mechanical"], buildingDepartmentNotes: "A Manual J load calculation is required for sizing. A mini-split is the easiest solution for additions. Certificate of Occupancy issued after all inspections pass." },
   ],
   other: [
-    { label: "Verify permit requirements with your local KY county building office", required: false },
+    { permitName: "Building Permit", status: "may_be_required", requiredReason: "Permit requirements vary based on the specific scope of work.", whoPullsPermit: "General Contractor or Property Owner", estimatedFeeLow: 50, estimatedFeeHigh: 300, approvalTime: "1–5 business days", requiredInspections: ["Varies by scope"], buildingDepartmentNotes: "Always verify permit requirements with your local Kentucky county building office before starting any work. Requirements vary significantly by jurisdiction." },
+  ],
+};
+
+// ─── Code Reminders per Job Type ──────────────────────────────────────────────
+
+const CODE_REMINDERS: Record<string, Array<{ icon: string; text: string }>> = {
+  kitchen: [
+    { icon: "⚡", text: "GFCI protection required on all countertop outlets within 6 ft of sink (2023 NEC)" },
+    { icon: "⚡", text: "AFCI breakers required on all kitchen circuits (2023 NEC)" },
+    { icon: "⚡", text: "Dedicated 20A circuit required for refrigerator, microwave, and dishwasher" },
+    { icon: "🔥", text: "Hood vent must exhaust to exterior — recirculating hoods don't meet code for new installs in most KY jurisdictions" },
+    { icon: "💡", text: "Under-cabinet lighting adds dedicated circuit — plan before drywall" },
+  ],
+  bathroom: [
+    { icon: "⚡", text: "GFCI protection required on ALL outlets within 6 ft of water source" },
+    { icon: "💨", text: "Exhaust fan required — must vent to exterior, not into the attic" },
+    { icon: "🚿", text: "Waterproof membrane required behind shower tile (Schluter Kerdi or equivalent)" },
+    { icon: "🔲", text: "Tempered glass required for shower enclosures and any glass within 24\" of tub/shower" },
+    { icon: "♿", text: "Blocking in walls during framing strongly recommended for future grab bar installation" },
+  ],
+  full_remodel: [
+    { icon: "🔊", text: "Smoke detectors required in every bedroom, outside each sleeping area, and on every floor (including basement)" },
+    { icon: "💨", text: "Carbon monoxide detector required within 15 ft of sleeping areas if gas appliances or attached garage" },
+    { icon: "⚡", text: "AFCI breakers required in all habitable rooms, hallways, and closets (2023 NEC)" },
+    { icon: "⚡", text: "GFCI required in bathrooms, kitchen, garage, basement, laundry, and outdoor locations" },
+    { icon: "🏠", text: "Egress window required in every basement bedroom — minimum 5.7 SF net clear opening" },
+    { icon: "🌡️", text: "Energy code: R-20 walls, R-49 attic minimum for new insulation in KY climate zone 4" },
+  ],
+  water_damage: [
+    { icon: "💧", text: "Do NOT close in walls or floors until moisture meter readings confirm materials are fully dry" },
+    { icon: "🔬", text: "Third-party air quality clearance test recommended after mold remediation before occupancy" },
+    { icon: "⚡", text: "Inspect all wiring in affected area — moisture compromises insulation over time" },
+    { icon: "🚿", text: "Replace supply lines and shut-off valves while walls are open — best practice" },
+  ],
+  fire_restoration: [
+    { icon: "🔥", text: "Structural engineer must certify framing before closing in walls — required by most KY building departments" },
+    { icon: "⚡", text: "All wiring in fire areas must be replaced — heat compromises insulation even with no visible damage" },
+    { icon: "🎛️", text: "Panel must be inspected by licensed electrician — breakers and bus bars may be damaged by heat" },
+    { icon: "💨", text: "HVAC ductwork must be professionally cleaned or replaced — smoke permeates all ducts" },
+    { icon: "🖌️", text: "Oil-based or shellac sealer primer required on ALL surfaces before finish paint — seals smoke odor permanently" },
+    { icon: "🔊", text: "Smoke detectors must be updated to current code locations as part of restoration" },
+  ],
+  basement: [
+    { icon: "🚪", text: "Egress window required for any basement bedroom — minimum 5.7 SF net clear opening (KY code)" },
+    { icon: "📏", text: "Minimum 7-foot clear ceiling height required for habitable basement space" },
+    { icon: "⚡", text: "AFCI breakers required in all habitable basement rooms (2023 NEC)" },
+    { icon: "⚡", text: "Dedicated circuit for sump pump — do not share with other circuits" },
+    { icon: "💧", text: "No glue-down hardwood or carpet below grade — LVP or tile only" },
+    { icon: "🏠", text: "PT (pressure-treated) lumber required for all bottom plates in contact with concrete" },
+  ],
+  deck: [
+    { icon: "🔧", text: "Ledger must be properly flashed and lag-bolted into rim joist — most common deck failure point" },
+    { icon: "📏", text: "Guardrail height minimum: 36\" if deck is < 30\" above grade; 42\" if 30\" or higher (KY code)" },
+    { icon: "📐", text: "Baluster spacing: 4\" maximum gap — a 4\" sphere must not pass through" },
+    { icon: "🪜", text: "Stair rise: 7-3/4\" maximum; run: 10\" minimum (KY residential code)" },
+    { icon: "🌊", text: "KY frost depth 12–18\" — footings must extend below frost line or deck will heave" },
+    { icon: "🔩", text: "Use structural screws (not nails) for all joist hanger and ledger connections" },
+  ],
+  roofing: [
+    { icon: "❄️", text: "Ice & water shield required: first 3 ft from eave edge and all valleys (KY climate)" },
+    { icon: "🌪️", text: "Starter strip required at eaves and rakes — do not use cut-down shingles" },
+    { icon: "💨", text: "Ridge vent + soffit vent is best system: 1 SF net free area per 150 SF of attic floor (KY code)" },
+    { icon: "🔩", text: "6 nails per shingle in high-wind areas — 4-nail pattern is minimum only in low-wind zones" },
+    { icon: "🧲", text: "Magnetic nail sweep required before leaving job site — nail liability is real" },
+  ],
+  siding: [
+    { icon: "🏠", text: "House wrap required — Tyvek or equivalent; tape all seams for air sealing" },
+    { icon: "🔧", text: "Fiber cement must be back-primed at all field cuts before installation" },
+    { icon: "🔲", text: "Proper flashing required at all penetrations, windows, and doors before siding" },
+    { icon: "☠️", text: "Older siding may contain asbestos — test before tearoff if pre-1980" },
+  ],
+  windows_doors: [
+    { icon: "☠️", text: "Pre-1978 homes: EPA RRP rules apply — must be RRP-certified or use certified subcontractor" },
+    { icon: "❄️", text: "Window U-factor 0.30 or less recommended for KY energy code compliance" },
+    { icon: "🔧", text: "All windows must be flashed per manufacturer spec before trim and siding" },
+    { icon: "🔊", text: "Smoke detectors may require repositioning if window or door openings are enlarged" },
+  ],
+  addition: [
+    { icon: "📋", text: "Do not break ground before permit is in hand — inspections are required in sequence" },
+    { icon: "🌊", text: "KY frost depth 12–18\" — footings must extend below frost line" },
+    { icon: "❄️", text: "R-20 walls / R-49 ceiling required for new addition (KY energy code)" },
+    { icon: "⚡", text: "Check panel capacity before starting — the addition may require a panel upgrade" },
+    { icon: "🔊", text: "Smoke and CO detectors must be installed and interconnected throughout entire home" },
+    { icon: "🏠", text: "Certificate of Occupancy required before using the new space — final inspection triggers this" },
+  ],
+  manufactured_home: [
+    { icon: "🔧", text: "HUD label and data plate must be present and legible — verify before installation" },
+    { icon: "🌊", text: "Tie-down anchors required per HUD installation standard — spacing and depth are specified" },
+    { icon: "💧", text: "Verify public sewer connection OR confirm septic system capacity for the home's size" },
+    { icon: "⚡", text: "Utility company must inspect service entrance before power is connected" },
+  ],
+  plumbing: [
+    { icon: "📞", text: "Call 811 (Dig Safe) at least 2 business days before any trenching — required by KY law" },
+    { icon: "🔧", text: "Rough-in inspection must pass before walls or floors are closed in" },
+    { icon: "💧", text: "Pressure test required — most KY inspectors require 30-minute hold at 80 PSI" },
+    { icon: "🔩", text: "PEX-A or PEX-B is KY standard for supply lines — confirm with inspector on your county" },
   ],
 };
 
@@ -874,7 +960,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
   const [trades, setTrades] = useState<TradeItem[]>([]);
   const [phasesEditable, setPhasesEditable] = useState<string[]>([]);
   const [savePhasesToJob, setSavePhasesToJob] = useState(true);
-  const [permitChecked, setPermitChecked] = useState<Record<number, boolean>>({});
+  const [expandedPermitIdx, setExpandedPermitIdx] = useState<number | null>(null);
   const [newPhaseInput, setNewPhaseInput] = useState("");
   const [expandedTipId, setExpandedTipId] = useState<string | null>(null);
   const [markup, setMarkup] = useState(String(DEFAULT_MARKUP));
@@ -910,7 +996,7 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
     const label = JOB_TYPES.find(x => x.id === jt)?.label ?? jt;
     setEstimateTitle(`${job.title} — ${label}`);
     setPhasesEditable(PHASE_TEMPLATES[jt] ?? []);
-    setPermitChecked({});
+    setExpandedPermitIdx(null);
     setStep(2);
   }
 
@@ -1024,9 +1110,9 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
       qc.invalidateQueries({ queryKey: ["/api/estimates"] });
 
       const permitItems = (KY_PERMITS[jobType] ?? KY_PERMITS.other);
-      const permitChecklistData = permitItems.map((item, i) => ({
-        label: item.label,
-        checked: permitChecked[i] === true,
+      const permitChecklistData = permitItems.map((item) => ({
+        label: item.permitName,
+        checked: false,
       }));
 
       await updateJob.mutateAsync({
@@ -1368,59 +1454,119 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
             </div>
           )}
 
-          {/* ── Step 5: KY Permits & Bid Requests ───────────────────── */}
+          {/* ── Step 5: Permit & Code Intelligence ──────────────────── */}
           {step === 5 && (
             <div className="p-5 space-y-6">
 
-              {/* Permit checklist */}
+              {/* Permit cards */}
               <div>
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-1">
                   <FileText className="w-4 h-4 text-amber-600" />
-                  <p className="text-sm font-bold text-gray-800 dark:text-gray-200">Kentucky Permit Checklist</p>
+                  <p className="text-sm font-bold text-gray-800 dark:text-gray-200">Permit & Code Intelligence</p>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                  Typical requirements for a <span className="font-semibold">{JOB_TYPES.find(j => j.id === jobType)?.label ?? jobType}</span> in KY. Always verify with your local county building office — requirements vary by jurisdiction.
+                  Typical requirements for a <span className="font-semibold">{JOB_TYPES.find(j => j.id === jobType)?.label ?? jobType}</span> in Kentucky. Tap any card for details. Always verify with your local county building office.
                 </p>
                 <div className="space-y-2">
-                  {(KY_PERMITS[jobType] ?? KY_PERMITS.other).map((item, i) => {
-                    const isChecked = permitChecked[i] === true;
+                  {(KY_PERMITS[jobType] ?? KY_PERMITS.other).map((permit, i) => {
+                    const isOpen = expandedPermitIdx === i;
+                    const statusCfg = {
+                      likely_required: { label: "Likely Required", badgeCls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300", borderCls: "border-red-200 dark:border-red-800", dotCls: "bg-red-500" },
+                      may_be_required: { label: "May Be Required", badgeCls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300", borderCls: "border-amber-200 dark:border-amber-800", dotCls: "bg-amber-500" },
+                      not_required:    { label: "Typically Not Required", badgeCls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300", borderCls: "border-gray-200 dark:border-gray-700", dotCls: "bg-emerald-500" },
+                    }[permit.status];
                     return (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setPermitChecked(prev => ({ ...prev, [i]: !prev[i] }))}
-                        className={`w-full flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl text-xs border text-left transition-colors ${
-                          isChecked
-                            ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300"
-                            : item.required
-                            ? "bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300"
-                            : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400"
-                        }`}
-                      >
-                        <span className={`flex-shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center ${
-                          isChecked
-                            ? "bg-emerald-500 border-emerald-500 text-white"
-                            : item.required
-                            ? "border-red-300 dark:border-red-700 bg-white dark:bg-gray-800"
-                            : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
-                        }`}>
-                          {isChecked && <Check className="w-2.5 h-2.5" />}
-                        </span>
-                        <span className={`leading-relaxed flex-1 ${isChecked ? "line-through opacity-60" : ""}`}>{item.label}</span>
-                        {!isChecked && item.required && (
-                          <span className="ml-auto flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-red-500 bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 rounded">
-                            Required
-                          </span>
+                      <div key={i} className={`rounded-xl border overflow-hidden ${statusCfg.borderCls}`}>
+                        {/* Collapsed header */}
+                        <button
+                          type="button"
+                          onClick={() => setExpandedPermitIdx(isOpen ? null : i)}
+                          className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                        >
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${statusCfg.dotCls}`} />
+                          <span className="flex-1 text-sm font-semibold text-gray-800 dark:text-gray-200 leading-snug">{permit.permitName}</span>
+                          <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0 ${statusCfg.badgeCls}`}>{statusCfg.label}</span>
+                          {isOpen ? <ChevronUp className="w-4 h-4 text-gray-400 flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+                        </button>
+
+                        {/* Expanded detail */}
+                        {isOpen && (
+                          <div className="px-4 pb-4 pt-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-850 space-y-3">
+                            {/* Why */}
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">Why This May Be Required</p>
+                              <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{permit.requiredReason}</p>
+                            </div>
+
+                            {/* Who / Fee / Timeline grid */}
+                            <div className="grid grid-cols-3 gap-2">
+                              {[
+                                { label: "Who Pulls It", value: permit.whoPullsPermit },
+                                { label: "Est. KY Fee", value: permit.estimatedFeeLow === 0 && permit.estimatedFeeHigh === 0 ? "N/A" : `$${permit.estimatedFeeLow}–$${permit.estimatedFeeHigh}` },
+                                { label: "Approval Time", value: permit.approvalTime },
+                              ].map(({ label, value }) => (
+                                <div key={label} className="bg-white dark:bg-gray-800 rounded-lg p-2 border border-gray-100 dark:border-gray-700">
+                                  <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">{label}</p>
+                                  <p className="text-xs text-gray-700 dark:text-gray-300 leading-snug font-medium">{value}</p>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Required inspections */}
+                            {permit.requiredInspections.length > 0 && (
+                              <div>
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1.5">
+                                  Required Inspections ({permit.requiredInspections.length})
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {permit.requiredInspections.map((insp, j) => (
+                                    <span key={j} className="flex items-center gap-1 text-[10px] bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800 rounded-lg px-2 py-0.5 font-medium">
+                                      <Check className="w-2.5 h-2.5 flex-shrink-0" />{insp}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Building dept notes */}
+                            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-800 rounded-lg px-3 py-2 text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                              <span className="font-bold">📋 Inspector Note: </span>{permit.buildingDepartmentNotes}
+                            </div>
+                          </div>
                         )}
-                        {isChecked && (
-                          <span className="ml-auto flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded">
-                            Done
-                          </span>
-                        )}
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Code Intelligence */}
+              {(CODE_REMINDERS[jobType] ?? []).length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle className="w-4 h-4 text-blue-600" />
+                    <p className="text-sm font-bold text-gray-800 dark:text-gray-200">Code Considerations</p>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                    Common code requirements for this project type. Verify specifics with your inspector.
+                  </p>
+                  <div className="space-y-1.5">
+                    {CODE_REMINDERS[jobType].map((reminder, i) => (
+                      <div key={i} className="flex items-start gap-2.5 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-800">
+                        <span className="text-base flex-shrink-0 leading-none mt-0.5">{reminder.icon}</span>
+                        <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">{reminder.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Important notice */}
+              <div className="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3">
+                <p className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">⚠️ Important Notice</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                  Permit requirements vary by municipality. Always verify specific requirements with your local building department before beginning work. This information is provided as a general Kentucky reference and does not constitute legal advice.
+                </p>
               </div>
 
               {/* Subcontractor bid requests */}

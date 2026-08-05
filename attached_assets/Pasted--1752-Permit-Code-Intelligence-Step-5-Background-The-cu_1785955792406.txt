@@ -1,0 +1,329 @@
+#1752 - Permit & Code Intelligence (Step 5)
+
+Background
+
+The current Step 5 permit checklist is too static. Instead of simply displaying permit names, Step 5 should become an intelligent planning tool that helps contractors understand permit requirements, inspection requirements, code considerations, and project risks before work begins.
+
+The goal is not simply to ask "Do I need a permit?" but to help contractors avoid missing requirements that could delay a project or cause failed inspections.
+
+------------------------------------------------------------
+
+Replace Step 5 with:
+
+Permit & Code Intelligence
+
+------------------------------------------------------------
+
+Permit Cards
+
+Each permit should be displayed as an expandable card.
+
+Collapsed:
+
+• Permit Name
+• Status
+    • Likely Required
+    • May Be Required
+    • Typically Not Required
+
+Expanded:
+
+Permit Description
+
+Why this permit may be required.
+
+Who typically pulls it
+
+• General Contractor
+• Licensed Trade Contractor
+• Property Owner (where allowed)
+
+Estimated Kentucky Permit Fee
+
+Example:
+
+$50–$250
+
+Estimated Approval Timeline
+
+Examples:
+
+Same Day
+
+1–3 Business Days
+
+1–2 Weeks
+
+Required Inspections
+
+Example:
+
+✔ Footing Inspection
+
+✔ Framing Inspection
+
+✔ Rough Electrical
+
+✔ Rough Plumbing
+
+✔ Rough HVAC
+
+✔ Insulation
+
+✔ Drywall
+
+✔ Final Inspection
+
+Estimated Inspection Count
+
+Building Department Notes
+
+Helpful contractor guidance.
+
+Example:
+
+"Most cosmetic remodels without structural, plumbing, HVAC, or electrical modifications typically do not require a building permit. Always verify with the local building department."
+
+------------------------------------------------------------
+
+No Permit Required Path
+
+If the selected project is cosmetic only, display:
+
+No Permit Typically Required
+
+Based on the selected scope, this project is generally considered cosmetic work.
+
+Examples include:
+
+• Interior painting
+
+• Flooring replacement
+
+• Trim replacement
+
+• Cabinet replacement without plumbing or electrical relocation
+
+• Interior door replacement
+
+• Finish carpentry
+
+Still display:
+
+Important Notice
+
+Permit requirements vary by municipality.
+
+Always verify requirements with your local building department before beginning work.
+
+------------------------------------------------------------
+
+Permit Types
+
+Expand KY_PERMITS to include:
+
+Building Permit
+
+Electrical Permit
+
+Plumbing Permit
+
+Mechanical Permit
+
+Demolition Permit
+
+Dumpster Permit
+
+Right-of-Way Permit
+
+Sign Permit
+
+Accessory Structure Permit
+
+Deck Permit
+
+Fence Permit
+
+Pool Permit
+
+Solar Permit
+
+------------------------------------------------------------
+
+Code Intelligence
+
+Based on the project scope, automatically display potential code reminders.
+
+Examples:
+
+Bathroom Remodel
+
+Possible reminders:
+
+• GFCI protection
+
+• Bathroom ventilation requirements
+
+• Waterproof shower system
+
+• Tempered glass requirements
+
+Kitchen Remodel
+
+Possible reminders:
+
+• GFCI protection
+
+• AFCI protection
+
+• Dedicated appliance circuits
+
+Deck
+
+Possible reminders:
+
+• Ledger attachment
+
+• Flashing
+
+• Guardrail height
+
+• Stair requirements
+
+Whole House Remodel
+
+Possible reminders:
+
+• Smoke detector requirements
+
+• Carbon monoxide detector requirements
+
+• Energy code considerations
+
+• Egress requirements
+
+Older Homes
+
+If project year built is before 1978:
+
+Display:
+
+Lead-safe work practices may apply if painted surfaces will be disturbed. Verify applicable federal, state, and local requirements before beginning work.
+
+------------------------------------------------------------
+
+Smart Permit Recommendations
+
+Instead of simply listing permits, determine likely permit needs from the selected scope.
+
+Examples:
+
+Selected:
+
+Interior Painting
+
+LVP Flooring
+
+Trim
+
+Drywall Repair
+
+Result:
+
+Likely Required
+
+None
+
+May Be Required
+
+Building Permit
+
+Not Required
+
+Electrical
+
+Plumbing
+
+Mechanical
+
+------------------------------------------------------------
+
+Example
+
+Selected:
+
+Whole House Remodel
+
+New Drywall
+
+Subfloor Replacement
+
+Bathroom Remodel
+
+Kitchen Remodel
+
+No Structural Changes
+
+No Plumbing Relocation
+
+Result:
+
+Building Permit
+
+Status:
+May Be Required
+
+Reason:
+Extensive interior remodeling may require a building permit depending on the local jurisdiction.
+
+Fee:
+$75–$300
+
+Approval:
+1–5 business days
+
+Typical Inspections:
+
+• Framing (if applicable)
+
+• Insulation (if applicable)
+
+• Drywall (if applicable)
+
+• Final Inspection
+
+------------------------------------------------------------
+
+Future Ready
+
+The KY_PERMITS data structure should support:
+
+permitName
+
+status
+
+requiredReason
+
+estimatedFeeLow
+
+estimatedFeeHigh
+
+approvalTime
+
+whoPullsPermit
+
+requiredInspections[]
+
+buildingDepartmentNotes
+
+applicableProjectTypes[]
+
+codeReminders[]
+
+futureApiLookup
+
+The structure should be designed so county- or city-specific permit data can later replace the static Kentucky defaults without requiring a UI redesign.
+
+Goal
+
+Step 5 should feel like an experienced building inspector reviewing the project with the contractor before work begins—not just a static checklist of permit names.
