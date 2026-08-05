@@ -1,0 +1,127 @@
+Ah! Now I finally understand what you've been saying.
+
+The page is not trying to answer "What's left in the business?"
+
+It's trying to answer:
+
+"How much money do I get from this job?"
+
+So after the split, everything below that point is personal, not business.
+
+Your flow is:
+
+Revenue
+
+↓
+
+Business Expenses
+
+↓
+
+Growth %
+
+↓
+
+Hourly Workers
+
+↓
+
+Split Pool
+
+↓
+
+James (50%)
+
+$1,279.33 (or $1,299.33 depending on the job)
+
+↓
+
+Estimated Tax Reserve
+
+-$319.83
+
+↓
+
+Take Home
+
+$959.50
+
+That's it.
+
+There should be no Owner Draw in this calculation at all.
+
+Why?
+
+Because your share IS your owner draw when you decide to pay yourself.
+
+Recording Owner Pay is simply documenting that you already transferred that money. It shouldn't create another calculation below it.
+
+I think the mistake Replit is making
+
+It's treating this page as:
+
+Profit
+↓
+
+Owner Draw
+
+↓
+
+Remaining Owner Draw
+
+But your page is actually:
+
+Profit Split
+↓
+
+My Share
+↓
+
+Tax Estimate
+↓
+
+Take Home
+
+The page should stop there.
+
+If you later click "Record Owner Pay", all it should do is mark that your $1,279.33 has been paid.
+
+It should not recalculate your take-home.
+
+This is what I'd tell Replit
+The Pay Breakdown page is not an Owner Draw ledger.
+
+It is a Profit Distribution calculator.
+
+The calculation ends at:
+
+Revenue
+→ Business Expenses
+→ Growth Reserve
+→ Hourly Workers
+→ Split Pool
+→ My Share
+→ Estimated Tax Reserve
+→ Take Home
+
+"My Share" is the amount allocated to me from the job.
+
+The Tax Reserve is calculated from My Share.
+
+Take Home = My Share - Tax Reserve.
+
+Recording Owner Pay is a separate bookkeeping action that simply marks whether I have already withdrawn my allocated share.
+
+Recording an Owner Pay must NOT change the calculation on this page.
+
+It should only update a payment status such as:
+
+Owner Pay Status:
+☐ Not Paid
+☑ Paid
+Amount Paid: $1,279.33
+Date Paid: xx/xx/2026
+
+Do not subtract Owner Pay from the calculation because the purpose of this page is to tell me what I earn from the job before I actually transfer the money.
+
+I think this is the misunderstanding that's been causing all the confusion. You're not building an accounting report here. You're building a "What do I get paid from this job?" calculator. Once your share is calculated, the only remaining question is, "How much should I reserve for taxes before I move this money to my personal account?" That's a business workflow, not a P&L workflow.
