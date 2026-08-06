@@ -1,0 +1,226 @@
+I think this is about 90% there. There are just a couple of things I'd tweak.
+
+1. Rename "Revenue" to "Job Revenue"
+
+Throughout BuildPro you've consistently used "Job Revenue." I'd keep that wording so users don't wonder if it's gross company revenue or job revenue.
+
+2. Rename "Job Expenses" to "Materials & Expenses"
+
+Since this is the same number used later in Profit Split, the wording should stay consistent.
+
+Instead of:
+
+Job Expenses
+
+Use:
+
+Materials & Expenses
+
+That reinforces that it's everything reducing profit, not just receipts entered as expenses.
+
+3. Don't call it a "Profit Split header"
+
+Call it a Financial Summary.
+
+Something like:
+
+Financial Summary
+
+Job Revenue
+
+Materials & Expenses
+
+Net Business Profit
+
+Estimated Fuel Cost
+
+Estimated Operational Profit
+
+That reads much better than saying the Profit Split screen starts with another Profit Split section.
+
+4. Keep the Trip Documentation Packet
+
+I wouldn't bury it somewhere random.
+
+Move it to the very bottom of the Profit Split page under a small section:
+
+Additional Reports
+
+Trip Documentation Packet
+
+That keeps it discoverable without cluttering the financial summary.
+
+5. One more cleanup
+
+Since you're already deleting the Job Financials card, I'd also remove the duplicate "+$2,411.43" number that was only acting as a button label.
+
+The only place Net Business Profit should appear on the Job Card is inside the P&L widget.
+
+I'd add this at the end
+Design Principle
+
+Every major number should appear only once on the Job Card.
+
+The Job Card provides the summary.
+The Profit Split screen provides the explanation.
+The Expense Drill-down provides the supporting detail.
+
+Users should never need to compare two sections showing the same numbers to understand the job's financial status.
+
+I think this is one of the highest-value cleanup tasks you've written. It doesn't remove any capability, doesn't change any calculations, and doesn't force users into more screens. It simply removes UI that isn't earning its space while keeping your philosophy intact of seeing almost everything about the job from one place.
+
+Ad
+i think material is misleading and for tax reasons it sounds like cost of goods and i dont sell anything i just have supplies
+
+I actually agree, especially because of how your business operates.
+
+You're a service business, not a retail business.
+
+When you see Materials & Expenses, it subtly implies:
+
+"These are materials that became part of the product I'm selling."
+
+But in your world, you're really tracking:
+
+Drywall mud
+Caulk
+Screws
+Fuel
+Travel
+Permits
+Dump fees
+Tools
+Supplies
+
+From both a contractor's perspective and a tax perspective, those are all job costs, not just materials.
+
+I'd avoid "Materials & Expenses."
+
+I'd consider one of these instead:
+
+Job Costs ⭐⭐⭐⭐⭐ (my favorite)
+Job Revenue
+
+Job Costs
+
+Net Business Profit
+
+Simple.
+
+Works for every industry.
+
+Hair salon?
+
+Color
+Shampoo
+Towels
+Booth rental
+
+Still job costs.
+
+Lawn care?
+
+Fertilizer
+Gas
+String trimmer line
+
+Still job costs.
+
+Operating Costs
+Job Revenue
+
+Operating Costs
+
+Net Business Profit
+
+A little more accounting-oriented.
+
+Direct Job Costs
+
+This is actually a real accounting concept.
+
+It tells the user:
+
+"These are costs directly associated with completing this job."
+
+Includes:
+
+Supplies
+Fuel
+Labor
+Dump fees
+Travel
+Equipment
+Job Expenses
+
+Honestly...
+
+I think Job Expenses is better than Materials & Expenses.
+
+Because that's exactly what they are.
+
+Expenses tied to this job.
+
+I would NOT use
+
+❌ Materials
+
+Because half your deductions aren't materials.
+
+❌ Cost of Goods
+
+Too retail/manufacturing.
+
+❌ COGS
+
+Many contractors don't think in those terms.
+
+My recommendation
+
+I'd rename it to Job Costs everywhere in BuildPro.
+
+Then your financial flow becomes:
+
+Financial Summary
+
+Job Revenue
+
+Job Costs
+
+Net Business Profit
+
+Estimated Fuel Cost
+
+Estimated Operational Profit
+
+Then later in Profit Split:
+
+Job Revenue
+
+Job Costs
+
+↓
+
+Expense Breakdown
+
+↓
+
+Net Business Profit
+
+↓
+
+Growth Reserve
+
+↓
+
+Split Pool
+
+↓
+
+Tax Reserve
+
+↓
+
+Recommended Take Home
+
+I actually think "Job Costs" is the most future-proof name for BuildPro. It works whether the business is a contractor, a hair salon, a landscaper, an auto shop, or a cleaning company. More importantly, it naturally includes supplies, fuel, travel, permits, subcontractors, and any other direct costs without implying that everything is inventory or merchandise. That makes it a much better fit for the multi-industry direction you're taking.
