@@ -1388,9 +1388,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
       fetch(`${BASE}/api/jobs/${job.id}/sub-hours`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
       fetch(`${BASE}/api/owner-capital?jobId=${job.id}`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
     ];
-    if (!initialProfit) {
-      fetches.push(fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" }).then(r => r.ok ? r.json() : null));
-    }
+    // Always fetch the full per-job profit endpoint — the bulk profit-summary used by
+    // the job list omits estimatedFuelCost/fuelStatus, so we must refresh here even
+    // when initialProfit was passed from the parent (it's partial data).
+    fetches.push(fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" }).then(r => r.ok ? r.json() : null));
     Promise.allSettled(fetches).then(results => {
       const [pRes, hRes, dRes, profRes] = results;
       if (pRes.status === "fulfilled" && Array.isArray(pRes.value)) {
