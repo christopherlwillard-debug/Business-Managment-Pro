@@ -1439,7 +1439,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
     return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  const TAB_LABELS: Record<string, string> = { pl: "P&L", breakdown: "Pay Breakdown", hours: "Sub Hours" };
+  const TAB_LABELS: Record<string, string> = { pl: "P&L", breakdown: "Profit Split", hours: "Sub Hours" };
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -1487,56 +1487,13 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <div><p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Collected</p><p className="text-xl font-bold text-emerald-600 mt-0.5">{formatCurrency(profit.collected)}</p></div>
                   <DollarSign className="w-7 h-7 text-emerald-200" />
                 </div>
-                {/* Job Expenses — tappable to expand line items */}
-                <div className={`rounded-xl border border-border/50 bg-muted/20 overflow-hidden ${profit.jobExpenses > 0 ? "cursor-pointer" : ""}`}>
-                  <div
-                    className={`p-4 flex items-center justify-between ${profit.jobExpenses > 0 ? "hover:bg-muted/40 transition-colors active:bg-muted/60" : ""}`}
-                    onClick={profit.jobExpenses > 0 ? toggleExpenses : undefined}
-                  >
-                    <div>
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Job Expenses</p>
-                      <p className="text-xl font-bold text-red-500 mt-0.5">{formatCurrency(profit.jobExpenses)}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Briefcase className="w-7 h-7 text-red-100" />
-                      {profit.jobExpenses > 0 && (
-                        <div className="w-6 h-6 flex items-center justify-center rounded-full bg-muted/60">
-                          {expensesOpen ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
-                        </div>
-                      )}
-                    </div>
+                {/* Job Expenses — summary only; tap expense details in Profit Split tab */}
+                <div className="rounded-xl border border-border/50 bg-muted/20 p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Job Expenses</p>
+                    <p className="text-xl font-bold text-red-500 mt-0.5">{formatCurrency(profit.jobExpenses)}</p>
                   </div>
-                  {expensesOpen && (
-                    <div className="border-t border-border/50 bg-background/60">
-                      {expensesLoading ? (
-                        <div className="p-4 space-y-2">
-                          {[1,2,3].map(i => <div key={i} className="h-8 rounded-lg bg-muted/40 animate-pulse" />)}
-                        </div>
-                      ) : !expenseItems || expenseItems.length === 0 ? (
-                        <div className="px-4 py-5 text-center text-xs text-muted-foreground">No expense line items found</div>
-                      ) : (
-                        <div className="divide-y divide-border/40">
-                          {expenseItems.map(e => (
-                            <div key={e.id} className="px-4 py-2.5 flex items-center gap-3">
-                              <span className="text-[10px] font-semibold bg-muted px-1.5 py-0.5 rounded text-muted-foreground flex-shrink-0 max-w-[80px] truncate">{e.category ?? "Other"}</span>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs text-foreground truncate">{e.description || e.category || "Expense"}</p>
-                                {e.date && <p className="text-[10px] text-muted-foreground">{formatDate(e.date)}</p>}
-                                {e.sourceType === "Material List" && (
-                                  <p className="text-[10px] text-emerald-600 font-medium mt-0.5">Auto-created from Material List</p>
-                                )}
-                              </div>
-                              <span className="text-xs font-semibold text-red-600 tabular-nums flex-shrink-0">{formatCurrency(parseFloat(e.amount))}</span>
-                            </div>
-                          ))}
-                          <div className="px-4 py-2.5 flex items-center justify-between bg-muted/30">
-                            <span className="text-xs font-semibold text-muted-foreground">Total</span>
-                            <span className="text-sm font-bold text-red-600 tabular-nums">{formatCurrency(profit.jobExpenses)}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <Briefcase className="w-7 h-7 text-red-100" />
                 </div>
                 {(profit.auditTrailTotal ?? 0) > 0 && (
                   <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
@@ -1685,7 +1642,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
               </Link>
             </div>
           ) : tab === "breakdown" ? (
-            /* ── Pay Breakdown tab ── */
+            /* ── Profit Split tab ── */
             <div className="space-y-4">
               <div className="flex items-center justify-between bg-muted/30 rounded-xl px-4 py-2.5">
                 <span className="text-xs font-semibold text-muted-foreground">Use Collected Revenue</span>
@@ -1731,9 +1688,49 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                 <div className="divide-y divide-border/30">
                   <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Job Revenue</span><span className="text-sm font-bold text-foreground">${fmt(revenue)}</span></div>
                   {jobExpenses > 0 && <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Materials & Expenses</span><span className="text-sm font-bold text-red-500">−${fmt(jobExpenses)}</span></div>}
+                  {/* Expandable expense drill-down lives here in Profit Split, not in P&L */}
+                  {jobExpenses > 0 && (
+                    <div className="overflow-hidden border-b border-border/30">
+                      <button
+                        type="button"
+                        className="w-full flex items-center justify-between px-4 py-2 bg-muted/10 hover:bg-muted/20 transition-colors active:bg-muted/30"
+                        onClick={toggleExpenses}
+                      >
+                        <span className="text-[11px] text-muted-foreground font-medium">Expense details</span>
+                        {expensesOpen ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+                      </button>
+                      {expensesOpen && (
+                        <div className="bg-background/60">
+                          {expensesLoading ? (
+                            <div className="p-3 space-y-2">
+                              {[1,2,3].map(i => <div key={i} className="h-7 rounded-lg bg-muted/40 animate-pulse" />)}
+                            </div>
+                          ) : !expenseItems || expenseItems.length === 0 ? (
+                            <div className="px-4 py-4 text-center text-xs text-muted-foreground">No expense line items found</div>
+                          ) : (
+                            <div className="divide-y divide-border/40">
+                              {expenseItems.map(e => (
+                                <div key={e.id} className="px-4 py-2.5 flex items-center gap-3">
+                                  <span className="text-[10px] font-semibold bg-muted px-1.5 py-0.5 rounded text-muted-foreground flex-shrink-0 max-w-[80px] truncate">{e.category ?? "Other"}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs text-foreground truncate">{e.description || e.category || "Expense"}</p>
+                                    {e.date && <p className="text-[10px] text-muted-foreground">{formatDate(e.date)}</p>}
+                                    {e.sourceType === "Material List" && (
+                                      <p className="text-[10px] text-emerald-600 font-medium mt-0.5">Auto-created from Material List</p>
+                                    )}
+                                  </div>
+                                  <span className="text-xs font-semibold text-red-600 tabular-nums flex-shrink-0">{formatCurrency(parseFloat(e.amount))}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {jobExpenses > 0 && <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">Job Income</span><span className="text-sm font-bold">${fmt(jobIncome)}</span></div>}
                   <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Hourly Workers</span><span className="text-sm font-bold text-red-500">−${fmt(hourlyWorkers)}</span></div>
-                  <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">Remaining</span><span className="text-sm font-bold">${fmt(afterWorkers)}</span></div>
+                  {hourlyWorkers > 0 && <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">Remaining</span><span className="text-sm font-bold">${fmt(afterWorkers)}</span></div>}
                   <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Growth Reserve (5%)</span><span className="text-sm font-bold text-amber-600">−${fmt(growthReserve)}</span></div>
                   <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">Split Pool</span><span className="text-sm font-bold">${fmt(toSplit)}</span></div>
                   {pctSubs.length > 0 ? (
@@ -4449,7 +4446,7 @@ function JobCard({
             </div>
           )}
 
-          {(job as unknown as Record<string, unknown>).manHours != null && (
+          {(job as unknown as Record<string, unknown>).manHours != null && (profitData == null || (profitData.totalSubHours ?? 0) === 0) && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Timer className="w-3 h-3 flex-shrink-0" />
               <span className="font-medium">{parseFloat(String((job as unknown as Record<string, unknown>).manHours)).toLocaleString(undefined, { maximumFractionDigits: 1 })} man-hrs</span>
