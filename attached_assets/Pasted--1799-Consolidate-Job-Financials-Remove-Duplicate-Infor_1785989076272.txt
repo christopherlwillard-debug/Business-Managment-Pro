@@ -1,0 +1,225 @@
+#1799 - Consolidate Job Financials — Remove Duplicate Information
+
+## What & Why
+
+As BuildPro has grown, the same information is now displayed in multiple places throughout the Job Card and Job Financials panel. While the calculations are correct, the repeated information makes the interface feel crowded and can confuse users about which values actually matter.
+
+This task is focused entirely on improving information hierarchy and reducing duplicate information. No financial calculations or business logic should change.
+
+Current issues include:
+
+- The Job Expenses drill-down (expense line items) is located in the P&L tab, but it's more useful in the Profit Split tab where users are reviewing exactly which costs reduce the split pool.
+- The Job Card displays a manual Man Hours estimate even when actual Labor Summary hours have already been logged through Sub Hours, resulting in two different hour values describing the same job.
+- The "Pay Breakdown" tab is actually performing a profit distribution calculation, not simply showing pay. Renaming it to "Profit Split" better reflects its purpose.
+- The Profit Split breakdown often displays both "Job Income" and "Remaining" with identical values when there are no hourly workers, creating unnecessary duplication.
+
+The goal is to make every piece of information appear in the most appropriate location while reducing repeated values throughout the interface.
+
+---
+
+## Done Looks Like
+
+### P&L Tab
+
+The P&L tab becomes a clean financial summary.
+
+It contains:
+
+- Total Invoiced
+- Collected
+- Job Expenses (summary only)
+- Net Business Profit
+- Estimated Fuel Cost
+- Estimated Operational Profit
+
+The Job Expenses card no longer expands to show line items.
+
+---
+
+### Profit Split Tab
+
+Rename:
+
+"Pay Breakdown"
+
+to
+
+"Profit Split"
+
+The Breakdown section now contains:
+
+- Job Revenue
+- Materials & Expenses
+- Expandable Job Expense Details
+- Job Income
+- Hourly Workers
+- Remaining (only when applicable)
+- Growth Reserve
+- Split Pool
+- Partner Allocations
+- Tax Reserve
+- Recommended Take Home
+
+The expandable Job Expense Details should appear immediately below the "Materials & Expenses" row.
+
+Selecting it displays:
+
+- Expense Description
+- Category Badge
+- Date
+- Amount
+
+This allows users to see exactly which expenses reduced the available profit before reviewing the split.
+
+---
+
+### Job Card
+
+The manual Man Hours display should only appear when:
+
+- A manual Man Hours estimate exists
+AND
+- No actual Sub Hours have been logged.
+
+Once Sub Hours exist, Labor Summary becomes the single source of truth and the manual estimate is hidden.
+
+This prevents duplicate hour information from appearing on the Job Card.
+
+---
+
+### Profit Split Breakdown
+
+Hide the "Remaining" row whenever:
+
+Remaining == Job Income
+
+This occurs when there are no hourly workers and both values are identical.
+
+Displaying the same number twice adds unnecessary visual clutter.
+
+---
+
+## Out of Scope
+
+- Splitting Owner Pay into a separate tab.
+- Redesigning the Job Card summary widget.
+- Modifying any financial calculations.
+- Changing Labor Summary or time logging functionality.
+
+This task is display and UX refinement only.
+
+---
+
+## Implementation Steps
+
+### 1. Rename Tab
+
+Rename:
+
+Pay Breakdown
+
+to
+
+Profit Split
+
+Update:
+
+- Tab labels
+- TAB_LABELS map
+- Any references throughout the JobFinancialsPanel.
+
+---
+
+### 2. Move Expense Drill-Down
+
+Remove the expandable Job Expenses list from the P&L tab.
+
+The P&L tab should only display the Job Expenses total.
+
+Move the expandable expense list into the Profit Split tab.
+
+Place it immediately below:
+
+Materials & Expenses
+
+within the Breakdown section.
+
+Move:
+
+- expensesOpen
+- expenseItems
+- expensesLoading
+- loadExpenses()
+- toggleExpenses()
+
+and the rendered expandable component.
+
+No backend logic changes are required.
+
+---
+
+### 3. Hide Duplicate Remaining Row
+
+Within the Profit Split Breakdown:
+
+If:
+
+hourlyWorkers == 0
+
+or
+
+Remaining == Job Income
+
+hide the Remaining row entirely.
+
+This removes duplicate values while preserving the existing calculations.
+
+---
+
+### 4. Hide Manual Man Hours
+
+On the Job Card:
+
+Currently:
+
+Display:
+
+job.manHours
+
+Update the rendering so manual Man Hours are only displayed when:
+
+- job.manHours exists
+- totalSubHours == 0
+
+If actual labor has been logged, Labor Summary becomes the single source of truth.
+
+---
+
+## Design Principle
+
+Every piece of data should have one owner.
+
+The Job Card should summarize information.
+
+The Job Financials panel should own all financial detail.
+
+Labor Summary should own labor hours.
+
+Expense details should live where users evaluate profit distribution, not inside the P&L summary.
+
+This refinement improves readability, reduces visual clutter, and makes the workflow easier to understand without changing any business logic.
+
+---
+
+## Relevant Files
+
+artifacts/contractor-app/src/pages/Jobs.tsx
+
+Sections:
+
+- JobFinancialsPanel
+- P&L Tab
+- Profit Split Tab
+- Job Card
+- Manual Man Hours display
+- Expense drill-down component
