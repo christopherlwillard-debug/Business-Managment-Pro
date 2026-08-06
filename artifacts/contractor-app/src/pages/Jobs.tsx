@@ -3014,7 +3014,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                                     }
                                   }}
                                   className="flex-1 px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary/20" />
-                                <span className="text-[10px] text-purple-600 font-medium">→ Pay Breakdown</span>
+                                <span className="text-[10px] text-purple-600 font-medium">→ Profit Split</span>
                               </div>
                             )}
                           </div>
@@ -4260,7 +4260,7 @@ function JobCard({
   async function handleMarkSubPaidInline(sub: OutstandingSubRow) {
     const amount = outstandingAmount(sub);
     if (amount <= 0) {
-      toast({ title: "Amount unknown", description: "Open Pay Breakdown to set this sub's amount before marking paid.", variant: "destructive" });
+      toast({ title: "Amount unknown", description: "Open Profit Split to set this sub's amount before marking paid.", variant: "destructive" });
       return;
     }
     setMarkingSubId(sub.subcontractorId);
@@ -4689,7 +4689,7 @@ function JobCard({
           <span className="text-[10px] text-muted-foreground">Travel receipts</span>
         </button>
 
-        {/* Job Financials — consolidated P&L, Pay Breakdown, Sub Hours */}
+        {/* Job Financials — consolidated P&L, Profit Split, Sub Hours */}
         <button
           onClick={() => { setFinancialsInitialTab("pl"); setFinancialsPanelOpen(true); }}
           className="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/80 transition-colors text-xs font-medium text-amber-700 w-full">
@@ -4845,7 +4845,7 @@ function JobCard({
                           onClick={() => { setFinancialsInitialTab("breakdown"); setFinancialsPanelOpen(true); }}
                           className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 text-amber-700 text-[10px] font-bold hover:bg-amber-200 transition-colors border border-amber-300">
                           <PieChart className="w-3 h-3" />
-                          Pay Breakdown
+                          Profit Split
                         </button>
                       )}
                     </div>
