@@ -156,6 +156,30 @@ export const RoutingEngine = {
     return result;
   },
 
+  /**
+   * Look up a cached route without making any network calls.
+   * Returns the cached RouteResult if a live entry exists, or null if the
+   * route has never been computed or the entry has expired.
+   * Use this in bulk endpoints where triggering new routing calls would be too expensive.
+   */
+  getCachedRoute({
+    origin,
+    destination,
+  }: {
+    origin: string;
+    destination: string;
+  }): RouteResult | null {
+    const o = origin.trim();
+    const d = destination.trim();
+    if (!o || !d) return null;
+    const cacheKey = `${o.toLowerCase()}|${d.toLowerCase()}`;
+    const entry = routeCache.get(cacheKey);
+    if (entry && entry.expiresAt > Date.now()) {
+      return { ...entry.result, cached: true };
+    }
+    return null;
+  },
+
   /** Expose cache stats for diagnostics (e.g. admin routes). */
   cacheSize(): number {
     return routeCache.size;

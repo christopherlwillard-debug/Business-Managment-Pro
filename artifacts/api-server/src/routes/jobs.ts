@@ -669,7 +669,7 @@ router.get("/profit-summary", async (req, res) => {
     const flatSubCostMap: Record<number, number> = {};
     for (const id of jobIds) flatSubCostMap[id] = 0;
 
-    const result: Record<number, { grossInvoiced: number; collected: number; jobExpenses: number; subLaborCost: number; allocPaid: number; totalSubHours: number; manHours: number | null; netProfit: number }> = {};
+    const result: Record<number, { grossInvoiced: number; collected: number; jobExpenses: number; subLaborCost: number; allocPaid: number; totalSubHours: number; manHours: number | null; netProfit: number; estimatedFuelCost?: number | null }> = {};
     for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, jobExpenses: 0, subLaborCost: 0, allocPaid: 0, totalSubHours: 0, manHours: null, netProfit: 0 };
 
     for (const inv of invRows) {
@@ -710,6 +710,58 @@ router.get("/profit-summary", async (req, res) => {
       const trackedHours = hoursCountMap.get(id) ?? 0;
       result[id].totalSubHours = trackedHours;
       result[id].manHours = manHoursMap.get(id) ?? null;
+    }
+
+    // ── Estimated fuel cost from cache (informational only — never affects accounting) ──
+    // Only reads the RoutingEngine in-memory cache; never triggers new routing calls.
+    // Jobs whose route hasn't been fetched yet (e.g. job-card not opened) get null.
+    try {
+      const [[settingsRow], defaultVehicles, jobAddressRows] = await Promise.all([
+        db.select({
+          companyAddress: settingsTable.companyAddress,
+          companyCity: settingsTable.companyCity,
+          companyState: settingsTable.companyState,
+        }).from(settingsTable).limit(1),
+        db.select({
+          avgMpg: vehiclesTable.avgMpg,
+          fuelPricePerGallon: vehiclesTable.fuelPricePerGallon,
+        }).from(vehiclesTable).where(eq(vehiclesTable.isDefault, true)).limit(1),
+        db.select({
+          id: jobsTable.id,
+          address: jobsTable.address,
+          city: jobsTable.city,
+          state: jobsTable.state,
+        }).from(jobsTable).where(inArray(jobsTable.id, jobIds)),
+      ]);
+
+      const businessAddr = [settingsRow?.companyAddress, settingsRow?.companyCity, settingsRow?.companyState]
+        .filter(Boolean).join(", ");
+
+      const DEFAULT_FUEL_PRICE = 3.50;
+      const defaultVehicle = defaultVehicles[0] ?? null;
+      const rawFuelPrice = defaultVehicle?.fuelPricePerGallon ?? null;
+      const fuelPrice = rawFuelPrice != null ? parseFloat(String(rawFuelPrice)) : DEFAULT_FUEL_PRICE;
+      const mpg: number = defaultVehicle?.avgMpg ?? 17;
+
+      if (businessAddr && fuelPrice > 0) {
+        for (const jobRow of jobAddressRows) {
+          const jobAddr = [jobRow.address, jobRow.city, jobRow.state].filter(Boolean).join(", ");
+          if (!jobAddr) continue;
+
+          const cached = RoutingEngine.getCachedRoute({ origin: businessAddr, destination: jobAddr });
+          if (!cached || cached.miles == null) continue;
+
+          const vehicleCost = VehicleEngine.operatingCost({
+            onewayMiles: cached.miles,
+            daysOnJob: 1, // bulk summary uses 1 day — full panel shows actual logged days
+            vehicleProfile: { avgMpg: mpg, fuelPricePerGallon: fuelPrice },
+          });
+          result[jobRow.id].estimatedFuelCost = vehicleCost.fuelCost;
+        }
+      }
+    } catch (fuelErr) {
+      // Fuel enrichment is best-effort — never fail the bulk endpoint
+      console.warn("[profit-summary] fuel cache lookup skipped:", fuelErr);
     }
 
     res.json(result);

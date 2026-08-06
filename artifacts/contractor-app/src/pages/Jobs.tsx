@@ -4516,6 +4516,17 @@ function JobCard({
                   {profitData.netProfit > 0 ? "+" : ""}{formatCurrency(profitData.netProfit)}
                 </p>
               </div>
+              {profitData.estimatedFuelCost != null && (
+                <>
+                  <div className="col-span-2 border-t border-border/40 mt-0.5 pt-1.5 flex items-center justify-between">
+                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <Fuel className="w-2.5 h-2.5 text-amber-500 flex-shrink-0" />
+                      Est. Fuel (1 day)
+                    </span>
+                    <span className="font-semibold text-amber-600 text-[11px]">-{formatCurrency(profitData.estimatedFuelCost)}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
