@@ -116,3 +116,6 @@ channel = "stable-25_05"
 PUPPETEER_CACHE_DIR = "/home/runner/workspace/.puppeteer-cache"
 
 [userenv.production]
+
+[objectStorage]
+defaultBucketID = "replit-objstore-207adee8-caae-4260-8b77-11f910d85b95"
