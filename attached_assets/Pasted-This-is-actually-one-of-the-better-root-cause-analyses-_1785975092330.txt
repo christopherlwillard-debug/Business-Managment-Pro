@@ -1,0 +1,258 @@
+This is actually one of the better root-cause analyses I've seen from Replit. It isn't proposing another random fix—it identified a violation of one of your own architecture rules.
+
+The important part is this:
+
+The job card already knows the business distance ("3.3 mi from shop"), but the profit route calculates the distance again using different code.
+
+If that's true, then it violates:
+
+Rule 1 – Single Source of Truth
+Rule 4 – One Calculation Engine
+Rule 6 – Extend Before Create
+Rule 13 – Build Engines, Not Screens
+
+There should only be one business-distance calculation in the entire application.
+
+I would make one change to Task #1780
+
+Don't let Replit simply "extract a helper." Make it prove there aren't multiple implementations left.
+
+I'd rewrite the task slightly:
+
+#1780 - Fix Estimated Fuel Cost not appearing on Job Financials
+
+Before making any code changes, complete the Architecture Review Checklist.
+
+Debug requirements (required before implementation):
+
+1. Locate every implementation of:
+   - business distance calculation
+   - OSRM routing
+   - estimatedFuelCost calculation
+
+2. List every file using those calculations.
+
+3. Identify which implementation is the Single Source of Truth.
+
+4. Remove all duplicate implementations.
+
+Implementation requirements:
+
+- The Job Card distance.
+- Estimated Fuel Cost.
+- Operational Profit calculations.
+- Any future routing features.
+
+must all use the exact same shared distance engine.
+
+The distance engine must exist in only one place.
+
+The profit route must never perform its own routing or geocoding.
+
+No duplicated OSRM calls.
+
+No duplicated address parsing.
+
+No duplicated cache.
+
+The Profit API must consume the shared distance service exactly the same way the Job Card does.
+
+Validation
+
+Show:
+
+✓ Number of distance engines before
+✓ Number after (must equal 1)
+
+✓ EstimatedFuelCost value returned by the API
+
+✓ Business distance shown on the card
+
+✓ Fuel calculation:
+Distance
+÷ MPG
+× Fuel Price
+= Estimated Fuel Cost
+
+If these numbers don't match, the task is not complete.
+This is also another Constitution rule.
+
+I'd add something like this:
+
+Rule 51 — One Service Per Domain
+
+If a business capability already exists as a service or engine (distance calculation, tax calculation, pricing engine, payroll engine, inventory engine, etc.), every feature must call that service. Features may never implement their own version of the same logic. If duplicate implementations are found, they must be consolidated before new functionality is added.
+
+That rule would have prevented this issue entirely.
+
+One thing I would ask Replit to verify
+
+The only thing I don't want it to assume is that /api/business-distance is actually the correct source.
+
+Have it prove that:
+
+the job card uses /api/business-distance
+the distance shown ("3.3 mi from shop") comes from that endpoint
+that endpoint returns the correct mileage
+
+If those three are true, then yes—the profit route should absolutely reuse that same engine instead of recalculating everything independently.
+
+Ad
+there should be two distances calculated depending on the job. If manufacted home job (production or service) then it goes from my business address to job site, and client address (clayton, cavco, ect) to jobsite now if its just general contracting jobs then its just from my business address
+
+I actually think that's the correct architecture, and it's a good distinction. The mistake isn't that there are two types of distance—it's if there are two engines calculating the same type of distance.
+
+I would define it like this:
+
+Distance Engine (one engine)
+
+One shared routing engine should calculate driving distance between any two addresses.
+
+calculateDrivingDistance(origin, destination)
+
+Input:
+- Origin Address
+- Destination Address
+
+Output:
+- Miles
+- Drive Time
+- Route Status
+
+Every feature uses this one engine.
+
+Then each module asks for a different route
+General Contracting
+Business
+      │
+      ▼
+Job Site
+
+Produces:
+
+Business Distance
+Drive Time
+Estimated Fuel Cost
+Operational Cost
+Manufactured Housing
+
+Needs TWO completely different calculations.
+
+Operational Distance
+Business
+      │
+      ▼
+Job Site
+
+Used for:
+
+Fuel
+Crew planning
+Travel time
+Internal cost
+Client Distance
+Clayton / Cavco / Champion
+            │
+            ▼
+         Job Site
+
+Used for:
+
+Mileage billing
+Client surcharge
+Production rules
+Distance reporting
+
+This one has nothing to do with fuel cost.
+
+That's the important distinction.
+
+You do not want two routing engines.
+
+You want:
+
+Distance Engine
+
+used by
+
+Business → Job
+
+Client → Job
+
+Vendor → Job
+
+Warehouse → Job
+
+Storage Yard → Job
+
+The engine shouldn't care who the origin is.
+
+I would even make it generic.
+
+Instead of functions like:
+
+getBusinessDistance()
+
+or
+
+getClientDistance()
+
+I'd build:
+
+calculateDrivingRoute({
+    origin,
+    destination
+})
+
+Then the callers decide:
+
+Business → Job
+
+or
+
+Client → Job
+
+or
+
+Supplier → Job
+
+Same routing engine.
+
+This also future-proofs BuildPro.
+
+Later you'll probably add:
+
+Supplier → Job
+Warehouse → Job
+Crew Member → Job
+Equipment Yard → Job
+Dumpster Company → Job
+
+Every one of those is just:
+
+Origin
+↓
+
+Destination
+↓
+
+Distance Engine
+
+↓
+
+Miles
+Time
+Fuel
+I would add one more Constitution rule because this is exactly the situation you're running into.
+
+Rule 52 — One Engine, Many Workflows
+
+Similar business workflows may require different inputs or outputs, but they must share the same underlying engine. Never duplicate an engine because two workflows are different. Instead, build one reusable engine that accepts configurable inputs and let each workflow consume its results differently.
+
+Example:
+
+Manufactured Home: Business → Job and Client → Job both use the same Distance Engine.
+General Contracting: Business → Job uses the same Distance Engine.
+Future modules (Supplier → Job, Warehouse → Job) must also reuse that engine.
+
+I think that's the architecture you're actually aiming for, and it's much stronger than simply saying "there should only be one distance calculation." There should be one routing engine capable of calculating many different routes.
