@@ -1,0 +1,88 @@
+BuildPro Feature Request – Create Job Expense from Material List
+
+Objective
+
+Add the ability to create a real Job Expense directly from an individual material line while building the Material List. This eliminates duplicate data entry and ensures accurate job costing.
+
+Material Line
+
+Each material line should include a checkbox:
+
+☐ Add Cost to Job Expenses
+
+This checkbox is per material, not for the entire material list.
+
+⸻
+
+Behavior
+
+If unchecked
+
+* Material is added to the invoice.
+* Customer is billed normally.
+* No Job Expense is created.
+* Used for materials already owned by the business (existing stock, trailer inventory, leftover materials, etc.).
+
+If checked
+
+When the material is saved:
+
+* Automatically create a Job Expense.
+* Expense Category = Materials.
+* Expense Amount = Material Cost (before markup).
+* Description = Material Description.
+* Link the expense to the originating material line.
+* Include the expense in Job Profit calculations.
+* Include the expense in Accounting & Tax reports.
+* Display the expense on the Job Card under the Expenses section.
+
+⸻
+
+Example
+
+Material List
+
+Material	Qty	Cost	Sell Price	Add Cost to Job Expenses
+90° PVC Elbow	2	$1.92	$7.68	☐
+Toilet	1	$180.00	$275.00	☑
+
+⸻
+
+Invoice
+
+90° PVC Elbow     $15.36
+Toilet           $275.00
+
+⸻
+
+Job Card → Expenses
+
+Materials
+Toilet
+$180.00
+Source:
+Auto-created from Material List
+
+The PVC elbows do not appear in Expenses because they were already owned by the business and did not require a new purchase.
+
+⸻
+
+Synchronization Rules
+
+* Editing the material quantity or cost automatically updates the linked Job Expense.
+* Deleting the material automatically removes the linked Job Expense if it has not been manually modified.
+* Manual Job Expenses continue to function exactly as they do today.
+
+⸻
+
+Goal
+
+This feature allows contractors to decide material by material whether that item should become a real business expense.
+
+Examples:
+
+* Purchased specifically for the job → Check Add Cost to Job Expenses.
+* Already had the material on the truck or shelf → Leave unchecked.
+* Customer is billed for both materials regardless.
+
+This keeps invoicing simple while ensuring the Job Card, Accounting, and Profit calculations reflect only the actual costs incurred by the business.
