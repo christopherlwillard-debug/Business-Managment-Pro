@@ -1,0 +1,398 @@
+This is what it came up with. Still a bunch of shit everywhere 
+
+I actually think you're onto something.
+
+After looking at all of the screenshots, I don't think you need both a P&L tab and a Profit Split tab. The Profit Split screen already tells the complete financial story of the job.
+
+The P&L tab is mostly repeating information.
+
+For example:
+
+P&L
+
+Total Invoiced
+Collected
+Job Expenses
+Net Business Profit
+Estimated Fuel Cost
+Estimated Operational Profit
+
+Profit Split
+
+Job Revenue
+Materials & Expenses
+Expense Details
+Job Income
+Growth Reserve
+Split Pool
+Partner Split
+Tax Reserve
+Recommended Take Home
+
+The Profit Split screen answers far more questions.
+
+How much did the job make?
+What expenses reduced it?
+How much goes to growth?
+How much gets split?
+What is my share?
+How much should I reserve for taxes?
+What should I actually take home?
+
+That's the workflow you actually use after completing a job.
+
+What I'd do instead
+
+I would completely remove the P&L tab.
+
+Keep the small 4-number summary on the Job Card:
+
+Invoiced
+Collected
+Expenses
+Net Profit
+
+That's your dashboard.
+
+Then when you tap Job Financials, open directly into Profit Split.
+
+The first section of Profit Split becomes a financial summary:
+
+Revenue              $2,500.00
+Expenses             -$88.57
+──────────────────────────────
+Net Business Profit  $2,411.43
+
+Then directly below:
+
+▼ Expense Details
+
+Expand to show every expense.
+
+Then continue with:
+
+Growth Reserve
+
+Split Pool
+
+Partner Split
+
+Tax Reserve
+
+Recommended Take Home
+
+That gives you one continuous flow instead of making you switch tabs to see related information.
+
+The only other tab I'd keep is Sub Hours, because it's a completely different function. It's not financial—it's labor management.
+
+So your Job Financials panel becomes:
+
+Profit Split
+Sub Hours
+
+That's it.
+
+I think it will actually feel faster because you're no longer asking yourself, "Which tab was that number on?" Everything about the money lives in one place, and the Job Card remains the high-level overview.
+
+But the whole job card needs work like this 
+
+Yes. Looking at your latest screenshots, I think the entire Job Card needs to be redesigned from a workflow perspective, not just cleaned up.
+
+Right now every feature you build becomes another card.
+
+Instead, the Job Card should answer one question:
+
+"What do I need to do on this job right now?"
+
+Everything else should be secondary.
+
+I'd redesign it something like this:
+
+Job Header
+Job Name
+Client
+Status
+Job Type
+Schedule
+Quick Actions (Edit, Delete)
+Financial Snapshot (always visible)
+
+Instead of two financial sections:
+
+Invoice
+$2,500
+
+Expenses
+$88.57
+
+Net Profit
+$2,411.43
+
+Outstanding
+$2,500
+
+Tap anywhere → Opens Profit Split.
+
+Remove the separate Job Financials card completely.
+
+Work Section
+
+Collapse everything work-related into one expandable section.
+
+▼ Work
+
+Materials
+Checklist
+Photos
+Manufactured Home
+Notes
+
+Manufactured Home only appears for MH jobs.
+
+Crew Section
+▼ Crew
+
+Labor Summary
+Subcontractors
+Hours
+Worker Pay
+
+Everything crew-related stays together.
+
+No Worker Pay card at the bottom.
+
+Travel Section
+▼ Travel
+
+Mileage
+Business Trips
+Fuel
+
+Only appears if used.
+
+Documents
+▼ Documents
+
+Invoice
+
+Estimate
+
+Attachments
+Footer Actions
+Mark Complete
+
+Send Invoice
+
+Record Payment
+Biggest thing I'd remove
+
+This:
+
+Job P&L widget
+Job Financials card
+
+Those are really the same feature.
+
+The P&L widget becomes the entry point.
+
+Tap it.
+
+Open Profit Split.
+
+Done.
+
+Another thing
+
+Your current card order is based on when you built the feature, not how you use the app.
+
+For example:
+
+Materials
+
+Manufactured Home
+
+Labor
+
+Checklist
+
+Trips
+
+Financials
+
+Invoice
+
+Worker Pay
+
+That's feature order.
+
+I'd organize it by workflow.
+
+Overview
+
+↓
+
+Work
+
+↓
+
+Crew
+
+↓
+
+Money
+
+↓
+
+Documents
+
+↓
+
+Complete Job
+
+That matches how you actually run a job from start to finish.
+
+I actually think this is worth a major milestone.
+
+I'd call it:
+
+#1801 - Job Card UX Redesign & Workflow Architecture
+
+Not a visual redesign.
+
+A workflow redesign.
+
+Because BuildPro has reached the point where adding more features is giving diminishing returns. The next big improvement is making all of those features work together in a way that feels natural instead of feeling like independent cards stacked on top of each other.
+
+Today 7:58 AM
+no i want it to look less condenced like if there isnt a need for it or if it just adds one screen instead of mulitple then thats best i like to see everything in one place instead of searching for it
+
+I actually think that's one of BuildPro's strengths, and I wouldn't move toward hiding everything in accordions if that's not how you work.
+
+Looking at your screenshots, I don't think the app feels crowded because there is too much information. It feels crowded because there is too much duplicated information and because some cards don't earn their space.
+
+For example:
+
+Keep visible (these are useful)
+✅ Job Header
+✅ P&L Snapshot
+✅ Materials
+✅ Labor Summary
+✅ Invoice
+✅ Worker Pay Due
+✅ Complete Job
+
+I can glance at those and know the status of the job.
+
+These feel redundant
+
+Job Financials card
+
+You already have:
+
+Job P&L
+
+Invoiced
+Collected
+Expenses
+Net Profit
+
+Then another card:
+
+Job Financials
++$2,411.43
+
+That card is only acting like a button. It doesn't tell me anything new.
+
+Instead, make the P&L card tappable.
+
+Now you've removed an entire card.
+
+P&L Tab
+
+It repeats:
+
+Revenue
+Expenses
+Net Profit
+
+Those already exist on the Job Card.
+
+I'd remove the P&L tab completely and open directly to Profit Split.
+
+Sub Hours
+
+This shouldn't be in Job Financials at all.
+
+It's labor.
+
+Labor Summary already exists on the Job Card.
+
+When I tap Labor Summary, then I should see Sub Hours.
+
+The manual Man Hours field
+
+If Labor Summary already says:
+
+32 hours
+2 workers
+4 days
+
+Then this...
+
+32 hrs work
+
+...isn't adding anything.
+
+That's one whole row that can disappear.
+
+Worker Pay
+
+I actually like the Worker Pay card.
+
+Because it's actionable.
+
+I can immediately see:
+
+Who needs paid
+How much
+Mark Paid
+
+That's useful.
+
+My rule would be this:
+
+Every card should answer one of these questions:
+
+What is happening?
+What do I need to do?
+What money is involved?
+
+If a card only exists to open another screen, it probably shouldn't be a card.
+
+One thing I noticed
+
+The spacing is actually pretty tight.
+
+For example, Labor Summary has:
+
+Workers
+
+Work
+
+Travel
+
+↓
+
+2 workers • 4 days
+
+↓
+
+32 hrs work
+
+The last line is basically repeating the middle section.
+
+If you remove little duplicate lines like that throughout the app, you'll gain a surprising amount of breathing room without hiding anything.
+
+I think BuildPro should lean into being a single-screen management app where you can scroll one page and see everything. That's a real advantage over apps that bury everything behind tabs and menus.
+
+The key isn't showing less—it's making sure every piece of information appears only once. If a number or status is already visible somewhere, don't show it again unless it's adding new context. That approach will make the app feel much cleaner while keeping everything accessible at a glance.
