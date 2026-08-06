@@ -1,0 +1,204 @@
+1796 - Auto-create Job Expense from Material Line
+
+What & Why
+
+When building a material list, contractors often purchase some materials specifically for a job while using others they already have on hand.
+
+Currently they must:
+
+1. Add the material to the Material List.
+2. Add the same material again as a Job Expense.
+
+This duplicates data entry and increases the chance of incorrect job costing.
+
+This feature adds a per-material checkbox, “Add Cost to Job Expenses.”
+
+When enabled, BuildPro automatically creates and maintains a linked Job Expense using the material’s cost (before markup).
+
+Materials that are already owned by the business simply remain unchecked—they are billed to the customer but do not generate a new business expense.
+
+⸻
+
+Done Looks Like
+
+* Each material line includes an “Add Cost to Job Expenses” checkbox (default = unchecked).
+* Saving a checked material automatically creates a linked Job Expense.
+* Expense Category = Materials.
+* Expense Amount = Unit Cost × Quantity.
+* Expense Description = Material Name.
+* Expense is linked to the originating Material List Item.
+* Expense appears on the Job Card under Expenses.
+* Expense displays an “Auto-created from Material List” badge.
+* Expense is included everywhere normal expenses are used:
+    * Job Profit
+    * Accounting
+    * Profit & Loss
+    * Tax Reports
+* Editing the Quantity or Unit Cost automatically updates the linked expense.
+* Unchecking the checkbox removes the linked expense (if still auto-managed).
+* Deleting the material removes the linked expense (if still auto-managed).
+* Unchecked materials continue to behave exactly as they do today.
+
+⸻
+
+Out of Scope
+
+* Bulk enable/disable for an entire material list.
+* Retroactively linking historical materials to expenses.
+* Inventory management.
+* Changes to invoice synchronization (syncMaterialsToJobInvoice).
+
+⸻
+
+Implementation Steps
+
+1. Database Schema
+
+material_list_items
+
+Add the following columns:
+
+* add_to_job_expenses BOOLEAN DEFAULT FALSE
+* expense_id INTEGER NULL REFERENCES expenses(id) ON DELETE SET NULL
+
+expenses
+
+Add the following fields to identify auto-generated expenses without relying on descriptions:
+
+* source_type TEXT NULL
+* source_id INTEGER NULL
+
+source_type values may include:
+
+* Manual
+* Material List
+* Mileage
+* Travel
+* Payroll
+* Equipment
+* Fuel
+* Future Automation
+
+These fields allow BuildPro to safely determine whether an expense is auto-generated and linked to another feature.
+
+⸻
+
+2. API - Create Material List
+
+When creating a Material List:
+
+For every material where addToJobExpenses = true:
+
+* Create a Job Expense.
+* Category = Materials.
+* Amount = Unit Cost × Quantity.
+* Description = Material Name.
+* sourceType = Material List.
+* sourceId = Material List Item ID.
+
+After creating the expense:
+
+* Save the generated expense_id back onto the material list item.
+
+⸻
+
+3. API - Update Material List
+
+When updating a Material List:
+
+For each material:
+
+If the linked expense already exists:
+
+* Update the expense amount.
+* Update the expense description.
+
+If the material was newly checked:
+
+* Create a new linked expense.
+
+If the material was unchecked:
+
+* Delete the linked expense if sourceType = Material List.
+* Clear the material’s expense_id.
+
+If the material was deleted:
+
+* Delete the linked expense if sourceType = Material List.
+
+Do not rely on comparing descriptions or categories to determine ownership. Use sourceType and sourceId instead.
+
+⸻
+
+4. API - Delete Material List
+
+Before deleting the Material List:
+
+* Delete every linked expense where sourceType = Material List.
+* Then delete the Material List and its items.
+
+⸻
+
+5. Frontend
+
+Add an “Add Cost to Job Expenses” checkbox to every material row.
+
+Store with each item:
+
+* addToJobExpenses
+* expenseId
+
+Include both fields in create and update payloads.
+
+⸻
+
+6. Job Card
+
+Auto-created expenses should appear in the Job Card → Expenses section exactly like manually entered expenses.
+
+Display a badge beneath the expense:
+
+Auto-created from Material List
+
+This makes it clear where the expense originated.
+
+⸻
+
+Profit Engine
+
+No changes are required.
+
+Because these are real Job Expenses, they automatically participate in:
+
+* Job Cost
+* Profit Split
+* Accounting
+* Profit & Loss
+* Tax Reports
+
+No special calculation logic is needed.
+
+⸻
+
+Future Compatibility
+
+Using sourceType and sourceId creates a reusable pattern for future BuildPro automation, including:
+
+* Mileage Expenses
+* Travel Expenses
+* Payroll Allocations
+* Equipment Usage
+* Fuel Purchases
+* AI-generated Expenses
+
+All future automation can use the same linking mechanism.
+
+⸻
+
+Relevant Files
+
+* lib/db/src/schema/material-lists.ts
+* lib/db/src/migrations/0003_material_lists.sql
+* artifacts/api-server/src/routes/material-lists.ts
+* artifacts/api-server/src/routes/jobs.ts
+* artifacts/contractor-app/src/pages/Materials.tsx
