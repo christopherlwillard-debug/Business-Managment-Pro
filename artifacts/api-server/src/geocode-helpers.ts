@@ -105,6 +105,50 @@ export async function nominatimGeocode(
   }
 }
 
+export async function googleMapsGeocode(
+  fullAddress: string
+): Promise<GeoProviderResult> {
+  try {
+    const apiKey = process.env.VITE_GOOGLE_API_KEY;
+    if (!apiKey) {
+      return { ok: false, error: "VITE_GOOGLE_API_KEY not configured" };
+    }
+
+    const params = new URLSearchParams({ address: fullAddress, key: apiKey });
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?${params}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+
+    if (!res.ok) {
+      console.warn(`[geocode] Google Maps provider error: HTTP ${res.status}`);
+      return { ok: false, error: `Google Maps HTTP ${res.status}` };
+    }
+
+    const data = await res.json();
+    if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+      console.warn(`[geocode] Google Maps API status: ${data.status}`);
+      return { ok: false, error: `Google Maps status ${data.status}` };
+    }
+
+    const results: Array<{ formatted_address: string; geometry: { location: { lat: number; lng: number } } }> =
+      data.results ?? [];
+
+    return {
+      ok: true,
+      matches: results.map((r) => ({
+        display_name: r.formatted_address,
+        lat: String(r.geometry.location.lat),
+        lon: String(r.geometry.location.lng),
+        type: "house",
+      })),
+    };
+  } catch (err) {
+    console.warn("[geocode] Google Maps provider exception:", err);
+    return { ok: false, error: String(err) };
+  }
+}
+
 export async function geocodeAddressString(
   fullAddress: string
 ): Promise<{ lat: number; lng: number } | null> {
@@ -125,6 +169,12 @@ export async function geocodeAddressString(
   const nominatim = await nominatimGeocode(street, city, state, zip);
   if (nominatim.ok && nominatim.matches.length > 0) {
     return { lat: parseFloat(nominatim.matches[0].lat), lng: parseFloat(nominatim.matches[0].lon) };
+  }
+
+  console.log(`[geocode] Census + Nominatim both failed for "${fullAddress}", trying Google Maps`);
+  const google = await googleMapsGeocode(fullAddress);
+  if (google.ok && google.matches.length > 0) {
+    return { lat: parseFloat(google.matches[0].lat), lng: parseFloat(google.matches[0].lon) };
   }
 
   return null;
