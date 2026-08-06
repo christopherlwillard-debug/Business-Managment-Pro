@@ -1,0 +1,176 @@
+I think this is about a 9.5/10 now. It's become an architecture task instead of a bug fix, which is exactly the direction BuildPro needs to go.
+
+There are only two things I'd change.
+
+1. Don't let the Route Engine calculate business-specific formulas
+
+Right now you have:
+
+RouteEngine.calculate()
+
+returns
+
+miles
+driveTimeMinutes
+estimatedFuelGallons
+estimatedFuelCost
+...
+
+I actually think fuel gallons and fuel cost don't belong in the Route Engine.
+
+Why?
+
+The Route Engine should answer one question:
+
+"How do I get from A to B?"
+
+It shouldn't know anything about:
+
+trucks
+MPG
+diesel
+gas
+electric
+business rules
+
+That's a different domain.
+
+Instead I'd split it.
+
+Route Engine
+
+returns
+
+miles
+duration
+geometry (future)
+cache
+provider
+
+Then
+
+Vehicle Engine
+
+takes
+
+Route
++
+Vehicle Profile
+
+and returns
+
+fuel gallons
+fuel cost
+wear & tear
+maintenance estimate
+CO₂
+future towing adjustments
+
+Later if someone drives
+
+F150
+Transit
+Tesla
+Diesel 3500
+
+the Route Engine never changes.
+
+2. Rename it to Routing Engine
+
+Small thing, but I think it'll age better.
+
+Instead of
+
+RouteEngine
+
+I'd call it
+
+RoutingEngine
+
+because it's providing a routing service.
+
+That seems minor now, but in five years you'll probably have:
+
+RoutingEngine
+
+VehicleEngine
+
+TaxEngine
+
+ProfitEngine
+
+InventoryEngine
+
+PayrollEngine
+
+PricingEngine
+
+PermitEngine
+
+They all become consistent.
+
+Long-term architecture I'd aim for
+Jobs
+
+    │
+
+    ▼
+
+Routing Engine
+    │
+    ├── Business → Job
+    ├── Client → Job
+    ├── Supplier → Job
+    ├── Warehouse → Job
+    └── Equipment Yard → Job
+
+    │
+
+    ▼
+
+Vehicle Engine
+    │
+    ├── Fuel Cost
+    ├── Gallons
+    ├── Maintenance
+    ├── Depreciation
+    └── Operating Cost
+
+    │
+
+    ▼
+
+Profit Engine
+
+Notice:
+
+The Profit Engine doesn't know how fuel is calculated.
+
+It just asks:
+
+VehicleEngine
+
+↓
+
+Operational Fuel Cost
+
+Exactly the same philosophy you've been building elsewhere.
+
+One more Constitution rule I think would be valuable
+
+You've written a lot about avoiding duplicate code, but not much about separating responsibilities.
+
+I'd add:
+
+Rule 54 — Engines Have One Responsibility
+
+Each engine owns exactly one business domain. Routing determines routes. Vehicles determine operating costs. Taxes determine tax liability. Profit determines profitability. Engines may consume results from other engines, but they may not absorb responsibilities that belong to another engine. This keeps BuildPro modular, testable, and extensible.
+
+That rule complements Rules 51–53 nicely:
+
+51 = Don't duplicate services.
+52 = One engine can serve many workflows.
+53 = An engine owns its calculations.
+54 = An engine owns one business domain.
+
+Those four together create a solid architectural foundation for a large application like BuildPro.
