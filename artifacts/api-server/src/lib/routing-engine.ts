@@ -19,9 +19,30 @@ export interface RouteResult {
   miles: number | null;
   durationMinutes: number | null;
   routeStatus: "ok" | "missing_address" | "geocoding_failed" | "routing_failed";
-  provider: "osrm";
+  provider: "osrm" | "haversine";
   cached: boolean;
 }
+
+/**
+ * Haversine great-circle distance between two lat/lng points, in miles.
+ * Used as a fallback when OSRM is unreachable — multiply by ROAD_FACTOR for a road estimate.
+ */
+function haversineMiles(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number,
+): number {
+  const R = 3958.8; // Earth radius in miles
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Road-distance multiplier applied to straight-line distance when OSRM is unavailable. */
+const ROAD_FACTOR = 1.25;
 
 // Single in-memory cache shared across all callers — 24-hour TTL.
 // Cache key: "<originAddr>|<destinationAddr>" (lowercased)
@@ -78,6 +99,18 @@ export const RoutingEngine = {
       };
     }
 
+    // Haversine fallback — used for every OSRM failure mode (timeout, non-2xx, empty payload).
+    // Straight-line distance × ROAD_FACTOR gives a reasonable road-distance approximation.
+    const buildHaversineFallback = (): RouteResult => ({
+      miles: Math.round(haversineMiles(fromCoords.lat, fromCoords.lng, toCoords.lat, toCoords.lng) * ROAD_FACTOR * 10) / 10,
+      durationMinutes: null,
+      routeStatus: "ok",
+      provider: "haversine",
+      cached: false,
+    });
+
+    let result: RouteResult;
+
     try {
       const osrmUrl =
         `https://router.project-osrm.org/route/v1/driving/` +
@@ -90,52 +123,37 @@ export const RoutingEngine = {
       });
 
       if (!osrmRes.ok) {
-        return {
-          miles: null,
-          durationMinutes: null,
-          routeStatus: "routing_failed",
-          provider: "osrm",
-          cached: false,
+        // Non-2xx (e.g. 5xx outage) — fall back rather than returning null miles.
+        console.warn(`[routing] OSRM returned HTTP ${osrmRes.status}; using haversine fallback`);
+        result = buildHaversineFallback();
+      } else {
+        const osrmData = (await osrmRes.json()) as {
+          routes?: Array<{ distance: number; duration: number }>;
         };
+        const route = osrmData.routes?.[0];
+
+        if (!route) {
+          // Unexpected empty payload — fall back.
+          console.warn("[routing] OSRM returned no routes; using haversine fallback");
+          result = buildHaversineFallback();
+        } else {
+          result = {
+            miles: Math.round((route.distance / 1609.344) * 10) / 10,
+            durationMinutes: Math.round(route.duration / 60),
+            routeStatus: "ok",
+            provider: "osrm",
+            cached: false,
+          };
+        }
       }
-
-      const osrmData = (await osrmRes.json()) as {
-        routes?: Array<{ distance: number; duration: number }>;
-      };
-      const route = osrmData.routes?.[0];
-
-      if (!route) {
-        return {
-          miles: null,
-          durationMinutes: null,
-          routeStatus: "routing_failed",
-          provider: "osrm",
-          cached: false,
-        };
-      }
-
-      const miles = Math.round((route.distance / 1609.344) * 10) / 10;
-      const durationMinutes = Math.round(route.duration / 60);
-
-      const result: RouteResult = {
-        miles,
-        durationMinutes,
-        routeStatus: "ok",
-        provider: "osrm",
-        cached: false,
-      };
-
-      routeCache.set(cacheKey, { result, expiresAt: Date.now() + CACHE_TTL_MS });
-      return result;
     } catch {
-      return {
-        miles: null,
-        durationMinutes: null,
-        routeStatus: "routing_failed",
-        provider: "osrm",
-        cached: false,
-      };
+      // Timeout (AbortSignal) or network error — fall back.
+      console.warn("[routing] OSRM fetch failed; using haversine fallback");
+      result = buildHaversineFallback();
     }
+
+    routeCache.set(cacheKey, { result, expiresAt: Date.now() + CACHE_TTL_MS });
+    return result;
   },
 
   /** Expose cache stats for diagnostics (e.g. admin routes). */

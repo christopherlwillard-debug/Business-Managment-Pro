@@ -444,6 +444,7 @@ router.get("/:id/profit", async (req, res) => {
     let fuelBreakdown: {
       onewayMiles: number; roundTripMiles: number; daysOnJob: number;
       totalMiles: number; fuelGallons: number; mpg: number; fuelPrice: number;
+      routeProvider: "osrm" | "haversine";
     } | null = null;
 
     try {
@@ -514,6 +515,7 @@ router.get("/:id/profit", async (req, res) => {
             fuelGallons: vehicleCost.fuelGallons,
             mpg,
             fuelPrice,
+            routeProvider: route.provider,
           };
         }
       }

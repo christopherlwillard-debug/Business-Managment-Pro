@@ -1015,6 +1015,7 @@ type JobProfit = {
   fuelBreakdown?: {
     onewayMiles: number; roundTripMiles: number; daysOnJob: number;
     totalMiles: number; fuelGallons: number; mpg: number; fuelPrice: number;
+    routeProvider?: "osrm" | "haversine";
   } | null;
 };
 
@@ -1600,9 +1601,15 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                         onClick={() => setFuelExpanded(v => !v)}
                       >
                         <div className="text-left">
-                          <p className="text-xs text-amber-700 font-medium uppercase tracking-wide">Estimated Fuel Cost</p>
+                          <p className="text-xs text-amber-700 font-medium uppercase tracking-wide">
+                            {fb?.routeProvider === "haversine" ? "~Est. Fuel Cost" : "Estimated Fuel Cost"}
+                          </p>
                           <p className="text-xl font-bold text-amber-700 mt-0.5">-{formatCurrency(profit.estimatedFuelCost)}</p>
-                          <p className="text-[10px] text-amber-600/70 mt-0.5">Informational — not in accounting reports</p>
+                          <p className="text-[10px] text-amber-600/70 mt-0.5">
+                            {fb?.routeProvider === "haversine"
+                              ? "Straight-line approx. (×1.25) — Informational only"
+                              : "Informational — not in accounting reports"}
+                          </p>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <Fuel className="w-6 h-6 text-amber-300" />
