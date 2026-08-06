@@ -109,6 +109,7 @@ export function MaterialListDialog({
   async function handleSave() {
     if (!name.trim()) { setError("List name is required."); return; }
     if (items.length === 0) { setError("Add at least one item."); return; }
+    if (!jobId && items.some(it => it.addToJobExpenses)) { setError("Select a job to link expenses."); return; }
     setError("");
     setSaving(true);
     try {
