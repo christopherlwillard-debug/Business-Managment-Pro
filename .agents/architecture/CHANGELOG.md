@@ -53,4 +53,23 @@ Created the four-document architecture governance system:
 
 ---
 
+### Task #1780 — RoutingEngine + VehicleEngine consolidation; Estimated Fuel Cost fix
+
+**Audit findings (before):** 3 independent server-side OSRM implementations, each with its own geocoding block and in-memory cache:
+1. `jobs.ts` profit route — `fuelRouteCache` + inline geocode/OSRM block
+2. `geocode.ts` `/route-distance` — `routeDistanceCache` + inline geocode/OSRM block
+3. `geocode.ts` `/business-distance` — `businessDistanceCache` + inline geocode/OSRM block
+
+**After:** 1 RoutingEngine + 1 VehicleEngine. All 3 callers now delegate to RoutingEngine.
+
+**Root cause fixed:** The profit route's independent OSRM pipeline was the reason `estimatedFuelCost` was always null — when it failed silently, the fuel cost card never rendered. Now all routing goes through the same engine that already powered the "X mi from shop" job card display, so the values are guaranteed to be consistent.
+
+- Created: `artifacts/api-server/src/lib/routing-engine.ts` — `RoutingEngine.calculate({ origin, destination })` → `{ miles, durationMinutes, routeStatus, provider, cached }`
+- Created: `artifacts/api-server/src/lib/vehicle-engine.ts` — `VehicleEngine.operatingCost({ onewayMiles, daysOnJob, vehicleProfile })` → `{ fuelGallons, fuelCost, totalMiles, roundTripMiles }`
+- Updated: `jobs.ts` — removed `fuelRouteCache`, removed inline geocode/OSRM, calls VehicleEngine (which uses RoutingEngine); `fuelBreakdown` now includes `fuelGallons`
+- Updated: `geocode.ts` — removed `routeDistanceCache`, removed `businessDistanceCache`, both endpoints now delegate to RoutingEngine
+- Amended: Constitution v1.0 → v1.1 — added Rules 51–54 (One Service Per Domain, One Engine Many Workflows, One Engine Owns All Calculations, Engines Have One Responsibility)
+
+---
+
 *Add new entries here as architectural changes are completed and verified.*

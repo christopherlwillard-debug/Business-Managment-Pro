@@ -723,6 +723,43 @@ Do not continue implementing a solution designed for a problem that no longer ex
 
 ---
 
+### Rule 51 — One Service Per Domain
+
+If a business capability already exists as a service or engine, every feature must call that service. Features may never implement their own version of the same logic. Duplicate implementations must be consolidated before new functionality is added.
+
+**Example:** RoutingEngine is the single OSRM caller server-side. No route file, report, or API may perform its own geocoding + OSRM call.
+
+---
+
+### Rule 52 — One Engine, Many Workflows
+
+Similar workflows may require different inputs or outputs, but must share the same underlying engine. Never duplicate an engine because two workflows differ. Build one reusable engine with configurable inputs and let each workflow consume its results differently.
+
+**Example:** `Business → Job` and `Client → Job` are different route types but both call RoutingEngine with different origin addresses.
+
+---
+
+### Rule 53 — One Engine Owns All Calculations
+
+If an engine is responsible for a business capability, it owns every calculation related to that capability. No caller may recreate any part of an engine's calculations.
+
+| Engine | Owns |
+|---|---|
+| RoutingEngine | Miles, drive time, route cache |
+| VehicleEngine | Fuel gallons, fuel cost, future operating costs |
+| TaxEngine | Taxable income, SE tax, federal tax, estimated payments |
+| ProfitEngine | Revenue, expenses, growth reserve, payroll, split pool, owner pay |
+
+---
+
+### Rule 54 — Engines Have One Responsibility
+
+Each engine owns exactly one business domain. Routing determines routes. Vehicles determine operating costs. Taxes determine tax liability. Profit determines profitability. Engines may consume results from other engines, but they may not absorb responsibilities that belong to another engine.
+
+**Why:** This keeps BuildPro modular, testable, and extensible. The RoutingEngine never changes when vehicle types change. The VehicleEngine never changes when routing providers change.
+
+---
+
 ---
 
 ## Rule Tiers
@@ -730,16 +767,17 @@ Do not continue implementing a solution designed for a problem that no longer ex
 Rules are classified into three tiers. Higher tiers require explicit approval to override.
 
 **Tier 1 — Non-Negotiable** *(explicit approval required to override)*
-Rules 0, 1, 4, 8, 19, 20, 28, 29, 30, 40, 50
+Rules 0, 1, 4, 8, 19, 20, 28, 29, 30, 40, 50, 51
 
 **Tier 2 — Architecture Standards** *(normal engineering rules; deviations must be documented in DECISIONS.md)*
-Rules 2, 3, 5, 6, 7, 9, 10, 13, 15, 21, 24, 25, 26, 27, 33, 34, 35, 36, 38, 41, 42, 44, 49
+Rules 2, 3, 5, 6, 7, 9, 10, 13, 15, 21, 24, 25, 26, 27, 33, 34, 35, 36, 38, 41, 42, 44, 49, 52, 53, 54
 
 **Tier 3 — Best Practices** *(strong guidelines; use judgment when context makes them impractical)*
 Rules 11, 12, 14, 16, 17, 18, 22, 23, 31, 32, 37, 39, 43, 45, 46, 47, 48
 
 ---
 
-*Constitution v1.0 — Frozen 2026-08-05*  
-*51 rules (0–50) + 10 Core Principles + 7 Engineering Priorities + 3-tier classification*  
+*Constitution v1.1 — Amended 2026-08-05*  
+*55 rules (0–54) + 10 Core Principles + 7 Engineering Priorities + 3-tier classification*  
+*Amendment: Added Rules 51–54 (engine architecture: One Service Per Domain, One Engine Many Workflows, One Engine Owns All Calculations, Engines Have One Responsibility). Prompted by RoutingEngine + VehicleEngine consolidation task.*  
 *To amend: revise an existing rule if it needs clarification; add a new rule only if a recurring problem demonstrably falls outside all existing rules. Version the document when amended (v1.1, v1.2, ...).*

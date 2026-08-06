@@ -1,14 +1,12 @@
 import { Router, type Request, type Response } from "express";
 import { wrapAsync } from "./guards";
-import { censusGeocode, nominatimGeocode, geocodeAddressString } from "../geocode-helpers";
+import { censusGeocode, nominatimGeocode } from "../geocode-helpers";
 import { db } from "@workspace/db";
 import { clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import { RoutingEngine } from "../lib/routing-engine.js";
 
 export { censusGeocode, nominatimGeocode };
-
-// In-memory route distance cache: "clientId:jobId" → { miles, expires }
-const routeDistanceCache = new Map<string, { miles: number; expires: number }>();
 
 const router = Router();
 
@@ -101,6 +99,8 @@ router.get(
 );
 
 // ── Route distance: driving miles between a client's address and a job site ──
+// Uses RoutingEngine — the single source of truth for all driving-distance calculations (Rule 51).
+// Cache is owned by RoutingEngine; no local cache needed here.
 router.get(
   "/route-distance",
   wrapAsync(async (req: Request, res: Response) => {
@@ -108,13 +108,6 @@ router.get(
 
     if (!clientId || !jobId) {
       res.status(400).json({ error: "clientId and jobId are required" });
-      return;
-    }
-
-    const cacheKey = `${clientId}:${jobId}`;
-    const cached = routeDistanceCache.get(cacheKey);
-    if (cached && cached.expires > Date.now()) {
-      res.json({ miles: cached.miles });
       return;
     }
 
@@ -129,55 +122,18 @@ router.get(
     const clientAddr = [client.address, client.city, client.state, client.zip].filter(Boolean).join(", ");
     const jobAddr = [job.address, job.city, job.state].filter(Boolean).join(", ");
 
-    if (!clientAddr.trim() || !jobAddr.trim()) {
-      res.json({ miles: null, reason: "missing address" });
-      return;
-    }
-
-    const [fromCoords, toCoords] = await Promise.all([
-      geocodeAddressString(clientAddr),
-      geocodeAddressString(jobAddr),
-    ]);
-
-    if (!fromCoords || !toCoords) {
-      res.json({ miles: null, reason: "geocoding failed" });
-      return;
-    }
-
-    try {
-      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${fromCoords.lng},${fromCoords.lat};${toCoords.lng},${toCoords.lat}?overview=false`;
-      const osrmRes = await fetch(osrmUrl, {
-        headers: { "User-Agent": "BuildPro/1.0 (Willards General Contracting)" },
-        signal: AbortSignal.timeout(8000),
-      });
-
-      if (!osrmRes.ok) {
-        res.json({ miles: null, reason: "routing service error" });
-        return;
-      }
-
-      const osrmData = await osrmRes.json() as { routes?: Array<{ distance: number }> };
-      const distanceMeters = osrmData.routes?.[0]?.distance;
-
-      if (distanceMeters == null) {
-        res.json({ miles: null, reason: "no route found" });
-        return;
-      }
-
-      const miles = Math.round((distanceMeters / 1609.344) * 10) / 10;
-      routeDistanceCache.set(cacheKey, { miles, expires: Date.now() + 24 * 60 * 60 * 1000 });
-      res.json({ miles });
-    } catch {
-      res.json({ miles: null, reason: "routing request failed" });
-    }
+    const result = await RoutingEngine.calculate({ origin: clientAddr, destination: jobAddr });
+    res.json({
+      miles: result.miles,
+      ...(result.routeStatus !== "ok" ? { reason: result.routeStatus } : {}),
+    });
   })
 );
 
-// In-memory cache for business→job distances: "businessAddr|jobAddr" → { miles, expires }
-const businessDistanceCache = new Map<string, { miles: number; expires: number }>();
-
 // ── Business distance: driving miles between business address and a job site ──
-// Uses settings.companyAddress as the origin — mirrors the fuel-cost calc in the profit endpoint.
+// Uses RoutingEngine — the single source of truth for all driving-distance calculations (Rule 51).
+// Shares the same cache as the profit route's fuel-cost calculation (same engine, same cache key),
+// so the "X mi from shop" on the job card and the Estimated Fuel Cost are always identical.
 // Never affects billing or mileage surcharge — informational only.
 router.get(
   "/business-distance",
@@ -211,54 +167,11 @@ router.get(
       .filter(Boolean).join(", ");
     const jobAddr = [job.address, job.city, job.state].filter(Boolean).join(", ");
 
-    if (!businessAddr.trim() || !jobAddr.trim()) {
-      res.json({ miles: null, reason: "missing address" });
-      return;
-    }
-
-    const cacheKey = `${businessAddr}|${jobAddr}`;
-    const cached = businessDistanceCache.get(cacheKey);
-    if (cached && cached.expires > Date.now()) {
-      res.json({ miles: cached.miles });
-      return;
-    }
-
-    const [fromCoords, toCoords] = await Promise.all([
-      geocodeAddressString(businessAddr),
-      geocodeAddressString(jobAddr),
-    ]);
-
-    if (!fromCoords || !toCoords) {
-      res.json({ miles: null, reason: "geocoding failed" });
-      return;
-    }
-
-    try {
-      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${fromCoords.lng},${fromCoords.lat};${toCoords.lng},${toCoords.lat}?overview=false`;
-      const osrmRes = await fetch(osrmUrl, {
-        headers: { "User-Agent": "BuildPro/1.0 (Willards General Contracting)" },
-        signal: AbortSignal.timeout(8000),
-      });
-
-      if (!osrmRes.ok) {
-        res.json({ miles: null, reason: "routing service error" });
-        return;
-      }
-
-      const osrmData = await osrmRes.json() as { routes?: Array<{ distance: number }> };
-      const distanceMeters = osrmData.routes?.[0]?.distance;
-
-      if (distanceMeters == null) {
-        res.json({ miles: null, reason: "no route found" });
-        return;
-      }
-
-      const miles = Math.round((distanceMeters / 1609.344) * 10) / 10;
-      businessDistanceCache.set(cacheKey, { miles, expires: Date.now() + 24 * 60 * 60 * 1000 });
-      res.json({ miles });
-    } catch {
-      res.json({ miles: null, reason: "routing request failed" });
-    }
+    const result = await RoutingEngine.calculate({ origin: businessAddr, destination: jobAddr });
+    res.json({
+      miles: result.miles,
+      ...(result.routeStatus !== "ok" ? { reason: result.routeStatus } : {}),
+    });
   })
 );
 

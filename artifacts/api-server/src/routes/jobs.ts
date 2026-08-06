@@ -2,11 +2,8 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
-import { geocodeAddressString } from "../geocode-helpers.js";
-
-// In-memory route-distance cache for fuel cost estimates: "fromAddr|toAddr" → { miles, expiresAt }
-// 24-hour TTL — avoids repeated geocoding/OSRM calls without persisting stale data to DB.
-const fuelRouteCache = new Map<string, { miles: number; expiresAt: number }>();
+import { RoutingEngine } from "../lib/routing-engine.js";
+import { VehicleEngine } from "../lib/vehicle-engine.js";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { computeAllocationSplitPool, computeSubOwed } from "../lib/allocation.js";
 import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
@@ -440,11 +437,13 @@ router.get("/:id/profit", async (req, res) => {
     const netProfit = collected - jobExpenses - subLaborCost - allocPaid;
 
     // ── Estimated fuel cost (informational only — never affects accounting or tax) ──
+    // RoutingEngine is the single source of truth for driving distance (Constitution Rule 51).
+    // VehicleEngine owns all fuel-cost math — no caller may compute distance/mpg×price directly (Rule 53).
     let estimatedFuelCost: number | null = null;
     let operationalProfit: number | null = null;
     let fuelBreakdown: {
       onewayMiles: number; roundTripMiles: number; daysOnJob: number;
-      totalMiles: number; mpg: number; fuelPrice: number;
+      totalMiles: number; fuelGallons: number; mpg: number; fuelPrice: number;
     } | null = null;
 
     try {
@@ -482,57 +481,40 @@ router.get("/:id/profit", async (req, res) => {
         const jobAddr = [jobRow?.address, jobRow?.city, jobRow?.state]
           .filter(Boolean).join(", ");
 
-        if (businessAddr.trim() && jobAddr.trim()) {
-          // In-memory route cache — 24h TTL, never stored in DB
-          const cacheKey = `${businessAddr}|${jobAddr}`;
-          let miles: number | null = null;
-          const cached = fuelRouteCache.get(cacheKey);
-          if (cached && cached.expiresAt > Date.now()) {
-            miles = cached.miles;
-          } else {
-            const [fromCoords, toCoords] = await Promise.all([
-              geocodeAddressString(businessAddr),
-              geocodeAddressString(jobAddr),
-            ]);
-            if (fromCoords && toCoords) {
-              const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${fromCoords.lng},${fromCoords.lat};${toCoords.lng},${toCoords.lat}?overview=false`;
-              const osrmRes = await fetch(osrmUrl, {
-                headers: { "User-Agent": "BuildPro/1.0 (Willards General Contracting)" },
-                signal: AbortSignal.timeout(8000),
-              });
-              if (osrmRes.ok) {
-                const osrmData = await osrmRes.json() as { routes?: Array<{ distance: number }> };
-                const distMeters = osrmData.routes?.[0]?.distance;
-                if (distMeters != null) {
-                  miles = Math.round((distMeters / 1609.344) * 10) / 10;
-                  fuelRouteCache.set(cacheKey, { miles, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
-                }
-              }
-            }
-          }
+        // RoutingEngine.calculate() is the only place OSRM is called server-side for job routing.
+        // It shares a single 24h in-memory cache with /api/business-distance — same engine,
+        // same cache key — so the "X mi from shop" on the job card and this fuel estimate
+        // always reflect identical mileage.
+        const route = await RoutingEngine.calculate({ origin: businessAddr, destination: jobAddr });
 
-          if (miles != null) {
-            // Workdays: count distinct dates in daily_logs for this job (min 1).
-            // Uses actual logged days so the estimate reflects what really happened.
-            const [dlRow] = await db
-              .select({ n: sql<number>`count(distinct date)` })
-              .from(dailyLogsTable)
-              .where(eq(dailyLogsTable.jobId, id));
-            const daysOnJob = Math.max(1, Number(dlRow?.n ?? 0));
+        if (route.miles != null) {
+          // Workdays: count distinct dates in daily_logs for this job (min 1).
+          // Uses actual logged days so the estimate reflects what really happened.
+          const [dlRow] = await db
+            .select({ n: sql<number>`count(distinct date)` })
+            .from(dailyLogsTable)
+            .where(eq(dailyLogsTable.jobId, id));
+          const daysOnJob = Math.max(1, Number(dlRow?.n ?? 0));
 
-            // Formula:
-            //   One-way distance × 2 = Round trip per day
-            //   Round trip × Actual workdays = Total estimated miles
-            //   Total miles ÷ MPG × Fuel price = Estimated fuel cost
-            const onewayMiles = miles;
-            const roundTripMiles = parseFloat((onewayMiles * 2).toFixed(1));
-            const totalMiles = parseFloat((roundTripMiles * daysOnJob).toFixed(1));
-            const cost = parseFloat(((totalMiles / mpg) * fuelPrice).toFixed(2));
+          // VehicleEngine.operatingCost() is the only place fuel math runs (Rule 53).
+          // Formula: totalMiles = (onewayMiles × 2) × daysOnJob; fuelCost = totalMiles / mpg × fuelPrice
+          const vehicleCost = VehicleEngine.operatingCost({
+            onewayMiles: route.miles,
+            daysOnJob,
+            vehicleProfile: { avgMpg: mpg, fuelPricePerGallon: fuelPrice },
+          });
 
-            estimatedFuelCost = cost;
-            operationalProfit = parseFloat((netProfit - cost).toFixed(2));
-            fuelBreakdown = { onewayMiles, roundTripMiles, daysOnJob, totalMiles, mpg, fuelPrice };
-          }
+          estimatedFuelCost = vehicleCost.fuelCost;
+          operationalProfit = parseFloat((netProfit - vehicleCost.fuelCost).toFixed(2));
+          fuelBreakdown = {
+            onewayMiles: route.miles,
+            roundTripMiles: vehicleCost.roundTripMiles,
+            daysOnJob,
+            totalMiles: vehicleCost.totalMiles,
+            fuelGallons: vehicleCost.fuelGallons,
+            mpg,
+            fuelPrice,
+          };
         }
       }
     } catch (fuelErr) {
