@@ -434,7 +434,10 @@ router.get("/:id/profit", async (req, res) => {
     // Sub labor: hourly (hours × rate + accrued bonus) + fixed (cash paid)
     const subLaborCost = hoursLaborCost + nonHoursCost + accruedBonusTotal;
 
-    const netProfit = collected - jobExpenses - subLaborCost - allocPaid;
+    // Net profit uses grossInvoiced (accrual view) — shows job profitability the moment
+    // it's invoiced rather than waiting for cash collection. The accounting/tax system
+    // stays on cash basis; this is an operational job-management metric only.
+    const netProfit = grossInvoiced - jobExpenses - subLaborCost - allocPaid;
 
     // ── Estimated fuel cost (informational only — never affects accounting or tax) ──
     // RoutingEngine is the single source of truth for driving distance (Constitution Rule 51).
@@ -720,7 +723,8 @@ router.get("/profit-summary", async (req, res) => {
       // Allocation payouts are real cash out — subtracted from net profit,
       // but kept out of subLaborCost so Pay Breakdown math stays unchanged.
       result[id].allocPaid = sprAllocMap.get(id) ?? 0;
-      result[id].netProfit = result[id].collected - result[id].jobExpenses - result[id].subLaborCost - result[id].allocPaid;
+      // Use grossInvoiced (accrual) — consistent with the per-job profit route.
+      result[id].netProfit = result[id].grossInvoiced - result[id].jobExpenses - result[id].subLaborCost - result[id].allocPaid;
       // Man-hours: tracked sub hours take priority; fall back to manually entered job field
       const trackedHours = hoursCountMap.get(id) ?? 0;
       result[id].totalSubHours = trackedHours;
