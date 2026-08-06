@@ -1,0 +1,103 @@
+ok i updated the settings for the operational gas expense for job card but there is still nothing on the job card about it or showing it
+
+Looking at your screenshots, I actually think you've uncovered a different bug than the Fuel/Travel one.
+
+Here's what I see:
+
+Settings → Mileage has a vehicle configured.
+✅ F150
+✅ 9 MPG
+✅ $4.21/gal
+So the configuration exists.
+
+Job Financials only shows:
+
+Total Invoiced
+Collected
+Job Expenses
+Net Business Profit
+Trip Documentation Packet
+
+There is no Estimated Fuel Cost card at all.
+
+That tells me the problem is not the fuel price anymore.
+
+This means one of three things is happening
+1. The calculation is never being executed.
+
+The P&L component may be returning early before the fuel calculation runs.
+
+2. The API isn't returning the fuel data.
+
+The backend may be returning something like:
+
+{
+  "estimatedFuelCost": null
+}
+
+or not returning the field at all.
+
+3. The UI is hiding it.
+
+The backend may be calculating it correctly, but the React component only renders it when a condition is true, for example:
+
+if (estimatedFuelCost > 0)
+
+or
+
+if (fuelDistance)
+
+If one required field is null, the whole card disappears.
+
+I would NOT let Replit start changing code again.
+
+Instead I'd send this:
+
+Do not make any changes yet.
+
+The Settings page proves a vehicle exists:
+
+- Default vehicle ✓
+- MPG configured ✓
+- Fuel price configured ✓
+
+Yet the Job Financials P&L shows no Estimated Fuel Cost card at all.
+
+This is no longer a configuration issue.
+
+Debug the full execution path.
+
+For the Walnut Remodel job (or the selected job), show:
+
+1. The API response from /api/jobs/:id/profit.
+2. The values of:
+   - estimatedFuelCost
+   - businessDistance
+   - clientDistance
+   - milesDriven
+   - fuelPricePerGallon
+   - mpg
+3. Show the exact backend calculation that produces estimatedFuelCost.
+4. Show the exact React condition that decides whether the Fuel Cost card renders.
+5. If estimatedFuelCost is null or 0, explain exactly why.
+
+Do not modify code until the missing value or failing condition has been identified.
+One thing I also noticed
+
+Your Walnut Remodel card says:
+
+3.3 mi from shop
+
+So the application already knows the business distance.
+
+That means it already has enough information to estimate fuel.
+
+Which makes me suspicious that:
+
+the distance exists,
+the settings exist,
+but the calculation result is never reaching the UI.
+
+That's why I think this is probably an API or rendering bug, not a settings bug anymore.
+
+At this point, I wouldn't accept another "I found the root cause" message. I'd want Replit to show you the actual /api/jobs/:id/profit payload and prove whether estimatedFuelCost is being calculated, returned, and rendered. Once you know which of those three stages fails, the fix should be straightforward.
