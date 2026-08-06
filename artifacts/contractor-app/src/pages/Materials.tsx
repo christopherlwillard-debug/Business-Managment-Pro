@@ -56,11 +56,14 @@ export function MaterialListDialog({
   const [markup, setMarkup] = useState(editList?.markup ?? 40);
   const [items, setItems] = useState<MaterialListItemInput[]>(
     editList?.items.map(i => ({
+      id: i.id,
       materialId: i.materialId ?? null,
       nameSnapshot: i.nameSnapshot,
       unitSnapshot: i.unitSnapshot,
       unitCostSnapshot: i.unitCostSnapshot,
       qty: i.qty,
+      addToJobExpenses: i.addToJobExpenses ?? false,
+      expenseId: i.expenseId ?? null,
     })) ?? []
   );
   const [search, setSearch] = useState("");
@@ -84,8 +87,13 @@ export function MaterialListDialog({
         unitSnapshot: m.unit,
         unitCostSnapshot: m.unitCost,
         qty: 1,
+        addToJobExpenses: false,
       }]);
     }
+  }
+
+  function toggleJobExpense(idx: number) {
+    setItems(prev => prev.map((it, i) => i === idx ? { ...it, addToJobExpenses: !(it.addToJobExpenses ?? false) } : it));
   }
 
   function removeItem(idx: number) {
@@ -237,14 +245,16 @@ export function MaterialListDialog({
                       <th className="text-right px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">Qty</th>
                       <th className="text-right px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">Unit Cost</th>
                       <th className="text-right px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">Extended</th>
+                      <th className="px-2 py-2 text-[10px] font-bold uppercase tracking-widest text-gray-400 text-center whitespace-nowrap" title="Add Cost to Job Expenses">Job Exp.</th>
                       <th className="w-8" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {items.map((it, idx) => {
                       const extended = it.unitCostSnapshot * it.qty * (markup / 100 + 1);
+                      const isChecked = it.addToJobExpenses ?? false;
                       return (
-                        <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                        <tr key={idx} className={`hover:bg-gray-50 transition-colors ${isChecked ? "bg-emerald-50/40" : ""}`}>
                           <td className="px-4 py-2.5">
                             <p className="font-medium text-gray-900 text-sm">{it.nameSnapshot}</p>
                             <p className="text-[10px] text-gray-400">{it.unitSnapshot}</p>
@@ -262,6 +272,16 @@ export function MaterialListDialog({
                           </td>
                           <td className="px-3 py-2.5 text-right font-semibold text-amber-700 text-xs whitespace-nowrap">
                             {formatCurrency(extended)}
+                          </td>
+                          <td className="px-2 py-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => toggleJobExpense(idx)}
+                              title={isChecked ? "Remove cost from Job Expenses" : "Add cost to Job Expenses"}
+                              className={`w-5 h-5 rounded flex items-center justify-center border transition-colors mx-auto ${isChecked ? "bg-emerald-500 border-emerald-500 text-white" : "border-gray-300 text-transparent hover:border-emerald-400"}`}
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
                           </td>
                           <td className="pr-3 py-2.5 text-center">
                             <button

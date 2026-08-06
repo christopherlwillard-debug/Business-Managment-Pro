@@ -438,12 +438,26 @@ async function ensureVehiclesTable(): Promise<void> {
   }
 }
 
+/** Material expense linking: source_type/source_id on expenses + add_to_job_expenses/expense_id on material_list_items. */
+async function ensureMaterialExpenseLinkingSchema(): Promise<void> {
+  try {
+    await db.execute(sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS source_type text`);
+    await db.execute(sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS source_id integer`);
+    await db.execute(sql`ALTER TABLE material_list_items ADD COLUMN IF NOT EXISTS add_to_job_expenses boolean NOT NULL DEFAULT false`);
+    await db.execute(sql`ALTER TABLE material_list_items ADD COLUMN IF NOT EXISTS expense_id integer REFERENCES expenses(id) ON DELETE SET NULL`);
+    console.log("[startup] ensureMaterialExpenseLinkingSchema: OK.");
+  } catch (err) {
+    console.error("[startup] ensureMaterialExpenseLinkingSchema failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await ensureBankingSchema();
   await ensureTripNotesColumn();
   await ensureMarketingContentTable();
   await ensureWebsiteTemplatesTable();
   await ensureVehiclesTable();
+  await ensureMaterialExpenseLinkingSchema();
   await clearDraftInvoiceNumbers();
   await syncInvoiceCounter();
   await recomputePartialSubPaymentStatuses();

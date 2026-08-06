@@ -5,17 +5,74 @@ import {
   materialListItemsTable,
   jobsTable,
   invoicesTable,
+  expensesTable,
 } from "@workspace/db/schema";
-import { eq, and, inArray, desc, SQL } from "drizzle-orm";
+import { eq, and, inArray, isNotNull, desc, SQL } from "drizzle-orm";
 
 const router = Router();
 
 interface ItemInput {
+  id?: number | null;           // existing item id, present on update
   materialId?: number | null;
   nameSnapshot: string;
   unitSnapshot?: string;
   unitCostSnapshot: number;
   qty: number;
+  addToJobExpenses?: boolean;
+  expenseId?: number | null;    // existing linked expense id, echoed from client
+}
+
+const SOURCE_TYPE = "Material List";
+
+/** Today's date in YYYY-MM-DD for expense records */
+function todayStr(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+/**
+ * Create a job expense for a material list item and return the new expense id.
+ * sourceId = the material_list_items.id linking back to the item.
+ */
+async function createMaterialExpense(params: {
+  jobId: number;
+  nameSnapshot: string;
+  unitCostSnapshot: number;
+  qty: number;
+  sourceId: number;
+}): Promise<number> {
+  const amount = (params.unitCostSnapshot * params.qty).toFixed(2);
+  const [exp] = await db.insert(expensesTable).values({
+    description: params.nameSnapshot,
+    amount,
+    category: "Materials",
+    date: todayStr(),
+    jobId: params.jobId,
+    sourceType: SOURCE_TYPE,
+    sourceId: params.sourceId,
+  }).returning({ id: expensesTable.id });
+  return exp.id;
+}
+
+/**
+ * Update the amount, description, and optionally jobId of an auto-managed expense.
+ * Guard: only updates if source_type = SOURCE_TYPE to protect manually-edited expenses.
+ */
+async function updateMaterialExpense(expenseId: number, nameSnapshot: string, unitCostSnapshot: number, qty: number, newJobId?: number) {
+  const amount = (unitCostSnapshot * qty).toFixed(2);
+  const updates: Record<string, unknown> = { description: nameSnapshot, amount };
+  if (newJobId !== undefined) updates.jobId = newJobId;
+  await db.update(expensesTable)
+    .set(updates as any)
+    .where(and(eq(expensesTable.id, expenseId), eq(expensesTable.sourceType, SOURCE_TYPE)));
+}
+
+/**
+ * Delete an auto-managed expense (guard: source_type = SOURCE_TYPE).
+ * Never deletes manually-edited expenses.
+ */
+async function deleteMaterialExpense(expenseId: number) {
+  await db.delete(expensesTable)
+    .where(and(eq(expensesTable.id, expenseId), eq(expensesTable.sourceType, SOURCE_TYPE)));
 }
 
 interface LineItem {
@@ -43,6 +100,8 @@ function fmtItem(row: typeof materialListItemsTable.$inferSelect) {
     ...row,
     unitCostSnapshot: parseFloat(row.unitCostSnapshot ?? "0"),
     qty: parseFloat(row.qty ?? "1"),
+    addToJobExpenses: row.addToJobExpenses ?? false,
+    expenseId: row.expenseId ?? null,
   };
 }
 
@@ -293,7 +352,8 @@ router.post("/", async (req, res) => {
       .returning();
 
     if (items.length > 0) {
-      await db.insert(materialListItemsTable).values(
+      // Insert all items first to get their ids, then create expenses for checked items.
+      const insertedItems = await db.insert(materialListItemsTable).values(
         items.map(item => ({
           listId: list.id,
           materialId: item.materialId ?? null,
@@ -301,8 +361,27 @@ router.post("/", async (req, res) => {
           unitSnapshot: item.unitSnapshot || "ea",
           unitCostSnapshot: item.unitCostSnapshot.toString(),
           qty: item.qty.toString(),
+          addToJobExpenses: item.addToJobExpenses ?? false,
         }))
-      );
+      ).returning();
+
+      // Create expenses for checked items and link back
+      if (jobId) {
+        for (const inserted of insertedItems) {
+          if (inserted.addToJobExpenses) {
+            const expId = await createMaterialExpense({
+              jobId,
+              nameSnapshot: inserted.nameSnapshot,
+              unitCostSnapshot: parseFloat(inserted.unitCostSnapshot ?? "0"),
+              qty: parseFloat(inserted.qty ?? "1"),
+              sourceId: inserted.id,
+            });
+            await db.update(materialListItemsTable)
+              .set({ expenseId: expId })
+              .where(eq(materialListItemsTable.id, inserted.id));
+          }
+        }
+      }
     }
 
     // Auto-sync materials to the job's draft invoice
@@ -370,19 +449,97 @@ router.put("/:id", async (req, res) => {
       })
       .where(eq(materialListsTable.id, id));
 
+    // Load existing items so we can manage their linked expenses before replacing rows.
+    const existingItems = await db
+      .select({ id: materialListItemsTable.id, expenseId: materialListItemsTable.expenseId, addToJobExpenses: materialListItemsTable.addToJobExpenses })
+      .from(materialListItemsTable)
+      .where(eq(materialListItemsTable.listId, id));
+
+    const existingById = new Map(existingItems.map(r => [r.id, r]));
+    const incomingIds = new Set(items.map(it => it.id).filter((v): v is number => v != null));
+
+    // ── Job assignment change handling ──────────────────────────────────────────
+    const newJobId = jobId || null;
+    const isDetached = newJobId === null;
+    const isReassigned = newJobId !== null && newJobId !== oldJobId;
+
+    if (isDetached) {
+      // List is being detached from any job — delete ALL auto-managed expenses.
+      // No job to link them to, so they can no longer be valid job expenses.
+      for (const ex of existingItems) {
+        if (ex.expenseId != null) {
+          await deleteMaterialExpense(ex.expenseId);
+        }
+      }
+    } else if (isReassigned) {
+      // List is being moved to a different job — migrate all linked expenses to the new job.
+      for (const ex of existingItems) {
+        if (ex.expenseId != null) {
+          await db.update(expensesTable)
+            .set({ jobId: newJobId })
+            .where(and(eq(expensesTable.id, ex.expenseId), eq(expensesTable.sourceType, SOURCE_TYPE)));
+        }
+      }
+    }
+
+    // Remove expenses for items that are being deleted (not present in the incoming list)
+    for (const ex of existingItems) {
+      if (!incomingIds.has(ex.id) && ex.expenseId != null && !isDetached) {
+        // Detachment already cleaned up all expenses above; skip double-delete
+        await deleteMaterialExpense(ex.expenseId);
+      }
+    }
+
+    // Delete all item rows (the FK expense_id → expenses is ON DELETE SET NULL on items,
+    // meaning deleting items does NOT remove expenses — we always handle that explicitly above)
     await db.delete(materialListItemsTable).where(eq(materialListItemsTable.listId, id));
 
-    if (items.length > 0) {
-      await db.insert(materialListItemsTable).values(
-        items.map(item => ({
-          listId: id,
-          materialId: item.materialId ?? null,
+    // Reinsert items, managing expenses for each.
+    // When detached (no job), no new expenses are ever created.
+    for (const item of items) {
+      const existing = item.id != null ? existingById.get(item.id) : undefined;
+      // If detached, any previously-linked expense was already deleted; treat as no expense.
+      const prevExpenseId = isDetached ? null : (existing?.expenseId ?? null);
+      const wantsExpense = !isDetached && item.addToJobExpenses === true;
+      let finalExpenseId: number | null = null;
+
+      if (wantsExpense && newJobId) {
+        if (prevExpenseId != null) {
+          // Existing auto-managed expense — update amount/description (jobId already migrated above)
+          await updateMaterialExpense(prevExpenseId, item.nameSnapshot, item.unitCostSnapshot, item.qty);
+          finalExpenseId = prevExpenseId;
+        }
+        // Newly checked: expense will be created after insert (needs the new item's id as sourceId)
+      } else if (!wantsExpense && prevExpenseId != null) {
+        // Unchecked — delete the linked auto-managed expense
+        await deleteMaterialExpense(prevExpenseId);
+        finalExpenseId = null;
+      }
+
+      const [inserted] = await db.insert(materialListItemsTable).values({
+        listId: id,
+        materialId: item.materialId ?? null,
+        nameSnapshot: item.nameSnapshot,
+        unitSnapshot: item.unitSnapshot || "ea",
+        unitCostSnapshot: item.unitCostSnapshot.toString(),
+        qty: item.qty.toString(),
+        addToJobExpenses: wantsExpense,
+        expenseId: finalExpenseId,
+      }).returning();
+
+      // Create expense for newly-checked items (no previous expense, has a job)
+      if (wantsExpense && newJobId && prevExpenseId == null) {
+        const expId = await createMaterialExpense({
+          jobId: newJobId,
           nameSnapshot: item.nameSnapshot,
-          unitSnapshot: item.unitSnapshot || "ea",
-          unitCostSnapshot: item.unitCostSnapshot.toString(),
-          qty: item.qty.toString(),
-        }))
-      );
+          unitCostSnapshot: item.unitCostSnapshot,
+          qty: item.qty,
+          sourceId: inserted.id,
+        });
+        await db.update(materialListItemsTable)
+          .set({ expenseId: expId })
+          .where(eq(materialListItemsTable.id, inserted.id));
+      }
     }
 
     // Auto-sync materials to the job's draft invoice
@@ -422,6 +579,26 @@ router.delete("/:id", async (req, res) => {
 
     // Only proceed with delete and sync if the row belongs to this user
     if (listRow) {
+      // Delete auto-managed expenses for all items in this list before cascade-deleting items.
+      // The FK on material_list_items.expense_id → expenses.id is ON DELETE SET NULL, so
+      // deleting the list/items would NOT remove the expense rows — we must do it explicitly.
+      const itemsWithExpenses = await db
+        .select({ expenseId: materialListItemsTable.expenseId })
+        .from(materialListItemsTable)
+        .where(and(eq(materialListItemsTable.listId, id), isNotNull(materialListItemsTable.expenseId)));
+
+      const expenseIds = itemsWithExpenses
+        .map(r => r.expenseId)
+        .filter((v): v is number => v != null);
+
+      if (expenseIds.length > 0) {
+        await db.delete(expensesTable)
+          .where(and(
+            inArray(expensesTable.id, expenseIds),
+            eq(expensesTable.sourceType, SOURCE_TYPE),
+          ));
+      }
+
       await db.delete(materialListsTable).where(and(...ownerConditions));
 
       // Auto-sync materials to the job's draft invoice after deletion

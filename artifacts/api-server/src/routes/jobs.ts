@@ -581,6 +581,7 @@ router.get("/:id/expenses", async (req, res) => {
         description: expensesTable.description,
         amount: expensesTable.amount,
         countsTowardJobProfit: expensesTable.countsTowardJobProfit,
+        sourceType: expensesTable.sourceType,
       })
       .from(expensesTable)
       .where(

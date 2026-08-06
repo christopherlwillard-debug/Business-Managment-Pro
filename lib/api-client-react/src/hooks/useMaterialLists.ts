@@ -9,6 +9,8 @@ export interface MaterialListItem {
   unitSnapshot: string;
   unitCostSnapshot: number;
   qty: number;
+  addToJobExpenses?: boolean;
+  expenseId?: number | null;
 }
 
 export interface MaterialList {
@@ -22,11 +24,14 @@ export interface MaterialList {
 }
 
 export interface MaterialListItemInput {
+  id?: number | null;          // existing item id, used by the API to match rows on update
   materialId?: number | null;
   nameSnapshot: string;
   unitSnapshot?: string;
   unitCostSnapshot: number;
   qty: number;
+  addToJobExpenses?: boolean;
+  expenseId?: number | null;
 }
 
 export interface CreateMaterialListRequest {

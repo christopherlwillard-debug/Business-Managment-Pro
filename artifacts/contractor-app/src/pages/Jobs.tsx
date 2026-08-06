@@ -1197,7 +1197,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const [fuelExpanded, setFuelExpanded] = useState(false);
 
   // Expense drill-down state
-  type ExpenseItem = { id: number; date: string | null; category: string | null; description: string | null; amount: string };
+  type ExpenseItem = { id: number; date: string | null; category: string | null; description: string | null; amount: string; sourceType?: string | null };
   const [expensesOpen, setExpensesOpen] = useState(false);
   const [expenseItems, setExpenseItems] = useState<ExpenseItem[] | null>(null);
   const [expensesLoading, setExpensesLoading] = useState(false);
@@ -1522,6 +1522,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs text-foreground truncate">{e.description || e.category || "Expense"}</p>
                                 {e.date && <p className="text-[10px] text-muted-foreground">{formatDate(e.date)}</p>}
+                                {e.sourceType === "Material List" && (
+                                  <p className="text-[10px] text-emerald-600 font-medium mt-0.5">Auto-created from Material List</p>
+                                )}
                               </div>
                               <span className="text-xs font-semibold text-red-600 tabular-nums flex-shrink-0">{formatCurrency(parseFloat(e.amount))}</span>
                             </div>
