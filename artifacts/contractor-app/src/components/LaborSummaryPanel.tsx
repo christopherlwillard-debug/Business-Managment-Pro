@@ -201,8 +201,8 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
         </div>
       )}
 
-      {/* Entries list */}
-      {entries.length === 0 && !showForm ? (
+      {/* Entries list — hidden in compact mode; aggregate summary already shows totals */}
+      {!compact && (entries.length === 0 && !showForm ? (
         <div className="py-4 text-center text-xs text-muted-foreground">
           <Clock className="w-6 h-6 text-muted-foreground/30 mx-auto mb-1.5" />
           No crew time logged yet.
@@ -230,10 +230,10 @@ export function LaborSummaryPanel({ jobId, compact = false }: Props) {
             </div>
           ))}
         </div>
-      )}
+      ))}
 
-      {/* Total footer */}
-      {entries.length > 0 && (
+      {/* Total footer — hidden in compact mode */}
+      {!compact && entries.length > 0 && (
         <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-muted/20 border border-border text-xs">
           <span className="font-semibold text-foreground">
             {fmtHrs(summary.totalProductiveHours)} work

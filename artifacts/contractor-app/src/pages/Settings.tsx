@@ -2732,7 +2732,7 @@ export default function Settings() {
                   const stepMeta: Record<string, { label: string; desc: string }> = {
                     growth:   { label: "Growth Reserve", desc: `${form.growthReservePct || "0"}% of revenue` },
                     labor:    { label: "Sub Labor",       desc: "Subcontractor pay (hourly + fixed)" },
-                    expenses: { label: "Materials & Expenses", desc: "Material costs and other job expenses" },
+                    expenses: { label: "Job Costs", desc: "Direct costs tied to the job — supplies, fuel, permits, dump fees, and other expenses" },
                   };
                   const step = stepMeta[key];
                   if (!step) return null;

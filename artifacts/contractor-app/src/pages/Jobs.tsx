@@ -1179,14 +1179,14 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 }
 
 // ─── Unified Job Financials Panel ─────────────────────────────────────────────
-function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl", onClose, onSubsPaidChanged }: {
+function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "breakdown", onClose, onSubsPaidChanged }: {
   job: Job;
   profitData?: JobProfit | null;
-  initialTab?: "pl" | "breakdown" | "hours";
+  initialTab?: "breakdown" | "hours";
   onClose: () => void;
   onSubsPaidChanged?: (allPaid: boolean) => void;
 }) {
-  const [tab, setTab] = useState<"pl" | "breakdown" | "hours">(initialTab);
+  const [tab, setTab] = useState<"breakdown" | "hours">(initialTab);
   const [profit, setProfit] = useState<JobProfit | null>(initialProfit ?? null);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [loading, setLoading] = useState(!initialProfit);
@@ -1439,7 +1439,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
     return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  const TAB_LABELS: Record<string, string> = { pl: "P&L", breakdown: "Profit Split", hours: "Sub Hours" };
+  const TAB_LABELS: Record<string, string> = { breakdown: "Profit Split", hours: "Sub Hours" };
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -1460,7 +1460,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
         </div>
         {/* Tab bar */}
         <div className="flex border-b border-border/50 flex-shrink-0 bg-muted/20">
-          {(["pl", "breakdown", "hours"] as const).map(t => (
+          {(["breakdown", "hours"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`flex-1 py-2.5 text-[11px] font-semibold transition-colors ${tab === t ? "text-amber-700 border-b-2 border-amber-500 bg-amber-50/60" : "text-muted-foreground hover:text-foreground"}`}>
               {TAB_LABELS[t]}
@@ -1470,89 +1470,41 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="h-16 rounded-xl bg-muted/40 animate-pulse" />)}</div>
-          ) : tab === "pl" ? (
-            /* ── P&L tab ── */
-            <div className="space-y-3">
+          ) : tab === "breakdown" ? (
+            /* ── Profit Split tab ── */
+            <div className="space-y-4">
+              {/* ── Financial Summary ── */}
               {profit == null ? (
-                <div className="flex flex-col items-center justify-center h-40 text-center">
-                  <TrendingUp className="w-10 h-10 text-muted-foreground/30 mb-3" />
+                <div className="flex flex-col items-center justify-center h-32 text-center">
+                  <TrendingUp className="w-8 h-8 text-muted-foreground/30 mb-2" />
                   <p className="text-sm text-muted-foreground">No financial data yet</p>
                 </div>
               ) : (<>
-                <div className="rounded-xl border border-border/50 bg-muted/20 p-4 flex items-center justify-between">
-                  <div><p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total Invoiced</p><p className="text-xl font-bold text-foreground mt-0.5">{formatCurrency(profit.grossInvoiced)}</p></div>
-                  <Receipt className="w-7 h-7 text-muted-foreground/30" />
-                </div>
-                <div className="rounded-xl border border-border/50 bg-muted/20 p-4 flex items-center justify-between">
-                  <div><p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Collected</p><p className="text-xl font-bold text-emerald-600 mt-0.5">{formatCurrency(profit.collected)}</p></div>
-                  <DollarSign className="w-7 h-7 text-emerald-200" />
-                </div>
-                {/* Job Expenses — summary only; tap expense details in Profit Split tab */}
-                <div className="rounded-xl border border-border/50 bg-muted/20 p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Job Expenses</p>
-                    <p className="text-xl font-bold text-red-500 mt-0.5">{formatCurrency(profit.jobExpenses)}</p>
+                <div className="rounded-xl border border-border/50 overflow-hidden">
+                  <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Financial Summary</p>
                   </div>
-                  <Briefcase className="w-7 h-7 text-red-100" />
-                </div>
-                {(profit.auditTrailTotal ?? 0) > 0 && (
-                  <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-blue-700 font-bold uppercase tracking-wide">Travel & Audit Docs</p>
-                        <p className="text-xl font-bold text-blue-600 mt-0.5">{formatCurrency(profit.auditTrailTotal ?? 0)}</p>
-                        <p className="text-xs text-blue-600/70 mt-0.5">Linked for tax records — not deducted from profit</p>
-                      </div>
-                      <FileText className="w-7 h-7 text-blue-200" />
+                  <div className="divide-y divide-border/30">
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <span className="text-sm text-foreground">Job Revenue</span>
+                      <span className="text-sm font-bold text-foreground tabular-nums">{formatCurrency(profit.grossInvoiced)}</span>
                     </div>
-                    {(profit.tripTravelTotal ?? 0) > 0 && (
-                      <div className="mt-3 pt-3 border-t border-blue-200/60 space-y-1.5">
-                        <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-wide">Trip/Travel (audit)</p>
-                        <div className="flex items-center justify-between text-xs text-blue-700">
-                          <span>Total trip spend</span>
-                          <span className="font-medium tabular-nums">{formatCurrency(profit.tripTravelTotal ?? 0)}</span>
-                        </div>
-                        {(profit.tripMealsDeductible ?? 0) > 0 && (
-                          <div className="flex items-center justify-between text-xs text-blue-600/80">
-                            <span>Deductible meals (50%)</span>
-                            <span className="tabular-nums">{formatCurrency(profit.tripMealsDeductible ?? 0)}</span>
-                          </div>
-                        )}
+                    {profit.jobExpenses > 0 && (
+                      <div className="flex items-center justify-between px-4 py-3">
+                        <span className="text-sm text-foreground">Job Costs</span>
+                        <span className="text-sm font-bold text-red-500 tabular-nums">−{formatCurrency(profit.jobExpenses)}</span>
                       </div>
                     )}
-                  </div>
-                )}
-                {subLaborCost > 0 && (
-                  <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
-                    <div className="flex items-center justify-between">
-                      <div><p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Sub Labor Cost</p><p className="text-xl font-bold text-orange-500 mt-0.5">{formatCurrency(subLaborCost)}</p></div>
-                      <Timer className="w-7 h-7 text-orange-200" />
+                    <div className={`flex items-center justify-between px-4 py-3 ${isProfit ? "bg-emerald-50/40" : "bg-red-50/40"}`}>
+                      <span className={`text-sm font-bold ${isProfit ? "text-emerald-700" : "text-red-700"}`}>Net Business Profit</span>
+                      <span className={`text-sm font-bold tabular-nums ${isProfit ? "text-emerald-700" : "text-red-600"}`}>{isProfit ? "+" : ""}{formatCurrency(net)}</span>
                     </div>
-                    {totalSubHours > 0 && <p className="text-xs text-muted-foreground mt-1">{totalSubHours.toFixed(1)} tracked sub hours</p>}
                   </div>
-                )}
-                {allocPaid > 0 && (
-                  <div className="rounded-xl border border-border/50 bg-muted/20 p-4 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Split Payouts</p>
-                      <p className="text-xl font-bold text-violet-500 mt-0.5">{formatCurrency(allocPaid)}</p>
-                      <p className="text-xs text-muted-foreground mt-1">Paid to %-split subs</p>
-                    </div>
-                    <Users className="w-7 h-7 text-violet-200" />
-                  </div>
-                )}
-                <div className={`rounded-xl border p-4 flex items-center justify-between ${isProfit ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
-                  <div>
-                    <p className={`text-xs font-bold uppercase tracking-wide ${isProfit ? "text-emerald-700" : "text-red-700"}`}>Net Business Profit</p>
-                    <p className={`text-2xl font-bold mt-0.5 ${isProfit ? "text-emerald-700" : "text-red-600"}`}>{isProfit ? "+" : ""}{formatCurrency(net)}</p>
-                    {(subLaborCost > 0 || allocPaid > 0) && <p className={`text-[10px] mt-0.5 ${isProfit ? "text-emerald-600" : "text-red-500"}`}>After expenses + sub labor{allocPaid > 0 ? " + split payouts" : ""}</p>}
-                  </div>
-                  <TrendingUp className={`w-8 h-8 ${isProfit ? "text-emerald-300" : "text-red-300"}`} />
+                  {profit.grossInvoiced > 0 && profit.collected < profit.grossInvoiced && (
+                    <p className="text-xs text-muted-foreground text-center py-2 px-4">{formatCurrency(profit.grossInvoiced - profit.collected)} outstanding (not yet collected)</p>
+                  )}
                 </div>
-                {profit.grossInvoiced > 0 && profit.collected < profit.grossInvoiced && (
-                  <p className="text-xs text-muted-foreground text-center pt-1">{formatCurrency(profit.grossInvoiced - profit.collected)} outstanding (not yet collected)</p>
-                )}
-                {/* ── Estimated Fuel Cost (informational only) ── */}
+                {/* Estimated Fuel Cost */}
                 {profit?.estimatedFuelCost != null && (() => {
                   const fb = profit.fuelBreakdown;
                   return (
@@ -1610,7 +1562,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                     </div>
                   );
                 })()}
-                {/* ── Fuel cost unavailable hint ── */}
+                {/* Fuel cost unavailable hint */}
                 {profit?.estimatedFuelCost == null && (profit?.fuelStatus === "missing_address" || profit?.fuelStatus === "geocoding_failed") && (
                   <div className="rounded-xl border border-amber-200/50 bg-amber-50/30 px-4 py-3 flex items-center gap-3">
                     <Fuel className="w-5 h-5 text-amber-300 flex-shrink-0" />
@@ -1621,7 +1573,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                     </p>
                   </div>
                 )}
-                {/* ── Estimated Operational Profit ── */}
+                {/* Estimated Operational Profit */}
                 {profit?.operationalProfit != null && (() => {
                   const isOp = profit.operationalProfit >= 0;
                   return (
@@ -1636,14 +1588,6 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   );
                 })()}
               </>)}
-              <Link href={`/trip-packet/${job.id}`}
-                className="flex items-center justify-center gap-2 w-full rounded-xl border border-blue-200 bg-blue-50/50 px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-100/60 transition-colors">
-                <FileText className="w-4 h-4" /> Trip Documentation Packet
-              </Link>
-            </div>
-          ) : tab === "breakdown" ? (
-            /* ── Profit Split tab ── */
-            <div className="space-y-4">
               <div className="flex items-center justify-between bg-muted/30 rounded-xl px-4 py-2.5">
                 <span className="text-xs font-semibold text-muted-foreground">Use Collected Revenue</span>
                 <button onClick={() => setUseCollected(v => !v)} className={`relative w-10 h-5 rounded-full transition-colors ${useCollected ? "bg-amber-500" : "bg-muted-foreground/30"}`}>
@@ -1687,7 +1631,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                 <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Breakdown</p></div>
                 <div className="divide-y divide-border/30">
                   <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Job Revenue</span><span className="text-sm font-bold text-foreground">${fmt(revenue)}</span></div>
-                  {jobExpenses > 0 && <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Materials & Expenses</span><span className="text-sm font-bold text-red-500">−${fmt(jobExpenses)}</span></div>}
+                  {jobExpenses > 0 && <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Job Costs</span><span className="text-sm font-bold text-red-500">−${fmt(jobExpenses)}</span></div>}
                   {/* Expandable expense drill-down lives here in Profit Split, not in P&L */}
                   {jobExpenses > 0 && (
                     <div className="overflow-hidden border-b border-border/30">
@@ -1967,6 +1911,14 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                 <Timer className="w-3.5 h-3.5" /> Track Hours &amp; Manage Pay →
               </Link>
               {revenue === 0 && <p className="text-center text-xs text-muted-foreground py-4">Add an invoice to this job to see the breakdown.</p>}
+              {/* Additional Reports */}
+              <div className="pt-1">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground px-1 mb-2">Additional Reports</p>
+                <Link href={`/trip-packet/${job.id}`}
+                  className="flex items-center justify-center gap-2 w-full rounded-xl border border-blue-200 bg-blue-50/50 px-4 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-100/60 transition-colors">
+                  <FileText className="w-4 h-4" /> Trip Documentation Packet
+                </Link>
+              </div>
             </div>
           ) : (
             /* ── Sub Hours tab ── */
@@ -4206,7 +4158,7 @@ function JobCard({
   const [materialsPanelOpen, setMaterialsPanelOpen] = useState(false);
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
   const [financialsPanelOpen, setFinancialsPanelOpen] = useState(false);
-  const [financialsInitialTab, setFinancialsInitialTab] = useState<"pl" | "breakdown" | "hours">("pl");
+  const [financialsInitialTab, setFinancialsInitialTab] = useState<"breakdown" | "hours">("breakdown");
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
   const [checklistPanelOpen, setChecklistPanelOpen] = useState(false);
   const [mfhPanelOpen, setMfhPanelOpen] = useState(false);
@@ -4490,9 +4442,12 @@ function JobCard({
 
         </div>
 
-        {/* Inline Job P&L card — shown when invoices or expenses exist */}
+        {/* Inline Job P&L card — tappable, opens Job Financials → Profit Split */}
         {profitData != null && (profitData.grossInvoiced > 0 || profitData.jobExpenses > 0) && (
-          <div className="rounded-xl border border-border/50 bg-muted/20 p-3">
+          <button
+            type="button"
+            onClick={() => { setFinancialsInitialTab("breakdown"); setFinancialsPanelOpen(true); }}
+            className="w-full text-left rounded-xl border border-border/50 bg-muted/20 p-3 hover:bg-muted/30 active:bg-muted/40 transition-colors cursor-pointer">
             <div className="flex items-center gap-1.5 mb-2">
               <TrendingUp className="w-3 h-3 text-emerald-500 flex-shrink-0" />
               <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Job P&amp;L</span>
@@ -4528,7 +4483,7 @@ function JobCard({
                 </>
               )}
             </div>
-          </div>
+          </button>
         )}
 
         {/* Material Lists button */}
@@ -4687,23 +4642,6 @@ function JobCard({
           <Briefcase className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
           <span className="flex-1 text-left">Business Trips</span>
           <span className="text-[10px] text-muted-foreground">Travel receipts</span>
-        </button>
-
-        {/* Job Financials — consolidated P&L, Profit Split, Sub Hours */}
-        <button
-          onClick={() => { setFinancialsInitialTab("pl"); setFinancialsPanelOpen(true); }}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/80 transition-colors text-xs font-medium text-amber-700 w-full">
-          <BarChart2 className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-          <span className="flex-1 text-left">Job Financials</span>
-          {profitData != null && (profitData.grossInvoiced > 0 || profitData.jobExpenses > 0) ? (
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-              profitData.netProfit > 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"
-            }`}>
-              {profitData.netProfit > 0 ? "+" : ""}{formatCurrency(profitData.netProfit)}
-            </span>
-          ) : (
-            <span className="text-[10px] text-amber-400">P&amp;L · Breakdown · Hours</span>
-          )}
         </button>
 
         {/* Create Invoice — no invoice exists yet. MH Production uses the Production Pricing engine. */}

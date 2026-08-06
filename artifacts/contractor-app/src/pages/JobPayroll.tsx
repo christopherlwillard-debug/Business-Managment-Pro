@@ -1277,7 +1277,7 @@ export default function JobPayroll() {
               <div className="divide-y divide-border/30">
                 {(() => {
                   const stepDefs: Record<string, { label: string; amount: number }> = {
-                    expenses: { label: "Materials & Expenses",                   amount: jobExpenses },
+                    expenses: { label: "Job Costs",                               amount: jobExpenses },
                     labor:    { label: "Sub Labor",                              amount: subLaborCost },
                     growth:   { label: `Growth Reserve (${growthReservePct}%)`, amount: growthReserve },
                   };
