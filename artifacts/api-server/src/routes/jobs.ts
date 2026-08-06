@@ -454,8 +454,9 @@ router.get("/:id/profit", async (req, res) => {
           companyAddress: settingsTable.companyAddress,
           companyCity: settingsTable.companyCity,
           companyState: settingsTable.companyState,
-          vehicleMpg: settingsTable.vehicleMpg,
-          fuelPricePerGallon: settingsTable.fuelPricePerGallon,
+          // vehicleMpg and fuelPricePerGallon are NOT selected here — those columns exist in
+          // the Drizzle schema but were never migrated into the actual database.
+          // The vehicles table is the correct source for both values.
         }).from(settingsTable).limit(1),
         db.select({
           avgMpg: vehiclesTable.avgMpg,
@@ -463,16 +464,15 @@ router.get("/:id/profit", async (req, res) => {
         }).from(vehiclesTable).where(eq(vehiclesTable.isDefault, true)).limit(1),
       ]);
 
-      // Prefer default vehicle; fall back to legacy settings fields for backward compatibility.
-      // Default to $3.50/gal if no price is configured so the estimate always shows when
-      // mileage is available, rather than silently returning nothing.
+      // Default vehicle is the sole source of MPG and fuel price.
+      // Default to $3.50/gal if no vehicle is configured so the estimate still shows.
       const DEFAULT_FUEL_PRICE = 3.50;
       const defaultVehicle = defaultVehicles[0] ?? null;
-      const rawFuelPrice = defaultVehicle?.fuelPricePerGallon ?? settingsRow?.fuelPricePerGallon ?? null;
+      const rawFuelPrice = defaultVehicle?.fuelPricePerGallon ?? null;
       const fuelPrice = rawFuelPrice != null ? parseFloat(String(rawFuelPrice)) : DEFAULT_FUEL_PRICE;
 
       if (fuelPrice > 0) {
-        const mpg = defaultVehicle?.avgMpg ?? settingsRow?.vehicleMpg ?? 17;
+        const mpg = defaultVehicle?.avgMpg ?? 17;
 
         const [jobRow] = await db.select({
           address: jobsTable.address, city: jobsTable.city, state: jobsTable.state,
