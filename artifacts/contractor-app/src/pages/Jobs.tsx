@@ -1011,6 +1011,7 @@ type JobProfit = {
   netProfit: number;
   ownerDrawTaken?: number;
   estimatedFuelCost?: number | null;
+  fuelStatus?: "ok" | "missing_address" | "geocoding_failed" | "error";
   operationalProfit?: number | null;
   fuelBreakdown?: {
     onewayMiles: number; roundTripMiles: number; daysOnJob: number;
@@ -1648,6 +1649,17 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                     </div>
                   );
                 })()}
+                {/* ── Fuel cost unavailable hint ── */}
+                {profit?.estimatedFuelCost == null && (profit?.fuelStatus === "missing_address" || profit?.fuelStatus === "geocoding_failed") && (
+                  <div className="rounded-xl border border-amber-200/50 bg-amber-50/30 px-4 py-3 flex items-center gap-3">
+                    <Fuel className="w-5 h-5 text-amber-300 flex-shrink-0" />
+                    <p className="text-xs text-amber-700/80">
+                      {profit.fuelStatus === "missing_address"
+                        ? "Add a shop address in Settings to estimate fuel cost"
+                        : "Couldn't look up this address — check job city/state to see fuel estimate"}
+                    </p>
+                  </div>
+                )}
                 {/* ── Estimated Operational Profit ── */}
                 {profit?.operationalProfit != null && (() => {
                   const isOp = profit.operationalProfit >= 0;

@@ -33,7 +33,10 @@ export async function censusGeocode(
 
     const res = await fetch(
       `https://geocoding.geo.census.gov/geocoder/locations/address?${params}`,
-      { headers: { "User-Agent": "BuildPro/1.0 (Willards General Contracting)" } }
+      {
+        headers: { "User-Agent": "BuildPro/1.0 (Willards General Contracting)" },
+        signal: AbortSignal.timeout(5000),
+      }
     );
 
     if (!res.ok) {
@@ -84,6 +87,7 @@ export async function nominatimGeocode(
           "Accept-Language": "en-US,en",
           "Referer": "https://buildpro.app",
         },
+        signal: AbortSignal.timeout(5000),
       }
     );
 

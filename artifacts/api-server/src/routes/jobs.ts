@@ -441,6 +441,7 @@ router.get("/:id/profit", async (req, res) => {
     // VehicleEngine owns all fuel-cost math — no caller may compute distance/mpg×price directly (Rule 53).
     let estimatedFuelCost: number | null = null;
     let operationalProfit: number | null = null;
+    let fuelStatus: "ok" | "missing_address" | "geocoding_failed" | "error" = "ok";
     let fuelBreakdown: {
       onewayMiles: number; roundTripMiles: number; daysOnJob: number;
       totalMiles: number; fuelGallons: number; mpg: number; fuelPrice: number;
@@ -488,7 +489,11 @@ router.get("/:id/profit", async (req, res) => {
         // always reflect identical mileage.
         const route = await RoutingEngine.calculate({ origin: businessAddr, destination: jobAddr });
 
-        if (route.miles != null) {
+        if (route.routeStatus === "missing_address") {
+          fuelStatus = "missing_address";
+        } else if (route.routeStatus === "geocoding_failed") {
+          fuelStatus = "geocoding_failed";
+        } else if (route.miles != null) {
           // Workdays: count distinct dates in daily_logs for this job (min 1).
           // Uses actual logged days so the estimate reflects what really happened.
           const [dlRow] = await db
@@ -507,6 +512,7 @@ router.get("/:id/profit", async (req, res) => {
 
           estimatedFuelCost = vehicleCost.fuelCost;
           operationalProfit = parseFloat((netProfit - vehicleCost.fuelCost).toFixed(2));
+          fuelStatus = "ok";
           fuelBreakdown = {
             onewayMiles: route.miles,
             roundTripMiles: vehicleCost.roundTripMiles,
@@ -521,6 +527,7 @@ router.get("/:id/profit", async (req, res) => {
       }
     } catch (fuelErr) {
       // Fuel cost is informational — never fail the profit endpoint
+      fuelStatus = "error";
       console.warn("[profit] fuel cost estimation skipped:", fuelErr);
     }
 
@@ -529,6 +536,7 @@ router.get("/:id/profit", async (req, res) => {
       subLaborCost, allocPaid, totalSubHours,
       netProfit, ownerDrawTaken,
       estimatedFuelCost,
+      fuelStatus,
       operationalProfit,
       fuelBreakdown,
     });
