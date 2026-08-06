@@ -1014,7 +1014,7 @@ type JobProfit = {
   operationalProfit?: number | null;
   fuelBreakdown?: {
     onewayMiles: number; roundTripMiles: number; daysOnJob: number;
-    totalMiles: number; mpg: number; fuelPrice: number;
+    totalMiles: number; fuelGallons: number; mpg: number; fuelPrice: number;
   } | null;
 };
 
@@ -1191,6 +1191,8 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
   const [deletingPayId, setDeletingPayId] = useState<number | null>(null);
   const [subHours, setSubHours] = useState<SubHourEntry[]>([]);
   const [deletingHourId, setDeletingHourId] = useState<number | null>(null);
+
+  const [fuelExpanded, setFuelExpanded] = useState(false);
 
   // Expense drill-down state
   type ExpenseItem = { id: number; date: string | null; category: string | null; description: string | null; amount: string };
@@ -1588,16 +1590,57 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "pl",
                   <p className="text-xs text-muted-foreground text-center pt-1">{formatCurrency(profit.grossInvoiced - profit.collected)} outstanding (not yet collected)</p>
                 )}
                 {/* ── Estimated Fuel Cost (informational only) ── */}
-                {profit?.estimatedFuelCost != null && (
-                  <div className="rounded-xl border border-amber-200/70 bg-amber-50/40 p-4 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-amber-700 font-medium uppercase tracking-wide">Estimated Fuel Cost</p>
-                      <p className="text-xl font-bold text-amber-700 mt-0.5">-{formatCurrency(profit.estimatedFuelCost)}</p>
-                      <p className="text-[10px] text-amber-600/70 mt-0.5">Informational — not in accounting reports</p>
+                {profit?.estimatedFuelCost != null && (() => {
+                  const fb = profit.fuelBreakdown;
+                  return (
+                    <div className="rounded-xl border border-amber-200/70 bg-amber-50/40 overflow-hidden">
+                      <button
+                        type="button"
+                        className="w-full p-4 flex items-center justify-between hover:bg-amber-50/60 transition-colors active:bg-amber-100/40"
+                        onClick={() => setFuelExpanded(v => !v)}
+                      >
+                        <div className="text-left">
+                          <p className="text-xs text-amber-700 font-medium uppercase tracking-wide">Estimated Fuel Cost</p>
+                          <p className="text-xl font-bold text-amber-700 mt-0.5">-{formatCurrency(profit.estimatedFuelCost)}</p>
+                          <p className="text-[10px] text-amber-600/70 mt-0.5">Informational — not in accounting reports</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <Fuel className="w-6 h-6 text-amber-300" />
+                          {fb && (fuelExpanded
+                            ? <ChevronUp className="w-4 h-4 text-amber-400" />
+                            : <ChevronDown className="w-4 h-4 text-amber-400" />
+                          )}
+                        </div>
+                      </button>
+                      {fuelExpanded && fb && (
+                        <div className="border-t border-amber-200/60 bg-amber-50/70 px-4 py-3 space-y-1.5">
+                          <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide mb-2">How it's calculated</p>
+                          <div className="flex justify-between text-xs text-amber-800">
+                            <span className="text-amber-600">One-way distance</span>
+                            <span className="font-medium">{fb.onewayMiles.toFixed(1)} mi</span>
+                          </div>
+                          <div className="flex justify-between text-xs text-amber-800">
+                            <span className="text-amber-600">{fb.onewayMiles.toFixed(1)} mi × 2</span>
+                            <span className="font-medium">{fb.roundTripMiles.toFixed(1)} mi/day round trip</span>
+                          </div>
+                          <div className="flex justify-between text-xs text-amber-800">
+                            <span className="text-amber-600">{fb.roundTripMiles.toFixed(1)} mi/day × {fb.daysOnJob} day{fb.daysOnJob !== 1 ? "s" : ""}</span>
+                            <span className="font-medium">{fb.totalMiles.toFixed(1)} total miles</span>
+                          </div>
+                          <div className="border-t border-amber-200/50 my-1.5" />
+                          <div className="flex justify-between text-xs text-amber-800">
+                            <span className="text-amber-600">{fb.totalMiles.toFixed(1)} mi ÷ {fb.mpg} MPG</span>
+                            <span className="font-medium">{fb.fuelGallons.toFixed(2)} gal</span>
+                          </div>
+                          <div className="flex justify-between text-xs text-amber-800">
+                            <span className="text-amber-600">{fb.fuelGallons.toFixed(2)} gal × ${fb.fuelPrice.toFixed(2)}/gal</span>
+                            <span className="font-bold text-amber-700">{formatCurrency(profit.estimatedFuelCost)}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <Fuel className="w-6 h-6 text-amber-300 flex-shrink-0" />
-                  </div>
-                )}
+                  );
+                })()}
                 {/* ── Estimated Operational Profit ── */}
                 {profit?.operationalProfit != null && (() => {
                   const isOp = profit.operationalProfit >= 0;
