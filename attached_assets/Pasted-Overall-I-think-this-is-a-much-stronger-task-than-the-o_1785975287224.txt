@@ -1,0 +1,178 @@
+Overall, I think this is a much stronger task than the original. It's focused on architecture instead of patching symptoms.
+
+There are just three changes I'd make before giving it to Replit.
+
+1. Don't assume there are exactly two engines
+
+Right now it says:
+
+"there are at least two separate OSRM geocoding pipelines..."
+
+Instead say:
+
+Do not assume how many routing implementations exist.
+
+The first step is to audit the entire codebase and identify every implementation of:
+
+- OSRM routing
+- geocoding
+- business distance
+- client distance
+- drive time
+- distance caching
+
+Only after the audit may consolidation begin.
+
+That follows your Constitution better because you're requiring evidence before conclusions.
+
+2. Build a Route Engine, not just a Distance Engine
+
+I actually think BuildPro is going to need more than mileage.
+
+Eventually you'll need:
+
+miles
+drive time
+tolls
+ferries
+fuel estimate
+routing failures
+future traffic
+
+So instead of
+
+calculateDrivingRoute(...)
+
+I'd define the engine like this:
+
+RouteEngine.calculate({
+    origin,
+    destination,
+    vehicleProfile,
+})
+
+returns
+
+{
+    miles,
+    driveTimeMinutes,
+    estimatedFuelGallons,
+    estimatedFuelCost,
+    routeStatus,
+    provider,
+    cached
+}
+
+Then:
+
+General Contracting
+
+Business → Job
+
+Manufactured Housing
+
+Business → Job
+
+Client → Job
+
+Future
+
+Supplier → Job
+
+Warehouse → Job
+
+Storage Yard → Job
+
+all call the same engine.
+
+That'll save you rewriting it in six months.
+
+3. Never calculate fuel outside the engine
+
+This is the biggest thing I'd add.
+
+Right now the task says
+
+distance
+÷ mpg
+× fuel price
+
+I wouldn't let every module do that.
+
+I'd say:
+
+The Route Engine owns every operational routing calculation.
+
+Callers receive:
+
+- miles
+- drive time
+- estimated fuel gallons
+- estimated fuel cost
+
+No module may calculate fuel independently.
+
+Otherwise six months from now you'll find
+
+Jobs
+
+Mileage
+
+Route Planner
+
+Dashboard
+
+Reports
+
+all doing
+
+distance / mpg * fuelPrice
+
+slightly differently.
+
+I would also add Rule 53
+Rule 53 — One Engine Owns All Calculations
+
+If an engine is responsible for a business capability, it owns every calculation related to that capability.
+
+Examples
+
+Distance Engine
+• Miles
+• Drive Time
+• Fuel Gallons
+• Fuel Cost
+• Route Cache
+
+Tax Engine
+• Taxable Income
+• Self Employment Tax
+• Federal Tax
+• Estimated Payments
+
+Profit Engine
+• Revenue
+• Expenses
+• Growth
+• Payroll
+• Split Pool
+• Owner Pay
+
+No caller may recreate part of an engine's calculations.
+One thing I really like
+
+This sentence:
+
+"Two legitimate distance types exist (not duplicate engines)."
+
+That captures your architecture perfectly.
+
+You aren't saying:
+
+"Only one distance."
+
+You're saying:
+
+"Many routes, one routing engine."
+
+That's the distinction that will keep BuildPro from drifting into duplicated logic as it grows.
