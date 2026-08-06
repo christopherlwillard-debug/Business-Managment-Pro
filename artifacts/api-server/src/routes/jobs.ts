@@ -476,6 +476,7 @@ router.get("/:id/profit", async (req, res) => {
 
         const [jobRow] = await db.select({
           address: jobsTable.address, city: jobsTable.city, state: jobsTable.state,
+          startDate: jobsTable.startDate, endDate: jobsTable.endDate,
         }).from(jobsTable).where(eq(jobsTable.id, id));
 
         const businessAddr = [settingsRow?.companyAddress, settingsRow?.companyCity, settingsRow?.companyState]
@@ -494,13 +495,27 @@ router.get("/:id/profit", async (req, res) => {
         } else if (route.routeStatus === "geocoding_failed") {
           fuelStatus = "geocoding_failed";
         } else if (route.miles != null) {
-          // Workdays: count distinct dates in daily_logs for this job (min 1).
-          // Uses actual logged days so the estimate reflects what really happened.
-          const [dlRow] = await db
-            .select({ n: sql<number>`count(distinct date)` })
-            .from(dailyLogsTable)
-            .where(eq(dailyLogsTable.jobId, id));
-          const daysOnJob = Math.max(1, Number(dlRow?.n ?? 0));
+          // Workdays: prefer distinct dates logged in job_sub_hours (always present when
+          // subs log time), then fall back to daily_log diary entries, then the job's
+          // calendar span (endDate − startDate + 1). Floor at 1.
+          const [[subHoursDates], [dlDates]] = await Promise.all([
+            db.select({ n: sql<number>`count(distinct date)` })
+              .from(jobSubHoursTable)
+              .where(eq(jobSubHoursTable.jobId, id)),
+            db.select({ n: sql<number>`count(distinct date)` })
+              .from(dailyLogsTable)
+              .where(eq(dailyLogsTable.jobId, id)),
+          ]);
+          const subHoursCount = Number(subHoursDates?.n ?? 0);
+          const dlCount = Number(dlDates?.n ?? 0);
+          // Calendar span: inclusive day count from startDate to endDate on the job record.
+          const spanDays =
+            jobRow?.startDate && jobRow?.endDate
+              ? Math.max(1, Math.round(
+                  (new Date(jobRow.endDate).getTime() - new Date(jobRow.startDate).getTime()) / 86400000
+                ) + 1)
+              : 0;
+          const daysOnJob = Math.max(1, subHoursCount || dlCount || spanDays);
 
           // VehicleEngine.operatingCost() is the only place fuel math runs (Rule 53).
           // Formula: totalMiles = (onewayMiles × 2) × daysOnJob; fuelCost = totalMiles / mpg × fuelPrice
