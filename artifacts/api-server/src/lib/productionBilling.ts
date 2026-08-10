@@ -226,6 +226,7 @@ interface SeedItem {
 const SEED_ITEMS: SeedItem[] = [
   { itemKey: "interior_trim", name: "Interior Trim", invoiceDescription: "Interior Trim", billingType: "Per Home", sortOrder: 10, category: "Production", priceVog: 1500, priceHybrid: 2500, priceDrywall: 3500, legacyAliases: ["Interior Trim Out"] },
   { itemKey: "plumbing_hookup", name: "Plumbing Hookup", invoiceDescription: "Plumbing Hookup", billingType: "Per Home", sortOrder: 20, category: "Production", price: 1000, legacyAliases: ["Plumbing Hookup"] },
+  { itemKey: "heat_wrap_waterline", name: "Heat Wrap Waterline", invoiceDescription: "Heat Wrap Waterline", billingType: "Per Home", sortOrder: 21, category: "Production", price: 250, legacyAliases: ["Heat Wrap Waterline", "Heat Wrap"] },
   { itemKey: "exterior_trim", name: "Exterior Trim", invoiceDescription: "Exterior Trim", billingType: "Per Side", sortOrder: 30, category: "Production", price: 500, legacyAliases: ["Exterior Trim Out", "Vinyl Side", "Vinyl Sides"] },
   { itemKey: "deck_4x4", name: "4×4 Deck", invoiceDescription: "4×4 Deck", billingType: "Per Item", sortOrder: 40, category: "Production", price: 1400, legacyAliases: ["4×4 Deck / Step Platform", "4x4 Deck / Step Platform", "4×4 Deck", "4x4 Deck"] },
   { itemKey: "travel_surcharge", name: "Travel Surcharge", invoiceDescription: "Travel Surcharge", billingType: "Per Day", sortOrder: 50, category: "Travel", price: 150 },

@@ -5059,6 +5059,9 @@ function JobFormDialog({
   const [mhProductionServices, setMhProductionServices] = useState<number[]>(
     (editJob as unknown as Record<string, unknown>)?.mhProductionServices as number[] ?? []
   );
+  // Heat Wrap upsell prompt — shown when Plumbing Hookup is checked without Heat Wrap
+  const [heatWrapPromptOpen, setHeatWrapPromptOpen] = useState(false);
+  const [pendingPlumbingId, setPendingPlumbingId]   = useState<number | null>(null);
   const [showAddService, setShowAddService] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
   // Inline service-type management (rename / re-categorize / archive)
@@ -5550,8 +5553,20 @@ function JobFormDialog({
                       <input type="checkbox" className="rounded accent-amber-500"
                         checked={isChecked}
                         onChange={() => {
-                          if (isChecked) setMhProductionServices(prev => prev.filter(id => id !== svc.id));
-                          else setMhProductionServices(prev => [...prev, svc.id]);
+                          if (isChecked) {
+                            setMhProductionServices(prev => prev.filter(id => id !== svc.id));
+                          } else {
+                            // Intercept: checking Plumbing triggers Heat Wrap upsell prompt
+                            const isPlumbing   = svc.itemKey === "plumbing_hookup";
+                            const heatWrapSvc  = productionServiceTypes.find(s => s.itemKey === "heat_wrap_waterline");
+                            const heatWrapOn   = heatWrapSvc ? mhProductionServices.includes(heatWrapSvc.id) : false;
+                            if (isPlumbing && heatWrapSvc && !heatWrapOn) {
+                              setPendingPlumbingId(svc.id);
+                              setHeatWrapPromptOpen(true);
+                            } else {
+                              setMhProductionServices(prev => [...prev, svc.id]);
+                            }
+                          }
                         }}
                       />
                       <span className={`text-sm transition-colors truncate ${!svc.active ? "text-muted-foreground line-through" : "text-foreground group-hover:text-amber-700"}`}>
@@ -5592,6 +5607,58 @@ function JobFormDialog({
             </div>
           </div>
           )}
+
+          {/* ── Heat Wrap Waterline upsell prompt ── */}
+          {heatWrapPromptOpen && (() => {
+            const hwSvc = productionServiceTypes.find(s => s.itemKey === "heat_wrap_waterline");
+            const confirmYes = () => {
+              const ids: number[] = [];
+              if (pendingPlumbingId !== null) ids.push(pendingPlumbingId);
+              if (hwSvc) ids.push(hwSvc.id);
+              setMhProductionServices(prev => [...prev, ...ids.filter(id => !prev.includes(id))]);
+              setHeatWrapPromptOpen(false);
+              setPendingPlumbingId(null);
+            };
+            const confirmNo = () => {
+              if (pendingPlumbingId !== null)
+                setMhProductionServices(prev => prev.includes(pendingPlumbingId) ? prev : [...prev, pendingPlumbingId]);
+              setHeatWrapPromptOpen(false);
+              setPendingPlumbingId(null);
+            };
+            return (
+              <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                onClick={confirmNo}>
+                <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden"
+                  onClick={e => e.stopPropagation()}>
+                  <div className="h-1.5 bg-gradient-to-r from-amber-400 to-amber-500" />
+                  <div className="p-6 space-y-5">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                        <Wrench className="w-4.5 h-4.5 text-amber-600" />
+                      </div>
+                      <div>
+                        <h2 className="font-bold text-gray-900 text-base leading-tight">Heat Wrap Waterline?</h2>
+                        <p className="text-sm text-gray-500 mt-1">
+                          Will you also be heat wrapping the waterline on this plumbing hookup?
+                          <span className="font-semibold text-gray-800"> +$250</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <button type="button" onClick={confirmNo}
+                        className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">
+                        No, skip it
+                      </button>
+                      <button type="button" onClick={confirmYes}
+                        className="flex-1 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition-colors shadow-md">
+                        ✓ Yes, add it
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {(editJob || selectedWorkflow) && form.businessLine !== "asphalt_sealing" && selectedWorkflow !== "mh_production" && (
           <div>
