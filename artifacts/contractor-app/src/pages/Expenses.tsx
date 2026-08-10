@@ -2521,6 +2521,8 @@ export default function Expenses() {
   const [importOpen,   setImportOpen]                 = useState(false);
   const [receiptFile, setReceiptFile]                 = useState<File | null>(null);
   const [uploadError, setUploadError]                 = useState("");
+  // Tracks an expense that was created but whose receipt upload failed — guards against duplicate creation on retry
+  const [createdExpenseId, setCreatedExpenseId]       = useState<number | null>(null);
 
   const [prefillAmount, setPrefillAmount]             = useState("");
   const [prefillDate,   setPrefillDate]               = useState("");
@@ -2872,8 +2874,29 @@ export default function Expenses() {
     e.preventDefault();
     setUploadError("");
     const fd = new FormData(e.currentTarget);
+    // Capture receipt file immediately — closures can see stale state after awaits
+    const pendingReceiptFile = receiptFile;
 
     try {
+      // ── Upload retry mode: expense already exists — skip creation, just re-upload ──
+      if (createdExpenseId !== null) {
+        if (!pendingReceiptFile) {
+          setUploadError("No receipt photo available to upload.");
+          return;
+        }
+        try {
+          await uploadMutation.mutateAsync({ id: createdExpenseId, data: { receipt: pendingReceiptFile } });
+          qc.invalidateQueries({ queryKey: ["/api/expenses"] });
+        } catch {
+          setUploadError("Upload failed again — close to keep the expense without a receipt, then re-attach from the expense list.");
+          return;
+        }
+        setCreatedExpenseId(null);
+        setIsDialogOpen(false);
+        setReceiptFile(null);
+        return;
+      }
+
       // ── Explicit JS validation (replaces unreliable mobile browser native validation) ──
       const rawDesc = (fd.get("description") as string ?? "").trim();
       const rawAmt  = parseFloat(fd.get("amount") as string ?? "0");
@@ -2931,7 +2954,22 @@ export default function Expenses() {
         old ? [...old, { ...expense, jobTitle, subcontractorName: subName }] : [{ ...expense, jobTitle, subcontractorName: subName }]
       );
 
-      // ── Close dialog immediately — background work continues below ──
+      // ── Receipt upload — synchronous, before closing dialog so any failure stays visible ──
+      // Set createdExpenseId first so that if upload fails, the retry path can re-upload without creating a duplicate
+      setCreatedExpenseId(expense.id);
+      if (pendingReceiptFile && expense.id) {
+        try {
+          await uploadMutation.mutateAsync({ id: expense.id, data: { receipt: pendingReceiptFile } });
+          qc.invalidateQueries({ queryKey: ["/api/expenses"] });
+        } catch {
+          // Keep dialog open — footer switches to "Retry Upload" / "Close (no receipt)" via createdExpenseId
+          setUploadError("Receipt photo couldn't be saved — the expense was created. Tap Retry Upload to try again, or close to keep the expense without a receipt.");
+          return;
+        }
+      }
+      setCreatedExpenseId(null);
+
+      // ── Close dialog ──
       // Auto-jump the year filter to match the saved expense so it's immediately visible
       const savedYear = (expense.date ?? "").slice(0, 4);
       if (savedYear && savedYear !== selectedYear) setSelectedYear(savedYear);
@@ -2952,15 +2990,6 @@ export default function Expenses() {
       if (prefillTripId) {
         qc.invalidateQueries({ queryKey: ["trip-receipts", prefillTripId] });
         qc.invalidateQueries({ queryKey: ["business-trips"] });
-      }
-
-      // Background: receipt upload (receiptFile still holds the file — setState is async)
-      if (receiptFile && expense.id) {
-        uploadMutation.mutateAsync({ id: expense.id, data: { receipt: receiptFile } })
-          .then(() => qc.invalidateQueries({ queryKey: ["/api/expenses"] }))
-          .catch(() => {
-            toast({ title: "Receipt upload failed", description: "Expense saved. Open it to re-attach the receipt.", variant: "destructive" });
-          });
       }
 
       // Background: vendor save
@@ -3698,6 +3727,7 @@ export default function Expenses() {
       <Dialog open={isDialogOpen} onOpenChange={open => {
         setIsDialogOpen(open);
         if (!open) {
+          setCreatedExpenseId(null);
           setReceiptFile(null);
           setPrefillAmount("");
           setPrefillDate("");
@@ -4081,18 +4111,34 @@ export default function Expenses() {
           </form>
 
           <div className="pt-4 border-t border-dashed border-border flex justify-end gap-3 flex-shrink-0">
-            <button type="button" onClick={() => { setIsDialogOpen(false); setReceiptFile(null); }}
-              className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              form="expense-form"
-              disabled={createMutation.isPending || uploadMutation.isPending}
-              className="px-6 py-2 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md"
-            >
-              {createMutation.isPending || uploadMutation.isPending ? "Saving…" : "Save Expense"}
-            </button>
+            {createdExpenseId !== null ? (<>
+              {/* Upload retry mode — expense saved, only receipt missing */}
+              <button type="button" onClick={() => { setIsDialogOpen(false); setReceiptFile(null); setCreatedExpenseId(null); }}
+                className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors text-sm">
+                Close (no receipt)
+              </button>
+              <button
+                type="submit"
+                form="expense-form"
+                disabled={uploadMutation.isPending}
+                className="px-6 py-2 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md"
+              >
+                {uploadMutation.isPending ? "Uploading…" : "Retry Upload"}
+              </button>
+            </>) : (<>
+              <button type="button" onClick={() => { setIsDialogOpen(false); setReceiptFile(null); }}
+                className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors">
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="expense-form"
+                disabled={createMutation.isPending || uploadMutation.isPending}
+                className="px-6 py-2 rounded-xl font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-md"
+              >
+                {createMutation.isPending || uploadMutation.isPending ? "Saving…" : "Save Expense"}
+              </button>
+            </>)}
           </div>
         </DialogContent>
       </Dialog>
