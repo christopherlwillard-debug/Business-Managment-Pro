@@ -141,6 +141,26 @@ export function InvoicePanel({
         unitPrice: li.unitPrice,
       }));
     }
+    // Recovery: existing invoice has a stored total but no line items (legacy/migrated data).
+    // Seed one line so the amount is visible and not silently lost when the user saves.
+    if (effectiveExistingInvoice) {
+      const storedSubtotal = Number(effectiveExistingInvoice.subtotal);
+      const storedTotal    = Number(effectiveExistingInvoice.total);
+      const taxRate        = Number(effectiveExistingInvoice.taxRate ?? 0);
+
+      let recoveredUnitPrice = 0;
+      if (storedSubtotal > 0) {
+        // Subtotal is explicitly positive — use it directly as the pre-tax amount
+        recoveredUnitPrice = storedSubtotal;
+      } else if (storedTotal > 0) {
+        // Subtotal is zero/missing; derive pre-tax amount from total by removing any tax
+        recoveredUnitPrice = taxRate > 0 ? storedTotal / (1 + taxRate / 100) : storedTotal;
+      }
+
+      if (recoveredUnitPrice > 0) {
+        return [{ description: "", quantity: 1, unitPrice: recoveredUnitPrice }];
+      }
+    }
     if (initialData?.lineItems?.length) {
       return initialData.lineItems.map((li: any) => ({
         description: String(li.description ?? ""),
