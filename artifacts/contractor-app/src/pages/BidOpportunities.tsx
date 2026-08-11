@@ -15,8 +15,9 @@ import BidStatsBar from "./bids/BidStatsBar";
 import BidCard from "./bids/BidCard";
 import PipelineBoard from "./bids/PipelineBoard";
 import AwardsPanel from "./bids/AwardsPanel";
+import BidEducationPanel from "./bids/BidEducationPanel";
 import type { BidFilter, SourceFilter } from "./bids/BidFilterBar";
-import type { QuickLink, AiSummary, BidOpportunity, BidStage } from "./bids/types";
+import type { QuickLink, AiSummary, BidOpportunity, BidStage, EducationSummary } from "./bids/types";
 import { RotateCcw } from "lucide-react";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -51,7 +52,9 @@ export default function BidOpportunities() {
   const [panelSummary, setPanelSummary] = useState<AiSummary | null>(null);
   const [panelLoading, setPanelLoading] = useState(false);
   const [panelError,   setPanelError]   = useState<string | null>(null);
-  const [summaryCache, setSummaryCache] = useState<Record<number, AiSummary>>({});
+  const [summaryCache,   setSummaryCache]   = useState<Record<number, AiSummary>>({});
+  const [educatingBid,   setEducatingBid]   = useState<BidOpportunity | null>(null);
+  const [educationCache, setEducationCache] = useState<Record<number, EducationSummary>>({});
 
   function switchView(v: "list" | "pipeline") {
     setView(v);
@@ -258,6 +261,8 @@ export default function BidOpportunities() {
     ? stageFiltered.filter((b) => b.source === "federal")
     : sourceFilter === "local"
     ? stageFiltered.filter((b) => b.source === "state-local")
+    : sourceFilter === "subnet"
+    ? stageFiltered.filter((b) => b.source === "subnet" || b.source === "gsa-forecast")
     : stageFiltered;
 
   const fitCount = sourceFiltered.filter(
@@ -267,6 +272,10 @@ export default function BidOpportunities() {
   const displayedBids = fitOnly
     ? sourceFiltered.filter((b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true)
     : sourceFiltered;
+
+  const subnetCount = pipelineBids.filter(
+    (b) => b.source === "subnet" || b.source === "gsa-forecast"
+  ).length;
 
   const showPipeline = sourceFilter !== "usa-spending";
   const showAwards   = sourceFilter === "all" || sourceFilter === "usa-spending";
@@ -290,6 +299,7 @@ export default function BidOpportunities() {
             bid={bid}
             summary={summaryCache[bid.id] ?? bid.aiSummary}
             onSummarize={openSummaryPanel}
+            onEducate={(b) => setEducatingBid(b)}
             onStageChange={(b, stage) => updateStage.mutate({ id: b.id, stage })}
             onDismiss={dismissBid}
             onRestore={(b) => updateStage.mutate({ id: b.id, stage: "new" })}
@@ -422,6 +432,7 @@ export default function BidOpportunities() {
         sourceFilter={sourceFilter}
         setSourceFilter={setSourceFilter}
         awardsCount={awards.length}
+        subnetCount={subnetCount}
       />
 
       {/* ── Content area ────────────────────────────────────────────────────── */}
@@ -453,6 +464,7 @@ export default function BidOpportunities() {
                       bids={pipelineBids}
                       summaryCache={summaryCache}
                       onSummarize={openSummaryPanel}
+                      onEducate={(b) => setEducatingBid(b)}
                       onStageChange={(bid, stage) => {
                         if (stage === "no_bid") dismissBid(bid);
                         else updateStage.mutate({ id: bid.id, stage });
@@ -493,6 +505,26 @@ export default function BidOpportunities() {
           )}
         </>
       )}
+
+      {/* ── Bid Education Panel ─────────────────────────────────────────── */}
+      <BidEducationPanel
+        bid={educatingBid ?? ({} as BidOpportunity)}
+        open={!!educatingBid}
+        onClose={() => setEducatingBid(null)}
+        businessId={businessId ?? 0}
+        apiBaseUrl={BASE_URL}
+        initialEducation={
+          educatingBid
+            ? ((educationCache[educatingBid.id] ?? educatingBid.educationSummary) as import("./bids/types").EducationSummary | null)
+            : null
+        }
+        onGenerated={(edu) => {
+          if (educatingBid) {
+            const id = educatingBid.id;
+            setEducationCache((prev) => ({ ...prev, [id]: edu }));
+          }
+        }}
+      />
     </div>
   );
 }

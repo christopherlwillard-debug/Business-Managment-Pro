@@ -53,6 +53,30 @@ export const LARGE_FLEET_NEGATIVE_TERMS = [
   "fleet of vehicles",
   "20 or more vehicles",
   "refuse collection franchise",
+  "solid waste franchise",
+  "fleet management",
+  "automated refuse",
+];
+
+/**
+ * Title-level hard-suppression terms.
+ * Any opportunity whose TITLE contains one of these is skipped at sync time —
+ * it is clearly incompatible with this contractor regardless of keyword matches.
+ * Export so UI can display suppression rationale if needed.
+ */
+export const TITLE_HARD_SUPPRESS_TERMS = [
+  "hazardous waste",
+  "medical waste",
+  "biomedical waste",
+  "radioactive waste",
+  "hazmat",
+  "biohazard",
+  "residential garbage collection",
+  "municipal solid waste collection",
+  "refuse collection franchise",
+  "automated refuse",
+  "sewage treatment",
+  "wastewater treatment plant",
 ];
 
 // ── General Contracting capability definitions ────────────────────────────────
@@ -167,14 +191,22 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
   },
   {
     capabilityKey: "flooring",
-    name: "Flooring Installation",
+    name: "Flooring, Trim & Interior Finish",
     description:
-      "Flooring installation contractor capable of LVP (luxury vinyl plank), " +
-      "vinyl sheet, carpet, hardwood, laminate, and tile installation " +
-      "in residential and light commercial settings.",
+      "Residential and light-commercial interior finish contractor. " +
+      "Installs LVP (luxury vinyl plank), vinyl sheet, carpet, hardwood, laminate, and tile. " +
+      "Also performs drywall patching and repair (NOT full commercial drywall installs), " +
+      "interior trim and finish carpentry (baseboards, casings, door/window trim), " +
+      "and basic painting prep. Works best in single-family homes, manufactured homes, " +
+      "and small commercial spaces. " +
+      "CANNOT perform: large-scale commercial drywall installation requiring multiple crews; " +
+      "work requiring a general contractor license (KY requires license for projects >$10,000 " +
+      "in some jurisdictions — verify threshold); electrical, plumbing, or HVAC work.",
     naicsCodes: [
       "238330", // Flooring contractors
       "238340", // Tile & terrazzo
+      "238310", // Drywall & insulation
+      "238350", // Finish carpentry
     ],
     keywords: [
       "flooring installation",
@@ -189,11 +221,29 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "vinyl flooring",
       "floor replacement",
       "flooring contractor",
+      "drywall repair",
+      "drywall patch",
+      "drywall finishing",
+      "interior trim",
+      "trim installation",
+      "finish carpentry",
+      "baseboard",
+      "door casing",
+      "window trim",
+      "interior finish",
     ],
-    negativeKeywords: [],
-    equipment: ["hand tools", "flooring nailer", "power tools"],
+    negativeKeywords: [
+      "commercial drywall",
+      "drywall installation 10,000 square",
+      "electrical",
+      "plumbing",
+      "HVAC",
+      "mechanical",
+    ],
+    equipment: ["hand tools", "flooring nailer", "power tools", "compound", "drywall tools"],
     localKeywords: [
       "flooring", "floor installation", "LVP", "carpet", "tile", "hardwood",
+      "drywall repair", "drywall finishing", "trim", "finish carpentry", "interior finish",
     ],
     active: true,
     sortOrder: 30,
@@ -250,13 +300,18 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
     capabilityKey: "general_contracting",
     name: "General Contracting & Property Maintenance",
     description:
-      "General contractor performing commercial and residential renovation, remodeling, " +
-      "interior finish work, drywall repair, painting, carpentry, roofing, " +
-      "property maintenance, and facilities repair. " +
-      "Experienced with government facility maintenance and small-business set-aside contracts.",
+      "Small general contractor / handyman performing residential and light commercial " +
+      "renovation, remodeling, interior finish work, drywall repair, painting, " +
+      "carpentry, roofing, property maintenance, and facilities repair. " +
+      "Best suited for: government facility minor repairs, preventive maintenance, " +
+      "occupied building maintenance, residential remodel, and small commercial work. " +
+      "IMPORTANT LICENSE LIMIT: Most work requiring a contractor license (KY: projects " +
+      "over certain dollar thresholds) or specialized trade licenses (electrical, plumbing, " +
+      "HVAC/mechanical) is OUTSIDE this contractor's scope. " +
+      "CANNOT perform: large new-construction GC work, projects requiring a general " +
+      "contractor's license as prime on major commercial builds, licensed electrical, " +
+      "licensed plumbing installation, mechanical/HVAC systems work.",
     naicsCodes: [
-      "236220", // Commercial & institutional building
-      "236210", // Industrial building
       "236115", // New single-family home
       "236116", // Remodeling of single-family homes
       "236118", // Residential remodelers
@@ -273,14 +328,9 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
     keywords: [
       "general contractor",
       "general contracting",
-      "commercial building",
       "renovation",
       "remodel",
       "building renovation",
-      "tenant improvement",
-      "site work",
-      "commercial construction",
-      "interior construction",
       "facility renovation",
       "construction services",
       "roofing",
@@ -296,9 +346,27 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "minor repairs",
       "handyman",
       "preventive maintenance",
+      "janitorial services",
     ],
-    negativeKeywords: [],
-    equipment: ["hand tools", "power tools", "ladder", "scaffolding"],
+    negativeKeywords: [
+      // Licensed trades clearly outside scope
+      "electrical work",
+      "electrical installation",
+      "licensed electrician",
+      "plumbing installation",
+      "licensed plumber",
+      "HVAC installation",
+      "HVAC system",
+      "mechanical system",
+      "fire suppression",
+      "sprinkler system",
+      // Large-scale commercial GC work
+      "new construction office building",
+      "new construction commercial",
+      "multistory",
+      "high-rise",
+    ],
+    equipment: ["hand tools", "power tools", "ladder", "scaffolding", "van/truck"],
     localKeywords: [
       "renovation", "remodel", "construction", "maintenance", "repair",
       "carpentry", "roofing", "drywall", "painting",

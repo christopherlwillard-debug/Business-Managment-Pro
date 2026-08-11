@@ -1,4 +1,4 @@
-import { Building2, Sparkles, ExternalLink, CheckCircle2, XCircle, ChevronDown } from "lucide-react";
+import { Building2, Sparkles, ExternalLink, CheckCircle2, XCircle, ChevronDown, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AiSummary, BidOpportunity, BidStage } from "./types";
 import { PIPELINE_STAGES } from "./types";
@@ -15,12 +15,14 @@ function PipelineCard({
   bid,
   summary,
   onSummarize,
+  onEducate,
   onStageChange,
   isUpdating,
 }: {
   bid: BidOpportunity;
   summary: AiSummary | null;
   onSummarize: (bid: BidOpportunity) => void;
+  onEducate:   (bid: BidOpportunity) => void;
   onStageChange: (bid: BidOpportunity, stage: BidStage) => void;
   isUpdating: boolean;
 }) {
@@ -70,6 +72,13 @@ function PipelineCard({
           <Sparkles className="w-2.5 h-2.5" />
           {summary ? "Summary" : "AI"}
         </button>
+        <button
+          onClick={() => onEducate(bid)}
+          className="flex items-center gap-0.5 px-2 py-1 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+          title="Get a plain-English explanation"
+        >
+          <BookOpen className="w-2.5 h-2.5" />
+        </button>
         {bid.url && (
           <a
             href={bid.url}
@@ -101,19 +110,21 @@ function PipelineCard({
 interface Props {
   bids: BidOpportunity[];
   summaryCache: Record<number, AiSummary>;
-  onSummarize: (bid: BidOpportunity) => void;
+  onSummarize:  (bid: BidOpportunity) => void;
+  onEducate:    (bid: BidOpportunity) => void;
   onStageChange: (bid: BidOpportunity, stage: BidStage) => void;
   isUpdating: boolean;
   fitOnly: boolean;
-  sourceFilter: "all" | "federal" | "local" | "usa-spending";
+  sourceFilter: "all" | "federal" | "local" | "subnet" | "usa-spending";
 }
 
 export default function PipelineBoard({
-  bids, summaryCache, onSummarize, onStageChange, isUpdating, fitOnly, sourceFilter,
+  bids, summaryCache, onSummarize, onEducate, onStageChange, isUpdating, fitOnly, sourceFilter,
 }: Props) {
   const filtered = bids.filter((b) => {
     if (sourceFilter === "federal" && b.source === "state-local") return false;
-    if (sourceFilter === "local" && b.source !== "state-local") return false;
+    if (sourceFilter === "local"   && b.source !== "state-local") return false;
+    if (sourceFilter === "subnet"  && b.source !== "subnet" && b.source !== "gsa-forecast") return false;
     if (fitOnly) {
       const s = summaryCache[b.id] ?? b.aiSummary;
       if (s?.isFit !== true) return false;
@@ -156,6 +167,7 @@ export default function PipelineBoard({
                       bid={bid}
                       summary={summaryCache[bid.id] ?? bid.aiSummary}
                       onSummarize={onSummarize}
+                      onEducate={onEducate}
                       onStageChange={onStageChange}
                       isUpdating={isUpdating}
                     />

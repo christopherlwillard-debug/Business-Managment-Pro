@@ -78,7 +78,9 @@ function sanitizeSummary(raw: Record<string, unknown>): AiSummary {
 async function buildSummarizePrompt(
   doc: { text: string },
   businessId: number,
-  businessType: string
+  businessType: string,
+  source?: string | null,
+  opportunityType?: string | null,
 ): Promise<string> {
   // Load DB capability profiles if available, fall back to seed definitions
   const dbCaps = await db
@@ -147,6 +149,32 @@ EVALUATION RULES — read these before scoring isFit:
 5. When unsure, be conservative. A false positive wastes Willard's time reviewing an unsuitable bid.
 6. Mark isFit=true only when the scope, scale, equipment, and certification requirements are all
    clearly achievable for this contractor. Explain specifically which capability matches.
+7. For any license, bond, or certification you are uncertain about — do not make a legal
+   conclusion. Use language like "verify whether [requirement] applies" or "confirm if
+   [specific license] is required for this scope."
+${
+  (source === "subnet" || opportunityType === "subcontracting") ? `
+OPPORTUNITY TYPE: Subcontracting (SBA SUBNet)
+This is NOT a prime government contract — a prime contractor is seeking a subcontractor.
+Set-aside and certification requirements apply to the prime, not necessarily the sub.
+For bonding, clearance, or prevailing wage items, note "Verify with prime contractor"
+rather than treating them as definitive barriers. Evaluate isFit on whether the described
+scope of work is performable by this contractor as a subcontractor.` :
+  (source === "gsa-forecast" || opportunityType === "forecast") ? `
+OPPORTUNITY TYPE: GSA Forecast / Planned Acquisition (Early Intel)
+This is NOT an active solicitation — it is an agency forecast of a future acquisition.
+Requirements and scope may change before the actual solicitation is released.
+Evaluate fit based on the described scope but frame requirements as "anticipated."` :
+  (opportunityType === "sources_sought") ? `
+OPPORTUNITY TYPE: Sources Sought / RFI (Market Research)
+The agency is researching market capabilities — this is not accepting bids yet.
+Responding builds agency awareness. Evaluate isFit on whether this contractor's
+capabilities align with the described need.` :
+  (opportunityType === "presolicitation") ? `
+OPPORTUNITY TYPE: Pre-Solicitation (Early Notice)
+The agency has announced a planned solicitation — not yet accepting bids.
+Evaluate fit based on the described scope so Willard can track it for the actual posting.` : ""
+}
 
 SOLICITATION CONTENT:
 ${doc.text}
@@ -324,7 +352,7 @@ router.post("/:id/summarize", async (req, res) => {
       .limit(1);
 
     const doc = await fetchBidDocument({ noticeId: bid.noticeId, url: bid.url, source: bid.source, description: bid.description });
-    const prompt = await buildSummarizePrompt(doc, bizId, business?.type ?? "general_contracting");
+    const prompt = await buildSummarizePrompt(doc, bizId, business?.type ?? "general_contracting", bid.source, bid.opportunityType);
 
     const completion = await openai.chat.completions.create({
       model: BUILDPRO_AI_MINI_MODEL,
@@ -378,6 +406,210 @@ router.post("/sync", async (req, res) => {
   } catch (err) {
     console.error("[bids] POST /bids/sync error:", err);
     res.status(500).json({ error: "Bid sync failed" });
+  }
+});
+
+// ── Education analysis ─────────────────────────────────────────────────────
+
+interface EducationRequirementData { item: string; plain: string; action: string }
+interface EducationTermData        { term: string; plain: string }
+interface EducationSummaryData {
+  whatTheGovIsBuying: string;
+  noticeTypeContext:   string;
+  capabilityVerdict:  string;
+  whyItFits:          string[];
+  whyYouMayPass:      string[];
+  requirements:       EducationRequirementData[];
+  howToRespond:       string[];
+  questionsForCO:     string[];
+  nextStep:           string;
+  detectedTerms:      EducationTermData[];
+}
+
+function buildEducationPrompt(
+  bid: typeof bidOpportunitiesTable.$inferSelect,
+  capabilities: CapabilityDefinition[],
+  existingSummary: Record<string, unknown> | null,
+): string {
+  const capList = capabilities
+    .filter((c) => c.active)
+    .map((c) => `- ${c.name}: ${c.description}`)
+    .join("\n");
+
+  const equipList = [...new Set(capabilities.flatMap((c) => (c as CapabilityDefinition & { equipment?: string[] }).equipment ?? []))].join(", ");
+
+  const bidLines = [
+    `Title: ${bid.title}`,
+    bid.agency            ? `Agency: ${bid.agency}`                              : null,
+    bid.naicsCode         ? `NAICS Code: ${bid.naicsCode}`                       : null,
+    bid.opportunityType   ? `Opportunity Type: ${bid.opportunityType}`           : null,
+    bid.noticeType        ? `Notice Type: ${bid.noticeType}`                     : null,
+    bid.source            ? `Source: ${bid.source}`                              : null,
+    bid.responseDeadline  ? `Response Deadline: ${bid.responseDeadline}`         : null,
+    bid.description       ? `\nDescription:\n${bid.description.slice(0, 2500)}`  : null,
+  ].filter(Boolean).join("\n");
+
+  let existingBlock = "";
+  if (existingSummary && Object.keys(existingSummary).length > 0) {
+    existingBlock = `\nEXISTING AI ANALYSIS (ground your education in this — do not contradict it):
+- Fit: ${existingSummary["isFit"] === true ? "FIT" : existingSummary["isFit"] === false ? "NOT FIT" : "UNKNOWN"}
+- Reason: ${existingSummary["fitReason"] ?? "N/A"}
+- Requirements: ${Array.isArray(existingSummary["requirements"]) ? (existingSummary["requirements"] as string[]).join("; ") : "None"}
+- License risk: ${existingSummary["licenseRisk"] ?? "None identified"}
+- Bonding required: ${existingSummary["bondingRequired"] === true ? "YES" : existingSummary["bondingRequired"] === false ? "NO" : "Unknown"}
+- Set-aside type: ${existingSummary["setAsideType"] ?? "Unknown"}`;
+  }
+
+  return `You are an expert government contracting advisor helping a small contractor who is COMPLETELY NEW to government contracting. Explain this opportunity in plain English — like talking to a capable tradesperson who has never bid on a government contract before.
+
+RULE: Do NOT give legal advice. For anything involving licenses, certifications, or bonds, use "Verify before bidding:" language — never say "you cannot do this."
+
+CONTRACTOR PROFILE:
+${capList}
+
+Equipment: ${equipList || "standard hand tools and power tools"}
+${existingBlock}
+
+OPPORTUNITY:
+${bidLines}
+
+---
+PROCUREMENT GLOSSARY (use these definitions in your explanations):
+Solicitation: Government's formal "we need something" announcement — your invitation to compete.
+Sources Sought/RFI: Market research — NOT accepting bids yet. Government asking who can do this.
+Pre-Solicitation: Early heads-up that a solicitation is coming — not accepting bids yet.
+IFB: Invitation for Bid — lowest qualified price wins.
+RFP: Request for Proposal — best overall value wins (price + approach + past performance).
+RFQ: Request for Quotation — used for simpler or smaller purchases.
+Set-Aside: Contract reserved for specific business types (small businesses, veteran-owned, etc.).
+SDVOSB: Service-Disabled Veteran-Owned Small Business set-aside type.
+NAICS Code: Industry classification code that categorizes the type of work.
+Incumbent: Company currently doing the work on an existing contract.
+Period of Performance: How long the contract runs.
+Option Year: Extension the government can add after the base contract period.
+Past Performance: Your track record on prior contracts — scored in proposals.
+Bid Bond: Deposit (5-10% of bid) proving you are serious; returned if you don't win.
+Performance Bond: Insurance guaranteeing you will finish the work.
+Payment Bond: Insurance guaranteeing you will pay your subs and suppliers.
+Prevailing Wage/Davis-Bacon: Government-set minimum pay rates for workers on federal contracts.
+Contracting Officer (CO): Government employee managing the contract — your main contact.
+FAR: Federal Acquisition Regulation — the rulebook for federal government purchasing.
+
+---
+Return ONLY valid JSON (no markdown, no code fences) with EXACTLY these fields:
+{
+  "whatTheGovIsBuying": "1-2 plain English sentences on what work actually needs to be done. Concrete: what, where, how often. No jargon.",
+  "noticeTypeContext": "What this specific notice type means for this contractor RIGHT NOW. Action-oriented. E.g. for Sources Sought: 'The government is not yet accepting bids. They are researching who can do this work. You should respond with a brief capability statement to get on their radar.'",
+  "capabilityVerdict": "good_fit OR possible_fit OR need_more_info OR likely_not_fit",
+  "whyItFits": ["Specific reason referencing contractor capabilities by name — 3 to 5 items"],
+  "whyYouMayPass": ["Honest concern — use Verify before bidding: language for license/cert issues — 0 to 4 items, empty array if no real concerns"],
+  "requirements": [
+    { "item": "Plain English requirement name", "plain": "What this means and what to do about it", "action": "must_have OR verify OR nice_to_have OR likely_disqualifier" }
+  ],
+  "howToRespond": ["Step 1 specific to this notice type", "Step 2", "Step 3", "Step 4"],
+  "questionsForCO": ["Specific question relevant to this bid scope — 3 to 5 questions"],
+  "nextStep": "Single most important thing to do TODAY. Starts with an action verb. One sentence.",
+  "detectedTerms": [{ "term": "procurement term from the description", "plain": "definition in plain English" }]
+}
+
+RULES:
+1. whyItFits: name specific contractor capabilities (e.g. "Your asphalt sealing capability directly matches...").
+2. requirements action: use "likely_disqualifier" ONLY for hard requirements clearly not meetable (HazMat cert, CDL-A, security clearance). Still write "Verify before bidding:" in the plain field.
+3. howToRespond: tailor to notice type. Sources Sought → respond with capability statement. Active solicitation → download and read solicitation first.
+4. questionsForCO: specific questions, not generic. "What is the square footage to be sealed?" not "What are the requirements?"
+5. nextStep: starts with a verb, specific, and actionable today.
+6. detectedTerms: only terms from the opportunity description a new contractor would find confusing.
+7. All arrays are required — use [] when nothing applies. nextStep must be non-empty.`;
+}
+
+function sanitizeEducation(raw: Record<string, unknown>): EducationSummaryData {
+  const VALID_VERDICTS = ["good_fit", "possible_fit", "need_more_info", "likely_not_fit"];
+  const VALID_ACTIONS  = ["must_have", "verify", "nice_to_have", "likely_disqualifier"];
+  return {
+    whatTheGovIsBuying: typeof raw["whatTheGovIsBuying"] === "string" ? raw["whatTheGovIsBuying"] : "",
+    noticeTypeContext:   typeof raw["noticeTypeContext"]   === "string" ? raw["noticeTypeContext"]   : "",
+    capabilityVerdict:  VALID_VERDICTS.includes(raw["capabilityVerdict"] as string)
+      ? (raw["capabilityVerdict"] as string) : "need_more_info",
+    whyItFits:    Array.isArray(raw["whyItFits"])    ? (raw["whyItFits"]    as unknown[]).filter((x): x is string => typeof x === "string") : [],
+    whyYouMayPass: Array.isArray(raw["whyYouMayPass"]) ? (raw["whyYouMayPass"] as unknown[]).filter((x): x is string => typeof x === "string") : [],
+    requirements: Array.isArray(raw["requirements"])
+      ? (raw["requirements"] as Record<string, unknown>[]).map((r) => ({
+          item:   typeof r["item"]   === "string" ? r["item"]   : "",
+          plain:  typeof r["plain"]  === "string" ? r["plain"]  : "",
+          action: VALID_ACTIONS.includes(r["action"] as string) ? (r["action"] as string) : "verify",
+        })).filter((r) => r.item)
+      : [],
+    howToRespond:   Array.isArray(raw["howToRespond"])   ? (raw["howToRespond"]   as unknown[]).filter((x): x is string => typeof x === "string") : [],
+    questionsForCO: Array.isArray(raw["questionsForCO"]) ? (raw["questionsForCO"] as unknown[]).filter((x): x is string => typeof x === "string") : [],
+    nextStep:       typeof raw["nextStep"] === "string" ? raw["nextStep"] : "",
+    detectedTerms: Array.isArray(raw["detectedTerms"])
+      ? (raw["detectedTerms"] as Record<string, unknown>[]).map((t) => ({
+          term:  typeof t["term"]  === "string" ? t["term"]  : "",
+          plain: typeof t["plain"] === "string" ? t["plain"] : "",
+        })).filter((t) => t.term && t.plain)
+      : [],
+  };
+}
+
+// POST /api/bids/:id/educate — on-demand education analysis for new contractors
+router.post("/:id/educate", async (req, res) => {
+  const id = parseInt(req.params["id"] as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const rawBizId = req.body?.businessId ?? req.query["businessId"];
+  const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
+  if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+
+  // Optional: force=true regenerates even if already cached
+  const force = req.body?.force === true || req.query["force"] === "true";
+
+  try {
+    const [bid] = await db
+      .select()
+      .from(bidOpportunitiesTable)
+      .where(and(eq(bidOpportunitiesTable.id, id), eq(bidOpportunitiesTable.businessId, bizId)))
+      .limit(1);
+
+    if (!bid) { res.status(404).json({ error: "Bid not found" }); return; }
+
+    if (bid.educationSummary && !force) {
+      res.json({ education: bid.educationSummary, cached: true });
+      return;
+    }
+
+    const [business] = await db
+      .select({ type: businessesTable.type })
+      .from(businessesTable)
+      .where(eq(businessesTable.id, bizId))
+      .limit(1);
+
+    const capabilities = getCapabilitiesForBusinessType(business?.type ?? "general_contracting");
+
+    const existingSummary = bid.aiSummary as Record<string, unknown> | null;
+    const prompt = buildEducationPrompt(bid, capabilities, existingSummary);
+
+    const completion = await openai.chat.completions.create({
+      model: BUILDPRO_AI_MINI_MODEL,
+      max_completion_tokens: 2048,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    let parsed: Record<string, unknown>;
+    try   { parsed = JSON.parse(raw); }
+    catch { const m = raw.match(/\{[\s\S]*\}/); parsed = m ? JSON.parse(m[0]) : {}; }
+
+    const education = sanitizeEducation(parsed);
+
+    await db
+      .update(bidOpportunitiesTable)
+      .set({ educationSummary: education as unknown as Record<string, unknown>, educationSummaryAt: new Date() })
+      .where(eq(bidOpportunitiesTable.id, id));
+
+    res.json({ education, cached: false });
+  } catch (err) {
+    console.error("[bids] POST /bids/:id/educate error:", err);
+    res.status(500).json({ error: "Failed to generate education analysis" });
   }
 });
 

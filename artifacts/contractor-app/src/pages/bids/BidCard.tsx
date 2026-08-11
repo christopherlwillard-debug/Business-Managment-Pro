@@ -1,6 +1,6 @@
 import {
   ExternalLink, Sparkles, XCircle, CheckCircle2,
-  Building2, Shield, Users, Globe, Award, ChevronDown,
+  Building2, Shield, Users, Globe, Award, ChevronDown, Handshake, Info, Calendar, BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AiSummary, BidOpportunity, BidStage, SetAsideType } from "./types";
@@ -82,6 +82,45 @@ function EligibilityBadge({ summary }: { summary: AiSummary | null }) {
   );
 }
 
+// ── Opportunity type badge ───────────────────────────────────────────────────
+
+const OPP_TYPE_CONFIG: Record<string, { label: string; icon: typeof Info; className: string; title: string }> = {
+  sources_sought: {
+    label: "Sources Sought",
+    icon:  Info,
+    className: "bg-slate-100 text-slate-700 dark:bg-slate-800/40 dark:text-slate-300",
+    title: "RFI / Market Research — the agency is not yet accepting bids",
+  },
+  presolicitation: {
+    label: "Pre-Solicitation",
+    icon:  Calendar,
+    className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+    title: "Early notice — a solicitation is planned but not yet posted",
+  },
+  forecast: {
+    label: "Forecast",
+    icon:  Calendar,
+    className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
+    title: "Planned acquisition from GSA Forecast — not yet solicited",
+  },
+};
+
+function OpportunityTypeBadge({ type }: { type?: string | null }) {
+  if (!type) return null;
+  const config = OPP_TYPE_CONFIG[type];
+  if (!config) return null;
+  const { label, icon: Icon, className, title: tooltip } = config;
+  return (
+    <span
+      className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full", className)}
+      title={tooltip}
+    >
+      <Icon className="w-3 h-3" />
+      {label}
+    </span>
+  );
+}
+
 const STAGE_BADGE: Record<string, { label: string; className: string }> = {
   reviewing: { label: "Reviewing", className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" },
   bidding:   { label: "Bidding",   className: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" },
@@ -95,6 +134,7 @@ interface Props {
   bid:           BidOpportunity;
   summary:       AiSummary | null;
   onSummarize:   (bid: BidOpportunity) => void;
+  onEducate:     (bid: BidOpportunity) => void;
   onStageChange: (bid: BidOpportunity, stage: BidStage) => void;
   onDismiss:     (bid: BidOpportunity) => void;
   onRestore:     (bid: BidOpportunity) => void;
@@ -102,7 +142,7 @@ interface Props {
 }
 
 export default function BidCard({
-  bid, summary, onSummarize, onStageChange, onDismiss, onRestore, isUpdating,
+  bid, summary, onSummarize, onEducate, onStageChange, onDismiss, onRestore, isUpdating,
 }: Props) {
   const effectiveSummary = summary;
   const isNoBid   = bid.stage === "no_bid";
@@ -115,16 +155,34 @@ export default function BidCard({
       isNoBid && "opacity-60"
     )}>
 
-      {/* ── Top badge row: source · stage · eligibility ── */}
+      {/* ── Top badge row: source · opportunity type · stage · eligibility ── */}
       <div className="flex flex-wrap items-center gap-1.5">
+        {/* Source badge */}
         {bid.source === "state-local" ? (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
             {bid.sourceLabel ?? "KY Local"}
+          </span>
+        ) : bid.source === "subnet" ? (
+          <span
+            className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
+            title="SBA SUBNet — a prime contractor is seeking a subcontractor"
+          >
+            <Handshake className="w-3 h-3" />
+            Subcontracting
+          </span>
+        ) : bid.source === "gsa-forecast" ? (
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+            GSA Forecast
           </span>
         ) : (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
             Federal
           </span>
+        )}
+
+        {/* Opportunity type badge (shown only for non-default types not already conveyed by source) */}
+        {bid.source !== "subnet" && bid.source !== "gsa-forecast" && (
+          <OpportunityTypeBadge type={bid.opportunityType} />
         )}
 
         {stageBadge && bid.stage !== "new" && (
@@ -196,6 +254,20 @@ export default function BidCard({
         >
           <Sparkles className="w-3.5 h-3.5 md:w-3 md:h-3" />
           {effectiveSummary ? "Summary" : "Summarize"}
+        </button>
+
+        <button
+          onClick={() => onEducate(bid)}
+          className={cn(
+            "flex items-center gap-1 px-3 py-2.5 md:py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap",
+            bid.educationSummary
+              ? "bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/20 dark:text-violet-300 dark:hover:bg-violet-900/40"
+              : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+          )}
+          title="Get a plain-English explanation of this bid"
+        >
+          <BookOpen className="w-3.5 h-3.5 md:w-3 md:h-3" />
+          {bid.educationSummary ? "Learn More" : "Learn"}
         </button>
 
         {bid.url && (

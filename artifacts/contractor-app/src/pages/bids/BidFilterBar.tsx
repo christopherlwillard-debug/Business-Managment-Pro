@@ -1,9 +1,9 @@
-import { CheckCircle2, Trophy } from "lucide-react";
+import { CheckCircle2, Trophy, Handshake } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BidStage } from "./types";
 
 export type BidFilter = "all" | BidStage;
-export type SourceFilter = "all" | "federal" | "local" | "usa-spending";
+export type SourceFilter = "all" | "federal" | "local" | "subnet" | "usa-spending";
 
 const STAGE_FILTER_TABS: Array<{ value: BidFilter; label: string }> = [
   { value: "all",       label: "All" },
@@ -17,28 +17,27 @@ const STAGE_FILTER_TABS: Array<{ value: BidFilter; label: string }> = [
 ];
 
 interface Props {
-  filter: BidFilter;
-  setFilter: (f: BidFilter) => void;
-  fitOnly: boolean;
-  setFitOnly: (fn: (v: boolean) => boolean) => void;
-  counts: Partial<Record<BidFilter, number>>;
-  fitCount: number;
-  sourceFilter: SourceFilter;
+  filter:          BidFilter;
+  setFilter:       (f: BidFilter) => void;
+  fitOnly:         boolean;
+  setFitOnly:      (fn: (v: boolean) => boolean) => void;
+  counts:          Partial<Record<BidFilter, number>>;
+  fitCount:        number;
+  sourceFilter:    SourceFilter;
   setSourceFilter: (s: SourceFilter) => void;
-  awardsCount?: number;
+  awardsCount?:    number;
+  subnetCount?:    number;
 }
 
 export default function BidFilterBar({
   filter, setFilter, fitOnly, setFitOnly, counts, fitCount,
-  sourceFilter, setSourceFilter, awardsCount = 0,
+  sourceFilter, setSourceFilter, awardsCount = 0, subnetCount = 0,
 }: Props) {
   return (
     <div className="space-y-2">
-      {/* ── Stage + Fit pills ─────────────────────────────────────────────────
+      {/* ── Stage + Fit pills ────────────────────────────────────────────────
           On mobile: single horizontally-scrollable row (no wrapping).
-          On desktop: wrap as before.
-          The -mx-4 px-4 trick lets pills scroll flush with screen edges on mobile
-          while matching the container padding on desktop.                       */}
+          On desktop (md+): wraps as before.                                  */}
       {sourceFilter !== "usa-spending" && (
         <div
           className="flex gap-1.5 overflow-x-auto md:flex-wrap md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0 pb-1 md:pb-0"
@@ -67,7 +66,7 @@ export default function BidFilterBar({
             </button>
           ))}
 
-          {/* Fit toggle — lives at the end of the scroll row */}
+          {/* Fit toggle */}
           <button
             onClick={() => setFitOnly((v) => !v)}
             className={cn(
@@ -89,8 +88,7 @@ export default function BidFilterBar({
         </div>
       )}
 
-      {/* ── Source filter ─────────────────────────────────────────────────────
-          Single compact row; scrollable on mobile if needed.                   */}
+      {/* ── Source filter row — compact, scrollable on mobile ───────────── */}
       <div
         className="flex items-center gap-1.5 overflow-x-auto md:overflow-visible"
         style={{ scrollbarWidth: "none" } as React.CSSProperties}
@@ -112,6 +110,29 @@ export default function BidFilterBar({
           </button>
         ))}
 
+        {/* Subcontracting — SBA SUBNet */}
+        <button
+          onClick={() => setSourceFilter(sourceFilter === "subnet" ? "all" : "subnet")}
+          className={cn(
+            "flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors border whitespace-nowrap",
+            sourceFilter === "subnet"
+              ? "bg-teal-600 text-white border-teal-600"
+              : "bg-card text-muted-foreground border-border hover:border-teal-400/50 hover:text-foreground"
+          )}
+        >
+          <Handshake className="w-3 h-3 flex-shrink-0" />
+          Subcontracting
+          {subnetCount > 0 && (
+            <span className={cn(
+              "text-xs px-1.5 py-0.5 rounded-full",
+              sourceFilter === "subnet" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+            )}>
+              {subnetCount}
+            </span>
+          )}
+        </button>
+
+        {/* Awards Intel — USASpending */}
         <button
           onClick={() => setSourceFilter(sourceFilter === "usa-spending" ? "all" : "usa-spending")}
           className={cn(
@@ -126,9 +147,7 @@ export default function BidFilterBar({
           {awardsCount > 0 && (
             <span className={cn(
               "text-xs px-1.5 py-0.5 rounded-full",
-              sourceFilter === "usa-spending"
-                ? "bg-white/20 text-white"
-                : "bg-muted text-muted-foreground"
+              sourceFilter === "usa-spending" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
             )}>
               {awardsCount}
             </span>

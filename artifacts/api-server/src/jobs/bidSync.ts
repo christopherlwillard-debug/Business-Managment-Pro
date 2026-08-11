@@ -22,6 +22,8 @@ import {
   getCapabilitiesForBusinessType,
   mergeCapabilitySearchParams,
 } from "../lib/bidCapabilitySeeds.js";
+import { fetchSubnetOpportunities, SubnetOpportunity } from "../lib/subnetSync.js";
+import { fetchGsaForecastOpportunities, GsaForecastOpportunity } from "../lib/gsaForecast.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -38,6 +40,40 @@ interface ResolvedProfile {
   isVosb:          boolean;
   isSmallBusiness: boolean;
   label:           string;
+}
+
+// ── Hard-suppression: title-level gate ───────────────────────────────────────
+// Opportunities whose TITLE contains these are skipped at sync time entirely.
+// Title match = clearly disqualifying with no chance of false negative.
+const TITLE_HARD_SUPPRESS = [
+  "hazardous waste",
+  "medical waste",
+  "biomedical waste",
+  "radioactive waste",
+  "hazmat",
+  "biohazard",
+  "residential garbage collection",
+  "municipal solid waste collection",
+  "refuse collection franchise",
+  "automated refuse",
+  "sewage treatment plant",
+];
+
+function isHardSuppressedByTitle(title: string): boolean {
+  const t = title.toLowerCase();
+  return TITLE_HARD_SUPPRESS.some((term) => t.includes(term));
+}
+
+// ── Opportunity type classification ───────────────────────────────────────────
+function deriveOpportunityType(source: string, noticeType?: string | null): string {
+  if (source === "usa-spending")  return "award_intelligence";
+  if (source === "subnet")        return "subcontracting";
+  if (source === "gsa-forecast")  return "forecast";
+  switch (noticeType) {
+    case "sources_sought":  return "sources_sought";
+    case "presolicitation": return "presolicitation";
+    default:                return "solicitation";
+  }
 }
 
 // ── Load capability profiles from DB (seed if absent) ────────────────────────
@@ -199,6 +235,11 @@ function scoreOpportunity(
   settings: { isSdvosb: boolean; isSmallBusiness: boolean; isVosb: boolean },
   aiSetAsideType?: string,
 ): ScoredOpportunity {
+  // Hard-suppress by title: clearly incompatible — no scoring needed
+  if (isHardSuppressedByTitle(opp.title)) {
+    return { opportunityScore: 0, capabilityMatches: [] };
+  }
+
   const text = `${opp.title} ${opp.description ?? ""}`.toLowerCase();
   const capabilityMatches: string[] = [];
 
@@ -315,11 +356,17 @@ async function upsertOpportunities(
   defaultSourceLabel: string,
   businessId: number,
   profile: ResolvedProfile,
-  overrides?: { status?: string; stage?: string }
+  overrides?: { status?: string; stage?: string; opportunityTypeOverride?: string }
 ): Promise<OppWithSource[]> {
   const newOnes: OppWithSource[] = [];
 
   for (const opp of opportunities) {
+    // Hard title gate: skip clearly incompatible opportunities before storing
+    if (isHardSuppressedByTitle(opp.title)) {
+      console.log(`[bid-sync] Hard-suppressed: "${opp.title.slice(0, 70)}"`);
+      continue;
+    }
+
     const existing = await db
       .select({ id: bidOpportunitiesTable.id })
       .from(bidOpportunitiesTable)
@@ -350,6 +397,8 @@ async function upsertOpportunities(
         noticeType:        (opp as SamOpportunity).noticeType ?? null,
         opportunityScore,
         capabilityMatches,
+        opportunityType:   overrides?.opportunityTypeOverride
+          ?? deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType ?? null),
       });
       newOnes.push(opp);
     }
@@ -524,7 +573,56 @@ export async function runBidSync(
     upsertOpportunities(federal, "federal",      "SAM.gov",      businessId, profile),
     upsertOpportunities(local,   "state-local",  "KY/IN Local",  businessId, profile),
   ]);
+  // write opportunityType on awards row (backfill for existing records via DB migration)
   await upsertUsaSpendingAwards(awards, businessId);
+
+  // ── Subcontracting: SBA SUBNet ─────────────────────────────────────────────
+  const subnetOpps = await fetchSubnetOpportunities({
+    naicsCodes: profile.naicsCodes,
+    stateCode:  "KY",
+  }).catch((err) => { console.warn("[bid-sync] SUBNet fetch error:", (err as Error).message); return []; });
+
+  if (subnetOpps.length > 0) {
+    const subnetRows: OppWithSource[] = subnetOpps.map((s) => ({
+      noticeId:         s.noticeId,
+      title:            s.title,
+      agency:           s.agency,
+      naicsCode:        s.naicsCode,
+      description:      s.description,
+      postedDate:       s.postedDate,
+      responseDeadline: s.responseDeadline,
+      url:              s.url,
+      source:           "subnet",
+      sourceLabel:      "SBA SUBNet",
+    }));
+    await upsertOpportunities(subnetRows, "subnet", "SBA SUBNet", businessId, profile,
+      { opportunityTypeOverride: "subcontracting" });
+    console.log(`[bid-sync] SUBNet: ${subnetOpps.length} subcontracting opp(s) processed`);
+  }
+
+  // ── GSA Forecast: supplemental early-intel pipeline ───────────────────────
+  const forecastOpps = await fetchGsaForecastOpportunities({
+    naicsCodes: profile.naicsCodes,
+    keywords:   profile.keywords,
+  }).catch((err) => { console.warn("[bid-sync] GSA Forecast fetch error:", (err as Error).message); return []; });
+
+  if (forecastOpps.length > 0) {
+    const forecastRows: OppWithSource[] = forecastOpps.map((f) => ({
+      noticeId:         f.noticeId,
+      title:            f.title,
+      agency:           f.agency,
+      naicsCode:        f.naicsCode,
+      description:      f.description ?? (f.estimatedValue ? `Estimated value: ${f.estimatedValue}` : null),
+      postedDate:       null,
+      responseDeadline: f.anticipatedSolicitationDate,
+      url:              f.url,
+      source:           "gsa-forecast",
+      sourceLabel:      "GSA Forecast",
+    }));
+    await upsertOpportunities(forecastRows, "gsa-forecast", "GSA Forecast", businessId, profile,
+      { opportunityTypeOverride: "forecast" });
+    console.log(`[bid-sync] GSA Forecast: ${forecastOpps.length} forecast opp(s) processed`);
+  }
 
   // Write overall success
   await writeSyncHealth(businessId, { lastSyncSuccessAt: now, lastSyncError: null });

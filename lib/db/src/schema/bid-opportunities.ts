@@ -19,10 +19,15 @@ export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   sourceLabel: text("source_label"),
   aiSummary: jsonb("ai_summary"),
   aiSummaryAt: timestamp("ai_summary_at"),
-  // Phase 1 additions — capability-aware engine
+  // Phase 1 — capability-aware engine
   noticeType:        text("notice_type"),           // solicitation|sources_sought|presolicitation|combined_synopsis|award|other
-  opportunityScore:  integer("opportunity_score"),   // 0-100 computed at sync time
+  opportunityScore:  integer("opportunity_score"),   // 0–100 computed at sync time
   capabilityMatches: jsonb("capability_matches"),    // string[] of matched capabilityKey values
+  // Phase 2 — opportunity classification
+  opportunityType:   text("opportunity_type"),       // solicitation|sources_sought|presolicitation|subcontracting|forecast|award_intelligence
+  // Phase 3 — education analysis
+  educationSummary:  jsonb("education_summary"),     // EducationSummary JSON
+  educationSummaryAt: timestamp("education_summary_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   noticeBusinessUniq: uniqueIndex("bid_opportunities_notice_id_business_id_unique").on(table.noticeId, table.businessId),
