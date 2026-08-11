@@ -1,0 +1,98 @@
+Yes — #1814 is exactly the kind of task we want, and it matches what we just designed.
+
+But I would make one important adjustment before letting Replit execute it:
+
+Keep #1814 focused on the search foundation
+
+It's good for Phase 1 because it changes the current:
+
+Asphalt OR General Contractor
+
+into:
+
+General Contracting → multiple capabilities
+Asphalt → its own capabilities
+
+And it reuses your existing infrastructure instead of rebuilding it.
+
+The capability buckets listed are also a good starting point:
+
+🚛 Waste/debris hauling
+🏡 Manufactured-home work
+🏠 Flooring
+🚜 Tractor/loader/backhoe
+🏗️ General contracting
+🛣️ Asphalt
+But I would NOT stop at the exact wording of #1814
+
+There are three things I'd want protected while Replit works on it:
+
+1. Business separation
+
+The capability profiles need to belong to the selected business.
+
+So:
+
+Dump trailer → General Contracting
+
+should not automatically appear under Asphalt Sealing or a future Rentals business.
+
+2. Asphalt stays separate
+
+Asphalt Sealing is a legitimate DBA, so it should have its own bid profile. It can be Watch for now rather than dominating your active searches.
+
+3. Don't let keywords alone determine fit
+
+The new keywords should find candidates, but the AI should evaluate the actual solicitation against the business's capabilities, equipment, requirements, location, licensing, etc.
+
+One thing I noticed in #1814
+
+It lists:
+
+484122 — General Freight Trucking, Less Than Truckload
+
+I'd want Replit to treat that as a secondary/low-confidence hauling signal, not as a strong dump-trailer match. Otherwise we could start pulling regular freight/trucking contracts that aren't appropriate for you.
+
+Likewise, I'd want the system to distinguish waste/debris hauling from large-scale municipal garbage collection, hazardous waste, medical waste, etc.
+
+So yes: #1814 is a good task to start with.
+
+And I would let #1814 be the foundation, then build the next pieces on top of it:
+
+#1814 → Capability search
+
+↓
+
+Business-specific profiles
+
+↓
+
+Set-aside/SDVOSB intelligence
+
+↓
+
+Geographic scoring
+
+↓
+
+Opportunity scoring
+
+↓
+
+Sources Sought + pre-solicitations
+
+↓
+
+Historical awards/recompetes
+
+↓
+
+Surplus/equipment auctions
+
+↓
+
+Bid Command Center
+
+That way we're improving the system in layers, rather than trying to build the entire thing at once.
+
+And importantly, #1814 specifically says "No DB schema changes needed." That's good because it means we're actually leveraging what you've already built rather than creating another competing system.

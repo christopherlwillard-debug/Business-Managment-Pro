@@ -62,24 +62,28 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
     capabilityKey: "waste_hauling",
     name: "Debris & Waste Removal / Hauling",
     description:
-      "Small contractor with a dump trailer performing residential and commercial debris removal, " +
-      "waste hauling, site cleanup, junk removal, and roll-off services. " +
-      "Capable of hauling construction debris, brush, appliances, and general solid waste " +
-      "to approved disposal facilities within a 150-mile radius. " +
-      "NOT equipped for hazardous/medical/radioactive waste, large-fleet municipal refuse, " +
-      "or wastewater treatment.",
+      "Owner-operator with a single dump trailer — NOT a large fleet. " +
+      "Performs debris removal, site cleanup, junk/appliance removal, and non-hazardous solid waste hauling " +
+      "for residential and commercial clients within ~150 miles. " +
+      "EQUIPMENT: dump trailer + pickup truck. " +
+      "CANNOT perform: hazardous/chemical/medical/radioactive waste; large municipal garbage-route contracts " +
+      "requiring a fleet of automated trucks; wastewater/septic/liquid waste; remediation requiring " +
+      "special certifications. " +
+      "IMPORTANT: the presence of words like 'hauling', 'removal', or 'waste' in a title is NOT sufficient " +
+      "to call this a fit — the scope must be achievable with one dump trailer and a pickup truck.",
     naicsCodes: [
-      "562111", // Solid waste collection — residential
+      "562111", // Solid waste collection
       "562119", // Other waste collection
-      "562910", // Remediation services
-      "484122", // General freight trucking, long-distance LTL
-      "484110", // General freight trucking, local
+      "562910", // Cleanup/remediation services (non-hazardous scope only)
+      // NOTE: 484110/484122 (general freight trucking) intentionally excluded.
+      // Those NAICS codes surface broad trucking/freight RFPs with no connection
+      // to dump-trailer debris work. Relevant hauling opportunities are captured
+      // via keyword searches (debris, junk removal, site cleanup) instead.
     ],
     keywords: [
       "debris removal",
       "waste removal",
       "debris hauling",
-      "waste hauling",
       "junk removal",
       "cleanout",
       "cleanup services",
@@ -88,16 +92,22 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "dumpster service",
       "trash removal",
       "rubbish removal",
-      "material hauling",
-      "hauling services",
-      "disposal services",
+      "material removal",
       "site cleanup",
       "construction debris",
       "demolition debris",
+      "property cleanup",
     ],
     negativeKeywords: [
       ...HAZMAT_NEGATIVE_TERMS,
       ...LARGE_FLEET_NEGATIVE_TERMS,
+      "freight",
+      "LTL",
+      "full truckload",
+      "FTL",
+      "intermodal",
+      "carrier",
+      "logistics company",
     ],
     equipment: ["dump trailer", "pickup truck", "utility trailer"],
     localKeywords: [

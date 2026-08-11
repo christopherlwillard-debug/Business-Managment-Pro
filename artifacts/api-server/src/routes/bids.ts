@@ -135,27 +135,36 @@ ${capList}
 EQUIPMENT AVAILABLE: ${equipmentList || "standard hand tools and power tools"}
 ${certBlock}
 
-Evaluate whether this solicitation is a realistic fit for ANY of the listed capabilities.
-Consider: scope of work, scale of project, required equipment, certifications, bonding, and geography.
-Mark isFit=false for: hazardous/medical/radioactive waste, large municipal fleet operations, work requiring specialized licenses not listed, or projects far outside the contractor's stated capabilities.
+EVALUATION RULES — read these before scoring isFit:
+1. A keyword appearing in the title or description is NOT sufficient to call this a fit.
+   Ask: could this contractor realistically WIN and PERFORM the full scope of work?
+2. Scale matters. A contract requiring 20 trucks, a fleet of heavy equipment, or a dedicated
+   facility is not a fit for a small owner-operator even if the work category matches.
+3. Scope must match equipment. "Debris removal" is only a fit if the volume/type is achievable
+   with a dump trailer. "Hauling" is only a fit if it's material/debris hauling — not freight/LTL.
+4. Certification barriers are disqualifying. If the contract requires a license, bond, or
+   certification the contractor clearly lacks (e.g., HazMat, CDL Class A, EPA), mark isFit=false.
+5. When unsure, be conservative. A false positive wastes Willard's time reviewing an unsuitable bid.
+6. Mark isFit=true only when the scope, scale, equipment, and certification requirements are all
+   clearly achievable for this contractor. Explain specifically which capability matches.
 
 SOLICITATION CONTENT:
 ${doc.text}
 
 Return ONLY valid JSON (no markdown, no code fences) with exactly these fields:
 {
-  "description": "Plain-English 1-2 sentence summary of the work",
+  "description": "Plain-English 1-2 sentence summary of the actual work required",
   "estimatedValue": "Dollar amount or range if mentioned, else null",
   "requirements": ["key requirements: bonding, insurance, certifications, prevailing wage, SCA, etc."],
   "veteranPreference": true or false (is SDVOSB, VOSB, or veteran-owned preference mentioned?),
   "importantDates": [{"label": "Event name", "date": "Date or deadline"}],
-  "isFit": true or false,
-  "fitReason": "Brief explanation — which capability matches, or why it doesn't fit",
+  "isFit": true or false — see EVALUATION RULES above; keyword presence alone is NOT a fit,
+  "fitReason": "Specific explanation: which capability matches AND why the scale/scope is achievable — or exactly why it is not a fit",
   "setAsideType": one of "sdvosb", "small_business", "open", or "other" (HUBZone/8a/WOSB/etc.),
   "noticeType": one of "solicitation", "sources_sought", "presolicitation", "combined_synopsis", "award", or "other",
   "bondingRequired": true or false,
-  "capabilityMatch": "Name of the matching capability profile (e.g. 'Debris & Waste Removal') or null",
-  "licenseRisk": "Any concerning license/bonding/insurance requirement that may be a barrier, or null"
+  "capabilityMatch": "Name of the specific matching capability (e.g. 'Debris & Waste Removal / Hauling') or null if not a fit",
+  "licenseRisk": "Specific license, bond, or certification that may be a barrier, or null"
 }`;
 }
 
