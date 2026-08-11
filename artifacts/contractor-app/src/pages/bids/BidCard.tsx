@@ -18,11 +18,13 @@ function DeadlineBadge({ deadline }: { deadline: string | null }) {
   if (!deadline) return <span className="text-muted-foreground text-xs">No deadline</span>;
   const days = daysUntil(deadline);
   const isUrgent = days !== null && days >= 0 && days <= 7;
-  const isPast = days !== null && days < 0;
+  const isPast   = days !== null && days < 0;
   return (
     <span className={cn(
       "text-xs font-medium",
-      isPast ? "text-muted-foreground line-through" : isUrgent ? "text-red-600 dark:text-red-400 font-semibold" : "text-foreground"
+      isPast ? "text-muted-foreground line-through"
+             : isUrgent ? "text-red-600 dark:text-red-400 font-semibold"
+             : "text-foreground"
     )}>
       Due {deadline}
       {isUrgent && !isPast && <span className="ml-1 text-red-500">({days}d)</span>}
@@ -33,23 +35,23 @@ function DeadlineBadge({ deadline }: { deadline: string | null }) {
 
 const SET_ASIDE_CONFIG: Record<SetAsideType, { label: string; icon: typeof Shield; color: string }> = {
   sdvosb: {
-    label: "SDVOSB Set-Aside",
-    icon: Shield,
+    label: "SDVOSB",
+    icon:  Shield,
     color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
   },
   small_business: {
-    label: "Small Business Set-Aside",
-    icon: Users,
+    label: "Small Biz",
+    icon:  Users,
     color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
   },
   open: {
-    label: "Open Competition",
-    icon: Globe,
+    label: "Open",
+    icon:  Globe,
     color: "bg-muted text-muted-foreground",
   },
   other: {
-    label: "Veteran Preference",
-    icon: Award,
+    label: "Vet Pref",
+    icon:  Award,
     color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
   },
 };
@@ -63,8 +65,7 @@ function EligibilityBadge({ summary }: { summary: AiSummary | null }) {
       const { label, icon: Icon, color } = SET_ASIDE_CONFIG.other;
       return (
         <span className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full", color)}>
-          <Icon className="w-3 h-3" />
-          {label}
+          <Icon className="w-3 h-3" /> {label}
         </span>
       );
     }
@@ -73,54 +74,48 @@ function EligibilityBadge({ summary }: { summary: AiSummary | null }) {
 
   const config = SET_ASIDE_CONFIG[setAsideType];
   if (!config) return null;
-
   const { label, icon: Icon, color } = config;
   return (
     <span className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full", color)}>
-      <Icon className="w-3 h-3" />
-      {label}
+      <Icon className="w-3 h-3" /> {label}
     </span>
   );
 }
 
 const STAGE_BADGE: Record<string, { label: string; className: string }> = {
-  reviewing: { label: "Reviewing",  className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" },
-  bidding:   { label: "Bidding",    className: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" },
-  submitted: { label: "Submitted",  className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
-  won:       { label: "Won",        className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
-  lost:      { label: "Lost",       className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
-  no_bid:    { label: "No Bid",     className: "bg-muted text-muted-foreground" },
+  reviewing: { label: "Reviewing", className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" },
+  bidding:   { label: "Bidding",   className: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" },
+  submitted: { label: "Submitted", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
+  won:       { label: "Won",       className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
+  lost:      { label: "Lost",      className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
+  no_bid:    { label: "No Bid",    className: "bg-muted text-muted-foreground" },
 };
 
 interface Props {
-  bid: BidOpportunity;
-  summary: AiSummary | null;
-  onSummarize: (bid: BidOpportunity) => void;
+  bid:           BidOpportunity;
+  summary:       AiSummary | null;
+  onSummarize:   (bid: BidOpportunity) => void;
   onStageChange: (bid: BidOpportunity, stage: BidStage) => void;
-  onDismiss: (bid: BidOpportunity) => void;
-  onRestore: (bid: BidOpportunity) => void;
-  isUpdating: boolean;
+  onDismiss:     (bid: BidOpportunity) => void;
+  onRestore:     (bid: BidOpportunity) => void;
+  isUpdating:    boolean;
 }
 
 export default function BidCard({
-  bid,
-  summary,
-  onSummarize,
-  onStageChange,
-  onDismiss,
-  onRestore,
-  isUpdating,
+  bid, summary, onSummarize, onStageChange, onDismiss, onRestore, isUpdating,
 }: Props) {
   const effectiveSummary = summary;
-  const isNoBid = bid.stage === "no_bid";
+  const isNoBid   = bid.stage === "no_bid";
   const stageBadge = STAGE_BADGE[bid.stage];
 
   return (
     <div className={cn(
-      "bg-card border border-border rounded-xl p-4 flex flex-col gap-3 transition-opacity hover:border-border/80",
+      "bg-card border border-border rounded-xl p-4 flex flex-col gap-3 transition-opacity",
+      "hover:border-border/80",
       isNoBid && "opacity-60"
     )}>
-      {/* Top row: source badge + stage badge + eligibility */}
+
+      {/* ── Top badge row: source · stage · eligibility ── */}
       <div className="flex flex-wrap items-center gap-1.5">
         {bid.source === "state-local" ? (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
@@ -142,24 +137,28 @@ export default function BidCard({
 
         {effectiveSummary?.bondingRequired && (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
-            Bond Required
+            Bond Req
           </span>
         )}
       </div>
 
-      {/* Title */}
+      {/* ── Title + agency ── */}
       <div>
-        <p className="font-semibold text-foreground leading-snug line-clamp-2">{bid.title}</p>
+        {/* Allow up to 3 lines on mobile so more text is readable */}
+        <p className="font-semibold text-foreground leading-snug line-clamp-3 md:line-clamp-2">
+          {bid.title}
+        </p>
         {bid.agency && (
-          <p className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-            <Building2 className="w-3 h-3 flex-shrink-0" />
-            <span className="truncate">{bid.agency}</span>
+          <p className="flex items-start gap-1 text-xs text-muted-foreground mt-1">
+            <Building2 className="w-3 h-3 flex-shrink-0 mt-0.5" />
+            {/* Show 2 lines of agency on mobile to avoid cutting important context */}
+            <span className="line-clamp-2 md:line-clamp-1">{bid.agency}</span>
           </p>
         )}
       </div>
 
-      {/* Meta row: NAICS + deadline + fit */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {/* ── Meta row: NAICS · deadline · fit indicator ── */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         {bid.naicsCode && (
           <span className="text-xs text-muted-foreground">NAICS {bid.naicsCode}</span>
         )}
@@ -168,7 +167,7 @@ export default function BidCard({
           <button
             onClick={() => onSummarize(bid)}
             className={cn(
-              "inline-flex items-center gap-1 text-xs font-semibold px-1.5 py-0.5 rounded-md transition-colors",
+              "inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-md transition-colors",
               effectiveSummary.isFit
                 ? "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
                 : "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400"
@@ -188,23 +187,25 @@ export default function BidCard({
         )}
       </div>
 
-      {/* Actions */}
+      {/* ── Action row ── */}
+      {/* py-2.5 on mobile gives 44px-ish touch target height; desktop stays compact */}
       <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-border/50">
         <button
           onClick={() => onSummarize(bid)}
-          className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors whitespace-nowrap"
+          className="flex items-center gap-1 px-3 py-2.5 md:py-1.5 text-xs font-medium rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors whitespace-nowrap"
         >
-          <Sparkles className="w-3 h-3" />
+          <Sparkles className="w-3.5 h-3.5 md:w-3 md:h-3" />
           {effectiveSummary ? "Summary" : "Summarize"}
         </button>
+
         {bid.url && (
           <a
             href={bid.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors whitespace-nowrap"
+            className="flex items-center gap-1 px-3 py-2.5 md:py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors whitespace-nowrap"
           >
-            <ExternalLink className="w-3 h-3" />
+            <ExternalLink className="w-3.5 h-3.5 md:w-3 md:h-3" />
             View
           </a>
         )}
@@ -215,14 +216,11 @@ export default function BidCard({
               value={bid.stage}
               onChange={(e) => {
                 const newStage = e.target.value as BidStage;
-                if (newStage === "no_bid") {
-                  onDismiss(bid);
-                } else {
-                  onStageChange(bid, newStage);
-                }
+                if (newStage === "no_bid") onDismiss(bid);
+                else onStageChange(bid, newStage);
               }}
               disabled={isUpdating}
-              className="appearance-none pl-2.5 pr-7 py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-foreground cursor-pointer hover:border-primary/50 transition-colors disabled:opacity-60"
+              className="appearance-none pl-3 pr-7 py-2.5 md:py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-foreground cursor-pointer hover:border-primary/50 transition-colors disabled:opacity-60"
             >
               {PIPELINE_STAGES.map((s) => (
                 <option key={s.value} value={s.value}>{s.label}</option>
@@ -236,7 +234,7 @@ export default function BidCard({
           <button
             onClick={() => onRestore(bid)}
             disabled={isUpdating}
-            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+            className="ml-auto flex items-center gap-1 px-3 py-2.5 md:py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
           >
             Restore
           </button>

@@ -35,22 +35,22 @@ const BUSINESS_NAICS: Record<string, string[]> = {
 };
 
 export default function BidOpportunities() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const { isOwner } = useUserPermissions();
+  const queryClient  = useQueryClient();
+  const { toast }    = useToast();
+  const { isOwner }  = useUserPermissions();
   const { activeBusiness } = useBusiness();
   const businessId = activeBusiness?.id ?? null;
 
   const [view, setView] = useState<"list" | "pipeline">(() =>
     (localStorage.getItem(VIEW_KEY) as "list" | "pipeline") ?? "list"
   );
-  const [filter, setFilter] = useState<BidFilter>("all");
-  const [fitOnly, setFitOnly] = useState(false);
+  const [filter,       setFilter]       = useState<BidFilter>("all");
+  const [fitOnly,      setFitOnly]      = useState(false);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
-  const [panelBid, setPanelBid] = useState<BidOpportunity | null>(null);
+  const [panelBid,     setPanelBid]     = useState<BidOpportunity | null>(null);
   const [panelSummary, setPanelSummary] = useState<AiSummary | null>(null);
   const [panelLoading, setPanelLoading] = useState(false);
-  const [panelError, setPanelError] = useState<string | null>(null);
+  const [panelError,   setPanelError]   = useState<string | null>(null);
   const [summaryCache, setSummaryCache] = useState<Record<number, AiSummary>>({});
 
   function switchView(v: "list" | "pipeline") {
@@ -123,8 +123,8 @@ export default function BidOpportunities() {
 
   const { data: bids = [], isLoading } = useQuery<BidOpportunity[]>({
     queryKey: ["bids", businessId],
-    enabled: businessId !== null,
-    queryFn: async () => {
+    enabled:  businessId !== null,
+    queryFn:  async () => {
       const res = await fetch(`${BASE_URL}/api/bids?businessId=${businessId}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load bids");
       return res.json();
@@ -200,7 +200,6 @@ export default function BidOpportunities() {
       setPanelLoading(false);
       return;
     }
-
     if (bid.aiSummary) {
       setPanelSummary(bid.aiSummary);
       setSummaryCache((prev) => ({ ...prev, [bid.id]: bid.aiSummary as AiSummary }));
@@ -232,11 +231,11 @@ export default function BidOpportunities() {
     }
   }
 
-  // ── Split awards from pipeline bids ──────────────────────────────────────
-
+  // ── USASpending awards (separate source) ─────────────────────────────────
   const awards = bids.filter((b) => b.source === "usa-spending");
   const pipelineBids = bids.filter((b) => b.source !== "usa-spending");
-  const profileNaicsCodes = activeBusiness?.type ? BUSINESS_NAICS[activeBusiness.type] : undefined;
+
+  const profileNaicsCodes = BUSINESS_NAICS[activeBusiness?.type ?? ""] ?? [];
 
   // ── Filtering ─────────────────────────────────────────────────────────────
 
@@ -261,17 +260,49 @@ export default function BidOpportunities() {
     ? stageFiltered.filter((b) => b.source === "state-local")
     : stageFiltered;
 
-  const fitCount = sourceFiltered.filter((b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true).length;
+  const fitCount = sourceFiltered.filter(
+    (b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true
+  ).length;
 
   const displayedBids = fitOnly
     ? sourceFiltered.filter((b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true)
     : sourceFiltered;
 
   const showPipeline = sourceFilter !== "usa-spending";
-  const showAwards = sourceFilter === "all" || sourceFilter === "usa-spending";
+  const showAwards   = sourceFilter === "all" || sourceFilter === "usa-spending";
+
+  // ── Shared card list renderer (used in both mobile fallback + list view) ──
+  function renderCardList(bidsToRender: BidOpportunity[]) {
+    if (bidsToRender.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
+          <FileSearch className="w-8 h-8 text-muted-foreground/30" />
+          <p className="text-muted-foreground font-medium">No bids match your filters</p>
+          <p className="text-sm text-muted-foreground/60">Try adjusting the stage, source, or fit filter.</p>
+        </div>
+      );
+    }
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
+        {bidsToRender.map((bid) => (
+          <BidCard
+            key={bid.id}
+            bid={bid}
+            summary={summaryCache[bid.id] ?? bid.aiSummary}
+            onSummarize={openSummaryPanel}
+            onStageChange={(b, stage) => updateStage.mutate({ id: b.id, stage })}
+            onDismiss={dismissBid}
+            onRestore={(b) => updateStage.mutate({ id: b.id, stage: "new" })}
+            isUpdating={updateStage.isPending}
+          />
+        ))}
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    /* Tighter vertical rhythm on mobile (space-y-3), desktop keeps space-y-5 */
+    <div className="space-y-3 md:space-y-5">
       {panelBid && (
         <SummaryPanel
           bid={panelBid}
@@ -284,32 +315,44 @@ export default function BidOpportunities() {
         />
       )}
 
-      {/* Page header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold text-foreground">Bid Opportunities</h1>
+      {/* ── Page header ─────────────────────────────────────────────────────
+          Mobile: single compact row — smaller title, icon-only refresh button,
+          view toggle hidden (Kanban collapses to list on small screens anyway).
+          Desktop: full layout with subtitle, view toggle, and full button.    */}
+      <div className="flex items-center justify-between gap-2">
+        {/* Left: title + SDVOSB badge */}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5 md:gap-2.5">
+            <h1 className="text-xl md:text-2xl font-bold text-foreground leading-tight">
+              Bid Opportunities
+            </h1>
+            {/* SDVOSB badge — visible on all screen sizes but abbreviated on mobile */}
             <span className={cn(
               "inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full",
               "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
             )}>
               <Shield className="w-3 h-3" />
-              SBA-Certified SDVOSB
+              <span className="hidden sm:inline">SBA-Certified </span>SDVOSB
             </span>
           </div>
+          {/* Subtitle — hidden on smallest mobile to save space */}
           {activeBusiness ? (
-            <p className="text-muted-foreground mt-1">
+            <p className="hidden sm:block text-sm text-muted-foreground mt-0.5 truncate">
               Federal &amp; Kentucky local contracts for{" "}
               <span className="font-medium text-foreground">{activeBusiness.name}</span>
             </p>
           ) : (
-            <p className="text-muted-foreground mt-1">Select a business to see its bid feed</p>
+            <p className="hidden sm:block text-sm text-muted-foreground mt-0.5">
+              Select a business to see its bid feed
+            </p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* View toggle — only relevant when showing pipeline bids */}
+
+        {/* Right: view toggle (desktop only) + refresh button */}
+        <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
+          {/* View toggle — hidden on mobile; Kanban falls back to card list on small screens */}
           {showPipeline && (
-            <div className="flex rounded-lg border border-border overflow-hidden">
+            <div className="hidden md:flex rounded-lg border border-border overflow-hidden">
               <button
                 onClick={() => switchView("list")}
                 className={cn(
@@ -336,22 +379,31 @@ export default function BidOpportunities() {
               </button>
             </div>
           )}
+
+          {/* Refresh — icon-only on mobile (44px touch target), full label on desktop */}
           <button
             onClick={() => syncBids.mutate()}
             disabled={syncBids.isPending || !businessId}
-            title={!businessId ? "Select a business first" : undefined}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+            title={!businessId ? "Select a business first" : "Refresh bids"}
+            className={cn(
+              "flex items-center gap-2 rounded-lg bg-primary text-primary-foreground font-medium",
+              "hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors",
+              // Mobile: square icon-only button with comfortable tap size
+              "p-2.5 md:px-4 md:py-2 md:text-sm"
+            )}
           >
-            <RefreshCw className={cn("w-4 h-4", syncBids.isPending && "animate-spin")} />
-            {syncBids.isPending ? "Refreshing…" : "Refresh Bids"}
+            <RefreshCw className={cn("w-4 h-4 flex-shrink-0", syncBids.isPending && "animate-spin")} />
+            <span className="hidden md:inline whitespace-nowrap">
+              {syncBids.isPending ? "Refreshing…" : "Refresh Bids"}
+            </span>
           </button>
         </div>
       </div>
 
-      {/* Stats bar */}
+      {/* ── Stats bar ──────────────────────────────────────────────────────── */}
       <BidStatsBar bids={pipelineBids} />
 
-      {/* Quick Links panel */}
+      {/* ── Quick Links ─────────────────────────────────────────────────────── */}
       <QuickLinksPanel
         links={quickLinks}
         onSave={(links) => saveQuickLinks.mutate(links)}
@@ -359,7 +411,7 @@ export default function BidOpportunities() {
         isOwner={isOwner}
       />
 
-      {/* Filter bar */}
+      {/* ── Filter bar ──────────────────────────────────────────────────────── */}
       <BidFilterBar
         filter={filter}
         setFilter={setFilter}
@@ -372,14 +424,13 @@ export default function BidOpportunities() {
         awardsCount={awards.length}
       />
 
-      {/* Content */}
+      {/* ── Content area ────────────────────────────────────────────────────── */}
       {isLoading ? (
         <div className="flex items-center justify-center py-16">
           <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
         </div>
       ) : (
         <>
-          {/* Pipeline / list view — hidden when Awards Intel filter is active */}
           {showPipeline && (
             <>
               {pipelineBids.length === 0 ? (
@@ -391,39 +442,33 @@ export default function BidOpportunities() {
                   </p>
                 </div>
               ) : view === "pipeline" ? (
-                <PipelineBoard
-                  bids={pipelineBids}
-                  summaryCache={summaryCache}
-                  onSummarize={openSummaryPanel}
-                  onStageChange={(bid, stage) => {
-                    if (stage === "no_bid") dismissBid(bid);
-                    else updateStage.mutate({ id: bid.id, stage });
-                  }}
-                  isUpdating={updateStage.isPending}
-                  fitOnly={fitOnly}
-                  sourceFilter={sourceFilter}
-                />
-              ) : displayedBids.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
-                  <FileSearch className="w-8 h-8 text-muted-foreground/30" />
-                  <p className="text-muted-foreground font-medium">No bids match your filters</p>
-                  <p className="text-sm text-muted-foreground/60">Try adjusting the stage, source, or fit filter.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {displayedBids.map((bid) => (
-                    <BidCard
-                      key={bid.id}
-                      bid={bid}
-                      summary={summaryCache[bid.id] ?? bid.aiSummary}
+                <>
+                  {/*
+                    Desktop: full Kanban pipeline board.
+                    Mobile: Kanban is replaced by a single-column card feed —
+                    a horizontal board with multiple columns is unusable on a phone.
+                  */}
+                  <div className="hidden md:block">
+                    <PipelineBoard
+                      bids={pipelineBids}
+                      summaryCache={summaryCache}
                       onSummarize={openSummaryPanel}
-                      onStageChange={(b, stage) => updateStage.mutate({ id: b.id, stage })}
-                      onDismiss={dismissBid}
-                      onRestore={(b) => updateStage.mutate({ id: b.id, stage: "new" })}
+                      onStageChange={(bid, stage) => {
+                        if (stage === "no_bid") dismissBid(bid);
+                        else updateStage.mutate({ id: bid.id, stage });
+                      }}
                       isUpdating={updateStage.isPending}
+                      fitOnly={fitOnly}
+                      sourceFilter={sourceFilter}
                     />
-                  ))}
-                </div>
+                  </div>
+                  {/* Mobile fallback for pipeline view — same cards, single column */}
+                  <div className="md:hidden">
+                    {renderCardList(displayedBids)}
+                  </div>
+                </>
+              ) : (
+                renderCardList(displayedBids)
               )}
             </>
           )}
@@ -436,13 +481,13 @@ export default function BidOpportunities() {
             />
           )}
 
-          {/* Empty state when Awards Intel filter is active and no awards exist yet */}
+          {/* Empty state when Awards Intel filter is active */}
           {sourceFilter === "usa-spending" && awards.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
               <FileSearch className="w-10 h-10 text-muted-foreground/40" />
               <p className="text-muted-foreground font-medium">No award intelligence yet</p>
               <p className="text-sm text-muted-foreground/70 max-w-sm">
-                Click "Refresh Bids" to fetch recent awarded contracts from USASpending.gov for your NAICS codes.
+                Tap Refresh Bids to fetch recent awarded contracts from USASpending.gov for your NAICS codes.
               </p>
             </div>
           )}

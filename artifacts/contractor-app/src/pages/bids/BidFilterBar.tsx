@@ -34,14 +34,22 @@ export default function BidFilterBar({
 }: Props) {
   return (
     <div className="space-y-2">
+      {/* ── Stage + Fit pills ─────────────────────────────────────────────────
+          On mobile: single horizontally-scrollable row (no wrapping).
+          On desktop: wrap as before.
+          The -mx-4 px-4 trick lets pills scroll flush with screen edges on mobile
+          while matching the container padding on desktop.                       */}
       {sourceFilter !== "usa-spending" && (
-        <div className="flex flex-wrap gap-2">
+        <div
+          className="flex gap-1.5 overflow-x-auto md:flex-wrap md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0 pb-1 md:pb-0"
+          style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+        >
           {STAGE_FILTER_TABS.map(({ value, label }) => (
             <button
               key={value}
               onClick={() => setFilter(value)}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border",
+                "flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap",
                 filter === value
                   ? "bg-primary text-primary-foreground border-primary"
                   : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
@@ -50,27 +58,29 @@ export default function BidFilterBar({
               {label}
               <span className={cn(
                 "ml-1.5 text-xs px-1.5 py-0.5 rounded-full",
-                filter === value ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+                filter === value
+                  ? "bg-primary-foreground/20 text-primary-foreground"
+                  : "bg-muted text-muted-foreground"
               )}>
                 {counts[value] ?? 0}
               </span>
             </button>
           ))}
+
+          {/* Fit toggle — lives at the end of the scroll row */}
           <button
             onClick={() => setFitOnly((v) => !v)}
             className={cn(
-              "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border",
+              "flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap",
               fitOnly
                 ? "bg-green-600 text-white border-green-600"
                 : "bg-card text-muted-foreground border-border hover:border-green-500/50 hover:text-foreground"
             )}
           >
-            <span className="flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Fit
-            </span>
+            <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+            Fit
             <span className={cn(
-              "ml-1.5 text-xs px-1.5 py-0.5 rounded-full",
+              "ml-0.5 text-xs px-1.5 py-0.5 rounded-full",
               fitOnly ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
             )}>
               {fitCount}
@@ -79,14 +89,20 @@ export default function BidFilterBar({
         </div>
       )}
 
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-muted-foreground font-medium mr-1">Source:</span>
+      {/* ── Source filter ─────────────────────────────────────────────────────
+          Single compact row; scrollable on mobile if needed.                   */}
+      <div
+        className="flex items-center gap-1.5 overflow-x-auto md:overflow-visible"
+        style={{ scrollbarWidth: "none" } as React.CSSProperties}
+      >
+        <span className="flex-shrink-0 text-xs text-muted-foreground font-medium">Source:</span>
+
         {(["all", "federal", "local"] as const).map((s) => (
           <button
             key={s}
             onClick={() => setSourceFilter(s)}
             className={cn(
-              "px-2.5 py-1 rounded-md text-xs font-medium transition-colors border",
+              "flex-shrink-0 px-2.5 py-1 rounded-md text-xs font-medium transition-colors border whitespace-nowrap",
               sourceFilter === s
                 ? "bg-primary text-primary-foreground border-primary"
                 : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
@@ -95,21 +111,24 @@ export default function BidFilterBar({
             {s === "all" ? "All" : s === "federal" ? "Federal" : "Local"}
           </button>
         ))}
+
         <button
           onClick={() => setSourceFilter(sourceFilter === "usa-spending" ? "all" : "usa-spending")}
           className={cn(
-            "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors border",
+            "flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors border whitespace-nowrap",
             sourceFilter === "usa-spending"
               ? "bg-violet-600 text-white border-violet-600"
               : "bg-card text-muted-foreground border-border hover:border-violet-400/50 hover:text-foreground"
           )}
         >
-          <Trophy className="w-3 h-3" />
+          <Trophy className="w-3 h-3 flex-shrink-0" />
           Awards Intel
           {awardsCount > 0 && (
             <span className={cn(
               "text-xs px-1.5 py-0.5 rounded-full",
-              sourceFilter === "usa-spending" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+              sourceFilter === "usa-spending"
+                ? "bg-white/20 text-white"
+                : "bg-muted text-muted-foreground"
             )}>
               {awardsCount}
             </span>
