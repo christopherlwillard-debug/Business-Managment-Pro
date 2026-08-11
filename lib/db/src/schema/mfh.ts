@@ -186,3 +186,23 @@ export type JobKnowledgeRecord = typeof jobKnowledgeRecordsTable.$inferSelect;
 export type JobKnowledgeRecordVersion = typeof jobKnowledgeRecordVersionsTable.$inferSelect;
 export type ProductionServiceType = typeof productionServiceTypesTable.$inferSelect;
 export type ProductionPriceOverride = typeof productionPriceOverridesTable.$inferSelect;
+
+// Configurable service add-on prompts.  When a trigger service is checked in the
+// job form, a dialog asks whether to also add the add-on service.  The existing
+// Plumbing Hookup → Heat Wrap Waterline pair is seeded on first GET.
+// businessId is nullable (null = global/shared); scoped to the same business as
+// the referenced service types so prompts never cross business boundaries.
+export const serviceAddonPromptsTable = pgTable("service_addon_prompts", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id"),
+  triggerServiceTypeId: integer("trigger_service_type_id").notNull()
+    .references(() => productionServiceTypesTable.id, { onDelete: "cascade" }),
+  addonServiceTypeId: integer("addon_service_type_id").notNull()
+    .references(() => productionServiceTypesTable.id, { onDelete: "cascade" }),
+  promptLabel: text("prompt_label").notNull(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type ServiceAddonPrompt = typeof serviceAddonPromptsTable.$inferSelect;

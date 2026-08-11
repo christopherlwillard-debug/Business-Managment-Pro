@@ -21,6 +21,7 @@ import {
   useCreateMfhManufacturer, useUpdateMfhManufacturer, useCreateMfhModel,
   useListProductionServiceTypes, useCreateProductionServiceType,
   useUpdateProductionServiceType, useDeleteProductionServiceType,
+  useListServiceAddonPrompts, type ServiceAddonPrompt,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -5059,9 +5060,12 @@ function JobFormDialog({
   const [mhProductionServices, setMhProductionServices] = useState<number[]>(
     (editJob as unknown as Record<string, unknown>)?.mhProductionServices as number[] ?? []
   );
-  // Heat Wrap upsell prompt — shown when Plumbing Hookup is checked without Heat Wrap
-  const [heatWrapPromptOpen, setHeatWrapPromptOpen] = useState(false);
-  const [pendingPlumbingId, setPendingPlumbingId]   = useState<number | null>(null);
+  // Config-driven add-on prompt — shown when a trigger service is checked without its add-on
+  const { data: serviceAddonPrompts = [] } = useListServiceAddonPrompts(activeBusiness?.id);
+  const [addonPromptState, setAddonPromptState] = useState<{
+    prompt: ServiceAddonPrompt;
+    triggerSvcId: number;
+  } | null>(null);
   const [showAddService, setShowAddService] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
   // Inline service-type management (rename / re-categorize / archive)
@@ -5556,13 +5560,15 @@ function JobFormDialog({
                           if (isChecked) {
                             setMhProductionServices(prev => prev.filter(id => id !== svc.id));
                           } else {
-                            // Intercept: checking Plumbing triggers Heat Wrap upsell prompt
-                            const isPlumbing   = svc.itemKey === "plumbing_hookup";
-                            const heatWrapSvc  = productionServiceTypes.find(s => s.itemKey === "heat_wrap_waterline");
-                            const heatWrapOn   = heatWrapSvc ? mhProductionServices.includes(heatWrapSvc.id) : false;
-                            if (isPlumbing && heatWrapSvc && !heatWrapOn) {
-                              setPendingPlumbingId(svc.id);
-                              setHeatWrapPromptOpen(true);
+                            // Check if any active add-on prompt is configured for this service
+                            const prompt = serviceAddonPrompts.find(
+                              p => p.active && p.triggerServiceTypeId === svc.id
+                            );
+                            const addonAlreadyOn = prompt
+                              ? mhProductionServices.includes(prompt.addonServiceTypeId)
+                              : false;
+                            if (prompt && !addonAlreadyOn) {
+                              setAddonPromptState({ prompt, triggerSvcId: svc.id });
                             } else {
                               setMhProductionServices(prev => [...prev, svc.id]);
                             }
@@ -5608,22 +5614,23 @@ function JobFormDialog({
           </div>
           )}
 
-          {/* ── Heat Wrap Waterline upsell prompt ── */}
-          {heatWrapPromptOpen && (() => {
-            const hwSvc = productionServiceTypes.find(s => s.itemKey === "heat_wrap_waterline");
+          {/* ── Config-driven service add-on prompt ── */}
+          {addonPromptState && (() => {
+            const { prompt, triggerSvcId } = addonPromptState;
+            const addonPrice = prompt.addonServiceType?.price
+              ? parseFloat(prompt.addonServiceType.price)
+              : null;
             const confirmYes = () => {
-              const ids: number[] = [];
-              if (pendingPlumbingId !== null) ids.push(pendingPlumbingId);
-              if (hwSvc) ids.push(hwSvc.id);
-              setMhProductionServices(prev => [...prev, ...ids.filter(id => !prev.includes(id))]);
-              setHeatWrapPromptOpen(false);
-              setPendingPlumbingId(null);
+              const ids = [triggerSvcId, prompt.addonServiceTypeId].filter(
+                id => !mhProductionServices.includes(id)
+              );
+              setMhProductionServices(prev => [...prev, ...ids]);
+              setAddonPromptState(null);
             };
             const confirmNo = () => {
-              if (pendingPlumbingId !== null)
-                setMhProductionServices(prev => prev.includes(pendingPlumbingId) ? prev : [...prev, pendingPlumbingId]);
-              setHeatWrapPromptOpen(false);
-              setPendingPlumbingId(null);
+              if (!mhProductionServices.includes(triggerSvcId))
+                setMhProductionServices(prev => [...prev, triggerSvcId]);
+              setAddonPromptState(null);
             };
             return (
               <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
@@ -5637,10 +5644,14 @@ function JobFormDialog({
                         <Wrench className="w-4.5 h-4.5 text-amber-600" />
                       </div>
                       <div>
-                        <h2 className="font-bold text-gray-900 text-base leading-tight">Heat Wrap Waterline?</h2>
+                        <h2 className="font-bold text-gray-900 text-base leading-tight">
+                          Add {prompt.addonServiceType?.name ?? "Add-on"}?
+                        </h2>
                         <p className="text-sm text-gray-500 mt-1">
-                          Will you also be heat wrapping the waterline on this plumbing hookup?
-                          <span className="font-semibold text-gray-800"> +$250</span>
+                          {prompt.promptLabel}
+                          {addonPrice != null && Number.isFinite(addonPrice) && (
+                            <span className="font-semibold text-gray-800"> +{formatCurrency(addonPrice)}</span>
+                          )}
                         </p>
                       </div>
                     </div>

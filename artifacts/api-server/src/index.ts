@@ -451,6 +451,38 @@ async function ensureMaterialExpenseLinkingSchema(): Promise<void> {
   }
 }
 
+async function ensureServiceAddonPromptsTable(): Promise<void> {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS service_addon_prompts (
+        id SERIAL PRIMARY KEY,
+        business_id INTEGER,
+        trigger_service_type_id INTEGER NOT NULL
+          REFERENCES production_service_types(id) ON DELETE CASCADE,
+        addon_service_type_id INTEGER NOT NULL
+          REFERENCES production_service_types(id) ON DELETE CASCADE,
+        prompt_label TEXT NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    // Add business_id column if the table already existed without it.
+    await db.execute(sql`
+      ALTER TABLE service_addon_prompts
+        ADD COLUMN IF NOT EXISTS business_id INTEGER;
+    `);
+    // Enforce one prompt per trigger per business scope (nulls treated as -1 for uniqueness).
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_addon_prompt_trigger
+        ON service_addon_prompts (trigger_service_type_id, COALESCE(business_id, -1));
+    `);
+    console.log("[startup] ensureServiceAddonPromptsTable: service_addon_prompts OK.");
+  } catch (err) {
+    console.error("[startup] ensureServiceAddonPromptsTable failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await ensureBankingSchema();
   await ensureTripNotesColumn();
@@ -458,6 +490,7 @@ async function start() {
   await ensureWebsiteTemplatesTable();
   await ensureVehiclesTable();
   await ensureMaterialExpenseLinkingSchema();
+  await ensureServiceAddonPromptsTable();
   await clearDraftInvoiceNumbers();
   await syncInvoiceCounter();
   await recomputePartialSubPaymentStatuses();

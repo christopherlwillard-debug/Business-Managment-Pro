@@ -749,6 +749,88 @@ export function useDeleteProductionPriceOverride() {
   });
 }
 
+// ── Service Add-on Prompts ─────────────────────────────────────────────────────
+export interface ServiceAddonPromptServiceType {
+  id: number;
+  name: string;
+  itemKey: string | null;
+  price: string | null;
+}
+
+export interface ServiceAddonPrompt {
+  id: number;
+  triggerServiceTypeId: number;
+  addonServiceTypeId: number;
+  promptLabel: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  triggerServiceType: ServiceAddonPromptServiceType | null;
+  addonServiceType: ServiceAddonPromptServiceType | null;
+}
+
+export interface ServiceAddonPromptInput {
+  triggerServiceTypeId: number;
+  addonServiceTypeId: number;
+  promptLabel: string;
+  businessId?: number | null;
+}
+
+export function useListServiceAddonPrompts(businessId?: number | null) {
+  return useQuery({
+    queryKey: ["/api/service-addon-prompts", businessId ?? null],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (businessId) params.set("businessId", String(businessId));
+      const qs = params.toString();
+      return customFetch<ServiceAddonPrompt[]>(
+        `/api/service-addon-prompts${qs ? `?${qs}` : ""}`,
+        { method: "GET" },
+      );
+    },
+  });
+}
+
+export function useCreateServiceAddonPrompt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: ServiceAddonPromptInput) =>
+      customFetch<ServiceAddonPrompt>("/api/service-addon-prompts", {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/service-addon-prompts"] }),
+  });
+}
+
+export function useUpdateServiceAddonPrompt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...data
+    }: Partial<ServiceAddonPromptInput> & { id: number; active?: boolean }) =>
+      customFetch<ServiceAddonPrompt>(`/api/service-addon-prompts/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/service-addon-prompts"] }),
+  });
+}
+
+export function useDeleteServiceAddonPrompt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      customFetch<ServiceAddonPrompt>(`/api/service-addon-prompts/${id}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/service-addon-prompts"] }),
+  });
+}
+
 // ── Apply Production Pricing (build DRAFT invoice from checked items) ──────────
 export interface ApplyProductionPricingResult {
   invoice?: unknown;
