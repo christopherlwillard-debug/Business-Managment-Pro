@@ -33,6 +33,7 @@ export * from "./prospect-service-visits";
 export * from "./square-payments";
 export * from "./plaid-connections";
 export * from "./bid-opportunities";
+export * from "./bid-profiles";
 export * from "./businesses";
 export * from "./contacts";
 export * from "./job-sub-hours";

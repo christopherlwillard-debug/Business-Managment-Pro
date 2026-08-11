@@ -1,85 +1,58 @@
 const SAM_API_BASE = "https://api.sam.gov/opportunities/v2/search";
 
+// ── Legacy keyword exports (kept for backward compatibility) ──────────────────
 export const ASPHALT_SAM_KEYWORDS = [
-  "asphalt",
-  "sealcoat",
-  "sealcoating",
-  "pavement",
-  "parking lot",
-  "parking-lot",
-  "striping",
-  "crack",
-  "crack seal",
-  "crack-seal",
-  "paving",
+  "asphalt", "sealcoat", "sealcoating", "pavement",
+  "parking lot", "parking-lot", "striping", "crack", "crack seal", "crack-seal", "paving",
 ];
 
 export const GENERAL_CONTRACTING_SAM_KEYWORDS = [
-  "general contractor",
-  "general contracting",
-  "commercial building",
-  "renovation",
-  "remodel",
-  "building construction",
-  "tenant improvement",
-  "site work",
-  "commercial construction",
-  "new construction",
-  "building renovation",
-  "interior construction",
-  "facility renovation",
-  "construction services",
-  "roofing",
-  "flooring",
-  "drywall",
-  "painting contractor",
-  "masonry",
-  "finish carpentry",
+  "general contractor", "general contracting", "commercial building", "renovation",
+  "remodel", "building construction", "tenant improvement", "site work",
+  "commercial construction", "new construction", "building renovation",
+  "interior construction", "facility renovation", "construction services",
+  "roofing", "flooring", "drywall", "painting contractor", "masonry", "finish carpentry",
 ];
 
-// PSC codes — Y = new construction, Z = repair/alteration/renovation
 export const ASPHALT_PSC_CODES = [
-  "Y1QA", // Construction of roads, streets, highways, bridges
-  "Z1QA", // Repair/alteration of roads, streets, highways, bridges
-  "Y1NA", // Construction of parking structures
-  "Z1NA", // Repair of parking structures
+  "Y1QA", "Z1QA", "Y1NA", "Z1NA",
 ];
 
 export const GENERAL_CONTRACTING_PSC_CODES = [
-  // New construction
-  "Y1AA", // Office buildings
-  "Y1BA", // Industrial buildings
-  "Y1CA", // Hospitals & medical facilities
-  "Y1DA", // Schools & educational facilities
-  "Y1EA", // Residential buildings
-  "Y1JA", // Recreation facilities
-  "Y1KA", // Warehouses & storage
-  "Y1NA", // Parking structures
-  // Repair / renovation (most likely for a GC)
-  "Z1AA", // Repair/renovation of office buildings
-  "Z1BA", // Repair of industrial buildings
-  "Z1CA", // Repair of hospitals & medical
-  "Z1DA", // Repair of schools
-  "Z1EA", // Repair of residential buildings
-  "Z1JA", // Repair of recreation facilities
-  "Z1KA", // Repair of warehouses
-  "Z1NA", // Repair of parking structures
-  // Alteration
-  "Z2AA", // Alteration of office buildings
-  "Z2BA", // Alteration of industrial buildings
-  "Z2CA", // Alteration of hospitals
-  "Z2DA", // Alteration of schools
+  "Y1AA","Y1BA","Y1CA","Y1DA","Y1EA","Y1JA","Y1KA","Y1NA",
+  "Z1AA","Z1BA","Z1CA","Z1DA","Z1EA","Z1JA","Z1KA","Z1NA",
+  "Z2AA","Z2BA","Z2CA","Z2DA",
 ];
 
+// ── SAM.gov ptype → human-readable notice type ────────────────────────────────
+const PTYPE_MAP: Record<string, string> = {
+  o:  "solicitation",
+  p:  "presolicitation",
+  k:  "combined_synopsis",
+  r:  "sources_sought",
+  s:  "special_notice",
+  g:  "sale_of_surplus",
+  i:  "intent_to_bundle",
+  a:  "award",
+  u:  "justification",
+  j:  "justification",
+};
+
+function resolveNoticeType(ptype?: string): string {
+  if (!ptype) return "other";
+  return PTYPE_MAP[ptype.toLowerCase()] ?? "other";
+}
+
 export interface SamOpportunity {
-  noticeId: string;
-  title: string;
-  agency: string | null;
-  naicsCode: string | null;
-  description: string | null;
-  postedDate: string | null;
+  noticeId:         string;
+  title:            string;
+  agency:           string | null;
+  naicsCode:        string | null;
+  description:      string | null;
+  postedDate:       string | null;
   responseDeadline: string | null;
-  url: string;
+  url:              string;
+  noticeType?:      string;   // derived from SAM ptype field; absent for non-SAM sources
 }
 
 function toIsoDate(d: Date): string {
@@ -107,29 +80,31 @@ async function fetchPage(
 
     const data = await res.json() as {
       opportunitiesData?: Array<{
-        noticeId?: string;
-        title?: string;
-        fullParentPathName?: string;
+        noticeId?:              string;
+        title?:                 string;
+        fullParentPathName?:    string;
         organizationHierarchy?: Array<{ name?: string }>;
-        naicsCode?: string;
-        description?: string;
-        postedDate?: string;
-        responseDeadLine?: string;
-        uiLink?: string;
+        naicsCode?:             string;
+        description?:           string;
+        postedDate?:            string;
+        responseDeadLine?:      string;
+        uiLink?:                string;
+        type?:                  string;   // SAM.gov ptype value
       }>;
     };
 
     return (data.opportunitiesData ?? [])
       .filter((item) => item.noticeId && item.title)
       .map((item) => ({
-        noticeId: item.noticeId!,
-        title: item.title!,
-        agency: item.fullParentPathName ?? item.organizationHierarchy?.[0]?.name ?? null,
-        naicsCode: item.naicsCode ?? null,
-        description: item.description?.slice(0, 1000) ?? null,
-        postedDate: item.postedDate?.slice(0, 10) ?? null,
+        noticeId:         item.noticeId!,
+        title:            item.title!,
+        agency:           item.fullParentPathName ?? item.organizationHierarchy?.[0]?.name ?? null,
+        naicsCode:        item.naicsCode ?? null,
+        description:      item.description?.slice(0, 1000) ?? null,
+        postedDate:       item.postedDate?.slice(0, 10) ?? null,
         responseDeadline: item.responseDeadLine?.slice(0, 10) ?? null,
-        url: item.uiLink ?? `https://sam.gov/opp/${item.noticeId}/view`,
+        url:              item.uiLink ?? `https://sam.gov/opp/${item.noticeId}/view`,
+        noticeType:       resolveNoticeType(item.type),
       }));
   } catch (err) {
     console.error(`[sam-gov] Fetch error for ${label}:`, err);
@@ -138,9 +113,9 @@ async function fetchPage(
 }
 
 export async function fetchSamOpportunities(opts: {
-  keywords: string[];
+  keywords:   string[];
   naicsCodes: string[];
-  pscCodes?: string[];
+  pscCodes?:  string[];
 }): Promise<SamOpportunity[]> {
   const apiKey = process.env["SAM_GOV_API_KEY"];
   if (!apiKey) {
@@ -149,26 +124,19 @@ export async function fetchSamOpportunities(opts: {
   }
 
   const postedFrom = toIsoDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
-  const postedTo = toIsoDate(new Date());
+  const postedTo   = toIsoDate(new Date());
   const baseParams = { ptype: "o,p,k,r,s,g,i", postedFrom, postedTo, limit: "20", offset: "0" };
 
   const fetches: Promise<SamOpportunity[]>[] = [];
 
-  // Search by NAICS × keyword
-  for (const naics of opts.naicsCodes) {
-    for (const keyword of opts.keywords) {
-      fetches.push(
-        fetchPage(apiKey, { ...baseParams, naics, keyword }, `NAICS ${naics} / "${keyword}"`)
-      );
+  for (const naics   of opts.naicsCodes)       {
+    for (const keyword of opts.keywords)        {
+      fetches.push(fetchPage(apiKey, { ...baseParams, naics, keyword }, `NAICS ${naics} / "${keyword}"`));
     }
   }
-
-  // Search by PSC × keyword only — keyword keeps results on-topic; no-keyword PSC fetches produce too much noise
-  for (const psc of (opts.pscCodes ?? [])) {
-    for (const keyword of opts.keywords) {
-      fetches.push(
-        fetchPage(apiKey, { ...baseParams, psc, keyword }, `PSC ${psc} / "${keyword}"`)
-      );
+  for (const psc     of (opts.pscCodes ?? [])) {
+    for (const keyword of opts.keywords)        {
+      fetches.push(fetchPage(apiKey, { ...baseParams, psc, keyword }, `PSC ${psc} / "${keyword}"`));
     }
   }
 
@@ -178,27 +146,18 @@ export async function fetchSamOpportunities(opts: {
     if (p.status === "fulfilled") all.push(...p.value);
   }
 
-  // Deduplicate by noticeId
-  const seen = new Set<string>();
+  const seen   = new Set<string>();
   const deduped = all.filter((r) => {
     if (seen.has(r.noticeId)) return false;
     seen.add(r.noticeId);
     return true;
   });
 
-  // Post-fetch NAICS guard: drop any result whose NAICS code is present but NOT
-  // in the allowed list. Results with no NAICS code are kept (PSC-only
-  // opportunities often omit it).
   const allowedNaics = new Set(opts.naicsCodes);
-  const filtered = deduped.filter(
-    (r) => !r.naicsCode || allowedNaics.has(r.naicsCode)
-  );
+  const filtered = deduped.filter((r) => !r.naicsCode || allowedNaics.has(r.naicsCode));
 
   if (deduped.length !== filtered.length) {
-    console.log(
-      `[sam-gov] NAICS post-filter: ${deduped.length} → ${filtered.length} ` +
-      `(dropped ${deduped.length - filtered.length} off-profile results)`
-    );
+    console.log(`[sam-gov] NAICS post-filter: ${deduped.length} → ${filtered.length} (dropped ${deduped.length - filtered.length})`);
   }
 
   return filtered;

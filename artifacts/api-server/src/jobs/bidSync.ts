@@ -1,181 +1,311 @@
 import cron from "node-cron";
 import { db } from "@workspace/db";
-import { bidOpportunitiesTable, settingsTable, businessesTable } from "@workspace/db";
+import {
+  bidOpportunitiesTable,
+  bidCapabilityProfilesTable,
+  bidBusinessSettingsTable,
+  settingsTable,
+  businessesTable,
+} from "@workspace/db";
 import { eq, sql, and, isNull } from "drizzle-orm";
 import {
   fetchSamOpportunities,
   SamOpportunity,
-  ASPHALT_SAM_KEYWORDS,
-  GENERAL_CONTRACTING_SAM_KEYWORDS,
   ASPHALT_PSC_CODES,
   GENERAL_CONTRACTING_PSC_CODES,
 } from "../lib/samGov.js";
 import { fetchKyLocalBids, NAV_PHRASE_DENYLIST, PAVEMENT_KEYWORDS, BROAD_BID_KEYWORDS } from "../lib/kyLocalBids.js";
 import { fetchUsaSpendingAwards, UsaSpendingAward } from "../lib/usaSpending.js";
 import { sendEmail, escapeHtml } from "../lib/sendEmail.js";
+import {
+  CapabilityDefinition,
+  getCapabilitiesForBusinessType,
+  mergeCapabilitySearchParams,
+} from "../lib/bidCapabilitySeeds.js";
 
-// ── Business profiles ────────────────────────────────────────────────────────
+// ── Resolved business search profile ─────────────────────────────────────────
 
-interface BizProfile {
-  samKeywords: string[];
-  samNaicsCodes: string[];
-  samPscCodes: string[];
-  localKeywords: string[];
-  label: string;
+interface ResolvedProfile {
+  naicsCodes:      string[];
+  keywords:        string[];
+  pscCodes:        string[];
+  localKeywords:   string[];
+  negativeKeywords: string[];
+  description:     string;       // AI context
+  capabilities:    CapabilityDefinition[];
+  profileStatus:   string;       // 'active' | 'watch' | 'off'
+  isSdvosb:        boolean;
+  isVosb:          boolean;
+  isSmallBusiness: boolean;
+  label:           string;
 }
 
-const BUSINESS_PROFILES: Record<string, BizProfile> = {
-  asphalt_sealing: {
-    samKeywords: ASPHALT_SAM_KEYWORDS,
-    samNaicsCodes: ["237310"],
-    samPscCodes: ASPHALT_PSC_CODES,
-    localKeywords: PAVEMENT_KEYWORDS,
-    label: "Asphalt Sealing",
-  },
-  general_contracting: {
-    samKeywords: GENERAL_CONTRACTING_SAM_KEYWORDS,
-    samNaicsCodes: [
-      // General building
-      "236220", // Commercial & institutional building
-      "236210", // Industrial building
-      "236115", // New single-family home construction
-      "236116", // Remodeling of single-family homes
-      "236118", // Residential remodelers
-      // Specialty trades
-      "238110", // Foundation, structure & exterior
-      "238140", // Masonry
-      "238150", // Glass & glazing
-      "238160", // Roofing
-      "238170", // Siding
-      "238190", // Other structural
-      "238210", // Electrical
-      "238220", // Plumbing, heating & A/C
-      "238310", // Drywall & insulation
-      "238320", // Painting & wall covering
-      "238330", // Flooring
-      "238340", // Tile & terrazzo
-      "238350", // Finish carpentry
-      "238390", // Other finish trade
-      "238910", // Site preparation
-      "238990", // Other specialty trade
-    ],
-    samPscCodes: GENERAL_CONTRACTING_PSC_CODES,
-    localKeywords: BROAD_BID_KEYWORDS,
-    label: "General Contracting",
-  },
-};
+// ── Load capability profiles from DB (seed if absent) ────────────────────────
 
-const DEFAULT_PROFILE: BizProfile = {
-  samKeywords: GENERAL_CONTRACTING_SAM_KEYWORDS,
-  samNaicsCodes: ["236220", "236210"],
-  samPscCodes: [],
-  localKeywords: BROAD_BID_KEYWORDS,
-  label: "General",
-};
-
-function getProfile(businessType: string): BizProfile {
-  return BUSINESS_PROFILES[businessType] ?? DEFAULT_PROFILE;
-}
-
-// ── Purge irrelevant local bids for a specific business ──────────────────────
-
-async function purgeIrrelevantLocalBids(
+async function loadOrSeedCapabilities(
   businessId: number,
-  relevantKeywords: string[]
-): Promise<number> {
+  businessType: string
+): Promise<CapabilityDefinition[]> {
+  const dbRows = await db
+    .select()
+    .from(bidCapabilityProfilesTable)
+    .where(eq(bidCapabilityProfilesTable.businessId, businessId));
+
+  if (dbRows.length > 0) {
+    // Map DB rows back to CapabilityDefinition shape
+    return dbRows.map((row) => ({
+      capabilityKey:    row.capabilityKey,
+      name:             row.name,
+      description:      row.description ?? "",
+      naicsCodes:       (row.naicsCodes as string[]) ?? [],
+      keywords:         (row.keywords as string[]) ?? [],
+      negativeKeywords: (row.negativeKeywords as string[]) ?? [],
+      equipment:        (row.equipment as string[]) ?? [],
+      localKeywords:    (row.localKeywords as string[]) ?? [],
+      active:           row.active,
+      sortOrder:        row.sortOrder,
+    }));
+  }
+
+  // No DB rows — seed from built-in definitions
+  const seeds = getCapabilitiesForBusinessType(businessType);
+  console.log(`[bid-sync] Seeding ${seeds.length} capability profile(s) for business ${businessId} (${businessType})`);
+
+  for (const cap of seeds) {
+    try {
+      await db.insert(bidCapabilityProfilesTable).values({
+        businessId,
+        capabilityKey:    cap.capabilityKey,
+        name:             cap.name,
+        description:      cap.description,
+        naicsCodes:       cap.naicsCodes,
+        keywords:         cap.keywords,
+        negativeKeywords: cap.negativeKeywords,
+        equipment:        cap.equipment,
+        localKeywords:    cap.localKeywords,
+        active:           cap.active,
+        sortOrder:        cap.sortOrder,
+      });
+    } catch {
+      // Row may already exist from a concurrent seed — safe to ignore
+    }
+  }
+
+  return seeds;
+}
+
+// ── Load or create bid business settings ─────────────────────────────────────
+
+async function loadOrCreateBidSettings(businessId: number): Promise<{
+  profileStatus: string;
+  isSdvosb: boolean;
+  isVosb: boolean;
+  isSmallBusiness: boolean;
+}> {
+  const existing = await db
+    .select()
+    .from(bidBusinessSettingsTable)
+    .where(eq(bidBusinessSettingsTable.businessId, businessId))
+    .then((rows) => rows[0] ?? null);
+
+  if (existing) {
+    return {
+      profileStatus:   existing.profileStatus,
+      isSdvosb:        existing.isSdvosb,
+      isVosb:          existing.isVosb,
+      isSmallBusiness: existing.isSmallBusiness,
+    };
+  }
+
+  // Create default settings row
+  await db.insert(bidBusinessSettingsTable).values({
+    businessId,
+    profileStatus:   "active",
+    isSmallBusiness: true,
+  }).onConflictDoNothing();
+
+  return { profileStatus: "active", isSdvosb: false, isVosb: false, isSmallBusiness: true };
+}
+
+// ── Resolve the complete search profile for a business ────────────────────────
+
+async function resolveProfile(businessId: number, businessType: string): Promise<ResolvedProfile> {
+  const [capabilities, settings] = await Promise.all([
+    loadOrSeedCapabilities(businessId, businessType),
+    loadOrCreateBidSettings(businessId),
+  ]);
+
+  const merged = mergeCapabilitySearchParams(capabilities.filter((c) => c.active));
+
+  // Add PSC codes from legacy hardcoded lists — extend here when capability profiles carry them
+  const pscCodes =
+    businessType === "asphalt_sealing" ? ASPHALT_PSC_CODES : GENERAL_CONTRACTING_PSC_CODES;
+
+  return {
+    naicsCodes:       merged.naicsCodes,
+    keywords:         merged.keywords,
+    pscCodes,
+    localKeywords:    merged.localKeywords,
+    negativeKeywords: merged.negativeKeywords,
+    description:      merged.description,
+    capabilities:     capabilities.filter((c) => c.active),
+    profileStatus:    settings.profileStatus,
+    isSdvosb:         settings.isSdvosb,
+    isVosb:           settings.isVosb,
+    isSmallBusiness:  settings.isSmallBusiness,
+    label:            businessType === "asphalt_sealing" ? "Asphalt Sealing" : "General Contracting",
+  };
+}
+
+// ── Source health helpers ─────────────────────────────────────────────────────
+
+async function writeSyncHealth(
+  businessId: number,
+  patch: Partial<{
+    lastSyncAt:          Date;
+    lastSyncSuccessAt:   Date;
+    lastSyncError:       string | null;
+    samLastSuccessAt:    Date;
+    samLastError:        string | null;
+    localLastSuccessAt:  Date;
+    localLastError:      string | null;
+    awardsLastSuccessAt: Date;
+    awardsLastError:     string | null;
+  }>
+): Promise<void> {
+  try {
+    await db
+      .insert(bidBusinessSettingsTable)
+      .values({ businessId, ...patch })
+      .onConflictDoUpdate({
+        target: bidBusinessSettingsTable.businessId,
+        set:    { ...patch, updatedAt: new Date() },
+      });
+  } catch (err) {
+    console.warn("[bid-sync] Failed to write sync health:", err);
+  }
+}
+
+// ── Opportunity scoring ───────────────────────────────────────────────────────
+
+interface ScoredOpportunity {
+  opportunityScore: number;
+  capabilityMatches: string[];
+}
+
+function scoreOpportunity(
+  opp: { title: string; description: string | null; responseDeadline: string | null; source: string },
+  capabilities: CapabilityDefinition[],
+  settings: { isSdvosb: boolean; isSmallBusiness: boolean; isVosb: boolean },
+  aiSetAsideType?: string,
+): ScoredOpportunity {
+  const text = `${opp.title} ${opp.description ?? ""}`.toLowerCase();
+  const capabilityMatches: string[] = [];
+
+  // ── Capability keyword match (0–40 points) ────────────────────────────────
+  let capScore = 0;
+  for (const cap of capabilities) {
+    const hits = cap.keywords.filter((kw) => text.includes(kw.toLowerCase()));
+    if (hits.length > 0) {
+      capabilityMatches.push(cap.capabilityKey);
+      capScore = Math.min(40, capScore + Math.min(20, hits.length * 5));
+    }
+  }
+
+  // Negative-keyword penalty (shared across all capabilities)
+  const allNeg = capabilities.flatMap((c) => c.negativeKeywords);
+  const negHits = allNeg.filter((kw) => text.includes(kw.toLowerCase()));
+  capScore = Math.max(0, capScore - negHits.length * 8);
+
+  // ── Source bonus (0–10 points) — local/regional contracts preferred ───────
+  const sourceScore = opp.source === "state-local" ? 10 : 0;
+
+  // ── Set-aside advantage (0–20 points) ─────────────────────────────────────
+  let setAsideScore = 0;
+  if (aiSetAsideType === "sdvosb") {
+    setAsideScore = (settings.isSdvosb || settings.isVosb) ? 20 : 2;
+  } else if (aiSetAsideType === "small_business") {
+    setAsideScore = settings.isSmallBusiness ? 15 : 5;
+  } else if (aiSetAsideType === "open") {
+    setAsideScore = 5; // full-and-open — everyone competes
+  }
+
+  // ── Deadline urgency (0–20 points) ───────────────────────────────────────
+  let urgencyScore = 0;
+  if (opp.responseDeadline) {
+    const daysOut = (new Date(opp.responseDeadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    if (daysOut <= 7)        urgencyScore = 20;
+    else if (daysOut <= 14)  urgencyScore = 15;
+    else if (daysOut <= 30)  urgencyScore = 10;
+    else if (daysOut <= 60)  urgencyScore = 5;
+    // 90+ days = 0
+  }
+
+  // ── Notice-type bonus (0–10 points) — Sources Sought = early intel ───────
+  // Note: noticeType comes from SAM.gov, we don't have it here in scoring;
+  // this field will be stored on the row and can inform future UI sorting.
+
+  const total = Math.min(100, capScore + sourceScore + setAsideScore + urgencyScore);
+
+  return { opportunityScore: total, capabilityMatches };
+}
+
+// ── Purge helpers (unchanged from original) ───────────────────────────────────
+
+async function purgeIrrelevantLocalBids(businessId: number, relevantKeywords: string[]): Promise<number> {
   const kwSet = [...new Set(relevantKeywords)];
+  if (kwSet.length === 0) return 0;
 
   function toWordBoundaryPattern(kw: string): string {
-    const escaped = kw
-      .split(/\s+/)
-      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-      .join("\\s+");
+    const escaped = kw.split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
     return `\\y${escaped}\\y`;
   }
 
-  const titleConditions = kwSet.map(
-    (kw) => sql`title ~* ${toWordBoundaryPattern(kw)}`
-  );
-  const descConditions = kwSet.map(
-    (kw) => sql`COALESCE(description, '') ~* ${toWordBoundaryPattern(kw)}`
-  );
-
-  const isRelevant = [...titleConditions, ...descConditions].reduce(
-    (acc, cond) => sql`${acc} OR ${cond}`
-  );
+  const titleConditions = kwSet.map((kw) => sql`title ~* ${toWordBoundaryPattern(kw)}`);
+  const descConditions  = kwSet.map((kw) => sql`COALESCE(description, '') ~* ${toWordBoundaryPattern(kw)}`);
+  const isRelevant = [...titleConditions, ...descConditions].reduce((acc, cond) => sql`${acc} OR ${cond}`);
 
   const result = await db.execute(
     sql`DELETE FROM bid_opportunities WHERE source = 'state-local' AND business_id = ${businessId} AND NOT (${isRelevant})`
   );
   const count = (result as { rowCount?: number }).rowCount ?? 0;
-  if (count > 0) {
-    console.log(`[bid-sync] Purged ${count} irrelevant local bid(s) for business ${businessId}`);
-  }
+  if (count > 0) console.log(`[bid-sync] Purged ${count} irrelevant local bid(s) for business ${businessId}`);
   return count;
 }
 
 async function purgeNavLinkRows(businessId: number): Promise<number> {
-  const likeConditions = NAV_PHRASE_DENYLIST.map(
-    (phrase) => sql`LOWER(title) LIKE ${"%" + phrase.toLowerCase() + "%"}`
-  );
-
-  const combined = likeConditions.reduce(
-    (acc, cond) => sql`${acc} OR ${cond}`
-  );
-
+  const likeConditions = NAV_PHRASE_DENYLIST.map((phrase) => sql`LOWER(title) LIKE ${"%" + phrase.toLowerCase() + "%"}`);
+  const combined = likeConditions.reduce((acc, cond) => sql`${acc} OR ${cond}`);
   const result = await db.execute(
     sql`DELETE FROM bid_opportunities WHERE source = 'state-local' AND business_id = ${businessId} AND (${combined})`
   );
   const count = (result as { rowCount?: number }).rowCount ?? 0;
-  if (count > 0) {
-    console.log(`[bid-sync] Purged ${count} nav-link row(s) for business ${businessId}`);
-  }
+  if (count > 0) console.log(`[bid-sync] Purged ${count} nav-link row(s) for business ${businessId}`);
   return count;
 }
-
-// ── Purge stale USA Spending awards ──────────────────────────────────────────
 
 async function purgeOldUsaSpendingAwards(businessId: number): Promise<number> {
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - 24);
   const result = await db.execute(
-    sql`DELETE FROM bid_opportunities
-        WHERE source = 'usa-spending'
-          AND business_id = ${businessId}
-          AND (posted_date IS NULL OR posted_date::date < ${cutoff.toISOString().slice(0, 10)}::date)`
+    sql`DELETE FROM bid_opportunities WHERE source = 'usa-spending' AND business_id = ${businessId} AND (posted_date IS NULL OR posted_date::date < ${cutoff.toISOString().slice(0, 10)}::date)`
   );
   const count = (result as { rowCount?: number }).rowCount ?? 0;
-  if (count > 0) {
-    console.log(`[bid-sync] Purged ${count} outdated USASpending award(s) for business ${businessId}`);
-  }
+  if (count > 0) console.log(`[bid-sync] Purged ${count} outdated USASpending award(s) for business ${businessId}`);
   return count;
 }
 
-// ── Purge off-profile federal bids ───────────────────────────────────────────
-
-async function purgeIrrelevantFederalBids(
-  businessId: number,
-  allowedNaicsCodes: string[]
-): Promise<number> {
+async function purgeIrrelevantFederalBids(businessId: number, allowedNaicsCodes: string[]): Promise<number> {
   if (allowedNaicsCodes.length === 0) return 0;
-
   const result = await db.execute(
-    sql`DELETE FROM bid_opportunities
-        WHERE source = 'federal'
-          AND business_id = ${businessId}
-          AND naics_code IS NOT NULL
-          AND naics_code NOT IN (${sql.raw(
-            allowedNaicsCodes.map((c) => `'${c}'`).join(", ")
-          )})`
+    sql`DELETE FROM bid_opportunities WHERE source = 'federal' AND business_id = ${businessId} AND naics_code IS NOT NULL AND naics_code NOT IN (${sql.raw(allowedNaicsCodes.map((c) => `'${c}'`).join(", "))})`
   );
   const count = (result as { rowCount?: number }).rowCount ?? 0;
-  if (count > 0) {
-    console.log(`[bid-sync] Purged ${count} off-profile federal bid(s) for business ${businessId}`);
-  }
+  if (count > 0) console.log(`[bid-sync] Purged ${count} off-profile federal bid(s) for business ${businessId}`);
   return count;
 }
 
-// ── Upsert ───────────────────────────────────────────────────────────────────
+// ── Upsert opportunities ──────────────────────────────────────────────────────
 
 type OppWithSource = SamOpportunity & { source?: string; sourceLabel?: string };
 
@@ -184,6 +314,7 @@ async function upsertOpportunities(
   defaultSource: string,
   defaultSourceLabel: string,
   businessId: number,
+  profile: ResolvedProfile,
   overrides?: { status?: string; stage?: string }
 ): Promise<OppWithSource[]> {
   const newOnes: OppWithSource[] = [];
@@ -192,29 +323,33 @@ async function upsertOpportunities(
     const existing = await db
       .select({ id: bidOpportunitiesTable.id })
       .from(bidOpportunitiesTable)
-      .where(
-        and(
-          eq(bidOpportunitiesTable.noticeId, opp.noticeId),
-          eq(bidOpportunitiesTable.businessId, businessId)
-        )
-      )
+      .where(and(eq(bidOpportunitiesTable.noticeId, opp.noticeId), eq(bidOpportunitiesTable.businessId, businessId)))
       .then((rows) => rows[0] ?? null);
 
     if (!existing) {
+      const { opportunityScore, capabilityMatches } = scoreOpportunity(
+        { title: opp.title, description: opp.description, responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource },
+        profile.capabilities,
+        { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness },
+      );
+
       await db.insert(bidOpportunitiesTable).values({
         businessId,
-        noticeId: opp.noticeId,
-        title: opp.title,
-        agency: opp.agency,
-        naicsCode: opp.naicsCode,
-        description: opp.description,
-        postedDate: opp.postedDate,
-        responseDeadline: opp.responseDeadline,
-        url: opp.url,
-        status: overrides?.status ?? "new",
-        stage: overrides?.stage ?? "new",
-        source: opp.source ?? defaultSource,
-        sourceLabel: opp.sourceLabel ?? defaultSourceLabel,
+        noticeId:          opp.noticeId,
+        title:             opp.title,
+        agency:            opp.agency,
+        naicsCode:         opp.naicsCode,
+        description:       opp.description,
+        postedDate:        opp.postedDate,
+        responseDeadline:  opp.responseDeadline,
+        url:               opp.url,
+        status:            overrides?.status ?? "new",
+        stage:             overrides?.stage ?? "new",
+        source:            opp.source ?? defaultSource,
+        sourceLabel:       opp.sourceLabel ?? defaultSourceLabel,
+        noticeType:        (opp as SamOpportunity).noticeType ?? null,
+        opportunityScore,
+        capabilityMatches,
       });
       newOnes.push(opp);
     }
@@ -223,39 +358,23 @@ async function upsertOpportunities(
   return newOnes;
 }
 
-async function upsertUsaSpendingAwards(
-  awards: UsaSpendingAward[],
-  businessId: number
-): Promise<UsaSpendingAward[]> {
+async function upsertUsaSpendingAwards(awards: UsaSpendingAward[], businessId: number): Promise<UsaSpendingAward[]> {
   const newOnes: UsaSpendingAward[] = [];
 
   for (const award of awards) {
     const existing = await db
       .select({ id: bidOpportunitiesTable.id })
       .from(bidOpportunitiesTable)
-      .where(
-        and(
-          eq(bidOpportunitiesTable.noticeId, award.noticeId),
-          eq(bidOpportunitiesTable.businessId, businessId)
-        )
-      )
+      .where(and(eq(bidOpportunitiesTable.noticeId, award.noticeId), eq(bidOpportunitiesTable.businessId, businessId)))
       .then((rows) => rows[0] ?? null);
 
     if (!existing) {
       await db.insert(bidOpportunitiesTable).values({
         businessId,
-        noticeId: award.noticeId,
-        title: award.title,
-        agency: award.agency,
-        naicsCode: award.naicsCode,
-        description: award.description,
-        postedDate: award.postedDate,
-        responseDeadline: null,
-        url: award.url,
-        status: "dismissed",
-        stage: "no_bid",
-        source: "usa-spending",
-        sourceLabel: "Awards Intel",
+        noticeId: award.noticeId, title: award.title, agency: award.agency,
+        naicsCode: award.naicsCode, description: award.description,
+        postedDate: award.postedDate, responseDeadline: null, url: award.url,
+        status: "dismissed", stage: "no_bid", source: "usa-spending", sourceLabel: "Awards Intel",
       });
       newOnes.push(award);
     }
@@ -264,7 +383,62 @@ async function upsertUsaSpendingAwards(
   return newOnes;
 }
 
-// ── Main sync function ───────────────────────────────────────────────────────
+// ── Notification email (unchanged logic) ─────────────────────────────────────
+
+async function sendNewBidEmail(
+  businessId: number,
+  business: { name: string },
+  newFederal: OppWithSource[],
+  newLocal: OppWithSource[]
+): Promise<{ newFederal: number; newLocal: number; total: number }> {
+  const allNew = [...newFederal, ...newLocal];
+  const result = { newFederal: newFederal.length, newLocal: newLocal.length, total: allNew.length };
+
+  if (allNew.length === 0) return result;
+
+  // settingsTable is a single flat record (no businessId FK) — take first row
+  const settings = await db
+    .select({ complianceNotificationEmail: settingsTable.complianceNotificationEmail })
+    .from(settingsTable)
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  const emailTo = settings?.complianceNotificationEmail ?? undefined;
+  if (!emailTo) {
+    console.log(`[bid-sync] No notification email for business ${businessId}, skipping alert`);
+    return result;
+  }
+
+  const makeRows = (opps: OppWithSource[]) =>
+    opps.map((o) => `<tr style="border-bottom:1px solid #e5e7eb;">
+      <td style="padding:8px 12px;font-size:14px;"><a href="${o.url}" style="color:#d97706;text-decoration:none;">${escapeHtml(o.title)}</a></td>
+      <td style="padding:8px 12px;font-size:14px;color:#374151;">${escapeHtml(o.agency ?? "—")}</td>
+      <td style="padding:8px 12px;font-size:14px;color:#374151;">${o.responseDeadline ?? "—"}</td>
+    </tr>`).join("");
+
+  const html = `<div style="font-family:sans-serif;max-width:700px;margin:0 auto;padding:24px;">
+    <h2 style="color:#111827;">New Government Bid Opportunities — ${escapeHtml(business.name)}</h2>
+    <p style="color:#374151;">${allNew.length} new contract opportunit${allNew.length === 1 ? "y" : "ies"} found — ${newFederal.length} federal (SAM.gov) and ${newLocal.length} KY/IN local.</p>
+    <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+      <thead><tr style="background:#f3f4f6;">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#6b7280;">Title</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#6b7280;">Agency</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#6b7280;">Due Date</th>
+      </tr></thead>
+      <tbody>${makeRows(newFederal)}${makeRows(newLocal)}</tbody>
+    </table>
+    <p style="margin-top:24px;color:#6b7280;font-size:14px;">Log in to BuildPro to view all opportunities and mark ones you're interested in.</p>
+  </div>`;
+
+  const subject = `${allNew.length} New Bid Opportunit${allNew.length === 1 ? "y" : "ies"} for ${business.name} — ${newFederal.length} Federal, ${newLocal.length} KY/IN Local`;
+
+  await sendEmail({ to: emailTo, subject, html });
+  console.log(`[bid-sync] Alert email sent to ${emailTo}`);
+
+  return result;
+}
+
+// ── Main sync function ────────────────────────────────────────────────────────
 
 export async function runBidSync(
   businessId: number
@@ -280,12 +454,20 @@ export async function runBidSync(
     return { newFederal: 0, newLocal: 0, total: 0 };
   }
 
-  const profile = getProfile(business.type);
-  console.log(`[bid-sync] Starting sync for "${business.name}" (${business.type}) — profile: ${profile.label}`);
+  // Resolve capability-based search profile
+  const profile = await resolveProfile(businessId, business.type);
+  console.log(`[bid-sync] Starting sync for "${business.name}" — status: ${profile.profileStatus}, capabilities: ${profile.capabilities.map((c) => c.capabilityKey).join(", ")}`);
 
-  // One-time backfill: attribute legacy rows (business_id IS NULL) only to the
-  // asphalt_sealing business, because all pre-scoping bids were fetched with pavement
-  // keywords and belong there. Other business types do not claim these rows.
+  // Respect profile status — 'off' skips entirely, 'watch' syncs silently (no email)
+  if (profile.profileStatus === "off") {
+    console.log(`[bid-sync] Business "${business.name}" profileStatus=off — skipping sync`);
+    return { newFederal: 0, newLocal: 0, total: 0 };
+  }
+
+  // Record sync start
+  await writeSyncHealth(businessId, { lastSyncAt: new Date() });
+
+  // One-time backfill: attribute legacy NULL-business rows only to asphalt business
   if (business.type === "asphalt_sealing") {
     const backfillResult = await db.execute(
       sql`UPDATE bid_opportunities SET business_id = ${businessId} WHERE business_id IS NULL`
@@ -296,122 +478,68 @@ export async function runBidSync(
     }
   }
 
-  await purgeIrrelevantFederalBids(businessId, profile.samNaicsCodes);
+  // Purge stale/irrelevant rows
+  await purgeIrrelevantFederalBids(businessId, profile.naicsCodes);
   await purgeIrrelevantLocalBids(businessId, profile.localKeywords);
   await purgeNavLinkRows(businessId);
   await purgeOldUsaSpendingAwards(businessId);
 
-  const [fedOpps, localOpps, awardsOpps] = await Promise.allSettled([
+  // Fetch from all sources in parallel
+  const now = new Date();
+  const [fedResult, localResult, awardsResult] = await Promise.allSettled([
     process.env["SAM_GOV_API_KEY"]
-      ? fetchSamOpportunities({ keywords: profile.samKeywords, naicsCodes: profile.samNaicsCodes, pscCodes: profile.samPscCodes })
+      ? fetchSamOpportunities({ keywords: profile.keywords, naicsCodes: profile.naicsCodes, pscCodes: profile.pscCodes })
       : Promise.resolve([] as SamOpportunity[]),
     fetchKyLocalBids(),
-    fetchUsaSpendingAwards({ naicsCodes: profile.samNaicsCodes }),
+    fetchUsaSpendingAwards({ naicsCodes: profile.naicsCodes }),
   ]);
 
-  const federal: OppWithSource[] =
-    fedOpps.status === "fulfilled" ? fedOpps.value : [];
-  const allLocal: OppWithSource[] =
-    localOpps.status === "fulfilled" ? localOpps.value : [];
-  const awards =
-    awardsOpps.status === "fulfilled" ? awardsOpps.value : [];
+  // Write per-source health
+  const samOk    = fedResult.status === "fulfilled";
+  const localOk  = localResult.status === "fulfilled";
+  const awardsOk = awardsResult.status === "fulfilled";
 
-  if (fedOpps.status === "rejected") {
-    console.error("[bid-sync] SAM.gov fetch error:", fedOpps.reason);
-  }
-  if (localOpps.status === "rejected") {
-    console.error("[bid-sync] KY local fetch error:", localOpps.reason);
-  }
-  if (awardsOpps.status === "rejected") {
-    console.error("[bid-sync] USASpending fetch error:", awardsOpps.reason);
-  }
-
-  if (!process.env["SAM_GOV_API_KEY"]) {
-    console.log("[bid-sync] SAM_GOV_API_KEY not set, skipping federal sync");
-  }
-
-  // Filter local bids at ingestion time so only on-profile opportunities are stored.
-  // This prevents cross-business contamination regardless of purge order.
-  const kwSet = profile.localKeywords.map((k) => k.toLowerCase());
-  const local = allLocal.filter((o) => {
-    const haystack = `${o.title} ${o.description ?? ""}`.toLowerCase();
-    return kwSet.some((kw) => haystack.includes(kw));
+  await writeSyncHealth(businessId, {
+    samLastSuccessAt:    samOk    ? now : undefined,
+    samLastError:        samOk    ? null : String((fedResult as PromiseRejectedResult).reason),
+    localLastSuccessAt:  localOk  ? now : undefined,
+    localLastError:      localOk  ? null : String((localResult as PromiseRejectedResult).reason),
+    awardsLastSuccessAt: awardsOk ? now : undefined,
+    awardsLastError:     awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason),
   });
 
-  if (allLocal.length !== local.length) {
-    console.log(
-      `[bid-sync] "${business.name}": filtered local bids ` +
-      `${allLocal.length} → ${local.length} (kept on-profile only)`
-    );
-  }
+  const federal: OppWithSource[]  = samOk    ? fedResult.value    : [];
+  const allLocal: OppWithSource[] = localOk  ? localResult.value  : [];
+  const awards: UsaSpendingAward[] = awardsOk ? awardsResult.value : [];
 
-  const [newFederal, newLocal, newAwards] = await Promise.all([
-    upsertOpportunities(federal, "federal", "Federal", businessId),
-    upsertOpportunities(local, "state-local", "KY Local", businessId),
-    upsertUsaSpendingAwards(awards, businessId),
+  // Filter local results by local keywords
+  const localKeywordsLower = profile.localKeywords.map((k) => k.toLowerCase());
+  const local = allLocal.filter((opp) => {
+    const text = `${opp.title} ${opp.description ?? ""}`.toLowerCase();
+    return localKeywordsLower.some((kw) => text.includes(kw));
+  });
+
+  // Upsert
+  const [newFederal, newLocal] = await Promise.all([
+    upsertOpportunities(federal, "federal",      "SAM.gov",      businessId, profile),
+    upsertOpportunities(local,   "state-local",  "KY/IN Local",  businessId, profile),
   ]);
+  await upsertUsaSpendingAwards(awards, businessId);
 
-  console.log(
-    `[bid-sync] "${business.name}": Federal ${federal.length} fetched, ${newFederal.length} new` +
-    ` | KY Local: ${local.length} fetched, ${newLocal.length} new` +
-    ` | USASpending Awards: ${awards.length} fetched, ${newAwards.length} new`
-  );
+  // Write overall success
+  await writeSyncHealth(businessId, { lastSyncSuccessAt: now, lastSyncError: null });
 
-  const allNew = [...newFederal, ...newLocal];
-  const result = { newFederal: newFederal.length, newLocal: newLocal.length, total: allNew.length };
-
-  if (allNew.length === 0) return result;
-
-  const [settings] = await db.select().from(settingsTable).limit(1);
-  const emailTo = settings?.complianceNotificationEmail ?? null;
-
-  if (!emailTo) {
-    console.log("[bid-sync] No notification email configured, skipping alert");
-    return result;
+  // Send email notification (skipped when profileStatus === 'watch')
+  if (profile.profileStatus === "active") {
+    return sendNewBidEmail(businessId, business, newFederal, newLocal);
   }
 
-  const buildRows = (opps: OppWithSource[], badgeColor: string, badgeText: string) =>
-    opps.map((o) => `
-      <tr>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">
-          <span style="display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:600;background:${badgeColor === "blue" ? "#dbeafe" : "#fef3c7"};color:${badgeColor === "blue" ? "#1d4ed8" : "#92400e"};margin-right:8px;">${escapeHtml(badgeText)}</span>
-          <a href="${escapeHtml(o.url)}" style="color:#2563eb;font-weight:600;">${escapeHtml(o.title)}</a>
-        </td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;">${escapeHtml(o.agency ?? "—")}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;">${o.responseDeadline ?? "—"}</td>
-      </tr>`).join("");
-
-  const fedRows = buildRows(newFederal, "blue", "Federal");
-  const localRows = buildRows(newLocal, "amber", "KY/IN Local");
-
-  const html = `
-    <div style="font-family:sans-serif;max-width:700px;margin:0 auto;">
-      <h2 style="color:#111827;">New Government Bid Opportunities — ${escapeHtml(business.name)}</h2>
-      <p style="color:#374151;">${allNew.length} new contract opportunit${allNew.length === 1 ? "y" : "ies"} found — ${newFederal.length} federal (SAM.gov) and ${newLocal.length} KY/IN local.</p>
-      <table style="width:100%;border-collapse:collapse;margin-top:16px;">
-        <thead>
-          <tr style="background:#f3f4f6;">
-            <th style="padding:8px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#6b7280;">Title</th>
-            <th style="padding:8px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#6b7280;">Agency</th>
-            <th style="padding:8px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#6b7280;">Due Date</th>
-          </tr>
-        </thead>
-        <tbody>${fedRows}${localRows}</tbody>
-      </table>
-      <p style="margin-top:24px;color:#6b7280;font-size:14px;">
-        Log in to BuildPro to view all opportunities and mark ones you're interested in.
-      </p>
-    </div>`;
-
-  const subject = `${allNew.length} New Bid Opportunit${allNew.length === 1 ? "y" : "ies"} for ${business.name} — ${newFederal.length} Federal, ${newLocal.length} KY/IN Local`;
-
-  await sendEmail({ to: emailTo, subject, html });
-  console.log(`[bid-sync] Alert email sent to ${emailTo}`);
-
-  return result;
+  const total = newFederal.length + newLocal.length;
+  console.log(`[bid-sync] Watch-mode sync complete for "${business.name}": ${newFederal.length} federal, ${newLocal.length} local`);
+  return { newFederal: newFederal.length, newLocal: newLocal.length, total };
 }
 
-// ── Run sync for all businesses ──────────────────────────────────────────────
+// ── Run sync for all businesses ───────────────────────────────────────────────
 
 export async function runBidSyncAllBusinesses(): Promise<void> {
   const businesses = await db
