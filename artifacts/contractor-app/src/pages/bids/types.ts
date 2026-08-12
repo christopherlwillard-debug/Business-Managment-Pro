@@ -99,6 +99,34 @@ export interface EducationSummary {
   detectedTerms:      EducationTerm[];
 }
 
+// ── Bid source catalog + per-business connection state ────────────────────────
+// Matches the shape returned by GET /api/bids/sources?businessId=
+
+export type SourceCategory      = "jobs_contracts" | "auctions_surplus" | "hauling_material" | "both";
+export type SourceConnectionMethod =
+  | "api" | "public_feed" | "public_scrape"
+  | "account_oauth" | "email_feed" | "portal_link_only";
+export type SourceConnectionStatus = "active" | "error" | "not_configured" | "portal_only";
+
+export interface BidSourceConnection {
+  slug:               string;
+  name:               string;
+  category:           SourceCategory;
+  connectionMethod:   SourceConnectionMethod;
+  automatedDiscovery: boolean;
+  notes:              string | null;
+  isGloballyActive:   boolean;
+  // Per-business state (absent row defaults: automated → enabled, portal-only → disabled)
+  enabled:            boolean;
+  connectionStatus:   SourceConnectionStatus | string;
+  lastSyncAt:         string | null;
+  lastSyncSuccessAt:  string | null;
+  lastSyncError:      string | null;
+  recordsImported:    number | null;
+  portalUrl:          string | null;
+  portalLabel:        string | null;
+}
+
 export const PIPELINE_STAGES: Array<{ value: BidStage; label: string; color: string; bg: string; dotColor: string }> = [
   { value: "new",       label: "New",       color: "text-slate-600 dark:text-slate-300",     bg: "bg-slate-50 dark:bg-slate-900/20",     dotColor: "bg-slate-400" },
   { value: "reviewing", label: "Reviewing", color: "text-yellow-700 dark:text-yellow-300",   bg: "bg-yellow-50 dark:bg-yellow-900/20",   dotColor: "bg-yellow-400" },

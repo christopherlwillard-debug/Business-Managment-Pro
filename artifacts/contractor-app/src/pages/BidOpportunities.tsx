@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import QuickLinksPanel from "./bids/QuickLinksPanel";
+import SourceManagementPanel from "./bids/SourceManagementPanel";
 import SummaryPanel from "./bids/SummaryPanel";
 import BidFilterBar from "./bids/BidFilterBar";
 import BidStatsBar from "./bids/BidStatsBar";
@@ -17,7 +18,7 @@ import PipelineBoard from "./bids/PipelineBoard";
 import AwardsPanel from "./bids/AwardsPanel";
 import BidEducationPanel from "./bids/BidEducationPanel";
 import type { BidFilter, SourceFilter } from "./bids/BidFilterBar";
-import type { QuickLink, AiSummary, BidOpportunity, BidStage, EducationSummary } from "./bids/types";
+import type { QuickLink, AiSummary, BidOpportunity, BidStage, EducationSummary, BidSourceConnection } from "./bids/types";
 import { RotateCcw } from "lucide-react";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -114,6 +115,39 @@ export default function BidOpportunities() {
       return res.json();
     },
     enabled: !!businessId,
+  });
+
+  // ── Bid sources ──────────────────────────────────────────────────────────
+  const { data: bidSources = [] } = useQuery<BidSourceConnection[]>({
+    queryKey: ["bid-sources", businessId],
+    queryFn:  async () => {
+      if (!businessId) return [];
+      const res = await fetch(`${BASE_URL}/api/bids/sources?businessId=${businessId}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!businessId,
+  });
+
+  const patchSource = useMutation({
+    mutationFn: async ({
+      slug, patch,
+    }: { slug: string; patch: { enabled?: boolean; portalUrl?: string; portalLabel?: string } }) => {
+      const res = await fetch(`${BASE_URL}/api/bids/sources/${slug}?businessId=${businessId}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error("Failed to update source");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bid-sources", businessId] });
+    },
+    onError: () => {
+      toast({ title: "Couldn't update source", variant: "destructive" });
+    },
   });
 
   const saveQuickLinks = useMutation({
@@ -502,6 +536,15 @@ export default function BidOpportunities() {
         isSaving={saveQuickLinks.isPending}
         isOwner={isOwner}
       />
+
+      {/* ── Source management panel ─────────────────────────────────────────── */}
+      {bidSources.length > 0 && businessId && (
+        <SourceManagementPanel
+          sources={bidSources}
+          onUpdate={(slug, patch) => patchSource.mutate({ slug, patch })}
+          isUpdating={patchSource.isPending}
+        />
+      )}
 
       {/* ── Filter bar ──────────────────────────────────────────────────────── */}
       <BidFilterBar
