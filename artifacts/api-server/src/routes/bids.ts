@@ -583,7 +583,30 @@ router.post("/:id/educate", async (req, res) => {
       .where(eq(businessesTable.id, bizId))
       .limit(1);
 
-    const capabilities = getCapabilitiesForBusinessType(business?.type ?? "general_contracting");
+    // Load DB capability profiles if available, fall back to seed definitions
+    // (same pattern as buildSummarizePrompt — ensures both AI paths use the same source)
+    const dbEduCaps = await db
+      .select()
+      .from(bidCapabilityProfilesTable)
+      .where(and(
+        eq(bidCapabilityProfilesTable.businessId, bizId),
+        eq(bidCapabilityProfilesTable.active, true),
+      ));
+
+    const capabilities: CapabilityDefinition[] = dbEduCaps.length > 0
+      ? dbEduCaps.map((row) => ({
+          capabilityKey:    row.capabilityKey,
+          name:             row.name,
+          description:      row.description ?? "",
+          naicsCodes:       (row.naicsCodes as string[]) ?? [],
+          keywords:         (row.keywords as string[]) ?? [],
+          negativeKeywords: (row.negativeKeywords as string[]) ?? [],
+          equipment:        (row.equipment as string[]) ?? [],
+          localKeywords:    (row.localKeywords as string[]) ?? [],
+          active:           row.active,
+          sortOrder:        row.sortOrder,
+        }))
+      : getCapabilitiesForBusinessType(business?.type ?? "general_contracting");
 
     const existingSummary = bid.aiSummary as Record<string, unknown> | null;
     const prompt = buildEducationPrompt(bid, capabilities, existingSummary);

@@ -126,7 +126,7 @@ export async function fetchUsaSpendingAwards(opts: {
     opts.naicsCodes,
     startDate,
     endDate,
-    `NAICS [${opts.naicsCodes.join(", ")}] / state=${state}`,
+    `NAICS [${opts.naicsCodes.join(", ")}] / nationwide`,
     state,
   );
 
@@ -137,6 +137,6 @@ export async function fetchUsaSpendingAwards(opts: {
     return true;
   });
 
-  console.log(`[usa-spending] Fetched ${deduped.length} awards ≤$2M in ${state} for NAICS [${opts.naicsCodes.join(", ")}]`);
+  console.log(`[usa-spending] Fetched ${deduped.length} awards ≤$2M (nationwide) for NAICS [${opts.naicsCodes.join(", ")}]`);
   return deduped;
 }

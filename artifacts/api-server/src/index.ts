@@ -10,7 +10,7 @@ import { startBidSyncJob } from "./jobs/bidSync.js";
 import { startComplianceReminderJob } from "./jobs/complianceReminders.js";
 import { db } from "@workspace/db";
 import { businessesTable, mileageLogsTable, expensesTable, clientsTable, clientBillingProfilesTable } from "@workspace/db/schema";
-import { invoicesTable, jobSubcontractorsTable, subPaymentRecordsTable, settingsTable } from "@workspace/db/schema";
+import { invoicesTable, jobSubcontractorsTable, subPaymentRecordsTable, settingsTable, bidOpportunitiesTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, asc, sql, ilike, eq } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
@@ -483,6 +483,26 @@ async function ensureServiceAddonPromptsTable(): Promise<void> {
   }
 }
 
+// One-time backfill: set opportunity_type = 'award_intelligence' on existing
+// usa-spending rows that were inserted before that column was populated.
+async function backfillUsaSpendingOpportunityType(): Promise<void> {
+  try {
+    const result = await db
+      .update(bidOpportunitiesTable)
+      .set({ opportunityType: "award_intelligence" })
+      .where(and(
+        eq(bidOpportunitiesTable.source, "usa-spending"),
+        isNull(bidOpportunitiesTable.opportunityType),
+      ));
+    const count = (result as unknown as { rowCount?: number }).rowCount ?? 0;
+    if (count > 0) {
+      console.log(`[startup] backfillUsaSpendingOpportunityType: backfilled ${count} row(s).`);
+    }
+  } catch (err) {
+    console.error("[startup] backfillUsaSpendingOpportunityType failed (non-fatal):", err);
+  }
+}
+
 async function start() {
   await ensureBankingSchema();
   await ensureTripNotesColumn();
@@ -491,6 +511,7 @@ async function start() {
   await ensureVehiclesTable();
   await ensureMaterialExpenseLinkingSchema();
   await ensureServiceAddonPromptsTable();
+  await backfillUsaSpendingOpportunityType();
   await clearDraftInvoiceNumbers();
   await syncInvoiceCounter();
   await recomputePartialSubPaymentStatuses();

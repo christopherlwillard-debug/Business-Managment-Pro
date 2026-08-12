@@ -24,14 +24,23 @@ const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const VIEW_KEY = "bid-view-preference";
 
-// NAICS codes associated with each business type — used to flag "Similar to your work" awards
+// NAICS codes associated with each business type — used to flag "Similar to your work" awards.
+// Keep in sync with the naicsCodes arrays in bid_capability_profiles / bidCapabilitySeeds.ts.
 const BUSINESS_NAICS: Record<string, string[]> = {
   asphalt_sealing: ["237310"],
   general_contracting: [
-    "236220", "236210", "236115", "236116", "236118",
-    "238110", "238140", "238150", "238160", "238170", "238190",
-    "238210", "238220", "238310", "238320", "238330", "238340",
-    "238350", "238390", "238910", "238990",
+    // general_contracting capability
+    "236115", "236116", "236118",
+    "238110", "238140", "238160", "238170",
+    "238310", "238320", "238350", "238390", "238990",
+    // flooring capability (adds 238330, 238340)
+    "238330", "238340",
+    // mh_finishing capability (adds 238220)
+    "238220",
+    // site_work capability
+    "238910", "237990", "237110",
+    // waste_hauling capability
+    "562111", "562119", "562910",
   ],
 };
 
@@ -72,6 +81,18 @@ export default function BidOpportunities() {
   });
 
   const quickLinks: QuickLink[] = settings?.quickLinks ?? [];
+
+  // ── Bid business settings (isSdvosb, etc.) ───────────────────────────────
+  const { data: bidSettings } = useQuery<{ isSdvosb?: boolean }>({
+    queryKey: ["bid-settings", businessId],
+    queryFn: async () => {
+      if (!businessId) return {};
+      const res = await fetch(`${BASE_URL}/api/bids/settings?businessId=${businessId}`, { credentials: "include" });
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: !!businessId,
+  });
 
   const saveQuickLinks = useMutation({
     mutationFn: async (links: QuickLink[]) => {
@@ -336,14 +357,16 @@ export default function BidOpportunities() {
             <h1 className="text-xl md:text-2xl font-bold text-foreground leading-tight">
               Bid Opportunities
             </h1>
-            {/* SDVOSB badge — visible on all screen sizes but abbreviated on mobile */}
-            <span className={cn(
-              "inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full",
-              "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
-            )}>
-              <Shield className="w-3 h-3" />
-              <span className="hidden sm:inline">SBA-Certified </span>SDVOSB
-            </span>
+            {/* SDVOSB badge — only shown when is_sdvosb = true in bid_business_settings */}
+            {bidSettings?.isSdvosb && (
+              <span className={cn(
+                "inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full",
+                "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+              )}>
+                <Shield className="w-3 h-3" />
+                <span className="hidden sm:inline">SBA-Certified </span>SDVOSB
+              </span>
+            )}
           </div>
           {/* Subtitle — hidden on smallest mobile to save space */}
           {activeBusiness ? (

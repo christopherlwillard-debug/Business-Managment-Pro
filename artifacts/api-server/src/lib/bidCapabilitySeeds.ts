@@ -63,8 +63,11 @@ export const LARGE_FLEET_NEGATIVE_TERMS = [
  * Any opportunity whose TITLE contains one of these is skipped at sync time —
  * it is clearly incompatible with this contractor regardless of keyword matches.
  * Export so UI can display suppression rationale if needed.
+ *
+ * IMPORTANT: Keep this list in sync with TITLE_HARD_SUPPRESS in bidSync.ts.
  */
 export const TITLE_HARD_SUPPRESS_TERMS = [
+  // Waste / environmental — outside scope
   "hazardous waste",
   "medical waste",
   "biomedical waste",
@@ -75,8 +78,39 @@ export const TITLE_HARD_SUPPRESS_TERMS = [
   "municipal solid waste collection",
   "refuse collection franchise",
   "automated refuse",
-  "sewage treatment",
-  "wastewater treatment plant",
+  "sewage treatment plant",
+  // Aviation / aircraft parts — clearly not construction
+  "ch-47",
+  "ch-53",
+  "uh-60",
+  "f-16",
+  "f-35",
+  "helicopter part",
+  "aircraft part",
+  "aviation part",
+  "insulation blanket",
+  "avionics",
+  // Military exercises and non-construction operations
+  "bilateral exercise",
+  "military exercise",
+  "bilateral army exercise",
+  "joint exercise",
+  // Industrial equipment / supply (non-construction)
+  "fan,centrifugal",
+  "centrifugal pump",
+  "turbine blade",
+  "compressor assembly",
+  "ammunition",
+  "ordnance",
+  "explosive",
+  "weapon system",
+  "fire control system",
+  "control column,airc",   // aircraft control column
+  "c0ntrol column,airc",   // OCR variant with zero instead of letter O
+  // IT / professional services (not trades)
+  "software license",
+  "saas subscription",
+  "cloud hosting",
 ];
 
 // ── General Contracting capability definitions ────────────────────────────────

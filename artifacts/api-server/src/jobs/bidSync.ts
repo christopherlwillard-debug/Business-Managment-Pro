@@ -85,6 +85,7 @@ const TITLE_HARD_SUPPRESS = [
   "weapon system",
   "fire control system",
   "control column,airc",   // aircraft control column
+  "c0ntrol column,airc",   // OCR variant with zero instead of letter O
   // IT / professional services (not trades)
   "software license",
   "saas subscription",
@@ -513,8 +514,18 @@ async function upsertUsaSpendingAwards(awards: UsaSpendingAward[], businessId: n
         naicsCode: award.naicsCode, description: award.description,
         postedDate: award.postedDate, responseDeadline: null, url: award.url,
         status: "dismissed", stage: "no_bid", source: "usa-spending", sourceLabel: "Awards Intel",
+        opportunityType: "award_intelligence",
       });
       newOnes.push(award);
+    } else {
+      // Repair legacy rows that were inserted before opportunityType was set
+      await db
+        .update(bidOpportunitiesTable)
+        .set({ opportunityType: "award_intelligence" })
+        .where(and(
+          eq(bidOpportunitiesTable.id, existing.id),
+          isNull(bidOpportunitiesTable.opportunityType),
+        ));
     }
   }
 
