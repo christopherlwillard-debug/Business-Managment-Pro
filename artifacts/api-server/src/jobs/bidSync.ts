@@ -24,6 +24,7 @@ import {
 } from "../lib/bidCapabilitySeeds.js";
 import { fetchSubnetOpportunities, SubnetOpportunity } from "../lib/subnetSync.js";
 import { fetchGsaForecastOpportunities, GsaForecastOpportunity } from "../lib/gsaForecast.js";
+import { normalizeSetAsideType } from "../lib/bidScoring.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -262,6 +263,7 @@ interface ScoredOpportunity {
   capabilityMatches: string[];
 }
 
+
 function scoreOpportunity(
   opp: { title: string; description: string | null; responseDeadline: string | null; source: string },
   capabilities: CapabilityDefinition[],
@@ -396,6 +398,7 @@ async function rescoreExistingBids(businessId: number, profile: ResolvedProfile)
       responseDeadline: bidOpportunitiesTable.responseDeadline,
       source:           bidOpportunitiesTable.source,
       noticeType:       bidOpportunitiesTable.noticeType,
+      setAsideType:     bidOpportunitiesTable.setAsideType,
     })
     .from(bidOpportunitiesTable)
     .where(and(
@@ -409,6 +412,7 @@ async function rescoreExistingBids(businessId: number, profile: ResolvedProfile)
       { title: bid.title, description: bid.description ?? null, responseDeadline: bid.responseDeadline, source: bid.source },
       profile.capabilities,
       { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness },
+      normalizeSetAsideType(bid.setAsideType),
     );
     await db.update(bidOpportunitiesTable)
       .set({
@@ -448,10 +452,12 @@ async function upsertOpportunities(
       .then((rows) => rows[0] ?? null);
 
     if (!existing) {
+      const rawSetAside = (opp as SamOpportunity).typeOfSetAside ?? null;
       const { opportunityScore, capabilityMatches } = scoreOpportunity(
         { title: opp.title, description: opp.description, responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource },
         profile.capabilities,
         { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness },
+        normalizeSetAsideType(rawSetAside),
       );
 
       await db.insert(bidOpportunitiesTable).values({
@@ -469,6 +475,7 @@ async function upsertOpportunities(
         source:            opp.source ?? defaultSource,
         sourceLabel:       opp.sourceLabel ?? defaultSourceLabel,
         noticeType:        (opp as SamOpportunity).noticeType ?? null,
+        setAsideType:      rawSetAside,
         opportunityScore,
         capabilityMatches,
         opportunityType:   overrides?.opportunityTypeOverride
@@ -477,16 +484,19 @@ async function upsertOpportunities(
       newOnes.push(opp);
     } else {
       // Re-score existing row so capability profile changes take effect immediately
+      const rawSetAside = (opp as SamOpportunity).typeOfSetAside ?? null;
       const { opportunityScore, capabilityMatches } = scoreOpportunity(
         { title: opp.title, description: opp.description, responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource },
         profile.capabilities,
         { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness },
+        normalizeSetAsideType(rawSetAside),
       );
       await db.update(bidOpportunitiesTable)
         .set({
           opportunityScore,
           capabilityMatches,
           noticeType:      (opp as SamOpportunity).noticeType ?? null,
+          setAsideType:    rawSetAside,
           opportunityType: overrides?.opportunityTypeOverride
             ?? deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType ?? null),
         })

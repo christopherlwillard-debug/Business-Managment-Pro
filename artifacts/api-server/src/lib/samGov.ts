@@ -53,6 +53,7 @@ export interface SamOpportunity {
   responseDeadline: string | null;
   url:              string;
   noticeType?:      string;   // derived from SAM ptype field; absent for non-SAM sources
+  typeOfSetAside?:  string;   // raw SAM.gov set-aside code (e.g. "SBA", "SDVOSB", "WOSB", "none")
 }
 
 function toIsoDate(d: Date): string {
@@ -90,6 +91,7 @@ async function fetchPage(
         responseDeadLine?:      string;
         uiLink?:                string;
         type?:                  string;   // SAM.gov ptype value
+        typeOfSetAside?:        string;   // set-aside code, e.g. "SBA", "SDVOSB", "WOSB", "none"
       }>;
     };
 
@@ -105,6 +107,7 @@ async function fetchPage(
         responseDeadline: item.responseDeadLine?.slice(0, 10) ?? null,
         url:              item.uiLink ?? `https://sam.gov/opp/${item.noticeId}/view`,
         noticeType:       resolveNoticeType(item.type),
+        typeOfSetAside:   item.typeOfSetAside ?? undefined,
       }));
   } catch (err) {
     console.error(`[sam-gov] Fetch error for ${label}:`, err);

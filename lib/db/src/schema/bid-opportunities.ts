@@ -25,6 +25,7 @@ export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   capabilityMatches: jsonb("capability_matches"),    // string[] of matched capabilityKey values
   // Phase 2 — opportunity classification
   opportunityType:   text("opportunity_type"),       // solicitation|sources_sought|presolicitation|subcontracting|forecast|award_intelligence
+  setAsideType:      text("set_aside_type"),          // raw SAM.gov typeOfSetAside code stored at sync time (e.g. "SBA", "SDVOSB")
   // Phase 3 — education analysis
   educationSummary:  jsonb("education_summary"),     // EducationSummary JSON
   educationSummaryAt: timestamp("education_summary_at"),
