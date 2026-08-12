@@ -45,6 +45,7 @@ const JobStatusPage = lazy(() => import("./pages/JobStatusPage"));
 const MfhKnowledgeBase = lazy(() => import("./pages/MfhKnowledgeBase"));
 const TripPacket = lazy(() => import("./pages/TripPacket"));
 const JobPayroll = lazy(() => import("./pages/JobPayroll"));
+const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -330,6 +331,9 @@ function AdminApp() {
           </Route>
           <Route path="/jobs/:id/payroll">
             <PermissionGuard ownerOnly><JobPayroll /></PermissionGuard>
+          </Route>
+          <Route path="/integrations">
+            <PermissionGuard ownerOnly><IntegrationsPage /></PermissionGuard>
           </Route>
           <Route component={NotFound} />
         </Switch>

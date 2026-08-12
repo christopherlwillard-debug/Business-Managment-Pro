@@ -45,6 +45,8 @@ import prospectsRouter from "./prospects";
 import estimatedTaxPaymentsRouter from "./estimated-tax-payments";
 import assetsRouter from "./assets";
 import geocodeRouter from "./geocode";
+import integrationsRouter from "./integrations";
+import dashboardTasksRouter from "./dashboard-tasks";
 import squareInvoiceRouter from "./square-invoice";
 import quickChargesRouter from "./quick-charges";
 import squareDepositRouter from "./square-deposit";
@@ -306,5 +308,10 @@ router.get("/integrations/wix/config", requireOwner, (req, res) => {
   const webhookUrl = `${protocol}://${host}/api/integrations/wix`;
   res.json({ webhookUrl, token });
 });
+
+// Integrations & APIs management — registered AFTER the specific /integrations/wix/* routes
+// so those take priority for wix paths.
+router.use("/integrations", requireOwner, integrationsRouter);
+router.use("/dashboard-tasks", requireOwner, dashboardTasksRouter);
 
 export default router;

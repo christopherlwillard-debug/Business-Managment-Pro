@@ -12,6 +12,7 @@ import {
   Bell, Activity, Route,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
+import DashboardTasksWidget from "./dashboard/DashboardTasksWidget";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -850,7 +851,10 @@ export default function Dashboard() {
         onNavigate={navigate}
       />
 
-      {/* ── 7. BUSINESS HEALTH ── */}
+      {/* ── 7. MY TO-DO LIST ── */}
+      <DashboardTasksWidget />
+
+      {/* ── 8. BUSINESS HEALTH ── */}
       <BusinessHealthCard
         stats={stats}
         period={period}

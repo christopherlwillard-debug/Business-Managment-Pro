@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   UsersRound,
-  Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark, ScrollText,
+  Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark, ScrollText, KeyRound,
   Sun, Moon, Building2, ChevronDown, Globe, Home,
   type LucideIcon,
 } from "lucide-react";
@@ -110,6 +110,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Banking",               href: "/banking",              icon: Landmark,        feature: null,           section: null,       ownerOnly: true,  group: "finance" },
     { name: "Bid Opportunities",     href: "/bids",                 icon: ScrollText,      feature: null,           section: null,       ownerOnly: true,  group: "finance" },
     { name: "Accounting & Tax",      href: "/accounting",           icon: BookOpen,        feature: "invoices",     section: "invoices", group: "finance" },
+    { name: "Integrations & APIs",   href: "/integrations",         icon: KeyRound,        feature: null,           section: null,       ownerOnly: true  },
     { name: "Settings",              href: "/settings",             icon: Settings,        feature: null,           section: null,       ownerOnly: true  },
   ];
 

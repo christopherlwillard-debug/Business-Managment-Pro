@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { vehiclesTable, settingsTable } from "@workspace/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { getCredential } from "../lib/credentialManager.js";
 
 const router = Router();
 
@@ -176,10 +177,10 @@ router.post("/:id/fuel-price/refresh", async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid vehicle id" });
 
-    const apiKey = process.env.EIA_API_KEY;
+    const apiKey = getCredential("eia", "EIA_API_KEY");
     if (!apiKey) {
       return res.status(422).json({
-        error: "EIA_API_KEY not configured. Enter a fuel price manually, or add a free EIA API key (register at eia.gov/opendata) to enable auto-fetch.",
+        error: "EIA fuel price API is not configured. Enter a fuel price manually, or add a free EIA API key via Integrations & APIs.",
         canManual: true,
       });
     }

@@ -505,6 +505,11 @@ async function backfillUsaSpendingOpportunityType(): Promise<void> {
 }
 
 async function start() {
+  // Load encrypted API credentials from DB into memory before any routes use them.
+  // Non-fatal: if the table doesn't exist yet (pre-migration), getCredential falls back to process.env.
+  const { init: initCredentials } = await import("./lib/credentialManager.js");
+  await initCredentials();
+
   await ensureBankingSchema();
   await ensureTripNotesColumn();
   await ensureMarketingContentTable();

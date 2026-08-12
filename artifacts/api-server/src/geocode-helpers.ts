@@ -1,3 +1,5 @@
+import { getCredential } from "./lib/credentialManager.js";
+
 interface NominatimResult {
   display_name: string;
   lat: string;
@@ -109,7 +111,7 @@ export async function googleMapsGeocode(
   fullAddress: string
 ): Promise<GeoProviderResult> {
   try {
-    const apiKey = process.env.VITE_GOOGLE_API_KEY;
+    const apiKey = getCredential("google_maps", "VITE_GOOGLE_API_KEY");
     if (!apiKey) {
       return { ok: false, error: "VITE_GOOGLE_API_KEY not configured" };
     }

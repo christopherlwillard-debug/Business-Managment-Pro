@@ -26,6 +26,7 @@ import { fetchSubnetOpportunities, SubnetOpportunity } from "../lib/subnetSync.j
 import { fetchGsaForecastOpportunities, GsaForecastOpportunity } from "../lib/gsaForecast.js";
 import { normalizeSetAsideType } from "../lib/bidScoring.js";
 import { loadEnabledSources, isEnabled, writeConnectionHealth, bootstrapAutomatedConnections } from "../lib/bidSourceConnection.js";
+import { getCredential } from "../lib/credentialManager.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -657,7 +658,7 @@ export async function runBidSync(
 
   // Track whether each source was actually attempted.
   // SAM.gov additionally requires an API key — no key means no attempt (and no health record).
-  const samActuallyRan      = isEnabled(enabledSources, "sam_gov")      && !!process.env["SAM_GOV_API_KEY"];
+  const samActuallyRan      = isEnabled(enabledSources, "sam_gov")      && !!getCredential("sam_gov", "SAM_GOV_API_KEY");
   const kyLocalActuallyRan  = isEnabled(enabledSources, "ky_in_local");
   const awardsActuallyRan   = isEnabled(enabledSources, "usa_spending");
 

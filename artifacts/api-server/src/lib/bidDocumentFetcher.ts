@@ -1,4 +1,5 @@
 import { launchBrowser } from "./launchBrowser.js";
+import { getCredential } from "./credentialManager.js";
 import { lookup } from "node:dns/promises";
 import { createRequire } from "node:module";
 const _require = createRequire(import.meta.url);
@@ -113,7 +114,7 @@ async function fetchHtmlText(url: string): Promise<string | null> {
 }
 
 async function fetchSamAttachmentUrl(noticeId: string): Promise<string | null> {
-  const apiKey = process.env["SAM_GOV_API_KEY"];
+  const apiKey = getCredential("sam_gov", "SAM_GOV_API_KEY");
   if (!apiKey) return null;
 
   try {

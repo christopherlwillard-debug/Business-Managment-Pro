@@ -1,3 +1,5 @@
+import { getCredential } from "./credentialManager.js";
+
 const SAM_API_BASE = "https://api.sam.gov/opportunities/v2/search";
 
 // ── Legacy keyword exports (kept for backward compatibility) ──────────────────
@@ -120,7 +122,7 @@ export async function fetchSamOpportunities(opts: {
   naicsCodes: string[];
   pscCodes?:  string[];
 }): Promise<SamOpportunity[]> {
-  const apiKey = process.env["SAM_GOV_API_KEY"];
+  const apiKey = getCredential("sam_gov", "SAM_GOV_API_KEY");
   if (!apiKey) {
     console.warn("[sam-gov] SAM_GOV_API_KEY not configured, skipping");
     return [];

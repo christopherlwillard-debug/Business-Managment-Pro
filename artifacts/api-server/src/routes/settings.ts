@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { settingsTable, usersTable, vehiclesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import { getCredential } from "../lib/credentialManager.js";
 import { sendEmail, escapeHtml } from "../lib/sendEmail";
 import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -532,10 +533,10 @@ const STATE_TO_EIA_CODE: Record<string, string> = {
 // Falls back gracefully: if API unavailable, the last stored price is used for calculations.
 router.post("/fuel-price/refresh", async (req, res) => {
   try {
-    const apiKey = process.env.EIA_API_KEY;
+    const apiKey = getCredential("eia", "EIA_API_KEY");
     if (!apiKey) {
       return res.status(422).json({
-        error: "EIA_API_KEY not configured. Enter a fuel price manually, or add a free EIA API key (register at eia.gov/opendata) to enable auto-fetch.",
+        error: "EIA fuel price API is not configured. Enter a fuel price manually, or add a free EIA API key via Integrations & APIs.",
         canManual: true,
       });
     }
