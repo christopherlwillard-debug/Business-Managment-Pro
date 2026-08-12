@@ -7,6 +7,7 @@ import { startRecurringExpensesJob } from "./jobs/recurringExpenses.js";
 import { startInvoiceReminderJob } from "./jobs/invoiceReminders.js";
 import { startPlaidSyncJob } from "./jobs/plaidSync.js";
 import { startBidSyncJob } from "./jobs/bidSync.js";
+import { seedBidSourceCatalog } from "./lib/bidSourceSeeds.js";
 import { startComplianceReminderJob } from "./jobs/complianceReminders.js";
 import { db } from "@workspace/db";
 import { businessesTable, mileageLogsTable, expensesTable, clientsTable, clientBillingProfilesTable } from "@workspace/db/schema";
@@ -516,6 +517,7 @@ async function start() {
   await syncInvoiceCounter();
   await recomputePartialSubPaymentStatuses();
   await seedDefaultBusinesses();
+  await seedBidSourceCatalog();
 
   await backfillMileageBusiness();
   app.listen(port, () => {

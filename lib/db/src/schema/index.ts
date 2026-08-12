@@ -34,6 +34,7 @@ export * from "./square-payments";
 export * from "./plaid-connections";
 export * from "./bid-opportunities";
 export * from "./bid-profiles";
+export * from "./bid-sources";
 export * from "./businesses";
 export * from "./contacts";
 export * from "./job-sub-hours";

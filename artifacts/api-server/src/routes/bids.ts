@@ -4,6 +4,8 @@ import {
   bidOpportunitiesTable,
   bidCapabilityProfilesTable,
   bidBusinessSettingsTable,
+  bidSourceCatalogTable,
+  bidSourceConnectionsTable,
   businessesTable,
 } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
@@ -265,6 +267,131 @@ router.get("/capabilities", async (req, res) => {
   } catch (err) {
     console.error("[bids] GET /bids/capabilities error:", err);
     res.status(500).json({ error: "Failed to load capability profiles" });
+  }
+});
+
+// ── GET /api/bids/sources — catalog + per-business connection status ──────────
+// IMPORTANT: registered before PATCH /:id so Express doesn't match "sources" as an id.
+router.get("/sources", async (req, res) => {
+  try {
+    const { businessId } = req.query;
+    const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
+    if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+
+    // Load the full global catalog
+    const catalog = await db
+      .select()
+      .from(bidSourceCatalogTable)
+      .where(eq(bidSourceCatalogTable.isGloballyActive, true))
+      .orderBy(bidSourceCatalogTable.category, bidSourceCatalogTable.slug);
+
+    // Load all connection rows for this business in one query
+    const connections = await db
+      .select()
+      .from(bidSourceConnectionsTable)
+      .where(eq(bidSourceConnectionsTable.businessId, bizId));
+
+    const connBySlug = new Map(connections.map((c) => [c.catalogSlug, c]));
+
+    const merged = catalog.map((src) => {
+      const conn = connBySlug.get(src.slug);
+      return {
+        slug:               src.slug,
+        name:               src.name,
+        category:           src.category,
+        connectionMethod:   src.connectionMethod,
+        automatedDiscovery: src.automatedDiscovery,
+        notes:              src.notes,
+        isGloballyActive:   src.isGloballyActive,
+        // Connection state (defaults when no row exists)
+        // Automated sources default to enabled=true (they sync unless explicitly disabled).
+        // Portal-only sources default to enabled=false (require manual user configuration).
+        enabled:            conn?.enabled          ?? (src.automatedDiscovery ? true : false),
+        connectionStatus:   conn?.connectionStatus ?? (src.connectionMethod === "portal_link_only" ? "portal_only" : "not_configured"),
+        lastSyncAt:         conn?.lastSyncAt?.toISOString()        ?? null,
+        lastSyncSuccessAt:  conn?.lastSyncSuccessAt?.toISOString() ?? null,
+        lastSyncError:      conn?.lastSyncError      ?? null,
+        recordsImported:    conn?.recordsImported    ?? null,
+        portalUrl:          conn?.portalUrl          ?? null,
+        portalLabel:        conn?.portalLabel        ?? null,
+      };
+    });
+
+    res.json(merged);
+  } catch (err) {
+    console.error("[bids] GET /bids/sources error:", err);
+    res.status(500).json({ error: "Failed to load bid sources" });
+  }
+});
+
+// ── PATCH /api/bids/sources/:slug — enable/disable or set portal URL ──────────
+// IMPORTANT: registered before PATCH /:id so Express doesn't match "sources" as an id.
+router.patch("/sources/:slug", async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { businessId } = req.query;
+    const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
+    if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+
+    // Validate the slug exists in the catalog
+    const [catalog] = await db
+      .select()
+      .from(bidSourceCatalogTable)
+      .where(eq(bidSourceCatalogTable.slug, slug as string))
+      .limit(1);
+
+    if (!catalog) { res.status(404).json({ error: "Source not found" }); return; }
+
+    const { enabled, portalUrl, portalLabel } = req.body as {
+      enabled?: boolean;
+      portalUrl?: string;
+      portalLabel?: string;
+    };
+
+    const patch: Partial<typeof bidSourceConnectionsTable.$inferInsert> = {
+      updatedAt: new Date(),
+    };
+    if (enabled !== undefined) patch.enabled = enabled;
+
+    // Portal URL / label only allowed for portal-link-only sources
+    const isPortalOnly = catalog.connectionMethod === "portal_link_only";
+    if (isPortalOnly) {
+      if (portalUrl !== undefined) patch.portalUrl = portalUrl || null;
+      if (portalLabel !== undefined) patch.portalLabel = portalLabel || null;
+    }
+
+    // Derive connectionStatus
+    if (enabled !== undefined) {
+      patch.connectionStatus = !enabled
+        ? "not_configured"
+        : isPortalOnly
+          ? "portal_only"
+          : "not_configured"; // sync engine will update to "active"/"error" after first run
+    } else if (isPortalOnly && (portalUrl !== undefined || portalLabel !== undefined)) {
+      // Setting a portal URL on a portal-only source implicitly activates it
+      patch.connectionStatus = "portal_only";
+      if (patch.enabled === undefined) patch.enabled = true;
+    }
+
+    await db
+      .insert(bidSourceConnectionsTable)
+      .values({
+        businessId: bizId,
+        catalogSlug: slug as string,
+        enabled:          patch.enabled          ?? false,
+        connectionStatus: patch.connectionStatus ?? "not_configured",
+        portalUrl:        patch.portalUrl,
+        portalLabel:      patch.portalLabel,
+      })
+      .onConflictDoUpdate({
+        target: [bidSourceConnectionsTable.businessId, bidSourceConnectionsTable.catalogSlug],
+        set:    patch as Record<string, unknown>,
+      });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[bids] PATCH /bids/sources/:slug error:", err);
+    res.status(500).json({ error: "Failed to update source" });
   }
 });
 
@@ -638,5 +765,6 @@ router.post("/:id/educate", async (req, res) => {
     res.status(500).json({ error: "Failed to generate education analysis" });
   }
 });
+
 
 export default router;

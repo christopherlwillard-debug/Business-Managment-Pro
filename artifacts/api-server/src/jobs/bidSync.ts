@@ -25,6 +25,7 @@ import {
 import { fetchSubnetOpportunities, SubnetOpportunity } from "../lib/subnetSync.js";
 import { fetchGsaForecastOpportunities, GsaForecastOpportunity } from "../lib/gsaForecast.js";
 import { normalizeSetAsideType } from "../lib/bidScoring.js";
+import { loadEnabledSources, isEnabled, writeConnectionHealth } from "../lib/bidSourceConnection.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -647,33 +648,53 @@ export async function runBidSync(
   await purgeNavLinkRows(businessId);
   await purgeOldUsaSpendingAwards(businessId);
 
-  // Fetch from all sources in parallel
+  // Read per-source enable flags — absent rows default to enabled (backward compat)
+  const enabledSources = await loadEnabledSources(businessId);
+
+  // Track whether each source was actually attempted.
+  // SAM.gov additionally requires an API key — no key means no attempt (and no health record).
+  const samActuallyRan      = isEnabled(enabledSources, "sam_gov")      && !!process.env["SAM_GOV_API_KEY"];
+  const kyLocalActuallyRan  = isEnabled(enabledSources, "ky_in_local");
+  const awardsActuallyRan   = isEnabled(enabledSources, "usa_spending");
+
+  // Fetch from all enabled sources in parallel
   const now = new Date();
   const [fedResult, localResult, awardsResult] = await Promise.allSettled([
-    process.env["SAM_GOV_API_KEY"]
+    samActuallyRan
       ? fetchSamOpportunities({ keywords: profile.keywords, naicsCodes: profile.naicsCodes, pscCodes: profile.pscCodes })
       : Promise.resolve([] as SamOpportunity[]),
-    fetchKyLocalBids(),
-    fetchUsaSpendingAwards({ naicsCodes: profile.naicsCodes, state: business.state ?? "KY" }),
+    kyLocalActuallyRan
+      ? fetchKyLocalBids()
+      : Promise.resolve([]),
+    awardsActuallyRan
+      ? fetchUsaSpendingAwards({ naicsCodes: profile.naicsCodes, state: business.state ?? "KY" })
+      : Promise.resolve([] as UsaSpendingAward[]),
   ]);
 
-  // Write per-source health
+  // Write per-source health to legacy bid_business_settings (backward compat)
   const samOk    = fedResult.status === "fulfilled";
   const localOk  = localResult.status === "fulfilled";
   const awardsOk = awardsResult.status === "fulfilled";
 
   await writeSyncHealth(businessId, {
-    samLastSuccessAt:    samOk    ? now : undefined,
-    samLastError:        samOk    ? null : String((fedResult as PromiseRejectedResult).reason),
-    localLastSuccessAt:  localOk  ? now : undefined,
-    localLastError:      localOk  ? null : String((localResult as PromiseRejectedResult).reason),
-    awardsLastSuccessAt: awardsOk ? now : undefined,
-    awardsLastError:     awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason),
+    samLastSuccessAt:    (samActuallyRan    && samOk)    ? now : undefined,
+    samLastError:        !samActuallyRan    ? null : samOk    ? null : String((fedResult as PromiseRejectedResult).reason),
+    localLastSuccessAt:  (kyLocalActuallyRan && localOk) ? now : undefined,
+    localLastError:      !kyLocalActuallyRan ? null : localOk  ? null : String((localResult as PromiseRejectedResult).reason),
+    awardsLastSuccessAt: (awardsActuallyRan && awardsOk) ? now : undefined,
+    awardsLastError:     !awardsActuallyRan  ? null : awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason),
   });
 
-  const federal: OppWithSource[]  = samOk    ? fedResult.value    : [];
-  const allLocal: OppWithSource[] = localOk  ? localResult.value  : [];
-  const awards: UsaSpendingAward[] = awardsOk ? awardsResult.value : [];
+  const federal: OppWithSource[]   = samOk    ? (fedResult.value    as OppWithSource[])   : [];
+  const allLocal: OppWithSource[]  = localOk  ? (localResult.value  as OppWithSource[])  : [];
+  const awards: UsaSpendingAward[] = awardsOk ? (awardsResult.value as UsaSpendingAward[]) : [];
+
+  // Write connection health only for sources that were actually attempted
+  await Promise.allSettled([
+    samActuallyRan     ? writeConnectionHealth(businessId, "sam_gov",     samOk,    samOk    ? null : String((fedResult    as PromiseRejectedResult).reason), federal.length)  : Promise.resolve(),
+    kyLocalActuallyRan ? writeConnectionHealth(businessId, "ky_in_local", localOk,  localOk  ? null : String((localResult  as PromiseRejectedResult).reason), allLocal.length) : Promise.resolve(),
+    awardsActuallyRan  ? writeConnectionHealth(businessId, "usa_spending",awardsOk, awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason), awards.length)   : Promise.resolve(),
+  ]);
 
   // Filter local results by local keywords
   const localKeywordsLower = profile.localKeywords.map((k) => k.toLowerCase());
@@ -691,51 +712,61 @@ export async function runBidSync(
   await upsertUsaSpendingAwards(awards, businessId);
 
   // ── Subcontracting: SBA SUBNet ─────────────────────────────────────────────
-  const subnetOpps = await fetchSubnetOpportunities({
-    naicsCodes: profile.naicsCodes,
-    stateCode:  "KY",
-  }).catch((err) => { console.warn("[bid-sync] SUBNet fetch error:", (err as Error).message); return []; });
+  if (isEnabled(enabledSources, "sba_subnet")) {
+    let subnetError: string | undefined;
+    const subnetOpps = await fetchSubnetOpportunities({
+      naicsCodes: profile.naicsCodes,
+      stateCode:  "KY",
+    }).catch((err) => { subnetError = (err as Error).message; console.warn("[bid-sync] SUBNet fetch error:", subnetError); return []; });
 
-  if (subnetOpps.length > 0) {
-    const subnetRows: OppWithSource[] = subnetOpps.map((s) => ({
-      noticeId:         s.noticeId,
-      title:            s.title,
-      agency:           s.agency,
-      naicsCode:        s.naicsCode,
-      description:      s.description,
-      postedDate:       s.postedDate,
-      responseDeadline: s.responseDeadline,
-      url:              s.url,
-      source:           "subnet",
-      sourceLabel:      "SBA SUBNet",
-    }));
-    await upsertOpportunities(subnetRows, "subnet", "SBA SUBNet", businessId, profile,
-      { opportunityTypeOverride: "subcontracting" });
-    console.log(`[bid-sync] SUBNet: ${subnetOpps.length} subcontracting opp(s) processed`);
+    await writeConnectionHealth(businessId, "sba_subnet", !subnetError, subnetError, subnetOpps.length);
+
+    if (subnetOpps.length > 0) {
+      const subnetRows: OppWithSource[] = subnetOpps.map((s) => ({
+        noticeId:         s.noticeId,
+        title:            s.title,
+        agency:           s.agency,
+        naicsCode:        s.naicsCode,
+        description:      s.description,
+        postedDate:       s.postedDate,
+        responseDeadline: s.responseDeadline,
+        url:              s.url,
+        source:           "subnet",
+        sourceLabel:      "SBA SUBNet",
+      }));
+      await upsertOpportunities(subnetRows, "subnet", "SBA SUBNet", businessId, profile,
+        { opportunityTypeOverride: "subcontracting" });
+      console.log(`[bid-sync] SUBNet: ${subnetOpps.length} subcontracting opp(s) processed`);
+    }
   }
 
   // ── GSA Forecast: supplemental early-intel pipeline ───────────────────────
-  const forecastOpps = await fetchGsaForecastOpportunities({
-    naicsCodes: profile.naicsCodes,
-    keywords:   profile.keywords,
-  }).catch((err) => { console.warn("[bid-sync] GSA Forecast fetch error:", (err as Error).message); return []; });
+  if (isEnabled(enabledSources, "gsa_forecast")) {
+    let forecastError: string | undefined;
+    const forecastOpps = await fetchGsaForecastOpportunities({
+      naicsCodes: profile.naicsCodes,
+      keywords:   profile.keywords,
+    }).catch((err) => { forecastError = (err as Error).message; console.warn("[bid-sync] GSA Forecast fetch error:", forecastError); return []; });
 
-  if (forecastOpps.length > 0) {
-    const forecastRows: OppWithSource[] = forecastOpps.map((f) => ({
-      noticeId:         f.noticeId,
-      title:            f.title,
-      agency:           f.agency,
-      naicsCode:        f.naicsCode,
-      description:      f.description ?? (f.estimatedValue ? `Estimated value: ${f.estimatedValue}` : null),
-      postedDate:       null,
-      responseDeadline: f.anticipatedSolicitationDate,
-      url:              f.url,
-      source:           "gsa-forecast",
-      sourceLabel:      "GSA Forecast",
-    }));
-    await upsertOpportunities(forecastRows, "gsa-forecast", "GSA Forecast", businessId, profile,
-      { opportunityTypeOverride: "forecast" });
-    console.log(`[bid-sync] GSA Forecast: ${forecastOpps.length} forecast opp(s) processed`);
+    await writeConnectionHealth(businessId, "gsa_forecast", !forecastError, forecastError, forecastOpps.length);
+
+    if (forecastOpps.length > 0) {
+      const forecastRows: OppWithSource[] = forecastOpps.map((f) => ({
+        noticeId:         f.noticeId,
+        title:            f.title,
+        agency:           f.agency,
+        naicsCode:        f.naicsCode,
+        description:      f.description ?? (f.estimatedValue ? `Estimated value: ${f.estimatedValue}` : null),
+        postedDate:       null,
+        responseDeadline: f.anticipatedSolicitationDate,
+        url:              f.url,
+        source:           "gsa-forecast",
+        sourceLabel:      "GSA Forecast",
+      }));
+      await upsertOpportunities(forecastRows, "gsa-forecast", "GSA Forecast", businessId, profile,
+        { opportunityTypeOverride: "forecast" });
+      console.log(`[bid-sync] GSA Forecast: ${forecastOpps.length} forecast opp(s) processed`);
+    }
   }
 
   // Write overall success
