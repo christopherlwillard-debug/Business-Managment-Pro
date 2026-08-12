@@ -7,7 +7,7 @@ import {
   settingsTable,
   businessesTable,
 } from "@workspace/db";
-import { eq, sql, and, isNull } from "drizzle-orm";
+import { eq, sql, and, isNull, ne } from "drizzle-orm";
 import {
   fetchSamOpportunities,
   SamOpportunity,
@@ -46,6 +46,7 @@ interface ResolvedProfile {
 // Opportunities whose TITLE contains these are skipped at sync time entirely.
 // Title match = clearly disqualifying with no chance of false negative.
 const TITLE_HARD_SUPPRESS = [
+  // Waste / environmental — outside scope
   "hazardous waste",
   "medical waste",
   "biomedical waste",
@@ -57,6 +58,37 @@ const TITLE_HARD_SUPPRESS = [
   "refuse collection franchise",
   "automated refuse",
   "sewage treatment plant",
+  // Aviation / aircraft parts — clearly not construction
+  "ch-47",
+  "ch-53",
+  "uh-60",
+  "f-16",
+  "f-35",
+  "helicopter part",
+  "aircraft part",
+  "aviation part",
+  "insulation blanket",   // aircraft thermal blankets, not building insulation
+  "avionics",
+  // Military exercises and non-construction operations
+  "bilateral exercise",
+  "military exercise",
+  "bilateral army exercise",
+  "joint exercise",
+  // Industrial equipment / supply (non-construction)
+  "fan,centrifugal",
+  "centrifugal pump",
+  "turbine blade",
+  "compressor assembly",
+  "ammunition",
+  "ordnance",
+  "explosive",
+  "weapon system",
+  "fire control system",
+  "control column,airc",   // aircraft control column
+  // IT / professional services (not trades)
+  "software license",
+  "saas subscription",
+  "cloud hosting",
 ];
 
 function isHardSuppressedByTitle(title: string): boolean {
@@ -275,7 +307,8 @@ function scoreOpportunity(
   let urgencyScore = 0;
   if (opp.responseDeadline) {
     const daysOut = (new Date(opp.responseDeadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
-    if (daysOut <= 7)        urgencyScore = 20;
+    if (daysOut < 0)         urgencyScore = 0;  // already expired — no urgency bonus
+    else if (daysOut <= 7)   urgencyScore = 20;
     else if (daysOut <= 14)  urgencyScore = 15;
     else if (daysOut <= 30)  urgencyScore = 10;
     else if (daysOut <= 60)  urgencyScore = 5;
@@ -350,6 +383,46 @@ async function purgeIrrelevantFederalBids(businessId: number, allowedNaicsCodes:
 
 type OppWithSource = SamOpportunity & { source?: string; sourceLabel?: string };
 
+// ── Rescore all existing bids regardless of API fetch results ─────────────────
+// Called once per sync after capabilities are loaded so that profile changes
+// take effect immediately without needing a fresh API response for every bid.
+async function rescoreExistingBids(businessId: number, profile: ResolvedProfile): Promise<number> {
+  const existing = await db
+    .select({
+      id:               bidOpportunitiesTable.id,
+      title:            bidOpportunitiesTable.title,
+      description:      bidOpportunitiesTable.description,
+      responseDeadline: bidOpportunitiesTable.responseDeadline,
+      source:           bidOpportunitiesTable.source,
+      noticeType:       bidOpportunitiesTable.noticeType,
+    })
+    .from(bidOpportunitiesTable)
+    .where(and(
+      eq(bidOpportunitiesTable.businessId, businessId),
+      ne(bidOpportunitiesTable.source, "usa-spending"),
+    ));
+
+  let updated = 0;
+  for (const bid of existing) {
+    const { opportunityScore, capabilityMatches } = scoreOpportunity(
+      { title: bid.title, description: bid.description ?? null, responseDeadline: bid.responseDeadline, source: bid.source },
+      profile.capabilities,
+      { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness },
+    );
+    await db.update(bidOpportunitiesTable)
+      .set({
+        opportunityScore,
+        capabilityMatches,
+        opportunityType: deriveOpportunityType(bid.source, bid.noticeType),
+      })
+      .where(eq(bidOpportunitiesTable.id, bid.id));
+    updated++;
+  }
+
+  console.log(`[bid-sync] Rescored ${updated} existing bids for business ${businessId}`);
+  return updated;
+}
+
 async function upsertOpportunities(
   opportunities: OppWithSource[],
   defaultSource: string,
@@ -401,6 +474,22 @@ async function upsertOpportunities(
           ?? deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType ?? null),
       });
       newOnes.push(opp);
+    } else {
+      // Re-score existing row so capability profile changes take effect immediately
+      const { opportunityScore, capabilityMatches } = scoreOpportunity(
+        { title: opp.title, description: opp.description, responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource },
+        profile.capabilities,
+        { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness },
+      );
+      await db.update(bidOpportunitiesTable)
+        .set({
+          opportunityScore,
+          capabilityMatches,
+          noticeType:      (opp as SamOpportunity).noticeType ?? null,
+          opportunityType: overrides?.opportunityTypeOverride
+            ?? deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType ?? null),
+        })
+        .where(eq(bidOpportunitiesTable.id, existing.id));
     }
   }
 
@@ -493,7 +582,7 @@ export async function runBidSync(
   businessId: number
 ): Promise<{ newFederal: number; newLocal: number; total: number }> {
   const [business] = await db
-    .select({ id: businessesTable.id, type: businessesTable.type, name: businessesTable.name })
+    .select({ id: businessesTable.id, type: businessesTable.type, name: businessesTable.name, state: businessesTable.state })
     .from(businessesTable)
     .where(eq(businessesTable.id, businessId))
     .limit(1);
@@ -515,6 +604,10 @@ export async function runBidSync(
 
   // Record sync start
   await writeSyncHealth(businessId, { lastSyncAt: new Date() });
+
+  // Rescore all existing bids now that capability profiles are loaded.
+  // This ensures profile changes take effect immediately even if API fetches fail.
+  await rescoreExistingBids(businessId, profile);
 
   // One-time backfill: attribute legacy NULL-business rows only to asphalt business
   if (business.type === "asphalt_sealing") {
@@ -540,7 +633,7 @@ export async function runBidSync(
       ? fetchSamOpportunities({ keywords: profile.keywords, naicsCodes: profile.naicsCodes, pscCodes: profile.pscCodes })
       : Promise.resolve([] as SamOpportunity[]),
     fetchKyLocalBids(),
-    fetchUsaSpendingAwards({ naicsCodes: profile.naicsCodes }),
+    fetchUsaSpendingAwards({ naicsCodes: profile.naicsCodes, state: business.state ?? "KY" }),
   ]);
 
   // Write per-source health

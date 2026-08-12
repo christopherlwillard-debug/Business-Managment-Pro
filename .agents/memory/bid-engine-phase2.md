@@ -64,3 +64,31 @@ Rule 7 added: avoid making legal conclusions on license/bond requirements — us
 - Description updated to note KY license threshold and scope limits clearly
 
 **Why:** The old capabilities had no negative guards, causing false-positive scoring on licensed-trade contracts that Willard cannot perform.
+
+## Activation Run (Aug 2026) — Lessons
+
+### DB was empty at activation
+`bid_capability_profiles` and `bid_business_settings` had 0 rows even after code was merged. Both are lazy-seeded by `loadOrSeedCapabilities()` / `loadOrCreateBidSettings()` on first sync. Must trigger a sync (or run `src/scripts/manualBidSync.ts`) to seed them.
+
+### USASpending: state filter + large NAICS array both fail
+- KY state filter (`place_of_performance_locations`) + $2M ceiling returns 0 results (too few small KY federal construction awards).
+- General Contracting (21 NAICS codes) fails with `TypeError: fetch failed` — Replit sandbox appears to reject large request bodies to usaspending.gov.
+- Fix applied: removed state filter (`void state`). Sort field must be from the contract-award field list ("Award Amount" works; "Date Signed" does NOT — 400 error).
+- **Remaining issue:** GC's 21-NAICS request still fails. Needs NAICS batching (groups of 5–6) in `usaSpending.ts` — tracked as follow-up task.
+
+### Urgency scoring bug: past deadlines scored as urgent
+`scoreOpportunity()` had `if (daysOut <= 7) urgencyScore = 20` which also triggered for negative daysOut (expired deadlines). Fix: added `if (daysOut < 0) urgencyScore = 0` guard before the positive branches.
+
+### rescoreExistingBids() pattern
+Added standalone `rescoreExistingBids(businessId, profile)` in `bidSync.ts` that SELECTs all non-usa-spending rows for the business and re-scores them. Called at the top of `runBidSync()` after profile load. Ensures capability changes take effect immediately even when SAM.gov is down.
+
+### SAM.gov consistently times out in dev
+All SAM.gov fetches fail with ECONNRESET / "other side closed" in the Replit dev sandbox. Network-level restriction. Production deployment may work. Not a code issue.
+
+### SUBNet HTTP 403 and GSA Forecast network failure
+Confirmed still blocked. Both sources silently return 0 records.
+
+### Hard suppress list expanded
+Added aircraft/military/industrial-equipment terms: CH-47, insulation blanket (aircraft), bilateral exercise, fan centrifugal, control column airc, ordnance, etc.
+
+**Why:** Original list only covered waste/hazmat; military equipment and exercise notices were scoring 15–20 from urgency bonuses on expired deadlines.
