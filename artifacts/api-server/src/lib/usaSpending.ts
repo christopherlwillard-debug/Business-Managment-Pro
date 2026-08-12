@@ -111,6 +111,15 @@ async function fetchAwardPage(
   }
 }
 
+/** Split an array into chunks of at most `size` elements. */
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
 export async function fetchUsaSpendingAwards(opts: {
   naicsCodes: string[];
   /** Business home state abbreviation (e.g. "KY"). Defaults to "KY" if omitted. */
@@ -122,21 +131,37 @@ export async function fetchUsaSpendingAwards(opts: {
   const endDate   = new Date().toISOString().slice(0, 10);
   const startDate = monthsAgoIso(24);
 
-  const results = await fetchAwardPage(
-    opts.naicsCodes,
-    startDate,
-    endDate,
-    `NAICS [${opts.naicsCodes.join(", ")}] / nationwide`,
-    state,
+  // Split NAICS codes into batches of 5 to avoid oversized request bodies.
+  // Batches run sequentially to stay within rate limits. A single failure in
+  // one batch is logged and skipped — successful batches still contribute.
+  const BATCH_SIZE = 5;
+  const MAX_RESULTS = 50;
+  const batches = chunkArray(opts.naicsCodes, BATCH_SIZE);
+
+  const seen    = new Set<string>();
+  const deduped: UsaSpendingAward[] = [];
+
+  for (const batch of batches) {
+    if (deduped.length >= MAX_RESULTS) break;
+
+    const batchResults = await fetchAwardPage(
+      batch,
+      startDate,
+      endDate,
+      `NAICS [${batch.join(", ")}] / nationwide`,
+      state,
+    );
+
+    for (const r of batchResults) {
+      if (seen.has(r.noticeId)) continue;
+      seen.add(r.noticeId);
+      deduped.push(r);
+      if (deduped.length >= MAX_RESULTS) break;
+    }
+  }
+
+  console.log(
+    `[usa-spending] Fetched ${deduped.length} awards ≤$2M (nationwide) across ${batches.length} batch(es) for ${opts.naicsCodes.length} NAICS code(s)`,
   );
-
-  const seen   = new Set<string>();
-  const deduped = results.filter((r) => {
-    if (seen.has(r.noticeId)) return false;
-    seen.add(r.noticeId);
-    return true;
-  });
-
-  console.log(`[usa-spending] Fetched ${deduped.length} awards ≤$2M (nationwide) for NAICS [${opts.naicsCodes.join(", ")}]`);
   return deduped;
 }
