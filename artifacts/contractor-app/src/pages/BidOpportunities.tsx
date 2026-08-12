@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  RefreshCw, FileSearch, Shield, List, Columns,
+  RefreshCw, FileSearch, Shield, List, Columns, CheckCircle2, AlertCircle,
 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -44,6 +44,27 @@ const BUSINESS_NAICS: Record<string, string[]> = {
   ],
 };
 
+interface BidSettings {
+  isSdvosb?: boolean;
+  samLastSuccessAt?: string | null;
+  samLastError?: string | null;
+  localLastSuccessAt?: string | null;
+  localLastError?: string | null;
+  awardsLastSuccessAt?: string | null;
+  awardsLastError?: string | null;
+}
+
+function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return "never";
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 1)  return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
 export default function BidOpportunities() {
   const queryClient  = useQueryClient();
   const { toast }    = useToast();
@@ -60,7 +81,8 @@ export default function BidOpportunities() {
   const [panelBid,     setPanelBid]     = useState<BidOpportunity | null>(null);
   const [panelSummary, setPanelSummary] = useState<AiSummary | null>(null);
   const [panelLoading, setPanelLoading] = useState(false);
-  const [panelError,   setPanelError]   = useState<string | null>(null);
+  const [panelError,        setPanelError]        = useState<string | null>(null);
+  const [panelRegenerating, setPanelRegenerating] = useState(false);
   const [summaryCache,   setSummaryCache]   = useState<Record<number, AiSummary>>({});
   const [educatingBid,   setEducatingBid]   = useState<BidOpportunity | null>(null);
   const [educationCache, setEducationCache] = useState<Record<number, EducationSummary>>({});
@@ -83,7 +105,7 @@ export default function BidOpportunities() {
   const quickLinks: QuickLink[] = settings?.quickLinks ?? [];
 
   // ── Bid business settings (isSdvosb, etc.) ───────────────────────────────
-  const { data: bidSettings } = useQuery<{ isSdvosb?: boolean }>({
+  const { data: bidSettings } = useQuery<BidSettings>({
     queryKey: ["bid-settings", businessId],
     queryFn: async () => {
       if (!businessId) return {};
@@ -136,9 +158,18 @@ export default function BidOpportunities() {
         title: "Syncing bids…",
         description: "Checking federal, local, and USASpending sources. New bids will appear shortly.",
       });
-      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["bids"] }), 15_000);
-      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["bids"] }), 60_000);
-      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["bids"] }), 120_000);
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["bids"] });
+        queryClient.invalidateQueries({ queryKey: ["bid-settings", businessId] });
+      }, 15_000);
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["bids"] });
+        queryClient.invalidateQueries({ queryKey: ["bid-settings", businessId] });
+      }, 60_000);
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["bids"] });
+        queryClient.invalidateQueries({ queryKey: ["bid-settings", businessId] });
+      }, 120_000);
     },
     onError: (err: Error) => {
       toast({ title: "Refresh failed", description: err.message, variant: "destructive" });
@@ -255,6 +286,32 @@ export default function BidOpportunities() {
     }
   }
 
+  async function handleRegenerate() {
+    if (!panelBid || !businessId || panelRegenerating) return;
+    setPanelRegenerating(true);
+    setPanelError(null);
+    try {
+      const res = await fetch(`${BASE_URL}/api/bids/${panelBid.id}/summarize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ businessId, force: true }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? "Failed to regenerate summary");
+      }
+      const data = await res.json() as { summary: AiSummary };
+      setPanelSummary(data.summary);
+      setSummaryCache((prev) => ({ ...prev, [panelBid.id]: data.summary }));
+      queryClient.invalidateQueries({ queryKey: ["bids"] });
+    } catch (err) {
+      toast({ title: "Regenerate failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setPanelRegenerating(false);
+    }
+  }
+
   // ── USASpending awards (separate source) ─────────────────────────────────
   const awards = bids.filter((b) => b.source === "usa-spending");
   const pipelineBids = bids.filter((b) => b.source !== "usa-spending");
@@ -343,6 +400,8 @@ export default function BidOpportunities() {
           onClose={() => setPanelBid(null)}
           onStageChange={(stage) => updateStage.mutate({ id: panelBid.id, stage })}
           onNotesSave={(notes) => updateNotes.mutate({ id: panelBid.id, notes })}
+          onRegenerate={handleRegenerate}
+          regenerating={panelRegenerating}
         />
       )}
 
@@ -457,6 +516,45 @@ export default function BidOpportunities() {
         awardsCount={awards.length}
         subnetCount={subnetCount}
       />
+
+      {/* ── Sync health strip ───────────────────────────────────────────────── */}
+      {bidSettings && businessId && (
+        bidSettings.samLastSuccessAt ?? bidSettings.samLastError ??
+        bidSettings.localLastSuccessAt ?? bidSettings.localLastError ??
+        bidSettings.awardsLastSuccessAt ?? bidSettings.awardsLastError
+      ) && (
+        <div className="flex flex-wrap gap-2">
+          {([
+            { label: "Federal",  successAt: bidSettings.samLastSuccessAt,    error: bidSettings.samLastError },
+            { label: "KY Local", successAt: bidSettings.localLastSuccessAt,  error: bidSettings.localLastError },
+            { label: "Awards",   successAt: bidSettings.awardsLastSuccessAt, error: bidSettings.awardsLastError },
+          ] as { label: string; successAt?: string | null; error?: string | null }[])
+            .filter((s) => s.successAt || s.error)
+            .map((source) => (
+              <span
+                key={source.label}
+                title={source.error ?? undefined}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium",
+                  source.error
+                    ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400"
+                    : "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-400"
+                )}
+              >
+                {source.error
+                  ? <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                  : <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                }
+                {source.label}
+                {!source.error && source.successAt && (
+                  <span className="opacity-70">{relativeTime(source.successAt)}</span>
+                )}
+                {source.error && <span className="opacity-70">failed</span>}
+              </span>
+            ))
+          }
+        </div>
+      )}
 
       {/* ── Content area ────────────────────────────────────────────────────── */}
       {isLoading ? (

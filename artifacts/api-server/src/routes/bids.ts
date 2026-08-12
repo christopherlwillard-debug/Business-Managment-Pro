@@ -340,7 +340,10 @@ router.post("/:id/summarize", async (req, res) => {
 
     if (!bid) { res.status(404).json({ error: "Bid not found" }); return; }
 
-    if (bid.aiSummary) {
+    // Allow callers to bypass the cache and force a fresh summary (e.g. after
+    // the solicitation has been amended or the user clicks "Regenerate").
+    const force = req.body?.force === true;
+    if (bid.aiSummary && !force) {
       res.json({ summary: bid.aiSummary, cached: true });
       return;
     }

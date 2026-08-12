@@ -44,6 +44,8 @@ export default function SummaryPanel({
   onClose,
   onStageChange,
   onNotesSave,
+  onRegenerate,
+  regenerating,
 }: {
   bid: BidOpportunity;
   summary: AiSummary | null;
@@ -52,6 +54,8 @@ export default function SummaryPanel({
   onClose: () => void;
   onStageChange: (stage: BidStage) => void;
   onNotesSave: (notes: string) => void;
+  onRegenerate?: () => void;
+  regenerating?: boolean;
 }) {
   const [notes, setNotes] = useState(bid.notes ?? "");
   const [savedIndicator, setSavedIndicator] = useState(false);
@@ -100,6 +104,17 @@ export default function SummaryPanel({
               </div>
             </div>
           </div>
+          {summary && !loading && onRegenerate && (
+            <button
+              onClick={onRegenerate}
+              disabled={regenerating}
+              title="Re-run the AI summary with fresh data"
+              className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5", regenerating && "animate-spin")} />
+              {regenerating ? "Regenerating…" : "Regenerate"}
+            </button>
+          )}
           <button
             onClick={onClose}
             className="flex-shrink-0 p-1.5 rounded-lg hover:bg-muted transition-colors"
