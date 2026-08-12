@@ -131,18 +131,22 @@ const STAGE_BADGE: Record<string, { label: string; className: string }> = {
 };
 
 interface Props {
-  bid:           BidOpportunity;
-  summary:       AiSummary | null;
-  onSummarize:   (bid: BidOpportunity) => void;
-  onEducate:     (bid: BidOpportunity) => void;
-  onStageChange: (bid: BidOpportunity, stage: BidStage) => void;
-  onDismiss:     (bid: BidOpportunity) => void;
-  onRestore:     (bid: BidOpportunity) => void;
-  isUpdating:    boolean;
+  bid:                   BidOpportunity;
+  summary:               AiSummary | null;
+  onSummarize:           (bid: BidOpportunity) => void;
+  onEducate:             (bid: BidOpportunity) => void;
+  onStageChange:         (bid: BidOpportunity, stage: BidStage) => void;
+  onDismiss:             (bid: BidOpportunity) => void;
+  onRestore:             (bid: BidOpportunity) => void;
+  isUpdating:            boolean;
+  /** Show business relevance chips (only meaningful in multi-business context). */
+  multipleBusinesses?:   boolean;
+  relevantBusinessNames?: string[];
 }
 
 export default function BidCard({
   bid, summary, onSummarize, onEducate, onStageChange, onDismiss, onRestore, isUpdating,
+  multipleBusinesses, relevantBusinessNames,
 }: Props) {
   const effectiveSummary = summary;
   const isNoBid   = bid.stage === "no_bid";
@@ -244,6 +248,20 @@ export default function BidCard({
           </span>
         )}
       </div>
+
+      {/* ── Business relevance chips (multi-business only) ── */}
+      {multipleBusinesses && relevantBusinessNames && relevantBusinessNames.length > 0 && (
+        <div className="flex flex-wrap gap-1 -mt-1">
+          {relevantBusinessNames.map((name) => (
+            <span
+              key={name}
+              className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground/70 font-medium"
+            >
+              {name}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* ── Action row ── */}
       {/* py-2.5 on mobile gives 44px-ish touch target height; desktop stays compact */}

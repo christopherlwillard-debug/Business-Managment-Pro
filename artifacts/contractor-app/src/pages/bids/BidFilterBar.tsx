@@ -4,6 +4,15 @@ import type { BidStage } from "./types";
 
 export type BidFilter = "all" | BidStage;
 export type SourceFilter = "all" | "federal" | "local" | "subnet" | "usa-spending";
+export type CapabilityFilter =
+  | "all"
+  | "asphalt"
+  | "dump_waste"
+  | "flooring"
+  | "mfg_homes"
+  | "site_work"
+  | "general_contracting"
+  | "subcontracting";
 
 const STAGE_FILTER_TABS: Array<{ value: BidFilter; label: string }> = [
   { value: "all",       label: "All" },
@@ -16,25 +25,77 @@ const STAGE_FILTER_TABS: Array<{ value: BidFilter; label: string }> = [
   { value: "no_bid",    label: "No Bid" },
 ];
 
+const CAPABILITY_TABS: Array<{ value: CapabilityFilter; label: string }> = [
+  { value: "all",                label: "All" },
+  { value: "asphalt",            label: "Asphalt" },
+  { value: "dump_waste",         label: "Dump & Waste" },
+  { value: "general_contracting",label: "General Contracting" },
+  { value: "flooring",           label: "Flooring" },
+  { value: "site_work",          label: "Site Work" },
+  { value: "mfg_homes",          label: "Mfg Homes" },
+  { value: "subcontracting",     label: "Subcontracting" },
+];
+
 interface Props {
-  filter:          BidFilter;
-  setFilter:       (f: BidFilter) => void;
-  fitOnly:         boolean;
-  setFitOnly:      (fn: (v: boolean) => boolean) => void;
-  counts:          Partial<Record<BidFilter, number>>;
-  fitCount:        number;
-  sourceFilter:    SourceFilter;
-  setSourceFilter: (s: SourceFilter) => void;
-  awardsCount?:    number;
-  subnetCount?:    number;
+  filter:              BidFilter;
+  setFilter:           (f: BidFilter) => void;
+  fitOnly:             boolean;
+  setFitOnly:          (fn: (v: boolean) => boolean) => void;
+  counts:              Partial<Record<BidFilter, number>>;
+  fitCount:            number;
+  sourceFilter:        SourceFilter;
+  setSourceFilter:     (s: SourceFilter) => void;
+  awardsCount?:        number;
+  subnetCount?:        number;
+  // Capability category tabs
+  capabilityFilter:    CapabilityFilter;
+  setCapabilityFilter: (f: CapabilityFilter) => void;
+  capabilityCounts:    Partial<Record<CapabilityFilter, number>>;
+  // Scoring perspective label (e.g. "General Contracting")
+  scoringLabel?:       string;
 }
 
 export default function BidFilterBar({
   filter, setFilter, fitOnly, setFitOnly, counts, fitCount,
   sourceFilter, setSourceFilter, awardsCount = 0, subnetCount = 0,
+  capabilityFilter, setCapabilityFilter, capabilityCounts,
+  scoringLabel,
 }: Props) {
   return (
     <div className="space-y-2">
+      {/* ── Capability category tabs ─────────────────────────────────────────
+          Trade/capability lens: All · Asphalt · Dump & Waste · GC · etc.
+          Scrollable on mobile, wrapping on desktop.                          */}
+      <div
+        className="flex gap-1.5 overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap md:overflow-visible pb-0.5 md:pb-0"
+        style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+      >
+        {CAPABILITY_TABS.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={() => setCapabilityFilter(value)}
+            className={cn(
+              "flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap",
+              capabilityFilter === value
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
+            )}
+          >
+            {label}
+            {(capabilityCounts[value] ?? 0) > 0 && (
+              <span className={cn(
+                "ml-1.5 text-xs px-1.5 py-0.5 rounded-full",
+                capabilityFilter === value
+                  ? "bg-primary-foreground/20 text-primary-foreground"
+                  : "bg-muted text-muted-foreground"
+              )}>
+                {capabilityCounts[value] ?? 0}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
       {/* ── Stage + Fit pills ────────────────────────────────────────────────
           On mobile: single horizontally-scrollable row (no wrapping).
           On desktop (md+): wraps as before.                                  */}
@@ -153,6 +214,13 @@ export default function BidFilterBar({
             </span>
           )}
         </button>
+
+        {/* Scoring perspective label */}
+        {scoringLabel && (
+          <span className="ml-auto flex-shrink-0 text-xs text-muted-foreground/70 italic whitespace-nowrap hidden sm:inline">
+            Scoring as: {scoringLabel}
+          </span>
+        )}
       </div>
     </div>
   );

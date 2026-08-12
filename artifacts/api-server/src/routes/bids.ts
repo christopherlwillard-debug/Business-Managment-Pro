@@ -8,7 +8,8 @@ import {
   bidSourceConnectionsTable,
   businessesTable,
 } from "@workspace/db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
+import { deriveCapabilityCategories } from "../lib/bidCategories.js";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { BUILDPRO_AI_MINI_MODEL } from "../ai-models";
 import { fetchBidDocument } from "../lib/bidDocumentFetcher.js";
@@ -267,6 +268,101 @@ router.get("/capabilities", async (req, res) => {
   } catch (err) {
     console.error("[bids] GET /bids/capabilities error:", err);
     res.status(500).json({ error: "Failed to load capability profiles" });
+  }
+});
+
+// ── GET /api/bids/unified — all-business deduplicated feed ───────────────────
+// IMPORTANT: registered before PATCH /:id so Express doesn't match "unified" as an id.
+router.get("/unified", async (req, res) => {
+  try {
+    const { scoringBusinessId } = req.query;
+    const rawScoringId = scoringBusinessId ? parseInt(scoringBusinessId as string, 10) : NaN;
+    const validScoringId = !isNaN(rawScoringId) ? rawScoringId : null;
+
+    // Load all businesses (single-tenant — no per-user filter needed)
+    const allBusinesses = await db
+      .select({ id: businessesTable.id, name: businessesTable.name })
+      .from(businessesTable);
+
+    if (allBusinesses.length === 0) { res.json([]); return; }
+
+    const bizNameById = new Map(allBusinesses.map((b) => [b.id, b.name]));
+    const bizIds = allBusinesses.map((b) => b.id);
+
+    // Query all bid_opportunities for all businesses in a single round-trip
+    const allRows = await db
+      .select()
+      .from(bidOpportunitiesTable)
+      .where(inArray(bidOpportunitiesTable.businessId, bizIds))
+      .orderBy(desc(bidOpportunitiesTable.createdAt));
+
+    if (allRows.length === 0) { res.json([]); return; }
+
+    // Group by noticeId — insertion order preserved (newest first per above ORDER BY)
+    const grouped = new Map<string, (typeof allRows)>();
+    for (const row of allRows) {
+      const g = grouped.get(row.noticeId);
+      if (g) g.push(row);
+      else grouped.set(row.noticeId, [row]);
+    }
+
+    // Build the deduplicated unified response
+    const unified: Array<Record<string, unknown>> = [];
+
+    for (const [, group] of grouped) {
+      // Representative = highest opportunityScore; newest on tie
+      let rep = group[0];
+      for (const row of group.slice(1)) {
+        const repScore = rep.opportunityScore ?? -1;
+        const rowScore = row.opportunityScore ?? -1;
+        if (rowScore > repScore) { rep = row; continue; }
+        if (rowScore === repScore && row.createdAt > rep.createdAt) rep = row;
+      }
+
+      // Apply scoring-business perspective: use that business's row for isFit/score/stage
+      const displayRep = { ...rep };
+      if (validScoringId) {
+        const scoringRow = group.find((r) => r.businessId === validScoringId);
+        if (scoringRow) {
+          displayRep.id                 = scoringRow.id;
+          displayRep.businessId         = scoringRow.businessId;
+          displayRep.stage              = scoringRow.stage;
+          displayRep.notes              = scoringRow.notes;
+          displayRep.aiSummary          = scoringRow.aiSummary;
+          displayRep.aiSummaryAt        = scoringRow.aiSummaryAt;
+          displayRep.opportunityScore   = scoringRow.opportunityScore;
+          displayRep.capabilityMatches  = scoringRow.capabilityMatches;
+          displayRep.educationSummary   = scoringRow.educationSummary;
+          displayRep.educationSummaryAt = scoringRow.educationSummaryAt;
+        }
+      }
+
+      // Relevant business names (all businesses that have this noticeId)
+      const relevantBusinessNames = group
+        .map((r) => (r.businessId != null ? (bizNameById.get(r.businessId) ?? null) : null))
+        .filter((n): n is string => typeof n === "string");
+
+      // Capability categories derived from NAICS code + source
+      const capabilityCategories = deriveCapabilityCategories(
+        displayRep.naicsCode ?? null,
+        displayRep.source,
+      );
+
+      unified.push({ ...displayRep, capabilityCategories, relevantBusinessNames });
+    }
+
+    // Sort: highest score first, newest on tie
+    unified.sort((a, b) => {
+      const aScore = (a.opportunityScore as number | null) ?? -1;
+      const bScore = (b.opportunityScore as number | null) ?? -1;
+      if (bScore !== aScore) return bScore - aScore;
+      return new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime();
+    });
+
+    res.json(unified);
+  } catch (err) {
+    console.error("[bids] GET /bids/unified error:", err);
+    res.status(500).json({ error: "Failed to load unified bid feed" });
   }
 });
 

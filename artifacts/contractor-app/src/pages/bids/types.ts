@@ -47,6 +47,7 @@ export interface BidOpportunity {
   educationSummary?:   EducationSummary | null;
   educationSummaryAt?: string | null;
   id:                number;
+  businessId?:       number | null;   // which business's record this row belongs to
   noticeId:          string;
   title:             string;
   agency:            string | null;
@@ -69,6 +70,9 @@ export interface BidOpportunity {
   // Phase 2 — opportunity classification
   opportunityType?:  OpportunityType | string | null;
   createdAt:         string;
+  // Unified feed enrichment (present on GET /api/bids/unified responses)
+  capabilityCategories?:   string[];
+  relevantBusinessNames?:  string[];
 }
 
 // ── Education Analysis ────────────────────────────────────────────────────────

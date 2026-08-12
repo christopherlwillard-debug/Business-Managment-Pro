@@ -17,7 +17,7 @@ import BidCard from "./bids/BidCard";
 import PipelineBoard from "./bids/PipelineBoard";
 import AwardsPanel from "./bids/AwardsPanel";
 import BidEducationPanel from "./bids/BidEducationPanel";
-import type { BidFilter, SourceFilter } from "./bids/BidFilterBar";
+import type { BidFilter, SourceFilter, CapabilityFilter } from "./bids/BidFilterBar";
 import type { QuickLink, AiSummary, BidOpportunity, BidStage, EducationSummary, BidSourceConnection } from "./bids/types";
 import { RotateCcw } from "lucide-react";
 
@@ -70,7 +70,7 @@ export default function BidOpportunities() {
   const queryClient  = useQueryClient();
   const { toast }    = useToast();
   const { isOwner }  = useUserPermissions();
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
   const businessId = activeBusiness?.id ?? null;
 
   const [view, setView] = useState<"list" | "pipeline">(() =>
@@ -78,7 +78,8 @@ export default function BidOpportunities() {
   );
   const [filter,       setFilter]       = useState<BidFilter>("all");
   const [fitOnly,      setFitOnly]      = useState(false);
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [sourceFilter,     setSourceFilter]     = useState<SourceFilter>("all");
+  const [capabilityFilter, setCapabilityFilter] = useState<CapabilityFilter>("all");
   const [panelBid,     setPanelBid]     = useState<BidOpportunity | null>(null);
   const [panelSummary, setPanelSummary] = useState<AiSummary | null>(null);
   const [panelLoading, setPanelLoading] = useState(false);
@@ -193,15 +194,15 @@ export default function BidOpportunities() {
         description: "Checking federal, local, and USASpending sources. New bids will appear shortly.",
       });
       setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["bids"] });
+        queryClient.invalidateQueries({ queryKey: ["bids-unified"] });
         queryClient.invalidateQueries({ queryKey: ["bid-settings", businessId] });
       }, 15_000);
       setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["bids"] });
+        queryClient.invalidateQueries({ queryKey: ["bids-unified"] });
         queryClient.invalidateQueries({ queryKey: ["bid-settings", businessId] });
       }, 60_000);
       setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["bids"] });
+        queryClient.invalidateQueries({ queryKey: ["bids-unified"] });
         queryClient.invalidateQueries({ queryKey: ["bid-settings", businessId] });
       }, 120_000);
     },
@@ -210,58 +211,63 @@ export default function BidOpportunities() {
     },
   });
 
+  // Unified feed — all businesses, deduplicated by noticeId.
+  // scoringBusinessId overlays that business's isFit / score / stage on each row.
   const { data: bids = [], isLoading } = useQuery<BidOpportunity[]>({
-    queryKey: ["bids", businessId],
-    enabled:  businessId !== null,
+    queryKey: ["bids-unified", activeBusiness?.id ?? "all"],
     queryFn:  async () => {
-      const res = await fetch(`${BASE_URL}/api/bids?businessId=${businessId}`, { credentials: "include" });
+      const scoringParam = activeBusiness ? `?scoringBusinessId=${activeBusiness.id}` : "";
+      const res = await fetch(`${BASE_URL}/api/bids/unified${scoringParam}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load bids");
       return res.json();
     },
   });
 
   const updateStage = useMutation({
-    mutationFn: async ({ id, stage }: { id: number; stage: BidStage }) => {
+    mutationFn: async ({ id, stage, bidBusinessId }: { id: number; stage: BidStage; bidBusinessId?: number | null }) => {
       const res = await fetch(`${BASE_URL}/api/bids/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ stage, businessId }),
+        body: JSON.stringify({ stage, businessId: bidBusinessId ?? businessId }),
       });
       if (!res.ok) throw new Error("Failed to update bid");
       return res.json() as Promise<BidOpportunity>;
     },
     onSuccess: (updated) => {
-      queryClient.setQueryData<BidOpportunity[]>(["bids", businessId], (prev = []) =>
-        prev.map((b) => b.id === updated.id ? updated : b)
+      // Patch just the mutable fields so enriched unified fields (capabilityCategories, etc.) are preserved
+      queryClient.setQueryData<BidOpportunity[]>(
+        ["bids-unified", activeBusiness?.id ?? "all"],
+        (prev = []) => prev.map((b) => b.id === updated.id ? { ...b, stage: updated.stage, notes: updated.notes } : b)
       );
       queryClient.invalidateQueries({ queryKey: ["bids-active-count"] });
-      if (panelBid?.id === updated.id) setPanelBid(updated);
+      if (panelBid?.id === updated.id) setPanelBid((prev) => prev ? { ...prev, stage: updated.stage } : null);
     },
   });
 
   const updateNotes = useMutation({
-    mutationFn: async ({ id, notes }: { id: number; notes: string }) => {
+    mutationFn: async ({ id, notes, bidBusinessId }: { id: number; notes: string; bidBusinessId?: number | null }) => {
       const res = await fetch(`${BASE_URL}/api/bids/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ notes, businessId }),
+        body: JSON.stringify({ notes, businessId: bidBusinessId ?? businessId }),
       });
       if (!res.ok) throw new Error("Failed to save notes");
       return res.json() as Promise<BidOpportunity>;
     },
     onSuccess: (updated) => {
-      queryClient.setQueryData<BidOpportunity[]>(["bids", businessId], (prev = []) =>
-        prev.map((b) => b.id === updated.id ? updated : b)
+      queryClient.setQueryData<BidOpportunity[]>(
+        ["bids-unified", activeBusiness?.id ?? "all"],
+        (prev = []) => prev.map((b) => b.id === updated.id ? { ...b, notes: updated.notes } : b)
       );
-      if (panelBid?.id === updated.id) setPanelBid(updated);
+      if (panelBid?.id === updated.id) setPanelBid((prev) => prev ? { ...prev, notes: updated.notes } : null);
     },
   });
 
   function dismissBid(bid: BidOpportunity) {
     const previousStage = bid.stage;
-    updateStage.mutate({ id: bid.id, stage: "no_bid" }, {
+    updateStage.mutate({ id: bid.id, stage: "no_bid", bidBusinessId: bid.businessId }, {
       onSuccess: () => {
         toast({
           title: "Bid moved to No Bid",
@@ -269,7 +275,7 @@ export default function BidOpportunities() {
           action: (
             <ToastAction
               altText="Undo"
-              onClick={() => updateStage.mutate({ id: bid.id, stage: previousStage })}
+              onClick={() => updateStage.mutate({ id: bid.id, stage: previousStage, bidBusinessId: bid.businessId })}
             >
               <RotateCcw className="w-3.5 h-3.5 mr-1 inline" />
               Undo
@@ -303,7 +309,7 @@ export default function BidOpportunities() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ businessId }),
+        body: JSON.stringify({ businessId: bid.businessId ?? businessId }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
@@ -312,7 +318,7 @@ export default function BidOpportunities() {
       const data = await res.json() as { summary: AiSummary };
       setPanelSummary(data.summary);
       setSummaryCache((prev) => ({ ...prev, [bid.id]: data.summary }));
-      queryClient.invalidateQueries({ queryKey: ["bids"] });
+      queryClient.invalidateQueries({ queryKey: ["bids-unified"] });
     } catch (err) {
       setPanelError(err instanceof Error ? err.message : "Failed to generate summary");
     } finally {
@@ -321,7 +327,12 @@ export default function BidOpportunities() {
   }
 
   async function handleRegenerate() {
-    if (!panelBid || !businessId || panelRegenerating) return;
+    if (!panelBid || panelRegenerating) return;
+    const effectiveBizId = panelBid.businessId ?? businessId;
+    if (!effectiveBizId) {
+      toast({ title: "Select a business first to regenerate the summary", variant: "destructive" });
+      return;
+    }
     setPanelRegenerating(true);
     setPanelError(null);
     try {
@@ -329,7 +340,7 @@ export default function BidOpportunities() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ businessId, force: true }),
+        body: JSON.stringify({ businessId: effectiveBizId, force: true }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
@@ -338,7 +349,7 @@ export default function BidOpportunities() {
       const data = await res.json() as { summary: AiSummary };
       setPanelSummary(data.summary);
       setSummaryCache((prev) => ({ ...prev, [panelBid.id]: data.summary }));
-      queryClient.invalidateQueries({ queryKey: ["bids"] });
+      queryClient.invalidateQueries({ queryKey: ["bids-unified"] });
     } catch (err) {
       toast({ title: "Regenerate failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
@@ -352,22 +363,42 @@ export default function BidOpportunities() {
 
   const profileNaicsCodes = BUSINESS_NAICS[activeBusiness?.type ?? ""] ?? [];
 
+  // ── Capability category filter — outermost lens ───────────────────────────
+  const capabilityFiltered = capabilityFilter === "all"
+    ? pipelineBids
+    : pipelineBids.filter((b) => b.capabilityCategories?.includes(capabilityFilter) ?? false);
+
+  // Counts per capability key (computed from all pipeline bids, stage !== no_bid)
+  const ALL_CAP_KEYS: CapabilityFilter[] = [
+    "asphalt", "dump_waste", "flooring", "mfg_homes",
+    "site_work", "general_contracting", "subcontracting",
+  ];
+  const capabilityCounts: Partial<Record<CapabilityFilter, number>> = {
+    all: pipelineBids.filter((b) => b.stage !== "no_bid").length,
+    ...Object.fromEntries(ALL_CAP_KEYS.map((key) => [
+      key,
+      pipelineBids.filter(
+        (b) => b.stage !== "no_bid" && (b.capabilityCategories?.includes(key) ?? false)
+      ).length,
+    ])),
+  };
+
   // ── Filtering ─────────────────────────────────────────────────────────────
 
   const counts: Partial<Record<BidFilter, number>> = {
-    all:       pipelineBids.filter((b) => b.stage !== "no_bid").length,
-    new:       pipelineBids.filter((b) => b.stage === "new").length,
-    reviewing: pipelineBids.filter((b) => b.stage === "reviewing").length,
-    bidding:   pipelineBids.filter((b) => b.stage === "bidding").length,
-    submitted: pipelineBids.filter((b) => b.stage === "submitted").length,
-    won:       pipelineBids.filter((b) => b.stage === "won").length,
-    lost:      pipelineBids.filter((b) => b.stage === "lost").length,
-    no_bid:    pipelineBids.filter((b) => b.stage === "no_bid").length,
+    all:       capabilityFiltered.filter((b) => b.stage !== "no_bid").length,
+    new:       capabilityFiltered.filter((b) => b.stage === "new").length,
+    reviewing: capabilityFiltered.filter((b) => b.stage === "reviewing").length,
+    bidding:   capabilityFiltered.filter((b) => b.stage === "bidding").length,
+    submitted: capabilityFiltered.filter((b) => b.stage === "submitted").length,
+    won:       capabilityFiltered.filter((b) => b.stage === "won").length,
+    lost:      capabilityFiltered.filter((b) => b.stage === "lost").length,
+    no_bid:    capabilityFiltered.filter((b) => b.stage === "no_bid").length,
   };
 
   const stageFiltered = filter === "all"
-    ? pipelineBids.filter((b) => b.stage !== "no_bid")
-    : pipelineBids.filter((b) => b.stage === filter);
+    ? capabilityFiltered.filter((b) => b.stage !== "no_bid")
+    : capabilityFiltered.filter((b) => b.stage === filter);
 
   const sourceFiltered = sourceFilter === "federal"
     ? stageFiltered.filter((b) => b.source === "federal")
@@ -412,10 +443,12 @@ export default function BidOpportunities() {
             summary={summaryCache[bid.id] ?? bid.aiSummary}
             onSummarize={openSummaryPanel}
             onEducate={(b) => setEducatingBid(b)}
-            onStageChange={(b, stage) => updateStage.mutate({ id: b.id, stage })}
+            onStageChange={(b, stage) => updateStage.mutate({ id: b.id, stage, bidBusinessId: b.businessId })}
             onDismiss={dismissBid}
-            onRestore={(b) => updateStage.mutate({ id: b.id, stage: "new" })}
+            onRestore={(b) => updateStage.mutate({ id: b.id, stage: "new", bidBusinessId: b.businessId })}
             isUpdating={updateStage.isPending}
+            multipleBusinesses={businesses.length > 1}
+            relevantBusinessNames={bid.relevantBusinessNames}
           />
         ))}
       </div>
@@ -432,8 +465,8 @@ export default function BidOpportunities() {
           loading={panelLoading}
           error={panelError}
           onClose={() => setPanelBid(null)}
-          onStageChange={(stage) => updateStage.mutate({ id: panelBid.id, stage })}
-          onNotesSave={(notes) => updateNotes.mutate({ id: panelBid.id, notes })}
+          onStageChange={(stage) => updateStage.mutate({ id: panelBid.id, stage, bidBusinessId: panelBid.businessId })}
+          onNotesSave={(notes) => updateNotes.mutate({ id: panelBid.id, notes, bidBusinessId: panelBid.businessId })}
           onRegenerate={handleRegenerate}
           regenerating={panelRegenerating}
         />
@@ -464,12 +497,12 @@ export default function BidOpportunities() {
           {/* Subtitle — hidden on smallest mobile to save space */}
           {activeBusiness ? (
             <p className="hidden sm:block text-sm text-muted-foreground mt-0.5 truncate">
-              Federal &amp; Kentucky local contracts for{" "}
+              All opportunities · Scoring as{" "}
               <span className="font-medium text-foreground">{activeBusiness.name}</span>
             </p>
           ) : (
             <p className="hidden sm:block text-sm text-muted-foreground mt-0.5">
-              Select a business to see its bid feed
+              All bid opportunities across your businesses
             </p>
           )}
         </div>
@@ -558,6 +591,10 @@ export default function BidOpportunities() {
         setSourceFilter={setSourceFilter}
         awardsCount={awards.length}
         subnetCount={subnetCount}
+        capabilityFilter={capabilityFilter}
+        setCapabilityFilter={setCapabilityFilter}
+        capabilityCounts={capabilityCounts}
+        scoringLabel={activeBusiness?.name}
       />
 
       {/* ── Sync health strip ───────────────────────────────────────────────── */}
@@ -625,13 +662,13 @@ export default function BidOpportunities() {
                   */}
                   <div className="hidden md:block">
                     <PipelineBoard
-                      bids={pipelineBids}
+                      bids={capabilityFiltered}
                       summaryCache={summaryCache}
                       onSummarize={openSummaryPanel}
                       onEducate={(b) => setEducatingBid(b)}
                       onStageChange={(bid, stage) => {
                         if (stage === "no_bid") dismissBid(bid);
-                        else updateStage.mutate({ id: bid.id, stage });
+                        else updateStage.mutate({ id: bid.id, stage, bidBusinessId: bid.businessId });
                       }}
                       isUpdating={updateStage.isPending}
                       fitOnly={fitOnly}
@@ -675,7 +712,7 @@ export default function BidOpportunities() {
         bid={educatingBid ?? ({} as BidOpportunity)}
         open={!!educatingBid}
         onClose={() => setEducatingBid(null)}
-        businessId={businessId ?? 0}
+        businessId={educatingBid?.businessId ?? businessId ?? 0}
         apiBaseUrl={BASE_URL}
         initialEducation={
           educatingBid
