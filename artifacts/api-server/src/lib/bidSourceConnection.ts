@@ -7,8 +7,45 @@
  * tested in bidSourceConnection.test.ts.
  */
 import { db } from "@workspace/db";
-import { bidSourceConnectionsTable } from "@workspace/db";
+import { bidSourceConnectionsTable, bidSourceCatalogTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+
+// ── Auto-bootstrap ────────────────────────────────────────────────────────────
+
+/**
+ * Ensure every `automatedDiscovery = true` catalog source has a connection row
+ * for this business.  Uses INSERT … ON CONFLICT DO NOTHING so any existing row
+ * (including a user-disabled one) is left completely untouched.
+ *
+ * Call once at the start of each sync run so `loadEnabledSources` always finds
+ * explicit rows rather than relying on the "absent → enabled" fallback.
+ *
+ * Non-fatal: a failure here must not abort the sync.
+ */
+export async function bootstrapAutomatedConnections(businessId: number): Promise<void> {
+  try {
+    const automatedSlugs = await db
+      .select({ slug: bidSourceCatalogTable.slug })
+      .from(bidSourceCatalogTable)
+      .where(eq(bidSourceCatalogTable.automatedDiscovery, true));
+
+    if (automatedSlugs.length === 0) return;
+
+    await db
+      .insert(bidSourceConnectionsTable)
+      .values(
+        automatedSlugs.map(({ slug }) => ({
+          businessId,
+          catalogSlug:      slug,
+          enabled:          true,
+          connectionStatus: "not_configured" as const,
+        }))
+      )
+      .onConflictDoNothing();
+  } catch (err) {
+    console.warn("[bid-sync] bootstrapAutomatedConnections failed:", err);
+  }
+}
 
 // ── Enable-state helpers ──────────────────────────────────────────────────────
 

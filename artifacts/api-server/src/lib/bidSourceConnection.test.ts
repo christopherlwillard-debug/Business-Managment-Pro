@@ -11,7 +11,7 @@ import { db } from "@workspace/db";
 import { bidSourceConnectionsTable, businessesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { seedBidSourceCatalog } from "./bidSourceSeeds.js";
-import { loadEnabledSources, isEnabled, writeConnectionHealth } from "./bidSourceConnection.js";
+import { loadEnabledSources, isEnabled, writeConnectionHealth, bootstrapAutomatedConnections } from "./bidSourceConnection.js";
 
 let testBizId: number;
 
@@ -157,6 +157,82 @@ describe("writeConnectionHealth — disabled source persistence", () => {
     // Clean up
     await db.delete(bidSourceConnectionsTable).where(
       and(eq(bidSourceConnectionsTable.businessId, testBizId), eq(bidSourceConnectionsTable.catalogSlug, "gsa_forecast"))
+    );
+  });
+});
+
+// ── bootstrapAutomatedConnections ─────────────────────────────────────────────
+
+describe("bootstrapAutomatedConnections", () => {
+  it("creates enabled=true rows for all automatedDiscovery=true catalog sources", async () => {
+    // Start clean — remove any rows the test business might have from earlier tests
+    await db.delete(bidSourceConnectionsTable).where(
+      eq(bidSourceConnectionsTable.businessId, testBizId)
+    );
+
+    await bootstrapAutomatedConnections(testBizId);
+
+    const rows = await db
+      .select()
+      .from(bidSourceConnectionsTable)
+      .where(eq(bidSourceConnectionsTable.businessId, testBizId));
+
+    // At least the 5 automated sources must be present
+    const AUTOMATED_SLUGS = ["sam_gov", "ky_in_local", "usa_spending", "sba_subnet", "gsa_forecast"];
+    for (const slug of AUTOMATED_SLUGS) {
+      const row = rows.find(r => r.catalogSlug === slug);
+      expect(row, `missing bootstrap row for ${slug}`).toBeDefined();
+      expect(row!.enabled).toBe(true);
+      expect(row!.connectionStatus).toBe("not_configured");
+    }
+
+    // Clean up
+    await db.delete(bidSourceConnectionsTable).where(
+      eq(bidSourceConnectionsTable.businessId, testBizId)
+    );
+  });
+
+  it("does NOT overwrite an existing disabled row (ON CONFLICT DO NOTHING)", async () => {
+    // Manually create a disabled row for sam_gov
+    await db
+      .insert(bidSourceConnectionsTable)
+      .values({ businessId: testBizId, catalogSlug: "sam_gov", enabled: false, connectionStatus: "not_configured" });
+
+    await bootstrapAutomatedConnections(testBizId);
+
+    const [row] = await db
+      .select()
+      .from(bidSourceConnectionsTable)
+      .where(and(
+        eq(bidSourceConnectionsTable.businessId, testBizId),
+        eq(bidSourceConnectionsTable.catalogSlug, "sam_gov")
+      ));
+
+    // User's disabled preference must survive the bootstrap
+    expect(row.enabled).toBe(false);
+
+    // Clean up
+    await db.delete(bidSourceConnectionsTable).where(
+      eq(bidSourceConnectionsTable.businessId, testBizId)
+    );
+  });
+
+  it("is idempotent — calling twice does not duplicate rows", async () => {
+    await bootstrapAutomatedConnections(testBizId);
+    await bootstrapAutomatedConnections(testBizId);
+
+    const rows = await db
+      .select()
+      .from(bidSourceConnectionsTable)
+      .where(eq(bidSourceConnectionsTable.businessId, testBizId));
+
+    const slugs = rows.map(r => r.catalogSlug);
+    const uniqueSlugs = new Set(slugs);
+    expect(slugs.length).toBe(uniqueSlugs.size); // no duplicates
+
+    // Clean up
+    await db.delete(bidSourceConnectionsTable).where(
+      eq(bidSourceConnectionsTable.businessId, testBizId)
     );
   });
 });

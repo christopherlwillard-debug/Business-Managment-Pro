@@ -25,7 +25,7 @@ import {
 import { fetchSubnetOpportunities, SubnetOpportunity } from "../lib/subnetSync.js";
 import { fetchGsaForecastOpportunities, GsaForecastOpportunity } from "../lib/gsaForecast.js";
 import { normalizeSetAsideType } from "../lib/bidScoring.js";
-import { loadEnabledSources, isEnabled, writeConnectionHealth } from "../lib/bidSourceConnection.js";
+import { loadEnabledSources, isEnabled, writeConnectionHealth, bootstrapAutomatedConnections } from "../lib/bidSourceConnection.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -647,6 +647,10 @@ export async function runBidSync(
   await purgeIrrelevantLocalBids(businessId, profile.localKeywords);
   await purgeNavLinkRows(businessId);
   await purgeOldUsaSpendingAwards(businessId);
+
+  // Ensure every automated source has a connection row before we read enable flags.
+  // Uses ON CONFLICT DO NOTHING so existing user-configured rows are never touched.
+  await bootstrapAutomatedConnections(businessId);
 
   // Read per-source enable flags — absent rows default to enabled (backward compat)
   const enabledSources = await loadEnabledSources(businessId);
