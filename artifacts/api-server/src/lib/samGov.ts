@@ -143,18 +143,42 @@ async function fetchPage(
   label: string
 ): Promise<SamApiPage> {
   const qs = new URLSearchParams({ api_key: apiKey, ...params });
+
+  // ── Network layer — catches connection / timeout errors only ─────────────
+  let res: Response;
   try {
-    const res = await fetch(`${SAM_API_BASE}?${qs.toString()}`, {
+    res = await fetch(`${SAM_API_BASE}?${qs.toString()}`, {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(20_000),
     });
+  } catch (err) {
+    console.error(`[sam-gov] Fetch error for ${label}:`, err);
+    return { records: [], totalRecords: 0 };
+  }
 
-    if (!res.ok) {
-      const body = await res.text();
-      console.warn(`[sam-gov] ${res.status} for ${label}: ${body.slice(0, 200)}`);
-      return { records: [], totalRecords: 0 };
-    }
+  // ── 429: quota exhausted — throw so the grouped-search coordinator can ───
+  // abort remaining tasks immediately and surface the reset time in the UI.
+  if (res.status === 429) {
+    let resetAt: string | null = null;
+    try {
+      const body = await res.json() as { nextAccessTime?: string };
+      resetAt = body.nextAccessTime ?? null;
+    } catch { /* ignore parse failure; resetAt stays null */ }
+    console.error(
+      `[sam-gov] 429 for ${label}:${resetAt ? ` quota resets ${resetAt}` : " quota exhausted (no reset time in response)"}`
+    );
+    throw new SamQuotaError(resetAt);
+  }
 
+  // ── Other non-ok status (4xx/5xx) — log and return empty ─────────────────
+  if (!res.ok) {
+    const body = await res.text();
+    console.warn(`[sam-gov] ${res.status} for ${label}: ${body.slice(0, 200)}`);
+    return { records: [], totalRecords: 0 };
+  }
+
+  // ── Parse success response ────────────────────────────────────────────────
+  try {
     const data = await res.json() as {
       totalRecords?: number;
       opportunitiesData?: Array<{
@@ -189,7 +213,7 @@ async function fetchPage(
 
     return { records, totalRecords: data.totalRecords ?? records.length };
   } catch (err) {
-    console.error(`[sam-gov] Fetch error for ${label}:`, err);
+    console.error(`[sam-gov] Parse error for ${label}:`, err);
     return { records: [], totalRecords: 0 };
   }
 }
@@ -238,6 +262,21 @@ async function fetchAllPages(
   return all;
 }
 
+// ── Quota error — thrown by fetchPage on HTTP 429 ────────────────────────────
+//
+// SAM.gov returns a 429 with a JSON body like:
+//   { "nextAccessTime": "2026-Aug-14 00:00:00+0000 UTC" }
+// Throwing a typed error (rather than returning empty) lets the grouped-search
+// coordinator abort all remaining tasks as soon as the first 429 is received,
+// and surface the reset time in the UI via bid_source_connections.last_sync_error.
+
+export class SamQuotaError extends Error {
+  constructor(public readonly resetAt: string | null) {
+    super(`SAM.gov API quota exhausted${resetAt ? ` — resets at ${resetAt}` : ""}`);
+    this.name = "SamQuotaError";
+  }
+}
+
 // ── Simple semaphore for concurrency control ──────────────────────────────────
 
 class Semaphore {
@@ -260,6 +299,25 @@ class Semaphore {
 // ── Primary: capability-grouped search ───────────────────────────────────────
 
 /**
+ * Return type for fetchSamOpportunitiesGrouped.
+ *
+ * `opportunities`   — deduplicated results across all groups and pages.
+ *                     Partial results collected before a 429 are included.
+ * `quotaExhausted`  — true whenever HTTP 429 was received, regardless of
+ *                     whether the response body contained a reset timestamp.
+ *                     Callers MUST check this flag to detect exhaustion;
+ *                     do NOT rely solely on `quotaResetAt` being non-null.
+ * `quotaResetAt`    — the `nextAccessTime` value from the SAM.gov 429 body,
+ *                     or null when the response was missing / unparseable.
+ *                     Only meaningful when `quotaExhausted` is true.
+ */
+export interface SamGroupedResult {
+  opportunities:  SamOpportunity[];
+  quotaExhausted: boolean;
+  quotaResetAt:   string | null;
+}
+
+/**
  * Searches SAM.gov using capability-grouped search groups instead of the flat
  * all-pairs matrix.  Each group searches its own NAICS codes with its own
  * anchor keywords, then runs targeted specific-keyword queries (no NAICS) to
@@ -268,15 +326,19 @@ class Semaphore {
  * Concurrency is limited to SAM_MAX_CONCURRENT simultaneous fetchAllPages calls.
  * A global noticeId Set deduplicates across all groups, queries, and pages.
  * Records with unexpected NAICS codes are flagged naicsMismatch=true (not dropped).
+ *
+ * When SAM.gov returns HTTP 429, remaining tasks are aborted, partial results
+ * are returned, and `quotaResetAt` is set so the caller can surface the reset
+ * time in the Sources panel instead of silently swallowing the quota hit.
  */
 export async function fetchSamOpportunitiesGrouped(
   groups:  CapabilitySearchGroup[],
   opts?:   { lookbackDays?: number },
-): Promise<SamOpportunity[]> {
+): Promise<SamGroupedResult> {
   const apiKey = getCredential("sam_gov", "SAM_GOV_API_KEY");
   if (!apiKey) {
     console.warn("[sam-gov] SAM_GOV_API_KEY not configured, skipping");
-    return [];
+    return { opportunities: [], quotaExhausted: false, quotaResetAt: null };
   }
 
   const lookback   = opts?.lookbackDays ?? SAM_LOOKBACK_DAYS;
@@ -339,12 +401,22 @@ export async function fetchSamOpportunitiesGrouped(
     `concurrency=${SAM_MAX_CONCURRENT}, lookback=${lookback}d`
   );
 
+  // Quota state — set by the first task that receives HTTP 429.
+  // Tasks that haven't started yet check this flag and bail early;
+  // tasks already in-flight finish normally so partial results are kept.
+  let quotaExhausted = false;
+  let quotaResetAt: string | null = null;
+
   // Global dedup map — first occurrence wins; noticeId → final SamOpportunity
   const seen = new Map<string, SamOpportunity>();
   const sem  = new Semaphore(SAM_MAX_CONCURRENT);
 
   await Promise.all(tasks.map(async (task) => {
+    // Fast-path bail: skip tasks that haven't started when quota is already gone
+    if (quotaExhausted) return;
     await sem.acquire();
+    // Re-check after the semaphore wait — another task may have hit 429 while queued
+    if (quotaExhausted) { sem.release(); return; }
     try {
       const opps = await fetchAllPages(apiKey, task.params, task.label);
       for (const opp of opps) {
@@ -363,6 +435,19 @@ export async function fetchSamOpportunitiesGrouped(
           });
         }
       }
+    } catch (err) {
+      if (err instanceof SamQuotaError) {
+        // Mark quota exhausted so all waiting tasks bail without hitting the API.
+        // Do NOT rethrow — whatever was collected before the 429 is still returned.
+        quotaExhausted = true;
+        quotaResetAt   = err.resetAt;
+        console.warn(
+          `[sam-gov] Quota exhausted — aborting remaining tasks` +
+          (err.resetAt ? `, resets ${err.resetAt}` : "")
+        );
+      } else {
+        throw err;
+      }
     } finally {
       sem.release();
     }
@@ -373,9 +458,14 @@ export async function fetchSamOpportunitiesGrouped(
   if (mismatched > 0) {
     console.log(`[sam-gov] ${mismatched} record(s) flagged naicsMismatch (kept, recommendation capped at REVIEW)`);
   }
-  console.log(`[sam-gov] Grouped search complete: ${result.length} unique opportunities from ${tasks.length} search tasks`);
+  console.log(
+    `[sam-gov] Grouped search complete: ${result.length} unique opportunities from ${tasks.length} search tasks` +
+    (quotaExhausted
+      ? ` (quota exhausted${quotaResetAt ? `, resets ${quotaResetAt}` : ", reset time unavailable"})`
+      : "")
+  );
 
-  return result;
+  return { opportunities: result, quotaExhausted, quotaResetAt };
 }
 
 // ── Backward-compat flat search ───────────────────────────────────────────────

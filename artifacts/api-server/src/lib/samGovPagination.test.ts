@@ -34,6 +34,7 @@ import {
   SAM_LOOKBACK_DAYS,
   SAM_MAX_CONCURRENT,
   type CapabilitySearchGroup,
+  type SamGroupedResult,
 } from "./samGov.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -278,7 +279,7 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
 
     const promise = fetchSamOpportunitiesGrouped([trimGroup, flooringGroup]);
     await vi.runAllTimersAsync();
-    const results = await promise;
+    const { opportunities: results } = await promise;
 
     const ids = results.map((r) => r.noticeId);
     const uniqueIds = new Set(ids);
@@ -292,7 +293,7 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
 
     const promise = fetchSamOpportunitiesGrouped([trimGroup, flooringGroup]);
     await vi.runAllTimersAsync();
-    const results = await promise;
+    const { opportunities: results } = await promise;
 
     const opp = results.find((r) => r.noticeId === "opp-001");
     expect(opp?.matchedCapability).toBeTruthy();
@@ -319,7 +320,7 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
 
     const promise = fetchSamOpportunitiesGrouped([trimGroup]);
     await vi.runAllTimersAsync();
-    const results = await promise;
+    const { opportunities: results } = await promise;
 
     const mismatch = results.find((r) => r.noticeId === "mismatch-opp");
     if (mismatch) {
@@ -338,7 +339,7 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
 
     const promise = fetchSamOpportunitiesGrouped([trimGroup, flooringGroup]);
     await vi.runAllTimersAsync();
-    const results = await promise;
+    const { opportunities: results } = await promise;
 
     const opp = results.find((r) => r.noticeId === "opp-001");
     if (opp) {
@@ -353,11 +354,57 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
-    const results = await fetchSamOpportunitiesGrouped([trimGroup]);
+    const { opportunities } = await fetchSamOpportunitiesGrouped([trimGroup]);
 
-    expect(results).toHaveLength(0);
+    expect(opportunities).toHaveLength(0);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("SAM_GOV_API_KEY not configured"));
+  });
+
+  it("aborts remaining tasks and returns quotaResetAt when SAM.gov responds 429", async () => {
+    const resetTime = "2026-Aug-14 00:00:00+0000 UTC";
+
+    // All fetch calls respond with HTTP 429 and a nextAccessTime body
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        ok:     false,
+        status: 429,
+        json:   () => Promise.resolve({ nextAccessTime: resetTime }),
+      } as unknown as Response)
+    ));
+
+    vi.useRealTimers();
+    const result: SamGroupedResult = await fetchSamOpportunitiesGrouped([trimGroup]);
+    vi.useFakeTimers();
+
+    // quotaExhausted must be true regardless of whether reset time is present
+    expect(result.quotaExhausted).toBe(true);
+    // Quota reset time must be surfaced
+    expect(result.quotaResetAt).toBe(resetTime);
+    // Partial results are empty (nothing was collected before the 429)
+    expect(result.opportunities).toHaveLength(0);
+  });
+
+  it("signals quotaExhausted=true even when 429 response body is missing or unparseable", async () => {
+    // SAM.gov returns 429 with a non-JSON body (e.g. an HTML error page)
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        ok:     false,
+        status: 429,
+        json:   () => Promise.reject(new SyntaxError("Unexpected token")),
+      } as unknown as Response)
+    ));
+
+    vi.useRealTimers();
+    const result: SamGroupedResult = await fetchSamOpportunitiesGrouped([trimGroup]);
+    vi.useFakeTimers();
+
+    // Exhaustion must be detected even without a parseable reset timestamp
+    expect(result.quotaExhausted).toBe(true);
+    // Reset time is null since the body could not be parsed
+    expect(result.quotaResetAt).toBeNull();
+    // No opportunities collected
+    expect(result.opportunities).toHaveLength(0);
   });
 
   it("uses the configured lookback window (SAM_LOOKBACK_DAYS)", async () => {

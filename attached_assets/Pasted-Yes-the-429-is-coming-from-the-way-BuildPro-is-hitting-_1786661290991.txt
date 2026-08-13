@@ -1,0 +1,96 @@
+Yes — the 429 is coming from the way BuildPro is hitting SAM.gov, not because your API key is necessarily bad.
+
+A 429 = Too Many Requests. Your own log says the 7 AM sync exhausted the key's allowed request volume, so SAM.gov started rejecting additional calls.
+
+The important part is how many requests BuildPro is making.
+
+Your previous diagnosis showed 199 SAM search tasks for General Contracting alone, plus the Asphalt searches. Each task can paginate, so one scheduled sync can potentially generate hundreds of API requests. If we're now broadening the search vocabulary, that can make the request volume even larger.
+
+SAM.gov explicitly provides API rate-limit guidance in its help system, and its terms say API access can be monitored and that users are responsible for not exceeding their authorized access.
+
+I think we need to fix the architecture before running another giant sync
+
+We do not want:
+
+199 search tasks × multiple pages × multiple capability variations
+→ hammer SAM
+→ 429
+→ no new bids
+
+Instead, BuildPro should:
+
+1. Search SAM efficiently
+
+Combine related searches where possible.
+Avoid making separate API calls for nearly identical keyword combinations.
+Use NAICS/PSC intelligently rather than multiplying every combination.
+Cache results.
+
+2. Pull broadly, then score locally
+
+This is important.
+
+Instead of asking SAM:
+
+"Do you have an opportunity containing this exact phrase?"
+
+over and over, we want fewer, broader SAM queries and let BuildPro's scoring engine determine whether the opportunity matches Chris's capabilities.
+
+3. Deduplicate locally
+
+If the same SAM notice appears under multiple capability searches, BuildPro should make one opportunity record, then attach multiple matching capabilities to it.
+
+4. Don't rerun the same data unnecessarily
+
+If an opportunity was already pulled today, don't request it again just because another capability matched it.
+
+5. Respect the API limit
+
+BuildPro needs a proper rate limiter/backoff system so a 429 doesn't turn the entire sync into a failure.
+
+And there's another thing I would change
+
+The system shouldn't just say:
+
+SAM sync failed — 429
+
+It should tell you:
+
+SAM.gov
+🟡 Rate limited
+1,842 requests attempted
+1,500 accepted
+342 deferred
+Next retry: tomorrow / after cooldown
+
+That way we know exactly what's happening.
+
+I would not generate another SAM sync right now. Let the quota recover. The new search logic can be tested without repeatedly burning through the API quota.
+
+Also, SAM.gov confirms that public contract opportunities are available through its public API/data services, so we're using the right general mechanism; the problem is controlling our consumption of it.
+
+send it to replit
+
+Replit blocked the update request, so nothing was changed. The requested fix is the SAM.gov rate-limit/throttling work we just discussed.
+
+Pasted markdown(5).md
+File
+
+Yes — I have the full Replit activity now. The important part is that the search expansion was completed, but it made the SAM quota problem worse.
+
+The new system went from 224 → 441 search tasks, while the previous 199-task run already exhausted the SAM key.
+
+So I would not let it run another 441-task SAM sync as-is. We need to address #1858 first: reduce redundant requests, throttle requests, handle 429s properly, and reuse results across overlapping searches. Replit itself flagged that as the next issue.
+
+Also, the good news is the actual search strategy improvement is in place and all 500 tests passed with clean typechecking.
+
+So the order I recommend is:
+
+Fix SAM API consumption/429 handling
+Let the quota reset
+Run the expanded searches
+Measure how many unique opportunities we actually discover
+Then fix the Kentucky VSS 404 so we're not missing Kentucky bids
+Clean up the old score-0 "zombie" bids
+
+And importantly, we should not undo the broader search strategy just because it increased the number of tasks. We need to make the search engine more efficient instead.

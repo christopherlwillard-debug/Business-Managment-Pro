@@ -11,6 +11,7 @@ import { eq, sql, and, isNull, ne } from "drizzle-orm";
 import {
   fetchSamOpportunitiesGrouped,
   SamOpportunity,
+  SamGroupedResult,
   CapabilitySearchGroup,
   ASPHALT_PSC_CODES,
   GENERAL_CONTRACTING_PSC_CODES,
@@ -834,7 +835,7 @@ export async function runBidSync(
   const [fedResult, localResult, awardsResult] = await Promise.allSettled([
     samActuallyRan
       ? fetchSamOpportunitiesGrouped(profile.searchGroups)
-      : Promise.resolve([] as SamOpportunity[]),
+      : Promise.resolve({ opportunities: [], quotaExhausted: false, quotaResetAt: null } as SamGroupedResult),
     kyLocalActuallyRan
       ? fetchKyLocalBids()
       : Promise.resolve([]),
@@ -857,7 +858,11 @@ export async function runBidSync(
     awardsLastError:     !awardsActuallyRan  ? null : awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason),
   });
 
-  const federal: OppWithSource[]   = samOk    ? (fedResult.value    as OppWithSource[])   : [];
+  // Unpack SamGroupedResult — partial results are kept even when quota is exhausted
+  const samResult        = samOk ? (fedResult.value as SamGroupedResult) : null;
+  const samQuotaExhausted = samResult?.quotaExhausted ?? false;
+  const samQuotaResetAt   = samResult?.quotaResetAt   ?? null;
+  const federal: OppWithSource[]   = samResult?.opportunities ?? [];
   const awards: UsaSpendingAward[] = awardsOk ? (awardsResult.value as UsaSpendingAward[]) : [];
 
   // Unpack the structured LocalScrapeResult from the KY/IN local scraper.
@@ -887,7 +892,19 @@ export async function runBidSync(
 
   // Write connection health only for sources that were actually attempted
   await Promise.allSettled([
-    samActuallyRan     ? writeConnectionHealth(businessId, "sam_gov",     samOk,            samOk  ? null : String((fedResult as PromiseRejectedResult).reason), federal.length)                            : Promise.resolve(),
+    samActuallyRan     ? writeConnectionHealth(
+      businessId, "sam_gov",
+      // success = fetch did not throw AND quota was not exhausted (even partially)
+      samOk && !samQuotaExhausted,
+      samOk
+        ? (samQuotaExhausted
+            ? (samQuotaResetAt
+                ? `SAM.gov API quota exhausted — resets ${samQuotaResetAt}`
+                : "SAM.gov API quota exhausted; reset time unavailable")
+            : null)
+        : String((fedResult as PromiseRejectedResult).reason),
+      federal.length
+    ) : Promise.resolve(),
     kyLocalActuallyRan ? writeConnectionHealth(businessId, "ky_in_local", localHealthSuccess, localHealthErrorMsg, allLocal.length, localSiteHealthJson)                                                     : Promise.resolve(),
     awardsActuallyRan  ? writeConnectionHealth(businessId, "usa_spending", awardsOk,         awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason), awards.length)                       : Promise.resolve(),
   ]);
