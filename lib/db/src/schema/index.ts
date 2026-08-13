@@ -38,6 +38,7 @@ export * from "./dashboard-tasks";
 export * from "./bid-profiles";
 export * from "./bid-sources";
 export * from "./businesses";
+export * from "./equipment";
 export * from "./contacts";
 export * from "./job-sub-hours";
 export * from "./job-type-benchmarks";

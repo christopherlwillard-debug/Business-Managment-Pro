@@ -35,6 +35,8 @@ const QuickCharge = lazy(() => import("./pages/QuickCharge"));
 const SquareTransactions = lazy(() => import("./pages/SquareTransactions"));
 const Banking = lazy(() => import("./pages/Banking"));
 const BidOpportunities = lazy(() => import("./pages/BidOpportunities"));
+const FindEquipment = lazy(() => import("./pages/FindEquipment"));
+const MyEquipment = lazy(() => import("./pages/MyEquipment"));
 const BusinessSelector = lazy(() => import("./pages/BusinessSelector"));
 const NotFound = lazy(() => import("./pages/not-found"));
 const WebsiteEditor = lazy(() => import("./pages/website/WebsiteEditor"));
@@ -310,6 +312,12 @@ function AdminApp() {
           </Route>
           <Route path="/bids">
             <PermissionGuard ownerOnly><BidOpportunities /></PermissionGuard>
+          </Route>
+          <Route path="/equipment/inventory">
+            <PermissionGuard ownerOnly><MyEquipment /></PermissionGuard>
+          </Route>
+          <Route path="/equipment">
+            <PermissionGuard ownerOnly><FindEquipment /></PermissionGuard>
           </Route>
           <Route path="/address-book">
             <PermissionGuard ownerOnly><TabRedirect tab="contacts" /></PermissionGuard>

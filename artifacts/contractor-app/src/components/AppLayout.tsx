@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   UsersRound,
   Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark, ScrollText, KeyRound,
-  Sun, Moon, Building2, ChevronDown, Globe, Home,
+  Sun, Moon, Building2, ChevronDown, Globe, Home, PackageSearch, Warehouse,
   type LucideIcon,
 } from "lucide-react";
 import { useBusiness } from "@/contexts/BusinessContext";
@@ -89,7 +89,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     section: SectionKey | null;
     altSection?: SectionKey;
     ownerOnly?: boolean;
-    group?: "operations" | "business_tools" | "finance";
+    group?: "operations" | "business_tools" | "finance" | "procurement";
+    /** When true, only highlight as active on an exact path match (not prefix). */
+    exactMatch?: boolean;
   }
 
   const allNavItems: NavItem[] = [
@@ -108,7 +110,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Invoices",              href: "/invoices",             icon: FileText,        feature: "invoices",     section: null,       ownerOnly: true,  group: "finance" },
     { name: "Square Transactions",   href: "/square-transactions",  icon: CreditCard,      feature: null,           section: null,       ownerOnly: true,  group: "finance" },
     { name: "Banking",               href: "/banking",              icon: Landmark,        feature: null,           section: null,       ownerOnly: true,  group: "finance" },
-    { name: "Bid Opportunities",     href: "/bids",                 icon: ScrollText,      feature: null,           section: null,       ownerOnly: true,  group: "finance" },
+    { name: "Find Work",              href: "/bids",                 icon: ScrollText,      feature: null,           section: null,       ownerOnly: true,  group: "procurement" },
+    { name: "Find Equipment",         href: "/equipment",            icon: PackageSearch,   feature: null,           section: null,       ownerOnly: true,  group: "procurement", exactMatch: true },
+    { name: "My Equipment",           href: "/equipment/inventory",  icon: Warehouse,       feature: null,           section: null,       ownerOnly: true,  group: "procurement" },
     { name: "Accounting & Tax",      href: "/accounting",           icon: BookOpen,        feature: "invoices",     section: "invoices", group: "finance" },
     { name: "Integrations & APIs",   href: "/integrations",         icon: KeyRound,        feature: null,           section: null,       ownerOnly: true  },
     { name: "Settings",              href: "/settings",             icon: Settings,        feature: null,           section: null,       ownerOnly: true  },
@@ -194,6 +198,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     operations: "Operations",
     business_tools: "Business Tools",
     finance: "Finance",
+    procurement: "Procurement",
   };
 
   function renderNavItems(items: NavItem[]) {
@@ -215,7 +220,9 @@ export function AppLayout({ children }: AppLayoutProps) {
       }
       lastGroup = currentGroup;
 
-      const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+      const isActive = item.exactMatch
+        ? location === item.href
+        : (location === item.href || (item.href !== "/" && location.startsWith(item.href)));
       const isBids = item.href === "/bids";
       const dest = item.href;
       result.push(

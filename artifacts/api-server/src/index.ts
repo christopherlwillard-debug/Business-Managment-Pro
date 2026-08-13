@@ -523,6 +523,8 @@ async function start() {
   await recomputePartialSubPaymentStatuses();
   await seedDefaultBusinesses();
   await seedBidSourceCatalog();
+  const { seedEquipmentSources } = await import("./lib/equipmentSourceSeeds.js");
+  await seedEquipmentSources();
 
   await backfillMileageBusiness();
   app.listen(port, () => {
