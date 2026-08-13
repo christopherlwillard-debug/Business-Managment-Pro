@@ -8,8 +8,21 @@
  *
  * Alongside the capability definitions, each business type has a set of
  * `CapabilitySearchGroup` entries that control how SAM.gov is queried.
- * The search groups keep NAICS codes and keywords grouped by capability
- * so the engine runs targeted searches instead of an N×M cross-product.
+ *
+ * ── Search philosophy ────────────────────────────────────────────────────────
+ * Government procurement language differs from trade language.  Agencies write
+ * "building alteration" not "baseboard installation", "pavement maintenance"
+ * not "sealcoating", "floor covering replacement" not "LVP installation".
+ *
+ * Strategy: search broadly using the vocabulary agencies actually use → rely on
+ * intelligent scoring to rank results → surface strong matches → flag
+ * questionable / license-required work for review.
+ *
+ * Each search group runs:
+ *   NAICS × anchorKeywords   — broad terms agencies use, paired with relevant NAICS
+ *   specificKeywords          — targeted multi-word phrases, no NAICS restriction
+ *                               (catches mislabeled opportunities)
+ *   PSC × anchorKeywords     — PSC-coded opportunities paired with broad terms
  *
  * Never hard-delete these constants — bidSync reads them as fallback.
  */
@@ -21,7 +34,7 @@ export interface CapabilityDefinition {
   name: string;
   description: string;           // AI prompt context — one tight paragraph
   naicsCodes: string[];
-  keywords: string[];            // SAM.gov positive search terms (also used for scoring)
+  keywords: string[];            // scoring terms (also used by local scraper)
   negativeKeywords: string[];    // terms to deprioritise (title/desc match)
   equipment: string[];           // equipment available for scoring
   localKeywords: string[];       // KY/IN local-scraper filter words
@@ -89,6 +102,9 @@ export const TITLE_HARD_SUPPRESS_TERMS = [
 //   Welding/Fabrication · Debris Hauling · Compact Loader/Dirt Work
 //
 // bidSync detects old v1 keys and re-seeds automatically.
+//
+// Scoring keywords include BOTH trade terms AND government procurement language
+// so that broadly-searched opportunities score correctly.
 
 export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
   // ── 1. Trim Carpentry & Finish Work ────────────────────────────────────────
@@ -104,13 +120,19 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "finish carpentry for residential and light-commercial projects. " +
       "Works across KY/IN region. Not equipped for large-scale commercial millwork " +
       "production or factory millwork supply contracts.",
-    naicsCodes: ["238350"],    // Finish carpentry
+    naicsCodes: ["238350"],
     keywords: [
+      // Trade-specific terms
       "finish carpentry", "interior trim", "trim installation", "baseboard installation",
       "door casing", "window trim", "crown molding", "wainscoting", "chair rail",
       "millwork installation", "punch out work", "manufactured home trim", "trim work",
       "interior finish", "finish work", "door installation", "window installation",
       "casing installation", "base molding", "door frames",
+      // Government procurement language
+      "carpentry services", "carpentry contract", "interior renovation carpentry",
+      "building alteration carpentry", "interior alteration", "finish trades",
+      "wood installation", "architectural millwork", "interior finishes",
+      "building interior finishes", "wood trim", "door and window installation",
     ],
     negativeKeywords: [
       "commercial millwork 50,000", "factory millwork supply", "millwork manufacturing",
@@ -137,8 +159,9 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "commercial spaces. Strong portfolio in manufactured-home flooring. " +
       "CANNOT perform: large-scale commercial flooring requiring multiple crews, " +
       "or projects requiring a general contractor license as prime.",
-    naicsCodes: ["238330", "238340"],   // Flooring / Tile
+    naicsCodes: ["238330", "238340"],
     keywords: [
+      // Trade-specific terms
       "flooring installation", "floor installation", "LVP installation",
       "luxury vinyl plank", "vinyl plank", "vinyl flooring", "carpet installation",
       "hardwood flooring", "laminate flooring", "tile installation",
@@ -146,6 +169,12 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "vinyl sheet", "carpet replacement", "floor covering installation",
       "subfloor installation", "flooring contractor", "ceramic tile",
       "porcelain tile", "manufactured home flooring",
+      // Government procurement language
+      "floor covering replacement", "carpet and flooring", "VCT replacement",
+      "vinyl composition tile", "floor covering contract", "flooring services",
+      "interior floor replacement", "floor tile replacement", "floor covering services",
+      "resilient floor covering", "flooring and carpet", "carpet services",
+      "floor repair services", "flooring contract", "floor covering work",
     ],
     negativeKeywords: [
       "commercial flooring 50,000 square", "flooring manufacturing",
@@ -175,6 +204,7 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "— verify threshold before bidding as prime.",
     naicsCodes: ["236116", "236118", "238990"],
     keywords: [
+      // Trade-specific terms
       "remodeling", "renovation", "residential remodel", "interior renovation",
       "home renovation", "property maintenance", "residential repair",
       "handyman services", "home repair", "maintenance repair",
@@ -182,6 +212,13 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "painting services", "interior painting", "minor renovation",
       "building renovation", "property improvement", "repair services",
       "maintenance services", "facility upkeep", "turnover work",
+      // Government procurement language
+      "alteration", "repair and alteration", "minor construction", "building alteration",
+      "facility alteration", "renovation services", "building renovation services",
+      "interior renovation services", "property rehabilitation", "housing renovation",
+      "residential alteration", "unit renovation", "dormitory renovation",
+      "barracks renovation", "minor repair services", "facility renovation",
+      "alteration services", "renovation and repair",
     ],
     negativeKeywords: [
       "new construction commercial high-rise", "multistory new construction",
@@ -219,14 +256,24 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "or HVAC system work.",
     naicsCodes: ["238990", "561499", "561210"],
     keywords: [
+      // Trade-specific terms
       "building maintenance", "facility maintenance", "park maintenance",
       "building repair", "facility repair", "restroom renovation",
       "public building maintenance", "park facility", "preventive maintenance",
       "IDIQ maintenance", "maintenance contract", "minor repairs",
-      "janitorial services", "custodial services", "general maintenance",
-      "facilities maintenance", "building upkeep", "maintenance task order",
-      "indefinite delivery maintenance", "on-call maintenance",
+      "general maintenance", "facilities maintenance", "building upkeep",
+      "maintenance task order", "indefinite delivery maintenance", "on-call maintenance",
       "park restroom", "recreation facility maintenance",
+      // Government procurement language (high-value federal category)
+      "operations and maintenance", "O&M", "facilities operations",
+      "building operations", "base operations", "facility support",
+      "recurring maintenance", "facility support services", "grounds and facilities",
+      "maintenance and repair services", "building services", "facility management",
+      "property maintenance services", "grounds maintenance", "custodial services",
+      "janitorial and maintenance", "facilities management", "base operations support",
+      "maintenance and custodial", "park and facility", "trail maintenance",
+      "recreation area maintenance", "campground maintenance", "visitor facility",
+      "maintenance services contract", "facilities repair",
     ],
     negativeKeywords: [
       "HVAC installation", "electrical installation", "landscaping primary",
@@ -271,6 +318,7 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "238190",  // Other foundation/structure/building exterior contractors
     ],
     keywords: [
+      // Trade-specific terms
       "welding", "metal fabrication", "structural steel", "welding services",
       "fabrication", "certified welder", "boiler maintenance", "boiler repair",
       "pipe welding", "equipment repair", "industrial welding", "steel erection",
@@ -281,6 +329,12 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "turnaround maintenance", "piping repair", "piping installation",
       "heat exchanger", "pressure vessel", "tank repair", "tank maintenance",
       "structural welding", "fitter welder", "ironworker", "rigging",
+      // Government procurement language
+      "structural repair", "metal component repair", "industrial repair",
+      "industrial equipment repair", "maintenance welding", "structural metal repair",
+      "steel structure repair", "heavy equipment repair", "maintenance fabrication",
+      "metal repair services", "pipeline repair", "vessel and tank repair",
+      "fabrication and installation", "repair and fabrication",
     ],
     negativeKeywords: [
       "plumbing only", "hvac only", "licensed electrician only",
@@ -321,12 +375,18 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "wastewater/septic/liquid waste.",
     naicsCodes: ["562111", "562119", "562910"],
     keywords: [
+      // Trade-specific terms
       "debris removal", "waste hauling", "junk removal", "material hauling",
       "site cleanup", "debris hauling", "trash removal", "cleanout",
       "rubbish removal", "demolition debris", "roll-off", "construction debris",
       "site clearing", "haul away", "bulk waste", "property cleanout",
       "cleanout services", "solid waste collection", "waste removal",
       "material removal", "dump trailer", "dumpster service",
+      // Government procurement language
+      "haul and dispose", "excess property removal", "surplus material removal",
+      "government excess property", "facility cleanout", "scrap removal",
+      "base cleanout", "material disposal services", "waste collection services",
+      "debris and waste removal", "property disposal services",
     ],
     negativeKeywords: [
       ...HAZMAT_NEGATIVE_TERMS,
@@ -360,12 +420,19 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
       "requiring full-size equipment.",
     naicsCodes: ["238910", "237990", "237110"],
     keywords: [
+      // Trade-specific terms
       "site preparation", "excavation", "grading", "site work", "dirt work",
       "earthwork", "land clearing", "lot clearing", "backfilling",
       "material spreading", "drainage work", "culvert installation",
       "erosion control", "stormwater", "small excavation", "compact equipment",
       "loader work", "backhoe work", "site cleanup", "grading services",
       "rough grading", "finish grading", "topsoil spreading",
+      // Government procurement language
+      "site clearing", "site development", "drainage improvement",
+      "access road grading", "minor grading", "earth moving",
+      "utility trench", "drainage pipe installation", "small site work",
+      "culvert replacement", "erosion and sediment control",
+      "stormwater drainage", "site clearing and grading",
     ],
     negativeKeywords: [
       "highway construction", "interstate", "bridge construction",
@@ -386,24 +453,33 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
 export const ASPHALT_SEALING_CAPABILITIES: CapabilityDefinition[] = [
   {
     capabilityKey: "asphalt_sealing",
-    name: "Asphalt Sealcoating & Paving",
+    name: "Asphalt Sealcoating & Pavement Maintenance",
     description:
       "Asphalt and sealcoating contractor (NAICS 237310) performing parking lot " +
-      "sealcoating, crack sealing, pavement striping, pothole patching, and " +
+      "sealcoating, crack sealing, pavement marking, pothole patching, and " +
       "new asphalt paving for commercial and municipal clients. " +
+      "Skilled in pavement preservation and maintenance programs. " +
       "Operates in KY/IN region.",
     naicsCodes: ["237310"],
     keywords: [
+      // Trade-specific terms
       "asphalt", "sealcoat", "sealcoating", "pavement", "parking lot",
       "parking-lot", "striping", "crack seal", "crack-seal", "paving",
       "asphalt paving", "asphalt repair", "pothole", "milling",
       "road resurfacing", "driveway",
+      // Government procurement language
+      "pavement maintenance", "parking lot maintenance", "pavement repair",
+      "pavement marking", "parking area maintenance", "pavement preservation",
+      "surface treatment", "parking surface", "lot resurfacing",
+      "pavement management", "road surface", "asphalt maintenance",
+      "parking facility", "lot striping", "pavement overlay",
+      "crack filling", "seal coating", "bituminous",
     ],
     negativeKeywords: [],
     equipment: ["sealcoating sprayer", "crack sealing equipment", "line striper", "asphalt roller"],
     localKeywords: [
       "asphalt", "sealcoat", "paving", "pavement", "striping", "crack seal",
-      "parking lot", "driveway",
+      "parking lot", "driveway", "pavement maintenance", "parking area",
     ],
     active: true,
     sortOrder: 10,
@@ -412,147 +488,237 @@ export const ASPHALT_SEALING_CAPABILITIES: CapabilityDefinition[] = [
 
 // ── Capability-grouped SAM.gov search configuration ──────────────────────────
 //
-// These groups replace the flat mergeCapabilitySearchParams() → all-pairs matrix.
-// Each group searches its own NAICS+anchorKeywords and adds specificKeywords
-// (no NAICS) to catch opportunities whose SAM.gov NAICS differs from expected.
+// Search philosophy: use government procurement vocabulary, not trade vocabulary.
+// Government solicitations say "building alteration", "pavement maintenance",
+// "floor covering replacement" — not "baseboard installation", "sealcoating",
+// "LVP installation". Anchor keywords are the terms agencies actually use.
 //
-// Total GC requests: ~200 (vs ~4,000 with the old all-pairs approach).
-// Controlled concurrency (SAM_MAX_CONCURRENT=8) prevents rate-limit hits.
+// Each group searches:
+//   NAICS × anchorKeywords   — broad, government-language terms paired with NAICS
+//   specificKeywords          — targeted multi-word phrases, no NAICS restriction
+//   PSC × anchorKeywords     — PSC-coded opportunities with government-language terms
+//
+// Total GC requests: ~370 (vs 199 before this revision)
+// Total Asphalt requests: ~63 (vs 25 before this revision)
+// Concurrency cap (SAM_MAX_CONCURRENT=8) prevents rate-limit hits.
 
 export const GENERAL_CONTRACTING_SEARCH_GROUPS: CapabilitySearchGroup[] = [
+  // ── 1. Trim Carpentry & Finish Work ────────────────────────────────────────
+  // Government language: "carpentry", "interior renovation", "building alteration"
+  // Not: "baseboard installation", "crown molding installation" (too trade-specific)
   {
     capabilityKey:   "trim_carpentry",
     capabilityName:  "Trim Carpentry & Finish Work",
-    naicsCodes:      ["238350"],
-    anchorKeywords:  ["finish carpentry", "interior trim", "carpentry services"],
+    naicsCodes:      ["238350", "238990", "238390"],
+    anchorKeywords:  ["carpentry", "interior renovation", "building alteration", "finish work"],
     specificKeywords: [
-      "baseboard installation", "door casing installation", "window trim installation",
-      "crown molding installation", "manufactured home trim", "punch out carpentry",
-      "interior finish work", "millwork installation",
+      // Specific enough to be targeted, broad enough that govt uses them
+      "finish carpentry services", "interior trim installation",
+      "interior finish carpentry", "carpentry services contract",
+      "door and window installation", "architectural millwork installation",
+      "wood trim installation", "interior alteration carpentry",
+      "millwork installation services", "interior finishes contract",
+      "building interior finishes", "punch out carpentry",
+      "manufactured home trim", "door installation services",
+      "window installation services", "finish trades services",
     ],
-    pscCodes: ["Y1DA", "Z1DA"],
+    pscCodes: ["Y1DA", "Z1DA", "Z1AA", "Y1AA"],
     qualificationRequired: [],
   },
+
+  // ── 2. Flooring Installation ───────────────────────────────────────────────
+  // Government language: "floor covering", "carpet replacement", "VCT replacement"
+  // Not: "LVP installation", "luxury vinyl plank installation" (too trade-specific)
   {
     capabilityKey:   "flooring_installation",
     capabilityName:  "Flooring Installation",
-    naicsCodes:      ["238330", "238340"],
-    anchorKeywords:  ["flooring installation", "floor installation", "carpet installation"],
+    naicsCodes:      ["238330", "238340", "238990"],
+    anchorKeywords:  ["flooring", "floor covering", "carpet", "floor replacement"],
     specificKeywords: [
-      "LVP installation", "luxury vinyl plank installation", "vinyl plank flooring",
-      "vinyl flooring installation", "laminate flooring installation",
-      "hardwood flooring installation", "tile installation flooring",
-      "floor replacement services", "resilient flooring installation",
-      "manufactured home flooring",
+      "flooring installation services", "floor covering replacement",
+      "carpet replacement services", "resilient flooring installation",
+      "vinyl flooring installation", "LVP installation",
+      "luxury vinyl plank installation", "laminate flooring installation",
+      "hardwood flooring installation", "ceramic tile installation",
+      "VCT replacement services", "vinyl composition tile replacement",
+      "floor covering installation contract", "tile and flooring services",
+      "interior floor replacement", "manufactured home flooring",
+      "flooring services contract", "floor repair services",
+      "carpet and flooring services",
     ],
-    pscCodes: ["Y1DA", "Z1DA"],
+    pscCodes: ["Y1DA", "Z1DA", "Z1BA", "Y1BA"],
     qualificationRequired: [],
   },
+
+  // ── 3. Residential Remodeling & Maintenance ────────────────────────────────
+  // Government language: "alteration", "repair and alteration", "minor construction"
+  // Not: "residential renovation services", "home remodeling services"
   {
     capabilityKey:   "residential_remodel",
     capabilityName:  "Residential Remodeling & Maintenance",
-    naicsCodes:      ["236116", "236118", "238990"],
-    anchorKeywords:  ["remodeling", "renovation", "maintenance repair"],
+    naicsCodes:      ["236116", "236118", "238990", "238320", "238310"],
+    anchorKeywords:  ["renovation", "alteration", "repair and alteration", "minor construction"],
     specificKeywords: [
-      "residential renovation services", "home remodeling services",
-      "interior renovation contractor", "property maintenance services",
-      "handyman services government", "punch list completion",
-      "property turnover services", "drywall repair services",
-      "minor repairs government", "residential repair services",
+      "building alteration services", "facility alteration contract",
+      "interior renovation services", "repair and renovation services",
+      "building renovation services", "residential alteration services",
+      "housing renovation services", "property rehabilitation services",
+      "dormitory renovation services", "barracks renovation services",
+      "unit renovation services", "minor repairs government",
+      "drywall repair services", "handyman services government",
+      "property maintenance services", "punch list completion services",
+      "residential repair services", "minor construction services",
+      "interior renovation contractor",
     ],
-    pscCodes: ["Y1AA", "Y1BA", "Z1AA", "Z2AA"],
+    pscCodes: ["Y1AA", "Y1BA", "Z1AA", "Z2AA", "Y1DA", "Z1DA"],
     qualificationRequired: [
       "electrical", "plumbing", "HVAC", "licensed electrician", "licensed plumber",
     ],
   },
+
+  // ── 4. Building & Park Facility Maintenance ────────────────────────────────
+  // RICHEST category for federal contracts. Government uses:
+  // "O&M", "facilities maintenance", "maintenance and repair", "building operations"
   {
     capabilityKey:   "building_park_maintenance",
     capabilityName:  "Building & Park Facility Maintenance",
     naicsCodes:      ["238990", "561499", "561210"],
-    anchorKeywords:  ["building maintenance", "facility maintenance", "park maintenance"],
+    anchorKeywords:  ["facilities maintenance", "maintenance and repair", "building services", "park maintenance"],
     specificKeywords: [
-      "public facility repair services", "building repair services",
-      "restroom renovation government", "park facility maintenance services",
+      // Core federal O&M / IDIQ language
+      "operations and maintenance services", "O&M contract services",
+      "facilities operations and maintenance", "building operations and maintenance",
+      "base operations support services", "recurring maintenance contract",
       "preventive maintenance contract", "IDIQ maintenance services",
       "indefinite delivery maintenance", "on-call maintenance contract",
-      "recreation facility maintenance", "janitorial building maintenance",
+      "maintenance task order services", "facility support services",
+      // Park / recreation / outdoor facilities
+      "park facility maintenance services", "recreation facility maintenance",
+      "restroom renovation government", "trail and park maintenance",
+      "campground maintenance services", "visitor facility maintenance",
+      "recreation area maintenance", "outdoor facility maintenance",
+      // Broader facility / building maintenance
+      "grounds and facilities maintenance", "janitorial and maintenance services",
+      "facilities management services", "property maintenance contract",
+      "public facility repair services", "building repair services",
     ],
-    pscCodes: ["Z1AA", "Z2AA", "Z1BA", "Z2BA"],
+    pscCodes: ["Z1AA", "Z2AA", "Z1BA", "Z2BA", "Z1EA", "Z2EA"],
     qualificationRequired: [
       "asbestos", "lead paint", "mold remediation", "licensed electrician",
     ],
   },
+
+  // ── 5. Welding & Metal Fabrication ────────────────────────────────────────
+  // Government language: "structural repair", "industrial maintenance", "equipment repair"
   {
     capabilityKey:   "welding_fabrication",
     capabilityName:  "Welding & Metal Fabrication",
     naicsCodes:      ["811310", "332312", "332313", "332410", "332420", "238190"],
-    anchorKeywords:  ["welding", "fabrication", "industrial maintenance"],
+    anchorKeywords:  ["welding", "metal fabrication", "industrial maintenance", "structural repair"],
     specificKeywords: [
-      "metal fabrication services", "structural steel repair",
-      "steel fabrication contractor", "boiler maintenance services",
-      "pipe welding services", "equipment repair welding",
-      "welding services contract", "certified welder contract",
-      "steel erection services", "vessel repair services",
-      "T&M maintenance welding", "MIG TIG welding",
-      "industrial welding contract", "shutdown turnaround maintenance",
-      "on-call maintenance welding",
+      "welding services contract", "metal fabrication services",
+      "structural steel repair services", "steel fabrication contractor",
+      "boiler maintenance services", "pipe welding services",
+      "industrial welding contract", "industrial equipment repair services",
+      "steel structure repair contract", "vessel repair services",
+      "T&M maintenance welding", "shutdown turnaround maintenance",
+      "on-call maintenance welding", "maintenance and repair welding",
+      "structural metal repair services", "heavy equipment repair services",
+      "pipeline welding services", "vessel and tank repair services",
+      "maintenance fabrication services", "metal component repair services",
+      "steel erection services", "certified welder contract",
     ],
-    pscCodes: ["J063", "J065", "J066", "Z1NA", "Z2NA"],
+    pscCodes: ["J063", "J065", "J066", "Z1NA", "Z2NA", "J020", "J099"],
     qualificationRequired: [
       "ASME", "R-stamp", "S-stamp", "pressure vessel certification",
       "boiler license", "National Board", "AWS certified",
       "CWI", "certified welding inspector", "NBIC",
     ],
   },
+
+  // ── 6. Debris Hauling & Site Cleanup ──────────────────────────────────────
+  // Government language: "haul and dispose", "excess property removal", "material removal"
   {
     capabilityKey:   "debris_hauling",
     capabilityName:  "Debris Hauling & Site Cleanup",
-    naicsCodes:      ["562111", "562119", "562910"],
-    anchorKeywords:  ["debris removal", "waste hauling", "cleanup services"],
+    naicsCodes:      ["562111", "562119", "562910", "484110"],
+    anchorKeywords:  ["debris removal", "waste removal", "cleanup services", "material removal"],
     specificKeywords: [
-      "construction debris removal", "junk removal services",
-      "material hauling services", "site cleanup services",
+      "construction debris removal services", "haul and dispose services",
+      "demolition debris removal", "site cleanup contract",
+      "junk removal services", "material hauling services",
       "cleanout services government", "rubbish removal services",
-      "demolition debris removal", "bulk waste removal",
-      "property cleanout services", "haul away services",
-      "roll-off services",
+      "bulk waste removal services", "property cleanout services",
+      "excess property removal services", "surplus material removal",
+      "roll-off services contract", "facility cleanout services",
+      "scrap removal services", "debris and waste removal",
+      "material removal and disposal", "base cleanout contract",
+      "government excess property removal", "waste collection services",
     ],
-    pscCodes: ["Z1QA"],
+    pscCodes: ["Z1QA", "Z1AA"],
     qualificationRequired: [
       "hazardous waste", "hazmat", "medical waste", "radioactive",
     ],
   },
+
+  // ── 7. Compact Loader / Backhoe / Small Dirt Work ─────────────────────────
+  // Government language: "earthwork", "site clearing", "drainage improvement"
   {
     capabilityKey:   "compact_dirt_work",
     capabilityName:  "Compact Loader / Backhoe / Small Dirt Work",
     naicsCodes:      ["238910", "237990", "237110"],
-    anchorKeywords:  ["site preparation", "excavation", "grading"],
+    anchorKeywords:  ["site preparation", "excavation", "grading", "earthwork"],
     specificKeywords: [
-      "dirt work services", "site grading services", "land clearing services",
-      "backfilling services", "earthwork small", "culvert installation services",
-      "drainage work services", "erosion control installation",
-      "lot clearing services", "material spreading services",
-      "small excavation services", "compact loader services",
+      "site clearing and grading", "land clearing services",
+      "drainage improvement services", "culvert replacement services",
+      "erosion control installation", "stormwater drainage installation",
+      "minor excavation services", "small site work contract",
+      "access road grading services", "earth moving services",
+      "compact equipment site work", "utility trench excavation",
+      "drainage pipe installation", "erosion and sediment control",
+      "minor grading services", "lot clearing services",
+      "backfilling services", "material spreading services",
+      "foundation excavation services", "culvert installation services",
+      "small site development services",
     ],
-    pscCodes: ["Y1NA", "Z1NA"],
+    pscCodes: ["Y1NA", "Z1NA", "Z2NA", "Y1QA"],
     qualificationRequired: [],
   },
 ];
 
+// ── Asphalt Sealing search groups ─────────────────────────────────────────────
+//
+// Expanded to cover government pavement maintenance vocabulary.
+// Agencies post "pavement maintenance", "parking lot maintenance", "pavement
+// repair" — not "sealcoating".  The specific-keyword list (no NAICS) also
+// catches opportunities posted under adjacent NAICS codes (e.g. 237990).
+//
+// NAICS 237990 added: other heavy/civil engineering construction.
+// Government sometimes codes parking-lot or pavement work here rather than 237310.
+
 export const ASPHALT_SEARCH_GROUPS: CapabilitySearchGroup[] = [
   {
     capabilityKey:   "asphalt_sealing",
-    capabilityName:  "Asphalt Sealcoating & Paving",
-    naicsCodes:      ["237310"],
-    anchorKeywords:  ["asphalt", "sealcoating", "paving"],
+    capabilityName:  "Asphalt Sealcoating & Pavement Maintenance",
+    naicsCodes:      ["237310", "237990"],
+    anchorKeywords:  ["asphalt", "sealcoating", "paving", "pavement", "parking lot"],
     specificKeywords: [
-      "asphalt repair services", "crack sealing services",
-      "pavement marking services", "pothole patching services",
-      "parking lot sealcoating", "road resurfacing services",
-      "asphalt milling services", "pavement overlay",
-      "parking lot striping", "driveway paving",
+      // Trade terms that do appear in federal solicitations
+      "asphalt repair services", "crack sealing services", "pothole patching services",
+      "parking lot sealcoating", "asphalt milling services", "pavement overlay services",
+      "parking lot striping", "driveway paving services",
+      // Government procurement language for pavement work
+      "pavement maintenance services", "parking lot maintenance contract",
+      "parking area maintenance services", "asphalt maintenance contract",
+      "pavement preservation services", "surface treatment pavement contract",
+      "pavement management services", "lot resurfacing services",
+      "pavement repair contract", "parking facility maintenance",
+      "bituminous surface treatment", "asphalt surface repair services",
+      "crack fill services", "parking surface maintenance",
+      "pavement marking services", "road resurfacing services",
+      "seal coat services", "parking lot repair services",
     ],
-    pscCodes: ["Y1QA", "Z1QA", "Y1NA", "Z1NA"],
+    pscCodes: ["Y1QA", "Z1QA", "Y1NA", "Z1NA", "Z2QA", "Z2NA"],
     qualificationRequired: [],
   },
 ];

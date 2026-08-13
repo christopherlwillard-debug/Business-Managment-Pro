@@ -65,11 +65,13 @@ const NAICS_SCOPE: Record<string, string> = {
   "238170": "general_contracting", // Siding/sheet metal
   "238220": "general_contracting", // Plumbing, heating & A/C (MH also)
   "238320": "general_contracting", // Painting & wall covering
-  "238390": "general_contracting", // Other finish trades
+  "238390": "general_contracting", // Other building finishing contractors
   "238990": "general_contracting", // Other specialty trade contractors
   // Building / Park / Facility Maintenance
   "561210": "general_contracting", // Facilities support services
   "561499": "general_contracting", // All other building service contractors
+  // Hauling / Trucking
+  "484110": "dump_waste",          // General freight trucking, local (dump-truck hauling)
 };
 
 // ── Title keyword scope rules ─────────────────────────────────────────────────
