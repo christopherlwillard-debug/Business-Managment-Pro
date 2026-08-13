@@ -230,6 +230,14 @@ export interface BidSourceConnection {
   recordsImported:    number | null;
   portalUrl:          string | null;
   portalLabel:        string | null;
+  // Phase 7 — data quality summary from bid_opportunities.data_completeness
+  qualityStats?: {
+    complete:           number;
+    partial:            number;
+    needs_verification: number;
+    unknown:            number;
+    total:              number;
+  } | null;
 }
 
 export const PIPELINE_STAGES: Array<{ value: BidStage; label: string; color: string; bg: string; dotColor: string }> = [

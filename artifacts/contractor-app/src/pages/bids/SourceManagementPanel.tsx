@@ -145,6 +145,51 @@ function AutoSourceRow({
           )}
         </div>
       )}
+
+      {/* ── Data quality chip (Phase 7) ────────────────────────────────────── */}
+      {/* Shown whenever there are bid records for this source, regardless of sync status.
+          "unknown" rows (e.g. USASpending awards that never set dataCompleteness) are
+          treated equivalently to needs_verification: both represent unverified data. */}
+      {source.qualityStats && source.qualityStats.total > 0 && (() => {
+        const q = source.qualityStats;
+        // Unknown records (default DB value) are unverified — count them alongside
+        // explicit needs_verification when computing the warning threshold.
+        const unverifiedCount  = q.needs_verification + q.unknown;
+        const unverifiedRatio  = unverifiedCount / q.total;
+        const isHighUnverified = unverifiedRatio > 0.5;
+        const parts: string[] = [];
+        if (q.complete > 0)           parts.push(`${q.complete} complete`);
+        if (q.partial > 0)            parts.push(`${q.partial} partial`);
+        if (q.needs_verification > 0) parts.push(`${q.needs_verification} incomplete`);
+        if (q.unknown > 0)            parts.push(`${q.unknown} unverified`);
+        // parts is always non-empty here because total > 0
+        const pct = Math.round(unverifiedRatio * 100);
+        return (
+          <div
+            className="ml-4 flex items-center gap-1.5 mt-0.5"
+            title={
+              isHighUnverified
+                ? `${pct}% of records from this source are missing key details ` +
+                  `(deadline, NAICS code, or description). The source may require a login ` +
+                  `to retrieve full solicitation details — verify directly at the source ` +
+                  `before acting on these bids.`
+                : `Data quality for this source: ${parts.join(", ")} (${q.total} total records).`
+            }
+          >
+            {isHighUnverified && (
+              <AlertCircle className="w-3 h-3 flex-shrink-0 text-amber-500" />
+            )}
+            <span className={cn(
+              "text-xs",
+              isHighUnverified
+                ? "text-amber-600 dark:text-amber-400"
+                : "text-muted-foreground"
+            )}>
+              {parts.join(" · ")}
+            </span>
+          </div>
+        );
+      })()}
     </div>
   );
 }

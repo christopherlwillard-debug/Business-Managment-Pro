@@ -11,7 +11,7 @@ import {
   crewCertificationsTable,
   equipmentInventoryTable,
 } from "@workspace/db";
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { deriveCapabilityCategories } from "../lib/bidCategories.js";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { BUILDPRO_AI_MINI_MODEL } from "../ai-models";
@@ -412,8 +412,49 @@ router.get("/sources", async (req, res) => {
 
     const connBySlug = new Map(connections.map((c) => [c.catalogSlug, c]));
 
+    // ── Phase 7: Data quality stats ─────────────────────────────────────────────
+    // Count bid_opportunities rows per source grouped by data_completeness, so the
+    // Source Management panel can show "X complete · Y partial · Z incomplete" per source.
+    const qualityRows = await db
+      .select({
+        source:           bidOpportunitiesTable.source,
+        dataCompleteness: bidOpportunitiesTable.dataCompleteness,
+        count:            sql<number>`COUNT(*)::int`,
+      })
+      .from(bidOpportunitiesTable)
+      .where(eq(bidOpportunitiesTable.businessId, bizId))
+      .groupBy(bidOpportunitiesTable.source, bidOpportunitiesTable.dataCompleteness);
+
+    type QualityCounts = { complete: number; partial: number; needs_verification: number; unknown: number; total: number };
+    const qualityByOppSource = new Map<string, QualityCounts>();
+    for (const row of qualityRows) {
+      const srcKey = row.source;
+      const dc     = row.dataCompleteness ?? "unknown";
+      if (!qualityByOppSource.has(srcKey)) {
+        qualityByOppSource.set(srcKey, { complete: 0, partial: 0, needs_verification: 0, unknown: 0, total: 0 });
+      }
+      const q = qualityByOppSource.get(srcKey)!;
+      if      (dc === "complete")            q.complete           += row.count;
+      else if (dc === "partial")             q.partial            += row.count;
+      else if (dc === "needs_verification")  q.needs_verification += row.count;
+      else                                   q.unknown            += row.count;
+      q.total += row.count;
+    }
+
+    // Map catalog slug → bid_opportunities.source column value.
+    // Only automated sources write bid_opportunities rows; portal-only sources are bookmarks.
+    const SLUG_TO_OPP_SOURCE: Record<string, string> = {
+      sam_gov:      "federal",
+      ky_in_local:  "state-local",
+      usa_spending: "usa-spending",
+      sba_subnet:   "subnet",
+      gsa_forecast: "gsa-forecast",
+    };
+
     const merged = catalog.map((src) => {
-      const conn = connBySlug.get(src.slug);
+      const conn     = connBySlug.get(src.slug);
+      const oppSrc   = SLUG_TO_OPP_SOURCE[src.slug];
+      const quality  = oppSrc ? (qualityByOppSource.get(oppSrc) ?? null) : null;
       return {
         slug:               src.slug,
         name:               src.name,
@@ -433,6 +474,8 @@ router.get("/sources", async (req, res) => {
         recordsImported:    conn?.recordsImported    ?? null,
         portalUrl:          conn?.portalUrl          ?? null,
         portalLabel:        conn?.portalLabel        ?? null,
+        // Phase 7 — data quality summary (null for portal-only sources that don't write rows)
+        qualityStats:       quality,
       };
     });
 
