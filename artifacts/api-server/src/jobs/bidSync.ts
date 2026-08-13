@@ -30,6 +30,7 @@ import { computeRecommendation } from "../lib/bidRecommendation.js";
 import { classifySourceHeuristic } from "../lib/officialSourceFinder.js";
 import { loadEnabledSources, isEnabled, writeConnectionHealth, bootstrapAutomatedConnections } from "../lib/bidSourceConnection.js";
 import { getCredential } from "../lib/credentialManager.js";
+import { detectContractType } from "../lib/bidContractTypeDetector.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -416,11 +417,16 @@ async function rescoreExistingBids(businessId: number, profile: ResolvedProfile)
       { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness },
       normalizeSetAsideType(bid.setAsideType),
     );
+    const detected = detectContractType({ title: bid.title, description: bid.description ?? null, noticeType: bid.noticeType });
     await db.update(bidOpportunitiesTable)
       .set({
         opportunityScore,
         capabilityMatches,
-        opportunityType: deriveOpportunityType(bid.source, bid.noticeType),
+        opportunityType:  deriveOpportunityType(bid.source, bid.noticeType),
+        contractType:     detected.contractType,
+        scopeSize:        detected.scopeSize,
+        licenseFlags:     detected.licenseFlags,
+        outOfScopeFlags:  detected.outOfScopeFlags,
       })
       .where(eq(bidOpportunitiesTable.id, bid.id));
     updated++;
@@ -483,6 +489,10 @@ async function upsertOpportunities(
         url: opp.url, source: opp.source ?? defaultSource, sourceLabel: opp.sourceLabel ?? defaultSourceLabel,
       });
 
+      const detectedNew = detectContractType({
+        title: opp.title, description: opp.description, aiSummary: null,
+        noticeType: (opp as SamOpportunity).noticeType ?? null,
+      });
       await db.insert(bidOpportunitiesTable).values({
         businessId,
         noticeId:              opp.noticeId,
@@ -505,6 +515,10 @@ async function upsertOpportunities(
         recommendation:        rec.recommendation,
         recommendationFactors: rec.factors as unknown as Record<string, unknown>[],
         officialSourceStatus:  srcStatus,
+        contractType:          detectedNew.contractType,
+        scopeSize:             detectedNew.scopeSize,
+        licenseFlags:          detectedNew.licenseFlags,
+        outOfScopeFlags:       detectedNew.outOfScopeFlags,
       });
       newOnes.push(opp);
     } else {
@@ -529,6 +543,11 @@ async function upsertOpportunities(
         existingAiSummary,
       );
 
+      const detectedExisting = detectContractType({
+        title: opp.title, description: opp.description,
+        aiSummary: existingAiSummary,
+        noticeType: (opp as SamOpportunity).noticeType ?? null,
+      });
       await db.update(bidOpportunitiesTable)
         .set({
           opportunityScore,
@@ -538,6 +557,10 @@ async function upsertOpportunities(
           opportunityType:       derivedOppType,
           recommendation:        rec.recommendation,
           recommendationFactors: rec.factors as unknown as Record<string, unknown>[],
+          contractType:          detectedExisting.contractType,
+          scopeSize:             detectedExisting.scopeSize,
+          licenseFlags:          detectedExisting.licenseFlags,
+          outOfScopeFlags:       detectedExisting.outOfScopeFlags,
         })
         .where(eq(bidOpportunitiesTable.id, existing.id));
     }

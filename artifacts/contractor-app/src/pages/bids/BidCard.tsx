@@ -1,7 +1,7 @@
 import {
   ExternalLink, Sparkles, XCircle, CheckCircle2,
   Building2, Shield, Users, Globe, Award, ChevronDown, Handshake, Info, Calendar, BookOpen,
-  Eye, Lock, BadgeCheck,
+  Eye, Lock, BadgeCheck, Zap, AlertTriangle, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AiSummary, BidOpportunity, BidStage, SetAsideType, RecommendationLevel, OfficialSourceStatus } from "./types";
@@ -214,6 +214,32 @@ function OpportunityTypeBadge({ type }: { type?: string | null }) {
   );
 }
 
+// ── Contract-type badge ───────────────────────────────────────────────────────
+
+const CONTRACT_TYPE_CONFIG: Record<string, { label: string; icon: typeof Zap; className: string; title: string }> = {
+  "T&M":                 { label: "T&M",          icon: Zap,           className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",  title: "Time & Materials contract — billed on actual hours and materials used" },
+  "labor_hour":          { label: "Labor Hour",    icon: Zap,           className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",  title: "Labor-Hour contract — billed per hour worked" },
+  "on_call":             { label: "On-Call",       icon: Zap,           className: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",          title: "On-Call / As-Needed contract — work ordered as required" },
+  "idiq":                { label: "IDIQ",          icon: Zap,           className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",  title: "IDIQ — Indefinite Delivery, Indefinite Quantity; work ordered via task orders" },
+  "task_order":          { label: "Task Order",    icon: Zap,           className: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",  title: "Task Order contract — individual tasks released under a master agreement" },
+  "shutdown_turnaround": { label: "Shutdown/TA",   icon: Zap,           className: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",          title: "Shutdown / Turnaround — time-critical plant outage or scheduled maintenance window" },
+};
+
+function ContractTypeBadge({ contractType }: { contractType: string }) {
+  const config = CONTRACT_TYPE_CONFIG[contractType];
+  if (!config) return null;
+  const { label, icon: Icon, className, title } = config;
+  return (
+    <span
+      title={title}
+      className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full", className)}
+    >
+      <Icon className="w-3 h-3" />
+      {label}
+    </span>
+  );
+}
+
 const STAGE_BADGE: Record<string, { label: string; className: string }> = {
   reviewing: { label: "Reviewing", className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" },
   bidding:   { label: "Bidding",   className: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" },
@@ -296,6 +322,43 @@ export default function BidCard({
         {effectiveSummary?.bondingRequired && (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
             Bond Req
+          </span>
+        )}
+
+        {/* ── Contract-type badge (T&M / On-Call / IDIQ / etc.) ── */}
+        {bid.contractType && bid.contractType !== "unknown" && bid.contractType !== "fixed_price" && (
+          <ContractTypeBadge contractType={bid.contractType} />
+        )}
+
+        {/* ── Scope size warning ── */}
+        {bid.scopeSize === "large" && (
+          <span
+            title="This opportunity may be sized for a large prime contractor — review crew size requirements before bidding"
+            className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+          >
+            <AlertTriangle className="w-3 h-3" />
+            Large scale
+          </span>
+        )}
+
+        {/* ── License-verify flags ── */}
+        {bid.licenseFlags && bid.licenseFlags.length > 0 && (
+          <span
+            title={`Verify before bidding: ${bid.licenseFlags.join(", ")}`}
+            className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+          >
+            <AlertCircle className="w-3 h-3" />
+            Verify license
+          </span>
+        )}
+
+        {/* ── Out-of-scope flags (shown, not hidden) ── */}
+        {bid.outOfScopeFlags && bid.outOfScopeFlags.length > 0 && (
+          <span
+            title={`Outside typical scope: ${bid.outOfScopeFlags.join(", ")}`}
+            className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
+          >
+            Outside scope
           </span>
         )}
       </div>

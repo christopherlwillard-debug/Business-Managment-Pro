@@ -42,6 +42,9 @@ const BUSINESS_NAICS: Record<string, string[]> = {
     "238910", "237990", "237110",
     // waste_hauling capability
     "562111", "562119", "562910",
+    // industrial_maintenance capability
+    "811310", "332312", "332313", "332410", "332420",
+    "238190", "238290",
   ],
 };
 
@@ -78,6 +81,7 @@ export default function BidOpportunities() {
   );
   const [filter,       setFilter]       = useState<BidFilter>("all");
   const [fitOnly,      setFitOnly]      = useState(false);
+  const [tmOnlyFilter, setTmOnlyFilter] = useState(false);
   const [sourceFilter,     setSourceFilter]     = useState<SourceFilter>("all");
   const [capabilityFilter, setCapabilityFilter] = useState<CapabilityFilter>("all");
   const [panelBid,     setPanelBid]     = useState<BidOpportunity | null>(null);
@@ -371,7 +375,7 @@ export default function BidOpportunities() {
   // Counts per capability key (computed from all pipeline bids, stage !== no_bid)
   const ALL_CAP_KEYS: CapabilityFilter[] = [
     "asphalt", "dump_waste", "flooring", "mfg_homes",
-    "site_work", "general_contracting", "subcontracting",
+    "site_work", "general_contracting", "industrial_maintenance", "subcontracting",
   ];
   const capabilityCounts: Partial<Record<CapabilityFilter, number>> = {
     all: pipelineBids.filter((b) => b.stage !== "no_bid").length,
@@ -412,9 +416,20 @@ export default function BidOpportunities() {
     (b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true
   ).length;
 
-  const displayedBids = fitOnly
+  const TM_CONTRACT_TYPES = new Set([
+    "T&M", "labor_hour", "on_call", "idiq", "task_order", "shutdown_turnaround",
+  ]);
+  const tmCount = sourceFiltered.filter(
+    (b) => b.contractType && TM_CONTRACT_TYPES.has(b.contractType)
+  ).length;
+
+  const fitFiltered = fitOnly
     ? sourceFiltered.filter((b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true)
     : sourceFiltered;
+
+  const displayedBids = tmOnlyFilter
+    ? fitFiltered.filter((b) => b.contractType && TM_CONTRACT_TYPES.has(b.contractType))
+    : fitFiltered;
 
   const subnetCount = pipelineBids.filter(
     (b) => b.source === "subnet" || b.source === "gsa-forecast"
@@ -634,6 +649,9 @@ export default function BidOpportunities() {
         setCapabilityFilter={setCapabilityFilter}
         capabilityCounts={capabilityCounts}
         activeBusinessType={activeBusiness?.type}
+        tmOnlyFilter={tmOnlyFilter}
+        setTmOnlyFilter={setTmOnlyFilter}
+        tmCount={tmCount}
       />
 
       {/* ── Sync health strip ───────────────────────────────────────────────── */}

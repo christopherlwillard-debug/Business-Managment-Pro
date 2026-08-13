@@ -82,6 +82,7 @@ import investmentsRouter from "./investments";
 import vehiclesRouter from "./vehicles";
 import propertyLookupRouter from "./property-lookup";
 import equipmentRouter from "./equipment.js";
+import crewRouter from "./crew";
 
 export type { SectionKey, SectionPermission, Permissions } from "./guards";
 export { invalidateOwnerCache };
@@ -315,5 +316,6 @@ router.get("/integrations/wix/config", requireOwner, (req, res) => {
 // so those take priority for wix paths.
 router.use("/integrations", requireOwner, integrationsRouter);
 router.use("/dashboard-tasks", requireOwner, dashboardTasksRouter);
+router.use("/crew", requireOwner, crewRouter);
 
 export default router;

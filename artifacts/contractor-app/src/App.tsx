@@ -48,6 +48,7 @@ const MfhKnowledgeBase = lazy(() => import("./pages/MfhKnowledgeBase"));
 const TripPacket = lazy(() => import("./pages/TripPacket"));
 const JobPayroll = lazy(() => import("./pages/JobPayroll"));
 const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage"));
+const CrewManagement = lazy(() => import("./pages/CrewManagement"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -342,6 +343,9 @@ function AdminApp() {
           </Route>
           <Route path="/integrations">
             <PermissionGuard ownerOnly><IntegrationsPage /></PermissionGuard>
+          </Route>
+          <Route path="/crew">
+            <PermissionGuard ownerOnly><CrewManagement /></PermissionGuard>
           </Route>
           <Route component={NotFound} />
         </Switch>

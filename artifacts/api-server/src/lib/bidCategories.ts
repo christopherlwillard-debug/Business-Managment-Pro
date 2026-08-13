@@ -75,6 +75,24 @@ export const CAPABILITY_CATEGORIES: CapabilityCategory[] = [
     ],
   },
   {
+    key:       "industrial_maintenance",
+    label:     "Industrial Maintenance",
+    // All 9 NAICS codes from the industrial_maintenance capability seed.
+    // 238910 and 237990 intentionally overlap with site_work (multi-category OK).
+    // 238190 and 238290 are unique to this category.
+    naicsCodes: [
+      "811310",  // Commercial/industrial machinery and equipment repair (primary)
+      "332312",  // Fabricated structural metal manufacturing
+      "332313",  // Plate work manufacturing (welding/fab)
+      "332410",  // Power boiler and heat exchanger manufacturing
+      "332420",  // Metal tank (heavy gauge) manufacturing
+      "238190",  // Other foundation/structure/building exterior contractors
+      "238290",  // Other building equipment contractors
+      "238910",  // Site prep / excavation (also in site_work — intentional)
+      "237990",  // Other heavy/civil engineering (also in site_work — intentional)
+    ],
+  },
+  {
     // Source-based — subnet opportunities regardless of NAICS code
     key:       "subcontracting",
     label:     "Subcontracting",

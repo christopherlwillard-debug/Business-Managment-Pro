@@ -116,6 +116,11 @@ export interface BidOpportunity {
   officialSourceStatus?:    OfficialSourceStatus | null;
   officialSourceCheckedAt?: string | null;
   createdAt:         string;
+  // Phase 5 — industrial maintenance contract-type intelligence
+  contractType?:     string | null;   // T&M | labor_hour | idiq | task_order | on_call | shutdown_turnaround | fixed_price | unknown
+  scopeSize?:        string | null;   // small | medium | large | unknown
+  licenseFlags?:     string[] | null; // items requiring licensing verification
+  outOfScopeFlags?:  string[] | null; // negative-keyword matches
   // Unified feed enrichment (present on GET /api/bids/unified responses)
   capabilityCategories?:   string[];
   relevantBusinessNames?:  string[];

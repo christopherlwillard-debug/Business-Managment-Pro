@@ -1,4 +1,4 @@
-import { CheckCircle2, Trophy, Handshake } from "lucide-react";
+import { CheckCircle2, Trophy, Handshake, Wrench, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BidStage } from "./types";
 
@@ -12,6 +12,7 @@ export type CapabilityFilter =
   | "mfg_homes"
   | "site_work"
   | "general_contracting"
+  | "industrial_maintenance"
   | "subcontracting";
 
 const STAGE_FILTER_TABS: Array<{ value: BidFilter; label: string }> = [
@@ -26,14 +27,15 @@ const STAGE_FILTER_TABS: Array<{ value: BidFilter; label: string }> = [
 ];
 
 const ALL_CAPABILITY_TABS: Array<{ value: CapabilityFilter; label: string }> = [
-  { value: "all",                label: "All" },
-  { value: "asphalt",            label: "Asphalt" },
-  { value: "dump_waste",         label: "Dump & Waste" },
-  { value: "general_contracting",label: "General Contracting" },
-  { value: "flooring",           label: "Flooring" },
-  { value: "site_work",          label: "Site Work" },
-  { value: "mfg_homes",          label: "Mfg Homes" },
-  { value: "subcontracting",     label: "Subcontracting" },
+  { value: "all",                   label: "All" },
+  { value: "asphalt",               label: "Asphalt" },
+  { value: "dump_waste",            label: "Dump & Waste" },
+  { value: "general_contracting",   label: "General Contracting" },
+  { value: "industrial_maintenance", label: "Industrial Maint." },
+  { value: "flooring",              label: "Flooring" },
+  { value: "site_work",             label: "Site Work" },
+  { value: "mfg_homes",             label: "Mfg Homes" },
+  { value: "subcontracting",        label: "Subcontracting" },
 ];
 
 /**
@@ -42,7 +44,7 @@ const ALL_CAPABILITY_TABS: Array<{ value: CapabilityFilter; label: string }> = [
  */
 const CAPABILITY_TABS_FOR_BUSINESS: Record<string, CapabilityFilter[]> = {
   asphalt_sealing:     ["all", "asphalt"],
-  general_contracting: ["all", "dump_waste", "general_contracting", "flooring", "site_work", "mfg_homes"],
+  general_contracting: ["all", "dump_waste", "general_contracting", "industrial_maintenance", "flooring", "site_work", "mfg_homes"],
 };
 
 interface Props {
@@ -62,6 +64,10 @@ interface Props {
   capabilityCounts:    Partial<Record<CapabilityFilter, number>>;
   // Active business type slug — used to show only relevant capability tabs
   activeBusinessType?: string;
+  // T&M / On-Call quick filter (shown when industrial_maintenance capability is active)
+  tmOnlyFilter?:     boolean;
+  setTmOnlyFilter?:  (v: boolean) => void;
+  tmCount?:          number;
 }
 
 export default function BidFilterBar({
@@ -69,7 +75,14 @@ export default function BidFilterBar({
   sourceFilter, setSourceFilter, awardsCount = 0, subnetCount = 0,
   capabilityFilter, setCapabilityFilter, capabilityCounts,
   activeBusinessType,
+  tmOnlyFilter = false, setTmOnlyFilter, tmCount = 0,
 }: Props) {
+  // Show T&M quick-filter when industrial maintenance capability or general contracting is selected
+  const showTmFilter = setTmOnlyFilter && (
+    capabilityFilter === "industrial_maintenance" ||
+    capabilityFilter === "all" ||
+    capabilityFilter === "general_contracting"
+  );
   // Only show capability tabs relevant to the selected business.
   // When no business is selected (all-businesses view), show all tabs.
   const allowedKeys = activeBusinessType
@@ -170,6 +183,31 @@ export default function BidFilterBar({
               {fitCount}
             </span>
           </button>
+
+          {/* T&M / On-Call quick filter — shown for industrial maintenance context */}
+          {showTmFilter && (
+            <button
+              onClick={() => setTmOnlyFilter!(!tmOnlyFilter)}
+              className={cn(
+                "flex-shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap",
+                tmOnlyFilter
+                  ? "bg-orange-600 text-white border-orange-600"
+                  : "bg-card text-muted-foreground border-border hover:border-orange-500/50 hover:text-foreground"
+              )}
+              title="Show only T&M, Labor Hour, On-Call, IDIQ, Task Order, and Shutdown/Turnaround opportunities"
+            >
+              <Zap className="w-3.5 h-3.5 flex-shrink-0" />
+              T&amp;M / On-Call
+              {tmCount > 0 && (
+                <span className={cn(
+                  "ml-0.5 text-xs px-1.5 py-0.5 rounded-full",
+                  tmOnlyFilter ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                )}>
+                  {tmCount}
+                </span>
+              )}
+            </button>
+          )}
         </div>
       )}
 

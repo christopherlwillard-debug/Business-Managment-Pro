@@ -408,6 +408,133 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
     active: true,
     sortOrder: 50,
   },
+  {
+    capabilityKey: "industrial_maintenance",
+    name: "Industrial Maintenance & Boilermaker Services",
+    description:
+      "Two-person boilermaker and industrial maintenance crew led by an experienced boilermaker. " +
+      "Performs plant/facility maintenance, equipment repair and installation, welding/fabrication, " +
+      "structural steel work, pressure vessel and tank maintenance, piping and mechanical services, " +
+      "and shutdown/turnaround work at industrial and manufacturing facilities. " +
+      "Specializes in Time & Materials (T&M), on-call, IDIQ, and task-order contracts where " +
+      "a small, skilled crew can be dispatched quickly. " +
+      "T&M / labor-hour / IDIQ / on-call / shutdown-turnaround contract structures are strongly preferred. " +
+      "IMPORTANT — scope-size awareness: this is a two-person crew. " +
+      "Multi-discipline prime contracts requiring 50+ workers are NOT a fit. " +
+      "IMPORTANT — license flags: if a solicitation mentions pressure vessels, boiler contractor license, " +
+      "R-stamp, S-stamp, ASME, or National Board certification, flag for licensing verification " +
+      "BEFORE bidding — do NOT auto-qualify or auto-disqualify. " +
+      "NEGATIVE KEYWORDS — show as 'outside scope' labels rather than hiding: " +
+      "plumbing-only, HVAC installation contractor, licensed electrician, fire suppression.",
+    naicsCodes: [
+      "811310", // Commercial/industrial machinery and equipment repair (primary)
+      "238190", // Other foundation/structure/building exterior contractors
+      "238290", // Other building equipment contractors
+      "238910", // Site prep / excavation (structural steel prep)
+      "332312", // Fabricated structural metal manufacturing
+      "332313", // Plate work manufacturing (welding/fab)
+      "332410", // Power boiler and heat exchanger manufacturing
+      "332420", // Metal tank (heavy gauge) manufacturing
+      "237990", // Other heavy/civil engineering construction
+    ],
+    keywords: [
+      // ── Maintenance types ──────────────────────────────────────────────────
+      "plant maintenance",
+      "facility maintenance",
+      "industrial maintenance",
+      "preventive maintenance",
+      "corrective maintenance",
+      "predictive maintenance",
+      "equipment maintenance",
+      "mechanical maintenance",
+      "maintenance repair operations",
+      // ── Shutdown / turnaround ──────────────────────────────────────────────
+      "shutdown",
+      "turnaround",
+      "plant turnaround",
+      "outage maintenance",
+      "scheduled outage",
+      "planned outage",
+      "maintenance outage",
+      "annual shutdown",
+      "refinery shutdown",
+      "mill shutdown",
+      // ── Equipment / mechanical ─────────────────────────────────────────────
+      "boilermaker",
+      "boiler maintenance",
+      "boiler repair",
+      "boiler installation",
+      "heat exchanger",
+      "pressure vessel",
+      "vessel repair",
+      "equipment repair",
+      "equipment installation",
+      "mechanical contractor",
+      "rotating equipment",
+      "pump maintenance",
+      "compressor maintenance",
+      "steam system",
+      // ── Welding / fabrication ──────────────────────────────────────────────
+      "welding",
+      "fabrication",
+      "structural steel",
+      "steel erection",
+      "pipe fabrication",
+      "pipefitter",
+      "fitter welder",
+      "certified welder",
+      // ── Vessels / tanks / piping ───────────────────────────────────────────
+      "storage tank",
+      "tank maintenance",
+      "tank repair",
+      "tank fabrication",
+      "piping maintenance",
+      "piping repair",
+      "piping installation",
+      "mechanical piping",
+      // ── Contract structure signals ─────────────────────────────────────────
+      "time and materials",
+      "time-and-materials",
+      "T&M",
+      "labor hour",
+      "labor-hour",
+      "IDIQ",
+      "indefinite delivery",
+      "indefinite quantity",
+      "on-call",
+      "on call",
+      "task order",
+      "as-needed",
+      // ── Trade terms ────────────────────────────────────────────────────────
+      "millwright",
+      "ironworker",
+      "rigging",
+      "crane pick",
+      "heavy lift",
+      "scaffolding erection",
+      "industrial scaffolding",
+      "insulation contractor",
+      "mechanical insulation",
+    ],
+    negativeKeywords: [
+      // These are flagged as 'outside scope' labels, not hard suppression
+      "plumbing only",
+      "hvac only",
+      "licensed electrician only",
+      "fire suppression system only",
+    ],
+    equipment: [
+      "welding machine", "cutting torch", "grinder", "rigging hardware",
+      "chain falls", "come-along", "hand tools", "power tools",
+    ],
+    localKeywords: [
+      "maintenance", "boiler", "industrial", "welding", "fabrication",
+      "shutdown", "turnaround", "plant", "equipment repair", "mechanical",
+      "piping", "vessel", "tank", "T&M", "on-call",
+    ],
+    active: true,
+    sortOrder: 60,
+  },
 ];
 
 // ── Asphalt Sealing capability definitions ────────────────────────────────────

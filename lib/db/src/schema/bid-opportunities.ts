@@ -1,4 +1,5 @@
 import { integer, pgTable, serial, text, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+// NOTE: contract_type, scope_size, license_flags, out_of_scope_flags added in migration 0059
 import { businessesTable } from "./businesses";
 
 export const bidOpportunitiesTable = pgTable("bid_opportunities", {
@@ -35,6 +36,11 @@ export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   officialSourceUrl:        text("official_source_url"),       // resolved .gov URL when found
   officialSourceStatus:     text("official_source_status").notNull().default("not_checked"),
   officialSourceCheckedAt:  timestamp("official_source_checked_at"),
+  // Phase 5 — industrial maintenance / contract-type intelligence (migration 0059)
+  contractType:     text("contract_type"),                    // T&M | labor_hour | idiq | task_order | on_call | shutdown_turnaround | fixed_price | unknown
+  scopeSize:        text("scope_size"),                       // small | medium | large | unknown
+  licenseFlags:     jsonb("license_flags").default([]),       // string[] — items needing licensing verification
+  outOfScopeFlags:  jsonb("out_of_scope_flags").default([]), // string[] — out-of-scope negative matches (shown, not hidden)
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   noticeBusinessUniq: uniqueIndex("bid_opportunities_notice_id_business_id_unique").on(table.noticeId, table.businessId),
