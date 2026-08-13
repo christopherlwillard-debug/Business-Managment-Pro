@@ -856,11 +856,35 @@ router.post("/:id/find-official-source", async (req, res) => {
 });
 
 // POST /api/bids/sync — trigger background sync
+// If businessId is omitted, syncs all businesses sequentially.
 router.post("/sync", async (req, res) => {
   try {
     const rawId = req.body?.businessId ?? req.query.businessId;
-    const bizId = rawId ? parseInt(String(rawId), 10) : NaN;
-    if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+
+    if (rawId === undefined || rawId === null || rawId === "") {
+      // Sync all businesses
+      const allBizRows = await db
+        .select({ id: businessesTable.id })
+        .from(businessesTable);
+
+      res.json({ ok: true, syncing: true, businesses: allBizRows.length });
+
+      (async () => {
+        for (const { id } of allBizRows) {
+          try {
+            const r = await runBidSync(id);
+            console.log(`[bids] Sync complete for business ${id}: ${JSON.stringify(r)}`);
+          } catch (err) {
+            console.error(`[bids] Background sync error for business ${id}:`, err);
+          }
+        }
+        console.log("[bids] All-business sync finished");
+      })();
+      return;
+    }
+
+    const bizId = parseInt(String(rawId), 10);
+    if (isNaN(bizId)) { res.status(400).json({ error: "Invalid businessId" }); return; }
 
     const [biz] = await db
       .select({ id: businessesTable.id })

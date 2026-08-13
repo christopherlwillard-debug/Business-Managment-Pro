@@ -224,36 +224,32 @@ export default function BidOpportunities() {
 
   const syncBids = useMutation({
     mutationFn: async () => {
-      if (!businessId) throw new Error("No business selected");
+      const body: Record<string, unknown> = {};
+      if (businessId) body.businessId = businessId;
       const res = await fetch(`${BASE_URL}/api/bids/sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ businessId }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(body.error ?? "Sync failed");
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? "Sync failed");
       }
-      return res.json() as Promise<{ ok: boolean; syncing?: boolean }>;
+      return res.json() as Promise<{ ok: boolean; syncing?: boolean; businesses?: number }>;
     },
-    onSuccess: () => {
-      toast({
-        title: "Syncing bids…",
-        description: "Checking federal, local, and USASpending sources. New bids will appear shortly.",
-      });
-      setTimeout(() => {
+    onSuccess: (data) => {
+      const description = data.businesses && data.businesses > 1
+        ? `Syncing across all ${data.businesses} businesses. New bids will appear shortly.`
+        : "Checking federal, local, and USASpending sources. New bids will appear shortly.";
+      toast({ title: "Syncing bids…", description });
+      const invalidate = () => {
         queryClient.invalidateQueries({ queryKey: ["bids-unified"] });
         queryClient.invalidateQueries({ queryKey: ["bid-settings", businessId] });
-      }, 15_000);
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["bids-unified"] });
-        queryClient.invalidateQueries({ queryKey: ["bid-settings", businessId] });
-      }, 60_000);
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["bids-unified"] });
-        queryClient.invalidateQueries({ queryKey: ["bid-settings", businessId] });
-      }, 120_000);
+      };
+      setTimeout(invalidate, 15_000);
+      setTimeout(invalidate, 60_000);
+      setTimeout(invalidate, 120_000);
     },
     onError: (err: Error) => {
       toast({ title: "Refresh failed", description: err.message, variant: "destructive" });
@@ -632,8 +628,8 @@ export default function BidOpportunities() {
           {/* Refresh — icon-only on mobile (44px touch target), full label on desktop */}
           <button
             onClick={() => syncBids.mutate()}
-            disabled={syncBids.isPending || !businessId}
-            title={!businessId ? "Select a business first" : "Refresh bids"}
+            disabled={syncBids.isPending}
+            title={businessId ? "Refresh bids" : "Refresh bids for all businesses"}
             className={cn(
               "flex items-center gap-2 rounded-lg bg-primary text-primary-foreground font-medium",
               "hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors",
