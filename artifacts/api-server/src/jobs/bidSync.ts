@@ -31,6 +31,7 @@ import { classifySourceHeuristic } from "../lib/officialSourceFinder.js";
 import { loadEnabledSources, isEnabled, writeConnectionHealth, bootstrapAutomatedConnections } from "../lib/bidSourceConnection.js";
 import { getCredential } from "../lib/credentialManager.js";
 import { detectContractType } from "../lib/bidContractTypeDetector.js";
+import { classifyOpportunityScope, isScopeCompatibleWithBusiness, assessDataCompleteness } from "../lib/bidScopeClassifier.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -47,6 +48,7 @@ interface ResolvedProfile {
   isVosb:          boolean;
   isSmallBusiness: boolean;
   label:           string;
+  businessType:    string;       // e.g. "asphalt_sealing" | "general_contracting"
 }
 
 // ── Hard-suppression: title-level gate ───────────────────────────────────────
@@ -230,6 +232,7 @@ async function resolveProfile(businessId: number, businessType: string): Promise
     isVosb:           settings.isVosb,
     isSmallBusiness:  settings.isSmallBusiness,
     label:            businessType === "asphalt_sealing" ? "Asphalt Sealing" : "General Contracting",
+    businessType,
   };
 }
 
@@ -402,6 +405,11 @@ async function rescoreExistingBids(businessId: number, profile: ResolvedProfile)
       source:           bidOpportunitiesTable.source,
       noticeType:       bidOpportunitiesTable.noticeType,
       setAsideType:     bidOpportunitiesTable.setAsideType,
+      // Phase 7 — needed for scope pruning and completeness re-assessment
+      stage:            bidOpportunitiesTable.stage,
+      naicsCode:        bidOpportunitiesTable.naicsCode,
+      agency:           bidOpportunitiesTable.agency,
+      url:              bidOpportunitiesTable.url,
     })
     .from(bidOpportunitiesTable)
     .where(and(
@@ -410,7 +418,32 @@ async function rescoreExistingBids(businessId: number, profile: ResolvedProfile)
     ));
 
   let updated = 0;
+  let pruned = 0;
+
   for (const bid of existing) {
+    // Classify scope and assess completeness for every existing row
+    const scope = classifyOpportunityScope(bid.title, bid.naicsCode, bid.source);
+    const completeness = assessDataCompleteness({
+      responseDeadline: bid.responseDeadline,
+      naicsCode:        bid.naicsCode,
+      description:      bid.description,
+      agency:           bid.agency,
+      url:              bid.url,
+    });
+
+    // Scope pruning: delete rows that don't belong to this business type.
+    // Only auto-delete un-reviewed rows (new / no_bid) — never touch rows
+    // the user has actively moved into a workflow stage (reviewing / bidding / etc.).
+    if (!isScopeCompatibleWithBusiness(scope.primaryCategory, scope.confidence, profile.businessType)) {
+      if (bid.stage === "new" || bid.stage === "no_bid") {
+        await db.delete(bidOpportunitiesTable).where(eq(bidOpportunitiesTable.id, bid.id));
+        console.log(`[bid-sync] Pruned wrong-business bid (scope: ${scope.primaryCategory ?? "unknown"}): "${bid.title.slice(0, 60)}" from ${profile.businessType}`);
+        pruned++;
+        continue;
+      }
+      // Stage is reviewing/bidding/submitted/won — update scope fields but don't delete
+    }
+
     const { opportunityScore, capabilityMatches } = scoreOpportunity(
       { title: bid.title, description: bid.description ?? null, responseDeadline: bid.responseDeadline, source: bid.source },
       profile.capabilities,
@@ -427,11 +460,15 @@ async function rescoreExistingBids(businessId: number, profile: ResolvedProfile)
         scopeSize:        detected.scopeSize,
         licenseFlags:     detected.licenseFlags,
         outOfScopeFlags:  detected.outOfScopeFlags,
+        // Phase 7 — update scope classification and completeness on every rescore
+        scopeCategory:    scope.primaryCategory,
+        dataCompleteness: completeness,
       })
       .where(eq(bidOpportunitiesTable.id, bid.id));
     updated++;
   }
 
+  if (pruned > 0) console.log(`[bid-sync] Pruned ${pruned} wrong-business bid(s) from business ${businessId} (${profile.businessType})`);
   console.log(`[bid-sync] Rescored ${updated} existing bids for business ${businessId}`);
   return updated;
 }
@@ -443,8 +480,9 @@ async function upsertOpportunities(
   businessId: number,
   profile: ResolvedProfile,
   overrides?: { status?: string; stage?: string; opportunityTypeOverride?: string }
-): Promise<OppWithSource[]> {
+): Promise<{ inserted: OppWithSource[]; scopeRejected: OppWithSource[] }> {
   const newOnes: OppWithSource[] = [];
+  const scopeRejected: OppWithSource[] = [];
 
   for (const opp of opportunities) {
     // Hard title gate: skip clearly incompatible opportunities before storing
@@ -452,6 +490,26 @@ async function upsertOpportunities(
       console.log(`[bid-sync] Hard-suppressed: "${opp.title.slice(0, 70)}"`);
       continue;
     }
+
+    // ── Phase 7: Scope gate ────────────────────────────────────────────────────
+    // Classify this opportunity's actual scope (from NAICS code or title keywords)
+    // BEFORE assigning it to a business. This prevents paving/asphalt bids from
+    // landing in Willard's Flooring and flooring bids from landing in Asphalt Sealing.
+    const effectiveSource = opp.source ?? defaultSource;
+    const scope = classifyOpportunityScope(opp.title, opp.naicsCode ?? null, effectiveSource);
+    if (!isScopeCompatibleWithBusiness(scope.primaryCategory, scope.confidence, profile.businessType)) {
+      scopeRejected.push(opp);
+      continue;
+    }
+
+    // Assess data completeness — surfaced in the UI so incomplete records get a warning badge
+    const completeness = assessDataCompleteness({
+      responseDeadline: opp.responseDeadline,
+      naicsCode:        opp.naicsCode,
+      description:      opp.description,
+      agency:           opp.agency,
+      url:              opp.url,
+    });
 
     // Select aiSummary so we can incorporate it into the recommendation engine
     // for existing rows that have already been analysed.
@@ -519,6 +577,9 @@ async function upsertOpportunities(
         scopeSize:             detectedNew.scopeSize,
         licenseFlags:          detectedNew.licenseFlags,
         outOfScopeFlags:       detectedNew.outOfScopeFlags,
+        // Phase 7 — scope + completeness
+        scopeCategory:         scope.primaryCategory,
+        dataCompleteness:      completeness,
       });
       newOnes.push(opp);
     } else {
@@ -561,12 +622,15 @@ async function upsertOpportunities(
           scopeSize:             detectedExisting.scopeSize,
           licenseFlags:          detectedExisting.licenseFlags,
           outOfScopeFlags:       detectedExisting.outOfScopeFlags,
+          // Phase 7 — keep scope + completeness current on every sync
+          scopeCategory:         scope.primaryCategory,
+          dataCompleteness:      completeness,
         })
         .where(eq(bidOpportunitiesTable.id, existing.id));
     }
   }
 
-  return newOnes;
+  return { inserted: newOnes, scopeRejected };
 }
 
 async function upsertUsaSpendingAwards(awards: UsaSpendingAward[], businessId: number): Promise<UsaSpendingAward[]> {
@@ -792,11 +856,44 @@ export async function runBidSync(
     return localKeywordsLower.some((kw) => text.includes(kw));
   });
 
-  // Upsert
-  const [newFederal, newLocal] = await Promise.all([
-    upsertOpportunities(federal, "federal",      "SAM.gov",      businessId, profile),
-    upsertOpportunities(local,   "state-local",  "KY/IN Local",  businessId, profile),
+  // Upsert — returns { inserted, scopeRejected } for each source
+  const [federalUpsert, localUpsert] = await Promise.all([
+    upsertOpportunities(federal, "federal",     "SAM.gov",     businessId, profile),
+    upsertOpportunities(local,   "state-local", "KY/IN Local", businessId, profile),
   ]);
+  const newFederal = federalUpsert.inserted;
+  const newLocal   = localUpsert.inserted;
+
+  // ── Cross-business routing (Phase 7) ──────────────────────────────────────
+  // When this business's sync finds opportunities whose scope belongs to a
+  // DIFFERENT business type (e.g. paving bids discovered during a GC sync),
+  // route them to the correct business so they're not lost.
+  // The scope gate above already prevented them from being inserted here.
+  const allScopeRejected = [...federalUpsert.scopeRejected, ...localUpsert.scopeRejected];
+  if (allScopeRejected.length > 0) {
+    try {
+      const allBusinesses = await db
+        .select({ id: businessesTable.id, type: businessesTable.type, name: businessesTable.name })
+        .from(businessesTable);
+
+      // Group rejected bids by the business type they SHOULD go to
+      // For now: asphalt-scoped bids go to the asphalt_sealing business
+      if (business.type !== "asphalt_sealing") {
+        const asphaltBiz = allBusinesses.find((b) => b.type === "asphalt_sealing");
+        if (asphaltBiz) {
+          const asphaltProfile = await resolveProfile(asphaltBiz.id, "asphalt_sealing");
+          const crossRouted = await upsertOpportunities(
+            allScopeRejected, "state-local", "KY/IN Local", asphaltBiz.id, asphaltProfile
+          );
+          if (crossRouted.inserted.length > 0) {
+            console.log(`[bid-sync] Cross-routed ${crossRouted.inserted.length} bid(s) to "${asphaltBiz.name}" (scope mismatch from "${business.name}")`);
+          }
+        }
+      }
+    } catch (crossErr) {
+      console.warn("[bid-sync] Cross-routing step failed (non-fatal):", crossErr);
+    }
+  }
   // write opportunityType on awards row (backfill for existing records via DB migration)
   await upsertUsaSpendingAwards(awards, businessId);
 

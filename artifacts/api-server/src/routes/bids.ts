@@ -353,6 +353,10 @@ router.get("/unified", async (req, res) => {
           displayRep.isPrivateOpportunity      = scoringRow.isPrivateOpportunity;
           displayRep.privateOpportunityContact = scoringRow.privateOpportunityContact;
           displayRep.privateSourceType         = scoringRow.privateSourceType;
+          // Phase 7 — scope classification + data completeness (per-business row, always most current)
+          displayRep.scopeCategory             = scoringRow.scopeCategory;
+          displayRep.dataCompleteness          = scoringRow.dataCompleteness;
+          displayRep.sourceReferenceId         = scoringRow.sourceReferenceId;
         }
       }
 

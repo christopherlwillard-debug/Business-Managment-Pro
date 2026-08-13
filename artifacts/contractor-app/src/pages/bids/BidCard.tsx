@@ -15,8 +15,22 @@ function daysUntil(dateStr: string | null): number | null {
   return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-function DeadlineBadge({ deadline }: { deadline: string | null }) {
-  if (!deadline) return <span className="text-muted-foreground text-xs">No deadline</span>;
+function DeadlineBadge({ deadline, dataCompleteness }: { deadline: string | null; dataCompleteness?: string | null }) {
+  if (!deadline) {
+    // For incomplete records, show an amber "No deadline on file" warning
+    if (dataCompleteness === "needs_verification" || dataCompleteness === "partial") {
+      return (
+        <span
+          className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
+          title="Deadline not found in source record — verify directly with the issuing agency"
+        >
+          <AlertCircle className="w-3 h-3" />
+          No deadline on file
+        </span>
+      );
+    }
+    return <span className="text-muted-foreground text-xs">No deadline</span>;
+  }
   const days = daysUntil(deadline);
   const isUrgent = days !== null && days >= 0 && days <= 7;
   const isPast   = days !== null && days < 0;
@@ -392,6 +406,26 @@ export default function BidCard({
             </span>
           );
         })()}
+
+        {/* ── Data completeness warning (Phase 7) ── */}
+        {bid.dataCompleteness === "needs_verification" && (
+          <span
+            title="This record is missing key details (deadline, NAICS code, or description). Verify the original source before acting on it."
+            className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+          >
+            <AlertCircle className="w-3 h-3" />
+            Incomplete
+          </span>
+        )}
+        {bid.dataCompleteness === "partial" && (
+          <span
+            title="This record is missing some details — verify the source for complete information before submitting a bid."
+            className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+          >
+            <AlertCircle className="w-3 h-3" />
+            Partial data
+          </span>
+        )}
       </div>
 
       {/* ── Title + agency ── */}
@@ -414,7 +448,7 @@ export default function BidCard({
         {bid.naicsCode && (
           <span className="text-xs text-muted-foreground">NAICS {bid.naicsCode}</span>
         )}
-        <DeadlineBadge deadline={bid.responseDeadline} />
+        <DeadlineBadge deadline={bid.responseDeadline} dataCompleteness={bid.dataCompleteness} />
         {effectiveSummary?.isFit !== undefined && (
           <button
             onClick={() => onSummarize(bid)}

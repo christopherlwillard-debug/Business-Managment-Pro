@@ -127,6 +127,10 @@ export interface BidOpportunity {
   isPrivateOpportunity?:      boolean | string | null;  // backend stores as text "true"/"false"
   privateOpportunityContact?: string | null;
   privateSourceType?:         string | null;  // subcontract|direct_service|prequalification|on_call_list|purchasing_portal
+  // Phase 7 — scope classification + data completeness
+  scopeCategory?:     string | null;  // asphalt|flooring|general_contracting|industrial_maintenance|mfg_homes|site_work|dump_waste
+  dataCompleteness?:  string | null;  // complete|partial|needs_verification|unknown
+  sourceReferenceId?: string | null;  // external source's own identifier
   // Unified feed enrichment (present on GET /api/bids/unified responses)
   capabilityCategories?:   string[];
   relevantBusinessNames?:  string[];
