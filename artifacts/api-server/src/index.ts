@@ -13,6 +13,7 @@ import { db } from "@workspace/db";
 import { businessesTable, mileageLogsTable, expensesTable, clientsTable, clientBillingProfilesTable } from "@workspace/db/schema";
 import { invoicesTable, jobSubcontractorsTable, subPaymentRecordsTable, settingsTable, bidOpportunitiesTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, asc, sql, ilike, eq } from "drizzle-orm";
+import { classifyOpportunityScope, isScopeCompatibleWithBusiness } from "./lib/bidScopeClassifier.js";
 
 const rawPort = process.env["PORT"];
 
@@ -112,6 +113,60 @@ async function seedDefaultBusinesses(): Promise<void> {
 
 
 
+
+/**
+ * Startup scope cleanup — runs every boot, completes in milliseconds.
+ *
+ * Deletes bid_opportunities rows whose scope_category is incompatible with
+ * the business they are assigned to, as long as the row has NOT been actively
+ * worked (stage = 'new' or 'no_bid'). This self-heals any rows that slipped
+ * through before the Phase 7 scope gate was in place (e.g. COUNTY PAVING PROGRAM
+ * under Willard's Flooring) without needing a manual sync.
+ *
+ * Conservative: re-classifies scope from title + NAICS (same logic as sync-time
+ * pruning) so confidence is correctly applied — low-confidence matches are never
+ * deleted.
+ */
+async function ensureBidScopeCleanup(): Promise<void> {
+  try {
+    // Single join query: pull every un-reviewed bid together with its business type.
+    // We re-run the classifier (pure JS, no extra DB calls) to get confidence,
+    // then batch-delete incompatible rows in one statement.
+    const candidates = await db
+      .select({
+        id:           bidOpportunitiesTable.id,
+        title:        bidOpportunitiesTable.title,
+        naicsCode:    bidOpportunitiesTable.naicsCode,
+        source:       bidOpportunitiesTable.source,
+        businessType: businessesTable.type,
+      })
+      .from(bidOpportunitiesTable)
+      .innerJoin(businessesTable, eq(bidOpportunitiesTable.businessId, businessesTable.id))
+      .where(inArray(bidOpportunitiesTable.stage, ["new", "no_bid"]));
+
+    const toDelete: number[] = [];
+    for (const row of candidates) {
+      if (!row.businessType) continue; // no type set — skip safely
+      const scope = classifyOpportunityScope(row.title, row.naicsCode, row.source ?? "unknown");
+      if (!isScopeCompatibleWithBusiness(scope.primaryCategory, scope.confidence, row.businessType)) {
+        toDelete.push(row.id);
+        console.log(
+          `[startup] bid-scope-cleanup: removing "${row.title.slice(0, 60)}" ` +
+          `(scope: ${scope.primaryCategory ?? "unknown"}, confidence: ${scope.confidence}) ` +
+          `from ${row.businessType}`
+        );
+      }
+    }
+
+    if (toDelete.length > 0) {
+      await db.delete(bidOpportunitiesTable).where(inArray(bidOpportunitiesTable.id, toDelete));
+    }
+
+    console.log(`[startup] bid-scope-cleanup: removed ${toDelete.length} wrong-business row(s).`);
+  } catch (err) {
+    console.error("[startup] ensureBidScopeCleanup failed (non-fatal):", err);
+  }
+}
 
 // One-time startup migration: drop NOT NULL on invoice_number (if still present)
 // and clear any numbers from draft invoices so they receive sequential numbers
@@ -526,6 +581,7 @@ async function start() {
   const { seedEquipmentSources } = await import("./lib/equipmentSourceSeeds.js");
   await seedEquipmentSources();
 
+  await ensureBidScopeCleanup();
   await backfillMileageBusiness();
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
