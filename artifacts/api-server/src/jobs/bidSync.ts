@@ -492,6 +492,15 @@ async function rescoreExistingBids(businessId: number, profile: ResolvedProfile)
       normalizeSetAsideType(bid.setAsideType),
     );
     const detected = detectContractType({ title: bid.title, description: bid.description ?? null, noticeType: bid.noticeType });
+
+    // Auto-dismiss stale hard-suppressed bids: titles that match the suppress list
+    // score 0 but may have been inserted before a suppress term was added.
+    // Only touch 'new' rows — never auto-move a row the user has already reviewed.
+    const autoNobd = opportunityScore === 0 && bid.stage === "new" && isHardSuppressedByTitle(bid.title);
+    if (autoNobd) {
+      console.log(`[bid-sync] Auto-dismissed hard-suppressed bid: "${bid.title.slice(0, 70)}"`);
+    }
+
     await db.update(bidOpportunitiesTable)
       .set({
         opportunityScore,
@@ -504,6 +513,8 @@ async function rescoreExistingBids(businessId: number, profile: ResolvedProfile)
         // Phase 7 — update scope classification and completeness on every rescore
         scopeCategory:    scope.primaryCategory,
         dataCompleteness: completeness,
+        // Suppress stale bids: move them out of 'new' so they don't clutter the feed
+        ...(autoNobd ? { stage: "no_bid" as const } : {}),
       })
       .where(eq(bidOpportunitiesTable.id, bid.id));
     updated++;
