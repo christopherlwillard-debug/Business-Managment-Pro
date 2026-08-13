@@ -177,8 +177,8 @@ describe("bootstrapAutomatedConnections", () => {
       .from(bidSourceConnectionsTable)
       .where(eq(bidSourceConnectionsTable.businessId, testBizId));
 
-    // At least the 5 automated sources must be present
-    const AUTOMATED_SLUGS = ["sam_gov", "ky_in_local", "usa_spending", "sba_subnet", "gsa_forecast"];
+    // At least these automated sources must be present (ky_vss added in migration 0055)
+    const AUTOMATED_SLUGS = ["sam_gov", "ky_in_local", "usa_spending", "sba_subnet", "gsa_forecast", "ky_vss"];
     for (const slug of AUTOMATED_SLUGS) {
       const row = rows.find(r => r.catalogSlug === slug);
       expect(row, `missing bootstrap row for ${slug}`).toBeDefined();

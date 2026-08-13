@@ -637,162 +637,193 @@ async function scrapeKyEProcurement(): Promise<LocalOpportunity[]> {
   return [];
 }
 
-export async function fetchKyLocalBids(): Promise<LocalOpportunity[]> {
-  console.log("[ky-local] Starting local bid scrape (KY + IN 50-mile radius)");
+// ── Per-site health tracking ──────────────────────────────────────────────────
 
-  const results = await Promise.allSettled([
+/** Health record for one individual scraper site within a multi-site source. */
+export interface SiteHealthRecord {
+  /** Machine identifier (stable, used for grouping/display). */
+  slug:    string;
+  /** Human-readable site name shown in the UI. */
+  site:    string;
+  /** Whether the scrape attempt returned without throwing. */
+  success: boolean;
+  /** Number of candidate opportunities parsed from this site. */
+  count:   number;
+  /** Error message when success=false. */
+  error?:  string;
+}
+
+/** Return type of fetchKyLocalBids — includes per-site health alongside results. */
+export interface LocalScrapeResult {
+  opportunities: LocalOpportunity[];
+  siteHealth:    SiteHealthRecord[];
+}
+
+// ── Scraper registry ──────────────────────────────────────────────────────────
+// Each entry maps a machine slug and display name to the async scraper function.
+// This replaces the flat Promise.allSettled array and enables per-site tracking.
+
+type ScraperEntry = { slug: string; site: string; fn: () => Promise<LocalOpportunity[]> };
+
+function makeRegistry(): ScraperEntry[] {
+  return [
     // Shared procurement platforms
-    scrapeDemandStarKY(),
-    scrapeDemandStarIN(),
-    scrapeBidNetDirectKY(),
-    scrapeBidNetDirectIN(),
+    { slug: "demandstar-ky",      site: "DemandStar KY",            fn: scrapeDemandStarKY   },
+    { slug: "demandstar-in",      site: "DemandStar IN",            fn: scrapeDemandStarIN   },
+    { slug: "bidnet-ky",          site: "BidNet Direct KY",         fn: scrapeBidNetDirectKY },
+    { slug: "bidnet-in",          site: "BidNet Direct IN",         fn: scrapeBidNetDirectIN },
+
+    // Kentucky eProcurement (Finance Cabinet)
+    { slug: "ky-eprocure",        site: "KY eProcurement",          fn: scrapeKyEProcurement },
 
     // Core KY counties
-    scrapeHancockCounty(),
-    scrapeDaviessCounty(),
-    scrapeCountyGeneric(
-      ["https://www.ohiocounty.ky.gov", "https://ohiocountyky.gov"],
-      "ky-ohio", "Ohio County Government", "Ohio County"
-    ),
-    scrapeCountyGeneric(
-      ["https://www.mcleancounty.ky.gov", "https://mcleancountyky.gov"],
-      "ky-mclean", "McLean County Government", "McLean County"
-    ),
-    scrapeKyEProcurement(),
+    { slug: "ky-hancock",         site: "Hancock County",           fn: scrapeHancockCounty  },
+    { slug: "ky-daviess",         site: "Daviess County",           fn: scrapeDaviessCounty  },
+    {
+      slug: "ky-ohio", site: "Ohio County",
+      fn: () => scrapeCountyGeneric(
+        ["https://www.ohiocounty.ky.gov", "https://ohiocountyky.gov"],
+        "ky-ohio", "Ohio County Government", "Ohio County"
+      ),
+    },
+    {
+      slug: "ky-mclean", site: "McLean County",
+      fn: () => scrapeCountyGeneric(
+        ["https://www.mcleancounty.ky.gov", "https://mcleancountyky.gov"],
+        "ky-mclean", "McLean County Government", "McLean County"
+      ),
+    },
+    {
+      slug: "ky-owensboro", site: "Owensboro",
+      fn: () => scrapeCountyGeneric(
+        ["https://owensboro.org/purchasing", "https://owensboro.org/bids"],
+        "ky-owensboro", "City of Owensboro", "Owensboro"
+      ),
+    },
+    {
+      slug: "ky-henderson-city", site: "Henderson City",
+      fn: () => scrapeCountyGeneric(
+        ["https://hendersonky.gov/170/Current-Bids-RFPs", "https://hendersonky.gov/135/Purchasing", "https://hendersonky.gov/bids"],
+        "ky-henderson-city", "City of Henderson", "Henderson City"
+      ),
+    },
+    {
+      slug: "ky-henderson-county", site: "Henderson County",
+      fn: () => scrapeCountyGeneric(
+        ["https://hendersoncountyky.gov/government/purchasing", "https://hendersoncountyky.gov/bids", "https://hendersoncountyky.gov"],
+        "ky-henderson-county", "Henderson County Government", "Henderson County"
+      ),
+    },
+    {
+      slug: "ky-grayson", site: "Grayson County",
+      fn: () => scrapeCountyGeneric(
+        ["https://graysoncountyky.gov/bids", "https://graysoncountyky.gov"],
+        "ky-grayson", "Grayson County Government", "Grayson County"
+      ),
+    },
+    {
+      slug: "ky-leitchfield", site: "Leitchfield",
+      fn: () => scrapeCountyGeneric(
+        ["https://leitchfield.ky.gov/bids", "https://leitchfield.ky.gov"],
+        "ky-leitchfield", "City of Leitchfield", "Leitchfield"
+      ),
+    },
+    {
+      slug: "ky-hopkins", site: "Hopkins County",
+      fn: () => scrapeCountyGeneric(
+        ["https://hopkinscountyky.com/bids", "https://hopkinscountyky.com", "https://hopkinscounty.ky.gov/bids", "https://hopkinscounty.ky.gov"],
+        "ky-hopkins", "Hopkins County Government", "Hopkins County"
+      ),
+    },
+    {
+      slug: "ky-union", site: "Union County",
+      fn: () => scrapeCountyGeneric(
+        ["https://morganfield.ky.gov/bids", "https://morganfield.ky.gov", "https://unioncounty.ky.gov/bids", "https://unioncounty.ky.gov"],
+        "ky-union", "Union County Government", "Union County"
+      ),
+    },
+    {
+      slug: "ky-webster", site: "Webster County",
+      fn: () => scrapeCountyGeneric(
+        ["https://dixon.ky.gov/bids", "https://dixon.ky.gov", "https://webstercounty.ky.gov/bids", "https://webstercounty.ky.gov"],
+        "ky-webster", "Webster County Government", "Webster County"
+      ),
+    },
+    {
+      slug: "ky-muhlenberg", site: "Muhlenberg County",
+      fn: () => scrapeCountyGeneric(
+        ["https://muhlenbergcounty.ky.gov/bids", "https://muhlenbergcounty.ky.gov"],
+        "ky-muhlenberg", "Muhlenberg County Government", "Muhlenberg County"
+      ),
+    },
+    // Indiana cities/counties within 50-mile radius
+    {
+      slug: "in-evansville", site: "Evansville IN",
+      fn: () => scrapeCountyGeneric(
+        ["https://evansvillegov.org/city/department/index.php?structureid=88", "https://evansvillegov.org/purchasing", "https://evansvillegov.org/bids"],
+        "in-evansville", "City of Evansville", "Evansville IN"
+      ),
+    },
+    {
+      slug: "in-vanderburgh", site: "Vanderburgh County IN",
+      fn: () => scrapeCountyGeneric(
+        ["https://vanderburghcounty.com/purchasing", "https://www.vanderburghcounty.com/bids", "https://vanderburghcounty.com/government/purchasing"],
+        "in-vanderburgh", "Vanderburgh County Government", "Vanderburgh County IN"
+      ),
+    },
+    {
+      slug: "in-warrick", site: "Warrick County IN",
+      fn: () => scrapeCountyGeneric(
+        ["https://www.warrickcounty.gov/purchasing", "https://warrickcounty.gov/bids", "https://www.warrickcounty.gov/bids"],
+        "in-warrick", "Warrick County Government", "Warrick County IN"
+      ),
+    },
+    {
+      slug: "in-eprocure", site: "IN eProcurement",
+      fn: () => scrapeCountyGeneric(
+        ["https://www.in.gov/idoa/procurement/"],
+        "in-eprocure", "Indiana eProcurement", "IN eProcurement"
+      ),
+    },
+  ];
+}
 
-    // Owensboro, KY
-    scrapeCountyGeneric(
-      ["https://owensboro.org/purchasing", "https://owensboro.org/bids"],
-      "ky-owensboro", "City of Owensboro", "Owensboro"
-    ),
+export async function fetchKyLocalBids(): Promise<LocalScrapeResult> {
+  console.log("[ky-local] Starting local bid scrape (KY + IN 50-mile radius)");
 
-    // Henderson, KY (city)
-    scrapeCountyGeneric(
-      [
-        "https://hendersonky.gov/170/Current-Bids-RFPs",
-        "https://hendersonky.gov/135/Purchasing",
-        "https://hendersonky.gov/bids",
-      ],
-      "ky-henderson-city", "City of Henderson", "Henderson City"
-    ),
+  const registry = makeRegistry();
+  const settled  = await Promise.allSettled(registry.map((s) => s.fn()));
 
-    // Henderson County, KY
-    scrapeCountyGeneric(
-      [
-        "https://hendersoncountyky.gov/government/purchasing",
-        "https://hendersoncountyky.gov/bids",
-        "https://hendersoncountyky.gov",
-      ],
-      "ky-henderson-county", "Henderson County Government", "Henderson County"
-    ),
+  const opportunities: LocalOpportunity[] = [];
+  const siteHealth:    SiteHealthRecord[]  = [];
 
-    // Grayson County, KY
-    scrapeCountyGeneric(
-      ["https://graysoncountyky.gov/bids", "https://graysoncountyky.gov"],
-      "ky-grayson", "Grayson County Government", "Grayson County"
-    ),
+  for (let i = 0; i < registry.length; i++) {
+    const { slug, site } = registry[i];
+    const result = settled[i];
 
-    // Leitchfield, KY
-    scrapeCountyGeneric(
-      ["https://leitchfield.ky.gov/bids", "https://leitchfield.ky.gov"],
-      "ky-leitchfield", "City of Leitchfield", "Leitchfield"
-    ),
-
-    // Hopkins County, KY
-    scrapeCountyGeneric(
-      [
-        "https://hopkinscountyky.com/bids",
-        "https://hopkinscountyky.com",
-        "https://hopkinscounty.ky.gov/bids",
-        "https://hopkinscounty.ky.gov",
-      ],
-      "ky-hopkins", "Hopkins County Government", "Hopkins County"
-    ),
-
-    // Union County, KY
-    scrapeCountyGeneric(
-      [
-        "https://morganfield.ky.gov/bids",
-        "https://morganfield.ky.gov",
-        "https://unioncounty.ky.gov/bids",
-        "https://unioncounty.ky.gov",
-      ],
-      "ky-union", "Union County Government", "Union County"
-    ),
-
-    // Webster County, KY
-    scrapeCountyGeneric(
-      [
-        "https://dixon.ky.gov/bids",
-        "https://dixon.ky.gov",
-        "https://webstercounty.ky.gov/bids",
-        "https://webstercounty.ky.gov",
-      ],
-      "ky-webster", "Webster County Government", "Webster County"
-    ),
-
-    // Muhlenberg County, KY
-    scrapeCountyGeneric(
-      [
-        "https://muhlenbergcounty.ky.gov/bids",
-        "https://muhlenbergcounty.ky.gov",
-      ],
-      "ky-muhlenberg", "Muhlenberg County Government", "Muhlenberg County"
-    ),
-
-    // City of Evansville, IN
-    scrapeCountyGeneric(
-      [
-        "https://evansvillegov.org/city/department/index.php?structureid=88",
-        "https://evansvillegov.org/purchasing",
-        "https://evansvillegov.org/bids",
-      ],
-      "in-evansville", "City of Evansville", "Evansville IN"
-    ),
-
-    // Vanderburgh County, IN
-    scrapeCountyGeneric(
-      [
-        "https://vanderburghcounty.com/purchasing",
-        "https://www.vanderburghcounty.com/bids",
-        "https://vanderburghcounty.com/government/purchasing",
-      ],
-      "in-vanderburgh", "Vanderburgh County Government", "Vanderburgh County IN"
-    ),
-
-    // Warrick County, IN
-    scrapeCountyGeneric(
-      [
-        "https://www.warrickcounty.gov/purchasing",
-        "https://warrickcounty.gov/bids",
-        "https://www.warrickcounty.gov/bids",
-      ],
-      "in-warrick", "Warrick County Government", "Warrick County IN"
-    ),
-
-    // Indiana eProcurement
-    scrapeCountyGeneric(
-      ["https://www.in.gov/idoa/procurement/"],
-      "in-eprocure", "Indiana eProcurement", "IN eProcurement"
-    ),
-  ]);
-
-  const all: LocalOpportunity[] = [];
-  for (const result of results) {
     if (result.status === "fulfilled") {
-      all.push(...result.value);
+      opportunities.push(...result.value);
+      siteHealth.push({ slug, site, success: true, count: result.value.length });
     } else {
-      console.error("[ky-local] Scraper error:", result.reason);
+      const error = String((result as PromiseRejectedResult).reason);
+      console.warn(`[ky-local] ${site} (${slug}) rejected:`, error);
+      siteHealth.push({ slug, site, success: false, count: 0, error });
     }
   }
 
+  // Global dedup across all sites by noticeId
   const seen = new Set<string>();
-  const deduped = all.filter((r) => {
+  const deduped = opportunities.filter((r) => {
     if (seen.has(r.noticeId)) return false;
     seen.add(r.noticeId);
     return true;
   });
 
-  console.log(`[ky-local] Total local bids (KY + IN): ${deduped.length}`);
-  return deduped;
+  const failedSites = siteHealth.filter((s) => !s.success);
+  if (failedSites.length > 0) {
+    console.warn(`[ky-local] ${failedSites.length}/${registry.length} site(s) failed: ${failedSites.map((s) => s.site).join(", ")}`);
+  }
+  console.log(`[ky-local] Total local bids (KY + IN): ${deduped.length} from ${registry.length - failedSites.length}/${registry.length} sites`);
+
+  return { opportunities: deduped, siteHealth };
 }

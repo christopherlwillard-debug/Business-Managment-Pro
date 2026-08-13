@@ -87,13 +87,18 @@ export function isEnabled(map: Map<string, boolean>, slug: string): boolean {
  * User-configured enable/disable state must survive every sync run.
  * New rows get `enabled: true` only as an insert default so legacy businesses
  * whose connection rows don't exist yet don't silently lose their sources.
+ *
+ * @param siteHealthJson  Optional JSON string (Array<SiteHealthRecord>) for
+ *                        multi-site scrapers that report per-site outcomes.
+ *                        Stored in `site_health_json` for display in the UI.
  */
 export async function writeConnectionHealth(
-  businessId: number,
-  catalogSlug: string,
-  success: boolean,
-  errorMsg?: string | null,
+  businessId:      number,
+  catalogSlug:     string,
+  success:         boolean,
+  errorMsg?:       string | null,
   recordsImported?: number,
+  siteHealthJson?: string | null,
 ): Promise<void> {
   try {
     const now = new Date();
@@ -104,6 +109,7 @@ export async function writeConnectionHealth(
         connectionStatus:  "active",
         lastSyncError:     null as string | null,
         recordsImported:   recordsImported ?? null,
+        siteHealthJson:    siteHealthJson ?? null,
         updatedAt:         now,
       };
       await db
@@ -119,6 +125,7 @@ export async function writeConnectionHealth(
         connectionStatus: "error",
         lastSyncError:    errorMsg ?? "Sync failed",
         recordsImported:  recordsImported ?? null,
+        siteHealthJson:   siteHealthJson ?? null,
         updatedAt:        now,
       };
       await db

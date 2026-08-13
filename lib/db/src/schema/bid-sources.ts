@@ -60,6 +60,12 @@ export const bidSourceConnectionsTable = pgTable("bid_source_connections", {
   portalUrl:   text("portal_url"),
   portalLabel: text("portal_label"),
 
+  // Per-site health detail (JSON string) — used by multi-site scrapers like
+  // ky_in_local to report which individual sites succeeded / failed within a
+  // single sync run without changing the top-level connectionStatus.
+  // Shape: Array<{ slug, site, success, count, error? }>
+  siteHealthJson: text("site_health_json"),
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => ({

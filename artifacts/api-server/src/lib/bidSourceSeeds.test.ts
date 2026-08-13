@@ -34,7 +34,7 @@ function sourceIsEnabled(map: Map<string, boolean>, slug: string): boolean {
 }
 
 // Verified automated sources — the only five with a working integration path today
-const AUTOMATED_SLUGS = new Set(["sam_gov", "ky_in_local", "usa_spending", "sba_subnet", "gsa_forecast"]);
+const AUTOMATED_SLUGS = new Set(["sam_gov", "ky_in_local", "usa_spending", "sba_subnet", "gsa_forecast", "ky_vss"]);
 
 const VALID_CATEGORIES   = new Set(["jobs_contracts", "auctions_surplus", "hauling_material", "both"]);
 const VALID_METHODS      = new Set(["api", "public_feed", "public_scrape", "account_oauth", "email_feed", "portal_link_only"]);
@@ -100,7 +100,7 @@ describe("portal-only connection status derivation", () => {
 
 describe("bid source catalog entries", () => {
   it("has exactly 23 entries", () => {
-    expect(_CATALOG_ENTRIES_FOR_TEST).toHaveLength(23);
+    expect(_CATALOG_ENTRIES_FOR_TEST).toHaveLength(25); // +2: ky_vss, ky_surplus
   });
 
   it("all slugs are unique", () => {

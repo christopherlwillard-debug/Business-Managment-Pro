@@ -177,6 +177,24 @@ const CATALOG_ENTRIES: InsertBidSourceCatalog[] = [
     notes:              "Multi-site auction aggregator; no public API.",
   },
 
+  // ── Kentucky State Procurement ────────────────────────────────────────────
+  {
+    slug:               "ky_vss",
+    name:               "KY eMarketplace (VSS)",
+    category:           "jobs_contracts",
+    connectionMethod:   "public_scrape",
+    automatedDiscovery: true,
+    notes:              "Kentucky Finance Cabinet Vendor Self-Service portal. Public solicitations scraped from the state procurement system. 'My Commodities' matching uses your capability profile keywords since account-based matching requires a VSS vendor login.",
+  },
+  {
+    slug:               "ky_surplus",
+    name:               "KY Surplus Auctions",
+    category:           "auctions_surplus",
+    connectionMethod:   "portal_link_only",
+    automatedDiscovery: false,
+    notes:              "Kentucky Finance Cabinet surplus property auctions at kydirect.ky.gov. No public data API. Visit the portal to view and bid on surplus equipment, vehicles, and materials.",
+  },
+
   // ── Hauling / Material ────────────────────────────────────────────────────
   {
     slug:               "dtl",

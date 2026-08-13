@@ -2,6 +2,23 @@ import { getCredential } from "./credentialManager.js";
 
 const SAM_API_BASE = "https://api.sam.gov/opportunities/v2/search";
 
+/**
+ * Maximum records to fetch per individual query (NAICS×keyword or PSC×keyword).
+ * SAM.gov supports up to 1,000 per page; 100 is a pragmatic page size that
+ * avoids timeout risk while still being much larger than the old hard-coded 20.
+ */
+const SAM_PAGE_SIZE = 100;
+
+/**
+ * Safety cap on pages per query. 5 pages × 100 = 500 records max per
+ * NAICS/keyword combination before we stop.  Prevents runaway fetches for
+ * extremely broad keywords while still capturing 25× more data than before.
+ */
+const SAM_MAX_PAGES = 5;
+
+/** Minimum delay between paginated calls to the same query (ms). */
+const SAM_PAGE_DELAY_MS = 150;
+
 // ── Legacy keyword exports (kept for backward compatibility) ──────────────────
 export const ASPHALT_SAM_KEYWORDS = [
   "asphalt", "sealcoat", "sealcoating", "pavement",
@@ -63,25 +80,33 @@ function toIsoDate(d: Date): string {
   return `${month}/${day}/${year}`;
 }
 
+// ── Internal response shape ───────────────────────────────────────────────────
+
+interface SamApiPage {
+  records:      SamOpportunity[];
+  totalRecords: number;
+}
+
 async function fetchPage(
   apiKey: string,
   params: Record<string, string>,
   label: string
-): Promise<SamOpportunity[]> {
+): Promise<SamApiPage> {
   const qs = new URLSearchParams({ api_key: apiKey, ...params });
   try {
     const res = await fetch(`${SAM_API_BASE}?${qs.toString()}`, {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(20_000),
     });
 
     if (!res.ok) {
       const body = await res.text();
       console.warn(`[sam-gov] ${res.status} for ${label}: ${body.slice(0, 200)}`);
-      return [];
+      return { records: [], totalRecords: 0 };
     }
 
     const data = await res.json() as {
+      totalRecords?: number;
       opportunitiesData?: Array<{
         noticeId?:              string;
         title?:                 string;
@@ -92,12 +117,12 @@ async function fetchPage(
         postedDate?:            string;
         responseDeadLine?:      string;
         uiLink?:                string;
-        type?:                  string;   // SAM.gov ptype value
-        typeOfSetAside?:        string;   // set-aside code, e.g. "SBA", "SDVOSB", "WOSB", "none"
+        type?:                  string;
+        typeOfSetAside?:        string;
       }>;
     };
 
-    return (data.opportunitiesData ?? [])
+    const records = (data.opportunitiesData ?? [])
       .filter((item) => item.noticeId && item.title)
       .map((item) => ({
         noticeId:         item.noticeId!,
@@ -111,10 +136,57 @@ async function fetchPage(
         noticeType:       resolveNoticeType(item.type),
         typeOfSetAside:   item.typeOfSetAside ?? undefined,
       }));
+
+    return { records, totalRecords: data.totalRecords ?? records.length };
   } catch (err) {
     console.error(`[sam-gov] Fetch error for ${label}:`, err);
-    return [];
+    return { records: [], totalRecords: 0 };
   }
+}
+
+/**
+ * Fetch ALL pages for a single NAICS/keyword or PSC/keyword query.
+ *
+ * Paginates until one of these stops:
+ *   1. The page returned fewer records than the page size (end of results).
+ *   2. We have fetched every record according to `totalRecords`.
+ *   3. We have hit SAM_MAX_PAGES (safety cap).
+ *
+ * A small inter-page delay avoids hammering the SAM.gov rate limit.
+ */
+async function fetchAllPages(
+  apiKey:     string,
+  baseParams: Record<string, string>,
+  label:      string,
+): Promise<SamOpportunity[]> {
+  const all: SamOpportunity[] = [];
+
+  for (let page = 0; page < SAM_MAX_PAGES; page++) {
+    const offset = page * SAM_PAGE_SIZE;
+    const { records, totalRecords } = await fetchPage(
+      apiKey,
+      { ...baseParams, limit: String(SAM_PAGE_SIZE), offset: String(offset) },
+      page === 0 ? label : `${label} p${page + 1}`,
+    );
+
+    all.push(...records);
+
+    const isLastPage = records.length < SAM_PAGE_SIZE;
+    const fetchedAll = totalRecords > 0 && offset + records.length >= totalRecords;
+
+    if (isLastPage || fetchedAll) break;
+
+    if (page < SAM_MAX_PAGES - 1) {
+      // Polite inter-page delay
+      await new Promise<void>((r) => setTimeout(r, SAM_PAGE_DELAY_MS));
+    }
+  }
+
+  if (all.length > 0) {
+    console.log(`[sam-gov] ${label}: fetched ${all.length} record(s) (limit ${SAM_MAX_PAGES * SAM_PAGE_SIZE})`);
+  }
+
+  return all;
 }
 
 export async function fetchSamOpportunities(opts: {
@@ -130,18 +202,18 @@ export async function fetchSamOpportunities(opts: {
 
   const postedFrom = toIsoDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
   const postedTo   = toIsoDate(new Date());
-  const baseParams = { ptype: "o,p,k,r,s,g,i", postedFrom, postedTo, limit: "20", offset: "0" };
+  const baseParams = { ptype: "o,p,k,r,s,g,i", postedFrom, postedTo };
 
   const fetches: Promise<SamOpportunity[]>[] = [];
 
   for (const naics   of opts.naicsCodes)       {
     for (const keyword of opts.keywords)        {
-      fetches.push(fetchPage(apiKey, { ...baseParams, naics, keyword }, `NAICS ${naics} / "${keyword}"`));
+      fetches.push(fetchAllPages(apiKey, { ...baseParams, naics, keyword }, `NAICS ${naics} / "${keyword}"`));
     }
   }
   for (const psc     of (opts.pscCodes ?? [])) {
     for (const keyword of opts.keywords)        {
-      fetches.push(fetchPage(apiKey, { ...baseParams, psc, keyword }, `PSC ${psc} / "${keyword}"`));
+      fetches.push(fetchAllPages(apiKey, { ...baseParams, psc, keyword }, `PSC ${psc} / "${keyword}"`));
     }
   }
 
@@ -151,6 +223,7 @@ export async function fetchSamOpportunities(opts: {
     if (p.status === "fulfilled") all.push(...p.value);
   }
 
+  // Global dedup by noticeId across all queries
   const seen   = new Set<string>();
   const deduped = all.filter((r) => {
     if (seen.has(r.noticeId)) return false;
@@ -158,6 +231,8 @@ export async function fetchSamOpportunities(opts: {
     return true;
   });
 
+  // Post-filter: discard records whose NAICS is present but not in the requested set.
+  // This removes cross-NAICS leakage that sometimes comes back from keyword searches.
   const allowedNaics = new Set(opts.naicsCodes);
   const filtered = deduped.filter((r) => !r.naicsCode || allowedNaics.has(r.naicsCode));
 
@@ -165,5 +240,9 @@ export async function fetchSamOpportunities(opts: {
     console.log(`[sam-gov] NAICS post-filter: ${deduped.length} → ${filtered.length} (dropped ${deduped.length - filtered.length})`);
   }
 
+  console.log(`[sam-gov] Total unique opportunities after dedup+filter: ${filtered.length}`);
   return filtered;
 }
+
+// ── Exported for testing ──────────────────────────────────────────────────────
+export { fetchPage, fetchAllPages, SAM_PAGE_SIZE, SAM_MAX_PAGES };

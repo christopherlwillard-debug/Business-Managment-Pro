@@ -14,7 +14,8 @@ import {
   ASPHALT_PSC_CODES,
   GENERAL_CONTRACTING_PSC_CODES,
 } from "../lib/samGov.js";
-import { fetchKyLocalBids, NAV_PHRASE_DENYLIST, PAVEMENT_KEYWORDS, BROAD_BID_KEYWORDS } from "../lib/kyLocalBids.js";
+import { fetchKyLocalBids, NAV_PHRASE_DENYLIST, PAVEMENT_KEYWORDS, BROAD_BID_KEYWORDS, type LocalScrapeResult, type SiteHealthRecord } from "../lib/kyLocalBids.js";
+import { fetchKyVssSolicitations } from "../lib/kyVss.js";
 import { fetchUsaSpendingAwards, UsaSpendingAward } from "../lib/usaSpending.js";
 import { sendEmail, escapeHtml } from "../lib/sendEmail.js";
 import {
@@ -691,14 +692,38 @@ export async function runBidSync(
   });
 
   const federal: OppWithSource[]   = samOk    ? (fedResult.value    as OppWithSource[])   : [];
-  const allLocal: OppWithSource[]  = localOk  ? (localResult.value  as OppWithSource[])  : [];
   const awards: UsaSpendingAward[] = awardsOk ? (awardsResult.value as UsaSpendingAward[]) : [];
+
+  // Unpack the structured LocalScrapeResult from the KY/IN local scraper.
+  // localResult.value is now a LocalScrapeResult (not a plain array).
+  const localScrapeResult: LocalScrapeResult | null = localOk
+    ? (localResult.value as LocalScrapeResult)
+    : null;
+  const allLocal: OppWithSource[]    = localScrapeResult?.opportunities ?? [];
+  const localSiteHealth: SiteHealthRecord[] = localScrapeResult?.siteHealth ?? [];
+
+  // Build per-site health JSON for storage (surfaced in Source Management panel)
+  const localSiteHealthJson = localSiteHealth.length > 0
+    ? JSON.stringify(localSiteHealth)
+    : null;
+
+  // Determine per-site partial failure warning for the connection health error field.
+  // If some sites succeeded and some failed, status = active + warning in error field.
+  // If ALL sites failed, status = error.
+  const failedLocalSites = localSiteHealth.filter((s: SiteHealthRecord) => !s.success);
+  const anyLocalSiteSucceeded = localSiteHealth.some((s: SiteHealthRecord) => s.success);
+  const localHealthSuccess  = localOk && (failedLocalSites.length === 0 || anyLocalSiteSucceeded);
+  const localHealthErrorMsg = !localOk
+    ? String((localResult as PromiseRejectedResult).reason)
+    : failedLocalSites.length > 0
+      ? `Partial: ${failedLocalSites.length} site(s) unreachable: ${failedLocalSites.map((s: SiteHealthRecord) => s.site).join(", ")}`
+      : null;
 
   // Write connection health only for sources that were actually attempted
   await Promise.allSettled([
-    samActuallyRan     ? writeConnectionHealth(businessId, "sam_gov",     samOk,    samOk    ? null : String((fedResult    as PromiseRejectedResult).reason), federal.length)  : Promise.resolve(),
-    kyLocalActuallyRan ? writeConnectionHealth(businessId, "ky_in_local", localOk,  localOk  ? null : String((localResult  as PromiseRejectedResult).reason), allLocal.length) : Promise.resolve(),
-    awardsActuallyRan  ? writeConnectionHealth(businessId, "usa_spending",awardsOk, awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason), awards.length)   : Promise.resolve(),
+    samActuallyRan     ? writeConnectionHealth(businessId, "sam_gov",     samOk,            samOk  ? null : String((fedResult as PromiseRejectedResult).reason), federal.length)                            : Promise.resolve(),
+    kyLocalActuallyRan ? writeConnectionHealth(businessId, "ky_in_local", localHealthSuccess, localHealthErrorMsg, allLocal.length, localSiteHealthJson)                                                     : Promise.resolve(),
+    awardsActuallyRan  ? writeConnectionHealth(businessId, "usa_spending", awardsOk,         awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason), awards.length)                       : Promise.resolve(),
   ]);
 
   // Filter local results by local keywords
@@ -771,6 +796,33 @@ export async function runBidSync(
       await upsertOpportunities(forecastRows, "gsa-forecast", "GSA Forecast", businessId, profile,
         { opportunityTypeOverride: "forecast" });
       console.log(`[bid-sync] GSA Forecast: ${forecastOpps.length} forecast opp(s) processed`);
+    }
+  }
+
+  // ── KY eMarketplace / VSS state procurement ───────────────────────────────
+  if (isEnabled(enabledSources, "ky_vss")) {
+    let vssError: string | undefined;
+    const vssOpps = await fetchKyVssSolicitations(profile.localKeywords)
+      .catch((err) => { vssError = (err as Error).message; console.warn("[bid-sync] KY VSS fetch failed:", vssError); return null; });
+
+    const vssOpportunities = vssOpps ?? [];
+    await writeConnectionHealth(businessId, "ky_vss", !vssError, vssError ?? null, vssOpportunities.length);
+
+    if (vssOpportunities.length > 0) {
+      const vssRows: OppWithSource[] = vssOpportunities.map((v) => ({
+        noticeId:         v.noticeId,
+        title:            v.title,
+        agency:           v.agency,
+        naicsCode:        v.naicsCode,
+        description:      v.description,
+        postedDate:       v.postedDate,
+        responseDeadline: v.responseDeadline,
+        url:              v.url,
+        source:           "state-local",    // state/local for scoring bonus + purge logic
+        sourceLabel:      "KY eMarketplace",
+      }));
+      await upsertOpportunities(vssRows, "state-local", "KY eMarketplace", businessId, profile);
+      console.log(`[bid-sync] KY VSS: ${vssOpportunities.length} state solicitation(s) processed`);
     }
   }
 
