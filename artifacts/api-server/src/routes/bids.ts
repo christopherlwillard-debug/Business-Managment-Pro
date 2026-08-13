@@ -14,12 +14,15 @@ import { openai } from "@workspace/integrations-openai-ai-server";
 import { BUILDPRO_AI_MINI_MODEL } from "../ai-models";
 import { fetchBidDocument } from "../lib/bidDocumentFetcher.js";
 import { runBidSync } from "../jobs/bidSync.js";
+import { computeRecommendation } from "../lib/bidRecommendation.js";
+import { findOfficialSource, classifySourceHeuristic, makeStatusLabel, makeStatusDetail } from "../lib/officialSourceFinder.js";
+import { getCredential } from "../lib/credentialManager.js";
 import { CapabilityDefinition, getCapabilitiesForBusinessType } from "../lib/bidCapabilitySeeds.js";
 
 type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid";
 const VALID_STAGES: BidStage[] = ["new", "reviewing", "bidding", "submitted", "won", "lost", "no_bid"];
 
-type SetAsideType = "sdvosb" | "small_business" | "open" | "other";
+type SetAsideType = "sdvosb" | "vosb" | "small_business" | "veteran_preference" | "open" | "other";
 
 interface AiSummary {
   description:      string | null;
@@ -54,7 +57,7 @@ function sanitizeSummary(raw: Record<string, unknown>): AiSummary {
       return [];
     });
   };
-  const VALID_SET_ASIDE: SetAsideType[] = ["sdvosb", "small_business", "open", "other"];
+  const VALID_SET_ASIDE: SetAsideType[] = ["sdvosb", "vosb", "small_business", "veteran_preference", "open", "other"];
   const rawSetAside = typeof raw.setAsideType === "string" ? raw.setAsideType : "";
   const setAsideType: SetAsideType = VALID_SET_ASIDE.includes(rawSetAside as SetAsideType)
     ? (rawSetAside as SetAsideType)
@@ -187,11 +190,11 @@ Return ONLY valid JSON (no markdown, no code fences) with exactly these fields:
   "description": "Plain-English 1-2 sentence summary of the actual work required",
   "estimatedValue": "Dollar amount or range if mentioned, else null",
   "requirements": ["key requirements: bonding, insurance, certifications, prevailing wage, SCA, etc."],
-  "veteranPreference": true or false (is SDVOSB, VOSB, or veteran-owned preference mentioned?),
+  "veteranPreference": true or false (is any veteran-owned preference mentioned — includes setAsideType vosb/sdvosb/veteran_preference),
   "importantDates": [{"label": "Event name", "date": "Date or deadline"}],
   "isFit": true or false — see EVALUATION RULES above; keyword presence alone is NOT a fit,
   "fitReason": "Specific explanation: which capability matches AND why the scale/scope is achievable — or exactly why it is not a fit",
-  "setAsideType": one of "sdvosb", "small_business", "open", or "other" (HUBZone/8a/WOSB/etc.),
+  "setAsideType": one of "sdvosb" (SDVOSB formal set-aside), "vosb" (VOSB set-aside — SDVOSB qualifies), "small_business" (total SB set-aside), "veteran_preference" (veteran preference in evaluation, NOT a formal set-aside — all may compete), "open" (full and open competition), or "other" (cert-specific: HUBZone/8(a)/WOSB/etc.),
   "noticeType": one of "solicitation", "sources_sought", "presolicitation", "combined_synopsis", "award", or "other",
   "bondingRequired": true or false,
   "capabilityMatch": "Name of the specific matching capability (e.g. 'Debris & Waste Removal / Hauling') or null if not a fit",
@@ -597,15 +600,115 @@ router.post("/:id/summarize", async (req, res) => {
 
     const summary = sanitizeSummary(parsed);
 
+    // Recompute recommendation now that we have fresh scope analysis from the AI.
+    // Load the settings row so the recommendation engine knows which certs are held.
+    const [settingsForRec] = await db
+      .select({
+        isSdvosb:        bidBusinessSettingsTable.isSdvosb,
+        isVosb:          bidBusinessSettingsTable.isVosb,
+        isSmallBusiness: bidBusinessSettingsTable.isSmallBusiness,
+      })
+      .from(bidBusinessSettingsTable)
+      .where(eq(bidBusinessSettingsTable.businessId, bizId))
+      .limit(1);
+
+    const recSettings = settingsForRec ?? { isSdvosb: false, isVosb: false, isSmallBusiness: true };
+    const recResult = computeRecommendation(
+      {
+        title:             bid.title,
+        opportunityScore:  bid.opportunityScore ?? 0,
+        capabilityMatches: (bid.capabilityMatches as string[]) ?? [],
+        setAsideType:      bid.setAsideType ?? null,
+        responseDeadline:  bid.responseDeadline,
+        source:            bid.source,
+        naicsCode:         bid.naicsCode,
+        description:       bid.description,
+        opportunityType:   bid.opportunityType ?? null,
+      },
+      recSettings,
+      summary as unknown as Record<string, unknown>,
+    );
+
     await db
       .update(bidOpportunitiesTable)
-      .set({ aiSummary: summary, aiSummaryAt: new Date() })
+      .set({
+        aiSummary:             summary,
+        aiSummaryAt:           new Date(),
+        recommendation:        recResult.recommendation,
+        recommendationFactors: recResult.factors as unknown as Record<string, unknown>[],
+      })
       .where(eq(bidOpportunitiesTable.id, id));
 
-    res.json({ summary, cached: false });
+    res.json({ summary, recommendation: recResult, cached: false });
   } catch (err) {
     console.error("[bids] POST /bids/:id/summarize error:", err);
     res.status(500).json({ error: "Failed to generate summary" });
+  }
+});
+
+// POST /api/bids/:id/find-official-source — on-demand official government source lookup
+router.post("/:id/find-official-source", async (req, res) => {
+  const id    = parseInt(req.params["id"] as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const rawBizId = req.body?.businessId ?? req.query["businessId"];
+  const bizId    = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
+  if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+
+  try {
+    const [bid] = await db
+      .select()
+      .from(bidOpportunitiesTable)
+      .where(and(eq(bidOpportunitiesTable.id, id), eq(bidOpportunitiesTable.businessId, bizId)))
+      .limit(1);
+
+    if (!bid) { res.status(404).json({ error: "Bid not found" }); return; }
+
+    // Return cached result when checked within the last 7 days and not forced.
+    const force  = req.body?.force === true;
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    if (!force && bid.officialSourceStatus !== "not_checked" && bid.officialSourceCheckedAt) {
+      const ageMs = Date.now() - bid.officialSourceCheckedAt.getTime();
+      if (ageMs < SEVEN_DAYS_MS) {
+        res.json({
+          officialSourceUrl:    bid.officialSourceUrl,
+          officialSourceStatus: bid.officialSourceStatus,
+          statusLabel:          makeStatusLabel(bid.officialSourceStatus as Parameters<typeof makeStatusLabel>[0]),
+          statusDetail:         makeStatusDetail(bid.officialSourceStatus as Parameters<typeof makeStatusDetail>[0], bid.sourceLabel),
+          cached: true,
+        });
+        return;
+      }
+    }
+
+    let samApiKey: string | null = null;
+    try { samApiKey = getCredential("sam_gov_api_key"); } catch { /* no credential stored */ }
+    if (!samApiKey) samApiKey = process.env["SAM_GOV_API_KEY"] ?? null;
+
+    const result = await findOfficialSource(
+      { url: bid.url, source: bid.source, sourceLabel: bid.sourceLabel, title: bid.title, noticeId: bid.noticeId },
+      samApiKey,
+    );
+
+    await db
+      .update(bidOpportunitiesTable)
+      .set({
+        officialSourceUrl:       result.url,
+        officialSourceStatus:    result.status,
+        officialSourceCheckedAt: result.resolvedAt,
+      })
+      .where(eq(bidOpportunitiesTable.id, id));
+
+    res.json({
+      officialSourceUrl:    result.url,
+      officialSourceStatus: result.status,
+      statusLabel:          result.statusLabel,
+      statusDetail:         result.statusDetail,
+      cached: false,
+    });
+  } catch (err) {
+    console.error("[bids] POST /bids/:id/find-official-source error:", err);
+    res.status(500).json({ error: "Failed to resolve official source" });
   }
 });
 

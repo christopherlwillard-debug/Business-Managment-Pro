@@ -1,9 +1,10 @@
 import {
   ExternalLink, Sparkles, XCircle, CheckCircle2,
   Building2, Shield, Users, Globe, Award, ChevronDown, Handshake, Info, Calendar, BookOpen,
+  Eye, Lock, BadgeCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AiSummary, BidOpportunity, BidStage, SetAsideType } from "./types";
+import type { AiSummary, BidOpportunity, BidStage, SetAsideType, RecommendationLevel, OfficialSourceStatus } from "./types";
 import { PIPELINE_STAGES } from "./types";
 
 function daysUntil(dateStr: string | null): number | null {
@@ -33,38 +34,130 @@ function DeadlineBadge({ deadline }: { deadline: string | null }) {
   );
 }
 
-const SET_ASIDE_CONFIG: Record<SetAsideType, { label: string; icon: typeof Shield; color: string }> = {
+const SET_ASIDE_CONFIG: Record<SetAsideType, { label: string; icon: typeof Shield; color: string; title?: string }> = {
   sdvosb: {
     label: "SDVOSB",
     icon:  Shield,
     color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+    title: "SDVOSB set-aside — restricted to Service-Disabled Veteran-Owned Small Businesses",
+  },
+  vosb: {
+    label: "VOSB",
+    icon:  Shield,
+    color: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
+    title: "VOSB set-aside — restricted to Veteran-Owned Small Businesses (SDVOSB qualifies)",
   },
   small_business: {
     label: "Small Biz",
     icon:  Users,
     color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+    title: "Small Business set-aside — restricted to small businesses",
+  },
+  veteran_preference: {
+    label: "Vet Pref",
+    icon:  Award,
+    color: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
+    title: "Veteran preference in evaluation — all businesses may compete; veteran-owned get a scoring advantage",
   },
   open: {
     label: "Open",
     icon:  Globe,
     color: "bg-muted text-muted-foreground",
+    title: "Full & open competition — all businesses may compete",
   },
   other: {
-    label: "Vet Pref",
+    label: "Set-Aside",
     icon:  Award,
     color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+    title: "Cert-specific set-aside (HUBZone, 8(a), WOSB, etc.) — verify eligibility",
   },
 };
+
+// ── Recommendation badge ─────────────────────────────────────────────────────
+
+const REC_CONFIG: Record<RecommendationLevel, { label: string; icon: typeof CheckCircle2; className: string; title: string }> = {
+  bid: {
+    label: "BID",
+    icon:  BadgeCheck,
+    className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+    title: "Recommendation: Pursue this opportunity",
+  },
+  review: {
+    label: "REVIEW",
+    icon:  Eye,
+    className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+    title: "Recommendation: Read the solicitation before deciding",
+  },
+  pass: {
+    label: "PASS",
+    icon:  XCircle,
+    className: "bg-slate-100 text-slate-500 dark:bg-slate-800/30 dark:text-slate-400",
+    title: "Recommendation: This opportunity is not a good fit — skip it",
+  },
+};
+
+function RecommendationBadge({ recommendation }: { recommendation: RecommendationLevel | null | undefined }) {
+  if (!recommendation) return null;
+  const config = REC_CONFIG[recommendation];
+  if (!config) return null;
+  const { label, icon: Icon, className, title } = config;
+  return (
+    <span
+      title={title}
+      className={cn("inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full tracking-wide", className)}
+    >
+      <Icon className="w-3 h-3" />
+      {label}
+    </span>
+  );
+}
+
+// ── Official source badge (compact) ─────────────────────────────────────────
+
+const SOURCE_STATUS_CONFIG: Partial<Record<OfficialSourceStatus, { icon: typeof BadgeCheck; className: string; label: string; title: string }>> = {
+  found: {
+    icon:      BadgeCheck,
+    className: "text-green-600 dark:text-green-400",
+    label:     "Official source",
+    title:     "Official government posting found — this link goes directly to the government's procurement page",
+  },
+  aggregator_only: {
+    icon:      Lock,
+    className: "text-amber-500 dark:text-amber-400",
+    label:     "Aggregator listing",
+    title:     "Aggregator listing only — verify directly with the issuing agency before submitting",
+  },
+  subscription_required: {
+    icon:      Lock,
+    className: "text-orange-500 dark:text-orange-400",
+    label:     "Sub required",
+    title:     "Full access requires a paid subscription — search SAM.gov or the agency website for free access",
+  },
+};
+
+function OfficialSourceChip({ status }: { status: OfficialSourceStatus | null | undefined }) {
+  if (!status || status === "not_checked") return null;
+  const config = SOURCE_STATUS_CONFIG[status];
+  if (!config) return null;
+  const { icon: Icon, className, label, title } = config;
+  return (
+    <span title={title} className={cn("inline-flex items-center gap-0.5 text-xs", className)}>
+      <Icon className="w-3 h-3" />
+      <span className="hidden sm:inline">{label}</span>
+    </span>
+  );
+}
 
 function EligibilityBadge({ summary }: { summary: AiSummary | null }) {
   if (!summary) return null;
 
   const setAsideType = summary.setAsideType;
   if (!setAsideType) {
+    // Fall back to veteranPreference flag for bids summarised before the expanded type system
     if (summary.veteranPreference) {
-      const { label, icon: Icon, color } = SET_ASIDE_CONFIG.other;
+      const { label, icon: Icon, color, title } = SET_ASIDE_CONFIG.veteran_preference;
       return (
-        <span className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full", color)}>
+        <span title={title} className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full", color)}>
           <Icon className="w-3 h-3" /> {label}
         </span>
       );
@@ -72,11 +165,11 @@ function EligibilityBadge({ summary }: { summary: AiSummary | null }) {
     return null;
   }
 
-  const config = SET_ASIDE_CONFIG[setAsideType];
+  const config = SET_ASIDE_CONFIG[setAsideType as SetAsideType];
   if (!config) return null;
-  const { label, icon: Icon, color } = config;
+  const { label, icon: Icon, color, title } = config;
   return (
-    <span className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full", color)}>
+    <span title={title} className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full", color)}>
       <Icon className="w-3 h-3" /> {label}
     </span>
   );
@@ -189,6 +282,9 @@ export default function BidCard({
           <OpportunityTypeBadge type={bid.opportunityType} />
         )}
 
+        {/* Recommendation badge — always shown when computed; BID/REVIEW/PASS */}
+        <RecommendationBadge recommendation={bid.recommendation} />
+
         {stageBadge && bid.stage !== "new" && (
           <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", stageBadge.className)}>
             {stageBadge.label}
@@ -289,15 +385,19 @@ export default function BidCard({
         </button>
 
         {bid.url && (
-          <a
-            href={bid.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 px-3 py-2.5 md:py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors whitespace-nowrap"
-          >
-            <ExternalLink className="w-3.5 h-3.5 md:w-3 md:h-3" />
-            View
-          </a>
+          <div className="inline-flex items-center gap-1.5">
+            <a
+              href={bid.officialSourceUrl ?? bid.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={bid.officialSourceUrl ? "Opens official government posting" : undefined}
+              className="flex items-center gap-1 px-3 py-2.5 md:py-1.5 text-xs font-medium rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors whitespace-nowrap"
+            >
+              <ExternalLink className="w-3.5 h-3.5 md:w-3 md:h-3" />
+              View
+            </a>
+            <OfficialSourceChip status={bid.officialSourceStatus} />
+          </div>
         )}
 
         {!isNoBid && (

@@ -29,6 +29,12 @@ export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   // Phase 3 — education analysis
   educationSummary:  jsonb("education_summary"),     // EducationSummary JSON
   educationSummaryAt: timestamp("education_summary_at"),
+  // Phase 4 — recommendation engine + official source lookup
+  recommendation:           text("recommendation"),            // 'bid'|'review'|'pass'
+  recommendationFactors:    jsonb("recommendation_factors"),   // RecommendationFactor[] JSON
+  officialSourceUrl:        text("official_source_url"),       // resolved .gov URL when found
+  officialSourceStatus:     text("official_source_status").notNull().default("not_checked"),
+  officialSourceCheckedAt:  timestamp("official_source_checked_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   noticeBusinessUniq: uniqueIndex("bid_opportunities_notice_id_business_id_unique").on(table.noticeId, table.businessId),

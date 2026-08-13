@@ -6,7 +6,14 @@ export interface QuickLink {
   password?: string;
 }
 
-export type SetAsideType = "sdvosb" | "small_business" | "open" | "other";
+/** Precise set-aside and competition-level taxonomy. */
+export type SetAsideType =
+  | "sdvosb"             // SDVOSB formal set-aside (SDVOSB cert required)
+  | "vosb"               // VOSB set-aside (VOSB or SDVOSB cert qualifies)
+  | "small_business"     // Total Small Business set-aside
+  | "veteran_preference" // Veteran preference in evaluation only — not a formal set-aside
+  | "open"               // Full & open competition
+  | "other";             // Cert-specific (HUBZone, 8(a), WOSB, etc.)
 
 export type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid";
 
@@ -42,6 +49,36 @@ export interface AiSummary {
   licenseRisk?:      string | null;
 }
 
+// ── Recommendation engine ─────────────────────────────────────────────────────
+
+export type RecommendationLevel = "bid" | "review" | "pass";
+export type FactorSignal = "positive" | "negative" | "neutral" | "unknown";
+
+export interface RecommendationFactor {
+  key:    string;
+  label:  string;
+  signal: FactorSignal;
+  detail: string;
+}
+
+export interface BidRecommendation {
+  recommendation: RecommendationLevel;
+  confidence:     "high" | "medium" | "low";
+  summary:        string;
+  factors:        RecommendationFactor[];
+  unknowns:       string[];
+}
+
+// ── Official source resolution ────────────────────────────────────────────────
+
+export type OfficialSourceStatus =
+  | "found"                 // a publicly accessible official government URL was located
+  | "aggregator_only"       // only aggregator listing; official source not found
+  | "subscription_required" // the listing requires a paid account
+  | "not_checked";          // determination has not been attempted yet
+
+// ── Core bid opportunity type ─────────────────────────────────────────────────
+
 export interface BidOpportunity {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   educationSummary?:   EducationSummary | null;
@@ -69,6 +106,15 @@ export interface BidOpportunity {
   capabilityMatches?: string[] | null;
   // Phase 2 — opportunity classification
   opportunityType?:  OpportunityType | string | null;
+  // Raw set-aside code from SAM.gov (e.g. "SBA", "SDVOSB"); AI summary has normalized setAsideType
+  setAsideType?:     string | null;
+  // Phase 4 — recommendation engine
+  recommendation?:          RecommendationLevel | null;
+  recommendationFactors?:   RecommendationFactor[] | null;
+  // Phase 4 — official source lookup
+  officialSourceUrl?:       string | null;
+  officialSourceStatus?:    OfficialSourceStatus | null;
+  officialSourceCheckedAt?: string | null;
   createdAt:         string;
   // Unified feed enrichment (present on GET /api/bids/unified responses)
   capabilityCategories?:   string[];

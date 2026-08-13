@@ -28,17 +28,19 @@ describe("normalizeSetAsideType", () => {
     expect(normalizeSetAsideType("")).toBeUndefined();
   });
 
-  // ── Veteran-owned programs → "sdvosb" ──────────────────────────────────────
+  // ── Veteran-owned programs ─────────────────────────────────────────────────
+  // SDVOSB = Service-Disabled Veteran-Owned → "sdvosb"
+  // VOSB / VSBAOP = Veteran-Owned (not service-disabled) → "vosb" (distinct tier)
   it('maps "SDVOSB" to "sdvosb"', () => {
     expect(normalizeSetAsideType("SDVOSB")).toBe("sdvosb");
   });
 
-  it('maps "VOSB" to "sdvosb"', () => {
-    expect(normalizeSetAsideType("VOSB")).toBe("sdvosb");
+  it('maps "VOSB" to "vosb" (distinct from SDVOSB)', () => {
+    expect(normalizeSetAsideType("VOSB")).toBe("vosb");
   });
 
-  it('maps "VSBAOP" to "sdvosb"', () => {
-    expect(normalizeSetAsideType("VSBAOP")).toBe("sdvosb");
+  it('maps "VSBAOP" to "vosb" (VOSB small business combined set-aside)', () => {
+    expect(normalizeSetAsideType("VSBAOP")).toBe("vosb");
   });
 
   it('maps lowercase "sdvosb" to "sdvosb"', () => {

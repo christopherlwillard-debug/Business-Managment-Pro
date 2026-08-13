@@ -25,7 +25,9 @@ import {
 } from "../lib/bidCapabilitySeeds.js";
 import { fetchSubnetOpportunities, SubnetOpportunity } from "../lib/subnetSync.js";
 import { fetchGsaForecastOpportunities, GsaForecastOpportunity } from "../lib/gsaForecast.js";
-import { normalizeSetAsideType } from "../lib/bidScoring.js";
+import { normalizeSetAsideType, setAsideScore } from "../lib/bidScoring.js";
+import { computeRecommendation } from "../lib/bidRecommendation.js";
+import { classifySourceHeuristic } from "../lib/officialSourceFinder.js";
 import { loadEnabledSources, isEnabled, writeConnectionHealth, bootstrapAutomatedConnections } from "../lib/bidSourceConnection.js";
 import { getCredential } from "../lib/credentialManager.js";
 
@@ -300,14 +302,11 @@ function scoreOpportunity(
   const sourceScore = opp.source === "state-local" ? 10 : 0;
 
   // ── Set-aside advantage (0–20 points) ─────────────────────────────────────
-  let setAsideScore = 0;
-  if (aiSetAsideType === "sdvosb") {
-    setAsideScore = (settings.isSdvosb || settings.isVosb) ? 20 : 2;
-  } else if (aiSetAsideType === "small_business") {
-    setAsideScore = settings.isSmallBusiness ? 15 : 5;
-  } else if (aiSetAsideType === "open") {
-    setAsideScore = 5; // full-and-open — everyone competes
-  }
+  // Delegated to setAsideScore() in bidScoring.ts for precise eligibility checks.
+  // SDVOSB set-aside: eligible only if isSdvosb (not isVosb alone).
+  // VOSB set-aside: eligible if isVosb or isSdvosb.
+  // veteran_preference: small bonus for veteran-owned businesses (not a full set-aside).
+  const setAsidePts = setAsideScore(aiSetAsideType, settings);
 
   // ── Deadline urgency (0–20 points) ───────────────────────────────────────
   let urgencyScore = 0;
@@ -325,7 +324,7 @@ function scoreOpportunity(
   // Note: noticeType comes from SAM.gov, we don't have it here in scoring;
   // this field will be stored on the row and can inform future UI sorting.
 
-  const total = Math.min(100, capScore + sourceScore + setAsideScore + urgencyScore);
+  const total = Math.min(100, capScore + sourceScore + setAsidePts + urgencyScore);
 
   return { opportunityScore: total, capabilityMatches };
 }
@@ -448,60 +447,97 @@ async function upsertOpportunities(
       continue;
     }
 
+    // Select aiSummary so we can incorporate it into the recommendation engine
+    // for existing rows that have already been analysed.
     const existing = await db
-      .select({ id: bidOpportunitiesTable.id })
+      .select({ id: bidOpportunitiesTable.id, aiSummary: bidOpportunitiesTable.aiSummary })
       .from(bidOpportunitiesTable)
       .where(and(eq(bidOpportunitiesTable.noticeId, opp.noticeId), eq(bidOpportunitiesTable.businessId, businessId)))
       .then((rows) => rows[0] ?? null);
 
+    const settingsForRec = { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness };
+
     if (!existing) {
       const rawSetAside = (opp as SamOpportunity).typeOfSetAside ?? null;
+      const derivedOppType = overrides?.opportunityTypeOverride
+        ?? deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType ?? null);
       const { opportunityScore, capabilityMatches } = scoreOpportunity(
         { title: opp.title, description: opp.description, responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource },
         profile.capabilities,
-        { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness },
+        settingsForRec,
         normalizeSetAsideType(rawSetAside),
       );
 
+      // Compute recommendation — no AI summary yet for new rows, so this will be REVIEW
+      // unless the opportunity is clearly ineligible (expired deadline + ineligible set-aside).
+      const rec = computeRecommendation(
+        { title: opp.title, opportunityScore, capabilityMatches, setAsideType: rawSetAside,
+          responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource,
+          naicsCode: opp.naicsCode, description: opp.description, opportunityType: derivedOppType },
+        settingsForRec,
+        null, // no AI summary yet
+      );
+
+      // Determine initial official-source status from URL heuristics — no HTTP calls.
+      const srcStatus = classifySourceHeuristic({
+        url: opp.url, source: opp.source ?? defaultSource, sourceLabel: opp.sourceLabel ?? defaultSourceLabel,
+      });
+
       await db.insert(bidOpportunitiesTable).values({
         businessId,
-        noticeId:          opp.noticeId,
-        title:             opp.title,
-        agency:            opp.agency,
-        naicsCode:         opp.naicsCode,
-        description:       opp.description,
-        postedDate:        opp.postedDate,
-        responseDeadline:  opp.responseDeadline,
-        url:               opp.url,
-        status:            overrides?.status ?? "new",
-        stage:             overrides?.stage ?? "new",
-        source:            opp.source ?? defaultSource,
-        sourceLabel:       opp.sourceLabel ?? defaultSourceLabel,
-        noticeType:        (opp as SamOpportunity).noticeType ?? null,
-        setAsideType:      rawSetAside,
+        noticeId:              opp.noticeId,
+        title:                 opp.title,
+        agency:                opp.agency,
+        naicsCode:             opp.naicsCode,
+        description:           opp.description,
+        postedDate:            opp.postedDate,
+        responseDeadline:      opp.responseDeadline,
+        url:                   opp.url,
+        status:                overrides?.status ?? "new",
+        stage:                 overrides?.stage ?? "new",
+        source:                opp.source ?? defaultSource,
+        sourceLabel:           opp.sourceLabel ?? defaultSourceLabel,
+        noticeType:            (opp as SamOpportunity).noticeType ?? null,
+        setAsideType:          rawSetAside,
         opportunityScore,
         capabilityMatches,
-        opportunityType:   overrides?.opportunityTypeOverride
-          ?? deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType ?? null),
+        opportunityType:       derivedOppType,
+        recommendation:        rec.recommendation,
+        recommendationFactors: rec.factors as unknown as Record<string, unknown>[],
+        officialSourceStatus:  srcStatus,
       });
       newOnes.push(opp);
     } else {
-      // Re-score existing row so capability profile changes take effect immediately
+      // Re-score existing row so capability profile changes take effect immediately.
+      // Pass cached AI summary so recommendation can incorporate prior analysis.
       const rawSetAside = (opp as SamOpportunity).typeOfSetAside ?? null;
+      const derivedOppType = overrides?.opportunityTypeOverride
+        ?? deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType ?? null);
       const { opportunityScore, capabilityMatches } = scoreOpportunity(
         { title: opp.title, description: opp.description, responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource },
         profile.capabilities,
-        { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness },
+        settingsForRec,
         normalizeSetAsideType(rawSetAside),
       );
+
+      const existingAiSummary = existing.aiSummary as Record<string, unknown> | null;
+      const rec = computeRecommendation(
+        { title: opp.title, opportunityScore, capabilityMatches, setAsideType: rawSetAside,
+          responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource,
+          naicsCode: opp.naicsCode, description: opp.description, opportunityType: derivedOppType },
+        settingsForRec,
+        existingAiSummary,
+      );
+
       await db.update(bidOpportunitiesTable)
         .set({
           opportunityScore,
           capabilityMatches,
-          noticeType:      (opp as SamOpportunity).noticeType ?? null,
-          setAsideType:    rawSetAside,
-          opportunityType: overrides?.opportunityTypeOverride
-            ?? deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType ?? null),
+          noticeType:            (opp as SamOpportunity).noticeType ?? null,
+          setAsideType:          rawSetAside,
+          opportunityType:       derivedOppType,
+          recommendation:        rec.recommendation,
+          recommendationFactors: rec.factors as unknown as Record<string, unknown>[],
         })
         .where(eq(bidOpportunitiesTable.id, existing.id));
     }
