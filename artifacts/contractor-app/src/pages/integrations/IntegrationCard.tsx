@@ -87,7 +87,7 @@ function getStatusConfig(status: string): StatusConfig {
   switch (status) {
     case "managed":           return { dot: "bg-blue-500",    badge: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800",     label: "Managed"        };
     case "active":            return { dot: "bg-green-500",   badge: "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800", label: "Connected"      };
-    case "env_only":          return { dot: "bg-yellow-400",  badge: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800", label: "Env Key"   };
+    case "env_only":          return { dot: "bg-green-500",   badge: "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800",   label: "Connected" };
     case "invalid":           return { dot: "bg-red-500",     badge: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800",             label: "Invalid"        };
     case "syncing":           return { dot: "bg-green-500",   badge: "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800", label: "Auto-Syncing"   };
     case "sync_error":        return { dot: "bg-red-500",     badge: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800",             label: "Sync Error"     };
@@ -381,9 +381,9 @@ export default function IntegrationCard({ integration, onUpdated }: { integratio
             </div>
           )}
           {integration.effectiveStatus === "env_only" && (
-            <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
-              <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-              Using environment variable. Add the key here to manage it from the app.
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+              <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+              Connected via environment variable.
             </div>
           )}
           {integration.lastVerifiedAt && !isPortalType && !isAutoSync && (
