@@ -1,4 +1,4 @@
-import { integer, pgTable, serial, text, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, serial, text, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 // NOTE: contract_type, scope_size, license_flags, out_of_scope_flags added in migration 0059
 import { businessesTable } from "./businesses";
 
@@ -41,6 +41,12 @@ export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   scopeSize:        text("scope_size"),                       // small | medium | large | unknown
   licenseFlags:     jsonb("license_flags").default([]),       // string[] — items needing licensing verification
   outOfScopeFlags:  jsonb("out_of_scope_flags").default([]), // string[] — out-of-scope negative matches (shown, not hidden)
+  // Phase 6 — qualification analysis + private opportunities (migration 0060)
+  industrialQualSummary:     jsonb("industrial_qual_summary"),    // IndustrialQualSummary JSON — cached AI qualification analysis
+  industrialQualSummaryAt:   timestamp("industrial_qual_summary_at"),
+  isPrivateOpportunity:      boolean("is_private_opportunity").notNull().default(false),
+  privateOpportunityContact: text("private_opportunity_contact"),
+  privateSourceType:         text("private_source_type"),         // subcontract|direct_service|prequalification|on_call_list|purchasing_portal
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   noticeBusinessUniq: uniqueIndex("bid_opportunities_notice_id_business_id_unique").on(table.noticeId, table.businessId),

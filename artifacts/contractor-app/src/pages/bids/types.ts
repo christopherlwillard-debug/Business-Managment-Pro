@@ -121,9 +121,55 @@ export interface BidOpportunity {
   scopeSize?:        string | null;   // small | medium | large | unknown
   licenseFlags?:     string[] | null; // items requiring licensing verification
   outOfScopeFlags?:  string[] | null; // negative-keyword matches
+  // Phase 6 — qualification analysis + private opportunities
+  industrialQualSummary?:     IndustrialQualSummary | null;
+  industrialQualSummaryAt?:   string | null;
+  isPrivateOpportunity?:      boolean | string | null;  // backend stores as text "true"/"false"
+  privateOpportunityContact?: string | null;
+  privateSourceType?:         string | null;  // subcontract|direct_service|prequalification|on_call_list|purchasing_portal
   // Unified feed enrichment (present on GET /api/bids/unified responses)
   capabilityCategories?:   string[];
   relevantBusinessNames?:  string[];
+}
+
+// ── Industrial Qualification Analysis ────────────────────────────────────────
+
+export type ReadinessVerdict = "ready" | "almost_ready" | "not_a_fit" | "needs_review";
+export type QualRequirementTag = "REQUIRED" | "RECOMMENDED" | "UNKNOWN";
+export type QualMeetStatus = "yes" | "no" | "verify" | "unknown";
+export type QualEquipmentStatus = "owned" | "rental_recommended" | "must_acquire" | "unknown";
+
+export interface QualRequirement {
+  category:    string;
+  name:        string;
+  tag:         QualRequirementTag;
+  companyMeets: QualMeetStatus;
+  meetDetail?: string;
+}
+
+export interface QualCrewMember {
+  memberName:    string;
+  role:          string;
+  relevantCerts: string[];
+  gaps:          string[];
+}
+
+export interface QualEquipmentItem {
+  name:          string;
+  status:        QualEquipmentStatus;
+  ownedItemName?: string;
+}
+
+export interface IndustrialQualSummary {
+  readinessVerdict:              ReadinessVerdict;
+  readinessSummary:              string;
+  contractStructure:             string;
+  contractStructureExplanation:  string;
+  requirements:                  QualRequirement[];
+  crewReadiness:                 QualCrewMember[];
+  equipmentNeeded:               QualEquipmentItem[];
+  scopeFitNote:                  string | null;
+  licenseVerifyItems:            string[];
 }
 
 // ── Education Analysis ────────────────────────────────────────────────────────

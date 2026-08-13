@@ -7,6 +7,9 @@ import {
   bidSourceCatalogTable,
   bidSourceConnectionsTable,
   businessesTable,
+  crewMembersTable,
+  crewCertificationsTable,
+  equipmentInventoryTable,
 } from "@workspace/db";
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { deriveCapabilityCategories } from "../lib/bidCategories.js";
@@ -334,16 +337,22 @@ router.get("/unified", async (req, res) => {
       if (validScoringId) {
         const scoringRow = group.find((r) => r.businessId === validScoringId);
         if (scoringRow) {
-          displayRep.id                 = scoringRow.id;
-          displayRep.businessId         = scoringRow.businessId;
-          displayRep.stage              = scoringRow.stage;
-          displayRep.notes              = scoringRow.notes;
-          displayRep.aiSummary          = scoringRow.aiSummary;
-          displayRep.aiSummaryAt        = scoringRow.aiSummaryAt;
-          displayRep.opportunityScore   = scoringRow.opportunityScore;
-          displayRep.capabilityMatches  = scoringRow.capabilityMatches;
-          displayRep.educationSummary   = scoringRow.educationSummary;
-          displayRep.educationSummaryAt = scoringRow.educationSummaryAt;
+          displayRep.id                        = scoringRow.id;
+          displayRep.businessId                = scoringRow.businessId;
+          displayRep.stage                     = scoringRow.stage;
+          displayRep.notes                     = scoringRow.notes;
+          displayRep.aiSummary                 = scoringRow.aiSummary;
+          displayRep.aiSummaryAt               = scoringRow.aiSummaryAt;
+          displayRep.opportunityScore          = scoringRow.opportunityScore;
+          displayRep.capabilityMatches         = scoringRow.capabilityMatches;
+          displayRep.educationSummary          = scoringRow.educationSummary;
+          displayRep.educationSummaryAt        = scoringRow.educationSummaryAt;
+          // Phase 6 — qualification analysis + private opportunity fields (per-business)
+          displayRep.industrialQualSummary     = scoringRow.industrialQualSummary;
+          displayRep.industrialQualSummaryAt   = scoringRow.industrialQualSummaryAt;
+          displayRep.isPrivateOpportunity      = scoringRow.isPrivateOpportunity;
+          displayRep.privateOpportunityContact = scoringRow.privateOpportunityContact;
+          displayRep.privateSourceType         = scoringRow.privateSourceType;
         }
       }
 
@@ -501,7 +510,75 @@ router.patch("/sources/:slug", async (req, res) => {
   }
 });
 
-// PATCH /api/bids/:id — update stage/notes
+// ── POST /api/bids/private — create a manually-entered private opportunity ────
+// IMPORTANT: registered before PATCH /:id so Express doesn't treat "private" as an id.
+router.post("/private", async (req, res) => {
+  const {
+    businessId, companyName, description,
+    sourceType, contactName, contactEmail, contactPhone,
+    url, deadline,
+  } = req.body as {
+    businessId:    number;
+    companyName:   string;
+    description?:  string;
+    sourceType?:   string;
+    contactName?:  string;
+    contactEmail?: string;
+    contactPhone?: string;
+    url?:          string;
+    deadline?:     string;
+  };
+
+  if (!businessId || !companyName?.trim()) {
+    res.status(400).json({ error: "businessId and companyName are required" });
+    return;
+  }
+
+  const TYPE_LABELS: Record<string, string> = {
+    subcontract:       "Subcontracting",
+    direct_service:    "Direct Service",
+    prequalification:  "Prequalification",
+    on_call_list:      "On-Call List",
+    purchasing_portal: "Purchasing Portal",
+  };
+  const typeLabel = TYPE_LABELS[sourceType ?? ""] ?? "Private Opportunity";
+
+  const parts: string[] = [];
+  if (contactName)  parts.push(contactName);
+  if (contactEmail) parts.push(contactEmail);
+  if (contactPhone) parts.push(contactPhone);
+  const contactStr = parts.join(" · ") || null;
+
+  const noticeId = `private-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+  try {
+    const [created] = await db
+      .insert(bidOpportunitiesTable)
+      .values({
+        noticeId,
+        businessId,
+        title:                     `${companyName.trim()} — ${typeLabel}`,
+        agency:                    companyName.trim(),
+        description:               description?.trim() ?? null,
+        source:                    "private",
+        stage:                     "new",
+        status:                    "new",
+        url:                       url?.trim() ?? null,
+        responseDeadline:          deadline ?? null,
+        isPrivateOpportunity:      true,
+        privateOpportunityContact: contactStr,
+        privateSourceType:         sourceType ?? null,
+      })
+      .returning();
+
+    res.status(201).json(created);
+  } catch (err) {
+    console.error("[bids] POST /bids/private error:", err);
+    res.status(500).json({ error: "Failed to create private opportunity" });
+  }
+});
+
+// PATCH /api/bids/:id — update stage/notes/private fields
 router.patch("/:id", async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -510,7 +587,16 @@ router.patch("/:id", async (req, res) => {
   const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
   if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
 
-  const { stage, notes, status } = req.body as { stage?: string; notes?: string; status?: string };
+  const {
+    stage, notes, status,
+    privateOpportunityContact, privateSourceType,
+  } = req.body as {
+    stage?:                    string;
+    notes?:                    string;
+    status?:                   string;
+    privateOpportunityContact?: string | null;
+    privateSourceType?:        string | null;
+  };
   const updates: Record<string, unknown> = {};
 
   if (stage !== undefined) {
@@ -534,6 +620,9 @@ router.patch("/:id", async (req, res) => {
     }
     updates.status = status;
   }
+
+  if (privateOpportunityContact !== undefined) updates.privateOpportunityContact = privateOpportunityContact ?? null;
+  if (privateSourceType !== undefined)         updates.privateSourceType = privateSourceType ?? null;
 
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: "No valid fields to update." });
@@ -972,5 +1061,261 @@ router.post("/:id/educate", async (req, res) => {
   }
 });
 
+// ── Industrial qualification types ───────────────────────────────────────────
+
+type QualRTag     = "REQUIRED" | "RECOMMENDED" | "UNKNOWN";
+type QualMeet     = "yes" | "no" | "verify" | "unknown";
+type QualEquipSt  = "owned" | "rental_recommended" | "must_acquire" | "unknown";
+type ReadinessV   = "ready" | "almost_ready" | "not_a_fit" | "needs_review";
+
+interface IndustrialQualData {
+  readinessVerdict:             ReadinessV;
+  readinessSummary:             string;
+  contractStructure:            string;
+  contractStructureExplanation: string;
+  requirements: { category: string; name: string; tag: QualRTag; companyMeets: QualMeet; meetDetail?: string }[];
+  crewReadiness: { memberName: string; role: string; relevantCerts: string[]; gaps: string[] }[];
+  equipmentNeeded: { name: string; status: QualEquipSt; ownedItemName?: string }[];
+  scopeFitNote:       string | null;
+  licenseVerifyItems: string[];
+}
+
+function sanitizeQualSummary(raw: Record<string, unknown>): IndustrialQualData {
+  const VALID_V: ReadinessV[]   = ["ready", "almost_ready", "not_a_fit", "needs_review"];
+  const VALID_T: QualRTag[]     = ["REQUIRED", "RECOMMENDED", "UNKNOWN"];
+  const VALID_M: QualMeet[]     = ["yes", "no", "verify", "unknown"];
+  const VALID_E: QualEquipSt[]  = ["owned", "rental_recommended", "must_acquire", "unknown"];
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const strArr = (v: unknown): string[] => Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  return {
+    readinessVerdict: VALID_V.includes(raw["readinessVerdict"] as ReadinessV)
+      ? raw["readinessVerdict"] as ReadinessV : "needs_review",
+    readinessSummary: str(raw["readinessSummary"]),
+    contractStructure: str(raw["contractStructure"]) || "Unknown",
+    contractStructureExplanation: str(raw["contractStructureExplanation"]),
+    requirements: Array.isArray(raw["requirements"])
+      ? (raw["requirements"] as Record<string, unknown>[]).map((r) => ({
+          category:    str(r["category"]) || "General",
+          name:        str(r["name"]),
+          tag:         VALID_T.includes(r["tag"] as QualRTag) ? r["tag"] as QualRTag : "UNKNOWN",
+          companyMeets: VALID_M.includes(r["companyMeets"] as QualMeet) ? r["companyMeets"] as QualMeet : "unknown",
+          meetDetail:  typeof r["meetDetail"] === "string" ? r["meetDetail"] : undefined,
+        })).filter((r) => r.name)
+      : [],
+    crewReadiness: Array.isArray(raw["crewReadiness"])
+      ? (raw["crewReadiness"] as Record<string, unknown>[]).map((c) => ({
+          memberName:    str(c["memberName"]),
+          role:          str(c["role"]),
+          relevantCerts: strArr(c["relevantCerts"]),
+          gaps:          strArr(c["gaps"]),
+        })).filter((c) => c.memberName)
+      : [],
+    equipmentNeeded: Array.isArray(raw["equipmentNeeded"])
+      ? (raw["equipmentNeeded"] as Record<string, unknown>[]).map((e) => ({
+          name:          str(e["name"]),
+          status:        VALID_E.includes(e["status"] as QualEquipSt) ? e["status"] as QualEquipSt : "unknown",
+          ownedItemName: typeof e["ownedItemName"] === "string" ? e["ownedItemName"] : undefined,
+        })).filter((e) => e.name)
+      : [],
+    scopeFitNote: typeof raw["scopeFitNote"] === "string" && raw["scopeFitNote"].trim()
+      ? raw["scopeFitNote"].trim() : null,
+    licenseVerifyItems: strArr(raw["licenseVerifyItems"]),
+  };
+}
+
+function buildQualifyPrompt(
+  bid:       typeof bidOpportunitiesTable.$inferSelect,
+  crew:      Array<{ member: typeof crewMembersTable.$inferSelect; certs: (typeof crewCertificationsTable.$inferSelect)[] }>,
+  equipment: (typeof equipmentInventoryTable.$inferSelect)[],
+  settings:  { isSdvosb?: boolean | null; isVosb?: boolean | null; isSmallBusiness?: boolean | null } | null,
+): string {
+  const crewBlock = crew.length === 0
+    ? "No crew members on file. Crew readiness analysis will be limited."
+    : crew.map((c, i) => {
+        const active = c.certs.filter((cert) => cert.status !== "expired");
+        const certsText = active.length === 0
+          ? "  (no certifications on file)"
+          : active.map((cert) => {
+              const exp = cert.expiresAt ? new Date(cert.expiresAt as unknown as string).toISOString().slice(0, 10) : "no expiry";
+              return `  - ${cert.certificationName} (${cert.issuingBody ?? "unknown issuer"}) — ${cert.status}, expires ${exp}`;
+            }).join("\n");
+        return `${i + 1}. ${c.member.name} — ${c.member.role ?? "Crew Member"}\n${certsText}`;
+      }).join("\n\n");
+
+  const equipBlock = equipment.length === 0
+    ? "(no equipment in inventory)"
+    : equipment.map((e) => `- ${e.name} (${e.category ?? "general"}) — ${e.status ?? "in_service"}`).join("\n");
+
+  const bizCerts: string[] = [];
+  if (settings?.isSdvosb)             bizCerts.push("SDVOSB (SBA-certified)");
+  if (settings?.isVosb)               bizCerts.push("VOSB");
+  if (settings?.isSmallBusiness !== false) bizCerts.push("Small Business");
+
+  const existingSummary = bid.aiSummary as Record<string, unknown> | null;
+  const priorSummary = existingSummary
+    ? `Requirements: ${Array.isArray(existingSummary["requirements"]) ? (existingSummary["requirements"] as string[]).join("; ") : "none listed"}\nLicense risk: ${existingSummary["licenseRisk"] ?? "none noted"}`
+    : "No prior AI summary available.";
+
+  const desc = (bid.description ?? "").slice(0, 2500);
+  const licFlags = Array.isArray(bid.licenseFlags) ? (bid.licenseFlags as string[]).join(", ") : "none detected";
+  const outFlags = Array.isArray(bid.outOfScopeFlags) ? (bid.outOfScopeFlags as string[]).join(", ") : "none";
+
+  return `INDUSTRIAL MAINTENANCE BID QUALIFICATION ANALYSIS
+
+Evaluate this contractor's readiness to bid on the opportunity below using the exact crew certifications and equipment inventory provided. Return ONLY valid JSON matching the schema at the end.
+
+CONTRACTOR PROFILE:
+Business certifications: ${bizCerts.length > 0 ? bizCerts.join(", ") : "None loaded"}
+
+ACTIVE CREW (${crew.length} member${crew.length !== 1 ? "s" : ""}):
+${crewBlock}
+
+EQUIPMENT OWNED (${equipment.length} item${equipment.length !== 1 ? "s" : ""}):
+${equipBlock}
+
+BID DETAILS:
+Title:                ${bid.title}
+Agency:               ${bid.agency ?? "Unknown"}
+NAICS Code:           ${bid.naicsCode ?? "Unknown"}
+Source:               ${bid.source}
+Contract Type:        ${bid.contractType ?? "unknown"} (auto-detected)
+Scope Size:           ${bid.scopeSize ?? "unknown"} (auto-detected)
+License Flags:        ${licFlags}
+Out-of-Scope Flags:   ${outFlags}
+
+PRIOR AI SUMMARY:
+${priorSummary}
+
+DESCRIPTION (first 2500 chars):
+${desc}
+
+═══════════════════════════════════════════════
+CRITICAL RULES — NEVER VIOLATE:
+1. For ANY item involving: boiler license, pressure vessel license, R-stamp, S-stamp, ASME stamp/authorization, state contractor license, journeyman/master plumber, electrician license, HVAC/refrigerant license, rigging/crane operator license — ALWAYS set companyMeets="verify" and meetDetail="Verify state licensing requirements. This tool never auto-declares licensed-trade requirements met or unmet."
+2. Never say "not eligible" or "cannot bid" — use "verify before bidding" language.
+3. readinessSummary MUST contain "informational only."
+4. If the solicitation implies 20+ simultaneous on-site workers, a full-time resident maintenance team, or $5M+ labor content — set scopeFitNote with a clear caution.
+5. Equipment: only mark status="owned" when an inventory item name is an obvious match.
+═══════════════════════════════════════════════
+
+ANALYSIS TO PERFORM:
+
+CONTRACT STRUCTURE: How would the contractor be paid?
+  T&M | Labor Hour | Fixed Price | IDIQ/Task Order | Hybrid | Unknown
+
+REQUIREMENTS (per category):
+Categories: Licenses & Permits | Certifications & Training | Safety Training | Insurance & Bonding | Past Performance | Personnel/Staffing | Equipment | Registrations | Security/Site Access | Wage/Davis-Bacon | Pricing Requirements
+For each: tag=REQUIRED/RECOMMENDED/UNKNOWN, companyMeets=yes/no/verify/unknown
+
+CREW READINESS: Per member — certs relevant to this specific bid, and gaps.
+
+EQUIPMENT: List equipment the bid explicitly/implicitly requires; check inventory.
+
+VERDICT:
+  ready         = no hard "no" on REQUIRED items, scope fits crew size
+  almost_ready  = some REQUIRED items need verification, minor gaps, scope fits
+  not_a_fit     = multiple hard "no" on REQUIRED items OR clear scope mismatch
+  needs_review  = too many unknowns, description too vague to assess
+
+Return ONLY valid JSON (no markdown fences):
+{
+  "readinessVerdict": "ready|almost_ready|not_a_fit|needs_review",
+  "readinessSummary": "2 sentences. Must say 'informational only'.",
+  "contractStructure": "T&M|Labor Hour|Fixed Price|IDIQ/Task Order|Hybrid|Unknown",
+  "contractStructureExplanation": "Plain English: how you get paid, how to price the work.",
+  "requirements": [{"category":"...","name":"...","tag":"REQUIRED|RECOMMENDED|UNKNOWN","companyMeets":"yes|no|verify|unknown","meetDetail":"..."}],
+  "crewReadiness": [{"memberName":"...","role":"...","relevantCerts":["cert (status, expires date)"],"gaps":["specific gap"]}],
+  "equipmentNeeded": [{"name":"...","status":"owned|rental_recommended|must_acquire|unknown","ownedItemName":"...or omit"}],
+  "scopeFitNote": "concern about scope size for this crew, or null",
+  "licenseVerifyItems": ["specific license item 1"]
+}`;
+}
+
+// POST /api/bids/:id/qualify — AI industrial maintenance qualification analysis
+router.post("/:id/qualify", async (req, res) => {
+  const id = parseInt(req.params["id"] as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const rawBizId = req.body?.businessId ?? req.query["businessId"];
+  const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
+  if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+
+  const force = req.body?.force === true || req.query["force"] === "true";
+
+  try {
+    // Load bid
+    const [bid] = await db
+      .select()
+      .from(bidOpportunitiesTable)
+      .where(and(eq(bidOpportunitiesTable.id, id), eq(bidOpportunitiesTable.businessId, bizId)))
+      .limit(1);
+    if (!bid) { res.status(404).json({ error: "Bid not found" }); return; }
+
+    // Return cached result (cache is indefinite; use force=true to refresh)
+    if (bid.industrialQualSummary && !force) {
+      res.json({ qualification: bid.industrialQualSummary, cached: true });
+      return;
+    }
+
+    // Load active crew members with their certifications
+    const crewMembers = await db
+      .select()
+      .from(crewMembersTable)
+      .where(and(eq(crewMembersTable.businessId, bizId), eq(crewMembersTable.active, true)));
+
+    const crewWithCerts = await Promise.all(
+      crewMembers.map(async (member) => {
+        const certs = await db
+          .select()
+          .from(crewCertificationsTable)
+          .where(eq(crewCertificationsTable.crewMemberId, member.id))
+          .orderBy(crewCertificationsTable.certificationName);
+        return { member, certs };
+      })
+    );
+
+    // Load equipment inventory
+    const equipment = await db
+      .select()
+      .from(equipmentInventoryTable)
+      .where(eq(equipmentInventoryTable.businessId, bizId))
+      .orderBy(equipmentInventoryTable.category, equipmentInventoryTable.name);
+
+    // Load bid settings for business certifications
+    const [settings] = await db
+      .select({ isSdvosb: bidBusinessSettingsTable.isSdvosb, isVosb: bidBusinessSettingsTable.isVosb, isSmallBusiness: bidBusinessSettingsTable.isSmallBusiness })
+      .from(bidBusinessSettingsTable)
+      .where(eq(bidBusinessSettingsTable.businessId, bizId))
+      .limit(1);
+
+    const prompt = buildQualifyPrompt(bid, crewWithCerts, equipment, settings ?? null);
+
+    const completion = await openai.chat.completions.create({
+      model: BUILDPRO_AI_MINI_MODEL,
+      max_completion_tokens: 3000,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    let parsed: Record<string, unknown>;
+    try   { parsed = JSON.parse(raw); }
+    catch { const m = raw.match(/\{[\s\S]*\}/); parsed = m ? JSON.parse(m[0]) : {}; }
+
+    const qualification = sanitizeQualSummary(parsed);
+
+    await db
+      .update(bidOpportunitiesTable)
+      .set({
+        industrialQualSummary:   qualification as unknown as Record<string, unknown>,
+        industrialQualSummaryAt: new Date(),
+      })
+      .where(eq(bidOpportunitiesTable.id, id));
+
+    res.json({ qualification, cached: false });
+  } catch (err) {
+    console.error("[bids] POST /bids/:id/qualify error:", err);
+    res.status(500).json({ error: "Failed to generate qualification analysis" });
+  }
+});
 
 export default router;

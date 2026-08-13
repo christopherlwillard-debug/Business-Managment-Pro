@@ -1,7 +1,8 @@
 import { useState } from "react";
 import {
   ChevronDown, ChevronUp, Zap, Link2, CheckCircle2,
-  AlertCircle, Clock, ExternalLink, Database,
+  AlertCircle, Clock, ExternalLink, Database, Building2,
+  Users, ShoppingCart, ClipboardCheck, ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BidSourceConnection, SourceCategory } from "./types";
@@ -271,13 +272,155 @@ function PortalSourceRow({
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 interface SourceManagementPanelProps {
-  sources:    BidSourceConnection[];
-  onUpdate:   (slug: string, patch: { enabled?: boolean; portalUrl?: string; portalLabel?: string }) => void;
-  isUpdating: boolean;
+  sources:              BidSourceConnection[];
+  onUpdate:             (slug: string, patch: { enabled?: boolean; portalUrl?: string; portalLabel?: string }) => void;
+  isUpdating:           boolean;
+  showPrivatePathways?: boolean;
+}
+
+// ── Private T&M / On-Call Pathways (static educational content) ───────────────
+
+const PRIVATE_PATHWAYS = [
+  {
+    id: "prequalification",
+    icon: ClipboardCheck,
+    title: "ISN / Avetta / PEC Safe prequalification",
+    description: "Plants and refineries use these platforms to pre-screen contractors before allowing them on site. Once approved, the plant contacts you for as-needed T&M work — no bidding required.",
+    details: ["Register at ISNetworld.com, Avetta.com, or PECSafe.com (check which platform each plant uses).", "Upload: certificate of insurance, OSHA 300 log, written safety program, crew cert copies.", "Allow 2–4 weeks for review. Renewals are annual.", "Once on the approved list, you get phone calls for unplanned maintenance needs."],
+    firstStep: "Search 'ISN Avetta PEC' + your target plant's name to find which platform they use, then register.",
+    plants: "Refineries, chemical plants, automotive plants, utilities, food processing facilities.",
+  },
+  {
+    id: "prime_sub",
+    icon: Building2,
+    title: "Prime-contractor sub portals",
+    description: "Large industrial maintenance IDIQs (Indefinite Delivery contracts) are often won by primes like AECOM, Fluor, Day & Zimmermann, Jacobs, or Honeywell. They issue T&M task orders to subs.",
+    details: ["Identify primes winning industrial maintenance work in your region via USASpending.gov (filter by NAICS 811310).", "Find the prime's supplier or small business portal on their website.", "Submit a 1-page capability statement: crew certs, OSHA record, equipment, past industrial work.", "Contact the prime's Small Business Liaison Officer (SBLO) by name if you can find them."],
+    firstStep: "Go to USASpending.gov, filter awards by NAICS 811310 in your state, identify the top primes, then visit their supplier pages.",
+    plants: "AECOM, Fluor, Day & Zimmermann, Jacobs, Honeywell FM&T, Bechtel, local MRO primes.",
+  },
+  {
+    id: "direct_contact",
+    icon: Users,
+    title: "Direct plant / maintenance-manager contact",
+    description: "Most on-call industrial relationships start with a direct conversation. The right contact is the maintenance manager or reliability engineer — not procurement.",
+    details: ["Identify target plants (refineries, chemical plants, manufacturers) within your radius.", "Find the maintenance manager on LinkedIn or the plant's website.", "Call or email with a 3-sentence intro: who you are, what you do, one credential (e.g. 'We hold AWS D1.1 welder certs and a clean OSHA record').", "Ask specifically: 'Do you use outside contractors for on-call mechanical work? How do I get on your approved contractor list?'"],
+    firstStep: "Make a list of 5 industrial facilities within 1 hour of your base. Find one contact name each. Send outreach emails this week.",
+    plants: "Any industrial facility: refinery, chemical plant, food processing, power generation, wastewater treatment.",
+  },
+  {
+    id: "purchasing_portal",
+    icon: ShoppingCart,
+    title: "Industrial purchasing portals (Ariba / Fieldglass / Coupa)",
+    description: "Large manufacturers post maintenance task orders on procurement platforms. Registering as a supplier gives you access to a steady stream of work orders.",
+    details: ["Register on SAP Ariba (ariba.com), SAP Fieldglass, Coupa, or Oracle iSupplier — check which platform your target customer uses.", "Set your NAICS codes (811310, 238190, 238290, 238910) precisely.", "Plants post maintenance task orders with scope, location, and estimated hours — respond with your T&M rate + crew qualifications.", "Keep your profile current: insurance certificates, safety metrics, certifications."],
+    firstStep: "Register as an Ariba supplier at ariba.com/register. It's free and covers the largest share of industrial purchasing.",
+    plants: "Major manufacturers (automotive, aerospace, chemical, energy) using SAP ERP systems.",
+  },
+  {
+    id: "approved_contractor_list",
+    icon: CheckCircle2,
+    title: "Approved Contractor List (ACL) registration",
+    description: "Plants maintain short lists of pre-vetted contractors for specific trades. Being on an ACL is the primary private-market path for a small industrial crew.",
+    details: ["Call or email the plant's safety or maintenance department and ask: 'Do you maintain an approved contractor list for mechanical/industrial maintenance?'", "Request the application. Requirements typically include: insurance cert (minimum limits vary), written safety program, crew qualifications, EMR (Experience Modification Rate) below 1.0.", "Some plants post ACL applications on their website under 'Vendors' or 'Suppliers'.", "Once on the list, you receive calls for scheduled outages and unplanned breakdowns."],
+    firstStep: "Call 3 industrial facilities near you and ask about their ACL process. The maintenance or safety department handles this.",
+    plants: "Most industrial plants maintain ACLs. Look for refineries, chemical plants, paper mills, steel mills, power plants.",
+  },
+];
+
+function PrivatePathwaysPanel() {
+  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden mt-3">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center gap-2.5">
+          <Zap className="w-4 h-4 text-orange-500" />
+          <span className="font-semibold text-foreground">Private T&M / On-Call Pathways</span>
+          <span className="text-xs text-muted-foreground">5 proven paths for industrial crews</span>
+        </div>
+        {open
+          ? <ChevronUp className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          : <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+        }
+      </button>
+
+      {open && (
+        <div className="border-t border-border">
+          {/* Intro */}
+          <div className="px-5 py-3 bg-orange-50/50 dark:bg-orange-900/10 border-b border-border/50">
+            <p className="text-xs text-muted-foreground">
+              Federal bids are only a fraction of industrial maintenance work. Most T&M and on-call contracts are awarded through these private-market paths — usually before a job is ever publicly posted.
+            </p>
+          </div>
+
+          {/* Pathways */}
+          <div className="divide-y divide-border/40">
+            {PRIVATE_PATHWAYS.map((path) => {
+              const PathIcon = path.icon;
+              const isExpanded = expanded === path.id;
+              return (
+                <div key={path.id}>
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(isExpanded ? null : path.id)}
+                    className="w-full flex items-start gap-3 px-5 py-3.5 hover:bg-muted/20 transition-colors text-left"
+                  >
+                    <PathIcon className="w-4 h-4 text-orange-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground">{path.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{path.description}</p>
+                    </div>
+                    {isExpanded
+                      ? <ChevronUp className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                      : <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                    }
+                  </button>
+
+                  {isExpanded && (
+                    <div className="px-5 pb-4 space-y-3 bg-muted/10">
+                      <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 flex gap-2">
+                        <ArrowRight className="w-3.5 h-3.5 text-primary flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-[10px] font-semibold text-primary uppercase tracking-wide">First step</p>
+                          <p className="text-xs text-foreground leading-snug">{path.firstStep}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">What to do</p>
+                        <ol className="space-y-1.5">
+                          {path.details.map((d, i) => (
+                            <li key={i} className="flex gap-2 text-xs text-foreground leading-snug">
+                              <span className="flex-shrink-0 w-4 h-4 rounded-full bg-muted text-muted-foreground text-[10px] font-bold flex items-center justify-center mt-0.5">
+                                {i + 1}
+                              </span>
+                              {d}
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground/60">
+                        <span className="font-medium">Common with:</span> {path.plants}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function SourceManagementPanel({
-  sources, onUpdate, isUpdating,
+  sources, onUpdate, isUpdating, showPrivatePathways,
 }: SourceManagementPanelProps) {
   const [open, setOpen] = useState(false);
 
@@ -299,6 +442,7 @@ export default function SourceManagementPanel({
     .filter(g => g.rows.length > 0);
 
   return (
+    <>
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       {/* Collapsible header */}
       <button
@@ -368,5 +512,7 @@ export default function SourceManagementPanel({
         </div>
       )}
     </div>
+    {showPrivatePathways && <PrivatePathwaysPanel />}
+    </>
   );
 }

@@ -2,8 +2,12 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw, FileSearch, Shield, List, Columns, CheckCircle2, AlertCircle, Building2, Layers2,
+  Plus, RotateCcw,
 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -17,9 +21,9 @@ import BidCard from "./bids/BidCard";
 import PipelineBoard from "./bids/PipelineBoard";
 import AwardsPanel from "./bids/AwardsPanel";
 import BidEducationPanel from "./bids/BidEducationPanel";
+import BidQualificationPanel from "./bids/BidQualificationPanel";
 import type { BidFilter, SourceFilter, CapabilityFilter } from "./bids/BidFilterBar";
-import type { QuickLink, AiSummary, BidOpportunity, BidStage, EducationSummary, BidSourceConnection } from "./bids/types";
-import { RotateCcw } from "lucide-react";
+import type { QuickLink, AiSummary, BidOpportunity, BidStage, EducationSummary, BidSourceConnection, IndustrialQualSummary } from "./bids/types";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -92,6 +96,19 @@ export default function BidOpportunities() {
   const [summaryCache,   setSummaryCache]   = useState<Record<number, AiSummary>>({});
   const [educatingBid,   setEducatingBid]   = useState<BidOpportunity | null>(null);
   const [educationCache, setEducationCache] = useState<Record<number, EducationSummary>>({});
+  const [qualifyingBid,  setQualifyingBid]  = useState<BidOpportunity | null>(null);
+  const [qualCache,      setQualCache]      = useState<Record<number, IndustrialQualSummary>>({});
+  const [addingPrivate,  setAddingPrivate]  = useState(false);
+  const [privateForm, setPrivateForm] = useState({
+    companyName:   "",
+    description:   "",
+    sourceType:    "direct_service",
+    contactName:   "",
+    contactEmail:  "",
+    contactPhone:  "",
+    url:           "",
+    deadline:      "",
+  });
 
   function switchView(v: "list" | "pipeline") {
     setView(v);
@@ -172,6 +189,34 @@ export default function BidOpportunities() {
     },
     onError: () => {
       toast({ title: "Couldn't save links", variant: "destructive" });
+    },
+  });
+
+  // ── Create private opportunity ──────────────────────────────────────────────
+
+  const createPrivateBid = useMutation({
+    mutationFn: async (form: typeof privateForm) => {
+      if (!businessId) throw new Error("Select a business first");
+      const res = await fetch(`${BASE_URL}/api/bids/private`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ businessId, ...form }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? "Failed to create opportunity");
+      }
+      return res.json() as Promise<BidOpportunity>;
+    },
+    onSuccess: () => {
+      setAddingPrivate(false);
+      setPrivateForm({ companyName: "", description: "", sourceType: "direct_service", contactName: "", contactEmail: "", contactPhone: "", url: "", deadline: "" });
+      queryClient.invalidateQueries({ queryKey: ["bids-unified"] });
+      toast({ title: "Private opportunity added" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Couldn't add opportunity", description: err.message, variant: "destructive" });
     },
   });
 
@@ -368,9 +413,14 @@ export default function BidOpportunities() {
   const profileNaicsCodes = BUSINESS_NAICS[activeBusiness?.type ?? ""] ?? [];
 
   // ── Capability category filter — outermost lens ───────────────────────────
+  // Private opportunities (source="private") always appear in the industrial_maintenance view
+  const isPrivateBid = (b: BidOpportunity) => b.isPrivateOpportunity === true || b.isPrivateOpportunity === "true";
   const capabilityFiltered = capabilityFilter === "all"
     ? pipelineBids
-    : pipelineBids.filter((b) => b.capabilityCategories?.includes(capabilityFilter) ?? false);
+    : pipelineBids.filter((b) =>
+        (b.capabilityCategories?.includes(capabilityFilter) ?? false) ||
+        (capabilityFilter === "industrial_maintenance" && isPrivateBid(b))
+      );
 
   // Counts per capability key (computed from all pipeline bids, stage !== no_bid)
   const ALL_CAP_KEYS: CapabilityFilter[] = [
@@ -381,9 +431,12 @@ export default function BidOpportunities() {
     all: pipelineBids.filter((b) => b.stage !== "no_bid").length,
     ...Object.fromEntries(ALL_CAP_KEYS.map((key) => [
       key,
-      pipelineBids.filter(
-        (b) => b.stage !== "no_bid" && (b.capabilityCategories?.includes(key) ?? false)
-      ).length,
+      pipelineBids.filter((b) => {
+        if (b.stage === "no_bid") return false;
+        if (b.capabilityCategories?.includes(key)) return true;
+        if (key === "industrial_maintenance" && isPrivateBid(b)) return true;
+        return false;
+      }).length,
     ])),
   };
 
@@ -440,33 +493,55 @@ export default function BidOpportunities() {
 
   // ── Shared card list renderer (used in both mobile fallback + list view) ──
   function renderCardList(bidsToRender: BidOpportunity[]) {
-    if (bidsToRender.length === 0) {
-      return (
-        <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
-          <FileSearch className="w-8 h-8 text-muted-foreground/30" />
-          <p className="text-muted-foreground font-medium">No bids match your filters</p>
-          <p className="text-sm text-muted-foreground/60">Try adjusting the stage, source, or fit filter.</p>
-        </div>
-      );
-    }
+    const isEmpty = bidsToRender.length === 0;
+    const showAddPrivate = capabilityFilter === "industrial_maintenance" && businessId;
+
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
-        {bidsToRender.map((bid) => (
-          <BidCard
-            key={bid.id}
-            bid={bid}
-            summary={summaryCache[bid.id] ?? bid.aiSummary}
-            onSummarize={openSummaryPanel}
-            onEducate={(b) => setEducatingBid(b)}
-            onStageChange={(b, stage) => updateStage.mutate({ id: b.id, stage, bidBusinessId: b.businessId })}
-            onDismiss={dismissBid}
-            onRestore={(b) => updateStage.mutate({ id: b.id, stage: "new", bidBusinessId: b.businessId })}
-            isUpdating={updateStage.isPending}
-            multipleBusinesses={!activeBusiness && businesses.length > 1}
-            relevantBusinessNames={bid.relevantBusinessNames}
-          />
-        ))}
-      </div>
+      <>
+        {/* "Add Private Opportunity" prompt for industrial maintenance view */}
+        {showAddPrivate && (
+          <div className="flex items-center justify-between px-4 py-2.5 rounded-xl border border-dashed border-border bg-muted/20">
+            <div>
+              <p className="text-sm font-medium text-foreground">Track a private maintenance opportunity</p>
+              <p className="text-xs text-muted-foreground">Direct service, subcontract, or prequalification — not publicly posted</p>
+            </div>
+            <button
+              onClick={() => setAddingPrivate(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors flex-shrink-0 ml-3"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Private
+            </button>
+          </div>
+        )}
+
+        {isEmpty ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
+            <FileSearch className="w-8 h-8 text-muted-foreground/30" />
+            <p className="text-muted-foreground font-medium">No bids match your filters</p>
+            <p className="text-sm text-muted-foreground/60">Try adjusting the stage, source, or fit filter.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
+            {bidsToRender.map((bid) => (
+              <BidCard
+                key={bid.id}
+                bid={bid}
+                summary={summaryCache[bid.id] ?? bid.aiSummary}
+                onSummarize={openSummaryPanel}
+                onEducate={(b) => setEducatingBid(b)}
+                onQualify={(b) => setQualifyingBid(b)}
+                onStageChange={(b, stage) => updateStage.mutate({ id: b.id, stage, bidBusinessId: b.businessId })}
+                onDismiss={dismissBid}
+                onRestore={(b) => updateStage.mutate({ id: b.id, stage: "new", bidBusinessId: b.businessId })}
+                isUpdating={updateStage.isPending}
+                multipleBusinesses={!activeBusiness && businesses.length > 1}
+                relevantBusinessNames={bid.relevantBusinessNames}
+              />
+            ))}
+          </div>
+        )}
+      </>
     );
   }
 
@@ -591,6 +666,7 @@ export default function BidOpportunities() {
           sources={bidSources}
           onUpdate={(slug, patch) => patchSource.mutate({ slug, patch })}
           isUpdating={patchSource.isPending}
+          showPrivatePathways={capabilityFilter === "industrial_maintenance"}
         />
       )}
 
@@ -783,6 +859,162 @@ export default function BidOpportunities() {
           }
         }}
       />
+
+      {/* ── Bid Qualification Panel ──────────────────────────────────────── */}
+      <BidQualificationPanel
+        bid={qualifyingBid ?? ({} as BidOpportunity)}
+        open={!!qualifyingBid}
+        onClose={() => setQualifyingBid(null)}
+        businessId={qualifyingBid?.businessId ?? businessId ?? 0}
+        apiBaseUrl={BASE_URL}
+        initialQual={
+          qualifyingBid
+            ? (qualCache[qualifyingBid.id] ?? (qualifyingBid.industrialQualSummary as IndustrialQualSummary | null))
+            : null
+        }
+        onGenerated={(qual) => {
+          if (qualifyingBid) {
+            const id = qualifyingBid.id;
+            // Update local cache so re-opening the panel is instant
+            setQualCache((prev) => ({ ...prev, [id]: qual }));
+            // Patch the bid in the query cache so BidCard renders the verdict badge immediately
+            // (without waiting for the next full bids-unified refetch)
+            queryClient.setQueryData<BidOpportunity[]>(
+              ["bids-unified", activeBusiness?.id ?? "all"],
+              (prev = []) =>
+                prev.map((b) =>
+                  b.id === id
+                    ? { ...b, industrialQualSummary: qual, industrialQualSummaryAt: new Date().toISOString() }
+                    : b
+                )
+            );
+          }
+        }}
+      />
+
+      {/* ── Add Private Opportunity Dialog ───────────────────────────────── */}
+      <Dialog open={addingPrivate} onOpenChange={(o) => !o && setAddingPrivate(false)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add Private Opportunity</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Company/plant name */}
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1">
+                Company / Plant name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={privateForm.companyName}
+                onChange={(e) => setPrivateForm((p) => ({ ...p, companyName: e.target.value }))}
+                placeholder="e.g. Acme Chemical Plant, Toyota Georgetown"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+
+            {/* Opportunity type */}
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1">Opportunity type</label>
+              <select
+                value={privateForm.sourceType}
+                onChange={(e) => setPrivateForm((p) => ({ ...p, sourceType: e.target.value }))}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="direct_service">Direct service (plant maintenance manager reached out)</option>
+                <option value="subcontract">Subcontracting (prime contractor looking for subs)</option>
+                <option value="prequalification">Prequalification (ISN / Avetta / PEC Safe)</option>
+                <option value="on_call_list">On-call / approved contractor list</option>
+                <option value="purchasing_portal">Purchasing portal (Ariba / Fieldglass / Coupa)</option>
+              </select>
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1">Work description</label>
+              <textarea
+                value={privateForm.description}
+                onChange={(e) => setPrivateForm((p) => ({ ...p, description: e.target.value }))}
+                placeholder="What type of industrial maintenance work is needed?"
+                rows={3}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+              />
+            </div>
+
+            {/* Contact info */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1">Contact name</label>
+                <input
+                  type="text"
+                  value={privateForm.contactName}
+                  onChange={(e) => setPrivateForm((p) => ({ ...p, contactName: e.target.value }))}
+                  placeholder="Maintenance manager name"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1">Contact email</label>
+                <input
+                  type="email"
+                  value={privateForm.contactEmail}
+                  onChange={(e) => setPrivateForm((p) => ({ ...p, contactEmail: e.target.value }))}
+                  placeholder="email@plant.com"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1">Contact phone</label>
+                <input
+                  type="tel"
+                  value={privateForm.contactPhone}
+                  onChange={(e) => setPrivateForm((p) => ({ ...p, contactPhone: e.target.value }))}
+                  placeholder="555-000-0000"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1">Target deadline</label>
+                <input
+                  type="date"
+                  value={privateForm.deadline}
+                  onChange={(e) => setPrivateForm((p) => ({ ...p, deadline: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+            </div>
+
+            {/* URL */}
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1">Website / portal URL (optional)</label>
+              <input
+                type="url"
+                value={privateForm.url}
+                onChange={(e) => setPrivateForm((p) => ({ ...p, url: e.target.value }))}
+                placeholder="https://"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <button
+              onClick={() => setAddingPrivate(false)}
+              className="px-4 py-2 text-sm rounded-lg border border-border bg-card text-foreground hover:bg-muted transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => createPrivateBid.mutate(privateForm)}
+              disabled={!privateForm.companyName.trim() || createPrivateBid.isPending}
+              className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
+              {createPrivateBid.isPending ? "Adding…" : "Add Opportunity"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

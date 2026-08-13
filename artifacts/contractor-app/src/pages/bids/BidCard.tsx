@@ -1,7 +1,7 @@
 import {
   ExternalLink, Sparkles, XCircle, CheckCircle2,
   Building2, Shield, Users, Globe, Award, ChevronDown, Handshake, Info, Calendar, BookOpen,
-  Eye, Lock, BadgeCheck, Zap, AlertTriangle, AlertCircle,
+  Eye, Lock, BadgeCheck, Zap, AlertTriangle, AlertCircle, Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AiSummary, BidOpportunity, BidStage, SetAsideType, RecommendationLevel, OfficialSourceStatus } from "./types";
@@ -249,11 +249,21 @@ const STAGE_BADGE: Record<string, { label: string; className: string }> = {
   no_bid:    { label: "No Bid",    className: "bg-muted text-muted-foreground" },
 };
 
+// ── Readiness verdict badge (from qualification analysis) ─────────────────────
+
+const READINESS_BADGE: Record<string, { label: string; className: string }> = {
+  ready:        { label: "Ready",        className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" },
+  almost_ready: { label: "Almost Ready", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+  not_a_fit:    { label: "Not a Fit",    className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
+  needs_review: { label: "Needs Review", className: "bg-muted text-muted-foreground" },
+};
+
 interface Props {
   bid:                   BidOpportunity;
   summary:               AiSummary | null;
   onSummarize:           (bid: BidOpportunity) => void;
   onEducate:             (bid: BidOpportunity) => void;
+  onQualify?:            (bid: BidOpportunity) => void;
   onStageChange:         (bid: BidOpportunity, stage: BidStage) => void;
   onDismiss:             (bid: BidOpportunity) => void;
   onRestore:             (bid: BidOpportunity) => void;
@@ -264,7 +274,7 @@ interface Props {
 }
 
 export default function BidCard({
-  bid, summary, onSummarize, onEducate, onStageChange, onDismiss, onRestore, isUpdating,
+  bid, summary, onSummarize, onEducate, onQualify, onStageChange, onDismiss, onRestore, isUpdating,
   multipleBusinesses, relevantBusinessNames,
 }: Props) {
   const effectiveSummary = summary;
@@ -281,7 +291,12 @@ export default function BidCard({
       {/* ── Top badge row: source · opportunity type · stage · eligibility ── */}
       <div className="flex flex-wrap items-center gap-1.5">
         {/* Source badge */}
-        {bid.source === "state-local" ? (
+        {bid.isPrivateOpportunity === true || bid.isPrivateOpportunity === "true" || bid.source === "private" ? (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">
+            <Wrench className="w-3 h-3" />
+            Private
+          </span>
+        ) : bid.source === "state-local" ? (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
             {bid.sourceLabel ?? "KY Local"}
           </span>
@@ -361,6 +376,22 @@ export default function BidCard({
             Outside scope
           </span>
         )}
+
+        {/* ── Readiness verdict badge (from qualification analysis) ── */}
+        {bid.industrialQualSummary && (() => {
+          const verdict = (bid.industrialQualSummary as { readinessVerdict?: string }).readinessVerdict;
+          const rb = verdict ? READINESS_BADGE[verdict] : null;
+          if (!rb) return null;
+          return (
+            <span
+              className={cn("inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full", rb.className)}
+              title="Industrial qualification readiness — click Qualify to view full analysis"
+            >
+              <Wrench className="w-3 h-3" />
+              {rb.label}
+            </span>
+          );
+        })()}
       </div>
 
       {/* ── Title + agency ── */}
@@ -446,6 +477,26 @@ export default function BidCard({
           <BookOpen className="w-3.5 h-3.5 md:w-3 md:h-3" />
           {bid.educationSummary ? "Learn More" : "Learn"}
         </button>
+
+        {/* Qualify button — only for industrial maintenance bids or private opportunities */}
+        {onQualify && (
+          bid.capabilityCategories?.includes("industrial_maintenance") ||
+          bid.isPrivateOpportunity === true || bid.isPrivateOpportunity === "true"
+        ) && (
+          <button
+            onClick={() => onQualify(bid)}
+            className={cn(
+              "flex items-center gap-1 px-3 py-2.5 md:py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap",
+              bid.industrialQualSummary
+                ? "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/40"
+                : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+            )}
+            title="Run AI qualification analysis for this industrial maintenance bid"
+          >
+            <Wrench className="w-3.5 h-3.5 md:w-3 md:h-3" />
+            Qualify
+          </button>
+        )}
 
         {bid.url && (
           <div className="inline-flex items-center gap-1.5">
