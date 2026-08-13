@@ -1,52 +1,86 @@
 /**
  * Static catalog of supported integrations + credential test functions.
  *
- * Adding a new integration: add an entry to INTEGRATION_CATALOG and a test
- * function to CREDENTIAL_TESTERS. The routes/integrations.ts endpoint and the
- * frontend card system pick it up automatically.
+ * Adding a new integration: add an entry to INTEGRATION_CATALOG and, if it
+ * has a testable credential, a function to CREDENTIAL_TESTERS.
  *
  * SECURITY: Test functions receive the *proposed new* credential from the user.
  * They must NEVER log it, return it, or persist it — only return {ok, error}.
  * setCredential() persists only after a successful test.
+ *
+ * Auto-sync integrations (autoSync: true) get their health from
+ * bid_source_connections — do NOT mark automatedDiscovery sources as
+ * "connected" based solely on catalog presence.
  */
 
 import { getCredential } from "./credentialManager.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type CredentialType = "api_key" | "client_secret_pair" | "none";
-export type IntegrationCategory = "procurement" | "financial" | "fuel_maps" | "ai" | "communication";
+export type CredentialType =
+  | "api_key"
+  | "client_secret_pair"
+  | "username_password"   // portal login: encrypted username + encrypted password
+  | "portal_only"         // just a URL bookmark; no programmatic credential
+  | "none";               // managed externally (OAuth, Replit-managed)
+
+export type IntegrationCategory =
+  | "procurement"          // federal/state bid discovery (API-keyed)
+  | "procurement_auto"     // public auto-synced procurement sources (no credential needed)
+  | "procurement_portal"   // procurement portals requiring manual login
+  | "financial"
+  | "fuel_maps"
+  | "ai"
+  | "communication"
+  | "contractor_portal"    // supply/material portals
+  | "equipment";           // equipment/auction portals
+
 export type IntegrationScope = "platform" | "business";
 
 export interface IntegrationDef {
-  slug:                 string;
-  name:                 string;
-  shortName:            string;
-  description:          string;
-  category:             IntegrationCategory;
-  scope:                IntegrationScope;
-  credentialType:       CredentialType;
+  slug:                string;
+  name:                string;
+  shortName:           string;
+  description:         string;
+  category:            IntegrationCategory;
+  scope:               IntegrationScope;
+  credentialType:      CredentialType;
   /** Label shown above the credential input(s). */
-  credentialLabel:      string;
+  credentialLabel:     string;
   /** Help text explaining where to get the credential. */
-  credentialHelp:       string;
+  credentialHelp:      string;
   /** Link to the integration's API key / account page. */
-  docsUrl?:             string;
+  docsUrl?:            string;
+  /** Default portal URL (editable per user). */
+  defaultPortalUrl?:   string;
   /** Primary process.env var used as fallback when no DB credential is stored. */
-  envFallback?:         string;
+  envFallback?:        string;
   /**
    * Number of days before expiry to show a renewal reminder.
-   * SAM.gov system accounts expire annually — set to 365.
+   * SAM.gov system accounts expire annually.
    */
-  renewalPeriodDays?:   number;
-  /**
-   * True if this integration is managed by Replit (OAuth, etc.) and does not
-   * support credential replacement via the UI.
-   */
-  managed?:             boolean;
-  managedNote?:         string;
+  renewalPeriodDays?:  number;
+  /** True if this integration is managed by Replit (OAuth, etc.). */
+  managed?:            boolean;
+  managedNote?:        string;
   /** Field definitions for multi-field credentials (e.g., clientId + secret). */
-  fields?:              Array<{ key: string; label: string; placeholder?: string; sensitive?: boolean }>;
+  fields?:             Array<{ key: string; label: string; placeholder?: string; sensitive?: boolean }>;
+  /**
+   * Set true for public auto-synced sources that need no credential.
+   * Status comes from bid_source_connections, not integration_credentials.
+   */
+  autoSync?:           boolean;
+  /** bid_source_catalog.slug — links this integration to sync health data. */
+  bidSourceSlug?:      string;
+  /** Human-readable sync schedule for display (no credential needed sources). */
+  syncSchedule?:       string;
+  /**
+   * If true, this is a forward-looking placeholder entry.
+   * UI shows it as "Coming Soon" — no credential form rendered.
+   */
+  comingSoon?:         boolean;
+  /** Note about credential scoping (platform-wide vs per-business). */
+  scopeNote?:          string;
 }
 
 export interface TestResult {
@@ -57,23 +91,206 @@ export interface TestResult {
 // ── Catalog ───────────────────────────────────────────────────────────────────
 
 export const INTEGRATION_CATALOG: IntegrationDef[] = [
-  // ── Government & Procurement ────────────────────────────────────────────────
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROCUREMENT — API-keyed
+  // ═══════════════════════════════════════════════════════════════════════════
   {
     slug:              "sam_gov",
     name:              "SAM.gov Federal Contracting",
     shortName:         "SAM.gov",
-    description:       "Finds federal contract opportunities, solicitations, and awards from the System for Award Management. Powers the Federal tab in Bid Opportunities.",
+    description:       "Finds federal contract opportunities, solicitations, and awards from the System for Award Management. Powers the Federal tab in Bid Opportunities. SAM.gov system account keys expire annually.",
     category:          "procurement",
     scope:             "platform",
     credentialType:    "api_key",
     credentialLabel:   "API Key",
-    credentialHelp:    "Get a free API key from SAM.gov System Account. Note: SAM.gov system account keys expire annually — set a renewal reminder.",
+    credentialHelp:    "Get a free API key by creating a System Account at SAM.gov. Keys expire annually — set a reminder to renew before expiration to avoid losing bid discovery.",
     docsUrl:           "https://open.gsa.gov/api/get-started/",
     envFallback:       "SAM_GOV_API_KEY",
     renewalPeriodDays: 365,
+    bidSourceSlug:     "sam_gov",
+    syncSchedule:      "Daily at 7:00 AM",
+    scopeNote:         "Platform-wide — covers all businesses.",
   },
 
-  // ── Fuel & Maps ─────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROCUREMENT — Auto-synced public sources (no credential needed)
+  // Status is always from bid_source_connections — never assumed "working" from
+  // catalog presence alone.
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    slug:              "ky_in_local",
+    name:              "KY/IN Local Procurement",
+    shortName:         "KY/IN Local",
+    description:       "Scrapes public eProcurement portals for Kentucky and Indiana local government bid opportunities. No API key required — uses publicly accessible search pages.",
+    category:          "procurement_auto",
+    scope:             "platform",
+    credentialType:    "none",
+    credentialLabel:   "No credential required",
+    credentialHelp:    "This source uses publicly accessible government procurement pages. No account or API key is needed.",
+    docsUrl:           "https://emars.ky.gov/prd/supp/public/",
+    autoSync:          true,
+    bidSourceSlug:     "ky_in_local",
+    syncSchedule:      "Daily at 7:00 AM",
+  },
+  {
+    slug:              "usa_spending",
+    name:              "USASpending Awards Intel",
+    shortName:         "USASpending",
+    description:       "Official U.S. Treasury open API for federal contract awards data. Used for comparable small-contract pricing intelligence in Bid Opportunities. No API key required.",
+    category:          "procurement_auto",
+    scope:             "platform",
+    credentialType:    "none",
+    credentialLabel:   "No credential required",
+    credentialHelp:    "USASpending.gov provides a fully public REST API. No account or key is needed.",
+    docsUrl:           "https://www.usaspending.gov/download_center/api",
+    autoSync:          true,
+    bidSourceSlug:     "usa_spending",
+    syncSchedule:      "Daily at 7:00 AM",
+  },
+  {
+    slug:              "sba_subnet",
+    name:              "SBA SUBNet Subcontracting",
+    shortName:         "SBA SUBNet",
+    description:       "SBA's public portal listing subcontracting opportunities from federal prime contractors. Good for finding teaming and subcontract work. No credential required.",
+    category:          "procurement_auto",
+    scope:             "platform",
+    credentialType:    "none",
+    credentialLabel:   "No credential required",
+    credentialHelp:    "SBA SUBNet uses a public search endpoint with no API key requirement.",
+    docsUrl:           "https://eweb1.sba.gov/subnet/client/dsp_Landing.cfm",
+    autoSync:          true,
+    bidSourceSlug:     "sba_subnet",
+    syncSchedule:      "Daily at 7:00 AM",
+  },
+  {
+    slug:              "gsa_forecast",
+    name:              "GSA Forecast",
+    shortName:         "GSA Forecast",
+    description:       "GSA eBuy forecast data for upcoming federal procurement opportunities. Useful for planning and early bid identification. No credential required.",
+    category:          "procurement_auto",
+    scope:             "platform",
+    credentialType:    "none",
+    credentialLabel:   "No credential required",
+    credentialHelp:    "GSA publishes forecast data as a public feed. No account or API key is needed.",
+    docsUrl:           "https://www.gsaelibrary.gsa.gov/",
+    autoSync:          true,
+    bidSourceSlug:     "gsa_forecast",
+    syncSchedule:      "Daily at 7:00 AM",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROCUREMENT — Portal logins (require manual account registration)
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    slug:              "bidnet_sovra",
+    name:              "BidNet / SOVRA",
+    shortName:         "BidNet",
+    description:       "Subscription procurement platform serving hundreds of municipalities and state agencies. Store your login credentials here for quick portal access.",
+    category:          "procurement_portal",
+    scope:             "platform",
+    credentialType:    "username_password",
+    credentialLabel:   "Portal Login",
+    credentialHelp:    "Register at BidNet/SOVRA for a contractor account. Free registration available; premium tiers unlock document download.",
+    docsUrl:           "https://www.bidnet.com",
+    defaultPortalUrl:  "https://www.bidnet.com",
+    bidSourceSlug:     "bidnet_sovra",
+  },
+  {
+    slug:              "demandstar",
+    name:              "DemandStar",
+    shortName:         "DemandStar",
+    description:       "Subscription-based procurement network connecting government agencies with suppliers. Requires a paid account to download solicitation documents.",
+    category:          "procurement_portal",
+    scope:             "platform",
+    credentialType:    "username_password",
+    credentialLabel:   "Portal Login",
+    credentialHelp:    "Register at DemandStar for a contractor account. Free browsing; paid plan for document access.",
+    docsUrl:           "https://www.demandstar.com",
+    defaultPortalUrl:  "https://www.demandstar.com",
+    bidSourceSlug:     "demandstar",
+  },
+  {
+    slug:              "bonfire",
+    name:              "Bonfire Supplier Portal",
+    shortName:         "Bonfire",
+    description:       "Supplier portal used by many municipalities and county governments. Create a free Bonfire account to receive bid notifications and submit responses.",
+    category:          "procurement_portal",
+    scope:             "platform",
+    credentialType:    "username_password",
+    credentialLabel:   "Portal Login",
+    credentialHelp:    "Create a free account at GoBonfire.com. Email/password login.",
+    docsUrl:           "https://gobonfire.com",
+    defaultPortalUrl:  "https://gobonfire.com",
+    bidSourceSlug:     "bonfire",
+  },
+  {
+    slug:              "planetbids",
+    name:              "PlanetBids",
+    shortName:         "PlanetBids",
+    description:       "Bid management platform used by many state and local agencies. Store your login for quick access to agencies using PlanetBids.",
+    category:          "procurement_portal",
+    scope:             "platform",
+    credentialType:    "username_password",
+    credentialLabel:   "Portal Login",
+    credentialHelp:    "Create a free vendor account at PlanetBids. Each agency may have separate registration.",
+    docsUrl:           "https://www.planetbids.com",
+    defaultPortalUrl:  "https://www.planetbids.com",
+    bidSourceSlug:     "planetbids",
+  },
+  {
+    slug:              "ky_vss",
+    name:              "KY Vendor Self Service (VSS)",
+    shortName:         "KY VSS",
+    description:       "Kentucky Finance Cabinet Vendor Self Service portal for state procurement opportunities. Used for Kentucky state agency bids not on SAM.gov.",
+    category:          "procurement_portal",
+    scope:             "platform",
+    credentialType:    "username_password",
+    credentialLabel:   "Portal Login",
+    credentialHelp:    "Register for a KY eMarketplace/VSS vendor account at the Kentucky Finance Cabinet portal.",
+    docsUrl:           "https://emars.ky.gov/prd/supp/public/",
+    defaultPortalUrl:  "https://emars.ky.gov/prd/supp/public/",
+    bidSourceSlug:     "ky_vss",
+  },
+  {
+    slug:              "ky_emarketplace",
+    name:              "KY eMarketplace",
+    shortName:         "KY eMarketplace",
+    description:       "Kentucky's statewide purchasing portal for small/informal purchases. Separate from VSS — covers micro-purchases and informal quotes.",
+    category:          "procurement_portal",
+    scope:             "platform",
+    credentialType:    "portal_only",
+    credentialLabel:   "Portal Bookmark",
+    credentialHelp:    "KY eMarketplace is publicly accessible for searching. Create a vendor account to receive opportunity alerts.",
+    docsUrl:           "https://emarketplace.ky.gov/",
+    defaultPortalUrl:  "https://emarketplace.ky.gov/",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FINANCIAL
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    slug:              "plaid",
+    name:              "Plaid Banking",
+    shortName:         "Plaid",
+    description:       "Connects bank accounts to import transactions, view balances, and enable bank reconciliation. Credentials are platform-wide — individual bank account links are managed from the Banking page.",
+    category:          "financial",
+    scope:             "platform",
+    credentialType:    "client_secret_pair",
+    credentialLabel:   "Client Credentials",
+    credentialHelp:    "Get your Client ID and Secret from the Plaid Dashboard. Use Sandbox for testing, Production for live data.",
+    docsUrl:           "https://dashboard.plaid.com/developers/keys",
+    envFallback:       "PLAID_SECRET",
+    fields: [
+      { key: "clientId", label: "Client ID",  placeholder: "6abc...",   sensitive: false },
+      { key: "secret",   label: "Secret",     placeholder: "xxxxxx...", sensitive: true  },
+    ],
+    scopeNote:         "Platform-wide. Individual bank account links are per-business from the Banking page.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FUEL & MAPS
+  // ═══════════════════════════════════════════════════════════════════════════
   {
     slug:              "eia",
     name:              "EIA Fuel Price Data",
@@ -101,31 +318,14 @@ export const INTEGRATION_CATALOG: IntegrationDef[] = [
     envFallback:       "VITE_GOOGLE_API_KEY",
   },
 
-  // ── Financial ───────────────────────────────────────────────────────────────
-  {
-    slug:              "plaid",
-    name:              "Plaid Banking",
-    shortName:         "Plaid",
-    description:       "Connects bank accounts to import transactions, view balances, and enable bank reconciliation. Credentials are per-environment (sandbox/development/production).",
-    category:          "financial",
-    scope:             "platform",
-    credentialType:    "client_secret_pair",
-    credentialLabel:   "Client Credentials",
-    credentialHelp:    "Get your Client ID and Secret from the Plaid Dashboard. Use Sandbox credentials for testing, Production for live data.",
-    docsUrl:           "https://dashboard.plaid.com/developers/keys",
-    envFallback:       "PLAID_SECRET",
-    fields: [
-      { key: "clientId", label: "Client ID",        placeholder: "6abc...",   sensitive: false },
-      { key: "secret",   label: "Secret",            placeholder: "xxxxxx...", sensitive: true  },
-    ],
-  },
-
-  // ── AI & Intelligence ───────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AI & INTELLIGENCE
+  // ═══════════════════════════════════════════════════════════════════════════
   {
     slug:              "openai",
     name:              "OpenAI (AI Summaries)",
     shortName:         "OpenAI",
-    description:       "Powers AI bid summaries, fit analysis, and procurement education explanations. Managed through Replit's AI Integrations proxy.",
+    description:       "Powers AI bid summaries, fit analysis, and procurement education explanations. Managed through Replit's AI Integrations proxy — no manual key management needed.",
     category:          "ai",
     scope:             "platform",
     credentialType:    "none",
@@ -135,7 +335,9 @@ export const INTEGRATION_CATALOG: IntegrationDef[] = [
     managedNote:       "Managed via Replit AI Integrations — no key needed.",
   },
 
-  // ── Communication ───────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COMMUNICATION
+  // ═══════════════════════════════════════════════════════════════════════════
   {
     slug:              "gmail",
     name:              "Gmail (Email Notifications)",
@@ -148,6 +350,165 @@ export const INTEGRATION_CATALOG: IntegrationDef[] = [
     credentialHelp:    "This integration uses OAuth managed by Replit. Re-connect via the Replit integrations panel if it stops working.",
     managed:           true,
     managedNote:       "Connected via Replit OAuth — managed externally.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONTRACTOR PORTALS — Supply, materials, and trade accounts
+  // Per-business credentials make sense here — GC and Asphalt Sealing may
+  // have different accounts or pricing at the same supplier.
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    slug:              "home_depot_pro",
+    name:              "Home Depot Pro",
+    shortName:         "Home Depot Pro",
+    description:       "Pro Xtra contractor account for Home Depot. Store login for quick access to pro pricing, order history, and project accounts.",
+    category:          "contractor_portal",
+    scope:             "business",
+    credentialType:    "username_password",
+    credentialLabel:   "Pro Xtra Login",
+    credentialHelp:    "Your Home Depot Pro Xtra account email and password. Register free at homedepot.com/c/pro_xtra.",
+    docsUrl:           "https://www.homedepot.com/c/pro_xtra",
+    defaultPortalUrl:  "https://www.homedepot.com/auth/view/signin",
+    scopeNote:         "Per-business — GC and Asphalt Sealing can have separate Pro accounts.",
+  },
+  {
+    slug:              "lowes_pro",
+    name:              "Lowe's Pro",
+    shortName:         "Lowe's Pro",
+    description:       "Lowe's Pro account for contractor pricing and bulk ordering. Store login for quick access to pro pricing and order history.",
+    category:          "contractor_portal",
+    scope:             "business",
+    credentialType:    "username_password",
+    credentialLabel:   "Pro Account Login",
+    credentialHelp:    "Your Lowe's Pro account email and password. Register free at lowes.com/l/pro.html.",
+    docsUrl:           "https://www.lowes.com/l/pro.html",
+    defaultPortalUrl:  "https://www.lowes.com/signin",
+    scopeNote:         "Per-business.",
+  },
+  {
+    slug:              "84_lumber",
+    name:              "84 Lumber",
+    shortName:         "84 Lumber",
+    description:       "Regional building materials supplier with contractor-tier pricing. Store portal login for quick quote and order access.",
+    category:          "contractor_portal",
+    scope:             "business",
+    credentialType:    "username_password",
+    credentialLabel:   "Account Login",
+    credentialHelp:    "Your 84 Lumber account credentials. Register at 84lumber.com.",
+    docsUrl:           "https://www.84lumber.com",
+    defaultPortalUrl:  "https://www.84lumber.com",
+    scopeNote:         "Per-business.",
+  },
+  {
+    slug:              "abc_supply",
+    name:              "ABC Supply",
+    shortName:         "ABC Supply",
+    description:       "Wholesale roofing, windows, and siding distributor. Store your account login for quick order and invoice access.",
+    category:          "contractor_portal",
+    scope:             "business",
+    credentialType:    "username_password",
+    credentialLabel:   "Account Login",
+    credentialHelp:    "Your ABC Supply account credentials. Register at abcsupply.com.",
+    docsUrl:           "https://www.abcsupply.com",
+    defaultPortalUrl:  "https://www.abcsupply.com",
+    scopeNote:         "Per-business.",
+  },
+  {
+    slug:              "fastenal",
+    name:              "Fastenal",
+    shortName:         "Fastenal",
+    description:       "Industrial and construction fastener/supply distributor with contractor accounts. Store login for order tracking and account pricing.",
+    category:          "contractor_portal",
+    scope:             "business",
+    credentialType:    "username_password",
+    credentialLabel:   "Account Login",
+    credentialHelp:    "Your Fastenal account credentials. Create an account at fastenal.com.",
+    docsUrl:           "https://www.fastenal.com",
+    defaultPortalUrl:  "https://www.fastenal.com",
+    scopeNote:         "Per-business.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EQUIPMENT & AUCTIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    slug:              "govplanet",
+    name:              "GovPlanet",
+    shortName:         "GovPlanet",
+    description:       "Ritchie Bros. platform for government surplus heavy equipment. Store your bidder account login for quick access during active auctions.",
+    category:          "equipment",
+    scope:             "platform",
+    credentialType:    "username_password",
+    credentialLabel:   "Bidder Account Login",
+    credentialHelp:    "Create a free bidder account at govplanet.com. Account approval required before bidding.",
+    docsUrl:           "https://www.govplanet.com",
+    defaultPortalUrl:  "https://www.govplanet.com/login",
+  },
+  {
+    slug:              "ironplanet",
+    name:              "IronPlanet",
+    shortName:         "IronPlanet",
+    description:       "Online heavy equipment marketplace (Ritchie Bros.). IronClad Assurance inspections. Excavators, skid steers, loaders, backhoes. Store account login.",
+    category:          "equipment",
+    scope:             "platform",
+    credentialType:    "username_password",
+    credentialLabel:   "Account Login",
+    credentialHelp:    "Create an account at ironplanet.com. Approval required for bidding.",
+    docsUrl:           "https://www.ironplanet.com",
+    defaultPortalUrl:  "https://www.ironplanet.com/login",
+  },
+  {
+    slug:              "gsa_auctions",
+    name:              "GSA Auctions",
+    shortName:         "GSA Auctions",
+    description:       "Official U.S. GSA surplus auction portal. Fleet vehicles, heavy equipment, and trailers from federal agencies. Browse free; bidding requires a free GSA account.",
+    category:          "equipment",
+    scope:             "platform",
+    credentialType:    "username_password",
+    credentialLabel:   "GSA Account Login",
+    credentialHelp:    "Register for a free account at gsaauctions.gov. Government ID verification may be required to bid.",
+    docsUrl:           "https://gsaauctions.gov",
+    defaultPortalUrl:  "https://gsaauctions.gov",
+  },
+  {
+    slug:              "govdeals",
+    name:              "GovDeals",
+    shortName:         "GovDeals",
+    description:       "Surplus property from U.S. municipalities and state agencies. Wide variety: vehicles, heavy equipment, tools, trailers. Free to browse; account needed to bid.",
+    category:          "equipment",
+    scope:             "platform",
+    credentialType:    "username_password",
+    credentialLabel:   "Account Login",
+    credentialHelp:    "Create a free account at govdeals.com to bid on surplus property.",
+    docsUrl:           "https://www.govdeals.com",
+    defaultPortalUrl:  "https://www.govdeals.com",
+  },
+  {
+    slug:              "purple_wave",
+    name:              "Purple Wave",
+    shortName:         "Purple Wave",
+    description:       "Online auction for ag, construction, and government surplus equipment. Strong Midwest/Mid-South coverage. Store account login for quick bidding.",
+    category:          "equipment",
+    scope:             "platform",
+    credentialType:    "username_password",
+    credentialLabel:   "Account Login",
+    credentialHelp:    "Create a free account at purplewave.com.",
+    docsUrl:           "https://www.purplewave.com",
+    defaultPortalUrl:  "https://www.purplewave.com",
+  },
+
+  // ── Future / Coming Soon ───────────────────────────────────────────────────
+  {
+    slug:              "hauling_platform",
+    name:              "Hauling & Material Platform",
+    shortName:         "Hauling",
+    description:       "Future integration for load boards and material hauling platforms (e.g., Trux, HAULHUB). Scope: load matching for dump trucks and material delivery.",
+    category:          "contractor_portal",
+    scope:             "business",
+    credentialType:    "none",
+    credentialLabel:   "Coming Soon",
+    credentialHelp:    "Integration with hauling load boards is planned for a future release.",
+    comingSoon:        true,
   },
 ];
 
@@ -231,6 +592,21 @@ async function testPlaid(value: string): Promise<TestResult> {
   }
 }
 
+/** Test that a portal URL is reachable (HEAD request, non-critical). */
+async function testPortalUrl(value: string): Promise<TestResult> {
+  try {
+    // For portal-only / username_password: just verify the URL is reachable
+    let url: string;
+    try { url = JSON.parse(value) as string; } catch { url = value; }
+    if (!url.startsWith("http")) return { ok: false, error: "URL must start with http:// or https://" };
+    const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(8_000), redirect: "follow" });
+    if (res.status >= 500) return { ok: false, error: `Portal returned HTTP ${res.status} — may be down.` };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: `Could not reach portal: ${(err as Error).message}` };
+  }
+}
+
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
 const TESTERS: Record<string, (value: string) => Promise<TestResult>> = {
@@ -238,12 +614,25 @@ const TESTERS: Record<string, (value: string) => Promise<TestResult>> = {
   eia:         testEia,
   google_maps: testGoogleMaps,
   plaid:       testPlaid,
+  // Portal-type testers (URL reachability)
+  bidnet_sovra:    testPortalUrl,
+  demandstar:      testPortalUrl,
+  bonfire:         testPortalUrl,
+  planetbids:      testPortalUrl,
+  ky_vss:          testPortalUrl,
+  home_depot_pro:  testPortalUrl,
+  lowes_pro:       testPortalUrl,
+  govplanet:       testPortalUrl,
+  ironplanet:      testPortalUrl,
+  gsa_auctions:    testPortalUrl,
+  govdeals:        testPortalUrl,
+  purple_wave:     testPortalUrl,
 };
 
 /** Test a proposed new credential value. Returns {ok, error}. Never logs the value. */
 export async function testCredential(slug: string, value: string): Promise<TestResult> {
   const tester = TESTERS[slug];
-  if (!tester) return { ok: false, error: `No test available for integration "${slug}".` };
+  if (!tester) return { ok: false, error: `No test function available for integration "${slug}".` };
   return tester(value);
 }
 
@@ -251,7 +640,8 @@ export async function testCredential(slug: string, value: string): Promise<TestR
 export async function testCurrentCredential(slug: string): Promise<TestResult> {
   const def = INTEGRATION_CATALOG.find(d => d.slug === slug);
   if (!def) return { ok: false, error: "Unknown integration." };
-  if (def.managed) return { ok: true }; // Managed integrations are always "ok" to test
+  if (def.managed) return { ok: true };
+  if (def.autoSync) return { ok: true, error: "Auto-synced source — check sync health instead." };
 
   const current = getCredential(slug, def.envFallback);
   if (!current) return { ok: false, error: "No credential configured." };

@@ -689,7 +689,7 @@ router.post("/:id/find-official-source", async (req, res) => {
     }
 
     let samApiKey: string | null = null;
-    try { samApiKey = getCredential("sam_gov_api_key"); } catch { /* no credential stored */ }
+    try { samApiKey = getCredential("sam_gov", "SAM_GOV_API_KEY"); } catch { /* no credential stored */ }
     if (!samApiKey) samApiKey = process.env["SAM_GOV_API_KEY"] ?? null;
 
     const result = await findOfficialSource(

@@ -264,3 +264,113 @@ export async function recordVerification(
 }
 
 export { _initialized as isInitialized };
+
+// ── Portal credential helpers ──────────────────────────────────────────────────
+// Portal credentials (username + password + URL) use the same AES-256-GCM
+// encryption scheme. Password → encryptedValue; Username → encryptedUsername.
+// The portalUrl is NOT sensitive and is stored/returned in plaintext.
+
+export interface PortalCredentialOpts {
+  portalUrl?:  string | null;
+  username?:   string | null;
+  password?:   string | null;
+  notes?:      string | null;
+}
+
+/**
+ * Build a safe username hint: show up to 3 chars + "…@domain" for email-like
+ * usernames, or first 3 chars + "…" for plain usernames.
+ */
+export function buildUsernameHint(username: string): string {
+  if (!username) return "";
+  if (username.includes("@")) {
+    const [local, domain] = username.split("@");
+    const prefix = local.slice(0, Math.min(3, local.length));
+    return `${prefix}…@${domain ?? ""}`;
+  }
+  const prefix = username.slice(0, Math.min(3, username.length));
+  return prefix + "…";
+}
+
+/**
+ * Persist portal credentials for a slug.
+ * Any of portalUrl / username / password may be omitted (null) to leave
+ * the existing stored value unchanged.  Pass empty string to explicitly clear.
+ */
+export async function setPortalCredential(
+  slug: string,
+  opts: PortalCredentialOpts,
+): Promise<void> {
+  const encPassword  = opts.password  ? encryptCredential(opts.password)  : undefined;
+  const encUsername  = opts.username  ? encryptCredential(opts.username)  : undefined;
+  const passwordHint = opts.password  ? buildKeyHint(opts.password)        : undefined;
+  const usernameHint = opts.username  ? buildUsernameHint(opts.username)   : undefined;
+
+  // Figure out new status
+  const hasCredential = !!(opts.password || (encPassword === undefined /* unchanged */ && false));
+  const newStatus = (opts.password || opts.username) ? "active" : "unconfigured";
+
+  const existing = await db
+    .select({ id: integrationCredentialsTable.id })
+    .from(integrationCredentialsTable)
+    .where(and(eq(integrationCredentialsTable.slug, slug), isNull(integrationCredentialsTable.businessId)))
+    .limit(1);
+
+  // Build a typed partial update object
+  type UpdateShape = Partial<typeof integrationCredentialsTable.$inferInsert> & { updatedAt: Date };
+  const updateFields: UpdateShape = { updatedAt: new Date() };
+  if (opts.portalUrl  !== undefined) updateFields.portalUrl         = opts.portalUrl ?? null;
+  if (opts.notes      !== undefined) updateFields.notes              = opts.notes ?? null;
+  if (encPassword     !== undefined) { updateFields.encryptedValue   = encPassword; updateFields.keyHint = passwordHint ?? null; }
+  if (encUsername     !== undefined) { updateFields.encryptedUsername = encUsername; updateFields.usernameHint = usernameHint ?? null; }
+  // If password is being set (not just cleared), update status
+  if (opts.password) {
+    updateFields.status          = "active";
+    updateFields.lastVerifiedAt  = new Date();
+    updateFields.lastVerifyError = null;
+  }
+  // Explicit clear: empty string means remove
+  if (opts.password === "") { updateFields.encryptedValue = null; updateFields.keyHint = null; updateFields.status = "unconfigured"; }
+  if (opts.username === "") { updateFields.encryptedUsername = null; updateFields.usernameHint = null; }
+
+  if (existing.length > 0) {
+    await db
+      .update(integrationCredentialsTable)
+      .set(updateFields)
+      .where(and(eq(integrationCredentialsTable.slug, slug), isNull(integrationCredentialsTable.businessId)));
+  } else {
+    await db.insert(integrationCredentialsTable).values({
+      slug,
+      scope:              "platform",
+      businessId:         null,
+      portalUrl:          (opts.portalUrl ?? null) as string | null,
+      encryptedValue:     (encPassword ?? null) as string | null,
+      keyHint:            (passwordHint ?? null) as string | null,
+      encryptedUsername:  (encUsername ?? null) as string | null,
+      usernameHint:       (usernameHint ?? null) as string | null,
+      notes:              (opts.notes ?? null) as string | null,
+      status:             opts.password ? "active" : "unconfigured",
+      lastVerifiedAt:     opts.password ? new Date() : null,
+      lastVerifyError:    null,
+    });
+  }
+}
+
+/**
+ * Clear all portal credentials for a slug (URL, username, password).
+ */
+export async function removePortalCredential(slug: string): Promise<void> {
+  await db
+    .update(integrationCredentialsTable)
+    .set({
+      portalUrl:          null,
+      encryptedValue:     null,
+      keyHint:            null,
+      encryptedUsername:  null,
+      usernameHint:       null,
+      status:             "unconfigured",
+      lastVerifyError:    null,
+      updatedAt:          new Date(),
+    })
+    .where(and(eq(integrationCredentialsTable.slug, slug), isNull(integrationCredentialsTable.businessId)));
+}
