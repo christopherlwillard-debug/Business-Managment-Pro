@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  RefreshCw, FileSearch, Shield, List, Columns, CheckCircle2, AlertCircle,
+  RefreshCw, FileSearch, Shield, List, Columns, CheckCircle2, AlertCircle, Building2, Layers2,
 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -70,7 +70,7 @@ export default function BidOpportunities() {
   const queryClient  = useQueryClient();
   const { toast }    = useToast();
   const { isOwner }  = useUserPermissions();
-  const { activeBusiness, businesses } = useBusiness();
+  const { activeBusiness, businesses, setActiveBusiness } = useBusiness();
   const businessId = activeBusiness?.id ?? null;
 
   const [view, setView] = useState<"list" | "pipeline">(() =>
@@ -447,7 +447,7 @@ export default function BidOpportunities() {
             onDismiss={dismissBid}
             onRestore={(b) => updateStage.mutate({ id: b.id, stage: "new", bidBusinessId: b.businessId })}
             isUpdating={updateStage.isPending}
-            multipleBusinesses={businesses.length > 1}
+            multipleBusinesses={!activeBusiness && businesses.length > 1}
             relevantBusinessNames={bid.relevantBusinessNames}
           />
         ))}
@@ -497,12 +497,12 @@ export default function BidOpportunities() {
           {/* Subtitle — hidden on smallest mobile to save space */}
           {activeBusiness ? (
             <p className="hidden sm:block text-sm text-muted-foreground mt-0.5 truncate">
-              All opportunities · Scoring as{" "}
+              Showing opportunities matched to{" "}
               <span className="font-medium text-foreground">{activeBusiness.name}</span>
             </p>
           ) : (
             <p className="hidden sm:block text-sm text-muted-foreground mt-0.5">
-              All bid opportunities across your businesses
+              {businesses.length > 1 ? "All businesses — select a tab to filter by business" : "All bid opportunities"}
             </p>
           )}
         </div>
@@ -579,6 +579,45 @@ export default function BidOpportunities() {
         />
       )}
 
+      {/* ── Business selector tabs ───────────────────────────────────────────
+          Primary lens: which business are we viewing bids for?
+          Selecting a business shows only bids its sync engine discovered.
+          "All Businesses" shows the full deduplicated feed.                 */}
+      {businesses.length > 1 && (
+        <div
+          className="flex gap-1.5 overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-0.5"
+          style={{ scrollbarWidth: "none" } as React.CSSProperties}
+        >
+          <button
+            onClick={() => { setActiveBusiness(null); setCapabilityFilter("all"); }}
+            className={cn(
+              "flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors border whitespace-nowrap",
+              !activeBusiness
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
+            )}
+          >
+            <Layers2 className="w-3.5 h-3.5" />
+            All Businesses
+          </button>
+          {businesses.map((biz) => (
+            <button
+              key={biz.id}
+              onClick={() => { setActiveBusiness(biz); setCapabilityFilter("all"); }}
+              className={cn(
+                "flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors border whitespace-nowrap",
+                activeBusiness?.id === biz.id
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
+              )}
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              {biz.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── Filter bar ──────────────────────────────────────────────────────── */}
       <BidFilterBar
         filter={filter}
@@ -594,7 +633,7 @@ export default function BidOpportunities() {
         capabilityFilter={capabilityFilter}
         setCapabilityFilter={setCapabilityFilter}
         capabilityCounts={capabilityCounts}
-        scoringLabel={activeBusiness?.name}
+        activeBusinessType={activeBusiness?.type}
       />
 
       {/* ── Sync health strip ───────────────────────────────────────────────── */}

@@ -25,7 +25,7 @@ const STAGE_FILTER_TABS: Array<{ value: BidFilter; label: string }> = [
   { value: "no_bid",    label: "No Bid" },
 ];
 
-const CAPABILITY_TABS: Array<{ value: CapabilityFilter; label: string }> = [
+const ALL_CAPABILITY_TABS: Array<{ value: CapabilityFilter; label: string }> = [
   { value: "all",                label: "All" },
   { value: "asphalt",            label: "Asphalt" },
   { value: "dump_waste",         label: "Dump & Waste" },
@@ -35,6 +35,15 @@ const CAPABILITY_TABS: Array<{ value: CapabilityFilter; label: string }> = [
   { value: "mfg_homes",          label: "Mfg Homes" },
   { value: "subcontracting",     label: "Subcontracting" },
 ];
+
+/**
+ * Which capability tabs are relevant per business type.
+ * "all" is always included.  When no business is selected, all tabs are shown.
+ */
+const CAPABILITY_TABS_FOR_BUSINESS: Record<string, CapabilityFilter[]> = {
+  asphalt_sealing:     ["all", "asphalt"],
+  general_contracting: ["all", "dump_waste", "general_contracting", "flooring", "site_work", "mfg_homes"],
+};
 
 interface Props {
   filter:              BidFilter;
@@ -51,26 +60,40 @@ interface Props {
   capabilityFilter:    CapabilityFilter;
   setCapabilityFilter: (f: CapabilityFilter) => void;
   capabilityCounts:    Partial<Record<CapabilityFilter, number>>;
-  // Scoring perspective label (e.g. "General Contracting")
-  scoringLabel?:       string;
+  // Active business type slug — used to show only relevant capability tabs
+  activeBusinessType?: string;
 }
 
 export default function BidFilterBar({
   filter, setFilter, fitOnly, setFitOnly, counts, fitCount,
   sourceFilter, setSourceFilter, awardsCount = 0, subnetCount = 0,
   capabilityFilter, setCapabilityFilter, capabilityCounts,
-  scoringLabel,
+  activeBusinessType,
 }: Props) {
+  // Only show capability tabs relevant to the selected business.
+  // When no business is selected (all-businesses view), show all tabs.
+  const allowedKeys = activeBusinessType
+    ? (CAPABILITY_TABS_FOR_BUSINESS[activeBusinessType] ?? null)
+    : null;
+  const capabilityTabs = allowedKeys
+    ? ALL_CAPABILITY_TABS.filter((t) => allowedKeys.includes(t.value))
+    : ALL_CAPABILITY_TABS;
+
+  // If a single business is selected that only has one meaningful capability tab,
+  // skip showing the capability tabs entirely (no useful filtering).
+  const showCapabilityTabs = capabilityTabs.length > 2; // more than just "All" + one option
+
   return (
     <div className="space-y-2">
       {/* ── Capability category tabs ─────────────────────────────────────────
-          Trade/capability lens: All · Asphalt · Dump & Waste · GC · etc.
-          Scrollable on mobile, wrapping on desktop.                          */}
+          Trade/capability sub-filter within the selected business context.
+          Hidden when there's only one meaningful capability option.          */}
+      {showCapabilityTabs && (
       <div
         className="flex gap-1.5 overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap md:overflow-visible pb-0.5 md:pb-0"
         style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
       >
-        {CAPABILITY_TABS.map(({ value, label }) => (
+        {capabilityTabs.map(({ value, label }) => (
           <button
             key={value}
             onClick={() => setCapabilityFilter(value)}
@@ -95,6 +118,7 @@ export default function BidFilterBar({
           </button>
         ))}
       </div>
+      )}
 
       {/* ── Stage + Fit pills ────────────────────────────────────────────────
           On mobile: single horizontally-scrollable row (no wrapping).
@@ -215,10 +239,10 @@ export default function BidFilterBar({
           )}
         </button>
 
-        {/* Scoring perspective label */}
-        {scoringLabel && (
-          <span className="ml-auto flex-shrink-0 text-xs text-muted-foreground/70 italic whitespace-nowrap hidden sm:inline">
-            Scoring as: {scoringLabel}
+        {/* Business context label — shown when viewing all businesses */}
+        {!activeBusinessType && (
+          <span className="ml-auto flex-shrink-0 text-xs text-muted-foreground/60 italic whitespace-nowrap hidden sm:inline">
+            All businesses · scored per business
           </span>
         )}
       </div>

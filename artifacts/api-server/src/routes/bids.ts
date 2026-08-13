@@ -313,6 +313,13 @@ router.get("/unified", async (req, res) => {
     const unified: Array<Record<string, unknown>> = [];
 
     for (const [, group] of grouped) {
+      // When a specific business is requested, only include bids that business has synced.
+      // A bid that never matched that business's keyword/NAICS search doesn't belong in its view —
+      // it means the sync engine didn't consider it relevant to that business's capabilities.
+      if (validScoringId && !group.some((r) => r.businessId === validScoringId)) {
+        continue;
+      }
+
       // Representative = highest opportunityScore; newest on tie
       let rep = group[0];
       for (const row of group.slice(1)) {
