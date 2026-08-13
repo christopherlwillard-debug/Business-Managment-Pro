@@ -32,4 +32,5 @@
 - [Bid engine Phase 1](bid-engine-phase1.md) — multi-capability profiles in DB (bid_capability_profiles + bid_business_settings); scoring at sync time; noticeType from SAM ptype; settingsTable has no businessId FK
 - [Bid engine Phase 2](bid-engine-phase2.md) — opportunityType column; hard title suppression gate; SBA SUBNet + GSA Forecast sources; capability negative keywords; AI prompt source context
 - [Bid Education Layer](bid-education.md) — Phase 3: per-bid plain-English panel; education_summary DB column; POST /bids/:id/educate endpoint; BidEducationPanel Sheet component; 25-term ProcurementGlossary
+- [Bid engine Phase 3 (SAM search overhaul)](bid-engine-phase3.md) — CapabilitySearchGroup, 90-day lookback, soft NAICS mismatch, geographic scoring, 7 v2 skill buckets, auto-migration of v1 DB profiles
 - [Integrations & Credentials Manager](integrations-manager.md) — 25+ catalog entries, portal credential fields (0058 migration), health aggregation from bid_source_connections, SAM.gov slug fix in bids.ts

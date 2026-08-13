@@ -9,8 +9,9 @@ import {
 } from "@workspace/db";
 import { eq, sql, and, isNull, ne } from "drizzle-orm";
 import {
-  fetchSamOpportunities,
+  fetchSamOpportunitiesGrouped,
   SamOpportunity,
+  CapabilitySearchGroup,
   ASPHALT_PSC_CODES,
   GENERAL_CONTRACTING_PSC_CODES,
 } from "../lib/samGov.js";
@@ -21,6 +22,8 @@ import { sendEmail, escapeHtml } from "../lib/sendEmail.js";
 import {
   CapabilityDefinition,
   getCapabilitiesForBusinessType,
+  getSearchGroupsForBusinessType,
+  LEGACY_GC_CAPABILITY_KEYS,
   mergeCapabilitySearchParams,
 } from "../lib/bidCapabilitySeeds.js";
 import { fetchSubnetOpportunities, SubnetOpportunity } from "../lib/subnetSync.js";
@@ -36,19 +39,21 @@ import { classifyOpportunityScope, isScopeCompatibleWithBusiness, assessDataComp
 // ── Resolved business search profile ─────────────────────────────────────────
 
 interface ResolvedProfile {
-  naicsCodes:      string[];
-  keywords:        string[];
-  pscCodes:        string[];
-  localKeywords:   string[];
+  naicsCodes:       string[];
+  keywords:         string[];
+  pscCodes:         string[];
+  localKeywords:    string[];
   negativeKeywords: string[];
-  description:     string;       // AI context
-  capabilities:    CapabilityDefinition[];
-  profileStatus:   string;       // 'active' | 'watch' | 'off'
-  isSdvosb:        boolean;
-  isVosb:          boolean;
-  isSmallBusiness: boolean;
-  label:           string;
-  businessType:    string;       // e.g. "asphalt_sealing" | "general_contracting"
+  description:      string;       // AI context
+  capabilities:     CapabilityDefinition[];
+  /** Capability-grouped SAM.gov search configuration — replaces flat all-pairs matrix */
+  searchGroups:     CapabilitySearchGroup[];
+  profileStatus:    string;       // 'active' | 'watch' | 'off'
+  isSdvosb:         boolean;
+  isVosb:           boolean;
+  isSmallBusiness:  boolean;
+  label:            string;
+  businessType:     string;       // e.g. "asphalt_sealing" | "general_contracting"
 }
 
 // ── Hard-suppression: title-level gate ───────────────────────────────────────
@@ -130,19 +135,29 @@ async function loadOrSeedCapabilities(
     .where(eq(bidCapabilityProfilesTable.businessId, businessId));
 
   if (dbRows.length > 0) {
-    // Map DB rows back to CapabilityDefinition shape
-    return dbRows.map((row) => ({
-      capabilityKey:    row.capabilityKey,
-      name:             row.name,
-      description:      row.description ?? "",
-      naicsCodes:       (row.naicsCodes as string[]) ?? [],
-      keywords:         (row.keywords as string[]) ?? [],
-      negativeKeywords: (row.negativeKeywords as string[]) ?? [],
-      equipment:        (row.equipment as string[]) ?? [],
-      localKeywords:    (row.localKeywords as string[]) ?? [],
-      active:           row.active,
-      sortOrder:        row.sortOrder,
-    }));
+    // Detect v1 GC capability profiles (old keys: waste_hauling, mh_finishing, etc.)
+    // and auto-migrate to v2 skill buckets so existing businesses get the improved search.
+    const hasLegacyKeys = businessType !== "asphalt_sealing" &&
+      dbRows.some((r) => LEGACY_GC_CAPABILITY_KEYS.has(r.capabilityKey));
+    if (hasLegacyKeys) {
+      console.log(`[bid-sync] Migrating capability profiles for business ${businessId} from v1 to v2 skill buckets`);
+      await db.delete(bidCapabilityProfilesTable).where(eq(bidCapabilityProfilesTable.businessId, businessId));
+      // Fall through to re-seed with current built-in v2 definitions
+    } else {
+      // Map DB rows back to CapabilityDefinition shape
+      return dbRows.map((row) => ({
+        capabilityKey:    row.capabilityKey,
+        name:             row.name,
+        description:      row.description ?? "",
+        naicsCodes:       (row.naicsCodes as string[]) ?? [],
+        keywords:         (row.keywords as string[]) ?? [],
+        negativeKeywords: (row.negativeKeywords as string[]) ?? [],
+        equipment:        (row.equipment as string[]) ?? [],
+        localKeywords:    (row.localKeywords as string[]) ?? [],
+        active:           row.active,
+        sortOrder:        row.sortOrder,
+      }));
+    }
   }
 
   // No DB rows — seed from built-in definitions
@@ -227,6 +242,7 @@ async function resolveProfile(businessId: number, businessType: string): Promise
     negativeKeywords: merged.negativeKeywords,
     description:      merged.description,
     capabilities:     capabilities.filter((c) => c.active),
+    searchGroups:     getSearchGroupsForBusinessType(businessType),
     profileStatus:    settings.profileStatus,
     isSdvosb:         settings.isSdvosb,
     isVosb:           settings.isVosb,
@@ -274,7 +290,14 @@ interface ScoredOpportunity {
 
 
 function scoreOpportunity(
-  opp: { title: string; description: string | null; responseDeadline: string | null; source: string },
+  opp: {
+    title:            string;
+    description:      string | null;
+    responseDeadline: string | null;
+    source:           string;
+    agency?:          string | null;   // used for geographic scoring
+    naicsMismatch?:   boolean;         // from fetchSamOpportunitiesGrouped
+  },
   capabilities: CapabilityDefinition[],
   settings: { isSdvosb: boolean; isSmallBusiness: boolean; isVosb: boolean },
   aiSetAsideType?: string,
@@ -302,34 +325,51 @@ function scoreOpportunity(
   const negHits = allNeg.filter((kw) => text.includes(kw.toLowerCase()));
   capScore = Math.max(0, capScore - negHits.length * 8);
 
+  // NAICS mismatch: the record was found by keyword search but has an unexpected
+  // NAICS code. Cap the capability score so these surface as REVIEW rather than
+  // auto-BID — the user should verify the opportunity is actually relevant.
+  if (opp.naicsMismatch) {
+    capScore = Math.min(15, capScore);
+  }
+
+  // ── Geographic relevance (0–10 points) ────────────────────────────────────
+  // Prioritize Owensboro / Daviess County / Western KY / Southern Indiana.
+  // National opportunities still appear but score lower when no local signal.
+  // Does NOT exclude non-local opportunities — geography is a ranking signal only.
+  const geoText = `${opp.title} ${opp.description ?? ""} ${opp.agency ?? ""}`.toLowerCase();
+  const LOCAL_AREAS = [
+    "owensboro", "daviess county", "daviess co.", "henderson county", "henderson, ky",
+    "mclean county", "ohio county, ky", "hancock county, ky", "breckinridge county",
+    "western ky", "western kentucky", "tri-state ky",
+  ];
+  const KY_TERMS = ["kentucky", " ky ", " ky,", "(ky)", "-ky,", "ky-"];
+  const IN_TERMS = [
+    "southern indiana", "evansville", "newburgh, in", "boonville, in", "vincennes, in",
+    "vanderburgh county", "warrick county", " indiana ", "(in)",
+  ];
+  let geoScore = 0;
+  if (LOCAL_AREAS.some((t) => geoText.includes(t)))    geoScore = 10;
+  else if (KY_TERMS.some((t) => geoText.includes(t))) geoScore = 7;
+  else if (IN_TERMS.some((t) => geoText.includes(t))) geoScore = 5;
+
   // ── Source bonus (0–10 points) — local/regional contracts preferred ───────
   const sourceScore = opp.source === "state-local" ? 10 : 0;
 
   // ── Set-aside advantage (0–20 points) ─────────────────────────────────────
-  // Delegated to setAsideScore() in bidScoring.ts for precise eligibility checks.
-  // SDVOSB set-aside: eligible only if isSdvosb (not isVosb alone).
-  // VOSB set-aside: eligible if isVosb or isSdvosb.
-  // veteran_preference: small bonus for veteran-owned businesses (not a full set-aside).
   const setAsidePts = setAsideScore(aiSetAsideType, settings);
 
-  // ── Deadline urgency (0–20 points) ───────────────────────────────────────
+  // ── Deadline urgency (0–20 points) ────────────────────────────────────────
   let urgencyScore = 0;
   if (opp.responseDeadline) {
     const daysOut = (new Date(opp.responseDeadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
-    if (daysOut < 0)         urgencyScore = 0;  // already expired — no urgency bonus
+    if (daysOut < 0)         urgencyScore = 0;
     else if (daysOut <= 7)   urgencyScore = 20;
     else if (daysOut <= 14)  urgencyScore = 15;
     else if (daysOut <= 30)  urgencyScore = 10;
     else if (daysOut <= 60)  urgencyScore = 5;
-    // 90+ days = 0
   }
 
-  // ── Notice-type bonus (0–10 points) — Sources Sought = early intel ───────
-  // Note: noticeType comes from SAM.gov, we don't have it here in scoring;
-  // this field will be stored on the row and can inform future UI sorting.
-
-  const total = Math.min(100, capScore + sourceScore + setAsidePts + urgencyScore);
-
+  const total = Math.min(100, capScore + geoScore + sourceScore + setAsidePts + urgencyScore);
   return { opportunityScore: total, capabilityMatches };
 }
 
@@ -445,7 +485,7 @@ async function rescoreExistingBids(businessId: number, profile: ResolvedProfile)
     }
 
     const { opportunityScore, capabilityMatches } = scoreOpportunity(
-      { title: bid.title, description: bid.description ?? null, responseDeadline: bid.responseDeadline, source: bid.source },
+      { title: bid.title, description: bid.description ?? null, responseDeadline: bid.responseDeadline, source: bid.source, agency: bid.agency },
       profile.capabilities,
       { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness },
       normalizeSetAsideType(bid.setAsideType),
@@ -526,7 +566,7 @@ async function upsertOpportunities(
       const derivedOppType = overrides?.opportunityTypeOverride
         ?? deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType ?? null);
       const { opportunityScore, capabilityMatches } = scoreOpportunity(
-        { title: opp.title, description: opp.description, responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource },
+        { title: opp.title, description: opp.description, responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource, agency: opp.agency, naicsMismatch: (opp as SamOpportunity).naicsMismatch },
         profile.capabilities,
         settingsForRec,
         normalizeSetAsideType(rawSetAside),
@@ -589,7 +629,7 @@ async function upsertOpportunities(
       const derivedOppType = overrides?.opportunityTypeOverride
         ?? deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType ?? null);
       const { opportunityScore, capabilityMatches } = scoreOpportunity(
-        { title: opp.title, description: opp.description, responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource },
+        { title: opp.title, description: opp.description, responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource, agency: opp.agency, naicsMismatch: (opp as SamOpportunity).naicsMismatch },
         profile.capabilities,
         settingsForRec,
         normalizeSetAsideType(rawSetAside),
@@ -768,7 +808,10 @@ export async function runBidSync(
   }
 
   // Purge stale/irrelevant rows
-  await purgeIrrelevantFederalBids(businessId, profile.naicsCodes);
+  // Note: purgeIrrelevantFederalBids intentionally removed — NAICS-mismatch records
+  // (found via keyword searches with unexpected NAICS codes) are now kept and flagged
+  // for user review rather than deleted. The scope classifier in rescoreExistingBids
+  // handles true incompatibilities (e.g. asphalt in a GC context).
   await purgeIrrelevantLocalBids(businessId, profile.localKeywords);
   await purgeNavLinkRows(businessId);
   await purgeOldUsaSpendingAwards(businessId);
@@ -790,7 +833,7 @@ export async function runBidSync(
   const now = new Date();
   const [fedResult, localResult, awardsResult] = await Promise.allSettled([
     samActuallyRan
-      ? fetchSamOpportunities({ keywords: profile.keywords, naicsCodes: profile.naicsCodes, pscCodes: profile.pscCodes })
+      ? fetchSamOpportunitiesGrouped(profile.searchGroups)
       : Promise.resolve([] as SamOpportunity[]),
     kyLocalActuallyRan
       ? fetchKyLocalBids()

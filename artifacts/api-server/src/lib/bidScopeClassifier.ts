@@ -67,6 +67,9 @@ const NAICS_SCOPE: Record<string, string> = {
   "238320": "general_contracting", // Painting & wall covering
   "238390": "general_contracting", // Other finish trades
   "238990": "general_contracting", // Other specialty trade contractors
+  // Building / Park / Facility Maintenance
+  "561210": "general_contracting", // Facilities support services
+  "561499": "general_contracting", // All other building service contractors
 };
 
 // ── Title keyword scope rules ─────────────────────────────────────────────────

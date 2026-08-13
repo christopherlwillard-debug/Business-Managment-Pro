@@ -4,33 +4,43 @@ const SAM_API_BASE = "https://api.sam.gov/opportunities/v2/search";
 
 /**
  * Maximum records to fetch per individual query (NAICS×keyword or PSC×keyword).
- * SAM.gov supports up to 1,000 per page; 100 is a pragmatic page size that
- * avoids timeout risk while still being much larger than the old hard-coded 20.
+ * SAM.gov supports up to 1,000 per page; 100 is a pragmatic page size.
  */
-const SAM_PAGE_SIZE = 100;
+export const SAM_PAGE_SIZE = 100;
 
 /**
- * Safety cap on pages per query. 5 pages × 100 = 500 records max per
- * NAICS/keyword combination before we stop.  Prevents runaway fetches for
- * extremely broad keywords while still capturing 25× more data than before.
+ * Safety cap on pages per query. 5 pages × 100 = 500 records max per search task.
+ * Prevents runaway fetches for extremely broad keywords.
  */
-const SAM_MAX_PAGES = 5;
+export const SAM_MAX_PAGES = 5;
+
+/**
+ * Default lookback window in days.
+ * 90 days (was 30) to catch still-active solicitations posted earlier in the quarter.
+ * SAM.gov opportunity close dates extend well beyond posting; 30 days silently missed them.
+ */
+export const SAM_LOOKBACK_DAYS = 90;
+
+/**
+ * Maximum concurrent fetchAllPages tasks running at once.
+ * SAM.gov has rate limits; 8 concurrent is aggressive enough to be fast
+ * while staying within documented limits.
+ */
+export const SAM_MAX_CONCURRENT = 8;
 
 /** Minimum delay between paginated calls to the same query (ms). */
 const SAM_PAGE_DELAY_MS = 150;
 
-// ── Legacy keyword exports (kept for backward compatibility) ──────────────────
+// ── Legacy keyword/PSC exports (kept for backward compatibility) ───────────────
 export const ASPHALT_SAM_KEYWORDS = [
   "asphalt", "sealcoat", "sealcoating", "pavement",
   "parking lot", "parking-lot", "striping", "crack", "crack seal", "crack-seal", "paving",
 ];
 
 export const GENERAL_CONTRACTING_SAM_KEYWORDS = [
-  "general contractor", "general contracting", "commercial building", "renovation",
-  "remodel", "building construction", "tenant improvement", "site work",
-  "commercial construction", "new construction", "building renovation",
-  "interior construction", "facility renovation", "construction services",
-  "roofing", "flooring", "drywall", "painting contractor", "masonry", "finish carpentry",
+  "general contractor", "general contracting", "renovation",
+  "remodel", "building renovation", "facility renovation", "construction services",
+  "roofing", "flooring", "drywall", "painting contractor", "finish carpentry",
 ];
 
 export const ASPHALT_PSC_CODES = [
@@ -43,7 +53,39 @@ export const GENERAL_CONTRACTING_PSC_CODES = [
   "Z2AA","Z2BA","Z2CA","Z2DA",
 ];
 
-// ── SAM.gov ptype → human-readable notice type ────────────────────────────────
+// ── Capability search group ───────────────────────────────────────────────────
+
+/**
+ * A targeted search group for one capability. Replaces the flat N×M all-pairs
+ * matrix with per-capability groups so each set of NAICS codes is only paired
+ * with terms relevant to that capability.
+ *
+ * For each group, the search engine runs:
+ *   (naicsCodes × anchorKeywords)  — NAICS-constrained, broad terms
+ *   (specificKeywords)              — keyword-only, catches NAICS mismatches
+ *   (pscCodes × anchorKeywords)    — PSC-constrained, broad terms
+ *
+ * This keeps query volume proportional to actual capability breadth rather
+ * than exploding combinatorially when many capabilities share NAICS codes.
+ */
+export interface CapabilitySearchGroup {
+  capabilityKey:        string;
+  capabilityName:       string;
+  /** NAICS codes paired with anchorKeywords in SAM.gov queries */
+  naicsCodes:           string[];
+  /** 2–5 broad search terms, each paired with every NAICS code above */
+  anchorKeywords:       string[];
+  /** Specific multi-word phrases searched without NAICS restriction —
+   *  catches opportunities whose NAICS code differs from expected */
+  specificKeywords:     string[];
+  /** PSC codes paired with anchorKeywords */
+  pscCodes?:            string[];
+  /** Terms in opportunity text that suggest a license/certification may be needed.
+   *  When found these generate a qualification warning rather than auto-excluding. */
+  qualificationRequired?: string[];
+}
+
+// ── SAM.gov ptype → human-readable notice type ───────────────────────────────
 const PTYPE_MAP: Record<string, string> = {
   o:  "solicitation",
   p:  "presolicitation",
@@ -71,8 +113,16 @@ export interface SamOpportunity {
   postedDate:       string | null;
   responseDeadline: string | null;
   url:              string;
-  noticeType?:      string;   // derived from SAM ptype field; absent for non-SAM sources
-  typeOfSetAside?:  string;   // raw SAM.gov set-aside code (e.g. "SBA", "SDVOSB", "WOSB", "none")
+  noticeType?:      string;
+  typeOfSetAside?:  string;
+  /**
+   * When true, the NAICS code returned by SAM.gov is outside the searched
+   * capability group's NAICS set. The record is kept (not dropped) but
+   * recommendation is capped at REVIEW so the user can verify relevance.
+   */
+  naicsMismatch?:   boolean;
+  /** capabilityKey of the search group that first surfaced this opportunity */
+  matchedCapability?: string;
 }
 
 function toIsoDate(d: Date): string {
@@ -177,7 +227,6 @@ async function fetchAllPages(
     if (isLastPage || fetchedAll) break;
 
     if (page < SAM_MAX_PAGES - 1) {
-      // Polite inter-page delay
       await new Promise<void>((r) => setTimeout(r, SAM_PAGE_DELAY_MS));
     }
   }
@@ -189,10 +238,160 @@ async function fetchAllPages(
   return all;
 }
 
+// ── Simple semaphore for concurrency control ──────────────────────────────────
+
+class Semaphore {
+  private slots: number;
+  private waiters: Array<() => void> = [];
+
+  constructor(slots: number) { this.slots = slots; }
+
+  async acquire(): Promise<void> {
+    if (this.slots > 0) { this.slots--; return; }
+    await new Promise<void>((r) => this.waiters.push(r));
+  }
+
+  release(): void {
+    if (this.waiters.length > 0) this.waiters.shift()!();
+    else this.slots++;
+  }
+}
+
+// ── Primary: capability-grouped search ───────────────────────────────────────
+
+/**
+ * Searches SAM.gov using capability-grouped search groups instead of the flat
+ * all-pairs matrix.  Each group searches its own NAICS codes with its own
+ * anchor keywords, then runs targeted specific-keyword queries (no NAICS) to
+ * catch opportunities whose SAM.gov NAICS code doesn't match the expected code.
+ *
+ * Concurrency is limited to SAM_MAX_CONCURRENT simultaneous fetchAllPages calls.
+ * A global noticeId Set deduplicates across all groups, queries, and pages.
+ * Records with unexpected NAICS codes are flagged naicsMismatch=true (not dropped).
+ */
+export async function fetchSamOpportunitiesGrouped(
+  groups:  CapabilitySearchGroup[],
+  opts?:   { lookbackDays?: number },
+): Promise<SamOpportunity[]> {
+  const apiKey = getCredential("sam_gov", "SAM_GOV_API_KEY");
+  if (!apiKey) {
+    console.warn("[sam-gov] SAM_GOV_API_KEY not configured, skipping");
+    return [];
+  }
+
+  const lookback   = opts?.lookbackDays ?? SAM_LOOKBACK_DAYS;
+  const postedFrom = toIsoDate(new Date(Date.now() - lookback * 24 * 60 * 60 * 1000));
+  const postedTo   = toIsoDate(new Date());
+  const baseParams = { ptype: "o,p,k,r,s,g,i", postedFrom, postedTo };
+
+  // Union of ALL NAICS codes across all groups — used for global mismatch detection
+  const allGroupNaics = new Set<string>();
+  for (const g of groups) g.naicsCodes.forEach((n) => allGroupNaics.add(n));
+
+  // Build the full task list
+  const tasks: Array<{
+    params:        Record<string, string>;
+    label:         string;
+    capabilityKey: string;
+    groupNaics:    Set<string>;
+  }> = [];
+
+  for (const group of groups) {
+    const groupNaics = new Set(group.naicsCodes);
+
+    // NAICS × anchorKeyword tasks
+    for (const naics of group.naicsCodes) {
+      for (const keyword of group.anchorKeywords) {
+        tasks.push({
+          params:        { ...baseParams, naics, keyword },
+          label:         `[${group.capabilityKey}] NAICS ${naics} / "${keyword}"`,
+          capabilityKey: group.capabilityKey,
+          groupNaics,
+        });
+      }
+    }
+
+    // specificKeyword tasks (no NAICS filter — catches NAICS mismatches)
+    for (const keyword of group.specificKeywords) {
+      tasks.push({
+        params:        { ...baseParams, keyword },
+        label:         `[${group.capabilityKey}] kw "${keyword}"`,
+        capabilityKey: group.capabilityKey,
+        groupNaics,
+      });
+    }
+
+    // PSC × anchorKeyword tasks
+    for (const psc of group.pscCodes ?? []) {
+      for (const keyword of group.anchorKeywords) {
+        tasks.push({
+          params:        { ...baseParams, psc, keyword },
+          label:         `[${group.capabilityKey}] PSC ${psc} / "${keyword}"`,
+          capabilityKey: group.capabilityKey,
+          groupNaics,
+        });
+      }
+    }
+  }
+
+  console.log(
+    `[sam-gov] Grouped search: ${groups.length} group(s), ${tasks.length} task(s), ` +
+    `concurrency=${SAM_MAX_CONCURRENT}, lookback=${lookback}d`
+  );
+
+  // Global dedup map — first occurrence wins; noticeId → final SamOpportunity
+  const seen = new Map<string, SamOpportunity>();
+  const sem  = new Semaphore(SAM_MAX_CONCURRENT);
+
+  await Promise.all(tasks.map(async (task) => {
+    await sem.acquire();
+    try {
+      const opps = await fetchAllPages(apiKey, task.params, task.label);
+      for (const opp of opps) {
+        if (!seen.has(opp.noticeId)) {
+          // Flag as mismatch when returned NAICS is outside both the group's expected
+          // NAICS codes and the union of all groups' NAICS codes.
+          const naicsMismatch = !!(
+            opp.naicsCode &&
+            !task.groupNaics.has(opp.naicsCode) &&
+            !allGroupNaics.has(opp.naicsCode)
+          );
+          seen.set(opp.noticeId, {
+            ...opp,
+            matchedCapability: task.capabilityKey,
+            naicsMismatch,
+          });
+        }
+      }
+    } finally {
+      sem.release();
+    }
+  }));
+
+  const result     = Array.from(seen.values());
+  const mismatched = result.filter((r) => r.naicsMismatch).length;
+  if (mismatched > 0) {
+    console.log(`[sam-gov] ${mismatched} record(s) flagged naicsMismatch (kept, recommendation capped at REVIEW)`);
+  }
+  console.log(`[sam-gov] Grouped search complete: ${result.length} unique opportunities from ${tasks.length} search tasks`);
+
+  return result;
+}
+
+// ── Backward-compat flat search ───────────────────────────────────────────────
+
+/**
+ * Original flat search — still used by legacy callers and unit tests.
+ * Updated to:
+ *   - Use 90-day lookback (was 30)
+ *   - Concurrency-limit via Semaphore (was unlimited parallel)
+ *   - Flag NAICS mismatches instead of dropping them (was hard-filter)
+ */
 export async function fetchSamOpportunities(opts: {
-  keywords:   string[];
-  naicsCodes: string[];
-  pscCodes?:  string[];
+  keywords:    string[];
+  naicsCodes:  string[];
+  pscCodes?:   string[];
+  lookbackDays?: number;
 }): Promise<SamOpportunity[]> {
   const apiKey = getCredential("sam_gov", "SAM_GOV_API_KEY");
   if (!apiKey) {
@@ -200,20 +399,30 @@ export async function fetchSamOpportunities(opts: {
     return [];
   }
 
-  const postedFrom = toIsoDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+  const lookback   = opts.lookbackDays ?? SAM_LOOKBACK_DAYS;
+  const postedFrom = toIsoDate(new Date(Date.now() - lookback * 24 * 60 * 60 * 1000));
   const postedTo   = toIsoDate(new Date());
   const baseParams = { ptype: "o,p,k,r,s,g,i", postedFrom, postedTo };
 
+  const sem    = new Semaphore(SAM_MAX_CONCURRENT);
   const fetches: Promise<SamOpportunity[]>[] = [];
 
-  for (const naics   of opts.naicsCodes)       {
-    for (const keyword of opts.keywords)        {
-      fetches.push(fetchAllPages(apiKey, { ...baseParams, naics, keyword }, `NAICS ${naics} / "${keyword}"`));
+  for (const naics   of opts.naicsCodes) {
+    for (const keyword of opts.keywords) {
+      fetches.push(
+        sem.acquire().then(() =>
+          fetchAllPages(apiKey, { ...baseParams, naics, keyword }, `NAICS ${naics} / "${keyword}"`).finally(() => sem.release())
+        )
+      );
     }
   }
-  for (const psc     of (opts.pscCodes ?? [])) {
-    for (const keyword of opts.keywords)        {
-      fetches.push(fetchAllPages(apiKey, { ...baseParams, psc, keyword }, `PSC ${psc} / "${keyword}"`));
+  for (const psc of opts.pscCodes ?? []) {
+    for (const keyword of opts.keywords) {
+      fetches.push(
+        sem.acquire().then(() =>
+          fetchAllPages(apiKey, { ...baseParams, psc, keyword }, `PSC ${psc} / "${keyword}"`).finally(() => sem.release())
+        )
+      );
     }
   }
 
@@ -223,26 +432,32 @@ export async function fetchSamOpportunities(opts: {
     if (p.status === "fulfilled") all.push(...p.value);
   }
 
-  // Global dedup by noticeId across all queries
-  const seen   = new Set<string>();
+  // Global dedup by noticeId
+  const seen    = new Set<string>();
   const deduped = all.filter((r) => {
     if (seen.has(r.noticeId)) return false;
     seen.add(r.noticeId);
     return true;
   });
 
-  // Post-filter: discard records whose NAICS is present but not in the requested set.
-  // This removes cross-NAICS leakage that sometimes comes back from keyword searches.
+  // Soft NAICS mismatch: flag instead of drop
+  // Previously these were hard-dropped; now they surface for user review.
   const allowedNaics = new Set(opts.naicsCodes);
-  const filtered = deduped.filter((r) => !r.naicsCode || allowedNaics.has(r.naicsCode));
+  let mismatched = 0;
+  const annotated = deduped.map((r) => {
+    if (r.naicsCode && !allowedNaics.has(r.naicsCode)) {
+      mismatched++;
+      return { ...r, naicsMismatch: true as const };
+    }
+    return r;
+  });
 
-  if (deduped.length !== filtered.length) {
-    console.log(`[sam-gov] NAICS post-filter: ${deduped.length} → ${filtered.length} (dropped ${deduped.length - filtered.length})`);
+  if (mismatched > 0) {
+    console.log(`[sam-gov] NAICS mismatch: ${mismatched} record(s) flagged (not dropped)`);
   }
-
-  console.log(`[sam-gov] Total unique opportunities after dedup+filter: ${filtered.length}`);
-  return filtered;
+  console.log(`[sam-gov] Total unique opportunities: ${annotated.length}`);
+  return annotated;
 }
 
 // ── Exported for testing ──────────────────────────────────────────────────────
-export { fetchPage, fetchAllPages, SAM_PAGE_SIZE, SAM_MAX_PAGES };
+export { fetchPage, fetchAllPages };
