@@ -89,7 +89,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     section: SectionKey | null;
     altSection?: SectionKey;
     ownerOnly?: boolean;
-    group?: "operations" | "business_tools" | "finance" | "procurement";
+    group?: "operations" | "business_tools" | "finance" | "find_a_job" | "equipment_crew";
     /** When true, only highlight as active on an exact path match (not prefix). */
     exactMatch?: boolean;
   }
@@ -110,11 +110,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Invoices",              href: "/invoices",             icon: FileText,        feature: "invoices",     section: null,       ownerOnly: true,  group: "finance" },
     { name: "Square Transactions",   href: "/square-transactions",  icon: CreditCard,      feature: null,           section: null,       ownerOnly: true,  group: "finance" },
     { name: "Banking",               href: "/banking",              icon: Landmark,        feature: null,           section: null,       ownerOnly: true,  group: "finance" },
-    { name: "Find Work",              href: "/bids",                 icon: ScrollText,      feature: null,           section: null,       ownerOnly: true,  group: "procurement" },
-    { name: "Find Equipment",         href: "/equipment",            icon: PackageSearch,   feature: null,           section: null,       ownerOnly: true,  group: "procurement", exactMatch: true },
-    { name: "My Equipment",           href: "/equipment/inventory",  icon: Warehouse,       feature: null,           section: null,       ownerOnly: true,  group: "procurement" },
-    { name: "Grants",                 href: "/grants",               icon: Award,           feature: null,           section: null,       ownerOnly: true,  group: "procurement" },
-    { name: "Field Crew",             href: "/crew",                 icon: HardHat,         feature: null,           section: null,       ownerOnly: true,  group: "procurement" },
+    { name: "Bids & Contracts",        href: "/bids",                 icon: ScrollText,      feature: null,           section: null,       ownerOnly: true,  group: "find_a_job" },
+    { name: "Grants",                 href: "/grants",               icon: Award,           feature: null,           section: null,       ownerOnly: true,  group: "find_a_job" },
+    { name: "Find Equipment",         href: "/equipment",            icon: PackageSearch,   feature: null,           section: null,       ownerOnly: true,  group: "equipment_crew", exactMatch: true },
+    { name: "My Equipment",           href: "/equipment/inventory",  icon: Warehouse,       feature: null,           section: null,       ownerOnly: true,  group: "equipment_crew" },
+    { name: "Field Crew",             href: "/crew",                 icon: HardHat,         feature: null,           section: null,       ownerOnly: true,  group: "equipment_crew" },
     { name: "Accounting & Tax",      href: "/accounting",           icon: BookOpen,        feature: "invoices",     section: "invoices", group: "finance" },
     { name: "Integrations & APIs",   href: "/integrations",         icon: KeyRound,        feature: null,           section: null,       ownerOnly: true  },
     { name: "Settings",              href: "/settings",             icon: Settings,        feature: null,           section: null,       ownerOnly: true  },
@@ -197,10 +197,11 @@ export function AppLayout({ children }: AppLayoutProps) {
   }
 
   const GROUP_LABELS: Record<string, string> = {
-    operations: "Operations",
+    operations:     "Operations",
     business_tools: "Business Tools",
-    finance: "Finance",
-    procurement: "Procurement",
+    finance:        "Finance",
+    find_a_job:     "Find a Job",
+    equipment_crew: "Equipment & Crew",
   };
 
   function renderNavItems(items: NavItem[]) {

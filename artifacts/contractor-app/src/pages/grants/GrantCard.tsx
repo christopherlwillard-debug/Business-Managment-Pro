@@ -96,13 +96,7 @@ function StageActions({ stage, onSave, onApply, onDismiss, disabled }: StageActi
           type="button"
           onClick={onSave}
           disabled={disabled}
-          className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border",
-            stage === "saved"
-              ? "bg-primary text-primary-foreground border-primary"
-              : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground",
-            "disabled:opacity-50"
-          )}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground disabled:opacity-50"
         >
           <Bookmark className="w-3.5 h-3.5" />
           Save
