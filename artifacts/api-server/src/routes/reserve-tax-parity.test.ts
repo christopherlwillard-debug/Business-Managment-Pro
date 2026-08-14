@@ -640,3 +640,107 @@ describe("Owner-draw exclusion from net profit", () => {
     expect(mfhLine.netProfit).toBeCloseTo(850, 10);
   });
 });
+
+// ── Mileage exclusion from accounting totals ──────────────────────────────────
+//
+// Guards the nonMileageExpenses filter (~line 493 of reports.ts).
+// Mileage is deducted separately via mileage_logs / mileageDeduction, so any
+// expense row with category "mileage" must be excluded from:
+//   - summary.totalExpenses
+//   - expensesByCategory entries
+//   - summary.netProfit reduction
+//
+// A future change that accidentally drops the category filter would silently
+// inflate totalExpenses and understate netProfit.
+//
+// Queue order for GET /accounting (no blFilter):
+//   [0]   paidInvoices
+//   [1]   nonPaidInvoices
+//   [2]   expenses
+//   [3]   mileageLogs
+//   [4]   subs
+//   [5]   settings
+//   [6]   otherIncome
+//   [7-8] computeDepreciationForYear → assets, assetBusinessUse
+//   [9]   allBusinesses
+//   [10]  outstandingSubRows (innerJoin)
+
+describe("Mileage expense exclusion from accounting totals", () => {
+
+  // A mileage expense — category must match the filter in reports.ts
+  const MILEAGE_EXP = {
+    id:                  90,
+    date:                `${YEAR}-06-10`,
+    amount:              "150.00",
+    category:            "mileage",
+    businessLine:        null,
+    jobId:               null,
+    excludeFromNetProfit: false,
+    description:         "Mileage log import expense",
+    vendor:              null,
+    notes:               null,
+  };
+
+  // A regular business expense that SHOULD reduce totalExpenses and netProfit
+  const REGULAR_SUPPLY_EXP = {
+    id:                  91,
+    date:                `${YEAR}-06-10`,
+    amount:              "100.00",
+    category:            "Supplies",
+    businessLine:        null,
+    jobId:               null,
+    excludeFromNetProfit: false,
+    description:         "Office supplies",
+    vendor:              null,
+    notes:               null,
+  };
+
+  it("mileage expense is absent from summary.totalExpenses, expensesByCategory, and netProfit", async () => {
+    // Revenue: $1 000 paid invoice.
+    // Expenses: $150 mileage (must be excluded) + $100 Supplies (must be included).
+    // No mileage logs → mileageDeduction = 0.
+    // No assets       → depreciationDeduction = 0.
+    //
+    // Expected:
+    //   summary.totalExpenses = 100    (mileage row excluded)
+    //   summary.netProfit     = 1 000 - 100 = 900
+    //   expensesByCategory    has "Supplies" entry but NO "mileage" entry
+    //
+    // Regression values (if filter were absent):
+    //   summary.totalExpenses = 250, netProfit = 750
+
+    h.selectQueue.push([PAID_INVOICE]);                      // [0] paidInvoices
+    h.selectQueue.push([]);                                  // [1] nonPaidInvoices
+    h.selectQueue.push([MILEAGE_EXP, REGULAR_SUPPLY_EXP]);  // [2] expenses
+    h.selectQueue.push([]);                                  // [3] mileageLogs
+    h.selectQueue.push([]);                                  // [4] subs
+    h.selectQueue.push([SETTINGS_ROW]);                      // [5] settings
+    h.selectQueue.push([]);                                  // [6] otherIncome
+    h.selectQueue.push([]);                                  // [7] assets (computeDepreciationForYear)
+    h.selectQueue.push([]);                                  // [8] assetBusinessUse
+    h.selectQueue.push([]);                                  // [9] allBusinesses
+    h.selectQueue.push([]);                                  // [10] outstandingSubRows
+
+    const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
+    expect(res.status).toBe(200);
+
+    // ── summary.totalExpenses must exclude the mileage row ──────────────────
+    expect(res.body.summary.totalExpenses).toBeCloseTo(100, 10);
+
+    // ── summary.netProfit must reflect only the regular expense ─────────────
+    // netProfit = paidRevenue(1000) - (totalExpenses(100) - ownerDrawTotal(0))
+    //            - mileageDeduction(0) - depreciationDeduction(0)
+    expect(res.body.summary.netProfit).toBeCloseTo(900, 10);
+
+    // ── expensesByCategory must not contain a "mileage" entry ───────────────
+    const categories: string[] = (res.body.expensesByCategory as Array<{ category: string }>)
+      .map(e => e.category);
+    expect(categories).not.toContain("mileage");
+
+    // ── The regular expense still appears correctly ──────────────────────────
+    const suppliesEntry = (res.body.expensesByCategory as Array<{ category: string; amount: number }>)
+      .find(e => e.category === "Supplies");
+    expect(suppliesEntry).toBeDefined();
+    expect(suppliesEntry!.amount).toBeCloseTo(100, 10);
+  });
+});
