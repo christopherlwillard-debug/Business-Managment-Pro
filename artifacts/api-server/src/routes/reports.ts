@@ -187,15 +187,22 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const blRevenue = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-      const blOwnerDrawTotal = blExpenses.filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-      const blExcluded = blExpenses.filter(e => e.excludeFromNetProfit).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const OWNER_DRAW_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
+      const blOwnerDrawTotal = blExpenses.filter(e => OWNER_DRAW_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      // Union of owner-draw categories and the excludeFromNetProfit flag.
+      // Each expense is excluded at most once even if both conditions apply,
+      // preserving the Expense-UI "exclude from net profit" semantics for
+      // non-owner expenses while also catching owner draws that predate the flag.
+      const blExcludedTotal = blExpenses
+        .filter(e => OWNER_DRAW_CATS.includes(e.category ?? "") || !!e.excludeFromNetProfit)
+        .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       return {
         businessLine: bl,
         label: biz.name,
         totalRevenue: blRevenue,
         totalExpenses: blExpenseTotal,
         businessExpenses: blExpenseTotal - blOwnerDrawTotal,
-        operationalNetProfit: blRevenue - (blExpenseTotal - blExcluded),
+        operationalNetProfit: blRevenue - (blExpenseTotal - blExcludedTotal),
         activeJobs: blActiveJobs.length,
       };
     });
@@ -225,12 +232,14 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const monthlyRevenue = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now);
+      d.setDate(1); // pin to 1st before subtracting months to prevent day overflow (e.g. Mar 31 → Feb 31 → Mar 3)
       d.setMonth(d.getMonth() - i);
       const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const lastDay = String(new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()).padStart(2, "0");
       const [monthlyInv, monthlyExp, monthlyOther] = await Promise.all([
-        db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, `${monthStr}-01`), lte(invoicesTable.issueDate, `${monthStr}-31`), blWhere(invoicesTable.businessLine))),
-        db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-31`), blWhere(expensesTable.businessLine))),
-        db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-31`), blWhere(otherIncomeTable.businessLine))),
+        db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, `${monthStr}-01`), lte(invoicesTable.issueDate, `${monthStr}-${lastDay}`), blWhere(invoicesTable.businessLine))),
+        db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-${lastDay}`), blWhere(expensesTable.businessLine))),
+        db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-${lastDay}`), blWhere(otherIncomeTable.businessLine))),
       ]);
       const invRevenue = monthlyInv.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const othRevenue = monthlyOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
@@ -291,20 +300,24 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
   }
 });
 
-router.get("/compliance", sectionGuard("compliance"), async (_req, res) => {
+router.get("/compliance", sectionGuard("compliance"), async (req, res) => {
   try {
+    const blFilter = (req.query.businessLine as string | undefined) || null;
     const [settings] = await db.select().from(settingsTable).limit(1);
     const threshold = parseFloat(settings?.thresholdAmount1099 ?? "600");
 
-    const [subs, mileageLogs] = await Promise.all([
+    const [subs, mileageLogs, uncategorizedMileageResult] = await Promise.all([
       db.select().from(subcontractorsTable),
       db.select().from(mileageLogsTable).where(eq(mileageLogsTable.classification, "business")),
+      db.select({ cnt: count() }).from(mileageLogsTable).where(
+        sql`(${mileageLogsTable.classification} IS NULL OR ${mileageLogsTable.classification} NOT IN ('business', 'personal'))`
+      ),
     ]);
 
     const currentYear = new Date().getFullYear();
     const subsWithYtd = await Promise.all(subs.map(async s => ({
       ...s,
-      _ytd: await computeYtd(s.id, currentYear),
+      _ytd: await computeYtd(s.id, currentYear, blFilter),
     })));
     const subcontractor1099Alerts = subsWithYtd
       .filter(s => s._ytd >= threshold * 0.8)
@@ -319,7 +332,7 @@ router.get("/compliance", sectionGuard("compliance"), async (_req, res) => {
         return { name: s.name, ytdPayments: ytd, threshold, w9OnFile: s.w9OnFile, alert };
       });
 
-    const uncategorizedMileageCount = 0;
+    const uncategorizedMileageCount = uncategorizedMileageResult[0]?.cnt ?? 0;
     const mileageAlerts: string[] = [];
     if (uncategorizedMileageCount > 0) {
       mileageAlerts.push(`${uncategorizedMileageCount} trips need classification`);
@@ -419,7 +432,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const mileageDeduction = businessMiles.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
 
     const [subsWithYtdAcc, depreciationDeduction] = await Promise.all([
-      Promise.all(subs.map(async s => ({ ...s, _ytd: await computeYtd(s.id, year) }))),
+      Promise.all(subs.map(async s => ({ ...s, _ytd: await computeYtd(s.id, year, blFilter) }))),
       computeDepreciationForYear(year),
     ]);
     const totalSubPayments = subsWithYtdAcc.reduce((acc, s) => acc + s._ytd, 0);
@@ -907,14 +920,15 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       // system should record a manual expense to appear here.
     ]);
 
-    // Outstanding fixed/allocation sub liability — unpaid subs that haven't yet
-    // created an expense record (only happens when Mark Paid is clicked).
-    // Hourly subs are excluded: their hours auto-create expenses, so they already
-    // appear in the Contract Labor line above.
+    // Outstanding sub liability — all comp types with unpaid/partial status.
+    // For fixed/allocation subs: amount comes from amountOwed or fixedAmount.
+    // For hourly subs:           amount is aggregated from job_sub_hours × rate_snapshot
+    //                            (same as the Sub Balances screen), then reduced by amountPaid.
     const outstandingSubRows = await db.select({
       subName: subcontractorsTable.name,
       jobTitle: jobsTable.title,
       jobId: jobSubcontractorsTable.jobId,
+      subcontractorId: jobSubcontractorsTable.subcontractorId,
       amountOwed: jobSubcontractorsTable.amountOwed,
       fixedAmount: jobSubcontractorsTable.fixedAmount,
       amountPaid: jobSubcontractorsTable.amountPaid,
@@ -926,12 +940,44 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       .innerJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
       .where(and(
         inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]),
-        inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+        inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation", "hourly"]),
         blFilter ? eq(jobsTable.businessLine, blFilter) : undefined,
       ));
 
+    // For hourly subs, compute owed from hours × rate_snapshot in job_sub_hours.
+    // This mirrors the Sub Balances screen so both surfaces show the same liability.
+    const hourlySubRows = outstandingSubRows.filter(r => r.compensationType === "hourly" && r.jobId != null && r.subcontractorId != null);
+    const hourlyHoursMap = new Map<string, number>();
+    if (hourlySubRows.length > 0) {
+      const hourlyJobIds = [...new Set(hourlySubRows.map(r => r.jobId as number))];
+      const hourlySubIds = [...new Set(hourlySubRows.map(r => r.subcontractorId as number))];
+      const hoursCostRows = await db.select({
+        jobId: jobSubHoursTable.jobId,
+        subcontractorId: jobSubHoursTable.subcontractorId,
+        cost: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
+      })
+        .from(jobSubHoursTable)
+        .where(and(
+          inArray(jobSubHoursTable.jobId, hourlyJobIds),
+          inArray(jobSubHoursTable.subcontractorId, hourlySubIds),
+        ))
+        .groupBy(jobSubHoursTable.jobId, jobSubHoursTable.subcontractorId);
+      for (const row of hoursCostRows) {
+        hourlyHoursMap.set(`${row.jobId}:${row.subcontractorId}`, parseFloat(row.cost));
+      }
+    }
+
     const outstandingSubItems = outstandingSubRows.map(r => {
-      const fullOwed = r.amountOwed != null ? parseFloat(r.amountOwed) : r.fixedAmount != null ? parseFloat(r.fixedAmount) : null;
+      let fullOwed: number | null;
+      if (r.amountOwed != null) {
+        fullOwed = parseFloat(r.amountOwed);
+      } else if (r.compensationType === "hourly" && r.jobId != null && r.subcontractorId != null) {
+        fullOwed = hourlyHoursMap.get(`${r.jobId}:${r.subcontractorId}`) ?? null;
+      } else if (r.fixedAmount != null) {
+        fullOwed = parseFloat(r.fixedAmount);
+      } else {
+        fullOwed = null;
+      }
       const alreadyPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
       const remaining = fullOwed != null ? Math.max(0, fullOwed - alreadyPaid) : null;
       return {
@@ -1388,7 +1434,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     // ── 1099 Subcontractor Payments ───────────────────────────────────────────
     const threshold = parseFloat(settings[0]?.thresholdAmount1099 ?? "600");
     const subPayments = await Promise.all(subs.map(async s => {
-      const ytd = await computeYtd(s.id, year);
+      const ytd = await computeYtd(s.id, year, blFilter);
       return {
         id: s.id,
         name: s.name,

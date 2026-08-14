@@ -34,11 +34,12 @@ async function computeHasLinkedRecords(subcontractorId: number): Promise<boolean
   return parseInt(payRow?.cnt ?? "0") > 0;
 }
 
-export async function computeYtd(subcontractorId: number, year: number): Promise<number> {
+export async function computeYtd(subcontractorId: number, year: number, businessLine?: string | null): Promise<number> {
   const startDate = `${year}-01-01`;
   const endDate = `${year}-12-31`;
 
   // sub_payment_records: pay-worker payments (new path). Exclude reversals.
+  // Filter by businessLine when provided so cross-entity totals aren't combined.
   const [sprRow] = await db
     .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), 0)` })
     .from(subPaymentRecordsTable)
@@ -48,6 +49,7 @@ export async function computeYtd(subcontractorId: number, year: number): Promise
         gte(subPaymentRecordsTable.paymentDate, startDate),
         lte(subPaymentRecordsTable.paymentDate, endDate),
         sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+        businessLine ? eq(subPaymentRecordsTable.businessLine, businessLine) : undefined,
       )
     );
 
@@ -65,10 +67,16 @@ export async function computeYtd(subcontractorId: number, year: number): Promise
         gte(expensesTable.date, startDate),
         lte(expensesTable.date, endDate),
         sql`${expensesTable.jobSubHoursId} IS NULL`,
+        businessLine ? eq(expensesTable.businessLine, businessLine) : undefined,
       )
     );
 
-  // paymentsTable: direct/manual payments recorded via the payments flow.
+  // paymentsTable: legacy direct/manual payments. This table predates multi-business
+  // support and has no businessLine column, so these records are always included in
+  // the YTD total regardless of the businessLine filter. New payments use
+  // subPaymentRecordsTable (which does carry businessLine) and old-path manual
+  // expenses also carry businessLine, so only truly legacy paymentsTable rows
+  // remain unscoped. This is an accepted limitation documented in Task #1884.
   const [payRow] = await db
     .select({ total: sql<string>`COALESCE(SUM(${paymentsTable.amount}), 0)` })
     .from(paymentsTable)
