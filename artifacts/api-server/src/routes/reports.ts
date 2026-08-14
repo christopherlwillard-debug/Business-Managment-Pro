@@ -217,6 +217,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const undrawnBalance = operationalNetProfit - ownerDrawTotal - subContractorRemaining;
 
     // Profit by business line breakdown — always computed from full (unfiltered) data
+    const OWNER_DRAW_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
     const allBusinesses = await db.select({ slug: businessesTable.slug, name: businessesTable.name }).from(businessesTable).orderBy(businessesTable.id);
     const byBusinessLine = allBusinesses.map(biz => {
       const bl = biz.slug;
@@ -227,7 +228,6 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const blRevenue = blInvoices.filter(i => i.status === "paid" && getEffectivePaymentDate(i) >= startDate && getEffectivePaymentDate(i) <= endDate).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-      const OWNER_DRAW_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
       const blOwnerDrawTotal = blExpenses.filter(e => OWNER_DRAW_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       // Union of owner-draw categories and the excludeFromNetProfit flag.
       // Each expense is excluded at most once even if both conditions apply,
@@ -255,14 +255,16 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const unattribRevenue = unattribInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
       + unattribOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const unattribExpenseTotal = unattribExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    const unattribExcluded = unattribExpenses.filter(e => e.excludeFromNetProfit).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    // Match the attribution logic: union of owner-category OR excludeFromNetProfit flag
+    const unattribOwnerTotal = unattribExpenses.filter(e => OWNER_DRAW_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const unattribExcluded = unattribExpenses.filter(e => OWNER_DRAW_CATS.includes(e.category ?? "") || !!e.excludeFromNetProfit).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     if (unattribRevenue > 0 || unattribExpenseTotal > 0) {
       byBusinessLine.push({
         businessLine: "unattributed",
         label: "Unattributed",
         totalRevenue: unattribRevenue,
         totalExpenses: unattribExpenseTotal,
-        businessExpenses: unattribExpenseTotal,
+        businessExpenses: unattribExpenseTotal - unattribOwnerTotal,
         operationalNetProfit: unattribRevenue - (unattribExpenseTotal - unattribExcluded),
         activeJobs: 0,
       });
@@ -640,7 +642,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       // Paid: bucket by effective payment date; non-paid: bucket by issueDate
       const monthPaidInvs    = invoices.filter(i => i.status === "paid" && getEffectivePaymentDate(i).startsWith(ms));
       const monthNonPaidInvs = invoices.filter(i => i.status !== "paid" && (i.issueDate ?? "").startsWith(ms));
-      const monthExp = nonMileageExpenses.filter(e => e.date.startsWith(ms));
+      // Owner distributions excluded — they are equity events, not business costs
+      const monthExp = nonMileageExpenses.filter(e => e.date.startsWith(ms) && !["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""));
       const monthOther = otherIncomeRows.filter(o => o.date.startsWith(ms));
       const invGross = [...monthPaidInvs, ...monthNonPaidInvs].reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const othGross = monthOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
@@ -663,6 +666,9 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     }));
 
     const allBusinesses = await db.select({ slug: businessesTable.slug, name: businessesTable.name }).from(businessesTable).orderBy(businessesTable.id);
+    // Owner distributions are equity events for a single-member LLC, never business costs.
+    // Exclude from every business-line expense/profit calculation.
+    const ACCT_OWNER_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
     const knownBlSlugs = new Set(allBusinesses.map(b => b.slug));
     const byBusinessLine: { businessLine: string; label: string; invoiceCount: number; invoiceGross: number; invoicePaid: number; otherIncome: number; totalRevenue: number; collectedRevenue: number; expenses: number; netProfit: number }[] = [];
     for (const biz of allBusinesses) {
@@ -673,7 +679,9 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       const invoiceGross = blInvoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const invoicePaid = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const otherSum = blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+      const blOwnerTotal = blExpenses.filter(e => ACCT_OWNER_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       const expSum = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const businessExpSum = expSum - blOwnerTotal;
       byBusinessLine.push({
         businessLine: bl,
         label: biz.name,
@@ -683,8 +691,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
         otherIncome: otherSum,
         totalRevenue: invoiceGross + otherSum,
         collectedRevenue: invoicePaid + otherSum,
-        expenses: expSum,
-        netProfit: (invoicePaid + otherSum) - expSum,
+        expenses: businessExpSum,
+        netProfit: (invoicePaid + otherSum) - businessExpSum,
       });
     }
     // Untagged: items not assigned to any registered business slug
@@ -695,7 +703,9 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       const invoiceGross = blInvoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const invoicePaid = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const otherSum = blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+      const blOwnerTotal = blExpenses.filter(e => ACCT_OWNER_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       const expSum = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const businessExpSum = expSum - blOwnerTotal;
       byBusinessLine.push({
         businessLine: "untagged",
         label: "Untagged",
@@ -705,8 +715,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
         otherIncome: otherSum,
         totalRevenue: invoiceGross + otherSum,
         collectedRevenue: invoicePaid + otherSum,
-        expenses: expSum,
-        netProfit: (invoicePaid + otherSum) - expSum,
+        expenses: businessExpSum,
+        netProfit: (invoicePaid + otherSum) - businessExpSum,
       });
     }
 

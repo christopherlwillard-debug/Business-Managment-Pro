@@ -2169,6 +2169,8 @@ router.post("/:id/record-owner-draw", async (req, res) => {
       date: today,
       jobId,
       businessLine: job?.businessLine,
+      // Single-member LLC: owner pay is an equity withdrawal, never a deductible business expense
+      excludeFromNetProfit: true,
     }).returning();
     res.status(201).json({ ok: true, expenseId: exp.id });
   } catch (err) {

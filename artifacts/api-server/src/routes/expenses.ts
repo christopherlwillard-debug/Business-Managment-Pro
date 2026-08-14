@@ -206,10 +206,16 @@ router.post("/", async (req, res) => {
       if (biz) resolvedBusinessId = biz.id;
     }
 
+    // Owner distributions (draws, compensation, withdrawals) are equity events for a
+    // single-member LLC — never deductible business expenses. Enforce server-side so
+    // no client path can accidentally store them as deductible expenses.
+    const OWNER_DIST_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
+    const isOwnerDist = OWNER_DIST_CATS.includes(category);
+
     const [expense] = await db.insert(expensesTable).values({
       description, amount: amount.toString(), category, date,
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes: resolvedNotes,
-      excludeFromNetProfit: excludeFromNetProfit === true,
+      excludeFromNetProfit: isOwnerDist ? true : (excludeFromNetProfit === true),
       countsTowardJobProfit: countsTowardJobProfit === false ? false : true,
       businessLine: resolvedBusinessLine,
       businessId: resolvedBusinessId,
@@ -307,6 +313,11 @@ router.put("/:id", async (req, res) => {
 
     const validBusinessLines = ["general_contracting", "asphalt_sealing"];
 
+    // Owner distribution categories are always excluded from net profit — enforce on every edit
+    const OWNER_DIST_CATS_PUT = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
+    const effectiveCat = category !== undefined ? category : (before.category ?? "");
+    const isOwnerDistCat = OWNER_DIST_CATS_PUT.includes(effectiveCat);
+
     const isMealCategory = (category ?? before.category)?.toLowerCase() === "meals";
     // Recompute meal split whenever mealTotal or amount (for meal category) changes
     const shouldRecomputeMealSplit = mealTotal !== undefined || (amount !== undefined && isMealCategory);
@@ -326,7 +337,8 @@ router.put("/:id", async (req, res) => {
       ...(subcontractorId !== undefined && { subcontractorId: subcontractorId || null }),
       ...(receiptUrl !== undefined && { receiptUrl }),
       ...(notes !== undefined && { notes }),
-      ...(excludeFromNetProfit !== undefined && { excludeFromNetProfit: excludeFromNetProfit === true }),
+      // Owner distributions always excluded — server enforces regardless of client value
+      excludeFromNetProfit: isOwnerDistCat ? true : (excludeFromNetProfit !== undefined ? excludeFromNetProfit === true : (before.excludeFromNetProfit ?? false)),
       ...(countsTowardJobProfit !== undefined && { countsTowardJobProfit: countsTowardJobProfit === false ? false : true }),
       ...(businessLine !== undefined && { businessLine: validBusinessLines.includes(businessLine) ? businessLine : null }),
       ...(businessId !== undefined && { businessId: businessId ? parseInt(String(businessId)) : null }),

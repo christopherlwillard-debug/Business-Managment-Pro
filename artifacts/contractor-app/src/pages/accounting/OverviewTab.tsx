@@ -337,7 +337,7 @@ function TakeHomeDashboard() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ amount: amt, date: dialog.date, description: dialog.description, category: "Owner Compensation" }),
+          body: JSON.stringify({ amount: amt, date: dialog.date, description: dialog.description, category: "Owner Compensation", excludeFromNetProfit: true }),
         });
         if (!res.ok) throw new Error();
         toast({ title: "Entry updated" });

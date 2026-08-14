@@ -3359,15 +3359,21 @@ export default function Expenses() {
                                       onChange={e => setEditingRow(r => r && ({ ...r, notes: e.target.value }))}
                                       className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
                                       placeholder="Notes" />
-                                    <label className="flex items-center gap-1.5 cursor-pointer mt-1">
+                                    <label className={`flex items-center gap-1.5 mt-1 ${["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? "opacity-80" : "cursor-pointer"}`}>
                                       <input
                                         type="checkbox"
                                         checked={editingRow!.excludeFromNetProfit}
-                                        onChange={e => setEditingRow(r => r && ({ ...r, excludeFromNetProfit: e.target.checked }))}
+                                        onChange={e => {
+                                          if (!["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "")) {
+                                            setEditingRow(r => r && ({ ...r, excludeFromNetProfit: e.target.checked }));
+                                          }
+                                        }}
+                                        disabled={["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "")}
                                         className="w-3 h-3 accent-amber-500"
                                       />
                                       <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                                        <EyeOff className="w-2.5 h-2.5" /> Write-off
+                                        <EyeOff className="w-2.5 h-2.5" />
+                                        {["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? "Owner Distribution" : "Write-off"}
                                       </span>
                                     </label>
                                     <div className="flex items-center gap-0.5 mt-1">
@@ -3448,7 +3454,8 @@ export default function Expenses() {
                                     <span className="font-medium text-foreground group-hover:text-primary transition-colors">{exp.description}</span>
                                     {exp.excludeFromNetProfit && (
                                       <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-amber-200 flex-shrink-0">
-                                        <EyeOff className="w-2.5 h-2.5" /> Write-off
+                                        <EyeOff className="w-2.5 h-2.5" />
+                                        {["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(exp.category ?? "") ? "Owner Distribution" : "Write-off"}
                                       </span>
                                     )}
                                     {exp.countsTowardJobProfit === false && (
@@ -4264,13 +4271,27 @@ export default function Expenses() {
                   ))}
                 </div>
               </div>
-              <label className="flex items-center gap-3 cursor-pointer py-1">
+              <label className={`flex items-center gap-3 py-1 ${["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? "opacity-80" : "cursor-pointer"}`}>
                 <input type="checkbox" checked={editingRow!.excludeFromNetProfit}
-                  onChange={e => setEditingRow(r => r && ({ ...r, excludeFromNetProfit: e.target.checked }))}
+                  onChange={e => {
+                    if (!["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "")) {
+                      setEditingRow(r => r && ({ ...r, excludeFromNetProfit: e.target.checked }));
+                    }
+                  }}
+                  disabled={["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "")}
                   className="w-4 h-4 accent-amber-500 flex-shrink-0" />
                 <div>
-                  <p className="text-sm font-medium flex items-center gap-1.5"><EyeOff className="w-3.5 h-3.5" /> Write-off</p>
-                  <p className="text-xs text-muted-foreground">Exclude this expense from net profit calculation</p>
+                  {["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? (
+                    <>
+                      <p className="text-sm font-medium flex items-center gap-1.5"><EyeOff className="w-3.5 h-3.5" /> Owner Distribution</p>
+                      <p className="text-xs text-muted-foreground">Owner withdrawals are equity transactions — never a deductible business expense</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium flex items-center gap-1.5"><EyeOff className="w-3.5 h-3.5" /> Write-off</p>
+                      <p className="text-xs text-muted-foreground">Exclude this expense from net profit calculation</p>
+                    </>
+                  )}
                 </div>
               </label>
               {editingRow!.jobId && editingRow!.category !== "Owner Draw" && (
