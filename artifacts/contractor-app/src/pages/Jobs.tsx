@@ -6252,19 +6252,26 @@ export default function Jobs() {
   const { data: allMaterialLists = [] }   = useListMaterialLists();
 
   // Fetch subcontractor-category expenses to know which jobs have sub expenses
-  const { data: subExpenseData = [] } = useQuery({
-    queryKey: ["expenses-subcontractor"],
+  // Per-job outstanding sub payout status — reads paymentStatus from the payment ledger,
+  // NOT from expense records. true = job has at least one unpaid/partial sub; false/absent = all settled.
+  // isSuccess gates subsSettled so we never pass true before the ledger result is confirmed.
+  const { data: subPayoutStatusData = {}, isSuccess: subPayoutStatusLoaded } = useQuery<Record<string, boolean>>({
+    queryKey: ["sub-payout-status", jobs.map(j => j.id).join(",")],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/expenses?category=Subcontractor`);
-      if (!res.ok) return [];
-      return res.json() as Promise<Array<{ id: number; jobId: number | null; amount: string }>>;
+      const ids = jobs.map(j => j.id);
+      if (ids.length === 0) return {};
+      const res = await fetch(`${BASE}/api/jobs/outstanding-sub-balances?jobIds=${ids.join(",")}`, { credentials: "include" });
+      // Throw on non-OK so React Query enters error state; isSuccess stays false,
+      // subsSettled remains undefined, and the Archive button stays hidden.
+      if (!res.ok) throw new Error(`outstanding-sub-balances: ${res.status}`);
+      return res.json();
     },
-    staleTime: 30 * 1000,
+    enabled: jobs.length > 0,
+    staleTime: 30_000,
   });
-  // Build a Set of jobIds that have subcontractor expenses
-  const jobsWithSubExpenses = useMemo(
-    () => new Set(subExpenseData.map(e => e.jobId).filter((id): id is number => id != null)),
-    [subExpenseData]
+  const jobsWithOutstandingSubs = useMemo(
+    () => new Set(Object.entries(subPayoutStatusData).filter(([, v]) => v).map(([id]) => parseInt(id, 10))),
+    [subPayoutStatusData]
   );
 
   // Compute per-job log indicators
@@ -6465,7 +6472,7 @@ export default function Jobs() {
     );
   };
   const jobMatchesBL = (j: Job) => !jobBLFilter || j.businessLine === jobBLFilter;
-  const jobMatchesPayout = (j: Job) => !needsPayoutFilter || (jobsWithSubExpenses.has(j.id) && !j.subPaid);
+  const jobMatchesPayout = (j: Job) => !needsPayoutFilter || jobsWithOutstandingSubs.has(j.id);
 
   async function handleExportCsv() {
     setCsvExporting(true);
@@ -6591,23 +6598,7 @@ export default function Jobs() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleJobIds.join(",")]);
 
-  // Outstanding sub-balance map for paidBase jobs — live check per the outstanding-sub-payments endpoint
-  // true = has outstanding, false = all settled; undefined = not yet loaded (button hidden)
-  const [outstandingBalanceMap, setOutstandingBalanceMap] = useState<Map<number, boolean>>(new Map());
-  useEffect(() => {
-    if (paidBase.length === 0) { setOutstandingBalanceMap(new Map()); return; }
-    const ids = paidBase.map(j => j.id);
-    const controller = new AbortController();
-    fetch(`${BASE}/api/jobs/outstanding-sub-balances?jobIds=${ids.join(",")}`, { credentials: "include", signal: controller.signal })
-      .then(r => r.ok ? r.json() as Promise<Record<string, boolean>> : Promise.reject())
-      .then(obj => {
-        if (controller.signal.aborted) return;
-        setOutstandingBalanceMap(new Map(Object.entries(obj).map(([id, v]) => [parseInt(id, 10), v])));
-      })
-      .catch(() => { if (!controller.signal.aborted) setOutstandingBalanceMap(new Map()); });
-    return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paidBase.map(j => j.id).join(",")]);
+
 
   // Photo counts for closed jobs — single batch fetch
   const [photoCountMap, setPhotoCountMap] = useState<Map<number, number>>(new Map());
@@ -7075,9 +7066,10 @@ export default function Jobs() {
               </button>
             );
           })}
-          {/* Needs Payout filter — only visible when there are jobs with sub expenses */}
-          {jobsWithSubExpenses.size > 0 && (() => {
-            const payoutCount = jobs.filter(j => jobsWithSubExpenses.has(j.id) && !j.subPaid).length;
+          {/* Needs Payout filter — only visible when at least one job has an outstanding sub balance */}
+          {(() => {
+            const payoutCount = jobs.filter(j => jobsWithOutstandingSubs.has(j.id)).length;
+            if (payoutCount === 0 && !needsPayoutFilter) return null;
             return (
               <button
                 onClick={() => setNeedsPayoutFilter(v => !v)}
@@ -7138,7 +7130,7 @@ export default function Jobs() {
                       invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                       onCreateInvoice={() => handleReviewInvoice(job)}
                       onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
-                      hasSubExpenses={jobsWithSubExpenses.has(job.id)}
+                      hasSubExpenses={jobsWithOutstandingSubs.has(job.id) || !!job.subPaid}
                       profitData={profitMap.get(job.id) ?? null}
                       onSendPaymentLink={handleGetPaymentLink}
                       onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
@@ -7181,7 +7173,7 @@ export default function Jobs() {
                         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                         onCreateInvoice={() => handleReviewInvoice(job)}
                         onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
-                        hasSubExpenses={jobsWithSubExpenses.has(job.id)}
+                        hasSubExpenses={jobsWithOutstandingSubs.has(job.id) || !!job.subPaid}
                         profitData={profitMap.get(job.id) ?? null}
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
@@ -7229,7 +7221,7 @@ export default function Jobs() {
                         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                         onCreateInvoice={() => handleReviewInvoice(job)}
                         onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
-                        hasSubExpenses={jobsWithSubExpenses.has(job.id)}
+                        hasSubExpenses={jobsWithOutstandingSubs.has(job.id) || !!job.subPaid}
                         profitData={profitMap.get(job.id) ?? null}
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
@@ -7237,7 +7229,7 @@ export default function Jobs() {
                         generatingLinkId={generatingLinkId}
                         onSmartEstimate={j => setGcWizardJob(j)}
                         onArchiveJob={handleArchiveJob}
-                        subsSettled={!jobsWithSubExpenses.has(job.id) || outstandingBalanceMap.get(job.id) === false}
+                        subsSettled={subPayoutStatusLoaded ? !jobsWithOutstandingSubs.has(job.id) : undefined}
                         checklistSummary={checklistSummaries[job.id] ?? null}
                         productionServiceTypes={allProductionServiceTypes}
                       onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined} />

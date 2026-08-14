@@ -129,6 +129,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const subPayRows = await db.select({
       amountOwed:       jobSubcontractorsTable.amountOwed,
       amountPaid:       jobSubcontractorsTable.amountPaid,
+      paymentStatus:    jobSubcontractorsTable.paymentStatus,
       businessLine:     jobsTable.businessLine,
       compensationType: jobSubcontractorsTable.compensationType,
       allocationPct:    jobSubcontractorsTable.allocationPct,
@@ -154,6 +155,11 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     let subContractorPaid = 0;
     for (const r of subPayRows) {
       if (validBl && r.businessLine !== validBl) continue;
+      const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+      subContractorPaid += paid;
+      // Trust paymentStatus as authoritative — paid/overpaid rows have no outstanding liability.
+      // This matches the logic in /api/subcontractors/outstanding-balances.
+      if (r.paymentStatus === "paid" || r.paymentStatus === "overpaid") continue;
       let owed: number;
       if (r.amountOwed != null) {
         owed = parseFloat(r.amountOwed);
@@ -163,8 +169,6 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       } else {
         owed = parseFloat(r.computedOwed ?? "0");
       }
-      const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
-      subContractorPaid += paid;
       subContractorOwed += Math.max(0, owed - paid);
     }
     const subContractorRemaining = subContractorOwed;
