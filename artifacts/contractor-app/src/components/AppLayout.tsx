@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   UsersRound,
   Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark, ScrollText, KeyRound,
-  Sun, Moon, Building2, ChevronDown, Globe, Home, PackageSearch, Warehouse, HardHat,
+  Sun, Moon, Building2, ChevronDown, Globe, Home, PackageSearch, Warehouse, HardHat, Award,
   type LucideIcon,
 } from "lucide-react";
 import { useBusiness } from "@/contexts/BusinessContext";
@@ -113,6 +113,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Find Work",              href: "/bids",                 icon: ScrollText,      feature: null,           section: null,       ownerOnly: true,  group: "procurement" },
     { name: "Find Equipment",         href: "/equipment",            icon: PackageSearch,   feature: null,           section: null,       ownerOnly: true,  group: "procurement", exactMatch: true },
     { name: "My Equipment",           href: "/equipment/inventory",  icon: Warehouse,       feature: null,           section: null,       ownerOnly: true,  group: "procurement" },
+    { name: "Grants",                 href: "/grants",               icon: Award,           feature: null,           section: null,       ownerOnly: true,  group: "procurement" },
     { name: "Field Crew",             href: "/crew",                 icon: HardHat,         feature: null,           section: null,       ownerOnly: true,  group: "procurement" },
     { name: "Accounting & Tax",      href: "/accounting",           icon: BookOpen,        feature: "invoices",     section: "invoices", group: "finance" },
     { name: "Integrations & APIs",   href: "/integrations",         icon: KeyRound,        feature: null,           section: null,       ownerOnly: true  },

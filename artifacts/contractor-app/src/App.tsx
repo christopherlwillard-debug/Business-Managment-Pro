@@ -49,6 +49,7 @@ const TripPacket = lazy(() => import("./pages/TripPacket"));
 const JobPayroll = lazy(() => import("./pages/JobPayroll"));
 const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage"));
 const CrewManagement = lazy(() => import("./pages/CrewManagement"));
+const Grants = lazy(() => import("./pages/Grants"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -316,6 +317,9 @@ function AdminApp() {
           </Route>
           <Route path="/equipment/inventory">
             <PermissionGuard ownerOnly><MyEquipment /></PermissionGuard>
+          </Route>
+          <Route path="/grants">
+            <PermissionGuard ownerOnly><Grants /></PermissionGuard>
           </Route>
           <Route path="/equipment">
             <PermissionGuard ownerOnly><FindEquipment /></PermissionGuard>
