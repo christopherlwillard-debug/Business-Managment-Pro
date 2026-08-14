@@ -258,6 +258,7 @@ interface BusinessReserveData {
   requiredReserve: number;
   checkingBalance: number | null;
   balanceCachedAt: string | null;
+  balanceStaleDays: number | null;
   availableToSpend: number | null;
   reserveHealth: "funded" | "low" | "below" | null;
   overheadCoverageDays: number | null;
@@ -747,7 +748,7 @@ function BusinessReserveDashboard() {
     estimatedTaxes, taxBreakdown, growthFundAvailable, growthFundIncluded,
     annualOverhead, monthlyRecurring, operatingReserve,
     operatingReserveMode, operatingReserveCustom,
-    requiredReserve, checkingBalance, balanceCachedAt, availableToSpend,
+    requiredReserve, checkingBalance, balanceCachedAt, balanceStaleDays, availableToSpend,
     reserveHealth, overheadCoverageMonths,
     plaidConnected,
   } = data;
@@ -795,6 +796,23 @@ function BusinessReserveDashboard() {
           </button>
         </div>
       </div>
+
+      {/* Stale balance warning — shown when bank balance hasn't been refreshed in 3+ days */}
+      {balanceStaleDays != null && balanceStaleDays >= 3 && (
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-800 text-xs">
+          <span className="text-base leading-none">⚠️</span>
+          <span>
+            Your bank balance is <strong>{balanceStaleDays} {balanceStaleDays === 1 ? "day" : "days"} old</strong> — the reserve health shown may not reflect your real account.
+          </span>
+          <button
+            onClick={refreshBalance}
+            disabled={refreshingBalance}
+            className="ml-auto font-semibold underline underline-offset-2 hover:no-underline disabled:opacity-40 whitespace-nowrap"
+          >
+            Refresh now
+          </button>
+        </div>
+      )}
 
       <div className="p-4 space-y-4">
         {/* Two-column hero */}

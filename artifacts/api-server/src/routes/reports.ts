@@ -10,6 +10,23 @@ import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.j
 
 const router = Router();
 
+/**
+ * Cash-basis effective payment date for an invoice.
+ * Uses the electronic payment timestamp when available (Stripe → Square → issue date fallback).
+ * Returns a YYYY-MM-DD string suitable for period comparisons.
+ * Mirrors the year-end `getEffectivePaymentYear` helper — kept consistent with the
+ * cash-basis revenue recognition used on the Schedule C / Tax Report.
+ */
+function getEffectivePaymentDate(inv: {
+  stripePaidAt?: Date | null;
+  squarePaidAt?: Date | null;
+  issueDate?: string | null;
+}): string {
+  if (inv.stripePaidAt) return inv.stripePaidAt.toISOString().slice(0, 10);
+  if (inv.squarePaidAt) return inv.squarePaidAt.toISOString().slice(0, 10);
+  return inv.issueDate ?? "";
+}
+
 
 router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
   try {
@@ -88,7 +105,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       ? allMileage
       : await db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, ytdStart), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), mileageWhere));
 
-    const invoiceRevenue = kpiInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    // Cash-basis: count paid invoice revenue only when the payment was actually received in this period
+    const invoiceRevenue = kpiInvoices.filter(i => i.status === "paid" && getEffectivePaymentDate(i) >= startDate && getEffectivePaymentDate(i) <= endDate).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const otherIncomeTotal = kpiOtherIncome.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const totalRevenue = invoiceRevenue + otherIncomeTotal;
     const pendingInvoices = kpiInvoices.filter(i => i.status === "sent").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
@@ -184,7 +202,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const blOther = rawOtherIncome.filter(o => o.businessLine === bl);
       const blExpenses = rawExpenses.filter(e => e.businessLine === bl && e.category !== "mileage");
       const blActiveJobs = rawActiveJobs.filter(j => j.businessLine === bl);
-      const blRevenue = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
+      const blRevenue = blInvoices.filter(i => i.status === "paid" && getEffectivePaymentDate(i) >= startDate && getEffectivePaymentDate(i) <= endDate).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       const OWNER_DRAW_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
@@ -241,7 +259,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-${lastDay}`), blWhere(expensesTable.businessLine))),
         db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-${lastDay}`), blWhere(otherIncomeTable.businessLine))),
       ]);
-      const invRevenue = monthlyInv.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+      const invRevenue = monthlyInv.filter(i => i.status === "paid" && getEffectivePaymentDate(i) >= `${monthStr}-01` && getEffectivePaymentDate(i) <= `${monthStr}-${lastDay}`).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const othRevenue = monthlyOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const mo_revenue = invRevenue + othRevenue;
       // Exclude mileage (sourced from mileage_logs) and owner distributions (equity, not business costs)
@@ -389,6 +407,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
         taxAmount: invoicesTable.taxAmount,
         total: invoicesTable.total,
         issueDate: invoicesTable.issueDate,
+        stripePaidAt: invoicesTable.stripePaidAt,
+        squarePaidAt: invoicesTable.squarePaidAt,
         invoiceCity: invoicesTable.city,
         invoiceState: invoicesTable.state,
         jobCity: jobsTable.city,
@@ -411,7 +431,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const rate = parseFloat(settings[0]?.mileageRate ?? "0.725");
 
     const invoiceGrossRevenue = invoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
-    const invoicePaidRevenue = invoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    // Cash-basis: count paid revenue only when payment was received in the selected year
+    const invoicePaidRevenue = invoices.filter(i => i.status === "paid" && getEffectivePaymentDate(i) >= startDate && getEffectivePaymentDate(i) <= endDate).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const pendingRevenue = invoices.filter(i => ["sent", "overdue"].includes(i.status)).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const otherIncomeSum = otherIncomeRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const grossRevenue = invoiceGrossRevenue + otherIncomeSum;
@@ -1665,6 +1686,8 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
         total: invoicesTable.total,
         status: invoicesTable.status,
         issueDate: invoicesTable.issueDate,
+        stripePaidAt: invoicesTable.stripePaidAt,
+        squarePaidAt: invoicesTable.squarePaidAt,
         invoiceCity: invoicesTable.city,
         jobCity: jobsTable.city,
       }).from(invoicesTable)
@@ -1692,9 +1715,10 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
       }
     }
 
-    // Compute YTD net profit (matches accounting route logic) for estimated taxes
+    // Compute YTD net profit (matches accounting route logic) for estimated taxes.
+    // Cash-basis: use effective payment date so revenue matches the year-end tax report.
     const invoicePaidRevenue = invoices
-      .filter(i => i.status === "paid")
+      .filter(i => i.status === "paid" && getEffectivePaymentDate(i) >= startDate && getEffectivePaymentDate(i) <= endDate)
       .reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const otherIncomeSum = otherIncomeRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const paidRevenue = invoicePaidRevenue + otherIncomeSum;
@@ -1763,9 +1787,13 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     const plaidConnected = plaidConns.length > 0;
     let checkingBalance: number | null = null;
     let balanceCachedAt: string | null = null;
+    let balanceStaleDays: number | null = null;
     if (plaidConnected && plaidConns[0].cachedBalanceCurrent != null) {
       checkingBalance = parseFloat(plaidConns[0].cachedBalanceCurrent);
       balanceCachedAt = plaidConns[0].balanceCachedAt ? plaidConns[0].balanceCachedAt.toISOString() : null;
+      balanceStaleDays = balanceCachedAt
+        ? Math.floor((Date.now() - new Date(balanceCachedAt).getTime()) / (1000 * 60 * 60 * 24))
+        : null;
     }
 
     // 8. Available to spend + health
@@ -1787,6 +1815,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
       taxBreakdown,
       growthFundAvailable,
       balanceCachedAt,
+      balanceStaleDays,
       growthFundIncluded: includeGrowthFund,
       annualOverhead,
       monthlyRecurring,
