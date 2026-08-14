@@ -380,3 +380,263 @@ describe("Cross-year invoice revenue attribution", () => {
     expect(brRes.body.estimatedTaxes).toBeGreaterThan(0);
   });
 });
+
+// ── Owner-draw exclusion regression tests ─────────────────────────────────────
+//
+// Guards the fix that stops owner withdrawals (Owner Draw / Owner Compensation /
+// Owner Withdrawal) from reducing reported net profit.  A future refactor that
+// accidentally drops the exclusion filter would cause these tests to fail.
+//
+// Covered calculation paths:
+//   1. GET /accounting byBusinessLine  → expenses and netProfit fields
+//   2. GET /accounting monthlyIncome   → expenses bar per month
+//   3. GET /dashboard  byBusinessLine  → unattributed section businessExpenses /
+//                                        operationalNetProfit
+//   4. All three owner-pay category names are blocked in /accounting byBusinessLine
+//
+// Queue order reference:
+//
+//   GET /accounting (no blFilter):
+//     [0-6] Promise.all(paidInv, nonPaidInv, expenses, mileage, subs, settings, otherIncome)
+//     [7-8] computeDepreciationForYear → assets, assetBusinessUse
+//     [9]   allBusinesses  (byBusinessLine query)
+//     [10]  outstandingSubRows (innerJoin)
+//
+//   GET /dashboard (no blFilter, default period=month):
+//     [0-8] Promise.all(kpiPaidInv, kpiNonPaidInv, kpiExpenses, allMileage,
+//                       kpiOtherIncome, kpiActiveJobs, recentJobs, recentInvoices,
+//                       kpiOwnerCapital)
+//     [9]   ytdMileageLogs (separate select — period != "year")
+//     [10]  subPayRows (innerJoin)
+//     [11]  allBusinesses
+//     [12–35] monthlyRevenue loop: 6 months × 4 queries = 24 selects
+
+const CURRENT_MONTH_STR = `${YEAR}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+
+describe("Owner-draw exclusion from net profit", () => {
+
+  // ── Shared fixtures ────────────────────────────────────────────────────────
+
+  // Invoice attributed to the "mfh" business line, paid in June of YEAR
+  const BIZ_INVOICE = {
+    id: 50,
+    status: "paid",
+    subtotal: "1000.00",
+    taxAmount: "0",
+    total: "1000.00",
+    issueDate: `${YEAR}-06-01`,
+    invoiceCity: "Other City",
+    invoiceState: "KY",
+    jobCity: null,
+    jobState: null,
+    clientName: "BizLine Client",
+    invoiceNumber: "INV-BL01",
+    businessLine: "mfh",
+    jobId: null,
+  };
+
+  // Owner draw attributed to "mfh" — must never reduce netProfit or expenses
+  const OWNER_DRAW_EXP = {
+    id: 60,
+    date: `${YEAR}-06-15`,
+    amount: "500.00",
+    category: "Owner Draw",
+    businessLine: "mfh",
+    jobId: null,
+    excludeFromNetProfit: false,
+    description: "Owner draw",
+    vendor: null,
+    notes: null,
+  };
+
+  // Ordinary business expense attributed to "mfh" — must still count
+  const REGULAR_EXP = {
+    id: 61,
+    date: `${YEAR}-06-15`,
+    amount: "100.00",
+    category: "Supplies",
+    businessLine: "mfh",
+    jobId: null,
+    excludeFromNetProfit: false,
+    description: "Office supplies",
+    vendor: null,
+    notes: null,
+  };
+
+  // ── 1. Accounting byBusinessLine ──────────────────────────────────────────
+
+  it("/accounting byBusinessLine: owner draw is not counted in expenses or netProfit", async () => {
+    h.selectQueue.push([BIZ_INVOICE]);                    // [0] paidInvoices
+    h.selectQueue.push([]);                               // [1] nonPaidInvoices
+    h.selectQueue.push([OWNER_DRAW_EXP, REGULAR_EXP]);   // [2] expenses
+    h.selectQueue.push([]);                               // [3] mileageLogs
+    h.selectQueue.push([]);                               // [4] subs
+    h.selectQueue.push([SETTINGS_ROW]);                   // [5] settings
+    h.selectQueue.push([]);                               // [6] otherIncome
+    h.selectQueue.push([]);                               // [7] assets (computeDepreciationForYear)
+    h.selectQueue.push([]);                               // [8] assetBusinessUse
+    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]);  // [9] allBusinesses
+    h.selectQueue.push([]);                               // [10] outstandingSubRows (innerJoin)
+
+    const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
+    expect(res.status).toBe(200);
+
+    const mfhLine = res.body.byBusinessLine.find((b: any) => b.businessLine === "mfh");
+    expect(mfhLine).toBeDefined();
+
+    // expenses = businessExpSum = total - ownerDrawTotal = (500 + 100) - 500 = 100
+    // A regression would produce 600 (owner draw included).
+    expect(mfhLine.expenses).toBeCloseTo(100, 10);
+
+    // netProfit = invoicePaid - businessExpSum = 1000 - 100 = 900
+    // A regression would produce 1000 - 600 = 400.
+    expect(mfhLine.netProfit).toBeCloseTo(900, 10);
+  });
+
+  // ── 2. Accounting monthly income chart ────────────────────────────────────
+
+  it("/accounting monthlyIncome: owner draw month shows zero in the expenses bar", async () => {
+    // Only an owner draw in June — no regular expenses, no revenue.
+    // The monthly chart must report expenses = 0 for June; a regression
+    // would report 500 (the draw amount).
+    const DRAW_ONLY_EXP = { ...OWNER_DRAW_EXP, businessLine: null };
+
+    h.selectQueue.push([]);              // [0] paidInvoices
+    h.selectQueue.push([]);              // [1] nonPaidInvoices
+    h.selectQueue.push([DRAW_ONLY_EXP]); // [2] expenses
+    h.selectQueue.push([]);              // [3] mileageLogs
+    h.selectQueue.push([]);              // [4] subs
+    h.selectQueue.push([SETTINGS_ROW]);  // [5] settings
+    h.selectQueue.push([]);              // [6] otherIncome
+    h.selectQueue.push([]);              // [7] assets
+    h.selectQueue.push([]);              // [8] assetBusinessUse
+    // [9] allBusinesses and [10] outstandingSubRows return [] from empty queue
+
+    const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
+    expect(res.status).toBe(200);
+
+    const juneBucket = (res.body.monthlyIncome as any[]).find(
+      (b: any) => b.month === `${YEAR}-06`,
+    );
+    expect(juneBucket).toBeDefined();
+
+    // expenses bar for June must be 0 — owner draw excluded
+    expect(juneBucket.expenses).toBeCloseTo(0, 10);
+  });
+
+  // ── 3. Dashboard byBusinessLine — unattributed section ───────────────────
+
+  it("/dashboard byBusinessLine unattributed: owner draw excluded from businessExpenses and operationalNetProfit", async () => {
+    // Paid invoice with no businessLine — falls into the "unattributed" bucket.
+    // issueDate is in the current month so getEffectivePaymentDate falls within
+    // the dashboard's default "month" period (startDate = first of current month).
+    const DASH_INVOICE = {
+      id: 70,
+      status: "paid",
+      subtotal: "1000.00",
+      taxAmount: "0",
+      total: "1000.00",
+      issueDate: `${CURRENT_MONTH_STR}-01`,
+      stripePaidAt: null,
+      squarePaidAt: null,
+      businessLine: null,
+    };
+    const DASH_OWNER_DRAW = {
+      id: 80,
+      date: `${CURRENT_MONTH_STR}-01`,
+      amount: "500.00",
+      category: "Owner Compensation",
+      businessLine: null,
+      jobId: null,
+      excludeFromNetProfit: false,
+    };
+    const DASH_REGULAR = {
+      id: 81,
+      date: `${CURRENT_MONTH_STR}-01`,
+      amount: "200.00",
+      category: "Materials",
+      businessLine: null,
+      jobId: null,
+      excludeFromNetProfit: false,
+    };
+
+    // Dashboard queue (no blFilter — mileageBusinessId lookup skipped,
+    // rawPaidInvoices/rawExpenses reuse kpi data without extra selects):
+    h.selectQueue.push([DASH_INVOICE]);                       // [0] kpiPaidInvoices
+    h.selectQueue.push([]);                                   // [1] kpiNonPaidInvoices
+    h.selectQueue.push([DASH_OWNER_DRAW, DASH_REGULAR]);      // [2] kpiExpenses
+    h.selectQueue.push([]);                                   // [3] allMileage
+    h.selectQueue.push([]);                                   // [4] kpiOtherIncome
+    h.selectQueue.push([]);                                   // [5] kpiActiveJobs
+    h.selectQueue.push([]);                                   // [6] recentJobsRows (leftJoin)
+    h.selectQueue.push([]);                                   // [7] recentInvoicesRows (leftJoin)
+    h.selectQueue.push([]);                                   // [8] kpiOwnerCapital
+    h.selectQueue.push([]);                                   // [9] ytdMileageLogs (period=month extra select)
+    h.selectQueue.push([]);                                   // [10] subPayRows (innerJoin)
+    h.selectQueue.push([]);                                   // [11] allBusinesses — empty → unattributed section appears
+    // monthlyRevenue loop: 6 months × 4 queries = 24 selects
+    for (let i = 0; i < 24; i++) h.selectQueue.push([]);
+
+    const res = await request(app).get("/reports/dashboard");
+    expect(res.status).toBe(200);
+
+    const unattrib = res.body.byBusinessLine.find(
+      (b: any) => b.businessLine === "unattributed",
+    );
+    expect(unattrib).toBeDefined();
+
+    // businessExpenses = total - ownerDrawTotal = (500 + 200) - 500 = 200
+    // A regression would produce 700 (owner draw included).
+    expect(unattrib.businessExpenses).toBeCloseTo(200, 10);
+
+    // operationalNetProfit = revenue - (total - excluded) = 1000 - (700 - 500) = 800
+    // A regression would produce 1000 - 700 = 300.
+    expect(unattrib.operationalNetProfit).toBeCloseTo(800, 10);
+  });
+
+  // ── 4. All three owner-pay category names are blocked ────────────────────
+
+  it("/accounting byBusinessLine: all three owner-pay category names are excluded", async () => {
+    // Three owner-pay categories: $300 + $400 + $200 = $900 total owner pay.
+    // One regular expense: $150.
+    // A regression that misses any one of the three names would leak that
+    // category's amount into expenses and reduce netProfit by the same amount.
+    const makeOwnerExp = (id: number, category: string, amount: string) => ({
+      id,
+      date: `${YEAR}-06-15`,
+      amount,
+      category,
+      businessLine: "mfh",
+      jobId: null,
+      excludeFromNetProfit: false,
+    });
+
+    h.selectQueue.push([BIZ_INVOICE]); // [0] paidInvoices
+    h.selectQueue.push([]);            // [1] nonPaidInvoices
+    h.selectQueue.push([
+      makeOwnerExp(70, "Owner Draw",         "300.00"),
+      makeOwnerExp(71, "Owner Compensation", "400.00"),
+      makeOwnerExp(72, "Owner Withdrawal",   "200.00"),
+      { ...REGULAR_EXP, amount: "150.00" },
+    ]);                                // [2] expenses
+    h.selectQueue.push([]);            // [3] mileageLogs
+    h.selectQueue.push([]);            // [4] subs
+    h.selectQueue.push([SETTINGS_ROW]); // [5] settings
+    h.selectQueue.push([]);            // [6] otherIncome
+    h.selectQueue.push([]);            // [7] assets
+    h.selectQueue.push([]);            // [8] assetBusinessUse
+    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]); // [9] allBusinesses
+    h.selectQueue.push([]); // [10] outstandingSubRows
+
+    const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
+    expect(res.status).toBe(200);
+
+    const mfhLine = res.body.byBusinessLine.find((b: any) => b.businessLine === "mfh");
+    expect(mfhLine).toBeDefined();
+
+    // Only the $150 regular expense should appear in expenses
+    expect(mfhLine.expenses).toBeCloseTo(150, 10);
+    // netProfit = invoicePaid - businessExpenses = 1000 - 150 = 850
+    expect(mfhLine.netProfit).toBeCloseTo(850, 10);
+  });
+});
