@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable, growthFundDeploymentsTable, recurringExpensesTable } from "@workspace/db/schema";
+import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable, growthFundDeploymentsTable, recurringExpensesTable, subPaymentRecordsTable } from "@workspace/db/schema";
 import { plaidConnectionsTable } from "@workspace/db";
 import { eq, and, gte, lte, desc, sum, ne, inArray, sql, count, isNull } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
@@ -1099,6 +1099,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       subs,
       settings,
       busUseRows,
+      fixedAllocSubPayments,
     ] = await Promise.all([
       db.select({
         id: invoicesTable.id,
@@ -1128,6 +1129,32 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       db.select().from(subcontractorsTable),
       db.select().from(settingsTable).limit(1),
       db.select().from(assetBusinessUseTable),
+      // Fixed/allocation sub payments from pay-worker (not in expenses after Task #892).
+      // Hourly sub payments already have auto-expense records (jobSubHoursId IS NOT NULL),
+      // so we intentionally exclude compensationType='hourly' to avoid double-counting.
+      db.select({
+        id: subPaymentRecordsTable.id,
+        jobId: subPaymentRecordsTable.jobId,
+        amount: subPaymentRecordsTable.amount,
+        paymentDate: subPaymentRecordsTable.paymentDate,
+        description: subPaymentRecordsTable.description,
+        subcontractorId: subPaymentRecordsTable.subcontractorId,
+      })
+        .from(subPaymentRecordsTable)
+        .innerJoin(
+          jobSubcontractorsTable,
+          and(
+            eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+            eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+          )
+        )
+        .where(and(
+          gte(subPaymentRecordsTable.paymentDate, startDate),
+          lte(subPaymentRecordsTable.paymentDate, endDate),
+          sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+          inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+          blWhere(subPaymentRecordsTable.businessLine),
+        )),
     ]);
 
     // Build lookup: assetId → year → businessUsePct
@@ -1154,8 +1181,28 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
 
     // Owner distributions are personal — not Schedule C deductions.
     // Exclude all three variants so totalExpenses matches the expensesBySchedC breakdown total.
-    const nonMileageExpenses = expenses.filter(e => e.category !== "mileage" && !["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""));
-    const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    //
+    // Cash-basis Schedule C rule for fixed/allocation subs:
+    // The "Complete Job & Keep As Outstanding" flow (record-sub-expenses) creates cost-booking
+    // expense rows with descriptions ending in "(outstanding)". These are accrual-style bookings —
+    // the sub has not been paid yet. Under cash-basis accounting (Schedule C), deductions are
+    // recognised when the payment is made, not when the obligation is incurred.
+    // Therefore we unconditionally exclude outstanding-cost-booking rows from Schedule C.
+    // When pay-worker later records payment, that payment appears in sub_payment_records and is
+    // picked up below — in the same year it was actually paid, whether or not the cost-booking
+    // row was in a prior year. This avoids any cross-year double-count without year-range
+    // cross-referencing.
+    const isOutstandingCostBooking = (e: typeof expenses[number]) =>
+      (e.description ?? "").endsWith("(outstanding)");
+
+    const nonMileageExpenses = expenses.filter(e =>
+      e.category !== "mileage" &&
+      !["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? "") &&
+      !isOutstandingCostBooking(e)
+    );
+    // Fixed/allocation sub payments live only in sub_payment_records (not expenses) after Task #892.
+    const fixedAllocSubPaymentTotal = fixedAllocSubPayments.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
+    const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + fixedAllocSubPaymentTotal;
 
     const totalMiles = mileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const mileageDeduction = mileageLogs.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
@@ -1311,6 +1358,26 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       });
       catMap.set(line, existing);
     }
+    // Inject fixed/allocation sub payments under Contract Labor.
+    // These payments exist only in sub_payment_records (not expenses) after Task #892.
+    // Hourly sub payments are excluded — their auto-expense records (jobSubHoursId IS NOT NULL)
+    // are already in the expenses loop above, so including them here would double-count.
+    const CONTRACT_LABOR_LINE = "Line 11 – Contract Labor";
+    const subLookup = new Map(subs.map(s => [s.id, s.name]));
+    for (const spr of fixedAllocSubPayments) {
+      const existing = catMap.get(CONTRACT_LABOR_LINE) ?? { schedCLine: CONTRACT_LABOR_LINE, amount: 0, count: 0, items: [] };
+      const amt = parseFloat(spr.amount ?? "0");
+      existing.amount += amt;
+      existing.count++;
+      existing.items.push({
+        date: spr.paymentDate,
+        description: spr.description ?? "Subcontractor payment",
+        vendor: subLookup.get(spr.subcontractorId) ?? null,
+        amount: amt,
+      });
+      catMap.set(CONTRACT_LABOR_LINE, existing);
+    }
+
     const expensesBySchedC = Array.from(catMap.values())
       .sort((a, b) => b.amount - a.amount)
       .map(cat => ({
