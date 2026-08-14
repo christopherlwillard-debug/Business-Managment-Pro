@@ -73,11 +73,16 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // Fetch KPI data with DB-level business-line WHERE when validBl is set,
     // plus full (unfiltered) data in parallel for the byBusinessLine breakdown.
     const [
-      kpiInvoices, kpiExpenses, allMileage, kpiOtherIncome, kpiActiveJobs,
+      kpiPaidInvoices, kpiNonPaidInvoices, kpiExpenses, allMileage, kpiOtherIncome, kpiActiveJobs,
       recentJobsRows, recentInvoicesRows, kpiOwnerCapital,
     ] = await Promise.all([
-      // KPI queries — DB-level filter applied when validBl is set
-      db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
+      // KPI invoice queries — split so paid invoices are not date-bounded:
+      // effective payment date (stripePaidAt → squarePaidAt → issueDate) governs period
+      // attribution in JS, so a Dec-issued invoice paid in Jan appears in January's revenue.
+      // Paid invoices: no issueDate filter — payment date is the attribution gate in JS below
+      db.select().from(invoicesTable).where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
+      // Non-paid invoices: issueDate-bounded so pending/overdue counts remain period-specific
+      db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
       db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate), blWhere(expensesTable.businessLine))),
       // Period-consistent mileage for the profit formula — matches the selected period
       db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), mileageWhere)),
@@ -89,16 +94,33 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       db.select().from(ownerCapitalEntriesTable).where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, expenseEndDate))),
     ]);
 
+    // Merge paid + non-paid into the unified kpiInvoices array.
+    // Paid invoices are pre-filtered to those whose effective payment date falls within
+    // the selected period — this ensures every downstream aggregate (revenue, byBusinessLine,
+    // unattributed breakdown) stays period-accurate without individual getEffectivePaymentDate
+    // guards in each calculation. The issueDate-bounded non-paid array is appended unchanged.
+    const kpiInvoices = [
+      ...kpiPaidInvoices.filter(i => getEffectivePaymentDate(i) >= startDate && getEffectivePaymentDate(i) <= endDate),
+      ...kpiNonPaidInvoices,
+    ];
+
     // Fetch full (unfiltered) data for byBusinessLine breakdown.
     // When no filter is active, KPI data == full data — reuse it to avoid extra queries.
-    const [rawInvoices, rawExpenses, rawOtherIncome, rawActiveJobs] = validBl
+    const [rawPaidInvoices, rawNonPaidInvoices, rawExpenses, rawOtherIncome, rawActiveJobs] = validBl
       ? await Promise.all([
-          db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
+          // Same paid/non-paid split as kpiInvoices — see comment above
+          db.select().from(invoicesTable).where(eq(invoicesTable.status, "paid")),
+          db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
           db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate))),
           db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
           db.select().from(jobsTable).where(eq(jobsTable.status, "in_progress")),
         ])
-      : [kpiInvoices, kpiExpenses, kpiOtherIncome, kpiActiveJobs];
+      : [kpiPaidInvoices, kpiNonPaidInvoices, kpiExpenses, kpiOtherIncome, kpiActiveJobs];
+    // Same period gate as kpiInvoices — filter paid to effective payment date within period.
+    const rawInvoices = [
+      ...rawPaidInvoices.filter(i => getEffectivePaymentDate(i) >= startDate && getEffectivePaymentDate(i) <= endDate),
+      ...rawNonPaidInvoices,
+    ];
 
     // YTD mileage — fetched separately for the "Tax Deductions" display card (always shows YTD totals)
     const ytdMileageLogs = period === "year"
@@ -254,11 +276,20 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       d.setMonth(d.getMonth() - i);
       const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const lastDay = String(new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()).padStart(2, "0");
-      const [monthlyInv, monthlyExp, monthlyOther] = await Promise.all([
-        db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, `${monthStr}-01`), lte(invoicesTable.issueDate, `${monthStr}-${lastDay}`), blWhere(invoicesTable.businessLine))),
+      const [monthlyPaidInv, monthlyNonPaidInv, monthlyExp, monthlyOther] = await Promise.all([
+        // Paid invoices: no issueDate filter — JS filters by effective payment date below
+        db.select().from(invoicesTable).where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
+        // Non-paid: issueDate-bounded so outstanding counts remain month-specific
+        db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, `${monthStr}-01`), lte(invoicesTable.issueDate, `${monthStr}-${lastDay}`), blWhere(invoicesTable.businessLine))),
         db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-${lastDay}`), blWhere(expensesTable.businessLine))),
         db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-${lastDay}`), blWhere(otherIncomeTable.businessLine))),
       ]);
+      // Filter paid to effective payment date within this month so the revenue bar
+      // and outstanding aggregate only reflect invoices that belong to this period.
+      const monthlyInv = [
+        ...monthlyPaidInv.filter(i => getEffectivePaymentDate(i) >= `${monthStr}-01` && getEffectivePaymentDate(i) <= `${monthStr}-${lastDay}`),
+        ...monthlyNonPaidInv,
+      ];
       const invRevenue = monthlyInv.filter(i => i.status === "paid" && getEffectivePaymentDate(i) >= `${monthStr}-01` && getEffectivePaymentDate(i) <= `${monthStr}-${lastDay}`).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const othRevenue = monthlyOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const mo_revenue = invRevenue + othRevenue;
@@ -399,34 +430,51 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     }
     const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
 
-    const [invoices, expenses, mileageLogs, subs, settings, otherIncomeRows] = await Promise.all([
-      db.select({
-        id: invoicesTable.id,
-        status: invoicesTable.status,
-        subtotal: invoicesTable.subtotal,
-        taxAmount: invoicesTable.taxAmount,
-        total: invoicesTable.total,
-        issueDate: invoicesTable.issueDate,
-        stripePaidAt: invoicesTable.stripePaidAt,
-        squarePaidAt: invoicesTable.squarePaidAt,
-        invoiceCity: invoicesTable.city,
-        invoiceState: invoicesTable.state,
-        jobCity: jobsTable.city,
-        jobState: jobsTable.state,
-        clientName: clientsTable.name,
-        invoiceNumber: invoicesTable.invoiceNumber,
-        businessLine: invoicesTable.businessLine,
-      })
+    // Accounting invoice columns — shared between the paid and non-paid fetches below
+    const accInvoiceCols = {
+      id: invoicesTable.id,
+      status: invoicesTable.status,
+      subtotal: invoicesTable.subtotal,
+      taxAmount: invoicesTable.taxAmount,
+      total: invoicesTable.total,
+      issueDate: invoicesTable.issueDate,
+      stripePaidAt: invoicesTable.stripePaidAt,
+      squarePaidAt: invoicesTable.squarePaidAt,
+      invoiceCity: invoicesTable.city,
+      invoiceState: invoicesTable.state,
+      jobCity: jobsTable.city,
+      jobState: jobsTable.state,
+      clientName: clientsTable.name,
+      invoiceNumber: invoicesTable.invoiceNumber,
+      businessLine: invoicesTable.businessLine,
+    };
+    const [accPaidInvoices, accNonPaidInvoices, expenses, mileageLogs, subs, settings, otherIncomeRows] = await Promise.all([
+      // Paid invoices: no issueDate filter — effective payment date governs year attribution in JS.
+      // An invoice issued in Dec but paid in Jan will appear in January's revenue, not December's.
+      db.select(accInvoiceCols)
         .from(invoicesTable)
         .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
         .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
-        .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
+        .where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
+      // Non-paid invoices: issueDate-bounded so pending/overdue revenue stays year-specific
+      db.select(accInvoiceCols)
+        .from(invoicesTable)
+        .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
+        .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
+        .where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
       db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), blWhere(expensesTable.businessLine))),
       db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), mileageWhere)),
       db.select().from(subcontractorsTable),
       db.select().from(settingsTable).limit(1),
       db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine))),
     ]);
+    // Merge paid + non-paid. Paid invoices are pre-filtered to effective payment date within
+    // the selected year so cityMap, owensboroGross, and all other aggregates only see
+    // invoices that belong to this year — no extra guards needed in each calculation.
+    const invoices = [
+      ...accPaidInvoices.filter(i => getEffectivePaymentDate(i) >= startDate && getEffectivePaymentDate(i) <= endDate),
+      ...accNonPaidInvoices,
+    ];
 
     const rate = parseFloat(settings[0]?.mileageRate ?? "0.725");
 
@@ -582,19 +630,24 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const directJobCostsByCategory = buildCatBreakdown(directJobExpenses);
     const overheadByCategory = buildCatBreakdown(overheadExpenses);
 
-    // Monthly income trend
+    // Monthly income trend — cash basis for paid, issue-date for non-paid
+    // Paid invoices are bucketed by effective payment date (stripePaidAt → squarePaidAt →
+    // issueDate) so a December-issued invoice paid in January lands in January's paid
+    // column rather than being dropped from the chart entirely.
     const monthlyIncome = [];
     for (let m = 1; m <= 12; m++) {
       const ms = `${year}-${String(m).padStart(2, "0")}`;
-      const monthInvs = invoices.filter(i => i.issueDate.startsWith(ms));
+      // Paid: bucket by effective payment date; non-paid: bucket by issueDate
+      const monthPaidInvs    = invoices.filter(i => i.status === "paid" && getEffectivePaymentDate(i).startsWith(ms));
+      const monthNonPaidInvs = invoices.filter(i => i.status !== "paid" && (i.issueDate ?? "").startsWith(ms));
       const monthExp = nonMileageExpenses.filter(e => e.date.startsWith(ms));
       const monthOther = otherIncomeRows.filter(o => o.date.startsWith(ms));
-      const invGross = monthInvs.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+      const invGross = [...monthPaidInvs, ...monthNonPaidInvs].reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const othGross = monthOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       monthlyIncome.push({
         month: ms,
         gross: invGross + othGross,
-        paid: monthInvs.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0) + othGross,
+        paid: monthPaidInvs.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0) + othGross,
         expenses: monthExp.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
       });
     }
@@ -1679,24 +1732,40 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     const includeGrowthFund = settings?.includeGrowthFundInReserve === 1;
 
     // 2. Growth fund YTD + data needed for estimated taxes
-    const [invoices, expenses, mileageLogs, otherIncomeRows] = await Promise.all([
-      db.select({
-        id: invoicesTable.id,
-        jobId: invoicesTable.jobId,
-        total: invoicesTable.total,
-        status: invoicesTable.status,
-        issueDate: invoicesTable.issueDate,
-        stripePaidAt: invoicesTable.stripePaidAt,
-        squarePaidAt: invoicesTable.squarePaidAt,
-        invoiceCity: invoicesTable.city,
-        jobCity: jobsTable.city,
-      }).from(invoicesTable)
+    // Invoice fetch is split: paid invoices have no issueDate filter so a Dec-issued invoice
+    // paid in Jan is attributed to January via getEffectivePaymentDate in JS below.
+    // Non-paid (sent/overdue) invoices remain issueDate-bounded to keep period counts correct.
+    const brInvoiceCols = {
+      id: invoicesTable.id,
+      jobId: invoicesTable.jobId,
+      total: invoicesTable.total,
+      status: invoicesTable.status,
+      issueDate: invoicesTable.issueDate,
+      stripePaidAt: invoicesTable.stripePaidAt,
+      squarePaidAt: invoicesTable.squarePaidAt,
+      invoiceCity: invoicesTable.city,
+      jobCity: jobsTable.city,
+    };
+    const [brPaidInvoices, brNonPaidInvoices, expenses, mileageLogs, otherIncomeRows] = await Promise.all([
+      // Paid invoices: no issueDate filter — JS gates revenue to the correct year via payment date
+      db.select(brInvoiceCols).from(invoicesTable)
         .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
-        .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), ne(invoicesTable.status, "draft"))),
+        .where(eq(invoicesTable.status, "paid")),
+      // Non-paid, non-draft: issueDate-bounded so display counts remain year-specific
+      db.select(brInvoiceCols).from(invoicesTable)
+        .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
+        .where(and(ne(invoicesTable.status, "paid"), ne(invoicesTable.status, "draft"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
       db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
       db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))),
       db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
     ]);
+    // Pre-filter paid invoices to effective payment date within the selected year so
+    // owensboroGross, growth fund accumulation, and all other aggregates only count
+    // revenue from this year — no individual getEffectivePaymentDate guards needed.
+    const invoices = [
+      ...brPaidInvoices.filter(i => getEffectivePaymentDate(i) >= startDate && getEffectivePaymentDate(i) <= endDate),
+      ...brNonPaidInvoices,
+    ];
 
     const jobIds = [...new Set(invoices.map(i => i.jobId).filter((id): id is number => id != null))];
     let growthFundAccumulated = 0;
