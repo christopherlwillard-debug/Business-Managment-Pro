@@ -30,6 +30,7 @@ interface YearEndReport {
     selfEmploymentTax: number;
     federalIncomeTax: number;
     kyStateTax: number;
+    owensboroOccTax?: number;
     totalLiability: number;
     totalPaid: number;
     balance: number;
@@ -316,8 +317,9 @@ ${row("Total Paid", fmt(report.taxEstimates.totalPaid), true)}
 <table>
 <tr><th>Component</th><th class="num">Amount</th></tr>
 ${row("Self-Employment Tax (15.3% × 92.35% of net profit)", fmt(report.taxEstimates.selfEmploymentTax), false, true)}
-${row("Federal Income Tax (22% bracket est.)", fmt(report.taxEstimates.federalIncomeTax), false, true)}
+${row(`Federal Income Tax (${report.year} progressive brackets)`, fmt(report.taxEstimates.federalIncomeTax), false, true)}
 ${row("Kentucky State Income Tax (4%)", fmt(report.taxEstimates.kyStateTax), false, true)}
+${report.taxEstimates.owensboroOccTax && report.taxEstimates.owensboroOccTax > 0 ? row("Owensboro Occupational Tax (1.39%)", fmt(report.taxEstimates.owensboroOccTax), false, true) : ""}
 ${row("Total Estimated Tax Liability", fmt(report.taxEstimates.totalLiability), true)}
 ${row("Estimated Tax Already Paid", fmt(-report.taxEstimates.totalPaid), false, true)}
 ${row("Remaining Balance", fmt(report.taxEstimates.balance), true)}
@@ -1059,8 +1061,11 @@ export default function YearEndReportTab({ year }: { year: number }) {
         {expandedSections.has("tax-liability") && <div className="p-4 space-y-1">
           {[
             { label: "Self-Employment Tax (15.3% × 92.35%)", value: report.taxEstimates.selfEmploymentTax },
-            { label: "Federal Income Tax (22% bracket est.)", value: report.taxEstimates.federalIncomeTax },
+            { label: `Federal Income Tax (${report.year} progressive brackets)`, value: report.taxEstimates.federalIncomeTax },
             { label: "Kentucky State Income Tax (4%)", value: report.taxEstimates.kyStateTax },
+            ...(report.taxEstimates.owensboroOccTax && report.taxEstimates.owensboroOccTax > 0
+              ? [{ label: "Owensboro Occupational Tax (1.39%)", value: report.taxEstimates.owensboroOccTax }]
+              : []),
           ].map(({ label, value }) => (
             <div key={label} className="flex justify-between py-1.5 border-b border-border/50">
               <span className="text-sm text-muted-foreground pl-4">{label}</span>

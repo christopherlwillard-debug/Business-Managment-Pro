@@ -468,16 +468,15 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const owensboroGross = incomeByCity
       .filter(r => r.city.trim().toLowerCase() === "owensboro")
       .reduce((s, r) => s + r.gross, 0);
-    const owensboroOccTax = Math.max(0, owensboroGross * OWENSBORO_OCC_RATE);
-    const kyStateTax = Math.max(0, netProfit * 0.04);
-    // IRS SE tax: 15.3% × (net profit × 92.35%) — 92.35% accounts for half-SE deduction
-    const federalSETax = Math.max(0, netProfit * 0.9235 * 0.153);
+    // Use shared helper — federal income tax is NOT yet included in this endpoint's total
+    // (that addition is handled by Task #1872 for the reserve dashboard).
+    const accTaxEst = computeTaxEstimate(netProfit, owensboroGross, year);
     const estimatedTaxes = {
-      owensboroOccTax,
-      kyStateTax,
-      federalSETax,
-      totalEstimated: owensboroOccTax + kyStateTax + federalSETax,
-      owensboroOccRate: OWENSBORO_OCC_RATE,
+      owensboroOccTax: accTaxEst.occ,
+      kyStateTax: accTaxEst.kyState,
+      federalSETax: accTaxEst.federalSE,
+      totalEstimated: accTaxEst.totalWithoutFederalIncome,
+      owensboroOccRate: 0.0139,
       kyStateRate: 0.04,
       federalSERate: 0.153,
     };
@@ -783,6 +782,13 @@ export function getTaxProfile(taxElection: string | null | undefined): TaxProfil
       };
   }
 }
+
+// ─── Shared: Tax Estimate Calculation ─────────────────────────────────────────
+// All tax formula logic lives in lib/tax-estimate.ts (pure, testable).
+// Re-export the types and functions so callers within this file use one import.
+export type { TaxEstimate } from "../lib/tax-estimate.js";
+export { computeTaxEstimate, getTaxYearData } from "../lib/tax-estimate.js";
+import { computeTaxEstimate } from "../lib/tax-estimate.js";
 
 // ─── Shared: Asset Depreciation for a Tax Year ────────────────────────────────
 // Used by /profit-loss and /accounting so every screen derives the same
@@ -1351,11 +1357,25 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
 
     // ── Net Profit & Tax Estimates ────────────────────────────────────────────
     const netProfit = totalRevenue - totalExpenses - mileageDeduction - totalDepreciation;
-    const selfEmploymentTax = Math.max(0, netProfit * 0.9235 * 0.153);
-    const seDeduction = selfEmploymentTax * 0.5;
-    const federalIncomeTax = Math.max(0, (netProfit - seDeduction) * 0.22);
-    const kyStateTax = Math.max(0, netProfit * 0.04);
-    const totalEstimatedTaxLiability = selfEmploymentTax + federalIncomeTax + kyStateTax;
+
+    // Owensboro gross for OCC: paid invoices + other income with city = owensboro.
+    // Uses only paid receipts (cash-basis, consistent with the rest of this endpoint).
+    const yeOwensboroGross =
+      paidInvoices
+        .filter(i => (i.city ?? "").trim().toLowerCase() === "owensboro")
+        .reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
+      + otherIncomeRows
+        .filter(o => (o.city ?? "").trim().toLowerCase() === "owensboro")
+        .reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
+
+    // Use shared helper — year-appropriate progressive brackets; OCC now included.
+    const yeTaxEst = computeTaxEstimate(netProfit, yeOwensboroGross, year);
+    const selfEmploymentTax = yeTaxEst.federalSE;
+    const seDeduction = yeTaxEst.seDeduction;
+    const federalIncomeTax = yeTaxEst.federalIncome;
+    const kyStateTax = yeTaxEst.kyState;
+    const owensboroOccTax = yeTaxEst.occ;
+    const totalEstimatedTaxLiability = yeTaxEst.total;
 
     res.json({
       year,
@@ -1376,6 +1396,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
         selfEmploymentTax,
         federalIncomeTax,
         kyStateTax,
+        owensboroOccTax,
         totalLiability: totalEstimatedTaxLiability,
         totalPaid: totalEstimatedTaxPaid,
         balance: totalEstimatedTaxLiability - totalEstimatedTaxPaid,
@@ -1516,7 +1537,6 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
 
     const GROWTH_PCT = 0.05;
     const OWNER_PCT = 0.50;
-    const OWENSBORO_OCC_RATE = 0.0139;
 
     // 1. Settings for rates and reserve preferences
     const [settings] = await db.select().from(settingsTable).limit(1);
@@ -1584,12 +1604,11 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
         .filter(o => (o.city ?? "").trim().toLowerCase() === "owensboro")
         .reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
 
-    // Estimated tax breakdown (same formulas as /api/reports/accounting)
-    const federalSE = Math.max(0, netProfit * 0.9235 * 0.153);
-    const kyState = Math.max(0, netProfit * 0.04);
-    const occ = Math.max(0, owensboroGross * OWENSBORO_OCC_RATE);
-    const estimatedTaxes = federalSE + kyState + occ;
-    const taxBreakdown = { federalSE, kyState, occ };
+    // Estimated tax breakdown — uses shared helper; federal income not yet included
+    // in required reserve total (that addition is handled by Task #1872).
+    const brTaxEst = computeTaxEstimate(netProfit, owensboroGross, year);
+    const estimatedTaxes = brTaxEst.totalWithoutFederalIncome;
+    const taxBreakdown = { federalSE: brTaxEst.federalSE, kyState: brTaxEst.kyState, occ: brTaxEst.occ };
 
     // 3. Growth fund invested this year → available balance
     const deployments = await db.select({ amount: growthFundDeploymentsTable.amount })
