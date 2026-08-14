@@ -963,4 +963,44 @@ describe("Mileage expense exclusion from accounting totals", () => {
     expect(suppliesEntry).toBeDefined();
     expect(suppliesEntry!.amount).toBeCloseTo(100, 10);
   });
+
+  it("/accounting monthlyIncome: mileage expense is absent from the matching month's expenses bar", async () => {
+    // Guards the nonMileageExpenses filter flowing into the monthlyIncome loop
+    // (reports.ts ~line 646):
+    //   monthExp = nonMileageExpenses.filter(e => e.date.startsWith(ms) && ...)
+    // nonMileageExpenses is built from expenses.filter(e => e.category !== "mileage"),
+    // so the mileage row must never appear in any month's expenses field.
+    //
+    // Scenario: $150 mileage expense + $100 Supplies expense, both dated June of YEAR.
+    // The June monthlyIncome bucket's expenses field must equal $100 (Supplies only).
+    // A regression would produce $250 (both amounts counted).
+
+    h.selectQueue.push([PAID_INVOICE]);                      // [0] paidInvoices (June invoice)
+    h.selectQueue.push([]);                                  // [1] nonPaidInvoices
+    h.selectQueue.push([MILEAGE_EXP, REGULAR_SUPPLY_EXP]);  // [2] expenses
+    h.selectQueue.push([]);                                  // [3] mileageLogs
+    h.selectQueue.push([]);                                  // [4] subs
+    h.selectQueue.push([SETTINGS_ROW]);                      // [5] settings
+    h.selectQueue.push([]);                                  // [6] otherIncome
+    h.selectQueue.push([]);                                  // [7] assets (computeDepreciationForYear)
+    h.selectQueue.push([]);                                  // [8] assetBusinessUse
+    h.selectQueue.push([]);                                  // [9] allBusinesses
+    h.selectQueue.push([]);                                  // [10] outstandingSubRows
+
+    const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
+    expect(res.status).toBe(200);
+
+    // Both expenses are dated ${YEAR}-06-10 → they land in the June bucket
+    const juneBucket = (res.body.monthlyIncome as any[]).find(
+      (b: any) => b.month === `${YEAR}-06`,
+    );
+    expect(juneBucket).toBeDefined();
+
+    // expenses bar must be $100 (Supplies only) — mileage row excluded
+    // Regression value: $250 (mileage counted)
+    expect(juneBucket.expenses).toBeCloseTo(100, 10);
+
+    // Regular expense still counted — guard against over-exclusion
+    expect(juneBucket.expenses).toBeGreaterThan(0);
+  });
 });
