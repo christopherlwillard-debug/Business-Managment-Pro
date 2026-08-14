@@ -1,0 +1,287 @@
+#1869 - Fix Sub Payout Status: Dashboard + Jobs Page
+
+What & Why
+
+The Dashboard shows “Subs Need Paid — $820.00” and the Jobs page shows “Needs Payout 2” even though the Sub Balances screen shows all subs are fully settled.
+
+The three surfaces are currently reading from inconsistent sources:
+
+* Sub Balances (correct): /api/subcontractors/outstanding-balances filters by job_subcontractors.paymentStatus IN ('unpaid', 'partial'), so settled rows are excluded.
+* Dashboard (broken): reports.ts reads job_subcontractors.amountPaid for ALL rows without filtering by paymentStatus. If amountPaid is stale or zero while paymentStatus = 'paid', the calculation incorrectly shows money still owed.
+* Jobs page (broken): Uses expenses?category=Subcontractor plus !job.subPaid. These are stale signals and do not reflect the actual payment ledger.
+
+Single Source of Truth
+
+sub_payment_records / job_subcontractors.paymentStatus must be the authoritative source for subcontractor payout status.
+
+A subcontractor has an outstanding balance only when:
+
+paymentStatus = 'unpaid' OR paymentStatus = 'partial'
+AND
+owed - paid > 0
+
+A subcontractor with:
+
+paymentStatus = 'paid'
+
+must never inflate the Dashboard’s outstanding amount or cause a job to appear in Needs Payout.
+
+Done Looks Like
+
+Dashboard
+
+The Dashboard “Subs Need Paid” amount reflects only genuine outstanding subcontractor balances from the payment ledger.
+
+When all subs are settled:
+
+* Show $0.00, OR
+* Hide the alert row entirely.
+
+It must NOT show the previous false-positive $820.00.
+
+Jobs Page
+
+The Jobs page “Needs Payout” badge:
+
+* Only appears when at least one job has a genuine outstanding subcontractor balance.
+* The count matches the number of jobs with an actual outstanding balance.
+* The filter only returns jobs with an actual outstanding subcontractor balance.
+* Fully settled jobs never appear in the payout filter.
+
+Job Cards
+
+The job card’s “Subs Settled” status must use the same outstanding-balance data as the Jobs badge.
+
+The Dashboard, Jobs page, and Sub Balances screen must all agree.
+
+Historical Expenses
+
+Historical subcontractor expense records in the expenses table are unaffected.
+
+Do NOT delete, alter, or hide legitimate subcontractor expenses.
+
+An accounting expense is not the same thing as an unpaid subcontractor balance.
+
+Out of Scope
+
+* Changes to how subcontractor payments are recorded.
+* Changes to the subcontractor payment ledger itself.
+* Changes to the Sub Balances tab. It is already showing the correct status.
+* Deleting or modifying historical subcontractor expense records.
+
+Implementation Steps
+
+1. Fix the Dashboard
+
+Review:
+
+artifacts/api-server/src/routes/reports.ts:125-170
+
+The current subPayRows query appears to include all job_subcontractors rows regardless of payment status.
+
+Add a paymentStatus filter so only:
+
+unpaid
+partial
+
+rows contribute to subContractorOwed.
+
+Do not allow rows where:
+
+paymentStatus = paid
+
+to contribute to the outstanding amount.
+
+Prefer using the same payment-status-aware logic already used by:
+
+/api/subcontractors/outstanding-balances
+
+Confirm that when all subcontractors are settled, the Dashboard reports $0.00 or hides the alert.
+
+2. Fix the Jobs Page Needs Payout Badge
+
+Review:
+
+artifacts/contractor-app/src/pages/Jobs.tsx:6255-6268
+
+artifacts/contractor-app/src/pages/Jobs.tsx:6468
+
+artifacts/contractor-app/src/pages/Jobs.tsx:7079-7096
+
+artifacts/contractor-app/src/pages/Jobs.tsx:7240
+
+Replace the existing logic that relies on:
+
+expenses?category=Subcontractor
+
+and:
+
+!job.subPaid
+
+with data from an authoritative per-job outstanding-balance source.
+
+Reuse an existing endpoint if possible.
+
+If necessary, add a lightweight API endpoint that returns per-job outstanding subcontractor balances/status.
+
+The frontend should then be able to determine:
+
+job has outstanding sub balance
+job outstanding amount
+job is settled
+
+3. Fix the Job Card subsSettled Prop
+
+Wire the job card’s subsSettled value to the same per-job outstanding-balance data used by the Needs Payout badge.
+
+Do not maintain a separate payout calculation for job cards.
+
+Replace the stale:
+
+outstandingBalanceMap
+
+and/or:
+
+subPaid
+
+logic where it is being used for payout status.
+
+The same underlying data must determine both:
+
+Needs Payout
+
+and:
+
+Subs Settled
+
+4. Remove Stale Queries
+
+Once the new authoritative data source is driving payout status:
+
+* Stop using expenses?category=Subcontractor solely to determine payout status.
+* Remove any now-unused payout-related expense queries.
+* Remove stale payout calculations that are no longer necessary.
+
+Do NOT remove subcontractor expense functionality itself.
+
+The expense records must remain available for accounting.
+
+Important Accounting Rule
+
+The application must distinguish between:
+
+Subcontractor Expense
+
+and:
+
+Unpaid Subcontractor Liability
+
+These are NOT the same thing.
+
+Example:
+
+Subcontractor expense: $820
+Payment status: paid
+Amount paid: $820
+Outstanding: $0
+
+Expected:
+
+Dashboard: $0 outstanding
+Jobs: No Needs Payout
+Job Card: Subs Settled
+
+The existence of the $820 expense must not cause an unpaid warning.
+
+Acceptance Criteria
+
+Scenario 1 — All Subs Settled
+
+Owed: $820
+Paid: $820
+paymentStatus: paid
+
+Expected:
+
+Dashboard: $0 or hidden
+Jobs badge: No Needs Payout badge
+Job card: Subs Settled
+
+Scenario 2 — Partially Paid
+
+Owed: $1,000
+Paid: $600
+paymentStatus: partial
+
+Expected:
+
+Dashboard: $400
+Jobs: Appears in Needs Payout
+Job card: Not settled
+
+Scenario 3 — Completely Unpaid
+
+Owed: $1,000
+Paid: $0
+paymentStatus: unpaid
+
+Expected:
+
+Dashboard: $1,000
+Jobs: Appears in Needs Payout
+Job card: Not settled
+
+Scenario 4 — Historical Expense Exists but Payment Is Complete
+
+Expense row exists: Yes
+Owed: $820
+Paid: $820
+paymentStatus: paid
+
+Expected:
+
+Dashboard: $0 or hidden
+Jobs: No Needs Payout
+Job card: Subs Settled
+Expense record: Remains intact
+
+Scenario 5 — Multiple Subs on One Job
+
+Example:
+
+Sub A: $4,740 owed / $4,740 paid
+Sub B: $10,688.47 owed / $10,688.47 paid
+
+Expected:
+
+Job outstanding balance: $0
+Dashboard: Neither balance counted as unpaid
+Jobs: Job does not appear in Needs Payout
+Job card: Subs Settled
+Sub Balances: Both Settled
+
+Final Requirement
+
+After implementation, verify that these three surfaces agree:
+
+Sub Balances → actual payment ledger status
+
+Jobs → outstanding subcontractor payout status
+
+Dashboard → total outstanding subcontractor amount
+
+There must be one consistent definition of “subcontractor still needs paid.”
+
+Do not simply hide the $820 Dashboard value or remove the Jobs badge.
+
+Fix the underlying calculation so the application accurately reflects the subcontractor payment ledger.
+
+The expected result for the current situation shown in the app is:
+
+Sub Balances: Settled
+
+Dashboard: $0 outstanding / no alert
+
+Jobs: No Needs Payout
+
+Job Cards: Subs Settled
