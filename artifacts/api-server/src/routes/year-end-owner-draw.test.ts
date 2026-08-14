@@ -294,3 +294,155 @@ describe("Year-end / Schedule C — owner-draw exclusion from deductible expense
     expect(selfEmploymentTax).toBeGreaterThan(seTaxIfDrawIncluded);
   });
 });
+
+// ── Cross-year invoice gap regression tests ───────────────────────────────────
+//
+// Guards the fix for the December-issued / January-paid invoice gap on the
+// year-end Schedule C report specifically.
+//
+// /year-end uses getEffectivePaymentYear (returns a number) rather than the
+// string-comparison getEffectivePaymentDate used by /accounting. A regression
+// in that helper could silently drop revenue from the Schedule C grossReceipts
+// without the /accounting cross-year tests (in reserve-tax-parity.test.ts)
+// catching it, because the two helpers are separate code paths.
+//
+// The invoices query on /year-end has NO date filter — all paid invoices are
+// fetched, then JS filters by getEffectivePaymentYear(i) === year. The tests
+// confirm that year attribution follows the electronic payment timestamp, not
+// the issue date.
+//
+// Queue order for GET /year-end is identical to the owner-draw suite above:
+//   [0] invoices — no date filter (JS payment-year gate in route)
+//   [1] expenses  [2] mileageLogs  [3] otherIncomeRows  [4] assets
+//   [5] taxPayments  [6] subs  [7] settings  [8] busUseRows
+//   [9] fixedAllocSubPayments
+//   (slots [1]–[9] are empty in all cross-year scenarios)
+
+describe("Year-end / Schedule C — cross-year invoice revenue attribution", () => {
+
+  const PREV_YEAR = YEAR - 1;
+
+  // Invoice issued Dec 28 of the prior year, paid via Stripe on Jan 3 of YEAR.
+  // This is the canonical cross-year scenario: issueDate ∈ PREV_YEAR,
+  // payment received ∈ YEAR — cash-basis accounting requires it in YEAR.
+  const CROSS_YEAR_INVOICE = {
+    id: 99,
+    invoiceNumber: "INV-CY01",
+    status: "paid",
+    issueDate: `${PREV_YEAR}-12-28`,
+    total: "500.00",
+    subtotal: "500.00",
+    clientName: "Cross-Year Client",
+    city: "Other City",
+    state: "KY",
+    // Date instance so getEffectivePaymentYear calls .getFullYear() correctly
+    stripePaidAt: new Date(`${YEAR}-01-03T12:00:00.000Z`),
+    squarePaidAt: null,
+  };
+
+  /** Push all 10 year-end select slots with a custom invoices array (slots [1]–[9] empty). */
+  function pushYearEndWithInvoices(invoicesSlot: any[]): void {
+    h.selectQueue.push(invoicesSlot); // [0] invoices — no date filter
+    h.selectQueue.push([]);           // [1] expenses
+    h.selectQueue.push([]);           // [2] mileageLogs
+    h.selectQueue.push([]);           // [3] otherIncomeRows
+    h.selectQueue.push([]);           // [4] assets
+    h.selectQueue.push([]);           // [5] taxPayments
+    h.selectQueue.push([]);           // [6] subs
+    h.selectQueue.push([SETTINGS_ROW]); // [7] settings
+    h.selectQueue.push([]);           // [8] busUseRows
+    h.selectQueue.push([]);           // [9] fixedAllocSubPayments
+  }
+
+  it(`appears in summary.grossReceipts for ${YEAR} (payment year via stripePaidAt)`, async () => {
+    // Unbounded invoice query returns the cross-year invoice.
+    // getEffectivePaymentYear → stripePaidAt.getFullYear() → YEAR → included.
+    pushYearEndWithInvoices([CROSS_YEAR_INVOICE]);
+
+    const res = await request(app).get(`/reports/year-end?year=${YEAR}`);
+    expect(res.status).toBe(200);
+
+    // $500 invoice must land in the payment year's gross receipts
+    expect(res.body.summary.grossReceipts).toBeCloseTo(500, 10);
+    expect(res.body.summary.totalRevenue).toBeCloseTo(500, 10);
+    // Net profit = $500 revenue − $0 expenses = $500
+    expect(res.body.summary.netProfit).toBeCloseTo(500, 10);
+  });
+
+  it(`is absent from summary.grossReceipts for ${PREV_YEAR} (issue year — payment was next year)`, async () => {
+    // Same unbounded query returns the invoice, but payment year is YEAR ≠ PREV_YEAR,
+    // so getEffectivePaymentYear filters it out of the prior-year report.
+    pushYearEndWithInvoices([CROSS_YEAR_INVOICE]);
+
+    const res = await request(app).get(`/reports/year-end?year=${PREV_YEAR}`);
+    expect(res.status).toBe(200);
+
+    // Revenue must be zero — the invoice belongs to the next year
+    expect(res.body.summary.grossReceipts).toBeCloseTo(0, 10);
+    expect(res.body.summary.totalRevenue).toBeCloseTo(0, 10);
+    // The invoice list must be empty for the issue year
+    expect((res.body.invoices as any[]).length).toBe(0);
+  });
+
+  it(`res.body.invoices for ${YEAR} lists the invoice with paymentDate from stripePaidAt`, async () => {
+    pushYearEndWithInvoices([CROSS_YEAR_INVOICE]);
+
+    const res = await request(app).get(`/reports/year-end?year=${YEAR}`);
+    expect(res.status).toBe(200);
+
+    const inv = (res.body.invoices as any[]).find((i: any) => i.invoiceNumber === "INV-CY01");
+    expect(inv).toBeDefined();
+    // paymentDate must be the Stripe timestamp date, not the December issueDate
+    expect(inv!.paymentDate).toBe(`${YEAR}-01-03`);
+    expect(inv!.total).toBeCloseTo(500, 10);
+  });
+
+  it("squarePaidAt is also honoured — invoice appears in its squarePaidAt year, not issueDate year", async () => {
+    const SQUARE_CROSS_YEAR = {
+      ...CROSS_YEAR_INVOICE,
+      id: 100,
+      invoiceNumber: "INV-CY02",
+      // No Stripe payment; Square payment in January of YEAR
+      stripePaidAt: null,
+      squarePaidAt: new Date(`${YEAR}-01-15T10:00:00.000Z`),
+    };
+
+    // Must appear in YEAR (squarePaidAt year)
+    pushYearEndWithInvoices([SQUARE_CROSS_YEAR]);
+    const yearRes = await request(app).get(`/reports/year-end?year=${YEAR}`);
+    expect(yearRes.status).toBe(200);
+    expect(yearRes.body.summary.grossReceipts).toBeCloseTo(500, 10);
+
+    // Must be absent from PREV_YEAR (issue year)
+    pushYearEndWithInvoices([SQUARE_CROSS_YEAR]);
+    const prevYearRes = await request(app).get(`/reports/year-end?year=${PREV_YEAR}`);
+    expect(prevYearRes.status).toBe(200);
+    expect(prevYearRes.body.summary.grossReceipts).toBeCloseTo(0, 10);
+  });
+
+  it("issueDate fallback: invoice without timestamps is attributed to its issueDate year", async () => {
+    // An invoice with no Stripe/Square payment — issueDate is Dec of PREV_YEAR.
+    // getEffectivePaymentYear falls back to parseInt(issueDate.slice(0,4)) = PREV_YEAR.
+    // It must appear in PREV_YEAR (not YEAR) — this also guards the fallback branch.
+    const MANUAL_INVOICE = {
+      ...CROSS_YEAR_INVOICE,
+      id: 101,
+      invoiceNumber: "INV-CY03",
+      stripePaidAt: null,
+      squarePaidAt: null,
+      // issueDate is `${PREV_YEAR}-12-28` (inherited) — determines attribution year
+    };
+
+    // Must appear in PREV_YEAR (issueDate year — no timestamp to override it)
+    pushYearEndWithInvoices([MANUAL_INVOICE]);
+    const prevRes = await request(app).get(`/reports/year-end?year=${PREV_YEAR}`);
+    expect(prevRes.status).toBe(200);
+    expect(prevRes.body.summary.grossReceipts).toBeCloseTo(500, 10);
+
+    // Must be absent from YEAR
+    pushYearEndWithInvoices([MANUAL_INVOICE]);
+    const yearRes = await request(app).get(`/reports/year-end?year=${YEAR}`);
+    expect(yearRes.status).toBe(200);
+    expect(yearRes.body.summary.grossReceipts).toBeCloseTo(0, 10);
+  });
+});
