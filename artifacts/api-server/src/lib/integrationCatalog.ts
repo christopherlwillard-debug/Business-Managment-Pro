@@ -247,9 +247,9 @@ export const INTEGRATION_CATALOG: IntegrationDef[] = [
     scope:             "platform",
     credentialType:    "username_password",
     credentialLabel:   "Portal Login",
-    credentialHelp:    "Register for a KY eMarketplace/VSS vendor account at the Kentucky Finance Cabinet portal.",
-    docsUrl:           "https://emars.ky.gov/prd/supp/public/",
-    defaultPortalUrl:  "https://emars.ky.gov/prd/supp/public/",
+    credentialHelp:    "Register for a KY VSS vendor account at vss.ky.gov. The portal migrated from emars.ky.gov to the CGI Advantage 4 system at vss.ky.gov in 2024.",
+    docsUrl:           "https://finance.ky.gov/eProcurement/Pages/default.aspx",
+    defaultPortalUrl:  "https://vss.ky.gov/vssprod-ext/Advantage4",
     bidSourceSlug:     "ky_vss",
   },
   {

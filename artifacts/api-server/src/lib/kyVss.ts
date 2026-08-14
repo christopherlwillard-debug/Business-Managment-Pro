@@ -1,72 +1,52 @@
 /**
  * Kentucky eMarketplace / VSS (Vendor Self-Service) public solicitation connector.
  *
- * Data source: Kentucky Finance Cabinet procurement system.
+ * Data source: Kentucky Finance Cabinet procurement system (CGI Advantage 4).
  *
- * The primary portal at web.emarketplace.ky.gov is an Angular SPA and requires
- * JavaScript rendering.  This connector attempts multiple public endpoints in
- * priority order, using plain HTTP + Cheerio where possible (server-side rendered
- * pages) and falling back to Puppeteer for the Angular SPA.
+ * The portal migrated from web.emarketplace.ky.gov (PeopleSoft) to
+ * vss.ky.gov/vssprod-ext/Advantage4 (CGI Advantage 4) in 2024.  The new
+ * system is a full Angular SPA — no server-rendered solicitation listings
+ * exist, so this connector uses Puppeteer to render the page and extract
+ * solicitation data.
  *
  * "My Commodities" (account-specific matching) requires a VSS vendor login that
  * we intentionally do not store.  Instead, opportunities are filtered client-side
  * by the business's capability keywords — the same localKeywords used for the
  * municipal scraper.  The UI source management panel notes this limitation.
- *
- * Solicitation categories (Open, Closing Soon, Recently Published, Recent
- * Amendments, Recent Awards) are derived from the standard fields stored on each
- * bid_opportunity row and surfaced by the existing filter bar.
  */
 
 import { createHash } from "node:crypto";
 import * as cheerio from "cheerio";
 import type { LocalOpportunity } from "./kyLocalBids.js";
 
-const PAGE_TIMEOUT_MS = 20_000;
+const PAGE_TIMEOUT_MS = 30_000;
 const USER_AGENT = "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.app)";
 
-// ── URL candidates (tried in order) ──────────────────────────────────────────
-// Note on the SPA: web.emarketplace.ky.gov/webapp/PRDVSS1X1/AltSelfService is
-// Angular-rendered; a plain fetch only returns the HTML shell.  The public
-// solicitation data is available from the Finance Cabinet SharePoint pages and
-// from the PeopleSoft IScript data endpoint listed below.
+// ── Primary portal (CGI Advantage 4 Angular SPA) ──────────────────────────────
+// Migrated from web.emarketplace.ky.gov (PeopleSoft) in 2024.
+// Plain HTTP fetch returns only the Angular shell — Puppeteer is required.
+const VSS_BASE_URL = "https://vss.ky.gov/vssprod-ext/Advantage4";
 
 const VSS_CANDIDATES: Array<{ url: string; label: string; requiresPuppeteer?: boolean }> = [
-  // PeopleSoft IScript public data endpoint — JSON or HTML response.
-  // This endpoint is accessible without authentication and returns solicitation
-  // summary data in various PeopleSoft versions.
+  // Primary: CGI Advantage 4 SPA — Puppeteer clicks into Published Solicitations
   {
-    url: "https://web.emarketplace.ky.gov/psc/PRDVSS1X1pub/EMPLOYEE/ERP/s/WEBLIB_IVO_BID.ISCRIPT1.FieldFormula.IScript_Bid_Search?isJson=true",
-    label: "KY VSS IScript (JSON)",
-  },
-  {
-    url: "https://web.emarketplace.ky.gov/psc/PRDVSS1X1pub/EMPLOYEE/ERP/s/WEBLIB_IVO_BID.ISCRIPT1.FieldFormula.IScript_Bid_Search",
-    label: "KY VSS IScript (HTML)",
-  },
-  // Kentucky Finance Cabinet SharePoint bid listings (server-rendered ASPX)
-  {
-    url: "https://finance.ky.gov/services/procurement/Pages/BidOpportunities.aspx",
-    label: "KY Finance Cabinet Bids",
-  },
-  {
-    url: "https://procurement.ky.gov/Pages/BidOpportunities.aspx",
-    label: "KY Procurement ASPX",
-  },
-  // Older EMARS/eMarket static pages
-  {
-    url: "https://finance.ky.gov/services/procurement/bids",
-    label: "KY Finance Procurement (legacy)",
-  },
-  // Angular SPA — use Puppeteer if all static approaches fail
-  {
-    url: "https://web.emarketplace.ky.gov/webapp/PRDVSS1X1/AltSelfService",
-    label: "KY VSS Angular SPA",
+    url: VSS_BASE_URL,
+    label: "KY VSS (vss.ky.gov) — Angular SPA",
     requiresPuppeteer: true,
+  },
+  // Finance Cabinet eProcurement page — may list links to VSS solicitations
+  {
+    url: "https://finance.ky.gov/eProcurement/Pages/default.aspx",
+    label: "KY Finance Cabinet eProcurement",
+  },
+  // Kentucky One Stop Business Portal procurement page
+  {
+    url: "https://onestop.ky.gov/expand/pages/govprocurements.aspx",
+    label: "KY One Stop Procurement",
   },
 ];
 
 // Solicitation number patterns used for stable deduplication IDs.
-// KY uses patterns like: 2400000123, SP2025-0001, KY-2025-001234, RFP-123
 const SOL_NUMBER_RE = /\b(?:2[0-9]{9}|[A-Z]{2,4}[-\s]?20\d{2}[-\s]?\d{4,6}|RFP[-\s]?\d{4,7}|RFQ[-\s]?\d{4,7}|ITB[-\s]?\d{4,7}|SP\d{4}[-\s]?\d{4,6})\b/i;
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -167,11 +147,12 @@ function mapJsonToOpportunity(item: VssJsonSolicitation): LocalOpportunity | nul
   const title  = (item.title ?? "").trim();
   if (!title || title.length < 4) return null;
 
-  const agency  = item.agency ?? item.department ?? item.buyer ?? "Kentucky State Government";
-  const posted  = parseIsoDate(item.openDate ?? item.postedDate);
-  const closing = parseIsoDate(item.closingDateTime ?? item.closingDate ?? item.dueDate);
-  const baseUrl = "https://web.emarketplace.ky.gov/webapp/PRDVSS1X1/AltSelfService";
-  const detailUrl = item.url ?? item.detailUrl ?? (solNum ? `${baseUrl}?solicitation=${encodeURIComponent(solNum)}` : baseUrl);
+  const agency    = item.agency ?? item.department ?? item.buyer ?? "Kentucky State Government";
+  const posted    = parseIsoDate(item.openDate ?? item.postedDate);
+  const closing   = parseIsoDate(item.closingDateTime ?? item.closingDate ?? item.dueDate);
+  const detailUrl = item.url ?? item.detailUrl ?? (solNum
+    ? `${VSS_BASE_URL}?solicitation=${encodeURIComponent(solNum)}`
+    : VSS_BASE_URL);
 
   const descParts: string[] = [];
   if (item.category ?? item.commodity) descParts.push(`Category: ${item.category ?? item.commodity}`);
@@ -202,7 +183,6 @@ function parseJsonResponse(raw: string): LocalOpportunity[] {
     return [];
   }
 
-  // Various top-level shapes the PeopleSoft IScript might return
   const items: VssJsonSolicitation[] = Array.isArray(data)
     ? data as VssJsonSolicitation[]
     : (data as Record<string, unknown>)?.solicitations   as VssJsonSolicitation[]
@@ -219,7 +199,7 @@ function parseJsonResponse(raw: string): LocalOpportunity[] {
   return results;
 }
 
-// ── HTML parser (SharePoint / ASPX tables and link lists) ────────────────────
+// ── HTML parser (table / card / link-scan) ────────────────────────────────────
 
 function resolveUrl(base: string, href: string): string {
   if (!href || href.startsWith("javascript:") || href.startsWith("mailto:")) return "";
@@ -231,16 +211,15 @@ function parseHtmlResponse(html: string, baseUrl: string): LocalOpportunity[] {
   const results: LocalOpportunity[] = [];
   const seen = new Set<string>();
 
-  // ── Strategy 1: structured table rows (SharePoint list view) ────────────────
-  // SharePoint renders list data as <tr> rows inside .ms-listviewtable or similar.
+  // ── Strategy 1: structured table rows ────────────────────────────────────────
   const tableRows = $(
-    "table.ms-listviewtable tr, table.soi-grid tr, table.grid tr, .bid-table tr, .opportunities-table tr"
+    "table.ms-listviewtable tr, table.soi-grid tr, table.grid tr, .bid-table tr, .opportunities-table tr, " +
+    "table.solicitations-table tr, table[data-testid] tr, .ag-row, .cdk-row"
   );
 
   if (tableRows.length > 1) {
-    // Try to infer column positions from <th> headers
     const headers: string[] = [];
-    tableRows.first().find("th").each((_, th) => {
+    tableRows.first().find("th, .ag-header-cell-text").each((_, th) => {
       headers.push($(th).text().trim().toLowerCase());
     });
 
@@ -249,35 +228,35 @@ function parseHtmlResponse(html: string, baseUrl: string): LocalOpportunity[] {
       return i >= 0 ? i : -1;
     };
 
-    const titleIdx   = colIdx(["title", "solicitation title", "description", "name"]);
-    const solIdx     = colIdx(["solicitation number", "bid number", "sol no", "number"]);
+    const titleIdx   = colIdx(["solicitation title", "bid title", "title", "description", "name"]);
+    const solIdx     = colIdx(["solicitation number", "bid number", "sol no", "number", "sol #"]);
     const agencyIdx  = colIdx(["agency", "department", "buyer", "organization"]);
     const postedIdx  = colIdx(["posted", "open date", "issue date", "publish"]);
-    const closingIdx = colIdx(["due", "closing", "deadline", "response"]);
+    const closingIdx = colIdx(["due", "closing", "deadline", "response", "close"]);
     const statusIdx  = colIdx(["status"]);
 
     tableRows.slice(1).each((_, row) => {
-      const cells = $(row).find("td");
+      const cells = $(row).find("td, .ag-cell, .cdk-cell");
       if (cells.length < 2) return;
 
-      const cell = (i: number) => (i >= 0 ? cells.eq(i).text().trim() : "");
+      const cell  = (i: number) => (i >= 0 ? cells.eq(i).text().trim() : "");
       const link  = $(row).find("a[href]").first();
       const href  = resolveUrl(baseUrl, link.attr("href") ?? "");
       const title = titleIdx >= 0 ? cell(titleIdx) : (link.text().trim() || cell(0));
       if (!title || title.length < 4) return;
 
-      const solNum     = solIdx >= 0 ? cell(solIdx) : (SOL_NUMBER_RE.exec($(row).text())?.[0] ?? null);
-      const agency     = agencyIdx  >= 0 ? cell(agencyIdx)  : "Kentucky State Government";
-      const posted     = parseIsoDate(postedIdx  >= 0 ? cell(postedIdx)  : null);
-      const closing    = parseIsoDate(closingIdx >= 0 ? cell(closingIdx) : null);
-      const status     = statusIdx  >= 0 ? cell(statusIdx)  : null;
-      const noticeId   = stableId(solNum, title);
+      const solNum   = solIdx >= 0 ? cell(solIdx) : (SOL_NUMBER_RE.exec($(row).text())?.[0] ?? null);
+      const agency   = agencyIdx  >= 0 ? cell(agencyIdx)  : "Kentucky State Government";
+      const posted   = parseIsoDate(postedIdx  >= 0 ? cell(postedIdx)  : null);
+      const closing  = parseIsoDate(closingIdx >= 0 ? cell(closingIdx) : null);
+      const status   = statusIdx  >= 0 ? cell(statusIdx)  : null;
+      const noticeId = stableId(solNum, title);
       if (seen.has(noticeId)) return;
       seen.add(noticeId);
 
       const descParts: string[] = [];
-      if (solNum)  descParts.push(`Solicitation: ${solNum}`);
-      if (status)  descParts.push(`Status: ${status}`);
+      if (solNum) descParts.push(`Solicitation: ${solNum}`);
+      if (status) descParts.push(`Status: ${status}`);
 
       results.push({
         noticeId,
@@ -298,13 +277,14 @@ function parseHtmlResponse(html: string, baseUrl: string): LocalOpportunity[] {
   if (results.length === 0) {
     const cards = $(
       ".solicitation-item, .bid-item, .opportunity-item, .soi-item, .contract-item, " +
-      "article.bid, article.solicitation, .bid-card, .opp-card"
+      "article.bid, article.solicitation, .bid-card, .opp-card, " +
+      ".solicitation-row, .bid-row, [class*='solicitation'], [class*='bid-item']"
     );
 
     cards.each((_, el) => {
-      const $el    = $(el);
-      const link   = $el.find("a[href]").first();
-      const title  = ($el.find("h1,h2,h3,h4,.title,.bid-title,.opp-title").first().text().trim() || link.text().trim());
+      const $el   = $(el);
+      const link  = $el.find("a[href]").first();
+      const title = ($el.find("h1,h2,h3,h4,.title,.bid-title,.opp-title,.solicitation-title").first().text().trim() || link.text().trim());
       if (!title || title.length < 4) return;
 
       const href     = resolveUrl(baseUrl, link.attr("href") ?? "");
@@ -321,7 +301,7 @@ function parseHtmlResponse(html: string, baseUrl: string): LocalOpportunity[] {
         naicsCode:        null,
         description:      fullText.slice(0, 500) || null,
         postedDate:       parseIsoDate($el.find(".posted-date,.open-date,.issue-date").first().text().trim()),
-        responseDeadline: parseIsoDate($el.find(".due-date,.closing-date,.deadline").first().text().trim()) ?? parseDueDateFromText(fullText),
+        responseDeadline: parseIsoDate($el.find(".due-date,.closing-date,.deadline,.close-date").first().text().trim()) ?? parseDueDateFromText(fullText),
         url:              href || baseUrl,
         source:           "state-local",
         sourceLabel:      "KY eMarketplace",
@@ -332,11 +312,10 @@ function parseHtmlResponse(html: string, baseUrl: string): LocalOpportunity[] {
   // ── Strategy 3: link scan with solicitation number detection ─────────────────
   if (results.length === 0) {
     $("a[href]").each((_, el) => {
-      const $el   = $(el);
-      const text  = $el.text().trim();
-      const href  = resolveUrl(baseUrl, $el.attr("href") ?? "");
+      const $el  = $(el);
+      const text = $el.text().trim();
+      const href = resolveUrl(baseUrl, $el.attr("href") ?? "");
 
-      // Must look like a solicitation link, not navigation
       const isLikelySolicitation =
         href.includes("solicitation") || href.includes("bid") || href.includes("opportunity") ||
         href.includes("contract") || href.includes("rfp") || href.includes("rfq") ||
@@ -345,10 +324,10 @@ function parseHtmlResponse(html: string, baseUrl: string): LocalOpportunity[] {
       if (!text || text.length < 4 || text.length > 200) return;
       if (!isLikelySolicitation) return;
 
-      const container  = $el.closest("li, tr, div, article, section");
-      const fullText   = container.text().replace(/\s+/g, " ").trim() || text;
-      const solNum     = SOL_NUMBER_RE.exec(fullText)?.[0] ?? null;
-      const noticeId   = stableId(solNum, href || text);
+      const container = $el.closest("li, tr, div, article, section");
+      const fullText  = container.text().replace(/\s+/g, " ").trim() || text;
+      const solNum    = SOL_NUMBER_RE.exec(fullText)?.[0] ?? null;
+      const noticeId  = stableId(solNum, href || text);
       if (seen.has(noticeId)) return;
       seen.add(noticeId);
 
@@ -370,22 +349,48 @@ function parseHtmlResponse(html: string, baseUrl: string): LocalOpportunity[] {
   return results;
 }
 
-// ── Puppeteer fallback ────────────────────────────────────────────────────────
+// ── Puppeteer (CGI Advantage 4 Angular SPA) ───────────────────────────────────
+// The new vss.ky.gov portal is a full Angular SPA.  A plain HTTP fetch only
+// returns the shell HTML.  Puppeteer navigates to the Published Solicitations
+// section and waits for Angular to render the list.
 
 async function fetchWithPuppeteer(url: string): Promise<string | null> {
   try {
-    // Dynamic import to avoid loading puppeteer in environments where Chrome is absent.
     const { launchBrowser } = await import("./launchBrowser.js");
     const browser = await launchBrowser();
-    const page = await browser.newPage();
+    const page    = await browser.newPage();
     await page.setUserAgent(USER_AGENT);
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 30_000 });
 
-    // Wait for the solicitation list to appear (Angular rendering delay)
-    await page.waitForSelector(
-      "table, .solicitation-item, .bid-item, .soi-item, a[href*='solicitation'], a[href*='bid']",
-      { timeout: 10_000 }
-    ).catch(() => {}); // Don't fail if selector never appears
+    // Navigate to the Angular SPA home page
+    await page.goto(url, { waitUntil: "networkidle2", timeout: PAGE_TIMEOUT_MS });
+
+    // The home page has a "View Published Solicitations" link.  Try to click it.
+    // CGI Advantage 4 may use hash routing — the fragment varies by deployment.
+    const clicked = await page.evaluate(() => {
+      // Find the link whose text contains "Published Solicitations" or "Business Opportunities"
+      const anchors = Array.from(document.querySelectorAll("a, button, [role='link'], [role='button'], mat-card, .card"));
+      const target  = anchors.find((el) => {
+        const t = (el as HTMLElement).innerText ?? "";
+        return /published\s+solicitation|business\s+opportunit/i.test(t);
+      }) as HTMLElement | undefined;
+      if (target) { target.click(); return true; }
+      return false;
+    });
+
+    if (clicked) {
+      // Wait for the solicitation table / list to render after Angular navigation
+      await page.waitForSelector(
+        "table, .solicitation-item, .bid-item, .soi-item, .solicitation-row, " +
+        ".ag-row, .cdk-row, a[href*='solicitation'], a[href*='bid']",
+        { timeout: 15_000 }
+      ).catch(() => {});
+
+      // Extra settle time for Angular data loading
+      await new Promise((r) => setTimeout(r, 3_000));
+    } else {
+      // Could not find the button — wait a bit for any dynamic content
+      await new Promise((r) => setTimeout(r, 5_000));
+    }
 
     const html = await page.content();
     await browser.close();
@@ -399,46 +404,49 @@ async function fetchWithPuppeteer(url: string): Promise<string | null> {
 // ── Main export ───────────────────────────────────────────────────────────────
 
 /**
- * Fetch Kentucky state solicitations from the eMarketplace / VSS portal.
+ * Fetch Kentucky state solicitations from the VSS portal (vss.ky.gov).
  *
  * @param localKeywords  Capability keyword list from the business profile.
- *                       Solicitations whose title+description contain none of
- *                       these are excluded (same filter used by the municipal
- *                       scraper).  Pass an empty array to keep everything.
+ *                       Pass an empty array to keep everything.
  * @returns Array of matched solicitations in LocalOpportunity format.
  */
 export async function fetchKyVssSolicitations(
   localKeywords: string[]
 ): Promise<LocalOpportunity[]> {
-  console.log("[ky-vss] Starting Kentucky eMarketplace solicitation fetch");
+  console.log("[ky-vss] Starting Kentucky eMarketplace solicitation fetch (vss.ky.gov)");
   const kwLower = localKeywords.map((k) => k.toLowerCase());
 
   let lastError: string | undefined;
 
   for (const candidate of VSS_CANDIDATES) {
     if (candidate.requiresPuppeteer) {
-      // Puppeteer is gated — only try in dev/environments where Chrome is available.
-      // In production, Chrome may be unavailable; we skip rather than crash.
-      if (process.env.NODE_ENV === "production") {
-        console.log("[ky-vss] Skipping Puppeteer fallback in production environment");
-        continue;
-      }
       console.log(`[ky-vss] Trying Puppeteer: ${candidate.label}`);
       const html = await fetchWithPuppeteer(candidate.url);
       if (html) {
-        const opps = parseHtmlResponse(html, candidate.url);
+        const trimmed = html.trimStart();
+        let opps: LocalOpportunity[];
+
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+          opps = parseJsonResponse(html);
+          console.log(`[ky-vss] ${candidate.label}: JSON response (Puppeteer) — ${opps.length} solicitation(s)`);
+        } else {
+          opps = parseHtmlResponse(html, candidate.url);
+          console.log(`[ky-vss] ${candidate.label}: HTML response (Puppeteer) — ${opps.length} solicitation(s)`);
+        }
+
         if (opps.length > 0) {
-          console.log(`[ky-vss] ${candidate.label}: ${opps.length} solicitation(s) found via Puppeteer`);
           return filterByKeywords(opps, kwLower);
         }
+        console.log(`[ky-vss] ${candidate.label}: Puppeteer returned 0 solicitations (Angular may not have rendered data yet)`);
+        lastError = "Puppeteer rendered 0 solicitations from Angular SPA";
+      } else {
+        lastError = "Puppeteer render failed";
       }
       continue;
     }
 
     try {
-      const body = await fetchHtml(candidate.url);
-
-      // Detect JSON vs HTML response
+      const body    = await fetchHtml(candidate.url);
       const trimmed = body.trimStart();
       let opps: LocalOpportunity[];
 
@@ -454,9 +462,7 @@ export async function fetchKyVssSolicitations(
         return filterByKeywords(opps, kwLower);
       }
 
-      // Got a successful response but parsed 0 records — the page may be the
-      // SPA shell or an empty list.  Continue to the next candidate.
-      console.log(`[ky-vss] ${candidate.label}: no parseable solicitations (may be SPA shell); trying next`);
+      console.log(`[ky-vss] ${candidate.label}: no parseable solicitations; trying next`);
 
     } catch (err) {
       lastError = (err as Error).message;
@@ -466,9 +472,9 @@ export async function fetchKyVssSolicitations(
 
   // All candidates exhausted
   throw new Error(
-    `Kentucky eMarketplace: all ${VSS_CANDIDATES.length} endpoint(s) unreachable or returned no data. ` +
+    `Kentucky eMarketplace (vss.ky.gov): all ${VSS_CANDIDATES.length} endpoint(s) unreachable or returned no data. ` +
     `Last error: ${lastError ?? "unknown"}. ` +
-    `The VSS portal may require Puppeteer rendering or the URL structure has changed.`
+    `The new CGI Advantage 4 SPA at ${VSS_BASE_URL} requires Puppeteer/Chrome to render solicitation data.`
   );
 }
 
