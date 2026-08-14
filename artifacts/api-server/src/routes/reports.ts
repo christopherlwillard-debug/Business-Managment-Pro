@@ -1788,12 +1788,17 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     let checkingBalance: number | null = null;
     let balanceCachedAt: string | null = null;
     let balanceStaleDays: number | null = null;
+    let balanceIsStale = false;
     if (plaidConnected && plaidConns[0].cachedBalanceCurrent != null) {
       checkingBalance = parseFloat(plaidConns[0].cachedBalanceCurrent);
       balanceCachedAt = plaidConns[0].balanceCachedAt ? plaidConns[0].balanceCachedAt.toISOString() : null;
       balanceStaleDays = balanceCachedAt
         ? Math.floor((Date.now() - new Date(balanceCachedAt).getTime()) / (1000 * 60 * 60 * 24))
         : null;
+      // Stale when balance is older than 24 hours — Plaid sync does not auto-refresh it
+      balanceIsStale = balanceCachedAt
+        ? (Date.now() - new Date(balanceCachedAt).getTime()) > 24 * 60 * 60 * 1000
+        : false;
     }
 
     // 8. Available to spend + health
@@ -1816,6 +1821,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
       growthFundAvailable,
       balanceCachedAt,
       balanceStaleDays,
+      balanceIsStale,
       growthFundIncluded: includeGrowthFund,
       annualOverhead,
       monthlyRecurring,

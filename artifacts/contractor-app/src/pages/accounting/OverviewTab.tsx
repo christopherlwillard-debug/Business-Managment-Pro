@@ -259,6 +259,7 @@ interface BusinessReserveData {
   checkingBalance: number | null;
   balanceCachedAt: string | null;
   balanceStaleDays: number | null;
+  balanceIsStale: boolean;
   availableToSpend: number | null;
   reserveHealth: "funded" | "low" | "below" | null;
   overheadCoverageDays: number | null;
@@ -748,7 +749,7 @@ function BusinessReserveDashboard() {
     estimatedTaxes, taxBreakdown, growthFundAvailable, growthFundIncluded,
     annualOverhead, monthlyRecurring, operatingReserve,
     operatingReserveMode, operatingReserveCustom,
-    requiredReserve, checkingBalance, balanceCachedAt, balanceStaleDays, availableToSpend,
+    requiredReserve, checkingBalance, balanceCachedAt, balanceStaleDays, balanceIsStale, availableToSpend,
     reserveHealth, overheadCoverageMonths,
     plaidConnected,
   } = data;
@@ -797,20 +798,18 @@ function BusinessReserveDashboard() {
         </div>
       </div>
 
-      {/* Stale balance warning — shown when bank balance hasn't been refreshed in 3+ days */}
-      {balanceStaleDays != null && balanceStaleDays >= 3 && (
+      {/* Stale balance warning — shown when bank balance is older than 24 hours */}
+      {balanceIsStale && balanceCachedAt && (
         <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-800 text-xs">
           <span className="text-base leading-none">⚠️</span>
           <span>
-            Your bank balance is <strong>{balanceStaleDays} {balanceStaleDays === 1 ? "day" : "days"} old</strong> — the reserve health shown may not reflect your real account.
+            Balance last updated{" "}
+            <strong>
+              {new Date(balanceCachedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              {balanceStaleDays != null && balanceStaleDays >= 2 ? ` (${balanceStaleDays} days ago)` : ""}
+            </strong>{" "}
+            — visit <a href="/banking" className="underline font-semibold">Banking</a> to refresh.
           </span>
-          <button
-            onClick={refreshBalance}
-            disabled={refreshingBalance}
-            className="ml-auto font-semibold underline underline-offset-2 hover:no-underline disabled:opacity-40 whitespace-nowrap"
-          >
-            Refresh now
-          </button>
         </div>
       )}
 
@@ -824,8 +823,8 @@ function BusinessReserveDashboard() {
             <p className="text-[10px] text-slate-400 mt-1.5">Minimum that should remain in your checking account today</p>
           </div>
 
-          {/* Right — Balance + Difference */}
-          <div className="rounded-xl border border-border p-3 min-w-[140px] space-y-2.5 flex flex-col justify-between">
+          {/* Right — Balance + Difference; dim when stale so the health badge reads as uncertain */}
+          <div className={`rounded-xl border border-border p-3 min-w-[140px] space-y-2.5 flex flex-col justify-between transition-opacity ${balanceIsStale ? "opacity-60" : ""}`}>
             <div>
               <p className="text-[9px] text-muted-foreground uppercase font-semibold tracking-wide">Current Checking Balance</p>
               {plaidConnected && checkingBalance != null ? (
