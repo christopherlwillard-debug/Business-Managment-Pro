@@ -846,7 +846,7 @@ export async function runBidSync(
   const [fedResult, localResult, awardsResult] = await Promise.allSettled([
     samActuallyRan
       ? fetchSamOpportunitiesGrouped(profile.searchGroups)
-      : Promise.resolve({ opportunities: [], quotaExhausted: false, quotaResetAt: null } as SamGroupedResult),
+      : Promise.resolve({ opportunities: [], quotaExhausted: false, quotaResetAt: null, requestsAttempted: 0, requestsAccepted: 0 } as SamGroupedResult),
     kyLocalActuallyRan
       ? fetchKyLocalBids()
       : Promise.resolve([]),
@@ -870,9 +870,11 @@ export async function runBidSync(
   });
 
   // Unpack SamGroupedResult — partial results are kept even when quota is exhausted
-  const samResult        = samOk ? (fedResult.value as SamGroupedResult) : null;
-  const samQuotaExhausted = samResult?.quotaExhausted ?? false;
-  const samQuotaResetAt   = samResult?.quotaResetAt   ?? null;
+  const samResult           = samOk ? (fedResult.value as SamGroupedResult) : null;
+  const samQuotaExhausted   = samResult?.quotaExhausted    ?? false;
+  const samQuotaResetAt     = samResult?.quotaResetAt      ?? null;
+  const samReqAttempted     = samResult?.requestsAttempted ?? 0;
+  const samReqAccepted      = samResult?.requestsAccepted  ?? 0;
   const federal: OppWithSource[]   = samResult?.opportunities ?? [];
   const awards: UsaSpendingAward[] = awardsOk ? (awardsResult.value as UsaSpendingAward[]) : [];
 
@@ -910,8 +912,8 @@ export async function runBidSync(
       samOk
         ? (samQuotaExhausted
             ? (samQuotaResetAt
-                ? `SAM.gov API quota exhausted — resets ${samQuotaResetAt}`
-                : "SAM.gov API quota exhausted; reset time unavailable")
+                ? `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted — resets ${samQuotaResetAt}`
+                : `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted; reset time unavailable`)
             : null)
         : String((fedResult as PromiseRejectedResult).reason),
       federal.length

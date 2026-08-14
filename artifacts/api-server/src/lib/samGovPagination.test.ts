@@ -29,6 +29,7 @@ import {
   fetchAllPages,
   fetchSamOpportunities,
   fetchSamOpportunitiesGrouped,
+  CATCH_ALL_KEYWORDS,
   SAM_PAGE_SIZE,
   SAM_MAX_PAGES,
   SAM_LOOKBACK_DAYS,
@@ -36,6 +37,7 @@ import {
   type CapabilitySearchGroup,
   type SamGroupedResult,
 } from "./samGov.js";
+import { GENERAL_CONTRACTING_SEARCH_GROUPS } from "./bidCapabilitySeeds.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -300,37 +302,28 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
     // First group to find it wins the matchedCapability label
   });
 
-  it("flags naicsMismatch when a specificKeyword search returns an unexpected NAICS code", async () => {
-    // A specificKeyword search (no NAICS filter) returns a record with a NAICS
-    // code that isn't in any of the requested capability groups.
-    const mismatchRecord = {
-      ...makeSamRecord("mismatch-opp", "519130"),  // IT code, not in any group
-    };
-    mockFetchResponses([
-      // NAICS-paired searches return empty
-      { totalRecords: 0, opportunitiesData: [] },
-      { totalRecords: 0, opportunitiesData: [] },
-      { totalRecords: 0, opportunitiesData: [] },
-      { totalRecords: 0, opportunitiesData: [] },
-      // specificKeyword search returns the mismatch record
-      { totalRecords: 1, opportunitiesData: [mismatchRecord] },
-      // remaining searches empty
-      { totalRecords: 0, opportunitiesData: [] },
-    ]);
+  it("flags naicsMismatch when results contain an unexpected NAICS code", async () => {
+    // Any task (NAICS-only, PSC-only, or catch-all keyword) may return records
+    // with NAICS codes outside the searched group union. Those records are kept
+    // but flagged naicsMismatch=true regardless of which task found them.
+    const mismatchRecord = makeSamRecord("mismatch-opp", "519130"); // IT code
+    const normalRecord   = makeSamRecord("normal-opp",   "238350"); // in trimGroup
+
+    // mockFetchAlways: every task returns both records — dedup keeps first occurrence.
+    mockFetchAlways({ totalRecords: 2, opportunitiesData: [mismatchRecord, normalRecord] });
 
     const promise = fetchSamOpportunitiesGrouped([trimGroup]);
     await vi.runAllTimersAsync();
     const { opportunities: results } = await promise;
 
     const mismatch = results.find((r) => r.noticeId === "mismatch-opp");
-    if (mismatch) {
-      expect(mismatch.naicsMismatch).toBe(true);
-    }
-    // Matching-NAICS records are not flagged
-    const normal = results.find((r) => r.naicsCode === "238350");
-    if (normal) {
-      expect(normal.naicsMismatch).toBeFalsy();
-    }
+    const normal   = results.find((r) => r.noticeId === "normal-opp");
+
+    expect(mismatch).toBeDefined();
+    expect(mismatch?.naicsMismatch).toBe(true);        // 519130 not in any group
+
+    expect(normal).toBeDefined();
+    expect(normal?.naicsMismatch).toBeFalsy();          // 238350 is in trimGroup
   });
 
   it("does not flag naicsMismatch when NAICS matches any group in the search", async () => {
@@ -383,6 +376,10 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
     expect(result.quotaResetAt).toBe(resetTime);
     // Partial results are empty (nothing was collected before the 429)
     expect(result.opportunities).toHaveLength(0);
+    // At least one task was attempted before quota was hit
+    expect(result.requestsAttempted).toBeGreaterThanOrEqual(1);
+    // No task succeeded (all returned 429)
+    expect(result.requestsAccepted).toBe(0);
   });
 
   it("signals quotaExhausted=true even when 429 response body is missing or unparseable", async () => {
@@ -405,6 +402,9 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
     expect(result.quotaResetAt).toBeNull();
     // No opportunities collected
     expect(result.opportunities).toHaveLength(0);
+    // Counters: at least 1 attempted, 0 accepted
+    expect(result.requestsAttempted).toBeGreaterThanOrEqual(1);
+    expect(result.requestsAccepted).toBe(0);
   });
 
   it("uses the configured lookback window (SAM_LOOKBACK_DAYS)", async () => {
@@ -450,7 +450,7 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
       };
     }));
 
-    // Use groups with many tasks to stress-test concurrency
+    // 3 unique NAICS + 0 PSC + 5 catch-all = 8 tasks
     const manyTaskGroup: CapabilitySearchGroup = {
       capabilityKey:    "test_group",
       capabilityName:   "Test",
@@ -459,18 +459,126 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
       specificKeywords: ["s1", "s2", "s3", "s4", "s5"],
       pscCodes:         [],
     };
-    // Total tasks: 3×4 (NAICS×anchor) + 5 (specific) = 17 tasks
+    const expectedTasks = 3 + 0 + CATCH_ALL_KEYWORDS.length; // 8
 
     vi.useRealTimers();
-    await fetchSamOpportunitiesGrouped([manyTaskGroup]);
+    const result = await fetchSamOpportunitiesGrouped([manyTaskGroup]);
 
     // Should never exceed the concurrency limit
     expect(maxConcurrent).toBeLessThanOrEqual(SAM_MAX_CONCURRENT);
-    // Should have made all the expected fetch calls (17 tasks, each 1 page call)
+    // Fetch calls = expectedTasks (each task makes exactly 1 page call — all return empty)
     const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
-    expect(fetchMock.mock.calls.length).toBeGreaterThan(0);
+    expect(fetchMock.mock.calls.length).toBe(expectedTasks);
+    // Request counters must be present and consistent
+    expect(result.requestsAttempted).toBe(expectedTasks);
+    expect(result.requestsAccepted).toBe(expectedTasks);
     vi.useFakeTimers();
   });
+
+  it("requestsAttempted counts paginated HTTP calls not tasks — with 2-page NAICS result", async () => {
+    // trimGroup: 1 NAICS task + 5 catch-all tasks = 6 tasks total.
+    // Mock the NAICS-238350 task to paginate 2 pages; all other tasks return empty.
+    // Verify: requestsAttempted = 2 (NAICS pages) + 5 (catch-all, 1 page each) = 7,
+    //         NOT 6 (which is the task count).
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
+      const params = new URLSearchParams((url as string).split("?")[1]);
+      const offset  = parseInt(params.get("offset") ?? "0", 10);
+      const naics   = params.get("naics");
+      if (naics === "238350" && offset === 0) {
+        // Page 1: full page — signals more records exist
+        return Promise.resolve({
+          ok:   true,
+          json: () => Promise.resolve({
+            totalRecords:      SAM_PAGE_SIZE + 1,
+            opportunitiesData: Array.from({ length: SAM_PAGE_SIZE }, (_, i) => makeSamRecord(`p1-${i}`, "238350")),
+          }),
+        } as Response);
+      } else if (naics === "238350" && offset > 0) {
+        // Page 2: 1 record — signals end of results
+        return Promise.resolve({
+          ok:   true,
+          json: () => Promise.resolve({
+            totalRecords:      SAM_PAGE_SIZE + 1,
+            opportunitiesData: [makeSamRecord("p2-0", "238350")],
+          }),
+        } as Response);
+      } else {
+        return Promise.resolve({
+          ok:   true,
+          json: () => Promise.resolve({ totalRecords: 0, opportunitiesData: [] }),
+        } as Response);
+      }
+    }));
+
+    vi.useRealTimers();
+    const result = await fetchSamOpportunitiesGrouped([trimGroup]);
+
+    // 2 HTTP calls for the NAICS task + 1 each for the 5 catch-all tasks = 7
+    const expectedHttpCalls = 2 + CATCH_ALL_KEYWORDS.length;
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    expect(fetchMock.mock.calls.length).toBe(expectedHttpCalls);       // actual HTTP calls
+    expect(result.requestsAttempted).toBe(expectedHttpCalls);           // counters match
+    expect(result.requestsAccepted).toBe(expectedHttpCalls);
+    expect(result.quotaExhausted).toBe(false);
+    vi.useFakeTimers();
+  });
+
+  it("generates ≤60 tasks and requestsAttempted tracks paginated HTTP calls (quota-reduction check)", async () => {
+    // Core guard against the ~390-task regression that exhausted the SAM.gov daily quota.
+    // GC: 7 groups → ~24 unique NAICS + ~20 unique PSC + 5 catch-all = ~49 tasks.
+    // Max HTTP calls = task_count × SAM_MAX_PAGES (5) — even worst-case (245) is far below
+    // the old worst-case (393+ tasks × 5 = 1,965).
+    //
+    // This test forces every task to paginate exactly 2 pages (offset=0 → full page;
+    // offset>0 → 1 record) and asserts requestsAttempted equals the raw fetch call count.
+
+    // Compute expected task count from the actual group definitions
+    const gcNaics = new Set<string>();
+    const gcPsc   = new Set<string>();
+    for (const g of GENERAL_CONTRACTING_SEARCH_GROUPS) {
+      g.naicsCodes.forEach(n => gcNaics.add(n));
+      (g.pscCodes ?? []).forEach(p => gcPsc.add(p));
+    }
+    const taskCount = gcNaics.size + gcPsc.size + CATCH_ALL_KEYWORDS.length;
+
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
+      const params = new URLSearchParams((url as string).split("?")[1]);
+      const offset  = parseInt(params.get("offset") ?? "0", 10);
+      if (offset === 0) {
+        // Page 1: full page — triggers a page-2 fetch
+        return Promise.resolve({
+          ok:   true,
+          json: () => Promise.resolve({
+            totalRecords:      SAM_PAGE_SIZE + 1,
+            opportunitiesData: Array.from({ length: SAM_PAGE_SIZE }, (_, i) => makeSamRecord(`p1-${i}`, "238990")),
+          }),
+        } as Response);
+      } else {
+        // Page 2: 1 record — signals end of results
+        return Promise.resolve({
+          ok:   true,
+          json: () => Promise.resolve({
+            totalRecords:      SAM_PAGE_SIZE + 1,
+            opportunitiesData: [makeSamRecord(`p2-last`, "238990")],
+          }),
+        } as Response);
+      }
+    }));
+
+    vi.useRealTimers();
+    const result = await fetchSamOpportunitiesGrouped(GENERAL_CONTRACTING_SEARCH_GROUPS);
+
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    // Counter must equal the number of real HTTP calls made (2 per task)
+    expect(result.requestsAttempted).toBe(fetchMock.mock.calls.length);
+    // 2 pages per task → HTTP calls = 2 × taskCount
+    expect(result.requestsAttempted).toBe(taskCount * 2);
+    // Task count is within the ≤60 target
+    expect(taskCount).toBeLessThanOrEqual(60);
+    // Max possible HTTP calls: 60 tasks × 5 pages = 300 (vs old 1,965)
+    expect(result.requestsAttempted).toBeLessThanOrEqual(60 * SAM_MAX_PAGES);
+    vi.useFakeTimers();
+  }, 15_000); // generous timeout: 49 tasks × 150ms inter-page delay / concurrency=8 ≈ 900ms
 });
 
 // ── Constants: verify the improved defaults ───────────────────────────────────

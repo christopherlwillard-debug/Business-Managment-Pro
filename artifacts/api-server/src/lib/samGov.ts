@@ -232,16 +232,23 @@ async function fetchAllPages(
   apiKey:     string,
   baseParams: Record<string, string>,
   label:      string,
+  /** Shared counter updated once per fetchPage HTTP call (including all pagination pages). */
+  counters?:  { attempted: number; accepted: number },
 ): Promise<SamOpportunity[]> {
   const all: SamOpportunity[] = [];
 
   for (let page = 0; page < SAM_MAX_PAGES; page++) {
     const offset = page * SAM_PAGE_SIZE;
+    // Increment before the call so 429-throws are still counted as attempted.
+    if (counters) counters.attempted++;
     const { records, totalRecords } = await fetchPage(
       apiKey,
       { ...baseParams, limit: String(SAM_PAGE_SIZE), offset: String(offset) },
       page === 0 ? label : `${label} p${page + 1}`,
     );
+    // fetchPage only throws SamQuotaError; all other errors return empty.
+    // Reaching here means the HTTP call was accepted (2xx or swallowed error).
+    if (counters) counters.accepted++;
 
     all.push(...records);
 
@@ -301,35 +308,111 @@ class Semaphore {
 /**
  * Return type for fetchSamOpportunitiesGrouped.
  *
- * `opportunities`   — deduplicated results across all groups and pages.
- *                     Partial results collected before a 429 are included.
- * `quotaExhausted`  — true whenever HTTP 429 was received, regardless of
- *                     whether the response body contained a reset timestamp.
- *                     Callers MUST check this flag to detect exhaustion;
- *                     do NOT rely solely on `quotaResetAt` being non-null.
- * `quotaResetAt`    — the `nextAccessTime` value from the SAM.gov 429 body,
- *                     or null when the response was missing / unparseable.
- *                     Only meaningful when `quotaExhausted` is true.
+ * `opportunities`      — deduplicated results across all tasks and pages.
+ *                        Partial results collected before a 429 are included.
+ * `quotaExhausted`     — true whenever HTTP 429 was received, regardless of
+ *                        whether the response body contained a reset timestamp.
+ *                        Callers MUST check this flag to detect exhaustion;
+ *                        do NOT rely solely on `quotaResetAt` being non-null.
+ * `quotaResetAt`       — the `nextAccessTime` value from the SAM.gov 429 body,
+ *                        or null when the response was missing / unparseable.
+ *                        Only meaningful when `quotaExhausted` is true.
+ * `requestsAttempted`  — number of fetchAllPages calls started (each task = 1).
+ * `requestsAccepted`   — number of fetchAllPages calls that returned without error.
  */
 export interface SamGroupedResult {
-  opportunities:  SamOpportunity[];
-  quotaExhausted: boolean;
-  quotaResetAt:   string | null;
+  opportunities:     SamOpportunity[];
+  quotaExhausted:    boolean;
+  quotaResetAt:      string | null;
+  requestsAttempted: number;
+  requestsAccepted:  number;
+}
+
+// ── Catch-all keyword tasks ────────────────────────────────────────────────────
+//
+// These 5 cross-capability phrases are searched without any NAICS or PSC
+// restriction.  They replace the per-group specificKeyword API calls
+// (~15-24 tasks per group) and surface opportunities whose NAICS code was
+// miscategorized by the contracting agency.
+//
+// Exported so tests can assert on the expected task count.
+export const CATCH_ALL_KEYWORDS = [
+  "general construction services",
+  "facility renovation contractor",
+  "building maintenance contract",
+  "construction and alteration",
+  "repair and maintenance services",
+] as const;
+
+// ── Local capability assignment ───────────────────────────────────────────────
+//
+// After the broad-NAICS fetch collects raw results, we determine which
+// capability group each opportunity belongs to locally — without relying on
+// which API query happened to return it.
+//
+// Priority:
+//   1. Exactly one group's NAICS set contains the opportunity's NAICS → use it.
+//   2. Multiple groups share the NAICS (e.g. 238990 appears in 4 groups) →
+//      score by keyword hits in title+description and pick highest scorer.
+//   3. No NAICS match → score all groups by keyword hits in title+description.
+//   4. No keyword hits anywhere → fall back to first group (best-effort).
+
+function assignCapabilityLocally(
+  opp:    SamOpportunity,
+  groups: CapabilitySearchGroup[],
+): string | undefined {
+  if (groups.length === 0) return undefined;
+
+  const text = `${(opp.title ?? "").toLowerCase()} ${(opp.description ?? "").toLowerCase()}`;
+
+  // Step 1: groups whose NAICS set contains this opportunity's NAICS code
+  const naicsMatches = opp.naicsCode
+    ? groups.filter(g => g.naicsCodes.includes(opp.naicsCode!))
+    : [];
+
+  // Step 2: unambiguous single match — no scoring needed
+  if (naicsMatches.length === 1) return naicsMatches[0].capabilityKey;
+
+  // Step 3: score candidates by keyword hits in title+description
+  const candidates = naicsMatches.length > 0 ? naicsMatches : groups;
+  let bestKey = candidates[0].capabilityKey;
+  let bestScore = -1;
+
+  for (const g of candidates) {
+    let score = 0;
+    for (const kw of [...g.anchorKeywords, ...g.specificKeywords]) {
+      if (text.includes(kw.toLowerCase())) score++;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestKey   = g.capabilityKey;
+    }
+  }
+
+  return bestKey;
 }
 
 /**
- * Searches SAM.gov using capability-grouped search groups instead of the flat
- * all-pairs matrix.  Each group searches its own NAICS codes with its own
- * anchor keywords, then runs targeted specific-keyword queries (no NAICS) to
- * catch opportunities whose SAM.gov NAICS code doesn't match the expected code.
+ * Searches SAM.gov using a broad-NAICS pull instead of the old per-capability
+ * NAICS×keyword matrix.
+ *
+ * Architecture (reduces ~390 tasks → ~50 tasks):
+ *   • One task per unique NAICS code across ALL capability groups (no keyword pairing).
+ *   • One task per unique PSC code across ALL capability groups (no keyword pairing).
+ *   • A small set of catch-all keyword-only tasks (CATCH_ALL_KEYWORDS) to surface
+ *     opportunities whose agency miscategorized the NAICS code.
+ *
+ * After fetching, `matchedCapability` and `naicsMismatch` are assigned locally
+ * via `assignCapabilityLocally` — capability routing no longer depends on which
+ * API query happened to return the record.
  *
  * Concurrency is limited to SAM_MAX_CONCURRENT simultaneous fetchAllPages calls.
- * A global noticeId Set deduplicates across all groups, queries, and pages.
+ * A global noticeId Map deduplicates across all tasks and pages.
  * Records with unexpected NAICS codes are flagged naicsMismatch=true (not dropped).
  *
  * When SAM.gov returns HTTP 429, remaining tasks are aborted, partial results
  * are returned, and `quotaResetAt` is set so the caller can surface the reset
- * time in the Sources panel instead of silently swallowing the quota hit.
+ * time in the Sources panel.
  */
 export async function fetchSamOpportunitiesGrouped(
   groups:  CapabilitySearchGroup[],
@@ -338,7 +421,7 @@ export async function fetchSamOpportunitiesGrouped(
   const apiKey = getCredential("sam_gov", "SAM_GOV_API_KEY");
   if (!apiKey) {
     console.warn("[sam-gov] SAM_GOV_API_KEY not configured, skipping");
-    return { opportunities: [], quotaExhausted: false, quotaResetAt: null };
+    return { opportunities: [], quotaExhausted: false, quotaResetAt: null, requestsAttempted: 0, requestsAccepted: 0 };
   }
 
   const lookback   = opts?.lookbackDays ?? SAM_LOOKBACK_DAYS;
@@ -346,68 +429,53 @@ export async function fetchSamOpportunitiesGrouped(
   const postedTo   = toIsoDate(new Date());
   const baseParams = { ptype: "o,p,k,r,s,g,i", postedFrom, postedTo };
 
-  // Union of ALL NAICS codes across all groups — used for global mismatch detection
+  // Union of all NAICS and PSC codes across every capability group.
+  // Deduplication here is the primary source of task-count reduction:
+  // NAICS 238990 appears in 4 groups but generates only 1 search task.
   const allGroupNaics = new Set<string>();
-  for (const g of groups) g.naicsCodes.forEach((n) => allGroupNaics.add(n));
+  const allGroupPsc   = new Set<string>();
+  for (const g of groups) {
+    g.naicsCodes.forEach(n => allGroupNaics.add(n));
+    (g.pscCodes ?? []).forEach(p => allGroupPsc.add(p));
+  }
 
-  // Build the full task list
-  const tasks: Array<{
-    params:        Record<string, string>;
-    label:         string;
-    capabilityKey: string;
-    groupNaics:    Set<string>;
-  }> = [];
+  // Build reduced task list: NAICS-only + PSC-only + catch-all keywords.
+  type SearchTask = { params: Record<string, string>; label: string };
+  const tasks: SearchTask[] = [];
 
-  for (const group of groups) {
-    const groupNaics = new Set(group.naicsCodes);
+  // One task per unique NAICS (no keyword) — broad pull, scored locally
+  for (const naics of allGroupNaics) {
+    tasks.push({ params: { ...baseParams, naics }, label: `NAICS ${naics}` });
+  }
 
-    // NAICS × anchorKeyword tasks
-    for (const naics of group.naicsCodes) {
-      for (const keyword of group.anchorKeywords) {
-        tasks.push({
-          params:        { ...baseParams, naics, keyword },
-          label:         `[${group.capabilityKey}] NAICS ${naics} / "${keyword}"`,
-          capabilityKey: group.capabilityKey,
-          groupNaics,
-        });
-      }
-    }
+  // One task per unique PSC (no keyword) — catches PSC-coded opportunities
+  for (const psc of allGroupPsc) {
+    tasks.push({ params: { ...baseParams, psc }, label: `PSC ${psc}` });
+  }
 
-    // specificKeyword tasks (no NAICS filter — catches NAICS mismatches)
-    for (const keyword of group.specificKeywords) {
-      tasks.push({
-        params:        { ...baseParams, keyword },
-        label:         `[${group.capabilityKey}] kw "${keyword}"`,
-        capabilityKey: group.capabilityKey,
-        groupNaics,
-      });
-    }
-
-    // PSC × anchorKeyword tasks
-    for (const psc of group.pscCodes ?? []) {
-      for (const keyword of group.anchorKeywords) {
-        tasks.push({
-          params:        { ...baseParams, psc, keyword },
-          label:         `[${group.capabilityKey}] PSC ${psc} / "${keyword}"`,
-          capabilityKey: group.capabilityKey,
-          groupNaics,
-        });
-      }
-    }
+  // Catch-all keyword tasks (no NAICS/PSC) — surfaces NAICS-miscategorized opps
+  for (const keyword of CATCH_ALL_KEYWORDS) {
+    tasks.push({ params: { ...baseParams, keyword }, label: `kw "${keyword}"` });
   }
 
   console.log(
-    `[sam-gov] Grouped search: ${groups.length} group(s), ${tasks.length} task(s), ` +
+    `[sam-gov] Grouped search: ${tasks.length} task(s) ` +
+    `(${allGroupNaics.size} NAICS + ${allGroupPsc.size} PSC + ${CATCH_ALL_KEYWORDS.length} catch-all), ` +
     `concurrency=${SAM_MAX_CONCURRENT}, lookback=${lookback}d`
   );
 
   // Quota state — set by the first task that receives HTTP 429.
   // Tasks that haven't started yet check this flag and bail early;
   // tasks already in-flight finish normally so partial results are kept.
-  let quotaExhausted = false;
+  let quotaExhausted   = false;
   let quotaResetAt: string | null = null;
 
-  // Global dedup map — first occurrence wins; noticeId → final SamOpportunity
+  // HTTP-call counters — updated inside fetchAllPages once per fetchPage call,
+  // so pagination is correctly accounted for (not just task count).
+  const httpCounters = { attempted: 0, accepted: 0 };
+
+  // Global dedup map — first occurrence wins; noticeId → raw SamOpportunity.
+  // matchedCapability and naicsMismatch are assigned in the post-fetch pass.
   const seen = new Map<string, SamOpportunity>();
   const sem  = new Semaphore(SAM_MAX_CONCURRENT);
 
@@ -418,22 +486,9 @@ export async function fetchSamOpportunitiesGrouped(
     // Re-check after the semaphore wait — another task may have hit 429 while queued
     if (quotaExhausted) { sem.release(); return; }
     try {
-      const opps = await fetchAllPages(apiKey, task.params, task.label);
+      const opps = await fetchAllPages(apiKey, task.params, task.label, httpCounters);
       for (const opp of opps) {
-        if (!seen.has(opp.noticeId)) {
-          // Flag as mismatch when returned NAICS is outside both the group's expected
-          // NAICS codes and the union of all groups' NAICS codes.
-          const naicsMismatch = !!(
-            opp.naicsCode &&
-            !task.groupNaics.has(opp.naicsCode) &&
-            !allGroupNaics.has(opp.naicsCode)
-          );
-          seen.set(opp.noticeId, {
-            ...opp,
-            matchedCapability: task.capabilityKey,
-            naicsMismatch,
-          });
-        }
+        if (!seen.has(opp.noticeId)) seen.set(opp.noticeId, opp);
       }
     } catch (err) {
       if (err instanceof SamQuotaError) {
@@ -453,19 +508,36 @@ export async function fetchSamOpportunitiesGrouped(
     }
   }));
 
-  const result     = Array.from(seen.values());
+  // Post-fetch pass: assign matchedCapability and naicsMismatch locally.
+  // This replaces the old per-task capabilityKey attribution.
+  const result: SamOpportunity[] = [];
+  for (const opp of seen.values()) {
+    result.push({
+      ...opp,
+      matchedCapability: assignCapabilityLocally(opp, groups),
+      naicsMismatch:     !!(opp.naicsCode && !allGroupNaics.has(opp.naicsCode)),
+    });
+  }
+
   const mismatched = result.filter((r) => r.naicsMismatch).length;
   if (mismatched > 0) {
     console.log(`[sam-gov] ${mismatched} record(s) flagged naicsMismatch (kept, recommendation capped at REVIEW)`);
   }
   console.log(
     `[sam-gov] Grouped search complete: ${result.length} unique opportunities from ${tasks.length} search tasks` +
+    `, ${httpCounters.attempted} HTTP request(s) / ${httpCounters.accepted} accepted` +
     (quotaExhausted
       ? ` (quota exhausted${quotaResetAt ? `, resets ${quotaResetAt}` : ", reset time unavailable"})`
       : "")
   );
 
-  return { opportunities: result, quotaExhausted, quotaResetAt };
+  return {
+    opportunities:     result,
+    quotaExhausted,
+    quotaResetAt,
+    requestsAttempted: httpCounters.attempted,
+    requestsAccepted:  httpCounters.accepted,
+  };
 }
 
 // ── Backward-compat flat search ───────────────────────────────────────────────
