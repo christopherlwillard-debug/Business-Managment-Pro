@@ -641,6 +641,226 @@ describe("Owner-draw exclusion from net profit", () => {
   });
 });
 
+// ── Mileage exclusion from dashboard totals ───────────────────────────────────
+//
+// Guards the nonMileageExpenses filter at line ~136 of reports.ts:
+//   const nonMileageExpenses = kpiExpenses.filter(e => e.category !== "mileage");
+//   const totalExpenses = nonMileageExpenses.reduce(...)
+//
+// And the parallel filter in the unattributed byBusinessLine section:
+//   rawExpenses.filter(e => ... && e.category !== "mileage")
+//
+// Mileage is deducted separately via mileage_logs / mileageDeduction, so an
+// expense row with category "mileage" must be excluded from:
+//   - totalExpenses          (top-level KPI card)
+//   - operationalNetProfit   (top-level profit formula)
+//   - byBusinessLine[unattributed].businessExpenses
+//   - byBusinessLine[unattributed].operationalNetProfit
+//
+// A future change that accidentally drops the category filter would silently
+// inflate totalExpenses and deflate operationalNetProfit without any test
+// catching it.
+//
+// Queue order for GET /dashboard (no blFilter, default period=month):
+//   [0-8]  Promise.all(kpiPaidInv, kpiNonPaidInv, kpiExpenses, allMileage,
+//                      kpiOtherIncome, kpiActiveJobs, recentJobs,
+//                      recentInvoices, kpiOwnerCapital)
+//   [9]    ytdMileageLogs (separate select — period != "year")
+//   [10]   subPayRows (innerJoin)
+//   [11]   allBusinesses
+//   [12–35] monthlyRevenue loop: 6 months × 4 queries = 24 selects
+
+describe("Mileage expense exclusion from dashboard totals", () => {
+
+  // Paid invoice with no businessLine, dated in the current month so
+  // getEffectivePaymentDate falls within the dashboard's default "month" period.
+  const DASH_MILEAGE_INVOICE = {
+    id: 100,
+    status: "paid",
+    subtotal: "1000.00",
+    taxAmount: "0",
+    total: "1000.00",
+    issueDate: `${CURRENT_MONTH_STR}-01`,
+    stripePaidAt: null,
+    squarePaidAt: null,
+    businessLine: null,
+  };
+
+  // Mileage expense — category must match the filter string in reports.ts
+  const DASH_MILEAGE_EXP = {
+    id: 101,
+    date: `${CURRENT_MONTH_STR}-01`,
+    amount: "150.00",
+    category: "mileage",
+    businessLine: null,
+    jobId: null,
+    excludeFromNetProfit: false,
+    description: "Mileage log import expense",
+    vendor: null,
+    notes: null,
+  };
+
+  // Regular business expense — must still appear in totals
+  const DASH_SUPPLY_EXP = {
+    id: 102,
+    date: `${CURRENT_MONTH_STR}-01`,
+    amount: "100.00",
+    category: "Supplies",
+    businessLine: null,
+    jobId: null,
+    excludeFromNetProfit: false,
+    description: "Office supplies",
+    vendor: null,
+    notes: null,
+  };
+
+  it("mileage expense is absent from totalExpenses, operationalNetProfit, and unattributed businessExpenses", async () => {
+    // Revenue: $1 000 paid invoice (no businessLine → unattributed).
+    // Expenses: $150 mileage (must be excluded) + $100 Supplies (must be included).
+    // No mileage_logs → mileageDeduction = 0.
+    //
+    // Expected:
+    //   totalExpenses                          = 100   (mileage row excluded)
+    //   operationalNetProfit                   = 900   (1 000 − 100)
+    //   byBusinessLine[unattributed].businessExpenses      = 100
+    //   byBusinessLine[unattributed].operationalNetProfit  = 900
+    //
+    // Regression values (if filter were absent):
+    //   totalExpenses = 250, operationalNetProfit = 750
+
+    h.selectQueue.push([DASH_MILEAGE_INVOICE]);            // [0] kpiPaidInvoices
+    h.selectQueue.push([]);                                // [1] kpiNonPaidInvoices
+    h.selectQueue.push([DASH_MILEAGE_EXP, DASH_SUPPLY_EXP]); // [2] kpiExpenses
+    h.selectQueue.push([]);                                // [3] allMileage
+    h.selectQueue.push([]);                                // [4] kpiOtherIncome
+    h.selectQueue.push([]);                                // [5] kpiActiveJobs
+    h.selectQueue.push([]);                                // [6] recentJobsRows (leftJoin)
+    h.selectQueue.push([]);                                // [7] recentInvoicesRows (leftJoin)
+    h.selectQueue.push([]);                                // [8] kpiOwnerCapital
+    h.selectQueue.push([]);                                // [9] ytdMileageLogs (period=month extra select)
+    h.selectQueue.push([]);                                // [10] subPayRows (innerJoin)
+    h.selectQueue.push([]);                                // [11] allBusinesses — empty → unattributed section appears
+    // monthlyRevenue loop: 6 months × 4 queries = 24 selects
+    for (let i = 0; i < 24; i++) h.selectQueue.push([]);
+
+    const res = await request(app).get("/reports/dashboard");
+    expect(res.status).toBe(200);
+
+    // ── Top-level KPI: totalExpenses must exclude the mileage row ──────────
+    // Regression: 250 (mileage counted); correct: 100 (mileage excluded)
+    expect(res.body.totalExpenses).toBeCloseTo(100, 10);
+
+    // ── Top-level operationalNetProfit must reflect only the regular expense ─
+    // operationalNetProfit = revenue(1000) − (totalExpenses(100) − excluded(0))
+    //                        − mileageDeduction(0)
+    // Regression: 1000 − 250 = 750; correct: 1000 − 100 = 900
+    expect(res.body.operationalNetProfit).toBeCloseTo(900, 10);
+
+    // ── byBusinessLine unattributed section ─────────────────────────────────
+    const unattrib = res.body.byBusinessLine.find(
+      (b: any) => b.businessLine === "unattributed",
+    );
+    expect(unattrib).toBeDefined();
+
+    // businessExpenses = totalExpenses − ownerDrawTotal = 100 − 0 = 100
+    // Regression: 250 (mileage counted)
+    expect(unattrib.businessExpenses).toBeCloseTo(100, 10);
+
+    // operationalNetProfit = revenue(1000) − (total − excluded)(100) = 900
+    // Regression: 1000 − 250 = 750
+    expect(unattrib.operationalNetProfit).toBeCloseTo(900, 10);
+  });
+
+  it("mileage expense is absent from a named business line's totalExpenses, businessExpenses, and operationalNetProfit", async () => {
+    // Covers the registered-business branch of byBusinessLine:
+    //   blExpenses = rawExpenses.filter(e => e.businessLine === bl && e.category !== "mileage")
+    // A regression that drops the category filter from that branch would inflate
+    // the named business line's totals while the unattributed test above still passes.
+    //
+    // Seed: $1 000 invoice + $150 mileage + $100 Supplies, all businessLine="mfh".
+    // allBusinesses returns [{ slug: "mfh", name: "MFH" }].
+    //
+    // Expected for the "mfh" byBusinessLine entry:
+    //   totalExpenses          = 100   (mileage excluded)
+    //   businessExpenses       = 100   (no owner draw)
+    //   operationalNetProfit   = 900   (1 000 − 100)
+    //
+    // Regression values (filter absent):
+    //   totalExpenses = 250, businessExpenses = 250, operationalNetProfit = 750
+
+    const BL_INVOICE = {
+      id: 110,
+      status: "paid",
+      subtotal: "1000.00",
+      taxAmount: "0",
+      total: "1000.00",
+      issueDate: `${CURRENT_MONTH_STR}-01`,
+      stripePaidAt: null,
+      squarePaidAt: null,
+      businessLine: "mfh",
+    };
+    const BL_MILEAGE_EXP = {
+      id: 111,
+      date: `${CURRENT_MONTH_STR}-01`,
+      amount: "150.00",
+      category: "mileage",
+      businessLine: "mfh",
+      jobId: null,
+      excludeFromNetProfit: false,
+      description: "Mileage import",
+      vendor: null,
+      notes: null,
+    };
+    const BL_SUPPLY_EXP = {
+      id: 112,
+      date: `${CURRENT_MONTH_STR}-01`,
+      amount: "100.00",
+      category: "Supplies",
+      businessLine: "mfh",
+      jobId: null,
+      excludeFromNetProfit: false,
+      description: "Supplies",
+      vendor: null,
+      notes: null,
+    };
+
+    h.selectQueue.push([BL_INVOICE]);                          // [0] kpiPaidInvoices
+    h.selectQueue.push([]);                                    // [1] kpiNonPaidInvoices
+    h.selectQueue.push([BL_MILEAGE_EXP, BL_SUPPLY_EXP]);      // [2] kpiExpenses
+    h.selectQueue.push([]);                                    // [3] allMileage
+    h.selectQueue.push([]);                                    // [4] kpiOtherIncome
+    h.selectQueue.push([]);                                    // [5] kpiActiveJobs
+    h.selectQueue.push([]);                                    // [6] recentJobsRows (leftJoin)
+    h.selectQueue.push([]);                                    // [7] recentInvoicesRows (leftJoin)
+    h.selectQueue.push([]);                                    // [8] kpiOwnerCapital
+    h.selectQueue.push([]);                                    // [9] ytdMileageLogs (period=month extra select)
+    h.selectQueue.push([]);                                    // [10] subPayRows (innerJoin)
+    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]);       // [11] allBusinesses — "mfh" is a known slug
+    // monthlyRevenue loop: 6 months × 4 queries = 24 selects
+    for (let i = 0; i < 24; i++) h.selectQueue.push([]);
+
+    const res = await request(app).get("/reports/dashboard");
+    expect(res.status).toBe(200);
+
+    const mfhLine = res.body.byBusinessLine.find(
+      (b: any) => b.businessLine === "mfh",
+    );
+    expect(mfhLine).toBeDefined();
+
+    // totalExpenses = sum of non-mileage expenses = 100
+    // Regression: 250
+    expect(mfhLine.totalExpenses).toBeCloseTo(100, 10);
+
+    // businessExpenses = totalExpenses − ownerDrawTotal = 100 − 0 = 100
+    // Regression: 250
+    expect(mfhLine.businessExpenses).toBeCloseTo(100, 10);
+
+    // operationalNetProfit = revenue(1000) − (total − excluded)(100 − 0) = 900
+    // Regression: 1000 − 250 = 750
+    expect(mfhLine.operationalNetProfit).toBeCloseTo(900, 10);
+  });
+});
+
 // ── Mileage exclusion from accounting totals ──────────────────────────────────
 //
 // Guards the nonMileageExpenses filter (~line 493 of reports.ts).
