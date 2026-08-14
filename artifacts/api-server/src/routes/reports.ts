@@ -1720,8 +1720,8 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     // Estimated tax breakdown — uses shared helper; federal income not yet included
     // in required reserve total (that addition is handled by Task #1872).
     const brTaxEst = computeTaxEstimate(netProfit, owensboroGross, year);
-    const estimatedTaxes = brTaxEst.totalWithoutFederalIncome;
-    const taxBreakdown = { federalSE: brTaxEst.federalSE, kyState: brTaxEst.kyState, occ: brTaxEst.occ };
+    const estimatedTaxes = brTaxEst.total;
+    const taxBreakdown = { federalSE: brTaxEst.federalSE, federalIncome: brTaxEst.federalIncome, kyState: brTaxEst.kyState, occ: brTaxEst.occ };
 
     // 3. Growth fund invested this year → available balance
     const deployments = await db.select({ amount: growthFundDeploymentsTable.amount })
