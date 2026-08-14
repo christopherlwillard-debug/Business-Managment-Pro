@@ -1,0 +1,101 @@
+I want to build out the new Grants section under Find a Job → Grants. Do not change the existing Bids/Contracts or My Equipment systems.
+
+Design this as a real Grant Finder for small businesses, not a generic federal grant feed.
+
+Grant sources
+
+Build a source system that identifies each source as:
+
+API / structured feed
+Public searchable website
+Manual-only
+
+Prioritize legitimate official government and verified program sources. Do not scrape hundreds of generic federal funding notices or create a high-volume system that could cause API/rate-limit problems like our SAM.gov issue.
+
+What Grants should find
+
+Prioritize opportunities that could realistically apply to a small business, including:
+
+Small-business grants
+Veteran-owned business grants
+Kentucky/state small-business programs
+Local economic-development programs
+Equipment grants
+Business expansion grants
+Workforce/training grants
+Technology/digitalization grants
+Rural-business programs
+Construction/trade-related programs when applicable
+Important filtering
+
+Do not treat every federal funding announcement as a business grant.
+
+Clearly distinguish:
+
+Grants
+Contracts/procurement
+Loans
+Tax credits
+Awards/assistance programs
+Research funding
+University funding
+Medical/research programs
+
+Irrelevant university, medical, scientific, research, foreign-assistance, and similar opportunities should not clutter the user's Grant Finder.
+
+Business matching
+
+Use the existing business profile and capabilities to evaluate each opportunity based on things such as:
+
+Small-business status
+Veteran-owned status
+Location
+Industry/business activities
+Equipment needs
+Expansion
+Hiring/workforce training
+Technology
+Rural eligibility when applicable
+Grant result
+
+Each grant should show:
+
+Grant/program name
+Funding amount
+Deadline
+Official source
+Likely eligibility: Likely / Maybe / Unlikely
+Fit score
+Why it matches the business
+What the funds can be used for
+Key requirements
+Official application/source link
+
+Eligibility should always be presented as a screening assessment, not a guarantee. The official program requirements remain the final authority.
+
+Filters
+
+Include simple filters for:
+
+Grant type
+Funding amount
+Deadline
+Eligibility/fit
+Business relevance
+
+Also show source health/status so I can tell whether a source is actually automated or manual.
+
+Navigation
+
+Keep it simple:
+
+Find a Job
+
+Bids & Contracts
+Grants
+
+My Equipment
+
+Do not redesign the rest of the application.
+
+Before implementing anything, inspect the existing bid/source architecture and reuse the appropriate existing patterns where possible. Do not create unnecessary duplicate systems or tables.
