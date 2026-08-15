@@ -550,6 +550,55 @@ describe("Owner-draw exclusion from net profit", () => {
     expect(juneBucket.expenses).toBeCloseTo(0, 10);
   });
 
+  // ── 2b. Monthly income chart — owner draw co-existing with a regular expense ─
+
+  it.each([
+    ["Owner Draw"],
+    ["Owner Compensation"],
+    ["Owner Withdrawal"],
+  ] as const)(
+    "/accounting monthlyIncome: '%s' mixed with a regular expense — expenses bar shows only the regular amount",
+    async (ownerCat) => {
+      // Seeds one owner-pay expense ($500) and one ordinary expense ($100)
+      // in the same month.  The expenses bar must equal $100; the draw must
+      // be silently excluded.  A regression would produce $600 (draw included)
+      // or $0 (both excluded).
+      const MIXED_DRAW = {
+        ...OWNER_DRAW_EXP,
+        id: 62,
+        category: ownerCat,
+        businessLine: null as string | null,
+      };
+      const MIXED_REG = {
+        ...REGULAR_EXP,
+        id: 63,
+        businessLine: null as string | null,
+      };
+
+      h.selectQueue.push([]);                          // [0] paidInvoices
+      h.selectQueue.push([]);                          // [1] nonPaidInvoices
+      h.selectQueue.push([MIXED_DRAW, MIXED_REG]);     // [2] expenses
+      h.selectQueue.push([]);                          // [3] mileageLogs
+      h.selectQueue.push([]);                          // [4] subs
+      h.selectQueue.push([SETTINGS_ROW]);              // [5] settings
+      h.selectQueue.push([]);                          // [6] otherIncome
+      h.selectQueue.push([]);                          // [7] assets
+      h.selectQueue.push([]);                          // [8] assetBusinessUse
+      // [9] allBusinesses and [10] outstandingSubRows return [] from empty queue
+
+      const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
+      expect(res.status).toBe(200);
+
+      const juneBucket = (res.body.monthlyIncome as any[]).find(
+        (b: any) => b.month === `${YEAR}-06`,
+      );
+      expect(juneBucket).toBeDefined();
+
+      // Regular expense ($100) must appear; owner-pay category must be excluded
+      expect(juneBucket.expenses).toBeCloseTo(100, 10);
+    },
+  );
+
   // ── 3. Dashboard byBusinessLine — unattributed section ───────────────────
 
   it("/dashboard byBusinessLine unattributed: owner draw excluded from businessExpenses and operationalNetProfit", async () => {
