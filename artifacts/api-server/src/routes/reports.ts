@@ -1281,6 +1281,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
         amount: expensesTable.amount,
         description: expensesTable.description,
         excludeFromNetProfit: expensesTable.excludeFromNetProfit,
+        isWageAdvance: expensesTable.isWageAdvance,
       })
         .from(expensesTable)
         .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), ne(expensesTable.category, "mileage"), blWhere(expensesTable.businessLine))),
@@ -1399,7 +1400,12 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     // Cash-basis: exclude outstanding cost-booking rows before categorising.
     // These are accrual-style bookings (description ending in "(outstanding)") — the sub has NOT
     // been paid. The actual cash payment appears in plSubPayRows from sub_payment_records.
-    const plExpRows = expRows.filter(e => !(e.description ?? "").endsWith("(outstanding)"));
+    // Also exclude wage-advance expenses (isWageAdvance=true): pre-payments of hourly wages
+    // already fully captured in jsh auto-expense accruals — counting them would double the cost.
+    // This mirrors the isWageAdvance filter applied in the Accounting, Dashboard, and Year-End routes.
+    const plExpRows = expRows.filter(e =>
+      !(e.description ?? "").endsWith("(outstanding)") && !e.isWageAdvance,
+    );
 
     // All expenses count toward P&L categories (excludeFromNetProfit only affects job panels).
     // Owner distributions are excluded: they are equity distributions, not deductible expenses.
