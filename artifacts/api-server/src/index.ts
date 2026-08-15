@@ -495,6 +495,25 @@ async function ensureVehiclesTable(): Promise<void> {
   }
 }
 
+/** Owner capital ledger: source (audit trail) + expense_id (dedup FK) columns on owner_capital_entries. */
+async function ensureOwnerCapitalLedgerSchema(): Promise<void> {
+  try {
+    await db.execute(sql`
+      ALTER TABLE owner_capital_entries
+        ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'capital_entry',
+        ADD COLUMN IF NOT EXISTS expense_id INTEGER REFERENCES expenses(id) ON DELETE SET NULL
+    `);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS owner_capital_entries_expense_id_unique
+        ON owner_capital_entries(expense_id)
+        WHERE expense_id IS NOT NULL
+    `);
+    console.log("[startup] ensureOwnerCapitalLedgerSchema: OK.");
+  } catch (err) {
+    console.error("[startup] ensureOwnerCapitalLedgerSchema failed (non-fatal):", err);
+  }
+}
+
 /** Material expense linking: source_type/source_id on expenses + add_to_job_expenses/expense_id on material_list_items. */
 async function ensureMaterialExpenseLinkingSchema(): Promise<void> {
   try {
@@ -566,6 +585,7 @@ async function start() {
   const { init: initCredentials } = await import("./lib/credentialManager.js");
   await initCredentials();
 
+  await ensureOwnerCapitalLedgerSchema();
   await ensureBankingSchema();
   await ensureTripNotesColumn();
   await ensureMarketingContentTable();

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
@@ -2191,6 +2191,20 @@ router.post("/:id/record-owner-draw", async (req, res) => {
       // Single-member LLC: owner pay is an equity withdrawal, never a deductible business expense
       excludeFromNetProfit: true,
     }).returning();
+
+    // Dual-write to the canonical owner-withdrawal ledger so My Pay can read
+    // exclusively from owner_capital_entries without unioning expenses.
+    // amount is negative per sign convention (withdrawal = money out).
+    // expenseId links both rows so dedup queries can identify this as one event.
+    await db.insert(ownerCapitalEntriesTable).values({
+      jobId,
+      date: today,
+      description,
+      amount: String(-amount),
+      source: "job_payroll",
+      expenseId: exp.id,
+    }).onConflictDoNothing();
+
     res.status(201).json({ ok: true, expenseId: exp.id });
   } catch (err) {
     console.error(err);

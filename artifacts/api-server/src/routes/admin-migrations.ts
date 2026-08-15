@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, expensesTable, subPaymentRecordsTable, productionServiceTypesTable } from "@workspace/db";
-import { jobSubcontractorsTable, invoicesTable, clientBillingProfilesTable } from "@workspace/db/schema";
-import { isNull, isNotNull, and, inArray, sql, ilike, eq, ne } from "drizzle-orm";
+import { jobSubcontractorsTable, invoicesTable, clientBillingProfilesTable, ownerCapitalEntriesTable } from "@workspace/db/schema";
+import { isNull, isNotNull, and, inArray, sql, ilike, eq, ne, lt } from "drizzle-orm";
 import { recalcImportExpenses } from "./mileage";
 
 const router = Router();
@@ -671,6 +671,105 @@ router.post("/delete-ghost-draft-invoices", async (_req: Request, res: Response)
     res.json({ ok: true, deleted: deleted.length, skipped: skipped.length, deletedIds: deleted, details: skipped });
   } catch (err) {
     console.error("[admin/migrations] delete-ghost-draft-invoices failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
+// ── Owner Pay Reconciliation ──────────────────────────────────────────────────
+// One-time idempotent migration that:
+//   Step 1: Fix sign on Job Financials entries (job_id IS NOT NULL, amount > 0) → negate
+//   Step 2: Label existing Capital Entry withdrawals (job_id IS NULL, amount < 0)
+//   Step 3: Label existing Capital Entry injections (job_id IS NULL, amount > 0)
+//   Step 4: Migrate historical expenses owner-pay rows into owner_capital_entries
+//           (dedup by matching job_id + date + amount within $0.01)
+// Safe to re-run: each step only touches rows that still match the "unfixed" condition.
+router.post("/owner-pay-reconciliation", async (_req: Request, res: Response) => {
+  try {
+    // Step 1: Fix sign on Job Financials withdrawals stored with positive amount
+    const step1 = await db.execute(sql`
+      UPDATE owner_capital_entries
+      SET amount = -amount,
+          source = 'job_financials'
+      WHERE job_id IS NOT NULL
+        AND amount::numeric > 0
+        AND source = 'capital_entry'
+    `);
+    const step1Fixed = (step1 as any).rowCount ?? 0;
+
+    // Step 2: Label existing Capital Entry withdrawals (already negative, no job link)
+    const step2 = await db.execute(sql`
+      UPDATE owner_capital_entries
+      SET source = 'capital_entry_withdrawal'
+      WHERE job_id IS NULL
+        AND amount::numeric < 0
+        AND source = 'capital_entry'
+    `);
+    const step2Labelled = (step2 as any).rowCount ?? 0;
+
+    // Step 3: Label existing Capital Entry injections (positive, no job link)
+    const step3 = await db.execute(sql`
+      UPDATE owner_capital_entries
+      SET source = 'capital_entry_injection'
+      WHERE job_id IS NULL
+        AND amount::numeric > 0
+        AND source = 'capital_entry'
+    `);
+    const step3Labelled = (step3 as any).rowCount ?? 0;
+
+    // Step 4: Migrate historical expenses owner-pay rows into owner_capital_entries
+    // For each owner-category expense without a matching capital entry, either link
+    // an existing nearby entry (dedup) or insert a new migrated_expense row.
+    const ownerCatExps = await db.execute(sql`
+      SELECT id, job_id, date, description, amount::numeric AS amount
+      FROM expenses
+      WHERE category IN ('Owner Draw', 'Owner Compensation', 'Owner Withdrawal')
+        AND id NOT IN (
+          SELECT expense_id FROM owner_capital_entries WHERE expense_id IS NOT NULL
+        )
+    `);
+    const expRows = (ownerCatExps as any).rows ?? [];
+
+    let step4Linked = 0;
+    let step4Migrated = 0;
+
+    for (const exp of expRows) {
+      const expAmt = parseFloat(exp.amount);
+      // Try to find a matching owner_capital_entries row to link (dedup)
+      const match = await db.execute(sql`
+        SELECT id FROM owner_capital_entries
+        WHERE (job_id = ${exp.job_id} OR (${exp.job_id} IS NULL AND job_id IS NULL))
+          AND date = ${exp.date}
+          AND ABS(ABS(amount::numeric) - ${expAmt}) < 0.01
+          AND expense_id IS NULL
+        LIMIT 1
+      `);
+      const matchRow = ((match as any).rows ?? [])[0];
+      if (matchRow) {
+        // Link the existing entry to this expense (dedup — same physical payment)
+        await db.execute(sql`
+          UPDATE owner_capital_entries
+          SET expense_id = ${exp.id}
+          WHERE id = ${matchRow.id}
+        `);
+        step4Linked++;
+      } else {
+        // No match — insert a new migrated_expense row for this historical payment
+        await db.insert(ownerCapitalEntriesTable).values({
+          date: exp.date,
+          description: exp.description ?? "Owner Pay (migrated)",
+          amount: String(-expAmt), // withdrawals are negative per sign convention
+          source: "migrated_expense",
+          expenseId: exp.id,
+          jobId: exp.job_id ?? null,
+        }).onConflictDoNothing();
+        step4Migrated++;
+      }
+    }
+
+    console.log(`[admin/migrations] owner-pay-reconciliation: step1_fixed=${step1Fixed}, step2_labelled=${step2Labelled}, step3_labelled=${step3Labelled}, step4_linked=${step4Linked}, step4_migrated=${step4Migrated}`);
+    res.json({ ok: true, step1_fixed: step1Fixed, step2_labelled: step2Labelled, step3_labelled: step3Labelled, step4_linked: step4Linked, step4_migrated: step4Migrated });
+  } catch (err) {
+    console.error("[admin/migrations] owner-pay-reconciliation failed:", err);
     res.status(500).json({ error: "Migration failed", detail: String(err) });
   }
 });

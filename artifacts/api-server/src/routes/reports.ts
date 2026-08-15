@@ -2361,29 +2361,41 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
       };
     });
 
-    // Owner Compensation expenses — job take-home pay recorded via Pay Breakdown.
-    // Accepts both 'Owner Compensation' (new) and legacy 'Owner Draw' category for
-    // backward compatibility during/after the one-time migration.
-    const withdrawalExpenses = await db
-      .select({ id: expensesTable.id, date: expensesTable.date, amount: expensesTable.amount, description: expensesTable.description })
-      .from(expensesTable)
-      .where(inArray(expensesTable.category, ["Owner Compensation", "Owner Draw"]))
-      .orderBy(desc(expensesTable.date));
+    // ── Canonical withdrawal ledger ──────────────────────────────────────────────
+    // Read exclusively from owner_capital_entries WHERE amount < 0.
+    // This includes all paths: job_payroll, job_financials, accounting_overview,
+    // banking, and migrated_expense rows. No union with expenses — dedup is
+    // handled at write-time via expenseId FK (onConflictDoNothing).
+    const withdrawalRows = await db
+      .select({
+        id: ownerCapitalEntriesTable.id,
+        date: ownerCapitalEntriesTable.date,
+        amount: ownerCapitalEntriesTable.amount,
+        description: ownerCapitalEntriesTable.description,
+        source: ownerCapitalEntriesTable.source,
+        jobId: ownerCapitalEntriesTable.jobId,
+        expenseId: ownerCapitalEntriesTable.expenseId,
+      })
+      .from(ownerCapitalEntriesTable)
+      .where(sql`${ownerCapitalEntriesTable.amount}::numeric < 0`)
+      .orderBy(desc(ownerCapitalEntriesTable.date));
 
-    const withdrawals = withdrawalExpenses
-      .map(e => ({ id: `exp-${e.id}`, date: e.date, amount: parseFloat(e.amount ?? "0"), description: e.description ?? "Owner Pay" }))
-      .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+    const withdrawals = withdrawalRows.map(r => ({
+      id: `oc-${r.id}`,
+      date: r.date,
+      amount: Math.abs(parseFloat(r.amount as string)),
+      description: r.description ?? "Owner Pay",
+      source: r.source,
+      jobId: r.jobId ?? null,
+      expenseId: r.expenseId ?? null,
+    }));
 
     const totalWithdrawn = withdrawals.reduce((s, w) => s + w.amount, 0);
 
-    // Monthly paid — group Owner Compensation payments by YYYY-MM for the Take-Home Dashboard.
-    // Parse via Date so overflow date strings (e.g. "2026-06-32" stored due to a past bug)
-    // are resolved to their true calendar month before bucketing.
+    // Monthly paid — group by YYYY-MM for the Take-Home Dashboard chart.
     // Parse YYYY-MM-DD strings via the multi-argument Date constructor so that
     // overflow day values (e.g. "2026-06-32" stored due to a past timezone bug)
-    // resolve to the correct calendar month.  The string-based constructor
-    // (new Date("2026-06-32T12:00:00")) does NOT reliably overflow in all V8
-    // versions — the multi-argument form new Date(y, m-1, d) always does.
+    // resolve to the correct calendar month.
     function parseOwnerPayDate(dateStr: string): Date | null {
       const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
       if (!m) return null;
@@ -2393,12 +2405,12 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
     }
 
     const monthlyPaidMap = new Map<string, number>();
-    for (const e of withdrawalExpenses) {
-      if (!e.date) continue;
-      const d = parseOwnerPayDate(e.date);
+    for (const r of withdrawalRows) {
+      if (!r.date) continue;
+      const d = parseOwnerPayDate(r.date);
       if (!d) continue;
       const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      monthlyPaidMap.set(month, (monthlyPaidMap.get(month) ?? 0) + parseFloat(e.amount ?? "0"));
+      monthlyPaidMap.set(month, (monthlyPaidMap.get(month) ?? 0) + Math.abs(parseFloat(r.amount as string)));
     }
     const monthlyPaid = Array.from(monthlyPaidMap.entries())
       .map(([month, paid]) => ({ month, paid }))

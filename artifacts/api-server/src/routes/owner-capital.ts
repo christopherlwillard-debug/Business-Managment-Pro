@@ -83,7 +83,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { date, description, amount, businessId, jobId } = req.body;
+    const { date, description, amount, businessId, jobId, type } = req.body;
     if (!date || typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       res.status(400).json({ error: "Invalid or missing date" });
       return;
@@ -92,8 +92,8 @@ router.post("/", async (req, res) => {
       res.status(400).json({ error: "Description is required" });
       return;
     }
-    const parsedAmount = parseFloat(String(amount));
-    if (amount == null || isNaN(parsedAmount)) {
+    const rawAmount = parseFloat(String(amount));
+    if (amount == null || isNaN(rawAmount)) {
       res.status(400).json({ error: "Invalid amount" });
       return;
     }
@@ -105,12 +105,41 @@ router.post("/", async (req, res) => {
       ? parseInt(String(jobId))
       : null;
 
+    // ── Canonical sign convention (enforced server-side) ────────────────────────
+    // amount > 0 = capital contribution (owner puts money IN)
+    // amount < 0 = withdrawal / distribution (owner takes money OUT)
+    //
+    // Derive source and normalized amount from the caller context:
+    //   • jobId present → Job Financials panel → always a withdrawal (negative)
+    //   • type = 'withdrawal' → Capital Entry Take Out → negative
+    //   • type = 'injection' → Capital Entry Put In → positive
+    //   • legacy: accept signed amount as-is, infer source from sign
+    let normalizedAmount: number;
+    let resolvedSource: string;
+
+    if (parsedJobId != null) {
+      // Job Financials: always a withdrawal regardless of sign sent by client
+      normalizedAmount = -Math.abs(rawAmount);
+      resolvedSource = "job_financials";
+    } else if (type === "withdrawal") {
+      normalizedAmount = -Math.abs(rawAmount);
+      resolvedSource = "capital_entry_withdrawal";
+    } else if (type === "injection") {
+      normalizedAmount = Math.abs(rawAmount);
+      resolvedSource = "capital_entry_injection";
+    } else {
+      // Legacy path: client sends signed amount, infer direction from sign
+      normalizedAmount = rawAmount;
+      resolvedSource = rawAmount < 0 ? "capital_entry_withdrawal" : "capital_entry_injection";
+    }
+
     const [entry] = await db.insert(ownerCapitalEntriesTable).values({
       businessId: parsedBusinessId,
       jobId: parsedJobId,
       date,
       description: description.trim(),
-      amount: String(parsedAmount),
+      amount: String(normalizedAmount),
+      source: resolvedSource,
     }).returning();
     res.status(201).json(formatEntry(entry));
   } catch (err) {

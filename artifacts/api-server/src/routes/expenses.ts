@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { expensesTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable, businessTripsTable } from "@workspace/db/schema";
+import { expensesTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable, businessTripsTable, ownerCapitalEntriesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, sql, isNull, or, desc, getTableColumns } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
@@ -235,6 +235,22 @@ router.post("/", async (req, res) => {
 
     if (expense.category?.toLowerCase() === "subcontractor" && expense.jobId && expense.subcontractorId) {
       await syncJobSubPayment(expense.jobId, expense.subcontractorId);
+    }
+
+    // Dual-write to canonical owner-withdrawal ledger for any owner-category expense.
+    // My Pay reads exclusively from owner_capital_entries (WHERE amount < 0) so every
+    // owner draw or compensation expense must be mirrored there for accurate totals.
+    // amount is stored as negative (withdrawal convention). expenseId links both rows.
+    if (isOwnerDist) {
+      const bankingSource = req.body._source === "banking";
+      await db.insert(ownerCapitalEntriesTable).values({
+        date,
+        description: String(description ?? ""),
+        amount: String(-amount),
+        source: bankingSource ? "banking" : "accounting_overview",
+        expenseId: expense.id,
+        jobId: (req.body.jobId ? parseInt(String(req.body.jobId)) : null) ?? null,
+      }).onConflictDoNothing();
     }
 
     // Attempt auto-link to a bank transaction (fire-and-forget — never delays response)

@@ -1205,7 +1205,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
   const [capitalForm, setCapitalForm] = useState<{ date: string; description: string; amount: string; type: "injection" | "withdrawal" } | null>(null);
   const [capitalSaving, setCapitalSaving] = useState(false);
   const createCapitalEntry = useMutation({
-    mutationFn: async (payload: { date: string; description: string; amount: number; businessId: number | null }) => {
+    mutationFn: async (payload: { date: string; description: string; amount: number; businessId: number | null; type?: string }) => {
       const res = await fetch(`${BASE}/api/owner-capital`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1511,7 +1511,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                   const raw = parseFloat(capitalForm.amount);
                   if (isNaN(raw) || raw <= 0) { toast({ title: "Invalid amount", variant: "destructive" }); return; }
                   const finalAmount = capitalForm.type === "withdrawal" ? -raw : raw;
-                  await createCapitalEntry.mutateAsync({ date: capitalForm.date, description: capitalForm.description.trim(), amount: finalAmount, businessId: capitalBizId });
+                  await createCapitalEntry.mutateAsync({ date: capitalForm.date, description: capitalForm.description.trim(), amount: finalAmount, businessId: capitalBizId, type: capitalForm.type });
                   setCapitalForm(null);
                 } catch {
                   toast({ title: "Error", description: "Could not save entry.", variant: "destructive" });
