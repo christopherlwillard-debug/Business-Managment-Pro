@@ -941,6 +941,111 @@ describe("Mileage expense exclusion from dashboard totals", () => {
   });
 });
 
+// ── Monthly income chart includes fixed/allocation sub payments ───────────────
+//
+// Guards that accSubPayByMonth is added into the monthlyIncome expenses bar.
+// Before the fix, months where a fixed/allocation sub was paid in cash showed
+// understated expenses in the chart even though totalExpenses was correct.
+//
+// Queue order for GET /accounting (no blFilter):
+//   [0]  paidInvoices
+//   [1]  nonPaidInvoices
+//   [2]  expenses
+//   [3]  mileageLogs
+//   [4]  subs
+//   [5]  settings
+//   [6]  otherIncome
+//   [7]  accFixedAllocSubPayments  <- the slot under test
+//   [8]+ assets, assetBusinessUse, waterfall, ownerContrib, allBusinesses
+//        all return [] from the empty-queue default
+
+describe("Monthly income chart includes fixed/allocation sub payments", () => {
+
+  const JUNE_REGULAR_EXP = {
+    id:                   200,
+    date:                 `${YEAR}-06-10`,
+    amount:               "100.00",
+    category:             "Supplies",
+    businessLine:         null,
+    jobId:                null,
+    excludeFromNetProfit: false,
+    description:          "Office supplies",
+    isWageAdvance:        false,
+  };
+
+  const JUNE_SUB_PAY = {
+    amount:       "350.00",
+    paymentDate:  `${YEAR}-06-15`,
+    businessLine: null,
+  };
+
+  it("/accounting monthlyIncome: month with sub payment shows expense = regular + sub total", async () => {
+    h.selectQueue.push([]);                 // [0] paidInvoices
+    h.selectQueue.push([]);                 // [1] nonPaidInvoices
+    h.selectQueue.push([JUNE_REGULAR_EXP]); // [2] expenses ($100)
+    h.selectQueue.push([]);                 // [3] mileageLogs
+    h.selectQueue.push([]);                 // [4] subs
+    h.selectQueue.push([SETTINGS_ROW]);     // [5] settings
+    h.selectQueue.push([]);                 // [6] otherIncome
+    h.selectQueue.push([JUNE_SUB_PAY]);     // [7] accFixedAllocSubPayments ($350)
+    // [8]+ return [] from empty queue
+
+    const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
+    expect(res.status).toBe(200);
+
+    const juneBucket = (res.body.monthlyIncome as any[]).find(
+      (b: any) => b.month === `${YEAR}-06`,
+    );
+    expect(juneBucket).toBeDefined();
+    // $100 regular + $350 sub = $450; regression: $100 (sub omitted)
+    expect(juneBucket.expenses).toBeCloseTo(450, 10);
+  });
+
+  it("/accounting monthlyIncome: month with ONLY a sub payment has non-zero expenses bar", async () => {
+    h.selectQueue.push([]);             // [0] paidInvoices
+    h.selectQueue.push([]);             // [1] nonPaidInvoices
+    h.selectQueue.push([]);             // [2] expenses (none)
+    h.selectQueue.push([]);             // [3] mileageLogs
+    h.selectQueue.push([]);             // [4] subs
+    h.selectQueue.push([SETTINGS_ROW]); // [5] settings
+    h.selectQueue.push([]);             // [6] otherIncome
+    h.selectQueue.push([JUNE_SUB_PAY]); // [7] accFixedAllocSubPayments ($350)
+
+    const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
+    expect(res.status).toBe(200);
+
+    const juneBucket = (res.body.monthlyIncome as any[]).find(
+      (b: any) => b.month === `${YEAR}-06`,
+    );
+    expect(juneBucket).toBeDefined();
+    // Regression: $0 (sub payment ignored entirely)
+    expect(juneBucket.expenses).toBeCloseTo(350, 10);
+  });
+
+  it("/accounting monthlyIncome: sub payment does not bleed into adjacent months", async () => {
+    h.selectQueue.push([]);             // [0] paidInvoices
+    h.selectQueue.push([]);             // [1] nonPaidInvoices
+    h.selectQueue.push([]);             // [2] expenses
+    h.selectQueue.push([]);             // [3] mileageLogs
+    h.selectQueue.push([]);             // [4] subs
+    h.selectQueue.push([SETTINGS_ROW]); // [5] settings
+    h.selectQueue.push([]);             // [6] otherIncome
+    h.selectQueue.push([JUNE_SUB_PAY]); // [7] accFixedAllocSubPayments (June only)
+
+    const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
+    expect(res.status).toBe(200);
+
+    const monthly = res.body.monthlyIncome as any[];
+    const juneBucket = monthly.find((b: any) => b.month === `${YEAR}-06`);
+    expect(juneBucket?.expenses).toBeCloseTo(350, 10);
+
+    for (const bucket of monthly) {
+      if (bucket.month === `${YEAR}-06`) continue;
+      expect(bucket.expenses).toBeCloseTo(0, 10);
+    }
+  });
+});
+
 // ── Mileage exclusion from accounting totals ──────────────────────────────────
 //
 // Guards the nonMileageExpenses filter (~line 493 of reports.ts).
