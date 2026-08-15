@@ -94,7 +94,8 @@ export const NON_CONSTRUCTION_NEGATIVE_TERMS = [
  * Title-level hard-suppression terms.
  * Any opportunity whose TITLE contains one of these is skipped at sync time —
  * it is clearly incompatible with this contractor regardless of keyword matches.
- * Keep in sync with TITLE_HARD_SUPPRESS in bidSync.ts.
+ * This is the single authoritative source — bidSync.ts imports this list directly.
+ * Add new terms here; there is no separate copy to update.
  */
 export const TITLE_HARD_SUPPRESS_TERMS = [
   // Waste / environmental
