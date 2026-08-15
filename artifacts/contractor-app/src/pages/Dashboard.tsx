@@ -4,6 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBusiness, type Business } from "@/contexts/BusinessContext";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line } from "recharts";
 import {
   Briefcase, DollarSign, Receipt, AlertTriangle, ArrowRight, ShieldAlert,
@@ -490,7 +494,7 @@ function TodayScheduleCard({ stops, onNavigate }: {
   );
 }
 
-function NeedsAttentionCard({ subContractorOwed, pendingInvoices, overdueCount, complianceCount, taxAlertCount, followUpCount, onNavigate }: {
+function NeedsAttentionCard({ subContractorOwed, pendingInvoices, overdueCount, complianceCount, taxAlertCount, followUpCount, onNavigate, onLogTaxPayment }: {
   subContractorOwed: number;
   pendingInvoices: number;
   overdueCount: number;
@@ -498,13 +502,14 @@ function NeedsAttentionCard({ subContractorOwed, pendingInvoices, overdueCount, 
   taxAlertCount: number;
   followUpCount: number;
   onNavigate: (p: string) => void;
+  onLogTaxPayment?: () => void;
 }) {
   const rows = [
-    { label: "Subs Need Paid",       badge: subContractorOwed > 0 ? formatCurrency(subContractorOwed) : null, extra: null,                                                      dot: "bg-amber-500",  href: "/people",                      show: subContractorOwed > 0                   },
-    { label: "Outstanding Invoices", badge: pendingInvoices > 0 ? formatCurrency(pendingInvoices) : null,     extra: overdueCount > 0 ? `${overdueCount} overdue` : null,       dot: overdueCount > 0 ? "bg-red-500" : "bg-blue-400", href: "/accounting", show: pendingInvoices > 0 || overdueCount > 0 },
-    { label: "Compliance Items",     badge: complianceCount > 0 ? `${complianceCount} urgent` : null,         extra: null,                                                      dot: "bg-orange-500", href: "/accounting?tab=tax-calendar", show: complianceCount > 0                    },
-    { label: "Tax Payments Due",     badge: taxAlertCount > 0 ? `${taxAlertCount} due` : null,                extra: null,                                                      dot: "bg-red-500",    href: "/accounting?tab=tax-calendar", show: taxAlertCount > 0                      },
-    { label: "Follow-ups Due",       badge: followUpCount > 0 ? `${followUpCount} due` : null,               extra: null,                                                      dot: "bg-purple-500", href: "/prospects",                   show: followUpCount > 0                      },
+    { label: "Subs Need Paid",       badge: subContractorOwed > 0 ? formatCurrency(subContractorOwed) : null, extra: null,                                                      dot: "bg-amber-500",  href: "/people",                      show: subContractorOwed > 0,   isTax: false },
+    { label: "Outstanding Invoices", badge: pendingInvoices > 0 ? formatCurrency(pendingInvoices) : null,     extra: overdueCount > 0 ? `${overdueCount} overdue` : null,       dot: overdueCount > 0 ? "bg-red-500" : "bg-blue-400", href: "/accounting", show: pendingInvoices > 0 || overdueCount > 0, isTax: false },
+    { label: "Compliance Items",     badge: complianceCount > 0 ? `${complianceCount} urgent` : null,         extra: null,                                                      dot: "bg-orange-500", href: "/accounting?tab=tax-calendar", show: complianceCount > 0,                   isTax: false },
+    { label: "Tax Payments Due",     badge: taxAlertCount > 0 ? `${taxAlertCount} due` : null,                extra: null,                                                      dot: "bg-red-500",    href: "/accounting?tab=tax-calendar", show: taxAlertCount > 0,                     isTax: true  },
+    { label: "Follow-ups Due",       badge: followUpCount > 0 ? `${followUpCount} due` : null,               extra: null,                                                      dot: "bg-purple-500", href: "/prospects",                   show: followUpCount > 0,                     isTax: false },
   ].filter(r => r.show);
 
   if (!rows.length) {
@@ -525,19 +530,45 @@ function NeedsAttentionCard({ subContractorOwed, pendingInvoices, overdueCount, 
       <Card className="shadow-sm border-border/50 overflow-hidden">
         <CardContent className="p-0">
           {rows.map((row, i) => (
-            <button
-              key={row.label}
-              onClick={() => onNavigate(row.href)}
-              className={cn("w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors", i > 0 && "border-t border-border/40")}
-            >
-              <span className={cn("w-2 h-2 rounded-full flex-shrink-0", row.dot)} />
-              <span className="flex-1 text-sm font-medium text-foreground">{row.label}</span>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {row.extra && <span className="text-xs text-red-600 font-semibold">{row.extra}</span>}
-                {row.badge && <span className="text-sm font-bold text-foreground">{row.badge}</span>}
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
+            row.isTax && onLogTaxPayment ? (
+              // Tax row: split into navigate area + secondary Log action (avoids nested buttons)
+              <div
+                key={row.label}
+                className={cn("w-full flex items-center gap-3 px-4 py-3", i > 0 && "border-t border-border/40")}
+              >
+                <button
+                  onClick={() => onNavigate(row.href)}
+                  className="flex items-center gap-3 flex-1 text-left min-w-0"
+                >
+                  <span className={cn("w-2 h-2 rounded-full flex-shrink-0", row.dot)} />
+                  <span className="flex-1 text-sm font-medium text-foreground">{row.label}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {row.badge && <span className="text-sm font-bold text-foreground">{row.badge}</span>}
+                    <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
+                  </div>
+                </button>
+                <button
+                  onClick={onLogTaxPayment}
+                  className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition-colors"
+                >
+                  Log
+                </button>
               </div>
-            </button>
+            ) : (
+              <button
+                key={row.label}
+                onClick={() => onNavigate(row.href)}
+                className={cn("w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors", i > 0 && "border-t border-border/40")}
+              >
+                <span className={cn("w-2 h-2 rounded-full flex-shrink-0", row.dot)} />
+                <span className="flex-1 text-sm font-medium text-foreground">{row.label}</span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {row.extra && <span className="text-xs text-red-600 font-semibold">{row.extra}</span>}
+                  {row.badge && <span className="text-sm font-bold text-foreground">{row.badge}</span>}
+                  <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
+                </div>
+              </button>
+            )
           ))}
         </CardContent>
       </Card>
@@ -804,6 +835,43 @@ export default function Dashboard() {
   // drawOpen controls the Record Pay dialog via MyPayCard's external prop
   const [drawOpen, setDrawOpen] = useState(false);
 
+  // Quick-log tax payment dialog
+  const [logTaxOpen, setLogTaxOpen] = useState(false);
+  const [logTaxAmount, setLogTaxAmount] = useState("");
+  const [logTaxDate, setLogTaxDate] = useState(getTodayStr());
+  const [logTaxSaving, setLogTaxSaving] = useState(false);
+  const firstDueTaxQuarter = taxAlerts[0] ?? null;
+
+  async function handleQuickLogTax(e: React.FormEvent) {
+    e.preventDefault();
+    if (!firstDueTaxQuarter || !logTaxAmount) return;
+    setLogTaxSaving(true);
+    try {
+      const year = new Date().getFullYear();
+      const res = await fetch(`${BASE}/api/estimated-tax-payments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          year,
+          quarter: firstDueTaxQuarter.quarter,
+          level: "federal",
+          amountPaid: parseFloat(logTaxAmount),
+          paidDate: logTaxDate,
+          paymentMethod: "other",
+          notes: "Logged from dashboard",
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      queryClient.invalidateQueries({ queryKey: ["tax-alerts-dashboard"] });
+      setLogTaxOpen(false);
+      setLogTaxAmount("");
+    } catch {
+      // non-critical — user can retry in Tax Calendar
+    } finally {
+      setLogTaxSaving(false);
+    }
+  }
+
   const now = new Date();
   const todayFormatted = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
@@ -849,7 +917,65 @@ export default function Dashboard() {
         taxAlertCount={annualOnly ? 0 : taxAlerts.length}
         followUpCount={followUpProspects.length}
         onNavigate={navigate}
+        onLogTaxPayment={!annualOnly && taxAlerts.length > 0 ? () => { setLogTaxDate(getTodayStr()); setLogTaxOpen(true); } : undefined}
       />
+
+      {/* Quick-log tax payment dialog */}
+      {firstDueTaxQuarter && (
+        <Dialog open={logTaxOpen} onOpenChange={setLogTaxOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Log Tax Payment — {firstDueTaxQuarter.label}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleQuickLogTax} className="space-y-4">
+              <div className="rounded-lg bg-muted/50 border border-border p-3 text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Quarter</span>
+                  <span className="font-semibold">{firstDueTaxQuarter.label}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Due</span>
+                  <span className="font-semibold">{firstDueTaxQuarter.federalDueDateLabel}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Recommended</span>
+                  <span className="font-bold text-amber-700">{formatCurrency(firstDueTaxQuarter.recommendedTotal)}</span>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="log-tax-amount">Amount Paid ($)</Label>
+                <Input
+                  id="log-tax-amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder={String(firstDueTaxQuarter.recommendedTotal.toFixed(2))}
+                  value={logTaxAmount}
+                  onChange={e => setLogTaxAmount(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="log-tax-date">Payment Date</Label>
+                <Input
+                  id="log-tax-date"
+                  type="date"
+                  value={logTaxDate}
+                  onChange={e => setLogTaxDate(e.target.value)}
+                  required
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setLogTaxOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={logTaxSaving || !logTaxAmount}>
+                  {logTaxSaving ? "Saving…" : "Log Payment"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* ── 7. MY TO-DO LIST ── */}
       <DashboardTasksWidget />

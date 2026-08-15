@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import {
   Search, X, ChevronDown, ImagePlus, Loader2, Images,
   Copy, ClipboardPaste, Eye, EyeOff, ChevronsLeft, ChevronsRight, Layers,
-  Trash2, RotateCcw,
+  Trash2, RotateCcw, Sparkles,
 } from "lucide-react";
 import type { BlockStyle } from "./sections/BlockStyleWrapper";
 import type { SiteComponent } from "./sections/ContentSection";
@@ -58,6 +58,8 @@ export interface InspectorPanelProps {
   onClearSubElement?: () => void;
   /** Patch the section's content object (heading text, phone, button label, etc.) */
   onChangeContent?: (content: Record<string, unknown>) => void;
+  /** Called when the user clicks "Regenerate with AI" on the section header. */
+  onRegenerateSection?: () => Promise<void>;
   /** Desktop (base) BlockStyle — provided when editing a responsive breakpoint. */
   desktopBlockStyle?: BlockStyle;
   /** Which breakpoint is currently being edited ("tablet" | "mobile"). */
@@ -675,10 +677,11 @@ export function InspectorPanel({
   collapsed, onCollapse, onExpand, autoCollapsed, onClearAutoCollapse,
   specialContent, initialTab,
   selectedSubElement, onClearSubElement,
-  onChangeContent,
+  onChangeContent, onRegenerateSection,
   desktopBlockStyle, editingBreakpoint, onResetBreakpointStyle,
 }: InspectorPanelProps) {
   const hasComponent = !!selectedComponent;
+  const [regenLoading, setRegenLoading] = useState(false);
 
   // ── Panel width (resizable) ────────────────────────────────────────────────
   const [panelWidth, setPanelWidth] = useState(() => {
@@ -1058,6 +1061,22 @@ export function InspectorPanel({
                     className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-500 transition-colors">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
+                  {onRegenerateSection && (
+                    <button
+                      type="button"
+                      title="Regenerate this section's copy with AI"
+                      disabled={regenLoading}
+                      onClick={async () => {
+                        setRegenLoading(true);
+                        try { await onRegenerateSection(); } finally { setRegenLoading(false); }
+                      }}
+                      className="p-1 rounded hover:bg-violet-50 dark:hover:bg-violet-900/20 text-muted-foreground hover:text-violet-600 transition-colors disabled:opacity-50"
+                    >
+                      {regenLoading
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Sparkles className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
                 </>
               )}
               <button type="button" onClick={onCollapse} title="Collapse panel"

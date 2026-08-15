@@ -1032,7 +1032,7 @@ router.get("/form-submissions", wrapAsync(async (req, res) => {
     .from(websiteFormSubmissionsTable)
     .where(eq(websiteFormSubmissionsTable.businessId, businessId))
     .orderBy(desc(websiteFormSubmissionsTable.submittedAt))
-    .limit(20);
+    .limit(500);
   res.json(subs);
 }));
 
@@ -5297,6 +5297,54 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
   });
 
   return res.json({ pages, progress: progressMap });
+}));
+
+// ── POST /regenerate-section ──────────────────────────────────────────────────
+// Regenerates AI-written copy for a single section without rebuilding the whole site.
+// Body: { businessId, sectionType, sectionContent }
+// Response: { content } — the generated copy patch (merge into the existing section content)
+router.post("/regenerate-section", wrapAsync(async (req, res) => {
+  const { businessId, sectionType, sectionContent } = req.body as {
+    businessId?: number;
+    sectionType?: string;
+    sectionContent?: Record<string, unknown>;
+  };
+
+  if (!businessId || isNaN(Number(businessId))) return res.status(400).json({ error: "businessId required" });
+  if (!sectionType) return res.status(400).json({ error: "sectionType required" });
+
+  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, Number(businessId)));
+  if (!biz) return res.status(404).json({ error: "Business not found" });
+
+  // Fetch existing website config for service area context
+  const [config] = await db
+    .select({ sections: websiteConfigsTable.sections })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, Number(businessId)));
+
+  type ExRow = { type: string; content: Record<string, unknown> };
+  const existingSections = (config?.sections ?? []) as ExRow[];
+  const serviceAreaSection = existingSections.find(s => s.type === "service-area");
+  const coverageAreas = (serviceAreaSection?.content?.areas as string[] | undefined) ?? [];
+  const cityState = [biz.city, biz.state].filter(Boolean).join(", ");
+
+  const ctx: BusinessContext = {
+    businessName: biz.name ?? "Our Company",
+    businessType: (biz as any).businessLine ?? (biz as any).type ?? "contractor",
+    location: cityState || undefined,
+    serviceArea: cityState || coverageAreas.slice(0, 3).join(", ") || undefined,
+    phone:  (biz as any).phone  ?? undefined,
+    email:  (biz as any).email  ?? undefined,
+  };
+
+  const section: SectionForCopy = { id: "regen", type: sectionType, content: sectionContent ?? {} };
+  const generated = await generateSectionCopy(section, ctx);
+
+  if (!generated) {
+    return res.status(422).json({ error: "This section type does not support AI copy generation" });
+  }
+
+  res.json({ content: generated });
 }));
 
 export { router as websiteRouter, publicRouter as websitePublicRouter };

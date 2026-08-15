@@ -519,7 +519,11 @@ export default function BidOpportunities() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
-            {bidsToRender.map((bid) => (
+            {bidsToRender.map((bid) => {
+              const bizType = activeBusiness?.type ?? activeBusiness?.slug ?? "";
+              const naicsPool = BUSINESS_NAICS[bizType] ?? Object.values(BUSINESS_NAICS).flat();
+              const naicsMatch = bid.naicsCode ? naicsPool.includes(bid.naicsCode) : undefined;
+              return (
               <BidCard
                 key={bid.id}
                 bid={bid}
@@ -533,8 +537,10 @@ export default function BidOpportunities() {
                 isUpdating={updateStage.isPending}
                 multipleBusinesses={!activeBusiness && businesses.length > 1}
                 relevantBusinessNames={bid.relevantBusinessNames}
+                naicsMatch={naicsMatch}
               />
-            ))}
+              );
+            })}
           </div>
         )}
       </>

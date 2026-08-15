@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { CheckCircle, Loader2, InboxIcon, Settings } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { CheckCircle, Loader2, InboxIcon, Settings, Download, Search } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { TextStyleToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
 import { FormBuilder, defaultContactFields, type FormField } from "./FormBuilder";
@@ -105,6 +105,7 @@ function SubmissionsViewer({ businessId }: { businessId?: number }) {
   const [subs, setSubs] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (!businessId) return;
@@ -116,32 +117,88 @@ function SubmissionsViewer({ businessId }: { businessId?: number }) {
       .finally(() => setLoading(false));
   }, [businessId]);
 
+  const filtered = useMemo(() => {
+    if (!searchQuery.trim()) return subs;
+    const q = searchQuery.trim().toLowerCase();
+    return subs.filter(sub =>
+      Object.values(sub.fields).some(v => String(v).toLowerCase().includes(q)) ||
+      new Date(sub.submittedAt).toLocaleString().toLowerCase().includes(q)
+    );
+  }, [subs, searchQuery]);
+
+  function exportCsv() {
+    if (!subs.length) return;
+    const allKeys = Array.from(new Set(subs.flatMap(s => Object.keys(s.fields))));
+    const header = ["Submitted At", ...allKeys].join(",");
+    const rows = subs.map(sub => [
+      new Date(sub.submittedAt).toLocaleString(),
+      ...allKeys.map(k => `"${(sub.fields[k] ?? "").replace(/"/g, '""')}"`)
+    ].join(","));
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "contact-submissions.csv"; a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (loading) return <div className="py-8 text-center text-muted-foreground text-sm flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>;
   if (error) return <p className="text-sm text-red-500 py-4">{error}</p>;
-  if (subs.length === 0) return (
-    <div className="py-10 text-center text-muted-foreground">
-      <InboxIcon className="w-8 h-8 mx-auto mb-2 opacity-30" />
-      <p className="text-sm">No submissions yet.</p>
-    </div>
-  );
 
   return (
-    <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-      {subs.map(sub => (
-        <div key={sub.id} className="rounded-lg border border-border p-3 bg-muted/30">
-          <p className="text-[10px] text-muted-foreground mb-2">
-            {new Date(sub.submittedAt).toLocaleString()}
-          </p>
-          <div className="space-y-1">
-            {Object.entries(sub.fields).map(([k, v]) => (
-              <div key={k} className="flex gap-2 text-sm">
-                <span className="font-medium text-foreground min-w-[100px] flex-shrink-0">{k}:</span>
-                <span className="text-muted-foreground break-all">{v}</span>
-              </div>
-            ))}
-          </div>
+    <div className="space-y-3">
+      {/* Search + export toolbar */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search submissions…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
         </div>
-      ))}
+        {subs.length > 0 && (
+          <button
+            onClick={exportCsv}
+            title="Export all submissions as CSV"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            CSV
+          </button>
+        )}
+      </div>
+
+      {subs.length === 0 ? (
+        <div className="py-10 text-center text-muted-foreground">
+          <InboxIcon className="w-8 h-8 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">No submissions yet.</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="py-8 text-center text-muted-foreground">
+          <Search className="w-6 h-6 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">No submissions match "{searchQuery}"</p>
+        </div>
+      ) : (
+        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+          {filtered.map(sub => (
+            <div key={sub.id} className="rounded-lg border border-border p-3 bg-muted/30">
+              <p className="text-[10px] text-muted-foreground mb-2">
+                {new Date(sub.submittedAt).toLocaleString()}
+              </p>
+              <div className="space-y-1">
+                {Object.entries(sub.fields).map(([k, v]) => (
+                  <div key={k} className="flex gap-2 text-sm">
+                    <span className="font-medium text-foreground min-w-[100px] flex-shrink-0">{k}:</span>
+                    <span className="text-muted-foreground break-all">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

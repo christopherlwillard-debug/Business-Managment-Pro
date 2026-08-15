@@ -35,6 +35,14 @@ export async function recomputeSubPaid(jobId: number): Promise<boolean> {
         AND spr.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
         AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
     ), '0')`,
+    // Sum of bonuses recorded for this sub on this job — needed to adjust hourly owed amount
+    totalBonuses: sql<string>`COALESCE((
+      SELECT SUM(spr.bonus_amount) FROM sub_payment_records spr
+      WHERE spr.job_id = ${jobId}
+        AND spr.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+        AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+        AND spr.bonus_amount IS NOT NULL
+    ), '0')`,
   }).from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, jobId));
 
   // Fetch split pool once if any allocation sub needs it
@@ -48,8 +56,13 @@ export async function recomputeSubPaid(jobId: number): Promise<boolean> {
     const ledger = parseFloat(r.ledgerPaid ?? "0");
     const columnPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
     const paid = Math.max(ledger, columnPaid);
-    const owed = computeSubOwed(r, splitPool);
+    let owed = computeSubOwed(r, splitPool);
     if (owed === null) return false; // owed unknown → treat as unpaid
+    // For hourly subs, computeSubOwed returns hours×rate only. Add recorded bonuses
+    // so a valid bonus payment doesn't incorrectly keep the status as partial/unpaid.
+    if ((r.compensationType ?? "hourly") === "hourly") {
+      owed += parseFloat((r as any).totalBonuses ?? "0");
+    }
     return owed <= 0 || paid >= owed - 0.01;
   });
   await db.update(jobsTable).set({ subPaid: allPaid }).where(eq(jobsTable.id, jobId));
@@ -434,6 +447,11 @@ router.get("/:id/profit", async (req, res) => {
     // Sub labor: hourly (hours × rate + accrued bonus) + fixed (cash paid)
     const subLaborCost = hoursLaborCost + nonHoursCost + accruedBonusTotal;
 
+    // Actual fuel cost — sum of Fuel/Travel expenses that count toward job profit
+    const actualFuelCost = expRows
+      .filter(e => e.category === "Fuel/Travel" && e.countsTowardJobProfit !== false && !OWNER_PAY_CATEGORIES.has(e.category ?? ""))
+      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+
     // Net profit uses grossInvoiced (accrual view) — shows job profitability the moment
     // it's invoiced rather than waiting for cash collection. The accounting/tax system
     // stays on cash basis; this is an operational job-management metric only.
@@ -554,6 +572,7 @@ router.get("/:id/profit", async (req, res) => {
       subLaborCost, allocPaid, totalSubHours,
       netProfit, ownerDrawTaken,
       estimatedFuelCost,
+      actualFuelCost: actualFuelCost > 0 ? actualFuelCost : null,
       fuelStatus,
       operationalProfit,
       fuelBreakdown,

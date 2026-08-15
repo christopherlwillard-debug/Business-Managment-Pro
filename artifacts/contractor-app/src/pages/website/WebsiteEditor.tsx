@@ -1508,7 +1508,9 @@ function WebsiteEditor() {
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [localPages, setLocalPages] = useState<SitePage[] | null>(null);
   const [localSettings, setLocalSettings] = useState<SiteSettings | null>(null);
-  const [activePageId, setActivePageId] = useState<string>("home");
+  const [activePageId, setActivePageId] = useState<string>(() => {
+    try { return localStorage.getItem("site-editor-last-page") ?? "home"; } catch { return "home"; }
+  });
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [editingPageName, setEditingPageName] = useState("");
   const [showAddPage, setShowAddPage] = useState(false);
@@ -2875,6 +2877,34 @@ function WebsiteEditor() {
     setLocalSettings({ ...settings, ...patch });
   }
 
+  /** AI per-section regeneration — rewrites only the copy fields of one section. */
+  async function handleRegenerateSection(sectionId: string) {
+    if (!bizId) return;
+    const sec = sections.find(s => s.id === sectionId);
+    if (!sec) return;
+    try {
+      const res = await fetch(`${BASE}/api/website/regenerate-section`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ businessId: bizId, sectionType: sec.type, sectionContent: sec.content }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Could not regenerate section", description: (err as any).error ?? "This section type may not support AI copy", variant: "destructive" });
+        return;
+      }
+      const { content: generated } = await res.json() as { content: Record<string, unknown> };
+      if (!generated) return;
+      history.pushSnapshot({ sections: pagesRef.current, settings });
+      updateContent(sectionId, { ...(sec.content as Record<string, unknown>), ...generated });
+      isDirtyRef.current = true;
+      toast({ title: "Section regenerated ✨", description: "AI copy applied to this section", duration: 2500 });
+    } catch {
+      toast({ title: "Regeneration failed", variant: "destructive" });
+    }
+  }
+
   /**
    * M18 – AI Website Refresh apply handler.
    * Applies accepted suggestions as a batch, then records the refresh timestamp.
@@ -4156,6 +4186,7 @@ function WebsiteEditor() {
     if (pageId === activePageId) return;
     setActivePageId(pageId);
     setActiveSection(null);
+    try { localStorage.setItem("site-editor-last-page", pageId); } catch { /* ignore */ }
   }
 
   function patchHomeHeaderNavLinks(allPages: SitePage[], updater: (links: any[]) => any[]): SitePage[] {
@@ -4779,7 +4810,7 @@ function WebsiteEditor() {
         const idx = p.sections.findIndex(s => s.id === afterSectionId);
         if (idx === -1) return p;
         const cloned = JSON.parse(JSON.stringify(copiedSection)) as Section;
-        const newSection: Section = { ...cloned, id: nanoid(), locked: false, order: 0 };
+        const newSection: Section = { ...cloned, id: nanoid(), locked: false, order: 0, content: regenerateNestedIds(cloned.content) as Record<string, unknown> };
         const inserted = [...p.sections.slice(0, idx + 1), newSection, ...p.sections.slice(idx + 1)];
         return { ...p, sections: inserted.map((s, i) => ({ ...s, order: i })) };
       });
@@ -5165,7 +5196,11 @@ function WebsiteEditor() {
               components: (src.components ?? []).map((c: any) => ({ ...JSON.parse(JSON.stringify(c)), id: nanoid() })),
             };
             const newCols = [...cols.slice(0, idx + 1), dup, ...cols.slice(idx + 1)];
-            return { ...s, content: { ...(s.content as any), columns: newCols } };
+            // Redistribute spans so they always sum to 12
+            const equal = Math.floor(12 / newCols.length);
+            const rem = 12 - equal * newCols.length;
+            const normalizedCols = newCols.map((c: any, i: number) => ({ ...c, span: equal + (i === 0 ? rem : 0) }));
+            return { ...s, content: { ...(s.content as any), columns: normalizedCols } };
           }),
         };
       });
@@ -6522,18 +6557,32 @@ function WebsiteEditor() {
               <span className="hidden md:inline">Preview</span>
             </button>
 
-            {/* Open live site — only when published */}
-            {isPublished && publicUrl && (
-              <a
-                href={publicUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Open published site in new tab"
-                className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-green-500/40 bg-green-50 dark:bg-green-900/20 text-xs font-medium text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Live Site</span>
-              </a>
+            {/* Open live site — always visible; warns when not yet published */}
+            {publicUrl && (
+              isPublished ? (
+                <a
+                  href={publicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open published site in new tab"
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-green-500/40 bg-green-50 dark:bg-green-900/20 text-xs font-medium text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Live Site</span>
+                </a>
+              ) : (
+                <a
+                  href={publicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Page not published yet — visitors will see a 'not found' page until you publish"
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-amber-300/60 bg-amber-50 dark:bg-amber-900/20 text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Live Site</span>
+                  <span className="hidden sm:inline text-[9px] leading-none px-1 py-0.5 rounded bg-amber-200/70 dark:bg-amber-800/40 text-amber-700 dark:text-amber-300 font-semibold ml-0.5">Not published</span>
+                </a>
+              )
             )}
 
             {/* Save status indicator */}
@@ -7560,6 +7609,7 @@ function WebsiteEditor() {
                   selectedSubElement={selectedSubElement}
                   onClearSubElement={() => setSelectedSubElement(null)}
                   onChangeContent={content => updateContent(sec.id, content)}
+                  onRegenerateSection={() => handleRegenerateSection(sec.id)}
                 />
               </div>
             );
@@ -7895,6 +7945,7 @@ function WebsiteEditor() {
                       selectedSubElement={selectedSubElement}
                       onClearSubElement={() => setSelectedSubElement(null)}
                       onChangeContent={content => updateContent(sec.id, content)}
+                      onRegenerateSection={() => handleRegenerateSection(sec.id)}
                     />
                   )}
                 </div>
@@ -8250,6 +8301,7 @@ function WebsiteEditor() {
                     selectedSubElement={selectedSubElement}
                     onClearSubElement={() => setSelectedSubElement(null)}
                     onChangeContent={content => updateContent(sec.id, content)}
+                    onRegenerateSection={() => handleRegenerateSection(sec.id)}
                   />
                 </div>
               </div>

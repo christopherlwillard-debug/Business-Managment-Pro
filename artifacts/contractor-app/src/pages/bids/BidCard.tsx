@@ -285,11 +285,13 @@ interface Props {
   /** Show business relevance chips (only meaningful in multi-business context). */
   multipleBusinesses?:   boolean;
   relevantBusinessNames?: string[];
+  /** Whether the bid's NAICS code matches the owner's capability profiles. */
+  naicsMatch?:           boolean;
 }
 
 export default function BidCard({
   bid, summary, onSummarize, onEducate, onQualify, onStageChange, onDismiss, onRestore, isUpdating,
-  multipleBusinesses, relevantBusinessNames,
+  multipleBusinesses, relevantBusinessNames, naicsMatch,
 }: Props) {
   const effectiveSummary = summary;
   const isNoBid   = bid.stage === "no_bid";
@@ -446,7 +448,19 @@ export default function BidCard({
       {/* ── Meta row: NAICS · deadline · fit indicator ── */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         {bid.naicsCode && (
-          <span className="text-xs text-muted-foreground">NAICS {bid.naicsCode}</span>
+          <span className={cn("text-xs", naicsMatch ? "text-emerald-700 dark:text-emerald-400 font-semibold" : "text-muted-foreground")}>
+            NAICS {bid.naicsCode}
+            {naicsMatch !== undefined && (
+              <span className={cn(
+                "ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full",
+                naicsMatch
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                  : "bg-slate-100 text-slate-500 dark:bg-slate-800/30 dark:text-slate-400"
+              )}>
+                {naicsMatch ? "✓ Match" : "No match"}
+              </span>
+            )}
+          </span>
         )}
         {bid.relevanceReason && (
           <span

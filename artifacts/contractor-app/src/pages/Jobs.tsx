@@ -1012,6 +1012,7 @@ type JobProfit = {
   netProfit: number;
   ownerDrawTaken?: number;
   estimatedFuelCost?: number | null;
+  actualFuelCost?: number | null;
   fuelStatus?: "ok" | "missing_address" | "geocoding_failed" | "error";
   operationalProfit?: number | null;
   fuelBreakdown?: {
@@ -1563,6 +1564,22 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                     </div>
                   );
                 })()}
+                {/* Actual Fuel Cost — real gas receipts linked to this job */}
+                {profit?.actualFuelCost != null && (
+                  <div className="rounded-xl border border-blue-200/70 bg-blue-50/40 px-4 py-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs text-blue-700 font-medium uppercase tracking-wide">Actual Fuel Expenses</p>
+                      <p className="text-xl font-bold text-blue-700 mt-0.5">-{formatCurrency(profit.actualFuelCost)}</p>
+                      {profit.estimatedFuelCost != null && (
+                        <p className={`text-[10px] mt-0.5 font-medium ${profit.actualFuelCost > profit.estimatedFuelCost ? "text-red-600" : "text-emerald-600"}`}>
+                          {profit.actualFuelCost > profit.estimatedFuelCost ? "+" : "−"}
+                          {formatCurrency(Math.abs(profit.actualFuelCost - profit.estimatedFuelCost))} vs estimate
+                        </p>
+                      )}
+                    </div>
+                    <Fuel className="w-6 h-6 text-blue-300 flex-shrink-0" />
+                  </div>
+                )}
                 {/* Fuel cost unavailable hint */}
                 {profit?.estimatedFuelCost == null && (profit?.fuelStatus === "missing_address" || profit?.fuelStatus === "geocoding_failed") && (
                   <div className="rounded-xl border border-amber-200/50 bg-amber-50/30 px-4 py-3 flex items-center gap-3">
@@ -4100,7 +4117,7 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 type ChecklistSummary = { completedItems: number; totalItems: number; overallPercent: number };
 
 function JobCard({
-  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, onLoadEstimateIntoInvoice,
+  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, estimatesLoading, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
   checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice,
@@ -4112,6 +4129,7 @@ function JobCard({
   onMarkCompleted: (job: Job) => void;
   materialListCount: number;
   estimateTotal?: number;
+  estimatesLoading?: boolean;
   onLoadEstimateIntoInvoice?: (job: Job, estimates: Estimate[]) => void;
   invoiceSummary?: Invoice | null;
   onCreateInvoice?: () => void;
@@ -4322,9 +4340,11 @@ function JobCard({
                 </button>
               )}
             </div>
-            {estimateTotal != null && (
+            {estimatesLoading && estimateTotal == null ? (
+              <div className="h-4 w-20 bg-muted animate-pulse rounded" />
+            ) : estimateTotal != null ? (
               <p className="text-amber-600 font-bold text-sm">{formatCurrency(estimateTotal)}</p>
-            )}
+            ) : null}
           </div>
           {canEdit("jobs") && (
             <div className="flex items-center gap-1 flex-shrink-0">
@@ -6302,7 +6322,7 @@ export default function Jobs() {
     staleTime: 30 * 1000,
   });
 
-  const { data: allEstimates = [] } = useListEstimates();
+  const { data: allEstimates = [], isLoading: estimatesLoading } = useListEstimates();
   const estimateTotalByJob = allEstimates.reduce<Record<number, number>>((acc, est) => {
     if (est.jobId == null) return acc;
     acc[est.jobId] = (acc[est.jobId] ?? 0) + est.total;
@@ -7126,6 +7146,7 @@ export default function Jobs() {
                       onMarkCompleted={handleMarkCompleted}
                       materialListCount={materialListCountByJob[job.id] ?? 0}
                       estimateTotal={estimateTotalByJob[job.id]}
+                      estimatesLoading={estimatesLoading}
                       onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
                       invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                       onCreateInvoice={() => handleReviewInvoice(job)}
@@ -7169,6 +7190,7 @@ export default function Jobs() {
                         onMarkCompleted={handleMarkCompleted}
                         materialListCount={materialListCountByJob[job.id] ?? 0}
                         estimateTotal={estimateTotalByJob[job.id]}
+                        estimatesLoading={estimatesLoading}
                         onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
                         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                         onCreateInvoice={() => handleReviewInvoice(job)}
@@ -7217,6 +7239,7 @@ export default function Jobs() {
                         onMarkCompleted={handleMarkCompleted}
                         materialListCount={materialListCountByJob[job.id] ?? 0}
                         estimateTotal={estimateTotalByJob[job.id]}
+                        estimatesLoading={estimatesLoading}
                         onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
                         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                         onCreateInvoice={() => handleReviewInvoice(job)}

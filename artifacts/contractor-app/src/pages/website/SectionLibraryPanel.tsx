@@ -1112,6 +1112,18 @@ const SECTION_TYPE_EMOJIS: Record<string, string> = {
   legal: "⚖️", header: "🔝",
 };
 
+function extractContentPreview(content: Record<string, unknown> | undefined | null): string | null {
+  if (!content) return null;
+  const candidates = [
+    content.headline, content.heading, content.title, content.subheadline,
+    content.subheading, content.body, content.tagline,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim().length > 3) return c.trim();
+  }
+  return null;
+}
+
 function SavedSectionCard({
   saved,
   onInsert,
@@ -1122,8 +1134,10 @@ function SavedSectionCard({
   onDelete?: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const emoji = SECTION_TYPE_EMOJIS[saved.sectionType] ?? "🧩";
   const label = saved.sectionType.replace(/-/g, " ");
+  const preview = extractContentPreview(saved.content);
 
   return (
     <div className="relative flex flex-col rounded-xl border border-border bg-card hover:border-primary/40 hover:shadow-sm transition-all overflow-hidden">
@@ -1136,6 +1150,24 @@ function SavedSectionCard({
         <p className="text-xs font-semibold text-foreground leading-tight line-clamp-2 mt-0.5">{saved.name}</p>
         <p className="text-[10px] text-muted-foreground capitalize">{label}</p>
       </button>
+
+      {/* Content preview (collapsible) */}
+      {preview && (
+        <div className="px-3 pb-1.5">
+          <button
+            type="button"
+            onClick={() => setShowPreview(v => !v)}
+            className="text-[10px] text-primary/70 hover:text-primary underline decoration-dotted transition-colors"
+          >
+            {showPreview ? "Hide preview" : "Preview content"}
+          </button>
+          {showPreview && (
+            <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed line-clamp-3 italic border-l-2 border-primary/30 pl-2">
+              {preview}
+            </p>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-1.5 px-2 pb-2">
         <button
           type="button"

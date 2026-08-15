@@ -186,7 +186,8 @@ router.get("/", async (req, res) => {
 
     const invoices = await buildInvoiceQuery()
       .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(invoicesTable.issueDate), desc(invoicesTable.id));
+      // Sort by the numeric suffix of the invoice number (highest first), drafts by id
+      .orderBy(sql`COALESCE(CAST(REGEXP_REPLACE(${invoicesTable.invoiceNumber}, '\\D', '', 'g') AS INTEGER), 0) DESC`, desc(invoicesTable.id));
 
     res.json(invoices.map(fmt));
   } catch (err) {

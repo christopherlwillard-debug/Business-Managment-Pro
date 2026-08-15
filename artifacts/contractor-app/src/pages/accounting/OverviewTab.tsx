@@ -247,7 +247,7 @@ function useDeleteGrowthFundDeployment(year: number) {
 // ─── Business Reserve Dashboard ──────────────────────────────────────────────
 interface BusinessReserveData {
   estimatedTaxes: number;
-  taxBreakdown: { federalSE: number; kyState: number; occ: number };
+  taxBreakdown: { federalSE: number; federalIncome?: number; kyState: number; occ: number };
   growthFundAvailable: number;
   growthFundIncluded: boolean;
   annualOverhead: number;
@@ -872,11 +872,16 @@ function BusinessReserveDashboard() {
               </button>
               {expanded === "taxes" && (
                 <div className="border-t border-border p-4 bg-amber-50/40 space-y-3">
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
                       <p className="text-[9px] uppercase font-semibold text-amber-700">Federal SE</p>
                       <p className="text-xs font-bold text-amber-800">{formatCurrency(taxBreakdown.federalSE)}</p>
                       <p className="text-[9px] text-amber-600">15.3% × 92.35%</p>
+                    </div>
+                    <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
+                      <p className="text-[9px] uppercase font-semibold text-amber-700">Federal Income</p>
+                      <p className="text-xs font-bold text-amber-800">{formatCurrency(taxBreakdown.federalIncome ?? 0)}</p>
+                      <p className="text-[9px] text-amber-600">Progressive brackets</p>
                     </div>
                     <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
                       <p className="text-[9px] uppercase font-semibold text-amber-700">KY State</p>

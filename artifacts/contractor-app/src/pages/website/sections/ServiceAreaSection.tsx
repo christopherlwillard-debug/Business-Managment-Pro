@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -13,6 +13,8 @@ import { InlineEditableText } from "../InlineEditableText";
 import type { SiteSettings } from "../website-types";
 import { USMap } from "./USMap";
 import { STATE_CODE_TO_NAME, buildCaption, migrateAreas } from "./USMapData";
+import { MapContainer, TileLayer, Circle } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 
 export interface ServiceAreaContent {
   heading: string;
@@ -32,6 +34,10 @@ export interface ServiceAreaContent {
   showLabels?: boolean;
   showBorders?: boolean;
   highlightColor?: string;
+  /** Service radius in miles — shows a circle on the map when set */
+  serviceRadius?: number;
+  /** City/address used as the centre for the radius circle (e.g. "Louisville, KY") */
+  radiusCity?: string;
 }
 
 interface Props {
@@ -187,6 +193,28 @@ export function ServiceAreaSection({
   const showList = displayMode === "list" || displayMode === "both";
   const focusMode = displayMode === "selected_only";
 
+  // ── Radius circle state (geocode the city to lat/lng) ─────────────────────
+  const [radiusLatLng, setRadiusLatLng] = useState<[number, number] | null>(null);
+  const serviceRadius = content.serviceRadius;
+  const radiusCity   = content.radiusCity;
+
+  useEffect(() => {
+    if (!serviceRadius || !radiusCity) { setRadiusLatLng(null); return; }
+    const city = radiusCity.trim();
+    if (!city) { setRadiusLatLng(null); return; }
+    let cancelled = false;
+    fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)}&format=json&limit=1`, {
+      headers: { "Accept-Language": "en-US" },
+    })
+      .then(r => r.json())
+      .then((results: Array<{ lat: string; lon: string }>) => {
+        if (cancelled || !results[0]) return;
+        setRadiusLatLng([parseFloat(results[0].lat), parseFloat(results[0].lon)]);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [radiusCity, serviceRadius]);
+
   // State names sorted alphabetically for the checkmark list
   const stateNames = [...selectedStates]
     .map(c => STATE_CODE_TO_NAME[c] ?? c)
@@ -236,6 +264,36 @@ export function ServiceAreaSection({
             onCommit={v => update({ subheading: v || undefined })}
             disabled={!isEditing}
           />
+        )}
+
+        {/* Radius circle map */}
+        {serviceRadius && radiusCity && (
+          <div className="mb-6 rounded-xl overflow-hidden border border-border" style={{ height: 320 }}>
+            {radiusLatLng ? (
+              <MapContainer
+                center={radiusLatLng}
+                zoom={9}
+                style={{ width: "100%", height: "100%" }}
+                scrollWheelZoom={false}
+                dragging={!isEditing}
+                zoomControl={!isEditing}
+              >
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                />
+                <Circle
+                  center={radiusLatLng}
+                  radius={serviceRadius * 1609.34}
+                  pathOptions={{ color: highlightColor, fillColor: highlightColor, fillOpacity: 0.15, weight: 2 }}
+                />
+              </MapContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground bg-muted/20">
+                {radiusCity ? "Loading map…" : "Enter a city in the inspector to show the radius"}
+              </div>
+            )}
+          </div>
         )}
 
         {/* SVG Map */}

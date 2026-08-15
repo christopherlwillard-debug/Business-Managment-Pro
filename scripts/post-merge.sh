@@ -962,3 +962,22 @@ pool.query(\`
 \`).then(() => { console.log('Investment tables ensured'); pool.end(); })
   .catch(e => { console.error('Investment migration error:', e.message); pool.end(); });
 ")
+
+
+# Idempotent: add measured_sq_ft to prospects table (schema added but migration never ran)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE prospects ADD COLUMN IF NOT EXISTS measured_sq_ft INTEGER')
+  .then(() => { console.log('prospects.measured_sq_ft ensured'); pool.end(); })
+  .catch(e => { console.error('measured_sq_ft hotfix error:', e.message); pool.end(); });
+")
+
+# Idempotent: add active column to mfh_models table (schema added but migration never ran in prod)
+(cd lib/db && node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query('ALTER TABLE mfh_models ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true')
+  .then(() => { console.log('mfh_models.active ensured'); pool.end(); })
+  .catch(e => { console.error('mfh_models.active hotfix error:', e.message); pool.end(); });
+")

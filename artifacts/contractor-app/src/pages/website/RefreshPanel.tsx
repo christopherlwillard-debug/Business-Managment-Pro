@@ -29,6 +29,27 @@ import type { RefreshSuggestion, RefreshCategory, BusinessContext, SiteSettings 
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+// ── Skipped-suggestion persistence ───────────────────────────────────────────
+// Fingerprint = "category::label" — stable across re-runs unlike AI-generated IDs.
+
+function skippedKey(businessId: number) { return `refresh-skipped-${businessId}`; }
+
+function loadSkippedFingerprints(businessId: number): Set<string> {
+  try {
+    const raw = localStorage.getItem(skippedKey(businessId));
+    const arr = raw ? JSON.parse(raw) as string[] : [];
+    return new Set(arr);
+  } catch { return new Set(); }
+}
+
+function saveSkippedFingerprints(businessId: number, fps: Set<string>) {
+  try { localStorage.setItem(skippedKey(businessId), JSON.stringify([...fps])); } catch { /* ignore */ }
+}
+
+function fingerprint(sug: RefreshSuggestion): string {
+  return `${sug.category}::${sug.label.toLowerCase().trim()}`;
+}
+
 // ── Category metadata ─────────────────────────────────────────────────────────
 
 const CAT_CONFIG: Record<RefreshCategory, { label: string; color: string; bg: string; emoji: string }> = {
@@ -143,7 +164,14 @@ export function RefreshPanel({
       }
 
       const data = await res.json() as { suggestions: RefreshSuggestion[]; analyzedAt: string };
-      setSuggestions(data.suggestions ?? []);
+      const sugs = data.suggestions ?? [];
+      setSuggestions(sugs);
+      // Pre-mark any suggestions whose fingerprint was previously skipped
+      const storedFps = loadSkippedFingerprints(businessId);
+      if (storedFps.size > 0) {
+        const preSkipped = new Set(sugs.filter(s => storedFps.has(fingerprint(s))).map(s => s.id));
+        if (preSkipped.size > 0) setSkipped(preSkipped);
+      }
       setAnalyzedAt(data.analyzedAt ?? new Date().toISOString());
       setStatus("done");
     } catch (err: unknown) {
@@ -170,8 +198,24 @@ export function RefreshPanel({
   function toggleSkip(id: string) {
     setSkipped(prev => {
       const next = new Set(prev);
-      if (next.has(id)) { next.delete(id); return next; }
+      const sug = suggestions.find(s => s.id === id);
+      if (next.has(id)) {
+        next.delete(id);
+        // Remove from persisted fingerprints
+        if (sug) {
+          const fps = loadSkippedFingerprints(businessId);
+          fps.delete(fingerprint(sug));
+          saveSkippedFingerprints(businessId, fps);
+        }
+        return next;
+      }
       next.add(id);
+      // Persist fingerprint so future runs pre-skip this suggestion type
+      if (sug) {
+        const fps = loadSkippedFingerprints(businessId);
+        fps.add(fingerprint(sug));
+        saveSkippedFingerprints(businessId, fps);
+      }
       setAccepted(ac => { const a = new Set(ac); a.delete(id); return a; });
       return next;
     });

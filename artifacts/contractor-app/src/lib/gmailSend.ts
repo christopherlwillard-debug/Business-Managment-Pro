@@ -209,9 +209,13 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
       : (opts.companyName || ""));
 
   const contactLines: string[] = [];
-  if (opts.logoSrc) {
-    contactLines.push(`<tr><td style="padding-bottom:6px;"><img src="${esc(opts.logoSrc)}" alt="${esc(displayCompanyName)}" style="max-height:70px;max-width:200px;width:auto;height:auto;display:block;object-fit:contain;" /></td></tr>`);
-  } else if (displayCompanyName) {
+  // Skip data URIs — embedding them bloats the email past Gmail's 102KB clip threshold.
+  // Only use a hosted URL (http/https). Fall back to company name text instead.
+  const hostedLogoSrc = opts.logoSrc && opts.logoSrc.startsWith("http") ? opts.logoSrc : null;
+  if (hostedLogoSrc) {
+    contactLines.push(`<tr><td style="padding-bottom:6px;"><img src="${esc(hostedLogoSrc)}" alt="${esc(displayCompanyName)}" style="max-height:70px;max-width:200px;width:auto;height:auto;display:block;object-fit:contain;" /></td></tr>`);
+  }
+  if (displayCompanyName) {
     contactLines.push(`<tr><td style="font-size:18px;font-weight:800;color:#111827;padding-bottom:4px;">${esc(displayCompanyName)}</td></tr>`);
   }
   if (opts.companyAddress) contactLines.push(`<tr><td style="font-size:11px;color:#6b7280;line-height:1.5;">${esc(opts.companyAddress)}</td></tr>`);

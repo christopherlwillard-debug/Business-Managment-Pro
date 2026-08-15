@@ -76,6 +76,7 @@ const CATEGORIES = [
 
 interface PlaidStatus {
   configured: boolean;
+  environment?: string | null;
 }
 
 interface PlaidConnection {
@@ -838,17 +839,55 @@ export default function Banking() {
             </div>
           </CardContent>
         </Card>
+        {/* Balance preview — shown even without credentials so the layout is familiar */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 opacity-40 pointer-events-none select-none">
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground mb-1">Current Balance</p>
+              <p className="text-3xl font-bold text-foreground">—</p>
+              <p className="text-xs text-muted-foreground mt-1">Connect a bank account to see live data</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground mb-1">Available Balance</p>
+              <p className="text-3xl font-bold text-foreground">—</p>
+              <p className="text-xs text-muted-foreground mt-1">Connect a bank account to see live data</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   if (!connection) {
+    const isProduction = status?.environment === "production";
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Banking</h1>
           <p className="text-muted-foreground">Connect your business bank account to see live balance and transactions.</p>
         </div>
+        {isProduction && (
+          <Card className="border-blue-200 bg-blue-50">
+            <CardContent className="flex items-start gap-4 pt-6">
+              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-blue-800">Plaid production approval may be required</p>
+                <p className="text-sm text-blue-700 mt-1">
+                  You're using <span className="font-mono font-semibold">PLAID_ENV=production</span>. If the Connect button doesn't work, your app may still be pending Plaid's production approval.
+                </p>
+                <p className="text-xs text-blue-600 mt-2">
+                  Check your approval status at{" "}
+                  <a href="https://dashboard.plaid.com/team/api" target="_blank" rel="noreferrer" className="underline font-medium">
+                    dashboard.plaid.com → Team → API
+                  </a>
+                  . While waiting, set <span className="font-mono">PLAID_ENV=sandbox</span> to test with demo credentials.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
         <Card className="max-w-md">
           <CardContent className="flex flex-col items-center gap-6 py-12">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">

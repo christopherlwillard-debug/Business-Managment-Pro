@@ -76,7 +76,10 @@ async function deletePlaidDataForConnection(connectionId: number): Promise<void>
 }
 
 router.get("/status", (req, res) => {
-  res.json({ configured: isPlaidConfigured() });
+  res.json({
+    configured: isPlaidConfigured(),
+    environment: process.env.PLAID_ENV ?? null,
+  });
 });
 
 router.post("/link-token", wrapAsync(async (req, res) => {

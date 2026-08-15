@@ -2668,7 +2668,7 @@ export default function Expenses() {
     return year === currentYear ? { [todayYearMonth]: false } : {};
   }
 
-  const [selectedYear,   setSelectedYear]   = useState(currentYear);
+  const [selectedYear,   setSelectedYear]   = useState<string>(currentYear);
   const [monthCollapsed, setMonthCollapsed] = useState<Record<string, boolean>>(
     () => initMonthCollapsed(currentYear)
   );
@@ -2691,7 +2691,7 @@ export default function Expenses() {
 
   const yearExpenses = useMemo(
     () => (expenses ?? [])
-      .filter(e => (e.date ?? "").startsWith(selectedYear))
+      .filter(e => selectedYear === "all" || (e.date ?? "").startsWith(selectedYear))
       .filter(e => !activeBusiness || (e as any).businessId === activeBusiness.id || (!(e as any).businessId && (e as any).businessLine === activeBusiness.slug)),
     [expenses, selectedYear, activeBusiness]
   );
@@ -3136,6 +3136,16 @@ export default function Expenses() {
         {/* ── Year tabs ─────────────────────────────────────────────────────── */}
         {allYears.length > 0 && (
           <div className="flex items-center gap-1 px-5 pt-4 pb-3 border-b border-border/50 overflow-x-auto">
+            <button
+              onClick={() => { setSelectedYear("all"); setMonthCollapsed({}); }}
+              className={`flex-shrink-0 px-4 py-1.5 rounded-xl text-sm font-semibold transition-colors ${
+                selectedYear === "all"
+                  ? "bg-amber-500 text-white shadow-sm"
+                  : "text-muted-foreground hover:bg-muted/60"
+              }`}
+            >
+              All
+            </button>
             {allYears.map(year => (
               <button
                 key={year}
@@ -3156,7 +3166,7 @@ export default function Expenses() {
         {!isLoading && (
           <div className="px-6 py-2.5 border-b border-border/40 bg-muted/20 flex items-center gap-2 text-sm flex-wrap">
             <Calendar className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-            <span className="font-bold text-foreground">{selectedYear}</span>
+            <span className="font-bold text-foreground">{selectedYear === "all" ? "All Years" : selectedYear}</span>
             <span className="text-muted-foreground">·</span>
             <span className="text-muted-foreground">
               {filteredYearExpenses.length}{searchQuery.trim() ? ` of ${yearExpenses.length}` : ""} {filteredYearExpenses.length === 1 ? "expense" : "expenses"}
@@ -3191,8 +3201,8 @@ export default function Expenses() {
                 if (searchQuery.trim()) parts.push(`"${searchQuery.trim()}"`);
                 if (filterCategory) parts.push(`category "${filterCategory}"`);
                 return parts.length > 0
-                  ? `No expenses in ${selectedYear} match ${parts.join(" + ")}`
-                  : `No expenses logged for ${selectedYear}`;
+                  ? `No expenses${selectedYear === "all" ? "" : ` in ${selectedYear}`} match ${parts.join(" + ")}`
+                  : selectedYear === "all" ? "No expenses logged yet" : `No expenses logged for ${selectedYear}`;
               })()}
             </p>
           </div>

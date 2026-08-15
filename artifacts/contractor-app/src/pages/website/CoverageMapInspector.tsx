@@ -450,6 +450,50 @@ export function CoverageMapInspector({ content, onChange }: Props) {
           )}
         </Section>
 
+        {/* ── 📍 Radius Circle ────────────────────────────────── */}
+        <Section title="📍 Radius Circle">
+          <p className="text-[10px] text-muted-foreground mb-2 leading-relaxed">
+            Show your exact service radius as a circle on a map. Enter a center city and radius in miles.
+          </p>
+          <div className="space-y-2">
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-0.5">Center city / address</label>
+              <input
+                type="text"
+                placeholder="e.g. Louisville, KY"
+                value={content.radiusCity ?? ""}
+                onChange={e => onChange({ radiusCity: e.target.value || undefined })}
+                className="w-full text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-0.5">Radius (miles)</label>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                step={5}
+                placeholder="e.g. 50"
+                value={content.serviceRadius ?? ""}
+                onChange={e => {
+                  const val = parseInt(e.target.value, 10);
+                  onChange({ serviceRadius: isNaN(val) ? undefined : val });
+                }}
+                className="w-full text-xs border border-border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            {content.serviceRadius && content.radiusCity && (
+              <button
+                type="button"
+                onClick={() => onChange({ serviceRadius: undefined, radiusCity: undefined })}
+                className="text-[10px] text-destructive hover:underline"
+              >
+                Remove radius circle
+              </button>
+            )}
+          </div>
+        </Section>
+
         {/* ── ⚙ Advanced ─────────────────────────────────────── */}
         <Section title="⚙ Advanced">
           {/* Custom freeform entries */}
