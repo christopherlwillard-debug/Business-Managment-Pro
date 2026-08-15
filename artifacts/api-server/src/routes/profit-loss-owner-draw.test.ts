@@ -119,20 +119,37 @@ const REGULAR_EXP = {
 const NO_MILEAGE = [{ totalMiles: null, totalDed: null }];
 
 /**
- * Push all 10 select slots consumed by GET /profit-loss (no blFilter).
+ * Push all 11 select slots consumed by GET /profit-loss (no blFilter).
+ * Updated for cash-basis: plSubPayRows slot added at [4].
+ *
+ * Queue order:
+ *   [0]  invRows              — invoices (issueDate-bounded)
+ *   [1]  expRows              — expenses (ne mileage at DB level)
+ *   [2]  mileRows             — mileage aggregate
+ *   [3]  otherRows            — otherIncome
+ *   [4]  plSubPayRows         — fixed/allocation sub_payment_records
+ *   [5]  outstandingSubRows   — job_subcontractors (unpaid/partial)
+ *   [6]  closedCountRow       — count of closed jobs in year
+ *   [7]  assets               — computeDepreciationForYear
+ *   [8]  busUseRows           — computeDepreciationForYear
+ *   [9]  ownerContribRows     — owner_capital_entries
+ *   [10] settingsRows         — settings (federalTaxElection)
+ *
  * @param expSlot — the expenses array to place in slot [1]
+ * @param subPaySlot — the sub_payment_records array for slot [4] (default [])
  */
-function pushPLSelects(expSlot: any[]): void {
+function pushPLSelects(expSlot: any[], subPaySlot: any[] = []): void {
   h.selectQueue.push([PAID_INVOICE]);  // [0] invRows
   h.selectQueue.push(expSlot);         // [1] expRows
   h.selectQueue.push(NO_MILEAGE);      // [2] mileRows (aggregate)
   h.selectQueue.push([]);              // [3] otherRows
-  h.selectQueue.push([]);              // [4] outstandingSubRows
-  h.selectQueue.push([{ n: 0 }]);     // [5] closedCountRow
-  h.selectQueue.push([]);              // [6] assets (computeDepreciationForYear)
-  h.selectQueue.push([]);              // [7] busUseRows (computeDepreciationForYear)
-  h.selectQueue.push([]);             // [8] ownerContribRows
-  h.selectQueue.push([{}]);            // [9] settingsRows (federalTaxElection optional)
+  h.selectQueue.push(subPaySlot);      // [4] plSubPayRows
+  h.selectQueue.push([]);              // [5] outstandingSubRows
+  h.selectQueue.push([{ n: 0 }]);     // [6] closedCountRow
+  h.selectQueue.push([]);              // [7] assets (computeDepreciationForYear)
+  h.selectQueue.push([]);              // [8] busUseRows (computeDepreciationForYear)
+  h.selectQueue.push([]);             // [9] ownerContribRows
+  h.selectQueue.push([{}]);            // [10] settingsRows (federalTaxElection optional)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

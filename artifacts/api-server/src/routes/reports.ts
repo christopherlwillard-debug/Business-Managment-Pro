@@ -55,6 +55,13 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // For the YTD ("year") period, query expenses across the full calendar year
     const expenseEndDate = period === "year" ? `${now.getFullYear()}-12-31` : endDate;
 
+    // The monthly chart always shows the last 6 months regardless of the selected KPI period.
+    // allSubPayments must cover this wider window so subPayByMonth is populated for prior months.
+    const chartD = new Date(now);
+    chartD.setDate(1);
+    chartD.setMonth(chartD.getMonth() - 5);
+    const chartStartDate = `${chartD.getFullYear()}-${String(chartD.getMonth() + 1).padStart(2, "0")}-01`;
+
     // Accept any non-empty business slug — no hardcoded allowlist
     const validBl = blFilter || null;
 
@@ -74,7 +81,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // plus full (unfiltered) data in parallel for the byBusinessLine breakdown.
     const [
       kpiPaidInvoices, kpiNonPaidInvoices, kpiExpenses, allMileage, kpiOtherIncome, kpiActiveJobs,
-      recentJobsRows, recentInvoicesRows, kpiOwnerCapital,
+      recentJobsRows, recentInvoicesRows, kpiOwnerCapital, allSubPayments,
     ] = await Promise.all([
       // KPI invoice queries — split so paid invoices are not date-bounded:
       // effective payment date (stripePaidAt → squarePaidAt → issueDate) governs period
@@ -92,6 +99,25 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       db.select({ id: jobsTable.id, title: jobsTable.title, description: jobsTable.description, clientId: jobsTable.clientId, clientName: clientsTable.name, status: jobsTable.status, jobType: jobsTable.jobType, address: jobsTable.address, city: jobsTable.city, state: jobsTable.state, startDate: jobsTable.startDate, endDate: jobsTable.endDate, notes: jobsTable.notes, createdAt: jobsTable.createdAt }).from(jobsTable).leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id)).orderBy(desc(jobsTable.createdAt)).limit(5),
       db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, clientId: invoicesTable.clientId, clientName: clientsTable.name, jobId: invoicesTable.jobId, status: invoicesTable.status, issueDate: invoicesTable.issueDate, dueDate: invoicesTable.dueDate, subtotal: invoicesTable.subtotal, taxRate: invoicesTable.taxRate, taxAmount: invoicesTable.taxAmount, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid, notes: invoicesTable.notes, terms: invoicesTable.terms, lineItems: invoicesTable.lineItems, createdAt: invoicesTable.createdAt }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).orderBy(desc(invoicesTable.createdAt)).limit(5),
       db.select().from(ownerCapitalEntriesTable).where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, expenseEndDate))),
+      // Fixed/allocation sub payments — cash-basis cash out.
+      // Date range covers the full 6-month chart window (chartStartDate) so that
+      // subPayByMonth is populated for all chart months, not just the KPI period.
+      // The KPI aggregate is further restricted to startDate..expenseEndDate in JS below.
+      // No business-line filter at DB level so the result powers both KPI (filtered in JS) and byBusinessLine.
+      // Hourly subs already have auto-expense records (jobSubHoursId IS NOT NULL) — exclude them
+      // to avoid double-counting with the expensesTable rows.
+      db.select({ amount: subPaymentRecordsTable.amount, paymentDate: subPaymentRecordsTable.paymentDate, businessLine: subPaymentRecordsTable.businessLine })
+        .from(subPaymentRecordsTable)
+        .innerJoin(jobSubcontractorsTable, and(
+          eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+          eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+        ))
+        .where(and(
+          gte(subPaymentRecordsTable.paymentDate, chartStartDate),
+          lte(subPaymentRecordsTable.paymentDate, expenseEndDate),
+          sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+          inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+        )),
     ]);
 
     // Merge paid + non-paid into the unified kpiInvoices array.
@@ -133,8 +159,25 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const totalRevenue = invoiceRevenue + otherIncomeTotal;
     const pendingInvoices = kpiInvoices.filter(i => i.status === "sent").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const overdueInvoices = kpiInvoices.filter(i => i.status === "overdue").length;
-    const nonMileageExpenses = kpiExpenses.filter(e => e.category !== "mileage");
-    const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    // Cash-basis: exclude outstanding cost-booking rows (description ending in "(outstanding)").
+    // These are accrual-style bookings created by "Complete Job & Keep As Outstanding" — the sub
+    // has NOT been paid. The actual cash payment appears in sub_payment_records below.
+    const isOutstandingCostBooking = (e: { description?: string | null }) =>
+      (e.description ?? "").endsWith("(outstanding)");
+    const nonMileageExpenses = kpiExpenses.filter(e =>
+      e.category !== "mileage" && !isOutstandingCostBooking(e),
+    );
+    // Fixed/allocation sub payments for this KPI period only (allSubPayments covers a wider
+    // 6-month chart window, so restrict here to startDate..expenseEndDate before summing).
+    // Also filtered to validBl in JS. Hourly subs already have auto-expense records so only
+    // fixed/allocation need to be added from sub_payment_records.
+    const kpiSubPayments = allSubPayments.filter(r =>
+      r.paymentDate >= startDate &&
+      r.paymentDate <= expenseEndDate &&
+      (!validBl || r.businessLine === validBl),
+    );
+    const fixedAllocSubPaymentTotal = kpiSubPayments.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
+    const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + fixedAllocSubPaymentTotal;
     const excludedFromProfitFormula = nonMileageExpenses
       .filter(e => e.excludeFromNetProfit)
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
@@ -219,20 +262,37 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // Profit by business line breakdown — always computed from full (unfiltered) data
     const OWNER_DRAW_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
     const allBusinesses = await db.select({ slug: businessesTable.slug, name: businessesTable.name }).from(businessesTable).orderBy(businessesTable.id);
+
+    // Group KPI-period sub payments by business line for the per-BL breakdown.
+    // Only include payments within startDate..expenseEndDate so the BL breakdown stays
+    // period-consistent with invoices and ordinary expenses.
+    // (subPayByMonth uses the wider allSubPayments array for the 6-month chart window.)
+    const kpiSubPayForBl = allSubPayments.filter(r =>
+      r.paymentDate >= startDate && r.paymentDate <= expenseEndDate
+    );
+    const subPayByBl = new Map<string, number>();
+    for (const r of kpiSubPayForBl) {
+      const bl = r.businessLine ?? "unattributed";
+      subPayByBl.set(bl, (subPayByBl.get(bl) ?? 0) + parseFloat(r.amount ?? "0"));
+    }
+
     const byBusinessLine = allBusinesses.map(biz => {
       const bl = biz.slug;
       const blInvoices = rawInvoices.filter(i => i.businessLine === bl);
       const blOther = rawOtherIncome.filter(o => o.businessLine === bl);
-      const blExpenses = rawExpenses.filter(e => e.businessLine === bl && e.category !== "mileage");
+      // Exclude outstanding cost-bookings (cash-basis: not yet paid) from the BL breakdown too.
+      const blExpenses = rawExpenses.filter(e => e.businessLine === bl && e.category !== "mileage" && !isOutstandingCostBooking(e));
       const blActiveJobs = rawActiveJobs.filter(j => j.businessLine === bl);
       const blRevenue = blInvoices.filter(i => i.status === "paid" && getEffectivePaymentDate(i) >= startDate && getEffectivePaymentDate(i) <= endDate).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
-      const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const blSubPayTotal = subPayByBl.get(bl) ?? 0;
+      const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + blSubPayTotal;
       const blOwnerDrawTotal = blExpenses.filter(e => OWNER_DRAW_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       // Union of owner-draw categories and the excludeFromNetProfit flag.
       // Each expense is excluded at most once even if both conditions apply,
       // preserving the Expense-UI "exclude from net profit" semantics for
       // non-owner expenses while also catching owner draws that predate the flag.
+      // Sub payments (blSubPayTotal) are always business costs — never excluded.
       const blExcludedTotal = blExpenses
         .filter(e => OWNER_DRAW_CATS.includes(e.category ?? "") || !!e.excludeFromNetProfit)
         .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
@@ -249,12 +309,20 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
 
     // Unattributed: revenue/expenses not tagged to any registered business slug
     const knownBls = new Set(allBusinesses.map(b => b.slug));
-    const unattribExpenses = rawExpenses.filter(e => (!e.businessLine || !knownBls.has(e.businessLine)) && e.category !== "mileage");
+    const unattribExpenses = rawExpenses.filter(e =>
+      (!e.businessLine || !knownBls.has(e.businessLine)) &&
+      e.category !== "mileage" &&
+      !isOutstandingCostBooking(e),
+    );
     const unattribInvoices = rawInvoices.filter(i => !i.businessLine || !knownBls.has(i.businessLine));
     const unattribOther = rawOtherIncome.filter(o => !o.businessLine || !knownBls.has(o.businessLine));
     const unattribRevenue = unattribInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
       + unattribOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
-    const unattribExpenseTotal = unattribExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    // Unattributed sub payments: those with null/unknown businessLine or a slug not in registered businesses
+    const unattribSubPay = Array.from(subPayByBl.entries())
+      .filter(([bl]) => bl === "unattributed" || !knownBls.has(bl))
+      .reduce((s, [, v]) => s + v, 0);
+    const unattribExpenseTotal = unattribExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + unattribSubPay;
     // Match the attribution logic: union of owner-category OR excludeFromNetProfit flag
     const unattribOwnerTotal = unattribExpenses.filter(e => OWNER_DRAW_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const unattribExcluded = unattribExpenses.filter(e => OWNER_DRAW_CATS.includes(e.category ?? "") || !!e.excludeFromNetProfit).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
@@ -268,6 +336,15 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         operationalNetProfit: unattribRevenue - (unattribExpenseTotal - unattribExcluded),
         activeJobs: 0,
       });
+    }
+
+    // Build month → sub payment total map (for monthly chart).
+    // Uses the already-fetched allSubPayments so no extra DB round trip.
+    const subPayByMonth = new Map<string, number>();
+    for (const r of allSubPayments) {
+      if (validBl && r.businessLine !== validBl) continue;
+      const month = r.paymentDate.slice(0, 7); // YYYY-MM
+      subPayByMonth.set(month, (subPayByMonth.get(month) ?? 0) + parseFloat(r.amount ?? "0"));
     }
 
     // Monthly revenue for last 6 months — DB-level filter applied for chart data
@@ -295,10 +372,16 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const invRevenue = monthlyInv.filter(i => i.status === "paid" && getEffectivePaymentDate(i) >= `${monthStr}-01` && getEffectivePaymentDate(i) <= `${monthStr}-${lastDay}`).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const othRevenue = monthlyOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const mo_revenue = invRevenue + othRevenue;
-      // Exclude mileage (sourced from mileage_logs) and owner distributions (equity, not business costs)
-      // so the monthly chart matches the top-line net profit formula.
+      // Exclude mileage (sourced from mileage_logs), owner distributions (equity, not business costs),
+      // and outstanding cost-bookings (cash not yet paid) so the monthly chart matches the
+      // top-line net profit formula. Add fixed/allocation sub payments for this month.
       const MONTHLY_OWNER_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
-      const mo_expenses = monthlyExp.filter(e => e.category !== "mileage" && !MONTHLY_OWNER_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const mo_subPay = subPayByMonth.get(monthStr) ?? 0;
+      const mo_expenses = monthlyExp.filter(e =>
+        e.category !== "mileage" &&
+        !MONTHLY_OWNER_CATS.includes(e.category ?? "") &&
+        !(e.description ?? "").endsWith("(outstanding)")
+      ).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + mo_subPay;
       const mo_outstanding = monthlyInv.filter(i => ["sent", "overdue"].includes(i.status ?? "")).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       monthlyRevenue.push({
         month: monthStr,
@@ -450,7 +533,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       invoiceNumber: invoicesTable.invoiceNumber,
       businessLine: invoicesTable.businessLine,
     };
-    const [accPaidInvoices, accNonPaidInvoices, expenses, mileageLogs, subs, settings, otherIncomeRows] = await Promise.all([
+    const [accPaidInvoices, accNonPaidInvoices, expenses, mileageLogs, subs, settings, otherIncomeRows, accFixedAllocSubPayments] = await Promise.all([
       // Paid invoices: no issueDate filter — effective payment date governs year attribution in JS.
       // An invoice issued in Dec but paid in Jan will appear in January's revenue, not December's.
       db.select(accInvoiceCols)
@@ -469,6 +552,28 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       db.select().from(subcontractorsTable),
       db.select().from(settingsTable).limit(1),
       db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine))),
+      // Fixed/allocation sub payments — cash-basis cash out (not in expenses after Task #892).
+      // Hourly subs already have auto-expense records (jobSubHoursId IS NOT NULL) — excluded here
+      // via compensationType filter to avoid double-counting with the expensesTable rows.
+      // paymentDate and jobId are fetched to power monthlyIncome and directJobCosts breakdowns.
+      db.select({
+        amount:      subPaymentRecordsTable.amount,
+        businessLine: subPaymentRecordsTable.businessLine,
+        paymentDate: subPaymentRecordsTable.paymentDate,
+        jobId:       subPaymentRecordsTable.jobId,
+      })
+        .from(subPaymentRecordsTable)
+        .innerJoin(jobSubcontractorsTable, and(
+          eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+          eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+        ))
+        .where(and(
+          gte(subPaymentRecordsTable.paymentDate, startDate),
+          lte(subPaymentRecordsTable.paymentDate, endDate),
+          sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+          inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+          blWhere(subPaymentRecordsTable.businessLine),
+        )),
     ]);
     // Merge paid + non-paid. Paid invoices are pre-filtered to effective payment date within
     // the selected year so cityMap, owensboroGross, and all other aggregates only see
@@ -490,8 +595,16 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
 
     // Exclude mileage category — it's tracked separately via mileageDeduction from
     // mileage_logs to prevent double-counting in the net profit calculation.
-    const nonMileageExpenses = expenses.filter(e => e.category !== "mileage");
-    const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    // Also exclude outstanding cost-booking rows (cash-basis: sub has NOT been paid yet;
+    // description ends with "(outstanding)"). The actual cash payment appears in
+    // accFixedAllocSubPayments below.
+    const accIsOutstanding = (e: { description?: string | null }) =>
+      (e.description ?? "").endsWith("(outstanding)");
+    const nonMileageExpenses = expenses.filter(e =>
+      e.category !== "mileage" && !accIsOutstanding(e),
+    );
+    const accFixedAllocSubPaymentTotal = accFixedAllocSubPayments.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
+    const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + accFixedAllocSubPaymentTotal;
     // Owner distributions are personal — not tax-deductible. Exclude from net profit.
     // Covers legacy "Owner Draw", current "Owner Compensation", and "Owner Withdrawal".
     const ownerDrawTotal = nonMileageExpenses
@@ -597,7 +710,9 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const allRecords = [...invoiceRecords, ...otherIncomeRecords].sort((a, b) => a.issueDate.localeCompare(b.issueDate));
 
     // Expenses by category (mileage and owner distributions excluded — mileage shown
-    // separately; owner pay is a personal distribution not a business cost)
+    // separately; owner pay is a personal distribution not a business cost).
+    // Fixed/allocation sub payments are included under the "Subcontractor" category so the
+    // category chart agrees with totalExpenses.
     const catMap = new Map<string, { category: string; amount: number; count: number }>();
     for (const e of nonMileageExpenses) {
       if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? "")) continue;
@@ -607,12 +722,21 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       existing.count++;
       catMap.set(cat, existing);
     }
+    // Merge sub payments into the "Subcontractor" category bucket.
+    if (accFixedAllocSubPayments.length > 0) {
+      const subCatEntry = catMap.get("Subcontractor") ?? { category: "Subcontractor", amount: 0, count: 0 };
+      subCatEntry.amount += accFixedAllocSubPaymentTotal;
+      subCatEntry.count  += accFixedAllocSubPayments.length;
+      catMap.set("Subcontractor", subCatEntry);
+    }
     const expensesByCategory = Array.from(catMap.values()).sort((a, b) => b.amount - a.amount);
     // Business expenses = total non-mileage expenses minus owner draws
     const businessExpenses = totalExpenses - ownerDrawTotal;
 
-    // Direct Job Costs vs Overhead split
-    // Direct = expenses linked to a specific job (jobId set); Overhead = not linked to any job
+    // Direct Job Costs vs Overhead split.
+    // Direct = expenses linked to a specific job (jobId set); Overhead = not linked to any job.
+    // Fixed/allocation sub payments are always job-specific (pay-worker requires a job) →
+    // they are added to directJobCosts in full.
     const buildCatBreakdown = (list: typeof nonMileageExpenses) => {
       const map = new Map<string, { category: string; amount: number; count: number }>();
       for (const e of list) {
@@ -624,18 +748,42 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       }
       return Array.from(map.values()).sort((a, b) => b.amount - a.amount);
     };
-    const directJobExpenses = nonMileageExpenses.filter(e => e.jobId != null && !["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""));
-    const overheadExpenses  = nonMileageExpenses.filter(e => e.jobId == null  && !["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""));
-    const directJobCosts = directJobExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const OWNER_CATS_ACC = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
+    const directJobExpenses = nonMileageExpenses.filter(e => e.jobId != null && !OWNER_CATS_ACC.includes(e.category ?? ""));
+    const overheadExpenses  = nonMileageExpenses.filter(e => e.jobId == null  && !OWNER_CATS_ACC.includes(e.category ?? ""));
+    // Sub payments go to directJobCosts (they're always tied to a job).
+    // Include them in the Subcontractor slice of directJobCostsByCategory.
+    const directJobCosts = directJobExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + accFixedAllocSubPaymentTotal;
     const overheadCosts  = overheadExpenses.reduce((s, e)  => s + parseFloat(e.amount ?? "0"), 0);
     const grossMargin = paidRevenue - directJobCosts;
-    const directJobCostsByCategory = buildCatBreakdown(directJobExpenses);
+    // Build the per-category breakdown for direct costs, adding sub payments to "Subcontractor".
+    const directJobCostsByCategory = (() => {
+      const base = buildCatBreakdown(directJobExpenses);
+      if (accFixedAllocSubPayments.length > 0) {
+        const idx = base.findIndex(r => r.category === "Subcontractor");
+        if (idx >= 0) {
+          base[idx] = { ...base[idx], amount: base[idx].amount + accFixedAllocSubPaymentTotal, count: base[idx].count + accFixedAllocSubPayments.length };
+        } else {
+          base.push({ category: "Subcontractor", amount: accFixedAllocSubPaymentTotal, count: accFixedAllocSubPayments.length });
+        }
+        base.sort((a, b) => b.amount - a.amount);
+      }
+      return base;
+    })();
     const overheadByCategory = buildCatBreakdown(overheadExpenses);
 
-    // Monthly income trend — cash basis for paid, issue-date for non-paid
+    // Group sub payments by YYYY-MM for the monthly chart.
+    const accSubPayByMonth = new Map<string, number>();
+    for (const r of accFixedAllocSubPayments) {
+      const ms = r.paymentDate.slice(0, 7);
+      accSubPayByMonth.set(ms, (accSubPayByMonth.get(ms) ?? 0) + parseFloat(r.amount ?? "0"));
+    }
+
+    // Monthly income trend — cash basis for paid, issue-date for non-paid.
     // Paid invoices are bucketed by effective payment date (stripePaidAt → squarePaidAt →
     // issueDate) so a December-issued invoice paid in January lands in January's paid
     // column rather than being dropped from the chart entirely.
+    // Sub payments are added per-month so the chart's expense bars agree with totalExpenses.
     const monthlyIncome = [];
     for (let m = 1; m <= 12; m++) {
       const ms = `${year}-${String(m).padStart(2, "0")}`;
@@ -643,7 +791,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       const monthPaidInvs    = invoices.filter(i => i.status === "paid" && getEffectivePaymentDate(i).startsWith(ms));
       const monthNonPaidInvs = invoices.filter(i => i.status !== "paid" && (i.issueDate ?? "").startsWith(ms));
       // Owner distributions excluded — they are equity events, not business costs
-      const monthExp = nonMileageExpenses.filter(e => e.date.startsWith(ms) && !["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""));
+      const monthExp = nonMileageExpenses.filter(e => e.date.startsWith(ms) && !OWNER_CATS_ACC.includes(e.category ?? ""));
+      const monthSubPay = accSubPayByMonth.get(ms) ?? 0;
       const monthOther = otherIncomeRows.filter(o => o.date.startsWith(ms));
       const invGross = [...monthPaidInvs, ...monthNonPaidInvs].reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const othGross = monthOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
@@ -651,7 +800,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
         month: ms,
         gross: invGross + othGross,
         paid: monthPaidInvs.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0) + othGross,
-        expenses: monthExp.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0),
+        expenses: monthExp.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + monthSubPay,
       });
     }
 
@@ -670,6 +819,13 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     // Exclude from every business-line expense/profit calculation.
     const ACCT_OWNER_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
     const knownBlSlugs = new Set(allBusinesses.map(b => b.slug));
+    // Group accFixedAllocSubPayments by business line for byBusinessLine breakdown.
+    const accSubPayByBl = new Map<string, number>();
+    for (const r of accFixedAllocSubPayments) {
+      const bl = r.businessLine ?? "untagged";
+      accSubPayByBl.set(bl, (accSubPayByBl.get(bl) ?? 0) + parseFloat(r.amount ?? "0"));
+    }
+
     const byBusinessLine: { businessLine: string; label: string; invoiceCount: number; invoiceGross: number; invoicePaid: number; otherIncome: number; totalRevenue: number; collectedRevenue: number; expenses: number; netProfit: number }[] = [];
     for (const biz of allBusinesses) {
       const bl = biz.slug;
@@ -680,7 +836,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       const invoicePaid = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const otherSum = blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const blOwnerTotal = blExpenses.filter(e => ACCT_OWNER_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-      const expSum = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const blSubPayTotal = accSubPayByBl.get(bl) ?? 0;
+      const expSum = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + blSubPayTotal;
       const businessExpSum = expSum - blOwnerTotal;
       byBusinessLine.push({
         businessLine: bl,
@@ -704,7 +861,10 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       const invoicePaid = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const otherSum = blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const blOwnerTotal = blExpenses.filter(e => ACCT_OWNER_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-      const expSum = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const untaggedSubPay = Array.from(accSubPayByBl.entries())
+        .filter(([bl]) => bl === "untagged" || !knownBlSlugs.has(bl))
+        .reduce((s, [, v]) => s + v, 0);
+      const expSum = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + untaggedSubPay;
       const businessExpSum = expSum - blOwnerTotal;
       byBusinessLine.push({
         businessLine: "untagged",
@@ -980,13 +1140,14 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     }
     const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
 
-    const [invRows, expRows, mileRows, otherRows] = await Promise.all([
+    const [invRows, expRows, mileRows, otherRows, plSubPayRows] = await Promise.all([
       db.select({ status: invoicesTable.status, total: invoicesTable.total })
         .from(invoicesTable)
         .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
       db.select({
         category: expensesTable.category,
         amount: expensesTable.amount,
+        description: expensesTable.description,
         excludeFromNetProfit: expensesTable.excludeFromNetProfit,
       })
         .from(expensesTable)
@@ -997,11 +1158,22 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       db.select({ amount: otherIncomeTable.amount })
         .from(otherIncomeTable)
         .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine))),
-      // NOTE: job_subcontractors.amount_paid is intentionally NOT added here.
-      // Sub hours auto-create linked expenses in expensesTable (category="Subcontractor"),
-      // so expRows already captures all hourly sub costs. Adding amount_paid on top
-      // would double-count those payments. Flat-rate subs that don't use the hours
-      // system should record a manual expense to appear here.
+      // Fixed/allocation sub payments — cash-basis cash out. Hourly subs already have
+      // auto-expense records (jobSubHoursId IS NOT NULL), so we only add fixed/allocation here
+      // to avoid double-counting.
+      db.select({ amount: subPaymentRecordsTable.amount })
+        .from(subPaymentRecordsTable)
+        .innerJoin(jobSubcontractorsTable, and(
+          eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+          eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+        ))
+        .where(and(
+          gte(subPaymentRecordsTable.paymentDate, startDate),
+          lte(subPaymentRecordsTable.paymentDate, endDate),
+          sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+          inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+          blWhere(subPaymentRecordsTable.businessLine),
+        )),
     ]);
 
     // Outstanding sub liability — all comp types with unpaid/partial status.
@@ -1091,12 +1263,17 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const otherIncome   = otherRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const grossRevenue  = grossReceipts + otherIncome;
 
+    // Cash-basis: exclude outstanding cost-booking rows before categorising.
+    // These are accrual-style bookings (description ending in "(outstanding)") — the sub has NOT
+    // been paid. The actual cash payment appears in plSubPayRows from sub_payment_records.
+    const plExpRows = expRows.filter(e => !(e.description ?? "").endsWith("(outstanding)"));
+
     // All expenses count toward P&L categories (excludeFromNetProfit only affects job panels).
     // Owner distributions are excluded: they are equity distributions, not deductible expenses.
     // Covers "Owner Draw" (legacy), "Owner Compensation" (current), "Owner Withdrawal" (equity).
     const buckets: Record<string, number> = {};
     let ownerDrawTotal = 0;
-    for (const e of expRows) {
+    for (const e of plExpRows) {
       const cat = e.category || "Other";
       if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(cat)) {
         ownerDrawTotal += parseFloat(e.amount ?? "0");
@@ -1104,6 +1281,13 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       }
       const key = PL_CATEGORY_MAP[cat] ?? "other";
       buckets[key] = (buckets[key] ?? 0) + parseFloat(e.amount ?? "0");
+    }
+
+    // Fixed/allocation sub payments from pay-worker: contract labor (COGS).
+    // These live only in sub_payment_records after Task #892, so we add them here separately.
+    const plSubPayTotal = plSubPayRows.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
+    if (plSubPayTotal > 0) {
+      buckets["cogs"] = (buckets["cogs"] ?? 0) + plSubPayTotal;
     }
 
     const cogs = buckets["cogs"] ?? 0;

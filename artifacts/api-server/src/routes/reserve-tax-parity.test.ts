@@ -124,7 +124,20 @@ const SETTINGS_ROW = {
   includeGrowthFundInReserve: 0,
 };
 
-// Helper: push the 9 selects consumed by GET /accounting (no subs, no depreciation)
+// Helper: push the 10 selects consumed by GET /accounting (no subs, no depreciation)
+// Updated for cash-basis: accFixedAllocSubPayments slot added at [7].
+//
+// Queue order:
+//   [0]  paidInvoices             — no issueDate filter
+//   [1]  nonPaidInvoices          — issueDate-bounded
+//   [2]  expenses
+//   [3]  mileageLogs
+//   [4]  subs
+//   [5]  settings
+//   [6]  otherIncome
+//   [7]  accFixedAllocSubPayments — fixed/allocation sub_payment_records
+//   [8]  assets                   — computeDepreciationForYear
+//   [9]  assetBusinessUse         — computeDepreciationForYear
 function pushAccountingSelects() {
   // [0] paidInvoices — no issueDate filter
   h.selectQueue.push([PAID_INVOICE]);
@@ -140,7 +153,9 @@ function pushAccountingSelects() {
   h.selectQueue.push([SETTINGS_ROW]);
   // [6] otherIncome
   h.selectQueue.push([OTHER_INCOME_ROW]);
-  // [7-8] computeDepreciationForYear → assets, assetBusinessUse (both empty → $0 depreciation)
+  // [7] accFixedAllocSubPayments — fixed/allocation sub payments (cash-basis addition)
+  h.selectQueue.push([]);
+  // [8-9] computeDepreciationForYear → assets, assetBusinessUse (both empty → $0 depreciation)
   h.selectQueue.push([]); // assets
   h.selectQueue.push([]); // assetBusinessUse
 }
@@ -473,10 +488,11 @@ describe("Owner-draw exclusion from net profit", () => {
     h.selectQueue.push([]);                               // [4] subs
     h.selectQueue.push([SETTINGS_ROW]);                   // [5] settings
     h.selectQueue.push([]);                               // [6] otherIncome
-    h.selectQueue.push([]);                               // [7] assets (computeDepreciationForYear)
-    h.selectQueue.push([]);                               // [8] assetBusinessUse
-    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]);  // [9] allBusinesses
-    h.selectQueue.push([]);                               // [10] outstandingSubRows (innerJoin)
+    h.selectQueue.push([]);                               // [7] accFixedAllocSubPayments (cash-basis)
+    h.selectQueue.push([]);                               // [8] assets (computeDepreciationForYear)
+    h.selectQueue.push([]);                               // [9] assetBusinessUse
+    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]);  // [10] allBusinesses
+    h.selectQueue.push([]);                               // [11] outstandingSubRows (innerJoin)
 
     const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
     expect(res.status).toBe(200);
@@ -623,10 +639,11 @@ describe("Owner-draw exclusion from net profit", () => {
     h.selectQueue.push([]);            // [4] subs
     h.selectQueue.push([SETTINGS_ROW]); // [5] settings
     h.selectQueue.push([]);            // [6] otherIncome
-    h.selectQueue.push([]);            // [7] assets
-    h.selectQueue.push([]);            // [8] assetBusinessUse
-    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]); // [9] allBusinesses
-    h.selectQueue.push([]); // [10] outstandingSubRows
+    h.selectQueue.push([]);            // [7] accFixedAllocSubPayments (cash-basis)
+    h.selectQueue.push([]);            // [8] assets
+    h.selectQueue.push([]);            // [9] assetBusinessUse
+    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]); // [10] allBusinesses
+    h.selectQueue.push([]); // [11] outstandingSubRows
 
     const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
     expect(res.status).toBe(200);
@@ -833,9 +850,10 @@ describe("Mileage expense exclusion from dashboard totals", () => {
     h.selectQueue.push([]);                                    // [6] recentJobsRows (leftJoin)
     h.selectQueue.push([]);                                    // [7] recentInvoicesRows (leftJoin)
     h.selectQueue.push([]);                                    // [8] kpiOwnerCapital
-    h.selectQueue.push([]);                                    // [9] ytdMileageLogs (period=month extra select)
-    h.selectQueue.push([]);                                    // [10] subPayRows (innerJoin)
-    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]);       // [11] allBusinesses — "mfh" is a known slug
+    h.selectQueue.push([]);                                    // [9] allSubPayments (cash-basis)
+    h.selectQueue.push([]);                                    // [10] ytdMileageLogs (period=month extra select)
+    h.selectQueue.push([]);                                    // [11] subPayRows (innerJoin)
+    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]);       // [12] allBusinesses — "mfh" is a known slug
     // monthlyRevenue loop: 6 months × 4 queries = 24 selects
     for (let i = 0; i < 24; i++) h.selectQueue.push([]);
 

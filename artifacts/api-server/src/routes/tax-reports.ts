@@ -3,9 +3,9 @@ import { db } from "@workspace/db";
 import {
   invoicesTable, expensesTable, mileageLogsTable,
   paymentsTable, subcontractorsTable, clientsTable, otherIncomeTable, businessesTable,
-  settingsTable
+  settingsTable, subPaymentRecordsTable, jobSubcontractorsTable,
 } from "@workspace/db/schema";
-import { eq, and, gte, lte, sum, desc, count, ne, or, isNull, sql } from "drizzle-orm";
+import { eq, and, gte, lte, sum, desc, count, ne, or, isNull, sql, inArray } from "drizzle-orm";
 
 const router = Router();
 
@@ -210,6 +210,10 @@ router.get("/schedule-c", async (req, res) => {
           gte(expensesTable.date, startDate),
           lte(expensesTable.date, endDate),
           ne(expensesTable.category, "mileage"),
+          // Cash-basis: exclude outstanding cost-booking rows (description ending in "(outstanding)").
+          // These are accrual-style bookings — the sub has not been paid. The actual cash payment
+          // appears in sub_payment_records and is added to contractLabor below.
+          sql`(${expensesTable.description} IS NULL OR ${expensesTable.description} NOT LIKE '%(outstanding)')`,
           blWhere(expensesTable.businessLine)
         )
       )
@@ -228,10 +232,9 @@ router.get("/schedule-c", async (req, res) => {
       const amount = parseFloat(exp.amount as any);
       const category = exp.category || "other";
 
-      // Owner Draw is a personal distribution — never a Schedule C deduction.
-      // Skip before populating any breakdown object so draws don't appear
-      // in expensesByCategory or Schedule C deductible totals.
-      if (category === "Owner Draw") continue;
+      // Owner distributions are personal — never Schedule C deductions.
+      // Covers all three variants so none appear in expensesByCategory or deductible totals.
+      if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(category)) continue;
 
       expensesByCategory[category] = {
         amount: (expensesByCategory[category]?.amount || 0) + amount,
@@ -299,15 +302,23 @@ router.get("/schedule-c", async (req, res) => {
     delete expenses["travelLodging"];
     delete expenses["mealsDeductible"];
 
-    // 4. Subcontractor payments (Line 11) - from payments table
+    // 4. Subcontractor payments (Line 11) — from sub_payment_records (sole ledger after Task #892).
+    // Hourly subs already appear in expensesTable (jobSubHoursId IS NOT NULL) so we only
+    // add fixed/allocation payments here to avoid double-counting with the expense rows.
     const paymentData = await db
-      .select({ totalPayments: sum(paymentsTable.amount) })
-      .from(paymentsTable)
-      .where(
-        and(
-          eq(paymentsTable.year, year)
-        )
-      );
+      .select({ totalPayments: sum(subPaymentRecordsTable.amount) })
+      .from(subPaymentRecordsTable)
+      .innerJoin(jobSubcontractorsTable, and(
+        eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+        eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+      ))
+      .where(and(
+        gte(subPaymentRecordsTable.paymentDate, startDate),
+        lte(subPaymentRecordsTable.paymentDate, endDate),
+        sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+        inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
+        blWhere(subPaymentRecordsTable.businessLine),
+      ));
 
     const contractLaborAmount = paymentData[0]?.totalPayments ? parseFloat(paymentData[0].totalPayments as any) : 0;
     if (contractLaborAmount > 0) {
