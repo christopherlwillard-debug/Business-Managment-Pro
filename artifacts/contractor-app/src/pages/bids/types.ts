@@ -15,7 +15,7 @@ export type SetAsideType =
   | "open"               // Full & open competition
   | "other";             // Cert-specific (HUBZone, 8(a), WOSB, etc.)
 
-export type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid";
+export type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid" | "score_rejected";
 
 /**
  * How an opportunity is classified by source + notice type.

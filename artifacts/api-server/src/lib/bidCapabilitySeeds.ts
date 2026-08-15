@@ -132,9 +132,10 @@ export const TITLE_HARD_SUPPRESS_TERMS = [
   "software license", "saas subscription", "cloud hosting",
   "it support services", "managed services contract",
   "network infrastructure supply",
+  // Freight / heavy transportation — not construction hauling
+  "full truckload freight", "ltl freight", "intermodal freight", "freight carrier",
   // Unrelated services
   "food service equipment", "vending machine", "vending services",
-  "full truckload freight", "ltl freight", "intermodal freight",
 ];
 
 // ── General Contracting capability definitions (v2 — 7 real skill buckets) ───

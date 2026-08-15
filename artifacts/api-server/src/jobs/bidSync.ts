@@ -26,6 +26,7 @@ import {
   getSearchGroupsForBusinessType,
   LEGACY_GC_CAPABILITY_KEYS,
   mergeCapabilitySearchParams,
+  TITLE_HARD_SUPPRESS_TERMS,
 } from "../lib/bidCapabilitySeeds.js";
 import { fetchSubnetOpportunities, SubnetOpportunity } from "../lib/subnetSync.js";
 import { fetchGsaForecastOpportunities, GsaForecastOpportunity } from "../lib/gsaForecast.js";
@@ -59,107 +60,11 @@ interface ResolvedProfile {
 
 // ── Hard-suppression: title-level gate ───────────────────────────────────────
 // Opportunities whose TITLE contains these are skipped at sync time entirely.
-// Title match = clearly disqualifying with no chance of false negative.
-// Keep in sync with TITLE_HARD_SUPPRESS_TERMS in bidCapabilitySeeds.ts.
-//
-// Score floor (MIN_SCORE_TO_STORE below) provides a secondary defense for
-// bids that pass title suppression but have no real relevance signal.
-const TITLE_HARD_SUPPRESS = [
-  // Waste / environmental — outside scope
-  "hazardous waste",
-  "medical waste",
-  "biomedical waste",
-  "radioactive waste",
-  "hazmat",
-  "biohazard",
-  "residential garbage collection",
-  "municipal solid waste collection",
-  "refuse collection franchise",
-  "automated refuse",
-  "sewage treatment plant",
-  // Aviation / aircraft parts — clearly not construction
-  "ch-47",
-  "ch-53",
-  "uh-60",
-  "f-16",
-  "f-35",
-  "helicopter part",
-  "aircraft part",
-  "aviation part",
-  "insulation blanket",   // aircraft thermal blankets, not building insulation
-  "avionics",
-  // Military exercises and non-construction operations
-  "bilateral exercise",
-  "military exercise",
-  "bilateral army exercise",
-  "joint exercise",
-  // Industrial equipment / manufacturing supply (non-construction)
-  "fan,centrifugal",
-  "centrifugal pump",
-  "turbine blade",
-  "compressor assembly",
-  "ammunition",
-  "ordnance",
-  "explosive",
-  "weapon system",
-  "fire control system",
-  "control column,airc",   // aircraft control column
-  "c0ntrol column,airc",   // OCR variant with zero instead of letter O
-  // Engine / vehicle / drivetrain manufacturing (NAICS 333xxx) — not construction
-  "engine block",
-  "diesel engine",
-  "engine assembly",
-  "transmission assembly",
-  "gear assembly",
-  "motor assembly",
-  "generator set procurement",  // generator SET supply (not installation)
-  "pump assembly",              // manufactured pump units (not plumbing install)
-  // Fitness / sports equipment — clearly not construction services
-  "gym equipment",
-  "exercise equipment",
-  "fitness equipment",
-  "sports equipment",
-  "athletic equipment",
-  "recreational equipment",
-  // Agriculture / food / animal inspection services
-  "animal and plant health",
-  "food safety inspection",
-  "agricultural inspection",
-  "phytosanitary",
-  "veterinary biologics",
-  "pest management inspection",
-  "animal disease",
-  "plant disease inspection",
-  "food inspection service",
-  // Medical / pharmaceutical / laboratory supply
-  "medical device",
-  "pharmaceutical supply",
-  "dental supply",
-  "laboratory reagent",
-  "medical equipment supply",
-  "surgical supply",
-  "medical supply",
-  "drug supply",
-  // IT / professional services (not trades)
-  "software license",
-  "saas subscription",
-  "cloud hosting",
-  "it support services",
-  "managed services contract",
-  "network infrastructure supply",
-  // Freight / heavy transportation — not construction hauling
-  "full truckload freight",
-  "ltl freight",
-  "intermodal freight",
-  "freight carrier",
-  "food service equipment",
-  "vending machine",
-  "vending services",
-];
-
+// isHardSuppressedByTitle uses the canonical list from bidCapabilitySeeds.ts (TITLE_HARD_SUPPRESS_TERMS).
+// Edit the list there — this file no longer maintains a local copy.
 function isHardSuppressedByTitle(title: string): boolean {
   const t = title.toLowerCase();
-  return TITLE_HARD_SUPPRESS.some((term) => t.includes(term));
+  return TITLE_HARD_SUPPRESS_TERMS.some((term) => t.includes(term));
 }
 
 // ── Minimum score to store a new bid ─────────────────────────────────────────
@@ -179,6 +84,21 @@ function isHardSuppressedByTitle(title: string): boolean {
 // Existing rows already in the user's workflow (reviewing/bidding/etc.) are
 // never affected by this gate; it only blocks NEW insertions.
 const MIN_SCORE_TO_STORE = 20;
+
+// NAICS sectors that are clearly unrelated to construction/maintenance/services.
+// Keyword-fetched bids (naicsMismatch=true) in one of these sectors are hard-rejected
+// rather than soft-capped — they cannot be construction contracts regardless of keyword overlap.
+const NAICS_HARD_REJECT_SECTORS = new Set([
+  "11","21",           // Agriculture, Mining
+  "31","32","33",      // Manufacturing
+  "42",                // Wholesale Trade
+  "44","45",           // Retail Trade
+  "48","49",           // Transportation
+  "51",                // Information / IT
+  "52","53",           // Finance, Real Estate
+  "61","62",           // Education, Health Care
+  "71",                // Arts / Entertainment
+]);
 
 // ── Opportunity type classification ───────────────────────────────────────────
 function deriveOpportunityType(source: string, noticeType?: string | null): string {
@@ -652,11 +572,43 @@ async function upsertOpportunities(
         normalizeSetAsideType(rawSetAside),
       );
 
+      // NAICS sector hard-gate: keyword-fetched bids (naicsMismatch=true) whose NAICS sector
+      // is clearly unrelated to construction/maintenance/services are hard-rejected before
+      // they can clutter the score_rejected feed. Manufacturing, agriculture, IT, healthcare etc.
+      if ((opp as SamOpportunity).naicsMismatch && opp.naicsCode) {
+        const sector = opp.naicsCode.slice(0, 2);
+        if (NAICS_HARD_REJECT_SECTORS.has(sector)) {
+          console.log(`[bid-sync] NAICS sector hard-reject (${opp.naicsCode}): "${opp.title.slice(0, 60)}"`);
+          continue;
+        }
+      }
+
       // Score floor — skip inserting new bids with no meaningful relevance signal.
-      // This catches bids that passed the title gate and NAICS sector gate but still
-      // have insufficient keyword/geographic evidence of fit.
+      // Bids that fail this gate are stored as score_rejected so Willard can review
+      // what was filtered and restore any false positives.
       if (opportunityScore < MIN_SCORE_TO_STORE) {
         console.log(`[bid-sync] Score-floor skip (score=${opportunityScore}): "${opp.title.slice(0, 70)}"`);
+        await db.insert(bidOpportunitiesTable).values({
+          businessId,
+          noticeId:         opp.noticeId,
+          title:            opp.title,
+          agency:           opp.agency,
+          naicsCode:        opp.naicsCode,
+          description:      opp.description,
+          postedDate:       opp.postedDate,
+          responseDeadline: opp.responseDeadline,
+          url:              opp.url,
+          status:           "score_rejected",
+          stage:            "score_rejected",
+          source:           opp.source ?? defaultSource,
+          sourceLabel:      opp.sourceLabel ?? defaultSourceLabel,
+          noticeType:       (opp as SamOpportunity).noticeType ?? null,
+          setAsideType:     rawSetAside,
+          opportunityScore,
+          capabilityMatches,
+          opportunityType:  derivedOppType,
+          notes:            `Filtered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`,
+        }).onConflictDoNothing();
         continue;
       }
 

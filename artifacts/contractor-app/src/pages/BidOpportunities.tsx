@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw, FileSearch, Shield, List, Columns, CheckCircle2, AlertCircle, Building2, Layers2,
-  Plus, RotateCcw,
+  Plus, RotateCcw, ChevronDown, EyeOff,
 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
 import {
@@ -99,6 +99,7 @@ export default function BidOpportunities() {
   const [qualifyingBid,  setQualifyingBid]  = useState<BidOpportunity | null>(null);
   const [qualCache,      setQualCache]      = useState<Record<number, IndustrialQualSummary>>({});
   const [addingPrivate,  setAddingPrivate]  = useState(false);
+  const [showFiltered,   setShowFiltered]   = useState(false);
   const [privateForm, setPrivateForm] = useState({
     companyName:   "",
     description:   "",
@@ -405,6 +406,7 @@ export default function BidOpportunities() {
   // ── USASpending awards (separate source) ─────────────────────────────────
   const awards = bids.filter((b) => b.source === "usa-spending");
   const pipelineBids = bids.filter((b) => b.source !== "usa-spending");
+  const scoreRejectedBids = pipelineBids.filter((b) => b.stage === "score_rejected");
 
   const profileNaicsCodes = BUSINESS_NAICS[activeBusiness?.type ?? ""] ?? [];
 
@@ -439,7 +441,7 @@ export default function BidOpportunities() {
   // ── Filtering ─────────────────────────────────────────────────────────────
 
   const counts: Partial<Record<BidFilter, number>> = {
-    all:       capabilityFiltered.filter((b) => b.stage !== "no_bid").length,
+    all:       capabilityFiltered.filter((b) => b.stage !== "no_bid" && b.stage !== "score_rejected").length,
     new:       capabilityFiltered.filter((b) => b.stage === "new").length,
     reviewing: capabilityFiltered.filter((b) => b.stage === "reviewing").length,
     bidding:   capabilityFiltered.filter((b) => b.stage === "bidding").length,
@@ -450,7 +452,7 @@ export default function BidOpportunities() {
   };
 
   const stageFiltered = filter === "all"
-    ? capabilityFiltered.filter((b) => b.stage !== "no_bid")
+    ? capabilityFiltered.filter((b) => b.stage !== "no_bid" && b.stage !== "score_rejected")
     : capabilityFiltered.filter((b) => b.stage === filter);
 
   const sourceFiltered = sourceFilter === "federal"
@@ -840,6 +842,49 @@ export default function BidOpportunities() {
             </div>
           )}
         </>
+      )}
+
+      {/* ── Filtered / Score-Rejected Bids Panel ────────────────────────── */}
+      {scoreRejectedBids.length > 0 && (
+        <div className="mt-4 border border-border/40 rounded-xl overflow-hidden">
+          <button
+            className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+            onClick={() => setShowFiltered((v) => !v)}
+          >
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <EyeOff className="h-4 w-4" />
+              <span className="font-medium">Filtered Out ({scoreRejectedBids.length})</span>
+              <span className="text-xs hidden sm:inline">— below relevance threshold; tap to review for false positives</span>
+            </div>
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${showFiltered ? "rotate-180" : ""}`} />
+          </button>
+          {showFiltered && (
+            <div className="divide-y divide-border/30">
+              {scoreRejectedBids.map((bid) => (
+                <div key={bid.id} className="px-4 py-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">{bid.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {bid.agency ?? "Unknown agency"}
+                      {bid.opportunityScore != null && ` · Score ${bid.opportunityScore}/100`}
+                      {bid.naicsCode && ` · NAICS ${bid.naicsCode}`}
+                    </p>
+                    {bid.notes && (
+                      <p className="text-xs text-muted-foreground/60 mt-0.5 italic">{bid.notes}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => updateStage.mutate({ id: bid.id, stage: "new", bidBusinessId: bid.businessId })}
+                    className="shrink-0 text-xs text-primary hover:text-primary/80 font-medium transition-colors py-1"
+                    disabled={updateStage.isPending}
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Bid Education Panel ─────────────────────────────────────────── */}
