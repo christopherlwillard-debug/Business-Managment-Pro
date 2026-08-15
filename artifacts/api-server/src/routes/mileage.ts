@@ -23,8 +23,12 @@ async function getRate() {
 }
 
 export function getIrsRateForDate(dateStr: string): number {
+  // Rates are sorted descending by effectiveDate.
+  // find() returns the first entry whose effectiveDate ≤ dateStr.
+  // 2026 is a split year: $0.725/mi for H1, $0.760/mi from Jul 1.
   const rates = [
-    { effectiveDate: "2026-01-01", rate: 0.725 },
+    { effectiveDate: "2026-07-01", rate: 0.760 }, // 2026 mid-year rate increase — H2 2026
+    { effectiveDate: "2026-01-01", rate: 0.725 }, // IRS Notice 2025-87 — H1 2026
     { effectiveDate: "2025-01-01", rate: 0.700 },
     { effectiveDate: "2024-01-01", rate: 0.670 },
     { effectiveDate: "2023-01-01", rate: 0.655 },
@@ -132,16 +136,22 @@ router.get("/summary", async (req, res) => {
       .from(mileageLogsTable)
       .where(and(...baseConditions));
 
-    const rate = await getRate();
-    const businessMiles = all.filter(m => m.classification === "business").reduce((s, m) => s + parseFloat(m.miles), 0);
+    // Sum stored per-trip deductionAmount instead of recomputing from miles × a single rate.
+    // This is correct for split-year IRS rate changes (e.g. 2026 H1 $0.725 / H2 $0.760).
+    const businessLogs = all.filter(m => m.classification === "business");
     const personalMiles = all.filter(m => m.classification === "personal").reduce((s, m) => s + parseFloat(m.miles), 0);
+    const businessMiles = businessLogs.reduce((s, m) => s + parseFloat(m.miles), 0);
+    const totalDeduction = businessLogs.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
 
     res.json({
       totalMiles: businessMiles + personalMiles,
       businessMiles,
       personalMiles,
-      totalDeduction: businessMiles * rate,
-      ratePerMile: rate,
+      totalDeduction,
+      // Blended rate derived from stored per-trip deductions — reflects the actual
+      // effective rate across split-year periods (e.g. H1 $0.725 / H2 $0.760 blended).
+      // Returns null when there are no business trips.
+      ratePerMile: businessMiles > 0 ? totalDeduction / businessMiles : null,
       tripCount: all.length,
     });
   } catch (err) {
@@ -182,7 +192,9 @@ router.post("/", async (req, res) => {
   try {
     const { date, startLocation, endLocation, miles, purpose, jobId, businessId, classification, notes, source } = req.body;
     if (!date || miles == null) return res.status(400).json({ error: "Missing required fields" });
-    const rate = await getRate();
+    // Use the IRS date-aware rate so H2 2026 trips automatically get $0.760/mile.
+    // getIrsRateForDate() is the authoritative rate table — not the settings override.
+    const rate = getIrsRateForDate(date);
     const milesNum = parseFloat(miles);
     const deductionAmount = classification === "business" ? milesNum * rate : 0;
     const bizId = businessId ? parseInt(businessId) : null;
@@ -235,7 +247,8 @@ router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { date, startLocation, endLocation, miles, purpose, jobId, classification, notes } = req.body;
-    const rate = await getRate();
+    // Derive rate from the (possibly new) trip date so an edited date picks up the correct split.
+    const rate = getIrsRateForDate(date);
     const milesNum = parseFloat(miles);
     const deductionAmount = classification === "business" ? milesNum * rate : 0;
 

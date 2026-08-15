@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, expensesTable, subPaymentRecordsTable, productionServiceTypesTable } from "@workspace/db";
-import { jobSubcontractorsTable, invoicesTable, clientBillingProfilesTable, ownerCapitalEntriesTable } from "@workspace/db/schema";
-import { isNull, isNotNull, and, inArray, sql, ilike, eq, ne, lt } from "drizzle-orm";
+import { jobSubcontractorsTable, invoicesTable, clientBillingProfilesTable, ownerCapitalEntriesTable, mileageImportsTable } from "@workspace/db/schema";
+import { isNull, isNotNull, and, inArray, sql, ilike, eq, ne, lt, gte, lte } from "drizzle-orm";
 import { recalcImportExpenses } from "./mileage";
 
 const router = Router();
@@ -770,6 +770,159 @@ router.post("/owner-pay-reconciliation", async (_req: Request, res: Response) =>
     res.json({ ok: true, step1_fixed: step1Fixed, step2_labelled: step2Labelled, step3_labelled: step3Labelled, step4_linked: step4Linked, step4_migrated: step4Migrated });
   } catch (err) {
     console.error("[admin/migrations] owner-pay-reconciliation failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
+// Recompute 2026 H2 mileage deductions at the correct $0.760/mile rate.
+//
+// Background: The IRS announced a mid-year rate increase effective July 1, 2026
+// ($0.725 → $0.760/mi). Any mileage_logs rows with date >= 2026-07-01 that
+// were recorded before the rate table was updated have deductionAmount and
+// linked expense amounts computed at $0.725 — understating the tax deduction.
+//
+// Two-phase design:
+//   Phase 1 — Per-trip log repair (idempotent):
+//     Selects only logs not yet at $0.760, updates ratePerMile + deductionAmount
+//     in a transaction, and updates linked per-trip expense amounts for manual logs.
+//     Skips rows already at $0.760 so re-runs are safe.
+//
+//   Phase 2 — Import aggregate repair (always runs, independent of Phase 1):
+//     Discovers ALL H2 2026 imports — not just those updated in Phase 1.
+//     This makes the migration safe to re-run after a transient failure: even if
+//     Phase 1 has already fixed the logs, a failed Phase 2 still leaves the import
+//     aggregates stale, and re-running will discover and repair them.
+//     Returns HTTP 500 (not ok:true) if any import repair fails, so callers know
+//     to retry rather than assume the migration is complete.
+router.post("/mileage-2026-recalc", async (_req: Request, res: Response) => {
+  try {
+    const NEW_RATE = 0.760;
+
+    // ── Phase 1: repair per-trip log rates (idempotent) ─────────────────────
+    const logsToFix = await db
+      .select({
+        id:        mileageLogsTable.id,
+        miles:     mileageLogsTable.miles,
+        expenseId: mileageLogsTable.expenseId,
+      })
+      .from(mileageLogsTable)
+      .where(and(
+        gte(mileageLogsTable.date, "2026-07-01"),
+        lte(mileageLogsTable.date, "2026-12-31"),
+        eq(mileageLogsTable.classification, "business"),
+        sql`(${mileageLogsTable.ratePerMile} IS NULL OR ${mileageLogsTable.ratePerMile}::numeric != ${NEW_RATE})`,
+      ));
+
+    const manualLogs = logsToFix.filter(l => l.expenseId != null);
+
+    if (logsToFix.length > 0) {
+      await db.transaction(async (tx) => {
+        for (const log of logsToFix) {
+          const miles = parseFloat(log.miles ?? "0");
+          const newDeduction = (miles * NEW_RATE).toFixed(2);
+          await tx.update(mileageLogsTable)
+            .set({ ratePerMile: String(NEW_RATE), deductionAmount: newDeduction })
+            .where(eq(mileageLogsTable.id, log.id));
+          if (log.expenseId != null) {
+            await tx.update(expensesTable)
+              .set({ amount: newDeduction })
+              .where(eq(expensesTable.id, log.expenseId));
+          }
+        }
+      });
+    }
+
+    // ── Phase 2: repair import aggregates (always runs) ──────────────────────
+    // Query ALL H2 2026 imports regardless of whether Phase 1 updated any logs.
+    // A prior run may have fixed the logs but left the aggregates stale due to a
+    // transient error — this query will still discover those imports so they can
+    // be repaired on the next call.
+    //
+    // CONSOLIDATION GUARD: For imports that still have per-trip expenses (legacy
+    // state where each mileage_log has its own expenseId), we must unlink and
+    // delete those per-trip expenses before calling recalcImportExpenses.
+    // Without this step, recalcImportExpenses would create new monthly aggregate
+    // expenses on top of the existing per-trip expenses → double-count.
+    // This mirrors the consolidate-mileage-expenses endpoint logic.
+    const importRows = await db
+      .selectDistinct({ importId: mileageLogsTable.importId })
+      .from(mileageLogsTable)
+      .where(and(
+        gte(mileageLogsTable.date, "2026-07-01"),
+        lte(mileageLogsTable.date, "2026-12-31"),
+        eq(mileageLogsTable.classification, "business"),
+        isNotNull(mileageLogsTable.importId),
+      ));
+    const allImportIds = importRows.map(r => r.importId!);
+
+    const failedImports: Array<{ importId: number; error: string }> = [];
+    for (const importId of allImportIds) {
+      try {
+        // a) Consolidate any per-trip import expenses (legacy state).
+        // Finds ALL logs for this import with a per-trip expenseId (not just H2),
+        // then unlinks and deletes them transactionally. Idempotent: no-op when
+        // the import is already consolidated (all expenseIds null).
+        const legacyLogs = await db
+          .select({ id: mileageLogsTable.id, expenseId: mileageLogsTable.expenseId })
+          .from(mileageLogsTable)
+          .where(and(
+            eq(mileageLogsTable.importId, importId),
+            isNotNull(mileageLogsTable.expenseId),
+          ));
+        if (legacyLogs.length > 0) {
+          const legacyLogIds   = legacyLogs.map(l => l.id);
+          const legacyExpIds   = legacyLogs.map(l => l.expenseId!);
+          await db.transaction(async (tx) => {
+            await tx.update(mileageLogsTable)
+              .set({ expenseId: null })
+              .where(inArray(mileageLogsTable.id, legacyLogIds));
+            await tx.delete(expensesTable)
+              .where(inArray(expensesTable.id, legacyExpIds));
+          });
+        }
+
+        // b) Rebuild monthly aggregate expense rows.
+        await recalcImportExpenses(importId);
+        // c) Re-sum corrected deductionAmounts and persist to the import summary record.
+        const [sumRow] = await db
+          .select({ total: sql<string>`COALESCE(SUM(${mileageLogsTable.deductionAmount}), '0')` })
+          .from(mileageLogsTable)
+          .where(and(
+            eq(mileageLogsTable.importId, importId),
+            eq(mileageLogsTable.classification, "business"),
+          ));
+        await db.update(mileageImportsTable)
+          .set({ estimatedDeduction: parseFloat(sumRow?.total ?? "0").toFixed(2) })
+          .where(eq(mileageImportsTable.id, importId));
+      } catch (err) {
+        failedImports.push({ importId, error: String(err) });
+      }
+    }
+
+    // Return 500 if any import repair failed so the caller knows to retry.
+    // Do not return ok:true for a partial migration — stale aggregates affect financial reports.
+    if (failedImports.length > 0) {
+      console.error("[admin/migrations] mileage-2026-recalc partial failure:", JSON.stringify(failedImports));
+      return res.status(500).json({
+        error: "Import aggregate repair failed — retry the migration to repair remaining imports",
+        failedImports,
+        logsUpdated: logsToFix.length,
+        expensesUpdated: manualLogs.length,
+        importsRepaired: allImportIds.length - failedImports.length,
+        importsTotal: allImportIds.length,
+      });
+    }
+
+    const result = {
+      ok: true,
+      logsUpdated: logsToFix.length,
+      expensesUpdated: manualLogs.length,
+      importsRecalculated: allImportIds.length,
+    };
+    console.log(`[admin/migrations] mileage-2026-recalc executed:`, JSON.stringify(result));
+    res.json(result);
+  } catch (err) {
+    console.error("[admin/migrations] mileage-2026-recalc failed:", err);
     res.status(500).json({ error: "Migration failed", detail: String(err) });
   }
 });

@@ -291,7 +291,8 @@ router.get("/schedule-c", async (req, res) => {
     const totalBusinessMiles = mileageData[0]?.totalMiles ? parseFloat(mileageData[0].totalMiles as any) : 0;
     // Use stored deductionAmount (matches dashboard); irsMileageRate is for display only
     const mileageDeduction = mileageData[0]?.totalDeduction ? parseFloat(mileageData[0].totalDeduction as any) : 0;
-    const irsMileageRate = getIrsMileageRate(year);
+    // Derive blended rate from stored per-trip deductionAmounts — reflects 2026 H1/H2 split.
+    const irsMileageRate = totalBusinessMiles > 0 ? mileageDeduction / totalBusinessMiles : getIrsMileageRate(year);
 
     // Separate Fuel/Travel + Parking/Tolls expenses (carTruck) from mileage so Line 9 is handled explicitly
     const fuelTravelExpenses = expenses["carTruck"] || 0;

@@ -358,11 +358,12 @@ tokenRouter.get("/", async (req, res) => {
     const totalExpenses = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
     const businessMileage = mileage.filter(m => m.classification === "business");
     const totalMiles = businessMileage.reduce((s, m) => s + parseFloat(m.miles), 0);
+    // Sum stored per-trip deductionAmount — correct for split-year IRS rate changes.
+    const mileageDeduction = businessMileage.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
     const curYear = new Date().getFullYear();
     const ytdStart = `${curYear}-01-01`;
     const ytdEnd = `${curYear}-12-31`;
-    const [rate, ytdPayments, ytdCountRows] = await Promise.all([
-      getRate(),
+    const [ytdPayments, ytdCountRows] = await Promise.all([
       computeYtd(sub.id, curYear),
       db.select({ count: sql<number>`count(*)::int` })
         .from(subPaymentRecordsTable)
@@ -416,8 +417,9 @@ tokenRouter.get("/", async (req, res) => {
         ytdPaymentCount,
         totalExpenses,
         totalMiles,
-        mileageDeduction: totalMiles * rate,
-        ratePerMile: rate,
+        mileageDeduction,
+        // Derived blended rate — reflects split-year periods; null if no business trips.
+        ratePerMile: totalMiles > 0 ? mileageDeduction / totalMiles : null,
         expenseCount: expenses.length,
         mileageCount: mileage.length,
       },
@@ -654,7 +656,7 @@ tokenRouter.get("/tax-report", async (req, res) => {
       );
     const qualifyingIncome = parseFloat(qualifyingPayRow?.total ?? "0") + parseFloat(qualifyingSprRow?.total ?? "0");
 
-    const [rate, grossIncome] = await Promise.all([getRate(), computeYtd(sub.id, year)]);
+    const grossIncome = await computeYtd(sub.id, year);
 
     const expensesByCategory: Record<string, number> = {};
     let totalExpenses = 0;
@@ -666,7 +668,8 @@ tokenRouter.get("/tax-report", async (req, res) => {
 
     const businessMiles = mileage.filter(m => m.classification === "business");
     const totalBusinessMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles), 0);
-    const mileageDeduction = totalBusinessMiles * rate;
+    // Sum stored per-trip deductionAmount — correct for split-year IRS rate changes.
+    const mileageDeduction = businessMiles.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
     const totalDeductions = totalExpenses + mileageDeduction;
     const netIncome = Math.max(0, grossIncome - totalDeductions);
     const seTaxEstimate = netIncome * 0.9235 * 0.153;
@@ -702,7 +705,7 @@ tokenRouter.get("/tax-report", async (req, res) => {
     res.json({
       year, grossIncome, qualifyingIncome,
       expenses: { total: totalExpenses, byCategory: expensesByCategory, count: expenses.length },
-      mileage: { totalMiles: totalBusinessMiles, ratePerMile: rate, deduction: mileageDeduction, count: businessMiles.length },
+      mileage: { totalMiles: totalBusinessMiles, ratePerMile: totalBusinessMiles > 0 ? mileageDeduction / totalBusinessMiles : null, deduction: mileageDeduction, count: businessMiles.length },
       totalDeductions, netIncome, seTaxEstimate, seDeduction, federalTaxableIncome,
       estimatedFederalIncomeTax, estimatedTotalTax, estimatedQuarterlyPayment,
       standardDeduction: STANDARD_DEDUCTION_2026,
@@ -906,7 +909,8 @@ tokenRouter.post("/mileage", async (req, res) => {
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     const { date, miles, startLocation, endLocation, purpose, jobId, classification, notes } = req.body;
     if (!date || miles == null) return res.status(400).json({ error: "Missing required fields" });
-    const rate = await getRate();
+    // Use the IRS date-aware rate so H2 2026 trips get $0.760/mile automatically.
+    const rate = getIrsRateForDate(date);
     const milesNum = parseFloat(miles);
     const deductionAmount = classification === "business" ? milesNum * rate : 0;
     const [log] = await db.insert(mileageLogsTable).values({
@@ -1380,7 +1384,7 @@ tokenRouter.get("/tax-report/pdf", async (req, res) => {
       ));
     const qualifyingIncome = parseFloat(qualifyingPayRow?.total ?? "0") + parseFloat(qualifyingSprRow?.total ?? "0");
 
-    const [rate, grossIncome] = await Promise.all([getRate(), computeYtd(sub.id, year)]);
+    const grossIncome = await computeYtd(sub.id, year);
 
     const expensesByCategory: Record<string, number> = {};
     let totalExpenses = 0;
@@ -1392,7 +1396,8 @@ tokenRouter.get("/tax-report/pdf", async (req, res) => {
 
     const businessMiles = mileage.filter(m => m.classification === "business");
     const totalBusinessMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles), 0);
-    const mileageDeduction = totalBusinessMiles * rate;
+    // Sum stored per-trip deductionAmount — correct for split-year IRS rate changes.
+    const mileageDeduction = businessMiles.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
     const totalDeductions = totalExpenses + mileageDeduction;
     const netIncome = Math.max(0, grossIncome - totalDeductions);
     const seTaxEstimate = netIncome * 0.9235 * 0.153;
@@ -1423,7 +1428,7 @@ tokenRouter.get("/tax-report/pdf", async (req, res) => {
       year, subName: sub.name, w9LegalName: sub.w9LegalName,
       grossIncome, qualifyingIncome,
       expenses: { total: totalExpenses, byCategory: expensesByCategory, count: expenses.length },
-      mileage: { totalMiles: totalBusinessMiles, ratePerMile: rate, deduction: mileageDeduction, count: businessMiles.length },
+      mileage: { totalMiles: totalBusinessMiles, ratePerMile: totalBusinessMiles > 0 ? mileageDeduction / totalBusinessMiles : 0, deduction: mileageDeduction, count: businessMiles.length },
       totalDeductions, netIncome, seTaxEstimate, seDeduction, federalTaxableIncome,
       estimatedFederalIncomeTax, estimatedTotalTax, estimatedQuarterlyPayment,
       standardDeduction: STANDARD_DEDUCTION,
@@ -1451,12 +1456,15 @@ tokenRouter.get("/mileage-report/pdf", async (req, res) => {
     const startDate = `${year}-01-01`;
     const endDate   = `${year}-12-31`;
 
-    const [logs, rate] = await Promise.all([
-      db.select().from(mileageLogsTable).where(
-        and(eq(mileageLogsTable.subcontractorId, sub.id), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))
-      ).orderBy(mileageLogsTable.date),
-      getRate(),
-    ]);
+    const logs = await db.select().from(mileageLogsTable).where(
+      and(eq(mileageLogsTable.subcontractorId, sub.id), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))
+    ).orderBy(mileageLogsTable.date);
+    // Derive a blended summary rate from stored per-trip deductions so the PDF
+    // header correctly reflects split-year periods (e.g. 2026 H1 $0.725 / H2 $0.760).
+    const pdfBizLogs = logs.filter(m => m.classification === "business");
+    const pdfTotalMiles = pdfBizLogs.reduce((s, m) => s + parseFloat(m.miles), 0);
+    const pdfTotalDeduction = pdfBizLogs.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+    const derivedRate = pdfTotalMiles > 0 ? pdfTotalDeduction / pdfTotalMiles : 0;
 
     const { generateMileageReportPdf } = await import("../lib/generatePortalPdfs.js");
     const pdfBuffer = await generateMileageReportPdf(
@@ -1474,7 +1482,7 @@ tokenRouter.get("/mileage-report/pdf", async (req, res) => {
         deductionAmount: parseFloat(m.deductionAmount),
         notes: m.notes,
       })),
-      rate,
+      derivedRate,
     );
 
     const safeName = sub.name.replace(/[^a-zA-Z0-9]/g, "_");

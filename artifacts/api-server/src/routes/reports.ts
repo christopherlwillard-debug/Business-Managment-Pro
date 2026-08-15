@@ -203,7 +203,9 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       .filter(e => OWNER_PAY_CATS.includes(e.category ?? ""))
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const ytdMiles = ytdMileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
-    const ytdMileageRate = getIrsMileageRate(now.getFullYear());
+    // Derive blended rate from stored per-trip deductionAmounts — reflects 2026 H1/H2 split.
+    // `mileageDeduction` (computed above) is already the sum of deductionAmount for ytdMileageLogs.
+    const ytdMileageRate = ytdMiles > 0 ? mileageDeduction / ytdMiles : getIrsMileageRate(now.getFullYear());
 
     // Subcontractor pay metrics — query job_subcontractors directly.
     // "Paid" = you recorded a payment on the job card. Completely independent of
@@ -989,7 +991,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
 
     res.json({
       year,
-      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, businessExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance, directJobCosts, overheadCosts, grossMargin },
+      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, businessExpenses, totalMiles, mileageDeduction, mileageRate: totalMiles > 0 ? mileageDeduction / totalMiles : parseFloat(settings[0]?.mileageRate ?? "0.725"), totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance, directJobCosts, overheadCosts, grossMargin },
       incomeByCity,
       estimatedTaxes,
       expensesByCategory,
@@ -1418,7 +1420,8 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
 
     const totalMiles = mileRows[0]?.totalMiles ? parseFloat(mileRows[0].totalMiles as string) : 0;
     const mileageDeduction = mileRows[0]?.totalDed ? parseFloat(mileRows[0].totalDed as string) : 0;
-    const mileageRate = getIrsMileageRate(year);
+    // Derive blended rate from stored per-trip deductionAmounts — reflects 2026 H1/H2 split.
+    const mileageRate = totalMiles > 0 ? mileageDeduction / totalMiles : getIrsMileageRate(year);
 
     // Fetch depreciation, owner contributions, settings, and owner waterfall in parallel.
     // Mock-queue slot order (synchronous chain evaluation order matters):
@@ -1663,7 +1666,8 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
 
     const totalMiles = mileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const mileageDeduction = mileageLogs.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
-    const mileageRate = getIrsMileageRate(year);
+    // Derive blended rate from stored per-trip deductionAmounts — reflects 2026 H1/H2 split.
+    const mileageRate = totalMiles > 0 ? mileageDeduction / totalMiles : getIrsMileageRate(year);
 
     // ── Asset Depreciation for the Year ──────────────────────────────────────
     // Helper: year in which an asset was disposed (sold or retired), or null if still active
