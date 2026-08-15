@@ -41,6 +41,13 @@ export const expensesTable = pgTable("expenses", {
   // Never rely on description/category matching to determine auto-managed status — use these fields.
   sourceType: text("source_type"),
   sourceId: integer("source_id"),
+  // Marks a cash advance to a hourly-compensated subcontractor that was a pre-payment of wages
+  // already fully captured in job_sub_hours auto-expenses (wage accruals). Setting this flag
+  // excludes the advance from the Accounting route business-expense total to prevent double-
+  // counting with the corresponding jsh auto-expenses. The advance still appears on the Expenses
+  // page as a cash-flow record (it is a real cash outflow). Never set this flag on non-wage
+  // payments (bonuses, materials reimbursements, etc.) — those belong in Accounting.
+  isWageAdvance: boolean("is_wage_advance").default(false),
 });
 
 export const insertExpenseSchema = createInsertSchema(expensesTable).omit({ id: true, createdAt: true });

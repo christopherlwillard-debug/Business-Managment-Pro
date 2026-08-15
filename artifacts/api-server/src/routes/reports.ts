@@ -167,8 +167,12 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // has NOT been paid. The actual cash payment appears in sub_payment_records below.
     const isOutstandingCostBooking = (e: { description?: string | null }) =>
       (e.description ?? "").endsWith("(outstanding)");
+    // Exclude wage-advance expenses for hourly subs (isWageAdvance = true).
+    // These are cash advances that are pre-payments of hourly wages already fully captured
+    // in job_sub_hours auto-expense accruals. Including them would double-count the labor cost.
+    // The advance still appears on the Expenses page as a cash-flow record.
     const nonMileageExpenses = kpiExpenses.filter(e =>
-      e.category !== "mileage" && !isOutstandingCostBooking(e),
+      e.category !== "mileage" && !isOutstandingCostBooking(e) && !e.isWageAdvance,
     );
     // Fixed/allocation sub payments for this KPI period only (allSubPayments covers a wider
     // 6-month chart window, so restrict here to startDate..expenseEndDate before summing).
@@ -285,8 +289,9 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const bl = biz.slug;
       const blInvoices = rawInvoices.filter(i => i.businessLine === bl);
       const blOther = rawOtherIncome.filter(o => o.businessLine === bl);
-      // Exclude outstanding cost-bookings (cash-basis: not yet paid) from the BL breakdown too.
-      const blExpenses = rawExpenses.filter(e => e.businessLine === bl && e.category !== "mileage" && !isOutstandingCostBooking(e));
+      // Exclude outstanding cost-bookings (cash-basis: not yet paid) and wage-advance
+      // pre-payments (already captured in jsh accruals) from the BL breakdown too.
+      const blExpenses = rawExpenses.filter(e => e.businessLine === bl && e.category !== "mileage" && !isOutstandingCostBooking(e) && !e.isWageAdvance);
       const blActiveJobs = rawActiveJobs.filter(j => j.businessLine === bl);
       const blRevenue = blInvoices.filter(i => i.status === "paid" && getEffectivePaymentDate(i) >= startDate && getEffectivePaymentDate(i) <= endDate).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
@@ -317,7 +322,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const unattribExpenses = rawExpenses.filter(e =>
       (!e.businessLine || !knownBls.has(e.businessLine)) &&
       e.category !== "mileage" &&
-      !isOutstandingCostBooking(e),
+      !isOutstandingCostBooking(e) &&
+      !e.isWageAdvance,
     );
     const unattribInvoices = rawInvoices.filter(i => !i.businessLine || !knownBls.has(i.businessLine));
     const unattribOther = rawOtherIncome.filter(o => !o.businessLine || !knownBls.has(o.businessLine));
@@ -385,7 +391,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const mo_expenses = monthlyExp.filter(e =>
         e.category !== "mileage" &&
         !MONTHLY_OWNER_CATS.includes(e.category ?? "") &&
-        !(e.description ?? "").endsWith("(outstanding)")
+        !(e.description ?? "").endsWith("(outstanding)") &&
+        !e.isWageAdvance
       ).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + mo_subPay;
       const mo_outstanding = monthlyInv.filter(i => ["sent", "overdue"].includes(i.status ?? "")).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       monthlyRevenue.push({
@@ -606,8 +613,10 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     // accFixedAllocSubPayments below.
     const accIsOutstanding = (e: { description?: string | null }) =>
       (e.description ?? "").endsWith("(outstanding)");
+    // Exclude wage-advance expenses (isWageAdvance=true): pre-payments of hourly wages
+    // already fully captured in jsh auto-expense accruals — counting them would double the cost.
     const nonMileageExpenses = expenses.filter(e =>
-      e.category !== "mileage" && !accIsOutstanding(e),
+      e.category !== "mileage" && !accIsOutstanding(e) && !e.isWageAdvance,
     );
     const accFixedAllocSubPaymentTotal = accFixedAllocSubPayments.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + accFixedAllocSubPaymentTotal;
@@ -1668,10 +1677,13 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     const isOutstandingCostBooking = (e: typeof expenses[number]) =>
       (e.description ?? "").endsWith("(outstanding)");
 
+    // Exclude wage-advance expenses (isWageAdvance=true): pre-payments of hourly wages
+    // already fully captured in jsh auto-expense accruals — counting them would double the cost.
     const nonMileageExpenses = expenses.filter(e =>
       e.category !== "mileage" &&
       !["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? "") &&
-      !isOutstandingCostBooking(e)
+      !isOutstandingCostBooking(e) &&
+      !e.isWageAdvance
     );
     // Fixed/allocation sub payments live only in sub_payment_records (not expenses) after Task #892.
     const fixedAllocSubPaymentTotal = fixedAllocSubPayments.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
@@ -2192,7 +2204,8 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
       .reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const otherIncomeSum = otherIncomeRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const paidRevenue = invoicePaidRevenue + otherIncomeSum;
-    const nonMileageExpenses = expenses.filter(e => e.category !== "mileage");
+    // Exclude wage-advance expenses (isWageAdvance=true) to match the Accounting route.
+    const nonMileageExpenses = expenses.filter(e => e.category !== "mileage" && !e.isWageAdvance);
     // Fixed/allocation sub payments are NOT in the expenses table (Task #892 removed that
     // dual-write). Add them separately so the reserve net-profit matches the accounting route.
     const brSubPayTotal = brSubPayRows.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);

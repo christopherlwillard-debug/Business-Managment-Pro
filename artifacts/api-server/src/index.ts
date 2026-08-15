@@ -514,6 +514,21 @@ async function ensureOwnerCapitalLedgerSchema(): Promise<void> {
   }
 }
 
+/** Wage-advance flag: is_wage_advance boolean on expenses.
+ *  Used by Accounting/dashboard routes to exclude hourly-sub advance pre-payments from
+ *  business-expense totals (the wages are already captured in jsh auto-expense accruals). */
+async function ensureWageAdvanceColumn(): Promise<void> {
+  try {
+    await db.execute(sql`
+      ALTER TABLE expenses
+        ADD COLUMN IF NOT EXISTS is_wage_advance boolean NOT NULL DEFAULT false
+    `);
+    console.log("[startup] ensureWageAdvanceColumn: is_wage_advance OK.");
+  } catch (err) {
+    console.error("[startup] ensureWageAdvanceColumn failed (non-fatal):", err);
+  }
+}
+
 /** Material expense linking: source_type/source_id on expenses + add_to_job_expenses/expense_id on material_list_items. */
 async function ensureMaterialExpenseLinkingSchema(): Promise<void> {
   try {
@@ -592,6 +607,7 @@ async function start() {
   await ensureWebsiteTemplatesTable();
   await ensureVehiclesTable();
   await ensureMaterialExpenseLinkingSchema();
+  await ensureWageAdvanceColumn();
   await ensureServiceAddonPromptsTable();
   await backfillUsaSpendingOpportunityType();
   await clearDraftInvoiceNumbers();
