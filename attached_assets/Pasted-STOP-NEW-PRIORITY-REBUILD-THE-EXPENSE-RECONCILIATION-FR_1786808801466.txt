@@ -1,0 +1,154 @@
+STOP — NEW PRIORITY: REBUILD THE EXPENSE RECONCILIATION FROM THE LIVE EXPENSES PAGE
+
+I do NOT want us to assume the previously calculated $32,515.47 is the correct business-expense total.
+
+The LIVE production Expenses page currently shows:
+
+2026
+150 expenses
+$45,106.54 total
+$40,994.11 excluding mileage
+
+That is the actual transaction ledger users see in the app.
+
+Therefore, for this next forensic pass:
+
+PRODUCTION EXPENSES PAGE MUST BE THE STARTING POINT.
+
+Do NOT use $32,515.47 as a target.
+Do NOT force Accounting to match $32,515.47.
+Do NOT make any production writes.
+Do NOT publish.
+
+READ-ONLY FORENSIC RECONCILIATION ONLY.
+
+I want you to trace EVERY expense record in production for 2026 and build the accounting number from the actual records.
+
+For all 150 expense records, classify each record into exactly one of these buckets:
+
+1. LEGITIMATE BUSINESS EXPENSE
+   - Should reduce Schedule C business profit.
+
+2. OWNER DRAW / OWNER COMPENSATION / OWNER ACTIVITY
+   - Appears in the transaction ledger but should NOT reduce business profit.
+   - Must remain visible in the Expenses/Owner Pay areas.
+
+3. MILEAGE
+   - Must be reconciled separately against owner mileage and subcontractor mileage.
+   - Do not double-count mileage.
+
+4. SUBCONTRACTOR PAYMENT / ALLOCATION
+   - Determine whether the expense record represents the same economic event already represented in sub_payment_records or another payment ledger.
+   - NEVER count the same payment twice.
+
+5. NON-EXPENSE / TRANSFER / REIMBURSEMENT / OTHER
+   - Identify exactly why it should or should not affect Schedule C.
+
+6. DUPLICATE
+   - Only if production evidence proves it represents the same economic event as another record.
+
+For EVERY category, give:
+
+Record count
+Total dollars
+Record IDs
+Dates
+Descriptions
+Category
+Vendor/payee
+Business
+Related job
+Related subcontractor
+Related payment ledger record, if any
+
+Then calculate:
+
+ALL 150 EXPENSE RECORDS
+= $45,106.54
+
+Separate mileage.
+
+Then:
+
+$40,994.11 excluding mileage
+
+From there, explicitly subtract ONLY records that are proven not to be business expenses.
+
+DO NOT simply subtract the previously calculated $8,418.64 owner amount.
+
+DO NOT assume the $9,628.47 James allocation amount is either an additional expense or a duplicate.
+
+Trace each James payment individually.
+
+CRITICAL JAMES RECONCILIATION:
+
+The Expenses page currently shows August records such as:
+
+James Willard — Allocation Payment
+
+We previously found:
+
+James allocation sub_payment_records = $9,628.47
+
+But I now need you to determine whether those economic events ALSO exist in the Expenses table.
+
+If they exist in BOTH places, determine whether Accounting is counting them once or twice.
+
+If the Expenses page contains additional legitimate James payments beyond $9,628.47, identify them.
+
+The current Accounting Contract Labor figure of $16,305.97 must NOT be treated as correct simply because Schedule C shows it.
+
+Rebuild Contract Labor from the underlying production records.
+
+Also reconcile the screenshot's:
+
+Expenses total:
+$45,106.54
+
+Expenses excluding mileage:
+$40,994.11
+
+Accounting operating expenses:
+$32,515.47
+
+DO NOT assume the $13,479.07 difference is correct.
+
+$40,994.11 - $32,515.47 = $8,478.64
+
+Find every dollar of that difference.
+
+But more importantly, determine whether $32,515.47 itself is missing legitimate expenses.
+
+I want the final answer to contain:
+
+A. TRUE 2026 EXPENSE LEDGER TOTAL
+B. TOTAL MILEAGE
+C. OWNER ACTIVITY
+D. SUBCONTRACTOR PAYMENTS
+E. LEGITIMATE BUSINESS EXPENSES
+F. DUPLICATES/NON-EXPENSES
+G. CONTRACT LABOR
+H. TOTAL DEDUCTIBLE BUSINESS EXPENSES
+I. EXACT RECONCILIATION TO THE EXPENSES PAGE
+J. EXACT RECONCILIATION TO ACCOUNTING
+K. EXACT RECONCILIATION TO SCHEDULE C
+
+Then calculate net profit from the corrected underlying numbers.
+
+IMPORTANT:
+
+The goal is NOT:
+
+"Make Accounting = $32,515.47."
+
+The goal is:
+
+"Determine what the correct accounting expense total actually is from the live production transaction ledger."
+
+If $32,515.47 is wrong, tell me exactly why and what the correct number should be.
+
+If $45,106.54 contains legitimate business expenses that Accounting currently misses, identify them.
+
+If the Expenses page contains records that should not hit profit, identify them individually.
+
+No production writes until I approve the forensic results.
