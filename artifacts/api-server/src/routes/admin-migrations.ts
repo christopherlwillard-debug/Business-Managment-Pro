@@ -618,12 +618,15 @@ router.post("/owner-pay-reconciliation", async (_req: Request, res: Response) =>
 
     for (const exp of expRows) {
       const expAmt = parseFloat(exp.amount);
-      // Try to find a matching owner_capital_entries row to link (dedup)
+      const expJobId: number | null = exp.job_id != null ? parseInt(String(exp.job_id)) : null;
+      // Try to find a matching owner_capital_entries row to link (dedup).
+      // IS NOT DISTINCT FROM handles NULL correctly (NULL IS NOT DISTINCT FROM NULL = TRUE)
+      // avoiding the "job_id = NULL" pitfall of the = operator with null parameters.
       const match = await db.execute(sql`
         SELECT id FROM owner_capital_entries
-        WHERE (job_id = ${exp.job_id} OR (${exp.job_id} IS NULL AND job_id IS NULL))
+        WHERE job_id IS NOT DISTINCT FROM ${expJobId}::integer
           AND date = ${exp.date}
-          AND ABS(ABS(amount::numeric) - ${expAmt}) < 0.01
+          AND ABS(ABS(amount::numeric) - ${String(expAmt)}::numeric) < 0.01
           AND expense_id IS NULL
         LIMIT 1
       `);

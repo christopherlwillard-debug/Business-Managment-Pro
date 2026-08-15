@@ -514,6 +514,47 @@ async function ensureOwnerCapitalLedgerSchema(): Promise<void> {
   }
 }
 
+/**
+ * One-time data migration: backfill historical owner-pay expenses into owner_capital_entries.
+ * Runs on every boot but is effectively a no-op once all 9 historical expenses are migrated
+ * (the NOT IN / expense_id IS NOT NULL guard makes it idempotent).
+ *
+ * Background: Task #1923 introduced owner_capital_entries as the canonical owner-pay ledger.
+ * Historical owner-draw/compensation/withdrawal expenses (pre-migration) were recorded only
+ * in the expenses table. This function migrates them into the ledger so the My Pay screen
+ * shows the correct lifetime total.
+ */
+async function ensureOwnerPayLedgerMigrated(): Promise<void> {
+  try {
+    // Insert all owner-category expenses not yet linked to owner_capital_entries.
+    // IS NOT DISTINCT FROM handles NULL job_id correctly (avoids "= NULL" pitfall).
+    // ON CONFLICT DO NOTHING on the unique partial index (expense_id IS NOT NULL) makes
+    // this fully idempotent — re-running never creates duplicate rows.
+    const result = await db.execute(sql`
+      INSERT INTO owner_capital_entries (date, description, amount, source, expense_id, job_id)
+      SELECT
+        e.date,
+        e.description,
+        -(e.amount::numeric),
+        'migrated_expense',
+        e.id,
+        e.job_id
+      FROM expenses e
+      WHERE e.category IN ('Owner Draw', 'Owner Compensation', 'Owner Withdrawal')
+        AND e.id NOT IN (
+          SELECT expense_id FROM owner_capital_entries WHERE expense_id IS NOT NULL
+        )
+      ON CONFLICT DO NOTHING
+    `);
+    const migrated = (result as any).rowCount ?? 0;
+    if (migrated > 0) {
+      console.log(`[startup] ensureOwnerPayLedgerMigrated: backfilled ${migrated} owner-pay expense(s) into owner_capital_entries.`);
+    }
+  } catch (err) {
+    console.error("[startup] ensureOwnerPayLedgerMigrated failed (non-fatal):", err);
+  }
+}
+
 /** Wage-advance flag: is_wage_advance boolean on expenses.
  *  Used by Accounting/dashboard routes to exclude hourly-sub advance pre-payments from
  *  business-expense totals (the wages are already captured in jsh auto-expense accruals). */
@@ -601,6 +642,7 @@ async function start() {
   await initCredentials();
 
   await ensureOwnerCapitalLedgerSchema();
+  await ensureOwnerPayLedgerMigrated();
   await ensureBankingSchema();
   await ensureTripNotesColumn();
   await ensureMarketingContentTable();
