@@ -261,7 +261,10 @@ router.get("/schedule-c", async (req, res) => {
       }
     }
 
-    // 3. Mileage Deduction (Line 9) — use stored deductionAmount as source of truth
+    // 3. Mileage Deduction (Line 9) — use stored deductionAmount as source of truth.
+    // subcontractorId IS NULL: owner vehicle mileage only — excludes sub-portal tracking
+    // logs (James Willard, Dewayne Lamb, etc.) that are job-tracking data, not Schedule C
+    // standard-mileage deductions. Sub records are preserved; only excluded from owner's deduction.
     const mileageData = await db
       .select({
         totalMiles: sum(mileageLogsTable.miles),
@@ -271,6 +274,7 @@ router.get("/schedule-c", async (req, res) => {
       .where(
         and(
           eq(mileageLogsTable.classification, "business"),
+          isNull(mileageLogsTable.subcontractorId),
           gte(mileageLogsTable.date, startDate),
           lte(mileageLogsTable.date, endDate),
           mileageWhere

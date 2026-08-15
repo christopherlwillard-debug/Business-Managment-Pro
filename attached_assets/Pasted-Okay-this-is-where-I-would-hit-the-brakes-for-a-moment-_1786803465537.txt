@@ -1,0 +1,142 @@
+Okay — this is where I would hit the brakes for a moment.
+
+There is a very important good discovery, but Replit has also started implementing changes before fully resolving the mileage reconciliation, which is not the sequence we told it to follow.
+
+The good discovery
+
+We now know the mileage contamination was real:
+
+* Your owner mileage: 5,556.70 miles
+* James: 3,925 miles
+* Dewayne: 252 miles
+* Total: 9,733.70
+
+And the owner mileage deduction is:
+
+$4,112.45
+
+That is much closer to what you were expecting from MileIQ.
+
+So your original concern was absolutely legitimate: the app was pulling subcontractor mileage into your mileage deduction.
+
+But there’s still one unresolved mileage issue
+
+Your MileIQ says:
+
+5,505 miles
+
+Production owner records say:
+
+5,556.70 miles
+
+Difference:
+
+51.70 miles
+
+And Replit has identified that essentially all of it is the March discrepancy:
+
+Production: 327
+MileIQ: 276
+Difference: 51
+
+plus only tiny rounding differences.
+
+That 51 miles needs to be resolved before Replit changes your historical mileage records.
+
+The good news is Replit appears to be treating that as an owner-confirmation issue rather than automatically deleting it.
+
+⸻
+
+The $83.68 discrepancy is still unresolved
+
+This is the other thing I don’t want Replit to gloss over.
+
+Production source totals:
+
+* Owner: $4,112.45
+* James: $2,845.75
+* Dewayne: $182.70
+
+Total:
+
+$7,140.90
+
+But the app has been displaying:
+
+$7,057.22
+
+Difference:
+
+$83.68
+
+Replit currently hasn’t established exactly why.
+
+It is now moving forward with the assumption that filtering subcontractor_id IS NULL solves the owner’s mileage calculation.
+
+That may fix the major problem, but it does not explain the $83.68 discrepancy.
+
+I want that documented before we consider the accounting repair complete.
+
+⸻
+
+The other fixes look much better
+
+✅ James $9,628.47
+
+This is now being routed to Contract Labor, not COGS/Materials.
+
+That’s correct from a software classification standpoint, while preserving the question of whether James’s payments are actually subcontractor compensation versus another type of distribution.
+
+Good.
+
+✅ Reserve / SE calculation
+
+They’re adding the missing subcontractor allocation payments into the Reserve calculation so Accounting and Reserve use the same expense base.
+
+That’s exactly what we wanted.
+
+✅ Owner Pay
+
+They’re changing Owner Pay to recognize the existing expense-recorded owner draws.
+
+That should make the dashboard reflect the actual $8,418.64 without creating duplicate transactions.
+
+Good.
+
+✅ Schedule C mileage
+
+They’re also fixing the Schedule C mileage source to exclude subcontractor mileage.
+
+That’s important because otherwise you could fix the P&L while leaving the tax report wrong.
+
+✅ Tests
+
+1,162 tests pass and typecheck is clean.
+
+That’s a very good sign.
+
+⸻
+
+But there’s one thing I don’t like
+
+Replit said:
+
+“I’m going to move forward with the assumption…”
+
+That’s exactly what we told it not to do.
+
+We don’t want assumptions in the financial system.
+
+The proper sequence should be:
+
+Find → reconcile → confirm → change → verify.
+
+Not:
+
+Find → assume → change → see if it works.
+
+Especially because this is your live production accounting system.
+
+I would let it finish the code/test work that’s already underway, but I would NOT approve the final result yet.
+
+We need the final before/after production report.

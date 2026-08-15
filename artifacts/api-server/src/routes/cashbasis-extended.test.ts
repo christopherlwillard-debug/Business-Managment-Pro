@@ -171,9 +171,12 @@ describe("P&L cash-basis — outstanding cost-booking exclusion and sub payment 
     expect(res.body.netProfit).toBeCloseTo(1000, 10);
   });
 
-  it("fixed/allocation sub payment from sub_payment_records appears in P&L cogs", async () => {
+  it("fixed/allocation sub payment from sub_payment_records appears in P&L contractLabor", async () => {
     // A cash payment recorded via pay-worker (in sub_payment_records only, not expenses)
-    // must reduce P&L netProfit via the cogs bucket.
+    // must reduce P&L netProfit via the contractLabor bucket, NOT cogs.
+    // Forensic fix (Aug 2026): a service contractor has no COGS; allocation sub payments
+    // belong under Contract Labor. The tax classification of the payment (subcontractor
+    // vs owner distribution) is the owner's decision and is NOT decided here.
     const SUB_PAYMENT = { id: 1, amount: "500.00" };
 
     pushPL([], [SUB_PAYMENT]);
@@ -181,11 +184,14 @@ describe("P&L cash-basis — outstanding cost-booking exclusion and sub payment 
     const res = await request(app).get(`/reports/profit-loss?year=${YEAR}`);
     expect(res.status).toBe(200);
 
-    // cogs must contain the sub payment — it is contract labor (COGS)
-    // Regression: cogs = 0 (sub payment not added)
-    expect(res.body.cogs.total).toBeCloseTo(500, 10);
+    // contractLabor must contain the sub payment; cogs must stay $0
+    // Regression (pre-fix): sub payment incorrectly appeared in cogs
+    const contractLaborEntry = (res.body.operatingExpenses as Array<{ key: string; amount: number }>)
+      .find(e => e.key === "contractLabor");
+    expect(contractLaborEntry?.amount ?? 0).toBeCloseTo(500, 10);
+    expect(res.body.cogs.total).toBeCloseTo(0, 10);
 
-    // netProfit = revenue($1 000) - cogs($500) - opex($0) ... = $500
+    // netProfit = revenue($1 000) - contractLabor($500) = $500 (unchanged)
     // Regression (sub payment missing): netProfit = $1 000
     expect(res.body.netProfit).toBeCloseTo(500, 10);
   });
@@ -211,11 +217,15 @@ describe("P&L cash-basis — outstanding cost-booking exclusion and sub payment 
     const res = await request(app).get(`/reports/profit-loss?year=${YEAR}`);
     expect(res.status).toBe(200);
 
-    // cogs = $750 from sub_payment_records only (outstanding row excluded)
+    // contractLabor = $750 from sub_payment_records only (outstanding row excluded, cogs=$0)
+    // Forensic fix (Aug 2026): allocation sub payments route to contractLabor, not cogs.
     // Double-count regression: $1 500
-    expect(res.body.cogs.total).toBeCloseTo(750, 10);
+    const contractLaborEntry2 = (res.body.operatingExpenses as Array<{ key: string; amount: number }>)
+      .find(e => e.key === "contractLabor");
+    expect(contractLaborEntry2?.amount ?? 0).toBeCloseTo(750, 10);
+    expect(res.body.cogs.total).toBeCloseTo(0, 10);
 
-    // netProfit = revenue($1 000) - cogs($750) = $250
+    // netProfit = revenue($1 000) - contractLabor($750) = $250 (unchanged)
     // Double-count regression: $1 000 - $1 500 = -$500
     expect(res.body.netProfit).toBeCloseTo(250, 10);
   });
@@ -282,10 +292,14 @@ describe("P&L cash-basis — outstanding cost-booking exclusion and sub payment 
     const res = await request(app).get(`/reports/profit-loss?year=${YEAR}`);
     expect(res.status).toBe(200);
 
-    // cogs = materials($200) + sub_payment($400) = $600
-    expect(res.body.cogs.total).toBeCloseTo(600, 10);
+    // After forensic fix (Aug 2026): materials($200) → cogs, sub_payment($400) → contractLabor.
+    // Both reduce profit; combined deduction is still $600 → netProfit still $400.
+    expect(res.body.cogs.total).toBeCloseTo(200, 10);
+    const contractLaborEntry3 = (res.body.operatingExpenses as Array<{ key: string; amount: number }>)
+      .find(e => e.key === "contractLabor");
+    expect(contractLaborEntry3?.amount ?? 0).toBeCloseTo(400, 10);
 
-    // netProfit = $1 000 - $600 = $400
+    // netProfit = $1 000 - $200 (materials/cogs) - $400 (contractLabor) = $400
     expect(res.body.netProfit).toBeCloseTo(400, 10);
   });
 });
