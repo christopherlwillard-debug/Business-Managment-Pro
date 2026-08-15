@@ -124,8 +124,9 @@ const SETTINGS_ROW = {
   includeGrowthFundInReserve: 0,
 };
 
-// Helper: push the 10 selects consumed by GET /accounting (no subs, no depreciation)
-// Updated for cash-basis: accFixedAllocSubPayments slot added at [7].
+// Helper: push the 11 selects consumed by GET /accounting (no subs, no depreciation)
+// Updated for Task #1913: computeOwnerWaterfall paidInvs slot added at [10];
+// ownerCapitalEntries (accOwnerContribRows) added at [11] in the same Promise.all.
 //
 // Queue order:
 //   [0]  paidInvoices             — no issueDate filter
@@ -138,6 +139,8 @@ const SETTINGS_ROW = {
 //   [7]  accFixedAllocSubPayments — fixed/allocation sub_payment_records
 //   [8]  assets                   — computeDepreciationForYear
 //   [9]  assetBusinessUse         — computeDepreciationForYear
+//   [10] waterfallPaidInvs        — computeOwnerWaterfall (fires synchronously first)
+//   [11] accOwnerContribRows      — ownerCapitalEntries (4th chain in same Promise.all)
 function pushAccountingSelects() {
   // [0] paidInvoices — no issueDate filter
   h.selectQueue.push([PAID_INVOICE]);
@@ -158,6 +161,10 @@ function pushAccountingSelects() {
   // [8-9] computeDepreciationForYear → assets, assetBusinessUse (both empty → $0 depreciation)
   h.selectQueue.push([]); // assets
   h.selectQueue.push([]); // assetBusinessUse
+  // [10] computeOwnerWaterfall paidInvs (no jobId in PAID_INVOICE → no subHours query → ownerAllocated=0)
+  h.selectQueue.push([]);
+  // [11] accOwnerContribRows — ownerCapitalEntries (same Promise.all, 4th chain)
+  h.selectQueue.push([]);
 }
 
 // Helper: push the 11 selects consumed by GET /business-reserve
@@ -491,8 +498,11 @@ describe("Owner-draw exclusion from net profit", () => {
     h.selectQueue.push([]);                               // [7] accFixedAllocSubPayments (cash-basis)
     h.selectQueue.push([]);                               // [8] assets (computeDepreciationForYear)
     h.selectQueue.push([]);                               // [9] assetBusinessUse
-    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]);  // [10] allBusinesses
-    h.selectQueue.push([]);                               // [11] outstandingSubRows (innerJoin)
+    // computeOwnerWaterfall fires synchronously; accOwnerContribRows is 4th chain in same Promise.all
+    h.selectQueue.push([]);                               // [10] waterfallPaidInvs (no jobId → ownerAllocated=0)
+    h.selectQueue.push([]);                               // [11] accOwnerContribRows (ownerCapitalEntries)
+    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]);  // [12] allBusinesses
+    h.selectQueue.push([]);                               // [13] outstandingSubRows (innerJoin)
 
     const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
     expect(res.status).toBe(200);
@@ -642,8 +652,11 @@ describe("Owner-draw exclusion from net profit", () => {
     h.selectQueue.push([]);            // [7] accFixedAllocSubPayments (cash-basis)
     h.selectQueue.push([]);            // [8] assets
     h.selectQueue.push([]);            // [9] assetBusinessUse
-    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]); // [10] allBusinesses
-    h.selectQueue.push([]); // [11] outstandingSubRows
+    // computeOwnerWaterfall fires synchronously; accOwnerContribRows is 4th chain in same Promise.all
+    h.selectQueue.push([]);            // [10] waterfallPaidInvs (no jobId → ownerAllocated=0)
+    h.selectQueue.push([]);            // [11] accOwnerContribRows (ownerCapitalEntries)
+    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]); // [12] allBusinesses
+    h.selectQueue.push([]); // [13] outstandingSubRows
 
     const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
     expect(res.status).toBe(200);

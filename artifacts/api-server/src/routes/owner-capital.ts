@@ -5,6 +5,16 @@ import { eq, desc, and } from "drizzle-orm";
 
 const router = Router();
 
+/**
+ * Sign convention for owner_capital_entries.amount:
+ *   positive  = capital contribution (owner puts money INTO the business)
+ *   negative  = owner withdrawal from capital account (owner takes money OUT)
+ *
+ * The UI always stores the user-entered value as-is. Report routes sum positive
+ * entries for ownerContributionsTotal and use |negative entries| for capital
+ * withdrawals. Owner draws recorded as expenses use the "Owner Draw" /
+ * "Owner Compensation" / "Owner Withdrawal" category and are NOT stored here.
+ */
 function formatEntry(e: typeof ownerCapitalEntriesTable.$inferSelect) {
   return {
     id: e.id,
@@ -12,6 +22,7 @@ function formatEntry(e: typeof ownerCapitalEntriesTable.$inferSelect) {
     jobId: e.jobId ?? null,
     date: e.date,
     description: e.description,
+    // Amount is returned as-is; callers interpret sign per the convention above.
     amount: parseFloat(e.amount as string),
     createdAt: e.createdAt,
   };

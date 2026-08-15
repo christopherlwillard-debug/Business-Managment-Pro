@@ -615,10 +615,22 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const totalMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
     const mileageDeduction = businessMiles.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
 
-    const [subsWithYtdAcc, depreciationDeduction] = await Promise.all([
+    // Slot order for mock queue: [assets, assetBusinessUse, waterfallPaidInvs, accOwnerContribRows]
+    // computeOwnerWaterfall fires its first await synchronously → [waterfallPaidInvs] before the
+    // direct ownerCapitalEntries chain → [accOwnerContribRows] next.
+    const [subsWithYtdAcc, depreciationDeduction, accWaterfall, accOwnerContribRows] = await Promise.all([
       Promise.all(subs.map(async s => ({ ...s, _ytd: await computeYtd(s.id, year, blFilter) }))),
       computeDepreciationForYear(year),
+      computeOwnerWaterfall(year, blFilter),
+      db.select({ amount: ownerCapitalEntriesTable.amount })
+        .from(ownerCapitalEntriesTable)
+        .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate))),
     ]);
+    // Sign convention: positive entries = capital contributions (cash into business).
+    const accOwnerContributionsTotal = (accOwnerContribRows as { amount: string | null }[]).reduce((s, r) => {
+      const amt = parseFloat(r.amount ?? "0");
+      return s + (amt > 0 ? amt : 0);
+    }, 0);
     const totalSubPayments = subsWithYtdAcc.reduce((acc, s) => acc + s._ytd, 0);
     // Net profit excludes owner draws and deducts depreciation — matches P&L and Year-End Report
     const netProfit = paidRevenue - (totalExpenses - ownerDrawTotal) - mileageDeduction - depreciationDeduction;
@@ -969,6 +981,12 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     }).filter(i => i.amount != null && !Number.isNaN(i.amount) && i.amount > 0);
     const outstandingSubTotal = outstandingSubPayments.reduce((s, i) => s + (i.amount ?? 0), 0);
 
+    // ── Owner Activity ──────────────────────────────────────────────────────────
+    const { ownerAllocated: accOwnerAllocated, ownerTaxReserve: accOwnerTaxReserve } = accWaterfall;
+    const accOwnerCashTaken = ownerDrawTotal;
+    const accOwnerRetained = Math.max(0, accOwnerAllocated - accOwnerTaxReserve - accOwnerCashTaken);
+    const accOwnerOverWithdrawal = Math.max(0, accOwnerCashTaken - (accOwnerAllocated - accOwnerTaxReserve));
+
     res.json({
       year,
       summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, businessExpenses, totalMiles, mileageDeduction, mileageRate: rate, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance, directJobCosts, overheadCosts, grossMargin },
@@ -982,6 +1000,15 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       invoiceRecords: allRecords,
       otherIncomeRows,
       byBusinessLine,
+      ownerActivity: {
+        ownerDrawTotal,
+        ownerContributionsTotal: accOwnerContributionsTotal,
+        ownerAllocated: accOwnerAllocated,
+        ownerTaxReserve: accOwnerTaxReserve,
+        ownerCashTaken: accOwnerCashTaken,
+        ownerRetained: accOwnerRetained,
+        ownerOverWithdrawal: accOwnerOverWithdrawal,
+      },
       ownerDrawRows,
       outstandingSubPayments,
       outstandingSubTotal,
@@ -1046,6 +1073,94 @@ export function getTaxProfile(taxElection: string | null | undefined): TaxProfil
 export type { TaxEstimate } from "../lib/tax-estimate.js";
 export { computeTaxEstimate, getTaxYearData } from "../lib/tax-estimate.js";
 import { computeTaxEstimate } from "../lib/tax-estimate.js";
+
+// ─── Shared: Owner Waterfall ───────────────────────────────────────────────────
+// Mirrors the /reserve-summary waterfall constants.
+// revenue → afterSubs → 5% growth fund → 50/50 owner split → 25% tax reserve
+const WATERFALL_GROWTH_PCT = 0.05;
+const WATERFALL_OWNER_PCT  = 0.50;
+const WATERFALL_TAX_PCT    = 0.25;
+
+/**
+ * Compute ownerAllocated (owner's cash-basis share of revenue) and ownerTaxReserve
+ * (25% of ownerAllocated) for the given year.
+ *
+ * Attribution: effective payment date (Stripe → Square → issueDate), matching the
+ * Accounting and Year-End routes. A December-issued invoice paid in January is
+ * attributed to January. The DB fetch has NO date filter; year gating is applied
+ * in JS after computing the effective date.
+ *
+ * ⚠ P&L asymmetry: /profit-loss attributes invoice revenue by issueDate (pre-existing
+ * behavior). For invoices that span a year-end boundary the P&L ownerAllocated will
+ * therefore differ slightly from the Accounting/Year-End ownerAllocated. Fixing the
+ * P&L revenue attribution basis is out of scope for this feature.
+ *
+ * Jobless invoices (jobId=null): INCLUDED with subLaborCost=0. /reserve-summary
+ * excludes them (pre-existing behavior there); the waterfall intentionally includes
+ * them so jobless revenue is not silently dropped from the owner's allocation.
+ *
+ * Sign convention for owner_capital_entries: positive = contribution (cash IN), negative = withdrawal (cash OUT).
+ */
+async function computeOwnerWaterfall(
+  year: number,
+  blFilter: string | null,
+): Promise<{ ownerAllocated: number; ownerTaxReserve: number }> {
+  const startDate = `${year}-01-01`;
+  const endDate   = `${year}-12-31`;
+  const blWhere = (col: Parameters<typeof eq>[0]) =>
+    blFilter ? eq(col, blFilter) : undefined;
+
+  // No date WHERE — JS applies effective-payment-date gating after the fetch.
+  const paidInvs = await db.select({
+    jobId:        invoicesTable.jobId,
+    total:        invoicesTable.total,
+    stripePaidAt: invoicesTable.stripePaidAt,
+    squarePaidAt: invoicesTable.squarePaidAt,
+    issueDate:    invoicesTable.issueDate,
+  })
+    .from(invoicesTable)
+    .where(and(
+      eq(invoicesTable.status, "paid"),
+      blWhere(invoicesTable.businessLine),
+    ));
+
+  // Attribute each invoice to a year by effective payment date.
+  const yearInvs = paidInvs.filter(i => {
+    const effDate = i.stripePaidAt instanceof Date
+      ? i.stripePaidAt.toISOString().slice(0, 10)
+      : i.squarePaidAt instanceof Date
+      ? i.squarePaidAt.toISOString().slice(0, 10)
+      : (i.issueDate ?? "");
+    return effDate >= startDate && effDate <= endDate;
+  });
+
+  // Derive job IDs only from year-attributed invoices.
+  const jobIds = [...new Set(yearInvs.map(i => i.jobId).filter((id): id is number => id != null))];
+  const hoursCostByJob = new Map<number, number>();
+  if (jobIds.length > 0) {
+    const subHoursRows = await db.select({
+      jobId: jobSubHoursTable.jobId,
+      cost: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
+    })
+      .from(jobSubHoursTable)
+      .where(inArray(jobSubHoursTable.jobId, jobIds))
+      .groupBy(jobSubHoursTable.jobId);
+    for (const r of subHoursRows) {
+      hoursCostByJob.set(r.jobId, parseFloat(r.cost ?? "0"));
+    }
+  }
+
+  let ownerAllocated = 0;
+  for (const inv of yearInvs) {
+    const revenue = parseFloat(inv.total ?? "0");
+    const subLaborCost = inv.jobId != null ? (hoursCostByJob.get(inv.jobId) ?? 0) : 0;
+    const afterSubs  = Math.max(0, revenue - subLaborCost);
+    const growthFund = afterSubs * WATERFALL_GROWTH_PCT;
+    const toSplit    = afterSubs - growthFund;
+    ownerAllocated  += toSplit * WATERFALL_OWNER_PCT;
+  }
+  return { ownerAllocated, ownerTaxReserve: ownerAllocated * WATERFALL_TAX_PCT };
+}
 
 // ─── Shared: Asset Depreciation for a Tax Year ────────────────────────────────
 // Used by /profit-loss and /accounting so every screen derives the same
@@ -1305,8 +1420,14 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const mileageDeduction = mileRows[0]?.totalDed ? parseFloat(mileRows[0].totalDed as string) : 0;
     const mileageRate = getIrsMileageRate(year);
 
-    // Fetch depreciation, owner contributions, and settings in parallel.
-    const [depreciationDeduction, ownerContribRows, settingsRows] = await Promise.all([
+    // Fetch depreciation, owner contributions, settings, and owner waterfall in parallel.
+    // Mock-queue slot order (synchronous chain evaluation order matters):
+    //   computeDepreciationForYear fires its inner Promise.all first → [assets, busUseRows]
+    //   computeOwnerWaterfall fires its first await synchronously before the outer
+    //   Promise.all calls .then() on the direct chains → [waterfallPaidInvs]
+    //   then the outer Promise.all calls .then() on the two direct chains → [ownerContribRows, settingsRows]
+    // Final order: [7] assets, [8] busUseRows, [9] waterfallPaidInvs, [10] ownerContribRows, [11] settingsRows
+    const [depreciationDeduction, ownerContribRows, settingsRows, plWaterfall] = await Promise.all([
       computeDepreciationForYear(year),
       db.select({ amount: ownerCapitalEntriesTable.amount })
         .from(ownerCapitalEntriesTable)
@@ -1314,10 +1435,24 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       db.select({ federalTaxElection: settingsTable.federalTaxElection })
         .from(settingsTable)
         .limit(1),
+      computeOwnerWaterfall(year, blFilter),
     ]);
-    const ownerContributionsTotal = ownerContribRows.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
+    // Sign convention: positive owner_capital_entries = contributions (cash into business).
+    const ownerContributionsTotal = ownerContribRows.reduce((s, r) => {
+      const amt = parseFloat(r.amount ?? "0");
+      return s + (amt > 0 ? amt : 0);
+    }, 0);
     const netProfit = netOperatingIncome - mileageDeduction - depreciationDeduction;
     const taxProfile = getTaxProfile(settingsRows[0]?.federalTaxElection);
+
+    // Owner activity waterfall fields.
+    // ownerCashTaken = owner draws recorded as expenses (cash withdrawn from business).
+    // ownerRetained  = owner's allocated share remaining after tax reserve and withdrawals.
+    // ownerOverWithdrawal > 0 means owner took more than their after-tax allocation.
+    const { ownerAllocated: plOwnerAllocated, ownerTaxReserve: plOwnerTaxReserve } = plWaterfall;
+    const plOwnerCashTaken = ownerDrawTotal;
+    const plOwnerRetained = Math.max(0, plOwnerAllocated - plOwnerTaxReserve - plOwnerCashTaken);
+    const plOwnerOverWithdrawal = Math.max(0, plOwnerCashTaken - (plOwnerAllocated - plOwnerTaxReserve));
 
     res.json({
       year,
@@ -1330,7 +1465,15 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       deductions: { mileageDeduction, totalMiles, mileageRate, depreciationDeduction },
       netProfit,
       taxProfile,
-      ownerActivity: { ownerDrawTotal, ownerContributionsTotal },
+      ownerActivity: {
+        ownerDrawTotal,
+        ownerContributionsTotal,
+        ownerAllocated: plOwnerAllocated,
+        ownerTaxReserve: plOwnerTaxReserve,
+        ownerCashTaken: plOwnerCashTaken,
+        ownerRetained: plOwnerRetained,
+        ownerOverWithdrawal: plOwnerOverWithdrawal,
+      },
       outstandingSubLiability,
       closedJobCount,
     });
@@ -1758,6 +1901,28 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     const owensboroOccTax = yeTaxEst.occ;
     const totalEstimatedTaxLiability = yeTaxEst.total;
 
+    // ── Owner Activity ──────────────────────────────────────────────────────────
+    // Owner draws are excluded from nonMileageExpenses; compute from raw expenses array.
+    const OWNER_CATS_YE = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
+    const yeOwnerDrawTotal = expenses
+      .filter(e => OWNER_CATS_YE.includes(e.category ?? ""))
+      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    // Fetch contributions + waterfall in parallel (adds slots after all existing year-end queries).
+    const [yeOwnerContribRows, yeWaterfall] = await Promise.all([
+      db.select({ amount: ownerCapitalEntriesTable.amount })
+        .from(ownerCapitalEntriesTable)
+        .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate))),
+      computeOwnerWaterfall(year, blFilter),
+    ]);
+    // Sign convention: positive entries = capital contributions (cash in).
+    const yeOwnerContributionsTotal = yeOwnerContribRows.reduce((s, r) => {
+      const amt = parseFloat(r.amount ?? "0");
+      return s + (amt > 0 ? amt : 0);
+    }, 0);
+    const yeOwnerCashTaken = yeOwnerDrawTotal;
+    const yeOwnerRetained = Math.max(0, yeWaterfall.ownerAllocated - yeWaterfall.ownerTaxReserve - yeOwnerCashTaken);
+    const yeOwnerOverWithdrawal = Math.max(0, yeOwnerCashTaken - (yeWaterfall.ownerAllocated - yeWaterfall.ownerTaxReserve));
+
     res.json({
       year,
       generatedAt: new Date().toISOString(),
@@ -1815,6 +1980,15 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       disposedAssets,
       sub1099s,
       estimatedTaxPayments: estTaxRows,
+      ownerActivity: {
+        ownerDrawTotal: yeOwnerDrawTotal,
+        ownerContributionsTotal: yeOwnerContributionsTotal,
+        ownerAllocated: yeWaterfall.ownerAllocated,
+        ownerTaxReserve: yeWaterfall.ownerTaxReserve,
+        ownerCashTaken: yeOwnerCashTaken,
+        ownerRetained: yeOwnerRetained,
+        ownerOverWithdrawal: yeOwnerOverWithdrawal,
+      },
     });
   } catch (err) {
     console.error("Year-end report error:", err);

@@ -14,22 +14,24 @@
 //
 // Queue order for GET /profit-loss (no blFilter, no hourly sub rows):
 //
-//   Promise.all([invRows, expRows, mileRows, otherRows])
-//   [0]  invRows           — invoices (issueDate-bounded)
-//   [1]  expRows           — expenses (date-bounded, ne mileage already at DB level)
-//   [2]  mileRows          — mileage aggregate {totalMiles, totalDed}
-//   [3]  otherRows         — otherIncome
+//   Promise.all([invRows, expRows, mileRows, otherRows, plSubPayRows])
+//   [0]  invRows              — invoices (issueDate-bounded)
+//   [1]  expRows              — expenses (date-bounded, ne mileage already at DB level)
+//   [2]  mileRows             — mileage aggregate {totalMiles, totalDed}
+//   [3]  otherRows            — otherIncome
+//   [4]  plSubPayRows         — fixed/allocation sub_payment_records (Task #1912)
 //
 //   Then sequentially:
-//   [4]  outstandingSubRows — job_subcontractors innerJoin jobs innerJoin subs
-//   [5]  closedCountRow     — count of closed jobs in year
+//   [5]  outstandingSubRows   — job_subcontractors innerJoin jobs innerJoin subs
+//   [6]  closedCountRow       — count of closed jobs in year
 //
-//   Then Promise.all([computeDepreciationForYear, ownerContribRows, settingsRows]):
+//   Then Promise.all([computeDepreciationForYear, ownerContribRows, settingsRows, computeOwnerWaterfall]):
 //     computeDepreciationForYear fires its own Promise.all([assets, busUseRows])
-//   [6]  assets             — assetsTable (inside computeDepreciationForYear)
-//   [7]  busUseRows         — assetBusinessUseTable (inside computeDepreciationForYear)
-//   [8]  ownerContribRows   — owner_capital_entries
-//   [9]  settingsRows       — settings (federalTaxElection)
+//   [7]  assets               — assetsTable (inside computeDepreciationForYear)
+//   [8]  busUseRows           — assetBusinessUseTable (inside computeDepreciationForYear)
+//   [9]  ownerContribRows     — owner_capital_entries
+//   [10] settingsRows         — settings (federalTaxElection)
+//   [11] waterfallPaidInvs    — computeOwnerWaterfall paid invoices (Task #1913)
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
@@ -119,8 +121,8 @@ const REGULAR_EXP = {
 const NO_MILEAGE = [{ totalMiles: null, totalDed: null }];
 
 /**
- * Push all 11 select slots consumed by GET /profit-loss (no blFilter).
- * Updated for cash-basis: plSubPayRows slot added at [4].
+ * Push all 12 select slots consumed by GET /profit-loss (no blFilter).
+ * Updated for Task #1913: computeOwnerWaterfall paidInvs slot added at [11].
  *
  * Queue order:
  *   [0]  invRows              — invoices (issueDate-bounded)
@@ -134,6 +136,7 @@ const NO_MILEAGE = [{ totalMiles: null, totalDed: null }];
  *   [8]  busUseRows           — computeDepreciationForYear
  *   [9]  ownerContribRows     — owner_capital_entries
  *   [10] settingsRows         — settings (federalTaxElection)
+ *   [11] waterfallPaidInvs    — computeOwnerWaterfall (no jobId in fixture → no subHours query)
  *
  * @param expSlot — the expenses array to place in slot [1]
  * @param subPaySlot — the sub_payment_records array for slot [4] (default [])
@@ -148,8 +151,11 @@ function pushPLSelects(expSlot: any[], subPaySlot: any[] = []): void {
   h.selectQueue.push([{ n: 0 }]);     // [6] closedCountRow
   h.selectQueue.push([]);              // [7] assets (computeDepreciationForYear)
   h.selectQueue.push([]);              // [8] busUseRows (computeDepreciationForYear)
-  h.selectQueue.push([]);             // [9] ownerContribRows
-  h.selectQueue.push([{}]);            // [10] settingsRows (federalTaxElection optional)
+  // computeOwnerWaterfall fires its first await synchronously before the outer
+  // Promise.all calls .then() on the two direct chain objects (ownerContribRows, settingsRows).
+  h.selectQueue.push([]);             // [9]  waterfallPaidInvs (no jobId → no subHours query)
+  h.selectQueue.push([]);              // [10] ownerContribRows
+  h.selectQueue.push([{}]);            // [11] settingsRows (federalTaxElection optional)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

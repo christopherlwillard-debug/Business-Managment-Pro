@@ -19,6 +19,7 @@
 //   [8]  busUseRows           — computeDepreciationForYear
 //   [9]  ownerContribRows     — owner_capital_entries
 //   [10] settingsRows         — settings (federalTaxElection)
+//   [11] waterfallPaidInvs    — computeOwnerWaterfall (Task #1913; no jobId → no subHours query)
 //
 // Queue order for GET /reports/dashboard (no blFilter, default period=month):
 //   [0-9]  main Promise.all (kpiPaidInv, kpiNonPaidInv, kpiExpenses, allMileage,
@@ -109,7 +110,8 @@ const PAID_INVOICE = {
 const NO_MILEAGE = [{ totalMiles: null, totalDed: null }];
 
 /**
- * Push the 11 slots consumed by GET /profit-loss (no blFilter, no hourly subs).
+ * Push the 12 slots consumed by GET /profit-loss (no blFilter, no hourly subs).
+ * Updated for Task #1913: computeOwnerWaterfall paidInvs slot added at [11].
  * @param expSlot — expenses for slot [1]
  * @param subPaySlot — sub_payment_records for slot [4] (default [])
  */
@@ -123,8 +125,11 @@ function pushPL(expSlot: any[], subPaySlot: any[] = []): void {
   h.selectQueue.push([{ n: 0 }]);    // [6] closedCountRow
   h.selectQueue.push([]);             // [7] assets
   h.selectQueue.push([]);             // [8] busUseRows
-  h.selectQueue.push([]);            // [9] ownerContribRows
-  h.selectQueue.push([{}]);           // [10] settingsRows
+  // computeOwnerWaterfall fires its first await synchronously before the outer
+  // Promise.all calls .then() on the two direct chain objects (ownerContribRows, settingsRows).
+  h.selectQueue.push([]);             // [9]  waterfallPaidInvs (no jobId → no subHours query)
+  h.selectQueue.push([]);             // [10] ownerContribRows
+  h.selectQueue.push([{}]);           // [11] settingsRows
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

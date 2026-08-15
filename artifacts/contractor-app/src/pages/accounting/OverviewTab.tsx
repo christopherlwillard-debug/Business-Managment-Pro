@@ -1450,6 +1450,43 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
         );
       })()}
 
+      {/* ── Owner Pay Waterfall ── */}
+      {(() => {
+        const oa = data?.ownerActivity as { ownerAllocated: number; ownerTaxReserve: number; ownerCashTaken: number; ownerRetained: number; ownerOverWithdrawal: number; ownerDrawTotal: number; ownerContributionsTotal: number } | undefined;
+        if (!oa || (oa.ownerAllocated <= 0 && oa.ownerDrawTotal <= 0 && oa.ownerContributionsTotal <= 0)) return null;
+        const isOverdrawn = oa.ownerOverWithdrawal > 0;
+        return (
+          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
+              <div className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide bg-violet-100 text-violet-700">Owner Pay Waterfall</div>
+              <span className="text-xs text-muted-foreground ml-1 flex-1">Informational — cash-basis {year}</span>
+              {isOverdrawn && <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-700 uppercase tracking-wide">Over-Withdrawal</span>}
+            </div>
+            <div className="p-5 space-y-1">
+              {[
+                { label: "Owner Allocated (50% after 5% growth fund)", value: oa.ownerAllocated, cls: "text-emerald-700" },
+                { label: "− Tax Reserve (25% of allocation)", value: -oa.ownerTaxReserve, cls: "text-amber-700" },
+                { label: "= Take-Home Budget", value: oa.ownerAllocated - oa.ownerTaxReserve, cls: "text-foreground font-bold" },
+                { label: "− Cash Taken (Owner Draws)", value: -oa.ownerCashTaken, cls: "text-foreground" },
+              ].map(({ label, value, cls }) => (
+                <div key={label} className="flex items-center justify-between py-1.5 border-b border-border/40">
+                  <span className="text-sm pl-4 text-muted-foreground">{label}</span>
+                  <span className={`tabular-nums text-sm font-medium ${cls}`}>{formatCurrency(value)}</span>
+                </div>
+              ))}
+              <div className={`flex items-center justify-between py-2.5 px-4 mt-2 rounded-xl border ${isOverdrawn ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"}`}>
+                <span className={`text-xs font-bold uppercase tracking-wide ${isOverdrawn ? "text-red-700" : "text-emerald-700"}`}>
+                  {isOverdrawn ? "⚠ Over-Withdrawal" : "= Retained / Undrawn"}
+                </span>
+                <span className={`tabular-nums text-sm font-bold ${isOverdrawn ? "text-red-700" : "text-emerald-700"}`}>
+                  {formatCurrency(isOverdrawn ? -oa.ownerOverWithdrawal : oa.ownerRetained)}
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Add Capital Entry Dialog ── */}
       {capitalForm && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) setCapitalForm(null); }}>

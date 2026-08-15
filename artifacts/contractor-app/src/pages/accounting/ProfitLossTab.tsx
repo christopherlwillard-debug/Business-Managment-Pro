@@ -34,7 +34,15 @@ interface ProfitLossReport {
   deductions: { mileageDeduction: number; totalMiles: number; mileageRate: number; depreciationDeduction: number };
   netProfit: number;
   taxProfile?: TaxProfile;
-  ownerActivity?: { ownerDrawTotal: number; ownerContributionsTotal: number };
+  ownerActivity?: {
+    ownerDrawTotal: number;
+    ownerContributionsTotal: number;
+    ownerAllocated: number;
+    ownerTaxReserve: number;
+    ownerCashTaken: number;
+    ownerRetained: number;
+    ownerOverWithdrawal: number;
+  };
   closedJobCount?: number;
 }
 
@@ -88,10 +96,20 @@ function OwnerActivityCard({
   ownerActivity,
   taxProfile,
 }: {
-  ownerActivity: { ownerDrawTotal: number; ownerContributionsTotal: number };
+  ownerActivity: {
+    ownerDrawTotal: number;
+    ownerContributionsTotal: number;
+    ownerAllocated: number;
+    ownerTaxReserve: number;
+    ownerCashTaken: number;
+    ownerRetained: number;
+    ownerOverWithdrawal: number;
+  };
   taxProfile: TaxProfile;
 }) {
   const [open, setOpen] = useState(true);
+  const fmt = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+  const isOverdrawn = ownerActivity.ownerOverWithdrawal > 0;
   return (
     <div className="border border-border rounded-2xl overflow-hidden shadow-sm">
       <button
@@ -102,25 +120,64 @@ function OwnerActivityCard({
           <div className="bg-muted text-muted-foreground text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">
             {taxProfile.activitySectionTitle} (Informational)
           </div>
+          {isOverdrawn && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide bg-red-100 text-red-700">
+              Over-Withdrawal
+            </span>
+          )}
         </div>
         <span className="text-xs text-muted-foreground">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
         <div className="px-6 py-4 space-y-1">
+          {/* Waterfall breakdown */}
+          {ownerActivity.ownerAllocated > 0 && (
+            <>
+              <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mt-1 mb-2">Owner Pay Waterfall (Cash-Basis)</div>
+              <div className="flex items-center justify-between py-2 border-b border-border/30">
+                <span className="text-sm pl-6 text-muted-foreground">Owner Allocated (50% of net after growth)</span>
+                <span className="tabular-nums text-sm font-medium text-emerald-700">{fmt(ownerActivity.ownerAllocated)}</span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b border-border/30">
+                <span className="text-sm pl-6 text-muted-foreground">− Tax Reserve (25% of allocation)</span>
+                <span className="tabular-nums text-sm font-medium text-amber-700">−{fmt(ownerActivity.ownerTaxReserve)}</span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b border-border/30">
+                <span className="text-sm pl-6 text-muted-foreground">= Owner Take-Home Budget</span>
+                <span className="tabular-nums text-sm font-bold text-foreground">{fmt(ownerActivity.ownerAllocated - ownerActivity.ownerTaxReserve)}</span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b border-border/30">
+                <span className="text-sm pl-6 text-muted-foreground">− Cash Taken ({taxProfile.distributionLabel})</span>
+                <span className="tabular-nums text-sm font-medium text-foreground">−{fmt(ownerActivity.ownerCashTaken)}</span>
+              </div>
+              <div className={`flex items-center justify-between py-2.5 px-3 rounded-xl mt-1 border ${isOverdrawn ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"}`}>
+                <div>
+                  <span className={`text-xs font-bold uppercase tracking-wide ${isOverdrawn ? "text-red-700" : "text-emerald-700"}`}>
+                    {isOverdrawn ? "Over-Withdrawal" : "Retained / Undrawn"}
+                  </span>
+                  {isOverdrawn && (
+                    <p className="text-[10px] text-red-600 mt-0.5">Draws exceed the owner take-home budget for this year.</p>
+                  )}
+                </div>
+                <span className={`tabular-nums text-sm font-bold ${isOverdrawn ? "text-red-700" : "text-emerald-700"}`}>
+                  {isOverdrawn ? `−${fmt(ownerActivity.ownerOverWithdrawal)}` : fmt(ownerActivity.ownerRetained)}
+                </span>
+              </div>
+              <div className="border-t border-border/40 mt-3 pt-3" />
+            </>
+          )}
+
+          {/* Contributions & draws */}
           <div className="flex items-center justify-between py-2 border-b border-border/30">
             <span className="text-sm pl-6 text-muted-foreground">{taxProfile.contributionLabel}</span>
             <span className="tabular-nums text-sm font-medium text-foreground">
-              {ownerActivity.ownerContributionsTotal === 0
-                ? "—"
-                : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(ownerActivity.ownerContributionsTotal)}
+              {ownerActivity.ownerContributionsTotal === 0 ? "—" : fmt(ownerActivity.ownerContributionsTotal)}
             </span>
           </div>
           <div className="flex items-center justify-between py-2 border-b border-border/30">
             <span className="text-sm pl-6 text-muted-foreground">{taxProfile.distributionLabel}</span>
             <span className="tabular-nums text-sm font-medium text-foreground">
-              {ownerActivity.ownerDrawTotal === 0
-                ? "—"
-                : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(ownerActivity.ownerDrawTotal)}
+              {ownerActivity.ownerDrawTotal === 0 ? "—" : fmt(ownerActivity.ownerDrawTotal)}
             </span>
           </div>
           <p className="text-xs text-muted-foreground pt-2 leading-relaxed">
@@ -163,7 +220,25 @@ function ProfitLossTab({ year }: { year: number }) {
       : "";
     const isLoss = report.netProfit < 0;
 
-    printWindow.document.write(`<!DOCTYPE html><html><head><title>Profit & Loss — ${report.year}</title><style>body{font-family:Arial,sans-serif;padding:48px;padding-top:88px;line-height:1.5;max-width:700px;margin:0 auto}.header{text-align:center;margin-bottom:24px}.header h1{font-size:20px;margin:0 0 4px}.header p{margin:0;color:#64748b;font-size:13px}.top-bar{position:fixed;top:max(14px,env(safe-area-inset-top,14px));left:0;right:0;display:flex;justify-content:space-between;padding:0 20px;z-index:9999;pointer-events:none}.top-bar button{pointer-events:all;background:rgba(0,0,0,.78);color:#fff;border:none;padding:8px 18px;border-radius:20px;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.01em}.net-profit{text-align:center;margin-top:20px;padding:16px;border-radius:8px;background:${isLoss ? "#fef2f2" : "#f0fdf4"};border:2px solid ${isLoss ? "#fca5a5" : "#86efac"}}.net-profit .label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:${isLoss ? "#991b1b" : "#166534"}}.net-profit .value{font-size:28px;font-weight:800;color:${isLoss ? "#dc2626" : "#16a34a"}}.footer{margin-top:36px;padding-top:12px;border-top:1px solid #e5e7eb;text-align:center;color:#94a3b8;font-size:11px}@media print{.top-bar{display:none}}</style></head><body><div class="top-bar"><button onclick="window.close()">&#8592; Back</button><button onclick="window.print()">&#128438; Print / PDF</button></div><div class="header"><h1>Willard's General Contracting LLC</h1><p>Profit &amp; Loss Statement — January 1, ${report.year} – December 31, ${report.year}</p><p style="font-size:11px;color:#94a3b8">Cash Basis &bull; Prepared by BuildPro</p></div>${section("Revenue")}${row("Gross Receipts (Paid Invoices)", report.revenue.grossReceipts, { indent: true })}${report.revenue.otherIncome > 0 ? row("Other Income", report.revenue.otherIncome, { indent: true }) : ""}${row("Total Revenue", report.revenue.grossRevenue, { subtotal: true })}${section("Cost of Goods Sold")}${row("Materials", report.cogs.materials, { indent: true })}${row("Total COGS", report.cogs.total, { subtotal: true })}${row("Gross Profit", report.grossProfit, { subtotal: true })}${section("Operating Expenses")}${opexRows}${row("Total Operating Expenses", report.totalOperatingExpenses, { subtotal: true })}${row("Net Operating Income", report.netOperatingIncome, { subtotal: true })}${section("Other Deductions")}${row(mileLabel, report.deductions.mileageDeduction, { indent: true })}${deprRow}<div class="net-profit"><div class="label">${isLoss ? "Net Loss" : "Net Profit"}</div><div class="value">${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Math.abs(report.netProfit))}</div></div><div class="footer">Willard's General Contracting LLC &bull; ${report.year} &bull; Cash-Basis Accounting &bull; Prepared by BuildPro</div></body></html>`);
+    const oa = report.ownerActivity;
+    const oaFmt = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+    const ownerWaterfallHtml = oa && oa.ownerAllocated > 0 ? `
+      <div style="margin-top:24px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+        <div style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:8px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#475569">Owner Activity (Informational — does not affect net profit)</div>
+        <div style="padding:10px 14px;font-size:12px">
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="padding-left:16px;color:#64748b">Owner Allocated (50% of net after 5% growth fund)</span><span style="color:#16a34a;font-weight:600">${oaFmt(oa.ownerAllocated)}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="padding-left:16px;color:#64748b">− Tax Reserve (25% of allocation)</span><span style="color:#d97706;font-weight:600">−${oaFmt(oa.ownerTaxReserve)}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;font-weight:700"><span style="padding-left:16px">= Take-Home Budget</span><span>${oaFmt(oa.ownerAllocated - oa.ownerTaxReserve)}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="padding-left:16px;color:#64748b">− Cash Taken (Owner Draws)</span><span style="font-weight:600">−${oaFmt(oa.ownerCashTaken)}</span></div>
+          ${oa.ownerOverWithdrawal > 0
+            ? `<div style="display:flex;justify-content:space-between;padding:7px 10px;margin-top:4px;background:#fef2f2;border-radius:6px;border:1px solid #fca5a5;font-weight:700;color:#dc2626"><span>⚠ Over-Withdrawal</span><span>−${oaFmt(oa.ownerOverWithdrawal)}</span></div>`
+            : `<div style="display:flex;justify-content:space-between;padding:7px 10px;margin-top:4px;background:#f0fdf4;border-radius:6px;border:1px solid #86efac;font-weight:700;color:#16a34a"><span>= Retained / Undrawn</span><span>${oaFmt(oa.ownerRetained)}</span></div>`}
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid #f1f5f9;margin-top:8px"><span style="padding-left:16px;color:#64748b">Owner Contributions</span><span>${oa.ownerContributionsTotal > 0 ? oaFmt(oa.ownerContributionsTotal) : "—"}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="padding-left:16px;color:#64748b">Owner Draws (actual)</span><span>${oa.ownerDrawTotal > 0 ? oaFmt(oa.ownerDrawTotal) : "—"}</span></div>
+        </div>
+      </div>` : "";
+
+    printWindow.document.write(`<!DOCTYPE html><html><head><title>Profit & Loss — ${report.year}</title><style>body{font-family:Arial,sans-serif;padding:48px;padding-top:88px;line-height:1.5;max-width:700px;margin:0 auto}.header{text-align:center;margin-bottom:24px}.header h1{font-size:20px;margin:0 0 4px}.header p{margin:0;color:#64748b;font-size:13px}.top-bar{position:fixed;top:max(14px,env(safe-area-inset-top,14px));left:0;right:0;display:flex;justify-content:space-between;padding:0 20px;z-index:9999;pointer-events:none}.top-bar button{pointer-events:all;background:rgba(0,0,0,.78);color:#fff;border:none;padding:8px 18px;border-radius:20px;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.01em}.net-profit{text-align:center;margin-top:20px;padding:16px;border-radius:8px;background:${isLoss ? "#fef2f2" : "#f0fdf4"};border:2px solid ${isLoss ? "#fca5a5" : "#86efac"}}.net-profit .label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:${isLoss ? "#991b1b" : "#166534"}}.net-profit .value{font-size:28px;font-weight:800;color:${isLoss ? "#dc2626" : "#16a34a"}}.footer{margin-top:36px;padding-top:12px;border-top:1px solid #e5e7eb;text-align:center;color:#94a3b8;font-size:11px}@media print{.top-bar{display:none}}</style></head><body><div class="top-bar"><button onclick="window.close()">&#8592; Back</button><button onclick="window.print()">&#128438; Print / PDF</button></div><div class="header"><h1>Willard's General Contracting LLC</h1><p>Profit &amp; Loss Statement — January 1, ${report.year} – December 31, ${report.year}</p><p style="font-size:11px;color:#94a3b8">Cash Basis &bull; Prepared by BuildPro</p></div>${section("Revenue")}${row("Gross Receipts (Paid Invoices)", report.revenue.grossReceipts, { indent: true })}${report.revenue.otherIncome > 0 ? row("Other Income", report.revenue.otherIncome, { indent: true }) : ""}${row("Total Revenue", report.revenue.grossRevenue, { subtotal: true })}${section("Cost of Goods Sold")}${row("Materials", report.cogs.materials, { indent: true })}${row("Total COGS", report.cogs.total, { subtotal: true })}${row("Gross Profit", report.grossProfit, { subtotal: true })}${section("Operating Expenses")}${opexRows}${row("Total Operating Expenses", report.totalOperatingExpenses, { subtotal: true })}${row("Net Operating Income", report.netOperatingIncome, { subtotal: true })}${section("Other Deductions")}${row(mileLabel, report.deductions.mileageDeduction, { indent: true })}${deprRow}<div class="net-profit"><div class="label">${isLoss ? "Net Loss" : "Net Profit"}</div><div class="value">${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Math.abs(report.netProfit))}</div></div>${ownerWaterfallHtml}<div class="footer">Willard's General Contracting LLC &bull; ${report.year} &bull; Cash-Basis Accounting &bull; Prepared by BuildPro</div></body></html>`);
     printWindow.document.close();
   }
 
@@ -265,7 +340,11 @@ function ProfitLossTab({ year }: { year: number }) {
           </div>
 
           {/* Owner / Member / Shareholder Activity — informational only, outside the financial statement */}
-          {report.ownerActivity && (report.ownerActivity.ownerDrawTotal > 0 || report.ownerActivity.ownerContributionsTotal > 0) && (
+          {report.ownerActivity && (
+            report.ownerActivity.ownerAllocated > 0 ||
+            report.ownerActivity.ownerDrawTotal > 0 ||
+            report.ownerActivity.ownerContributionsTotal > 0
+          ) && (
             <OwnerActivityCard ownerActivity={report.ownerActivity} taxProfile={taxProfile} />
           )}
         </>
