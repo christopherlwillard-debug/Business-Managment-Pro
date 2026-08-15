@@ -34,3 +34,4 @@
 - [Bid Education Layer](bid-education.md) — Phase 3: per-bid plain-English panel; education_summary DB column; POST /bids/:id/educate endpoint; BidEducationPanel Sheet component; 25-term ProcurementGlossary
 - [Bid engine Phase 3 (SAM search overhaul)](bid-engine-phase3.md) — CapabilitySearchGroup, 90-day lookback, soft NAICS mismatch, geographic scoring, 7 v2 skill buckets, auto-migration of v1 DB profiles
 - [Integrations & Credentials Manager](integrations-manager.md) — 25+ catalog entries, portal credential fields (0058 migration), health aggregation from bid_source_connections, SAM.gov slug fix in bids.ts
+- [Forensic repair Aug 2026](forensic-repair-aug2026.md) — code done (mileage filter, P&L routing, reserve, owner pay); 3 mileage data corrections staged, apply via migration endpoint post-publish

@@ -927,4 +927,68 @@ router.post("/mileage-2026-recalc", async (_req: Request, res: Response) => {
   }
 });
 
+// Owner-approved mileage corrections — Aug 2026 forensic repair.
+// Corrects 3 manual bulk entries to match authoritative MileIQ 2026 CSV through Jul 31.
+// IRS 2026 rates applied: H1 (Jan-Jun) $0.725/mi, H2 (Jul-Dec) $0.760/mi.
+// Deduction = miles × rate, rounded to 2 decimal places. MileIQ displayed deduction NOT used.
+// Idempotent: skips records that already hold the corrected values.
+router.post("/mileage-manual-corrections-aug2026", async (_req: Request, res: Response) => {
+  try {
+    const H1_RATE = 0.725; // Jan–Jun 2026
+    const corrections = [
+      // id=1, Feb: 110.00 mi (manual) → 111.1 mi (MileIQ 7 trips). Rate: H1.
+      { id: 1, month: "Feb", oldMiles: "110.00", newMiles: "111.1",  oldDed: "79.75",  newDed: (111.1  * H1_RATE).toFixed(2) },
+      // id=2, Mar: 327.00 mi (manual, entry error) → 276.7 mi (MileIQ 28 trips). Rate: H1.
+      // Owner confirmed MileIQ is authoritative; the 50.3-mile excess was a data-entry error.
+      { id: 2, month: "Mar", oldMiles: "327.00", newMiles: "276.7",  oldDed: "237.08", newDed: (276.7  * H1_RATE).toFixed(2) },
+      // id=7, May: 929.00 mi (manual) → 929.7 mi (MileIQ 65 trips). Rate: H1.
+      { id: 7, month: "May", oldMiles: "929.00", newMiles: "929.7",  oldDed: "673.53", newDed: (929.7  * H1_RATE).toFixed(2) },
+    ];
+
+    const applied: typeof corrections = [];
+    const skipped: typeof corrections = [];
+
+    for (const c of corrections) {
+      const [row] = await db
+        .select({ miles: mileageLogsTable.miles, ded: mileageLogsTable.deductionAmount })
+        .from(mileageLogsTable)
+        .where(eq(mileageLogsTable.id, c.id));
+
+      if (!row) {
+        console.warn(`[mileage-manual-corrections] id=${c.id} not found — skipped`);
+        skipped.push(c);
+        continue;
+      }
+
+      // Idempotent: if already at the correct value, skip
+      if (parseFloat(row.miles ?? "0").toFixed(1) === parseFloat(c.newMiles).toFixed(1)) {
+        skipped.push(c);
+        continue;
+      }
+
+      await db
+        .update(mileageLogsTable)
+        .set({
+          miles:            c.newMiles,
+          deductionAmount:  c.newDed,
+        })
+        .where(eq(mileageLogsTable.id, c.id));
+
+      console.log(`[mileage-manual-corrections] id=${c.id} (${c.month}): ${c.oldMiles} mi → ${c.newMiles} mi, $${c.oldDed} → $${c.newDed}`);
+      applied.push(c);
+    }
+
+    const result = {
+      ok: true,
+      applied: applied.map(c => ({ id: c.id, month: c.month, newMiles: c.newMiles, newDeduction: c.newDed })),
+      skipped: skipped.map(c => ({ id: c.id, month: c.month, reason: "already correct or not found" })),
+    };
+    console.log("[mileage-manual-corrections] complete:", JSON.stringify(result));
+    res.json(result);
+  } catch (err) {
+    console.error("[mileage-manual-corrections] failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
 export default router;
