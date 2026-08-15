@@ -2,10 +2,10 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import {
   invoicesTable, expensesTable, mileageLogsTable,
-  paymentsTable, subcontractorsTable, clientsTable, otherIncomeTable, businessesTable,
+  otherIncomeTable, businessesTable,
   settingsTable, subPaymentRecordsTable, jobSubcontractorsTable,
 } from "@workspace/db/schema";
-import { eq, and, gte, lte, sum, desc, count, ne, or, isNull, sql, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, sum, count, ne, or, isNull, sql, inArray } from "drizzle-orm";
 
 const router = Router();
 
@@ -512,91 +512,6 @@ router.patch("/home-office/:year", async (req, res) => {
   } catch (err) {
     console.error("[home-office PATCH]", err);
     res.status(500).json({ error: "Failed to save home office settings" });
-  }
-});
-
-// GET /api/tax-reports/subcontractor/:id?year=2025 - Admin view all subs, or specific sub
-router.get("/subcontractor/:id", async (req, res) => {
-  try {
-    const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
-    const subId = parseInt(req.params.id);
-    if (isNaN(subId)) return res.status(400).json({ error: "Invalid subcontractor id" });
-
-    const payments = await db
-      .select()
-      .from(paymentsTable)
-      .where(
-        and(
-          eq(paymentsTable.subcontractorId, subId),
-          eq(paymentsTable.year, year)
-        )
-      )
-      .orderBy(desc(paymentsTable.paymentDate));
-
-    const [totals] = await db
-      .select({ total: sum(paymentsTable.amount) })
-      .from(paymentsTable)
-      .where(
-        and(
-          eq(paymentsTable.subcontractorId, subId),
-          eq(paymentsTable.year, year)
-        )
-      );
-
-    res.json({
-      year,
-      subcontractorId: subId,
-      totalPayments: totals?.total ? parseFloat(totals.total as any) : 0,
-      paymentCount: payments.length,
-      payments: payments.map(p => ({
-        id: p.id,
-        amount: parseFloat(p.amount as any),
-        paymentDate: p.paymentDate,
-        description: p.description,
-        invoiceNumber: p.invoiceNumber,
-        notes: p.notes,
-      })),
-    });
-  } catch (err) {
-    console.error("Error fetching subcontractor payments:", err);
-    res.status(500).json({ error: "Failed to fetch subcontractor payments" });
-  }
-});
-
-// GET /api/tax-reports/admin/all-subcontractors?year=2025 - Admin view all subs with totals
-router.get("/admin/all-subcontractors", async (req, res) => {
-  try {
-    const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
-
-    const subcontractorsWithPayments = await db
-      .select({
-        id: subcontractorsTable.id,
-        name: subcontractorsTable.name,
-        totalPayments: sum(paymentsTable.amount),
-        paymentCount: count(paymentsTable.id),
-      })
-      .from(subcontractorsTable)
-      .leftJoin(
-        paymentsTable,
-        and(
-          eq(subcontractorsTable.id, paymentsTable.subcontractorId),
-          eq(paymentsTable.year, year)
-        )
-      )
-      .groupBy(subcontractorsTable.id, subcontractorsTable.name);
-
-    res.json({
-      year,
-      subcontractors: subcontractorsWithPayments.map(s => ({
-        id: s.id,
-        name: s.name,
-        totalPayments: s.totalPayments ? parseFloat(s.totalPayments as any) : 0,
-        paymentCount: s.paymentCount ? 1 : 0, // This is approximate; would need better count
-      })),
-    });
-  } catch (err) {
-    console.error("Error fetching all subcontractors with payments:", err);
-    res.status(500).json({ error: "Failed to fetch subcontractor payments" });
   }
 });
 

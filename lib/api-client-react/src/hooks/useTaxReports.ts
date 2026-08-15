@@ -49,26 +49,6 @@ export interface Payment {
   createdAt?: string;
 }
 
-export interface SubcontractorPayments {
-  year: number;
-  subcontractorId: number;
-  totalPayments: number;
-  paymentCount: number;
-  payments: Payment[];
-}
-
-export interface SubcontractorPaymentSummary {
-  id: number;
-  name: string;
-  totalPayments: number;
-  paymentCount: number;
-}
-
-export interface AllSubcontractorsPayments {
-  year: number;
-  subcontractors: SubcontractorPaymentSummary[];
-}
-
 // Get Schedule C report for a specific year, optionally filtered by business
 export function useScheduleCReport(year: number = new Date().getFullYear(), businessLine?: string) {
   return useQuery({
@@ -78,23 +58,6 @@ export function useScheduleCReport(year: number = new Date().getFullYear(), busi
       if (businessLine) params.set("businessLine", businessLine);
       return customFetch<ScheduleCReport>(`/api/tax-reports/schedule-c?${params}`, { method: "GET" });
     },
-  });
-}
-
-// Get payments for a specific subcontractor
-export function useSubcontractorPayments(subcontractorId: number, year: number = new Date().getFullYear()) {
-  return useQuery({
-    queryKey: ["/api/tax-reports/subcontractor", subcontractorId, year],
-    queryFn: () => customFetch<SubcontractorPayments>(`/api/tax-reports/subcontractor/${subcontractorId}?year=${year}`, { method: "GET" }),
-    enabled: !!subcontractorId,
-  });
-}
-
-// Get all subcontractors with their payment totals (admin view)
-export function useAllSubcontractorsPayments(year: number = new Date().getFullYear()) {
-  return useQuery({
-    queryKey: ["/api/tax-reports/admin/all-subcontractors", year],
-    queryFn: () => customFetch<AllSubcontractorsPayments>(`/api/tax-reports/admin/all-subcontractors?year=${year}`, { method: "GET" }),
   });
 }
 
