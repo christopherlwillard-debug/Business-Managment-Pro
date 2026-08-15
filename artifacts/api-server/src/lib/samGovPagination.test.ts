@@ -30,6 +30,7 @@ import {
   fetchSamOpportunities,
   fetchSamOpportunitiesGrouped,
   CATCH_ALL_KEYWORDS,
+  CONSTRUCTION_NAICS_SECTORS,
   SAM_PAGE_SIZE,
   SAM_MAX_PAGES,
   SAM_LOOKBACK_DAYS,
@@ -450,7 +451,9 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
       };
     }));
 
-    // 3 unique NAICS + 0 PSC + 5 catch-all = 8 tasks
+    // 3 unique NAICS (all sector 23 — in-sector, unrestricted) + 0 PSC + 0 catch-all = 3 tasks.
+    // Catch-all keyword tasks are no longer generated; in-sector NAICS queries already
+    // fetch all records posted under those codes without keyword restriction.
     const manyTaskGroup: CapabilitySearchGroup = {
       capabilityKey:    "test_group",
       capabilityName:   "Test",
@@ -459,7 +462,7 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
       specificKeywords: ["s1", "s2", "s3", "s4", "s5"],
       pscCodes:         [],
     };
-    const expectedTasks = 3 + 0 + CATCH_ALL_KEYWORDS.length; // 8
+    const expectedTasks = 3 + 0; // 3 NAICS (no catch-all)
 
     vi.useRealTimers();
     const result = await fetchSamOpportunitiesGrouped([manyTaskGroup]);
@@ -476,10 +479,10 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
   });
 
   it("requestsAttempted counts paginated HTTP calls not tasks — with 2-page NAICS result", async () => {
-    // trimGroup: 1 NAICS task + 5 catch-all tasks = 6 tasks total.
+    // trimGroup: 1 NAICS task (238350, sector 23 — in-sector, unrestricted) + 0 catch-all = 1 task.
     // Mock the NAICS-238350 task to paginate 2 pages; all other tasks return empty.
-    // Verify: requestsAttempted = 2 (NAICS pages) + 5 (catch-all, 1 page each) = 7,
-    //         NOT 6 (which is the task count).
+    // Verify: requestsAttempted = 2 (both NAICS pages),
+    //         NOT 1 (which is the task count — pagination inflates HTTP calls).
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
       const params = new URLSearchParams((url as string).split("?")[1]);
       const offset  = parseInt(params.get("offset") ?? "0", 10);
@@ -513,8 +516,8 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
     vi.useRealTimers();
     const result = await fetchSamOpportunitiesGrouped([trimGroup]);
 
-    // 2 HTTP calls for the NAICS task + 1 each for the 5 catch-all tasks = 7
-    const expectedHttpCalls = 2 + CATCH_ALL_KEYWORDS.length;
+    // 2 HTTP calls for the NAICS task (page 1 + page 2); no catch-all tasks
+    const expectedHttpCalls = 2;
     const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
     expect(fetchMock.mock.calls.length).toBe(expectedHttpCalls);       // actual HTTP calls
     expect(result.requestsAttempted).toBe(expectedHttpCalls);           // counters match
@@ -525,21 +528,25 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
 
   it("generates ≤60 tasks and requestsAttempted tracks paginated HTTP calls (quota-reduction check)", async () => {
     // Core guard against the ~390-task regression that exhausted the SAM.gov daily quota.
-    // GC: 7 groups → ~24 unique NAICS + ~20 unique PSC + 5 catch-all = ~49 tasks.
-    // Max HTTP calls = task_count × SAM_MAX_PAGES (5) — even worst-case (245) is far below
+    // GC: 7 groups → ~24 unique NAICS + ~20 unique PSC + 0 catch-all = ~44 tasks.
+    // Each NAICS generates exactly 1 task (in-sector: unrestricted; out-of-sector: keyword-paired).
+    // Catch-all keyword tasks are no longer generated (removed in sector-filter refactor).
+    // Max HTTP calls = task_count × SAM_MAX_PAGES (5) — even worst-case (220) is far below
     // the old worst-case (393+ tasks × 5 = 1,965).
     //
     // This test forces every task to paginate exactly 2 pages (offset=0 → full page;
     // offset>0 → 1 record) and asserts requestsAttempted equals the raw fetch call count.
 
-    // Compute expected task count from the actual group definitions
+    // Compute expected task count from the actual group definitions.
+    // Each NAICS generates exactly 1 task (in-sector: unrestricted; out-of-sector: keyword-paired).
+    // PSC generates 1 task each. No catch-all tasks.
     const gcNaics = new Set<string>();
     const gcPsc   = new Set<string>();
     for (const g of GENERAL_CONTRACTING_SEARCH_GROUPS) {
       g.naicsCodes.forEach(n => gcNaics.add(n));
       (g.pscCodes ?? []).forEach(p => gcPsc.add(p));
     }
-    const taskCount = gcNaics.size + gcPsc.size + CATCH_ALL_KEYWORDS.length;
+    const taskCount = gcNaics.size + gcPsc.size; // no catch-all tasks
 
     vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
       const params = new URLSearchParams((url as string).split("?")[1]);
@@ -579,6 +586,180 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
     expect(result.requestsAttempted).toBeLessThanOrEqual(60 * SAM_MAX_PAGES);
     vi.useFakeTimers();
   }, 15_000); // generous timeout: 49 tasks × 150ms inter-page delay / concurrency=8 ≈ 900ms
+});
+
+// ── Sector-filtered NAICS query tests ─────────────────────────────────────────
+//
+// Verify that the grouped search applies CONSTRUCTION_NAICS_SECTORS correctly:
+//   • In-sector codes (23/56/81): unrestricted NAICS query (no keyword param)
+//   • Out-of-sector codes (e.g. 332xxx): keyword-paired NAICS query
+//   • No catch-all keyword tasks generated
+
+describe("fetchSamOpportunitiesGrouped — sector-filtered NAICS queries", () => {
+  const inSectorGroup: CapabilitySearchGroup = {
+    capabilityKey:    "in_sector_test",
+    capabilityName:   "In Sector",
+    naicsCodes:       ["238990", "561210", "811310"],  // sectors 23, 56, 81
+    anchorKeywords:   ["construction services", "facility maintenance"],
+    specificKeywords: [],
+    pscCodes:         [],
+  };
+
+  const outOfSectorGroup: CapabilitySearchGroup = {
+    capabilityKey:    "out_of_sector_test",
+    capabilityName:   "Out Of Sector",
+    naicsCodes:       ["332312", "332313"],  // sector 33 — Manufacturing
+    anchorKeywords:   ["welding", "metal fabrication"],
+    specificKeywords: [],
+    pscCodes:         [],
+  };
+
+  const mixedGroup: CapabilitySearchGroup = {
+    capabilityKey:    "mixed_test",
+    capabilityName:   "Mixed",
+    naicsCodes:       ["238190", "332420"],  // 238190 in-sector, 332420 out-of-sector
+    anchorKeywords:   ["structural repair", "vessel maintenance"],
+    specificKeywords: [],
+    pscCodes:         [],
+  };
+
+  it("sends unrestricted NAICS queries for construction-sector codes (no keyword param)", async () => {
+    const capturedUrls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
+      capturedUrls.push(url);
+      return Promise.resolve({
+        ok: true, json: () => Promise.resolve({ totalRecords: 0, opportunitiesData: [] }),
+      } as Response);
+    }));
+
+    vi.useRealTimers();
+    await fetchSamOpportunitiesGrouped([inSectorGroup]);
+
+    // Every fetch URL for in-sector codes must NOT contain a keyword param
+    for (const url of capturedUrls) {
+      const params = new URLSearchParams(url.split("?")[1]);
+      const naics = params.get("naics");
+      if (naics && [...CONSTRUCTION_NAICS_SECTORS].some(p => naics.startsWith(p))) {
+        expect(params.get("keyword")).toBeNull();
+      }
+    }
+    vi.useFakeTimers();
+  });
+
+  it("sends keyword-paired NAICS queries for out-of-sector codes", async () => {
+    const capturedUrls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
+      capturedUrls.push(url);
+      return Promise.resolve({
+        ok: true, json: () => Promise.resolve({ totalRecords: 0, opportunitiesData: [] }),
+      } as Response);
+    }));
+
+    vi.useRealTimers();
+    await fetchSamOpportunitiesGrouped([outOfSectorGroup]);
+
+    // All fetch calls must include both naics and keyword params
+    expect(capturedUrls.length).toBeGreaterThan(0);
+    for (const url of capturedUrls) {
+      const params = new URLSearchParams(url.split("?")[1]);
+      const naics  = params.get("naics");
+      if (naics && !([...CONSTRUCTION_NAICS_SECTORS].some(p => naics.startsWith(p)))) {
+        // Out-of-sector NAICS must be keyword-paired
+        expect(params.get("keyword")).not.toBeNull();
+        expect(params.get("keyword")!.length).toBeGreaterThan(0);
+      }
+    }
+    vi.useFakeTimers();
+  });
+
+  it("uses the group's first anchorKeyword for out-of-sector NAICS pairing", async () => {
+    const capturedUrls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
+      capturedUrls.push(url);
+      return Promise.resolve({
+        ok: true, json: () => Promise.resolve({ totalRecords: 0, opportunitiesData: [] }),
+      } as Response);
+    }));
+
+    vi.useRealTimers();
+    await fetchSamOpportunitiesGrouped([outOfSectorGroup]);
+
+    // Every out-of-sector NAICS task must use the first anchor keyword ("welding")
+    for (const url of capturedUrls) {
+      const params = new URLSearchParams(url.split("?")[1]);
+      const naics  = params.get("naics");
+      if (naics && naics.startsWith("33")) {
+        expect(params.get("keyword")).toBe(outOfSectorGroup.anchorKeywords[0]);
+      }
+    }
+    vi.useFakeTimers();
+  });
+
+  it("mixed group: in-sector NAICS is unrestricted, out-of-sector is keyword-paired", async () => {
+    const capturedUrls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
+      capturedUrls.push(url);
+      return Promise.resolve({
+        ok: true, json: () => Promise.resolve({ totalRecords: 0, opportunitiesData: [] }),
+      } as Response);
+    }));
+
+    vi.useRealTimers();
+    await fetchSamOpportunitiesGrouped([mixedGroup]);
+
+    let foundInSectorUnrestricted = false;
+    let foundOutOfSectorWithKeyword = false;
+
+    for (const url of capturedUrls) {
+      const params = new URLSearchParams(url.split("?")[1]);
+      const naics  = params.get("naics");
+      if (!naics) continue;
+      const inSector = [...CONSTRUCTION_NAICS_SECTORS].some(p => naics.startsWith(p));
+      if (inSector) {
+        expect(params.get("keyword")).toBeNull();  // in-sector: no keyword
+        foundInSectorUnrestricted = true;
+      } else {
+        expect(params.get("keyword")).not.toBeNull();  // out-of-sector: keyword required
+        foundOutOfSectorWithKeyword = true;
+      }
+    }
+
+    expect(foundInSectorUnrestricted).toBe(true);
+    expect(foundOutOfSectorWithKeyword).toBe(true);
+    vi.useFakeTimers();
+  });
+
+  it("does not generate catch-all keyword tasks (no tasks with only keyword param, no naics/psc)", async () => {
+    const capturedUrls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => {
+      capturedUrls.push(url);
+      return Promise.resolve({
+        ok: true, json: () => Promise.resolve({ totalRecords: 0, opportunitiesData: [] }),
+      } as Response);
+    }));
+
+    vi.useRealTimers();
+    // Group with both in-sector and out-of-sector NAICS
+    await fetchSamOpportunitiesGrouped([inSectorGroup, outOfSectorGroup]);
+
+    for (const url of capturedUrls) {
+      const params = new URLSearchParams(url.split("?")[1]);
+      const hasNaics   = params.get("naics") !== null;
+      const hasPsc     = params.get("psc")   !== null;
+      const hasKeyword = params.get("keyword") !== null;
+      // No task should have ONLY a keyword without a NAICS or PSC param
+      if (hasKeyword && !hasNaics && !hasPsc) {
+        throw new Error(`Catch-all keyword task found (no NAICS/PSC): ${url}`);
+      }
+    }
+    vi.useFakeTimers();
+  });
+
+  it("CATCH_ALL_KEYWORDS constant still exports the expected terms for backward compat", () => {
+    // The constant is deprecated but still exported so existing imports compile.
+    expect(CATCH_ALL_KEYWORDS.length).toBe(5);
+    expect(CATCH_ALL_KEYWORDS).toContain("general construction services");
+  });
 });
 
 // ── Constants: verify the improved defaults ───────────────────────────────────

@@ -116,9 +116,14 @@ export interface SamOpportunity {
   noticeType?:      string;
   typeOfSetAside?:  string;
   /**
-   * When true, the NAICS code returned by SAM.gov is outside the searched
-   * capability group's NAICS set. The record is kept (not dropped) but
-   * recommendation is capped at REVIEW so the user can verify relevance.
+   * When true, the NAICS code returned by SAM.gov is outside every capability
+   * group's NAICS set. The record is kept (not dropped) but recommendation is
+   * capped at REVIEW so the user can verify relevance.
+   *
+   * @deprecated — With sector-filtered NAICS queries, this flag is rarely set.
+   * It can still be true for PSC-sourced results whose NAICS code falls outside
+   * the capability groups (PSC tasks fetch records regardless of NAICS).
+   * Kept for backward compatibility; do not introduce new code that depends on it.
    */
   naicsMismatch?:   boolean;
   /** capabilityKey of the search group that first surfaced this opportunity */
@@ -330,12 +335,15 @@ export interface SamGroupedResult {
 
 // ── Catch-all keyword tasks ────────────────────────────────────────────────────
 //
-// These 5 cross-capability phrases are searched without any NAICS or PSC
-// restriction.  They replace the per-group specificKeyword API calls
-// (~15-24 tasks per group) and surface opportunities whose NAICS code was
-// miscategorized by the contracting agency.
+// @deprecated — no longer used in fetchSamOpportunitiesGrouped.
+// In-sector NAICS queries (sectors 23/56/81) already fetch all records under
+// those codes without keyword restriction.  Out-of-sector NAICS codes are now
+// keyword-paired at the NAICS level.  Unrestricted keyword searches across all
+// sectors were the primary source of engine-block, gym-equipment, and
+// agriculture solicitations in sync results.
 //
-// Exported so tests can assert on the expected task count.
+// Exported for backward compatibility; external callers or tests that import
+// this constant will still compile, but the grouped search no longer uses it.
 export const CATCH_ALL_KEYWORDS = [
   "general construction services",
   "facility renovation contractor",
@@ -343,6 +351,29 @@ export const CATCH_ALL_KEYWORDS = [
   "construction and alteration",
   "repair and maintenance services",
 ] as const;
+
+// ── Construction-sector NAICS allowlist ───────────────────────────────────────
+//
+// Two-character NAICS sector prefixes that are safe for unrestricted NAICS
+// queries in fetchSamOpportunitiesGrouped.
+//
+//   Sector 23  = Construction
+//   Sector 56  = Administrative and Support / Waste Management / Remediation
+//   Sector 81  = Other Services (incl. Equipment Repair — 811xxx)
+//
+// NAICS codes outside these sectors (e.g. 332xxx Manufacturing, 484xxx Freight)
+// are paired with a capability-specific anchor keyword so that only relevant
+// service contracts are fetched, rather than broad manufacturing-supply or
+// freight-carrier solicitations.
+export const CONSTRUCTION_NAICS_SECTORS = new Set(["23", "56", "81"]);
+
+/** Returns true if `naicsCode` belongs to a construction/maintenance sector. */
+function isInConstructionSector(naicsCode: string): boolean {
+  for (const prefix of CONSTRUCTION_NAICS_SECTORS) {
+    if (naicsCode.startsWith(prefix)) return true;
+  }
+  return false;
+}
 
 // ── Local capability assignment ───────────────────────────────────────────────
 //
@@ -439,13 +470,46 @@ export async function fetchSamOpportunitiesGrouped(
     (g.pscCodes ?? []).forEach(p => allGroupPsc.add(p));
   }
 
-  // Build reduced task list: NAICS-only + PSC-only + catch-all keywords.
+  // Build a map from each NAICS code → first anchor keyword from its capability group.
+  // Used to restrict out-of-sector NAICS queries so only relevant service contracts
+  // are fetched (not broad manufacturing-supply or freight-carrier solicitations).
+  const naicsFirstAnchor = new Map<string, string>();
+  for (const g of groups) {
+    const firstAnchor = g.anchorKeywords[0];
+    if (!firstAnchor) continue;
+    for (const naics of g.naicsCodes) {
+      if (!naicsFirstAnchor.has(naics)) naicsFirstAnchor.set(naics, firstAnchor);
+    }
+  }
+
+  // Build sector-filtered task list: NAICS (in-sector or keyword-paired) + PSC.
+  // Catch-all keyword tasks are intentionally omitted — in-sector NAICS queries
+  // already fetch all records posted under those codes, and out-of-sector NAICS
+  // queries are now keyword-restricted.  Unrestricted keyword-only searches were
+  // the primary source of manufacturing and freight noise in sync results.
   type SearchTask = { params: Record<string, string>; label: string };
   const tasks: SearchTask[] = [];
 
-  // One task per unique NAICS (no keyword) — broad pull, scored locally
+  // One task per unique NAICS — strategy depends on sector:
+  //   Construction/maintenance sectors (23 / 56 / 81): unrestricted broad pull.
+  //     Agencies accurately classify this work, so fetching all records is safe.
+  //   Other sectors (e.g. 33 Manufacturing, 48 Transportation): paired with the
+  //     group's first anchor keyword to prevent manufacturing-supply contracts.
   for (const naics of allGroupNaics) {
-    tasks.push({ params: { ...baseParams, naics }, label: `NAICS ${naics}` });
+    if (isInConstructionSector(naics)) {
+      tasks.push({ params: { ...baseParams, naics }, label: `NAICS ${naics}` });
+    } else {
+      const keyword = naicsFirstAnchor.get(naics);
+      if (keyword) {
+        tasks.push({
+          params: { ...baseParams, naics, keyword },
+          label: `NAICS ${naics} / "${keyword}"`,
+        });
+      } else {
+        console.warn(`[sam-gov] No anchor keyword for out-of-sector NAICS ${naics} — querying unrestricted`);
+        tasks.push({ params: { ...baseParams, naics }, label: `NAICS ${naics} (unrestricted)` });
+      }
+    }
   }
 
   // One task per unique PSC (no keyword) — catches PSC-coded opportunities
@@ -453,14 +517,11 @@ export async function fetchSamOpportunitiesGrouped(
     tasks.push({ params: { ...baseParams, psc }, label: `PSC ${psc}` });
   }
 
-  // Catch-all keyword tasks (no NAICS/PSC) — surfaces NAICS-miscategorized opps
-  for (const keyword of CATCH_ALL_KEYWORDS) {
-    tasks.push({ params: { ...baseParams, keyword }, label: `kw "${keyword}"` });
-  }
-
+  const inSectorCount  = [...allGroupNaics].filter(isInConstructionSector).length;
+  const outSectorCount = allGroupNaics.size - inSectorCount;
   console.log(
     `[sam-gov] Grouped search: ${tasks.length} task(s) ` +
-    `(${allGroupNaics.size} NAICS + ${allGroupPsc.size} PSC + ${CATCH_ALL_KEYWORDS.length} catch-all), ` +
+    `(${inSectorCount} NAICS unrestricted + ${outSectorCount} NAICS keyword-paired + ${allGroupPsc.size} PSC), ` +
     `concurrency=${SAM_MAX_CONCURRENT}, lookback=${lookback}d`
   );
 

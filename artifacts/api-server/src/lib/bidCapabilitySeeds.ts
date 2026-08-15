@@ -540,13 +540,18 @@ export const ASPHALT_SEALING_CAPABILITIES: CapabilityDefinition[] = [
 // "floor covering replacement" — not "baseboard installation", "sealcoating",
 // "LVP installation". Anchor keywords are the terms agencies actually use.
 //
-// Each group searches:
-//   NAICS × anchorKeywords   — broad, government-language terms paired with NAICS
-//   specificKeywords          — targeted multi-word phrases, no NAICS restriction
-//   PSC × anchorKeywords     — PSC-coded opportunities with government-language terms
+// How fetchSamOpportunitiesGrouped uses these groups (current architecture):
+//   • Deduplicates NAICS codes across all groups → one task per unique code.
+//   • In-sector NAICS (sectors 23/56/81): unrestricted task — fetch everything.
+//   • Out-of-sector NAICS (e.g. 332xxx Manufacturing): paired with anchorKeywords[0]
+//     to prevent manufacturing-supply and freight contracts from being fetched.
+//   • PSC codes: one unrestricted task per unique code.
+//   • No catch-all keyword tasks (removed — in-sector NAICS queries cover this).
 //
-// Total GC requests: ~370 (vs 199 before this revision)
-// Total Asphalt requests: ~63 (vs 25 before this revision)
+// anchorKeywords and specificKeywords are still used by non-SAM sources
+// (USASpending, SUBNet, GSA Forecast) and the local keyword scorer.
+//
+// Approximate task counts (GC): ~24 unique NAICS + ~20 unique PSC = ~44 tasks.
 // Concurrency cap (SAM_MAX_CONCURRENT=8) prevents rate-limit hits.
 
 export const GENERAL_CONTRACTING_SEARCH_GROUPS: CapabilitySearchGroup[] = [
