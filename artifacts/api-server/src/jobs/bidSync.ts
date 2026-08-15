@@ -60,6 +60,10 @@ interface ResolvedProfile {
 // ── Hard-suppression: title-level gate ───────────────────────────────────────
 // Opportunities whose TITLE contains these are skipped at sync time entirely.
 // Title match = clearly disqualifying with no chance of false negative.
+// Keep in sync with TITLE_HARD_SUPPRESS_TERMS in bidCapabilitySeeds.ts.
+//
+// Score floor (MIN_SCORE_TO_STORE below) provides a secondary defense for
+// bids that pass title suppression but have no real relevance signal.
 const TITLE_HARD_SUPPRESS = [
   // Waste / environmental — outside scope
   "hazardous waste",
@@ -89,7 +93,7 @@ const TITLE_HARD_SUPPRESS = [
   "military exercise",
   "bilateral army exercise",
   "joint exercise",
-  // Industrial equipment / supply (non-construction)
+  // Industrial equipment / manufacturing supply (non-construction)
   "fan,centrifugal",
   "centrifugal pump",
   "turbine blade",
@@ -101,16 +105,80 @@ const TITLE_HARD_SUPPRESS = [
   "fire control system",
   "control column,airc",   // aircraft control column
   "c0ntrol column,airc",   // OCR variant with zero instead of letter O
+  // Engine / vehicle / drivetrain manufacturing (NAICS 333xxx) — not construction
+  "engine block",
+  "diesel engine",
+  "engine assembly",
+  "transmission assembly",
+  "gear assembly",
+  "motor assembly",
+  "generator set procurement",  // generator SET supply (not installation)
+  "pump assembly",              // manufactured pump units (not plumbing install)
+  // Fitness / sports equipment — clearly not construction services
+  "gym equipment",
+  "exercise equipment",
+  "fitness equipment",
+  "sports equipment",
+  "athletic equipment",
+  "recreational equipment",
+  // Agriculture / food / animal inspection services
+  "animal and plant health",
+  "food safety inspection",
+  "agricultural inspection",
+  "phytosanitary",
+  "veterinary biologics",
+  "pest management inspection",
+  "animal disease",
+  "plant disease inspection",
+  "food inspection service",
+  // Medical / pharmaceutical / laboratory supply
+  "medical device",
+  "pharmaceutical supply",
+  "dental supply",
+  "laboratory reagent",
+  "medical equipment supply",
+  "surgical supply",
+  "medical supply",
+  "drug supply",
   // IT / professional services (not trades)
   "software license",
   "saas subscription",
   "cloud hosting",
+  "it support services",
+  "managed services contract",
+  "network infrastructure supply",
+  // Freight / heavy transportation — not construction hauling
+  "full truckload freight",
+  "ltl freight",
+  "intermodal freight",
+  "freight carrier",
+  "food service equipment",
+  "vending machine",
+  "vending services",
 ];
 
 function isHardSuppressedByTitle(title: string): boolean {
   const t = title.toLowerCase();
   return TITLE_HARD_SUPPRESS.some((term) => t.includes(term));
 }
+
+// ── Minimum score to store a new bid ─────────────────────────────────────────
+// Any incoming bid that scores below this threshold is not inserted.
+// This prevents zero- or near-zero-relevance opportunities (those that slipped
+// past the title gate and NAICS sector gate) from cluttering the feed.
+//
+// Score anatomy:
+//   Capability keyword match  0–40 pts  (5 pts/hit, max 20/capability, 40 total)
+//   Geographic relevance      0–10 pts  (local KY = 10, any KY = 7, IN = 5)
+//   Source bonus              0–10 pts  (state-local = 10)
+//   Set-aside advantage       0–20 pts
+//   Deadline urgency          0–20 pts
+//
+// At 20: a bid needs at least two keyword hits (10) + some geo/urgency, OR
+// a single keyword hit + KY geo (7) + minor urgency — a real minimum bar.
+// Existing rows already in the user's workflow (reviewing/bidding/etc.) are
+// never affected by this gate; it only blocks NEW insertions.
+const MIN_SCORE_TO_STORE = 20;
 
 // ── Opportunity type classification ───────────────────────────────────────────
 function deriveOpportunityType(source: string, noticeType?: string | null): string {
@@ -583,6 +651,14 @@ async function upsertOpportunities(
         settingsForRec,
         normalizeSetAsideType(rawSetAside),
       );
+
+      // Score floor — skip inserting new bids with no meaningful relevance signal.
+      // This catches bids that passed the title gate and NAICS sector gate but still
+      // have insufficient keyword/geographic evidence of fit.
+      if (opportunityScore < MIN_SCORE_TO_STORE) {
+        console.log(`[bid-sync] Score-floor skip (score=${opportunityScore}): "${opp.title.slice(0, 70)}"`);
+        continue;
+      }
 
       // Compute recommendation — no AI summary yet for new rows, so this will be REVIEW
       // unless the opportunity is clearly ineligible (expired deadline + ineligible set-aside).

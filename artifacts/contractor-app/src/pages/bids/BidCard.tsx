@@ -448,6 +448,15 @@ export default function BidCard({
         {bid.naicsCode && (
           <span className="text-xs text-muted-foreground">NAICS {bid.naicsCode}</span>
         )}
+        {bid.relevanceReason && (
+          <span
+            className="inline-flex items-center gap-1 text-xs text-primary/70 font-medium"
+            title="Why this bid matched your capability profile"
+          >
+            <Zap className="w-3 h-3 flex-shrink-0" />
+            {bid.relevanceReason}
+          </span>
+        )}
         <DeadlineBadge deadline={bid.responseDeadline} dataCompleteness={bid.dataCompleteness} />
         {effectiveSummary?.isFit !== undefined && (
           <button

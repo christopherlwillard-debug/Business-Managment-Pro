@@ -69,9 +69,32 @@ export const LARGE_FLEET_NEGATIVE_TERMS = [
 ];
 
 /**
+ * Negative terms for manufacturing, agriculture, medical, and other sectors
+ * clearly outside construction/trades work. Each hit costs 8 points in scoring
+ * and can push a borderline bid below the MIN_SCORE_TO_STORE floor.
+ */
+export const NON_CONSTRUCTION_NEGATIVE_TERMS = [
+  // Manufacturing commodity procurement
+  "manufacturing contract", "equipment procurement", "supply of equipment",
+  "commodity purchase", "product supply", "manufacture and deliver",
+  "procurement of parts", "supply contract for",
+  // Agriculture / food / animal inspection
+  "food inspection", "agricultural inspection", "animal inspection",
+  "plant disease", "pest inspection", "phytosanitary inspection",
+  "food safety", "agricultural services only",
+  // Medical / pharmaceutical
+  "medical supply", "pharmaceutical", "medical device", "dental supply",
+  "laboratory supply", "surgical supply",
+  // Unrelated equipment supply
+  "gym equipment", "exercise equipment", "fitness equipment",
+  "sports equipment", "vending machine",
+];
+
+/**
  * Title-level hard-suppression terms.
  * Any opportunity whose TITLE contains one of these is skipped at sync time —
  * it is clearly incompatible with this contractor regardless of keyword matches.
+ * Keep in sync with TITLE_HARD_SUPPRESS in bidSync.ts.
  */
 export const TITLE_HARD_SUPPRESS_TERMS = [
   // Waste / environmental
@@ -85,12 +108,33 @@ export const TITLE_HARD_SUPPRESS_TERMS = [
   "insulation blanket", "avionics",
   // Military exercises
   "bilateral exercise", "military exercise", "bilateral army exercise", "joint exercise",
-  // Industrial equipment supply (non-construction)
+  // Industrial equipment / manufacturing supply (non-construction)
   "fan,centrifugal", "centrifugal pump", "turbine blade", "compressor assembly",
   "ammunition", "ordnance", "explosive", "weapon system", "fire control system",
   "control column,airc", "c0ntrol column,airc",
+  // Engine / vehicle / drivetrain manufacturing
+  "engine block", "diesel engine", "engine assembly",
+  "transmission assembly", "gear assembly", "motor assembly",
+  "generator set procurement", "pump assembly",
+  // Fitness / sports equipment
+  "gym equipment", "exercise equipment", "fitness equipment",
+  "sports equipment", "athletic equipment", "recreational equipment",
+  // Agriculture / food / animal inspection services
+  "animal and plant health", "food safety inspection",
+  "agricultural inspection", "phytosanitary", "veterinary biologics",
+  "pest management inspection", "animal disease", "plant disease inspection",
+  "food inspection service",
+  // Medical / pharmaceutical / laboratory supply
+  "medical device", "pharmaceutical supply", "dental supply",
+  "laboratory reagent", "medical equipment supply", "surgical supply",
+  "medical supply", "drug supply",
   // IT / professional services
   "software license", "saas subscription", "cloud hosting",
+  "it support services", "managed services contract",
+  "network infrastructure supply",
+  // Unrelated services
+  "food service equipment", "vending machine", "vending services",
+  "full truckload freight", "ltl freight", "intermodal freight",
 ];
 
 // ── General Contracting capability definitions (v2 — 7 real skill buckets) ───
@@ -137,6 +181,7 @@ export const GENERAL_CONTRACTING_CAPABILITIES: CapabilityDefinition[] = [
     negativeKeywords: [
       "commercial millwork 50,000", "factory millwork supply", "millwork manufacturing",
       "electrical", "plumbing", "HVAC",
+      ...NON_CONSTRUCTION_NEGATIVE_TERMS,
     ],
     equipment: ["hand tools", "compound miter saw", "brad nailer", "finish nailer", "van/truck"],
     localKeywords: [

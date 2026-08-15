@@ -25,6 +25,51 @@ import { CapabilityDefinition, getCapabilitiesForBusinessType } from "../lib/bid
 type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid";
 const VALID_STAGES: BidStage[] = ["new", "reviewing", "bidding", "submitted", "won", "lost", "no_bid"];
 
+// ── Relevance reason builder ───────────────────────────────────────────────────
+// Maps v2 capability keys (and legacy v1 keys) to human-readable labels.
+const CAP_KEY_LABELS: Record<string, string> = {
+  // v2 keys
+  trim_carpentry:            "Trim Carpentry & Finish Work",
+  flooring_installation:     "Flooring Installation",
+  residential_remodel:       "Residential Remodeling",
+  building_park_maintenance: "Building & Facility Maintenance",
+  welding_fabrication:       "Welding & Metal Fabrication",
+  debris_hauling:            "Debris Hauling & Site Cleanup",
+  compact_dirt_work:         "Compact Loader / Dirt Work",
+  asphalt_sealing:           "Asphalt Sealcoating",
+  // v1 legacy keys
+  waste_hauling:             "Debris & Waste Hauling",
+  mh_finishing:              "MH Finish Work",
+  flooring:                  "Flooring",
+  site_work:                 "Site Preparation",
+  general_contracting:       "General Contracting",
+  industrial_maintenance:    "Industrial Maintenance",
+};
+
+/**
+ * Builds a short human-readable reason explaining why this bid was surfaced.
+ * Returns null when there is no capability match (which shouldn't happen in
+ * practice since unmatched bids are now gated by MIN_SCORE_TO_STORE).
+ */
+function buildRelevanceReason(
+  capabilityMatches: unknown,
+  naicsCode: string | null | undefined,
+): string | null {
+  const matches = Array.isArray(capabilityMatches) ? (capabilityMatches as string[]) : [];
+  if (matches.length === 0) return null;
+
+  const labels = matches
+    .map((k) => CAP_KEY_LABELS[k] ?? k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()))
+    .filter(Boolean);
+  if (labels.length === 0) return null;
+
+  const capStr = labels.length <= 2
+    ? labels.join(" + ")
+    : `${labels[0]} +${labels.length - 1} more`;
+  const naicsStr = naicsCode ? ` · NAICS ${naicsCode}` : "";
+  return `${capStr}${naicsStr}`;
+}
+
 type SetAsideType = "sdvosb" | "vosb" | "small_business" | "veteran_preference" | "open" | "other";
 
 interface AiSummary {
@@ -371,7 +416,13 @@ router.get("/unified", async (req, res) => {
         displayRep.source,
       );
 
-      unified.push({ ...displayRep, capabilityCategories, relevantBusinessNames });
+      // Short relevance reason — why this bid was surfaced for this business
+      const relevanceReason = buildRelevanceReason(
+        displayRep.capabilityMatches,
+        displayRep.naicsCode ?? null,
+      );
+
+      unified.push({ ...displayRep, capabilityCategories, relevantBusinessNames, relevanceReason });
     }
 
     // Sort: highest score first, newest on tie

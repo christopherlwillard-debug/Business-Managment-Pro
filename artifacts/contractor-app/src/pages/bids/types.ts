@@ -134,6 +134,8 @@ export interface BidOpportunity {
   // Unified feed enrichment (present on GET /api/bids/unified responses)
   capabilityCategories?:   string[];
   relevantBusinessNames?:  string[];
+  /** Short explanation of why this bid matched, e.g. "Flooring Installation (NAICS 238330)" */
+  relevanceReason?:        string | null;
 }
 
 // ── Industrial Qualification Analysis ────────────────────────────────────────

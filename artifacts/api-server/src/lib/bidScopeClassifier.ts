@@ -74,6 +74,44 @@ const NAICS_SCOPE: Record<string, string> = {
   "484110": "dump_waste",          // General freight trucking, local (dump-truck hauling)
 };
 
+// ── NAICS sector exclusion list ───────────────────────────────────────────────
+// Two-digit NAICS sector prefixes that are clearly outside construction,
+// maintenance, or facility services. When a NAICS code falls in one of these
+// sectors AND is NOT explicitly mapped in NAICS_SCOPE (which takes priority),
+// the opportunity is classified as "excluded" at high confidence so it is
+// rejected before insertion.
+//
+// Sectors NOT listed here are allowed through as ambiguous (confidence: "low"):
+//   23  = Construction (all)
+//   56  = Administrative / Support / Waste Management Services
+//   81  = Other Services (repair/maintenance)
+//   Partial 48 = Transportation (484 trucking is in NAICS_SCOPE and wins first)
+//   Partial 33 = Manufacturing (332xxx welding/fab codes are in NAICS_SCOPE)
+const EXCLUDED_NAICS_SECTORS = new Set([
+  "11",  // Agriculture, Forestry, Fishing & Hunting (e.g. animal/plant inspection)
+  "21",  // Mining, Quarrying, Oil & Gas Extraction
+  "22",  // Utilities (electric, gas, water — not construction)
+  "31",  // Manufacturing — food, textile, apparel, wood, paper
+  "32",  // Manufacturing — chemicals, plastics, rubber, stone/glass/concrete products
+  "33",  // Manufacturing — metals, machinery, electronics, vehicles, sporting goods
+         //   (exceptions like 332312 welding fab ARE in NAICS_SCOPE and take priority above)
+  "42",  // Wholesale Trade
+  "44",  // Retail Trade
+  "45",  // Retail Trade (continued)
+  "48",  // Transportation & Warehousing (484110 trucking is in NAICS_SCOPE, wins first)
+  "49",  // Transportation & Warehousing (continued — couriers, warehousing)
+  "51",  // Information (media, publishing, software, broadcasting)
+  "52",  // Finance & Insurance
+  "53",  // Real Estate & Rental & Leasing (equipment rental etc.)
+  "54",  // Professional, Scientific & Technical Services
+  "55",  // Management of Companies & Enterprises
+  "61",  // Educational Services
+  "62",  // Health Care & Social Assistance (medical devices, pharmaceuticals)
+  "71",  // Arts, Entertainment & Recreation (gym equipment NAICS 339920 → sector 33,
+         //   but also 71xxxx attractions, spectator sports, fitness centers)
+  "72",  // Accommodation & Food Services
+]);
+
 // ── Title keyword scope rules ─────────────────────────────────────────────────
 // Applied in order when NAICS is absent or ambiguous.
 // The FIRST rule whose ANY keyword matches the lowercased title wins.
@@ -197,7 +235,20 @@ export function classifyOpportunityScope(
         note:            `NAICS ${naicsCode} → ${mappedScope}`,
       };
     }
-    // NAICS present but unmapped — still return it as "unknown scope, NAICS exists"
+    // NAICS present but unmapped — check whether its sector is clearly excluded
+    const sector2 = naicsCode.slice(0, 2);
+    if (EXCLUDED_NAICS_SECTORS.has(sector2)) {
+      return {
+        primaryCategory: "excluded",
+        allCategories:   ["excluded"],
+        confidence:      "high",
+        method:          "naics",
+        note:            `NAICS ${naicsCode} (sector ${sector2}) is outside construction/maintenance scope — excluded`,
+      };
+    }
+
+    // NAICS is present, not mapped, and not in an excluded sector (likely a rare
+    // construction-adjacent code). Allow through as ambiguous.
     return {
       primaryCategory: null,
       allCategories:   [],
@@ -266,6 +317,10 @@ export function isScopeCompatibleWithBusiness(
 ): boolean {
   // Low confidence or unknown scope → allow (inclusive default — never miss a bid)
   if (!scopeCategory || confidence === "low") return true;
+
+  // "excluded" = NAICS code falls in a sector entirely outside construction/maintenance
+  // (manufacturing, agriculture, health care, finance, etc.). Reject for ALL business types.
+  if (scopeCategory === "excluded") return false;
 
   if (businessType === "asphalt_sealing") {
     // Asphalt business should NOT receive flooring/mfg_homes bids
