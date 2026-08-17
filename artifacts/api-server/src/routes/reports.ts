@@ -658,9 +658,11 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const OWENSBORO_OCC_RATE = 0.0139;
     const cityMap = new Map<string, { city: string; state: string; invoiceCount: number; gross: number; paid: number; estOccTax: number }>();
     for (const inv of invoices) {
-      const city = inv.invoiceCity || inv.jobCity || "Unspecified";
-      const state = inv.invoiceState || inv.jobState || "";
-      const key = `${city}||${state}`;
+      // Trim before fallback so whitespace-only invoice fields don't suppress job fields
+      const city = (inv.invoiceCity ?? "").trim() || (inv.jobCity ?? "").trim() || "Unspecified";
+      const state = ((inv.invoiceState ?? "").trim() || (inv.jobState ?? "").trim()).toUpperCase();
+      // Normalize key: lowercase city + uppercase state so casing differences don't split rows
+      const key = `${city.toLowerCase()}||${state}`;
       const existing = cityMap.get(key) ?? { city, state, invoiceCount: 0, gross: 0, paid: 0, estOccTax: 0 };
       existing.invoiceCount++;
       const total = parseFloat(inv.total ?? "0");
@@ -672,8 +674,8 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     for (const o of otherIncomeRows) {
       const city = (o.city ?? "").trim();
       if (!city) continue;
-      const state = (o.state ?? "").trim();
-      const key = `${city}||${state}`;
+      const state = (o.state ?? "").trim().toUpperCase();
+      const key = `${city.toLowerCase()}||${state}`;
       const existing = cityMap.get(key) ?? { city, state, invoiceCount: 0, gross: 0, paid: 0, estOccTax: 0 };
       const amt = parseFloat(o.amount ?? "0");
       existing.gross += amt;
