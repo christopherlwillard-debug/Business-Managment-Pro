@@ -932,6 +932,12 @@ export interface Prospect {
   city?: string | null;
   state?: string | null;
   zip?: string | null;
+  companyName?: string | null;
+  website?: string | null;
+  companyAddress?: string | null;
+  companyCity?: string | null;
+  companyState?: string | null;
+  companyZip?: string | null;
   propertyType: ProspectPropertyType;
   estimatedSqft?: number | null;
   measuredSqFt?: number | null;
@@ -961,10 +967,16 @@ export interface Prospect {
 }
 
 export interface CreateProspectRequest {
-  address: string;
+  address?: string;
   city?: string | null;
   state?: string | null;
   zip?: string | null;
+  companyName?: string | null;
+  website?: string | null;
+  companyAddress?: string | null;
+  companyCity?: string | null;
+  companyState?: string | null;
+  companyZip?: string | null;
   propertyType?: ProspectPropertyType;
   estimatedSqft?: number | null;
   measuredSqFt?: number | null;
@@ -986,6 +998,12 @@ export interface UpdateProspectRequest {
   city?: string | null;
   state?: string | null;
   zip?: string | null;
+  companyName?: string | null;
+  website?: string | null;
+  companyAddress?: string | null;
+  companyCity?: string | null;
+  companyState?: string | null;
+  companyZip?: string | null;
   propertyType?: ProspectPropertyType;
   estimatedSqft?: number | null;
   measuredSqFt?: number | null;

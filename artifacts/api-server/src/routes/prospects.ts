@@ -40,6 +40,12 @@ function format(p: ProspectWithEstimate) {
     city: p.city ?? null,
     state: p.state ?? null,
     zip: p.zip ?? null,
+    companyName: p.companyName ?? null,
+    website: p.website ?? null,
+    companyAddress: p.companyAddress ?? null,
+    companyCity: p.companyCity ?? null,
+    companyState: p.companyState ?? null,
+    companyZip: p.companyZip ?? null,
     propertyType: p.propertyType,
     estimatedSqft: p.estimatedSqft ?? null,
     measuredSqFt: p.measuredSqFt ?? null,
@@ -85,9 +91,14 @@ router.get("/", async (req, res) => {
       zipFilter ? ilike(prospectsTable.zip, `%${zipFilter}%`) : null,
       locationSearch
         ? or(
+            ilike(prospectsTable.address, locationSearch),
             ilike(prospectsTable.city, locationSearch),
             ilike(prospectsTable.state, locationSearch),
-            ilike(prospectsTable.zip, locationSearch)
+            ilike(prospectsTable.zip, locationSearch),
+            ilike(prospectsTable.companyName, locationSearch),
+            ilike(prospectsTable.contactName, locationSearch),
+            ilike(prospectsTable.contactPhone, locationSearch),
+            ilike(prospectsTable.contactEmail, locationSearch),
           )
         : null,
     ].filter(Boolean) as Parameters<typeof and>;
@@ -366,10 +377,16 @@ router.get("/:id", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const body = req.body as {
-      address: string;
+      address?: string;
       city?: string | null;
       state?: string | null;
       zip?: string | null;
+      companyName?: string | null;
+      website?: string | null;
+      companyAddress?: string | null;
+      companyCity?: string | null;
+      companyState?: string | null;
+      companyZip?: string | null;
       propertyType?: string;
       estimatedSqft?: number | null;
       roughQuote?: number | null;
@@ -387,15 +404,19 @@ router.post("/", async (req, res) => {
       console.log("[prospects POST] received:", JSON.stringify({ hasAddress: !!body.address, propertyType: body.propertyType, status: body.status, estimatedSqft: body.estimatedSqft }));
     }
 
-    if (!body.address) return res.status(400).json({ error: "Address is required" });
-
     const [prospect] = await db
       .insert(prospectsTable)
       .values({
-        address: body.address,
+        address: body.address || "",
         city: body.city ?? null,
         state: body.state ?? null,
         zip: body.zip ?? null,
+        companyName: body.companyName ?? null,
+        website: body.website ?? null,
+        companyAddress: body.companyAddress ?? null,
+        companyCity: body.companyCity ?? null,
+        companyState: body.companyState ?? null,
+        companyZip: body.companyZip ?? null,
         propertyType: toProspectPropertyType(body.propertyType),
         estimatedSqft: body.estimatedSqft ?? null,
         roughQuote: body.roughQuote != null ? body.roughQuote.toString() : null,
@@ -436,6 +457,12 @@ router.put("/:id", async (req, res) => {
       city?: string | null;
       state?: string | null;
       zip?: string | null;
+      companyName?: string | null;
+      website?: string | null;
+      companyAddress?: string | null;
+      companyCity?: string | null;
+      companyState?: string | null;
+      companyZip?: string | null;
       propertyType?: string;
       estimatedSqft?: number | null;
       measuredSqFt?: number | null;
@@ -462,10 +489,16 @@ router.put("/:id", async (req, res) => {
     const patch: Partial<typeof prospectsTable.$inferInsert> & { updatedAt: Date } = {
       updatedAt: new Date(),
     };
-    if (body.address !== undefined) patch.address = body.address;
+    if (body.address !== undefined) patch.address = body.address ?? "";
     if (body.city !== undefined) patch.city = body.city ?? null;
     if (body.state !== undefined) patch.state = body.state ?? null;
     if (body.zip !== undefined) patch.zip = body.zip ?? null;
+    if (body.companyName !== undefined) patch.companyName = body.companyName ?? null;
+    if (body.website !== undefined) patch.website = body.website ?? null;
+    if (body.companyAddress !== undefined) patch.companyAddress = body.companyAddress ?? null;
+    if (body.companyCity !== undefined) patch.companyCity = body.companyCity ?? null;
+    if (body.companyState !== undefined) patch.companyState = body.companyState ?? null;
+    if (body.companyZip !== undefined) patch.companyZip = body.companyZip ?? null;
     if (body.propertyType !== undefined) patch.propertyType = toProspectPropertyType(body.propertyType);
     if (body.estimatedSqft !== undefined) patch.estimatedSqft = body.estimatedSqft ?? null;
     if (body.measuredSqFt !== undefined) patch.measuredSqFt = body.measuredSqFt ?? null;

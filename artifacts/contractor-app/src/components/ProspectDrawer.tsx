@@ -1898,15 +1898,21 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
             </section>
           )}
 
-          {/* Contact Info Section */}
+          {/* Company & Contact Section */}
           <section className="space-y-4">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <Phone className="w-3.5 h-3.5" />
-              Contact Info
+              <Building2 className="w-3.5 h-3.5" />
+              Company &amp; Contact
             </h3>
             <div className="grid gap-4">
               <InlineEdit
-                label="Name"
+                label="Company Name"
+                value={p.companyName ?? ""}
+                placeholder="Champion Homes, ABC Property Mgmt…"
+                onSave={saveField("companyName")}
+              />
+              <InlineEdit
+                label="Contact Name"
                 value={p.contactName ?? ""}
                 placeholder="Contact name"
                 onSave={saveField("contactName")}
@@ -1926,9 +1932,63 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                 onSave={saveField("contactEmail")}
               />
               <InlineEdit
-                label="Address"
+                label="Website"
+                value={p.website ?? ""}
+                placeholder="https://example.com"
+                onSave={saveField("website")}
+              />
+            </div>
+          </section>
+
+          {/* Company Address Section */}
+          {(p.companyName || p.companyAddress || p.companyCity) && (
+            <section className="space-y-4">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5" />
+                Company / Office Address
+              </h3>
+              <div className="grid gap-4">
+                <InlineEdit
+                  label="Street"
+                  value={p.companyAddress ?? ""}
+                  placeholder="123 Factory Rd"
+                  onSave={saveField("companyAddress")}
+                />
+                <div className="grid grid-cols-3 gap-3">
+                  <InlineEdit
+                    label="City"
+                    value={p.companyCity ?? ""}
+                    placeholder="Evansville"
+                    onSave={saveField("companyCity")}
+                  />
+                  <InlineEdit
+                    label="State"
+                    value={p.companyState ?? ""}
+                    placeholder="IN"
+                    onSave={saveField("companyState")}
+                  />
+                  <InlineEdit
+                    label="Zip"
+                    value={p.companyZip ?? ""}
+                    placeholder="47708"
+                    onSave={saveField("companyZip")}
+                  />
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Job Site / Contact Info Section */}
+          <section className="space-y-4">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Phone className="w-3.5 h-3.5" />
+              Job Site
+            </h3>
+            <div className="grid gap-4">
+              <InlineEdit
+                label="Street Address"
                 value={p.address}
-                placeholder="123 Main St, Louisville, KY"
+                placeholder="456 Main St"
                 onSave={saveField("address")}
               />
             </div>

@@ -88,6 +88,15 @@ function formatDate(iso: string | null | undefined): string | null {
 }
 
 type FormData = {
+  companyName: string;
+  contactName: string;
+  contactPhone: string;
+  contactEmail: string;
+  website: string;
+  companyAddress: string;
+  companyCity: string;
+  companyState: string;
+  companyZip: string;
   address: string;
   city: string;
   state: string;
@@ -95,13 +104,20 @@ type FormData = {
   propertyType: string;
   estimatedSqft: string;
   roughQuote: string;
-  contactName: string;
-  contactPhone: string;
   notes: string;
   status: string;
 };
 
 const EMPTY_FORM: FormData = {
+  companyName: "",
+  contactName: "",
+  contactPhone: "",
+  contactEmail: "",
+  website: "",
+  companyAddress: "",
+  companyCity: "",
+  companyState: "",
+  companyZip: "",
   address: "",
   city: "",
   state: "",
@@ -109,14 +125,21 @@ const EMPTY_FORM: FormData = {
   propertyType: "Other",
   estimatedSqft: "",
   roughQuote: "",
-  contactName: "",
-  contactPhone: "",
   notes: "",
   status: "cold",
 };
 
 function prospectToForm(p: Prospect): FormData {
   return {
+    companyName: p.companyName ?? "",
+    contactName: p.contactName ?? "",
+    contactPhone: p.contactPhone ?? "",
+    contactEmail: p.contactEmail ?? "",
+    website: p.website ?? "",
+    companyAddress: p.companyAddress ?? "",
+    companyCity: p.companyCity ?? "",
+    companyState: p.companyState ?? "",
+    companyZip: p.companyZip ?? "",
     address: p.address,
     city: p.city ?? "",
     state: p.state ?? "",
@@ -124,8 +147,6 @@ function prospectToForm(p: Prospect): FormData {
     propertyType: p.propertyType,
     estimatedSqft: p.estimatedSqft != null ? String(p.estimatedSqft) : "",
     roughQuote: p.roughQuote != null ? String(p.roughQuote) : "",
-    contactName: p.contactName ?? "",
-    contactPhone: p.contactPhone ?? "",
     notes: p.notes ?? "",
     status: p.status,
   };
@@ -357,15 +378,22 @@ export default function Prospects() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const payload = {
-      address: form.address,
+      companyName: form.companyName || null,
+      contactName: form.contactName || null,
+      contactPhone: form.contactPhone || null,
+      contactEmail: form.contactEmail || null,
+      website: form.website || null,
+      companyAddress: form.companyAddress || null,
+      companyCity: form.companyCity || null,
+      companyState: form.companyState || null,
+      companyZip: form.companyZip || null,
+      address: form.address || "",
       city: form.city || null,
       state: form.state || null,
       zip: form.zip || null,
       propertyType: form.propertyType,
       estimatedSqft: form.estimatedSqft ? parseInt(form.estimatedSqft) : null,
       roughQuote: form.roughQuote ? parseFloat(form.roughQuote) : null,
-      contactName: form.contactName || null,
-      contactPhone: form.contactPhone || null,
       notes: form.notes || null,
       status: form.status as ProspectStatus,
     };
@@ -584,17 +612,37 @@ export default function Prospects() {
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-start gap-1.5 text-muted-foreground mb-1">
-                        <MapPin className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                        <div className="min-w-0">
-                          <span className="text-sm font-medium text-foreground block truncate">{p.address}</span>
-                          {(p.city || p.state || p.zip) && (
-                            <span className="text-xs text-muted-foreground">
-                              {[p.city, [p.state, p.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ")}
+                      {/* Primary identity: company name → contact name → address */}
+                      {(p.companyName || p.contactName) && (
+                        <div className="mb-1">
+                          {p.companyName && (
+                            <span className="text-sm font-semibold text-foreground block truncate">{p.companyName}</span>
+                          )}
+                          {p.contactName && (
+                            <span className={`block truncate ${p.companyName ? "text-xs text-muted-foreground" : "text-sm font-medium text-foreground"}`}>
+                              {p.contactName}
                             </span>
                           )}
                         </div>
-                      </div>
+                      )}
+                      {/* Job site address */}
+                      {p.address && (
+                        <div className="flex items-start gap-1.5 text-muted-foreground">
+                          <MapPin className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <span className={`block truncate ${p.companyName || p.contactName ? "text-xs" : "text-sm font-medium text-foreground"}`}>{p.address}</span>
+                            {(p.city || p.state || p.zip) && (
+                              <span className="text-xs text-muted-foreground">
+                                {[p.city, [p.state, p.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ")}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {/* Fallback when no name or address */}
+                      {!p.companyName && !p.contactName && !p.address && (
+                        <span className="text-sm text-muted-foreground italic">No name or address</span>
+                      )}
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
                       <button
@@ -663,11 +711,6 @@ export default function Prospects() {
                       <div className="flex items-center gap-1.5 text-muted-foreground col-span-2">
                         <Maximize2 className="w-3.5 h-3.5 flex-shrink-0 text-blue-500" />
                         <span className="text-blue-600 font-medium">{p.measuredSqFt.toLocaleString()} SF measured</span>
-                      </div>
-                    )}
-                    {p.contactName && (
-                      <div className="flex items-center gap-1.5 text-muted-foreground col-span-2">
-                        <span className="font-medium text-foreground">{p.contactName}</span>
                       </div>
                     )}
                     {p.contactPhone && (
@@ -804,132 +847,217 @@ export default function Prospects() {
           <DialogHeader>
             <DialogTitle>{editingProspect ? "Edit Prospect" : "Log New Prospect"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
-                Street Address <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={form.address}
-                onChange={(e) => handleFormChange("address", e.target.value)}
-                placeholder="123 Main St"
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
+          <form onSubmit={handleSubmit} className="space-y-5 mt-2">
 
-            <div className="grid grid-cols-3 gap-2">
-              <div className="col-span-1">
-                <label className="block text-sm font-medium text-foreground mb-1">City</label>
+            {/* ── Company & Contact ─────────────────────────── */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Company &amp; Contact</p>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Company Name</label>
                 <input
                   type="text"
-                  value={form.city}
-                  onChange={(e) => handleFormChange("city", e.target.value)}
-                  placeholder="Owensboro"
+                  value={form.companyName}
+                  onChange={(e) => handleFormChange("companyName", e.target.value)}
+                  placeholder="Champion Homes, ABC Property Mgmt…"
                   className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Contact Name</label>
+                  <input
+                    type="text"
+                    value={form.contactName}
+                    onChange={(e) => handleFormChange("contactName", e.target.value)}
+                    placeholder="John Smith"
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Contact Phone</label>
+                  <input
+                    type="tel"
+                    value={form.contactPhone}
+                    onChange={(e) => handleFormChange("contactPhone", e.target.value)}
+                    placeholder="(502) 555-0100"
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={form.contactEmail}
+                    onChange={(e) => handleFormChange("contactEmail", e.target.value)}
+                    placeholder="john@example.com"
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Website</label>
+                  <input
+                    type="url"
+                    value={form.website}
+                    onChange={(e) => handleFormChange("website", e.target.value)}
+                    placeholder="https://example.com"
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Company / Office Address ───────────────────── */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Company / Office Address</p>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">State</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Street</label>
                 <input
                   type="text"
-                  value={form.state}
-                  onChange={(e) => handleFormChange("state", e.target.value)}
-                  placeholder="KY"
-                  maxLength={2}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 uppercase"
+                  value={form.companyAddress}
+                  onChange={(e) => handleFormChange("companyAddress", e.target.value)}
+                  placeholder="123 Factory Rd"
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-1">
+                  <label className="block text-sm font-medium text-foreground mb-1">City</label>
+                  <input
+                    type="text"
+                    value={form.companyCity}
+                    onChange={(e) => handleFormChange("companyCity", e.target.value)}
+                    placeholder="Evansville"
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">State</label>
+                  <input
+                    type="text"
+                    value={form.companyState}
+                    onChange={(e) => handleFormChange("companyState", e.target.value)}
+                    placeholder="IN"
+                    maxLength={2}
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Zip</label>
+                  <input
+                    type="text"
+                    value={form.companyZip}
+                    onChange={(e) => handleFormChange("companyZip", e.target.value)}
+                    placeholder="47708"
+                    maxLength={10}
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Job Site / Property ───────────────────────── */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Job Site / Property</p>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Zip</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Street Address</label>
                 <input
                   type="text"
-                  value={form.zip}
-                  onChange={(e) => handleFormChange("zip", e.target.value)}
-                  placeholder="42301"
-                  maxLength={10}
+                  value={form.address}
+                  onChange={(e) => handleFormChange("address", e.target.value)}
+                  placeholder="456 Main St"
                   className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-1">
+                  <label className="block text-sm font-medium text-foreground mb-1">City</label>
+                  <input
+                    type="text"
+                    value={form.city}
+                    onChange={(e) => handleFormChange("city", e.target.value)}
+                    placeholder="Owensboro"
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">State</label>
+                  <input
+                    type="text"
+                    value={form.state}
+                    onChange={(e) => handleFormChange("state", e.target.value)}
+                    placeholder="KY"
+                    maxLength={2}
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Zip</label>
+                  <input
+                    type="text"
+                    value={form.zip}
+                    onChange={(e) => handleFormChange("zip", e.target.value)}
+                    placeholder="42301"
+                    maxLength={10}
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Property Type</label>
+                  <select
+                    value={form.propertyType}
+                    onChange={(e) => handleFormChange("propertyType", e.target.value)}
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    {PROPERTY_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Est. Square Footage</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.estimatedSqft}
+                    onChange={(e) => handleFormChange("estimatedSqft", e.target.value)}
+                    placeholder="e.g. 5000"
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Rough Quote ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.roughQuote}
+                    onChange={(e) => handleFormChange("roughQuote", e.target.value)}
+                    placeholder="e.g. 2500"
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">Status</label>
+                  <select
+                    value={form.status}
+                    onChange={(e) => handleFormChange("status", e.target.value)}
+                    className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    {STATUS_OPTIONS.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Property Type</label>
-                <select
-                  value={form.propertyType}
-                  onChange={(e) => handleFormChange("propertyType", e.target.value)}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  {PROPERTY_TYPES.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Status</label>
-                <select
-                  value={form.status}
-                  onChange={(e) => handleFormChange("status", e.target.value)}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Est. Square Footage</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={form.estimatedSqft}
-                  onChange={(e) => handleFormChange("estimatedSqft", e.target.value)}
-                  placeholder="e.g. 5000"
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Rough Quote ($)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.roughQuote}
-                  onChange={(e) => handleFormChange("roughQuote", e.target.value)}
-                  placeholder="e.g. 2500"
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Contact Name</label>
-                <input
-                  type="text"
-                  value={form.contactName}
-                  onChange={(e) => handleFormChange("contactName", e.target.value)}
-                  placeholder="John Smith"
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Contact Phone</label>
-                <input
-                  type="tel"
-                  value={form.contactPhone}
-                  onChange={(e) => handleFormChange("contactPhone", e.target.value)}
-                  placeholder="(502) 555-0100"
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-            </div>
-
+            {/* ── Notes ─────────────────────────────────────── */}
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Notes</label>
               <textarea
