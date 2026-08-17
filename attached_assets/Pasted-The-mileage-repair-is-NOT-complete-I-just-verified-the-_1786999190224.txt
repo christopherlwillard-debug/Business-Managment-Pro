@@ -1,0 +1,72 @@
+The mileage repair is NOT complete. I just verified the live Mileage page and found another issue.
+
+The Mileage page is showing 0 miles / $0 instead of the existing production owner mileage totals, so the UI is not reading the same authoritative production mileage data that Accounting is using.
+
+Also, the IRS 2026 business mileage rate is NOT $0.725 for the entire year.
+
+I verified directly against current IRS guidance:
+
+Jan 1–Jun 30, 2026 = $0.725/mile
+Jul 1–Dec 31, 2026 = $0.760/mile
+
+This must be date-effective, not a single annual rate.
+
+READ-ONLY FIRST. Do not write production data until the proposed correction is shown.
+
+Audit the Mileage page and mileage calculation end-to-end:
+
+1. Determine why Mileage Tracking is showing 0.0 miles / $0.00 when production contains owner mileage.
+
+2. Make the Mileage page use the same authoritative owner-mileage source:
+   subcontractor_id IS NULL
+   and the correct business scope.
+
+3. Preserve subcontractor mileage. James and Dewayne mileage must remain separate and must never enter the owner's IRS deduction.
+
+4. Apply the correct IRS rate based on mileage date:
+   Jan 1–Jun 30 = $0.725
+   Jul 1–Dec 31 = $0.760
+
+5. Do NOT hardcode $0.725 or $0.760 into individual records. The rate should be date-effective so future rate changes can be handled correctly.
+
+6. Reconcile owner mileage against the MileIQ monthly summaries.
+
+Using the currently approved MileIQ figures through July:
+Feb 110
+Mar 276
+Apr 399
+May 929
+Jun 1,397
+Jul 2,394
+
+Do not add August.
+
+Production has precise June/July values of 1,397.30 and 2,394.40, so preserve those source miles unless the MileIQ source itself provides more precise values.
+
+7. Show the proposed final mileage reconciliation before making any production write:
+
+Month | Owner miles | IRS rate | Deduction | Source
+
+8. Recalculate all downstream mileage deductions from the corrected date-effective rate:
+Accounting
+P&L
+Reserve
+Schedule C
+Year End
+Dashboard
+Mileage page
+
+9. Verify that mileage is not being counted both as a mileage deduction and as an ordinary expense.
+
+10. Do NOT use the old mileage-2026-recalc endpoint. That endpoint was removed.
+
+11. No production writes, no publish, until I approve the exact proposed mileage correction.
+
+Important: the IRS currently confirms 2026 business mileage is 72.5¢ Jan-Jun and 76¢ Jul-Dec.
+
+The expected owner-mileage calculation, if March is corrected to MileIQ's 276 miles and precise June/July production miles are retained, is approximately:
+Feb-Jun = 3,111.30 miles × $0.725
+July = 2,394.40 miles × $0.760
+Total deduction ≈ $4,075.44
+
+Do not assume that number is the final answer. Reconcile it against the actual production records first and report the exact result.
