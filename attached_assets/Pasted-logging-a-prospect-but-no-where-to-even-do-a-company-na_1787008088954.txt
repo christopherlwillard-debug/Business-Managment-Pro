@@ -1,0 +1,254 @@
+logging a prospect but no where to even do a company name then the contact name, no place for email or to edit once its created. 
+
+Yes. That People/Prospects workflow is incomplete. The screenshots show several basic CRM fields are missing, and the record can't be properly edited after creation.
+
+What needs to change
+
+When you click Log New Prospect, it should have:
+
+Company / Organization
+
+Company Name required
+Contact Name
+Phone
+Email
+Website
+Company/Office Address
+Street
+City
+State
+ZIP
+
+Opportunity / Job
+
+Property / Job Site Address
+Property Type
+Estimated Square Footage
+Rough Quote
+Status
+Follow-up Date
+Notes
+
+And the important distinction is:
+
+Company address ≠ job/property address.
+
+For example:
+
+Company: Champion Homes
+Contact: John Smith
+Phone: 555-555-5555
+Email: john@championhomes.com
+Company Address: 123 Factory Rd, XYZ, IN
+Job Site: 456 Main St, Owensboro, KY
+
+Editing is also a problem
+
+Once the prospect is created, the detail drawer should have an obvious Edit Prospect button.
+
+It should let you modify every field, not just create a record and leave it essentially locked.
+
+I'd also make the card show:
+
+Champion Homes
+John Smith
+📞 Phone
+✉️ Email
+📍 Company/Office location
+🏠 Job site, if applicable
+
+Then the existing actions like Measure & Quote, Quick Quote, Link Existing Quote, and Add to Route Plan remain underneath.
+
+I'd give the builder this exact task
+People / Prospects CRM — Fix Prospect Data Model and Editing
+3. DETAIL DRAWER
+
+
+Display the information clearly:
+
+
+COMPANY
+Company Name
+Contact Name
+Phone
+Email
+Website
+Company Address
+
+
+OPPORTUNITY
+Job Site Address
+Property Type
+Estimated Square Footage
+Rough Quote
+Status
+Follow-up Date
+
+
+NOTES
+
+
+Keep existing actions:
+- Measure & Quote
+- Quick Quote
+- Link Existing Quote
+- Add to Route Plan
+
+
+4. CARD VIEW
+
+
+Prospect cards should prioritize:
+
+
+Company Name
+Contact Name
+Phone
+Email
+Job/site location
+Status
+Business Line
+
+
+Do not use "N/A" as the primary identity when a company name exists.
+
+
+5. IMPORTANT DATA MODEL RULE
+
+
+Do not overload the existing street_address field with two meanings.
+
+
+If the existing schema only has one address, determine whether existing records are company addresses or job-site addresses before changing the schema.
+
+
+Prefer explicit fields:
+company_address_*
+job_site_address_*
+
+
+Preserve existing prospect records during migration.
+
+
+6. VALIDATION
+
+
+Company Name is required for organization/company prospects.
+
+
+Contact Name, phone, and email should be optional individually, but the UI should make it easy to enter them.
+
+
+7. NO DATA LOSS
+
+
+Before changing the schema:
+- inspect the current prospect/contact tables
+- identify existing fields
+- identify all routes/components using them
+- create a migration if new fields are required
+- preserve all existing prospect data
+
+
+8. TEST
+
+
+Verify:
+- create prospect with company + contact + email
+- create prospect without contact information
+- edit every field
+- reload page and verify persistence
+- search by company name
+- search by contact name
+- search by phone
+- search by email
+- verify existing prospects were not lost
+- verify Measure & Quote / Quick Quote / Link Existing Quote still work
+
+
+Do not make unrelated CRM changes.
+
+And I would not have them just slap three fields onto the current form. The underlying model needs to recognize that a prospect can be a company + contact + potential job/site. That's going to matter a lot for what you're using this for, especially when you're tracking manufacturers, warranty companies, contractors, property managers, etc.
+
+not all will have company names once we get into asphalt sealing but be nice to organize a company and have mulitple contacts to that comapny as well
+
+Exactly. I wouldn't make Company Name required. The CRM should support both individual customers and organizations with multiple contacts.
+
+The better structure is:
+
+Customer / Organization
+
+A prospect can be either:
+
+Individual
+
+John Smith
+123 Main St
+270-555-1234
+john@email.com
+
+or
+
+Company
+
+ABC Property Management
+Contacts:
+• John Smith — Property Manager
+• Sarah Jones — Maintenance Director
+• Mike Brown — Accounts Payable
+
+Then each contact can have their own:
+
+Name
+Job title
+Phone
+Email
+Notes
+Preferred contact method
+And this is important for your businesses
+
+You could have:
+
+ABC Property Management
+
+John — Property Manager
+Sarah — Maintenance
+Mike — Billing
+
+Then have multiple jobs/opportunities under ABC:
+
+123 Main St — Asphalt sealing — $2,500
+456 Oak Ave — Crack sealing — $850
+789 Walnut St — Parking lot — $4,200
+
+So you're not creating three separate "ABC Property Management" customers just because they have three jobs.
+
+For your manufactured-home work, it could be:
+
+Clayton Homes Evansville
+
+Warranty Manager
+Service Manager
+Billing Contact
+Scheduler
+
+For asphalt:
+
+Smith's Restaurant
+
+Owner/contact — John Smith
+
+No company required.
+
+I would structure the CRM as
+
+People
+→ Organizations / Customers
+→ Contacts
+→ Opportunities / Jobs
+
+With an individual customer simply being an organization with no company attached.
+
+That gives you one CRM that works for Willard's General Contracting, Asphalt Sealing, and future businesses without forcing everything into the manufactured-home model.
+
+And I would tell the builder not to retrofit the current "prospect" table blindly. First inspect how People, Clients, Prospects, Contacts, Jobs, and business lines are currently related, then design the relationships so we don't have to rebuild this again later.
