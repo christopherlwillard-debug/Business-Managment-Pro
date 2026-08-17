@@ -9,7 +9,8 @@ const IRS_MILEAGE_RATES: IrsRateEntry[] = [
   { effectiveDate: "2023-01-01", rate: 0.655 },
   { effectiveDate: "2024-01-01", rate: 0.670 },
   { effectiveDate: "2025-01-01", rate: 0.700 },
-  { effectiveDate: "2026-01-01", rate: 0.725 },
+  { effectiveDate: "2026-01-01", rate: 0.725 }, // IRS Notice 2025-87 — H1 2026
+  { effectiveDate: "2026-07-01", rate: 0.760 }, // IRS mid-year increase — H2 2026
 ];
 
 export function getIrsRate(dateStr: string): number {

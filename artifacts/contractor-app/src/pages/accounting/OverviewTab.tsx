@@ -1196,11 +1196,11 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
   const capitalBizId = activeBusiness?.id ?? null;
   const { data: capitalEntries = [], isLoading: capitalLoading } = useQuery<{ id: number; businessId: number | null; date: string; description: string; amount: number; createdAt: string }[]>({
     queryKey: ["owner-capital", capitalBizId],
-    queryFn: () => fetch(`${BASE}/api/owner-capital${capitalBizId != null ? `?businessId=${capitalBizId}` : ""}`).then(r => r.json()),
+    queryFn: () => fetch(`${BASE}/api/owner-capital${capitalBizId != null ? `?businessId=${capitalBizId}` : ""}`).then(r => r.ok ? r.json() : []),
   });
   const { data: allSubsForSplit = [] } = useQuery<any[]>({
     queryKey: ["subcontractors"],
-    queryFn: () => fetch(`${BASE}/api/subcontractors`).then(r => r.json()),
+    queryFn: () => fetch(`${BASE}/api/subcontractors`).then(r => r.ok ? r.json() : []),
   });
   const [capitalForm, setCapitalForm] = useState<{ date: string; description: string; amount: string; type: "injection" | "withdrawal" } | null>(null);
   const [capitalSaving, setCapitalSaving] = useState(false);

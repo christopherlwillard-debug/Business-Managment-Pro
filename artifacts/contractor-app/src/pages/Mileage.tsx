@@ -130,7 +130,9 @@ function getApiErrorMessage(err: unknown, fallback: string): string {
 export default function Mileage() {
   const { canEdit } = useUserPermissions();
   const { activeBusiness, businesses } = useBusiness();
-  const businessId = activeBusiness?.id;
+  // When no specific business is selected (first visit, "all" mode, or cleared selection),
+  // fall back to the first available business so owner mileage always loads.
+  const businessId = activeBusiness?.id ?? businesses[0]?.id;
   const queryClient = useQueryClient();
   const { data: logs, isLoading } = useListMileageLogs(
     businessId ? { businessId } : undefined,
@@ -1232,7 +1234,7 @@ export default function Mileage() {
               <Calculator className="w-8 h-8 opacity-50" />
             </div>
             <p className="text-xs text-primary-foreground/50 mt-4 text-right">
-              ${rate.toFixed(3)}/mile · {rate === 0.725 ? "2026 IRS rate ✓" : rate === 0.700 ? "2025 IRS rate ✓" : "custom rate"}
+              ${rate.toFixed(3)}/mile · {rate === 0.760 ? "2026 H2 IRS rate ✓" : rate === 0.725 ? "2026 H1 IRS rate ✓" : rate === 0.700 ? "2025 IRS rate ✓" : "custom rate"}
             </p>
           </CardContent>
         </Card>

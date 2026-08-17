@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, subPaymentRecordsTable, productionServiceTypesTable } from "@workspace/db";
+import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, mileageLogsTable, subPaymentRecordsTable, productionServiceTypesTable, expensesTable } from "@workspace/db";
 import { jobSubcontractorsTable, invoicesTable, clientBillingProfilesTable } from "@workspace/db/schema";
 import { isNull, and, inArray, sql, ilike, eq, ne } from "drizzle-orm";
 
@@ -619,6 +619,62 @@ router.post("/mileage-manual-corrections-aug2026", async (_req: Request, res: Re
     res.json(result);
   } catch (err) {
     console.error("[mileage-manual-corrections] failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
+
+// Fix stale mileage expense amounts — Aug 2026 forensic repair.
+// After /mileage-manual-corrections-aug2026 updated mileage_logs miles+deduction_amount,
+// the three linked expense rows were not updated. This endpoint corrects expenses.amount
+// to match mileage_logs.deduction_amount for Feb/Mar/May 2026.
+// Idempotent: skips rows whose amount already equals the correct value.
+// POLICY: Remove after confirmed in production.
+router.post("/fix-mileage-expense-amounts-aug2026", async (_req: Request, res: Response) => {
+  try {
+    const corrections = [
+      { expId: 9,  month: "Feb", oldAmt: "79.75",  newAmt: "80.55",  newDesc: "Mileage: 7 trips total for February (111.10 mi)" },
+      { expId: 38, month: "Mar", oldAmt: "237.08", newAmt: "200.61", newDesc: "Mileage: 37 trips (276.70 mi)" },
+      { expId: 87, month: "May", oldAmt: "673.52", newAmt: "674.03", newDesc: "Mileage: MileIQ monthly total — 65 business trips (929.70 mi)" },
+    ];
+
+    const applied: typeof corrections = [];
+    const skipped: typeof corrections = [];
+
+    for (const c of corrections) {
+      const [row] = await db
+        .select({ amount: expensesTable.amount, description: expensesTable.description })
+        .from(expensesTable)
+        .where(eq(expensesTable.id, c.expId));
+
+      if (!row) {
+        console.warn(`[fix-mileage-expense-amounts] expId=${c.expId} not found — skipped`);
+        skipped.push(c);
+        continue;
+      }
+
+      if (parseFloat(row.amount ?? "0").toFixed(2) === c.newAmt) {
+        skipped.push(c);
+        continue;
+      }
+
+      await db
+        .update(expensesTable)
+        .set({ amount: c.newAmt, description: c.newDesc })
+        .where(eq(expensesTable.id, c.expId));
+
+      console.log(`[fix-mileage-expense-amounts] expId=${c.expId} (${c.month}): $${c.oldAmt} → $${c.newAmt}`);
+      applied.push(c);
+    }
+
+    const result = {
+      ok: true,
+      applied: applied.map(c => ({ expId: c.expId, month: c.month, newAmount: c.newAmt })),
+      skipped: skipped.map(c => ({ expId: c.expId, month: c.month, reason: "already correct or not found" })),
+    };
+    console.log("[fix-mileage-expense-amounts] complete:", JSON.stringify(result));
+    res.json(result);
+  } catch (err) {
+    console.error("[fix-mileage-expense-amounts] failed:", err);
     res.status(500).json({ error: "Migration failed", detail: String(err) });
   }
 });
