@@ -570,6 +570,22 @@ async function ensureWageAdvanceColumn(): Promise<void> {
   }
 }
 
+/** Prospect CRM field expansion: company name, website, dual address fields added Aug 2026. */
+async function ensureProspectsSchema(): Promise<void> {
+  try {
+    await db.execute(sql`ALTER TABLE prospects ADD COLUMN IF NOT EXISTS company_name text`);
+    await db.execute(sql`ALTER TABLE prospects ADD COLUMN IF NOT EXISTS website text`);
+    await db.execute(sql`ALTER TABLE prospects ADD COLUMN IF NOT EXISTS company_address text`);
+    await db.execute(sql`ALTER TABLE prospects ADD COLUMN IF NOT EXISTS company_city text`);
+    await db.execute(sql`ALTER TABLE prospects ADD COLUMN IF NOT EXISTS company_state text`);
+    await db.execute(sql`ALTER TABLE prospects ADD COLUMN IF NOT EXISTS company_zip text`);
+    await db.execute(sql`ALTER TABLE prospects ALTER COLUMN address SET DEFAULT ''`);
+    console.log("[startup] ensureProspectsSchema: OK.");
+  } catch (err) {
+    console.error("[startup] ensureProspectsSchema failed (non-fatal):", err);
+  }
+}
+
 /** Material expense linking: source_type/source_id on expenses + add_to_job_expenses/expense_id on material_list_items. */
 async function ensureMaterialExpenseLinkingSchema(): Promise<void> {
   try {
@@ -650,6 +666,7 @@ async function start() {
   await ensureVehiclesTable();
   await ensureMaterialExpenseLinkingSchema();
   await ensureWageAdvanceColumn();
+  await ensureProspectsSchema();
   await ensureServiceAddonPromptsTable();
   await backfillUsaSpendingOpportunityType();
   await clearDraftInvoiceNumbers();
