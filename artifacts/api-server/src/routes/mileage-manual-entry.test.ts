@@ -96,6 +96,21 @@ beforeEach(() => {
 
 describe("POST /mileage — rate derived from trip date", () => {
 
+  it("rejects reserved generated-job source values", async () => {
+    const res = await request(app)
+      .post("/mileage")
+      .send({
+        date: "2026-08-19",
+        miles: 10,
+        classification: "business",
+        businessId: 1,
+        source: "job_client_route",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Invalid mileage source");
+  });
+
   it("H1 2026 trip (Jun 30) uses $0.725/mile and correct deductionAmount", async () => {
     const miles = 100;
     const res = await request(app)

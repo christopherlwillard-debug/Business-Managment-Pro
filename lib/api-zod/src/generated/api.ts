@@ -1236,7 +1236,7 @@ export const ListMileageLogsResponseItem = zod.object({
   deductionAmount: zod.number(),
   notes: zod.string().nullish(),
   source: zod
-    .enum(["gps", "manual"])
+    .enum(["gps", "manual", "job_client_route", "job_business_route"])
     .default(listMileageLogsResponseSourceDefault),
   createdAt: zod.string(),
 });
@@ -1255,6 +1255,114 @@ export const CreateMileageLogBody = zod.object({
   classification: zod.enum(["business", "personal"]),
   notes: zod.string().nullish(),
   source: zod.enum(["gps", "manual"]).nullish(),
+});
+
+/**
+ * @summary Preview the generated client and business mileage legs for a job
+ */
+export const GetJobMileageLegsParams = zod.object({
+  jobId: zod.coerce.number(),
+});
+
+export const getJobMileageLegsResponseLegsItemLogOneSourceDefault = `gps`;
+
+export const GetJobMileageLegsResponse = zod.object({
+  jobId: zod.number(),
+  date: zod.string(),
+  legs: zod.array(
+    zod.object({
+      kind: zod.enum(["client_to_jobsite", "business_to_jobsite"]),
+      label: zod.string(),
+      status: zod.enum([
+        "saved",
+        "ready",
+        "outdated",
+        "missing_origin",
+        "missing_destination",
+        "route_unavailable",
+      ]),
+      action: zod.enum(["none", "created", "updated", "unchanged"]),
+      origin: zod.string().nullable(),
+      destination: zod.string().nullable(),
+      miles: zod.number().nullable(),
+      message: zod.string().nullable(),
+      log: zod.union([
+        zod.object({
+          id: zod.number(),
+          date: zod.string(),
+          startLocation: zod.string().nullish(),
+          endLocation: zod.string().nullish(),
+          miles: zod.number(),
+          purpose: zod.string().nullish(),
+          jobId: zod.number().nullish(),
+          jobTitle: zod.string().nullish(),
+          classification: zod.enum(["business", "personal"]),
+          ratePerMile: zod.number(),
+          deductionAmount: zod.number(),
+          notes: zod.string().nullish(),
+          source: zod
+            .enum(["gps", "manual", "job_client_route", "job_business_route"])
+            .default(getJobMileageLegsResponseLegsItemLogOneSourceDefault),
+          createdAt: zod.string(),
+        }),
+        zod.null(),
+      ]),
+    }),
+  ),
+});
+
+/**
+ * @summary Persist or refresh the generated client and business mileage legs for a job
+ */
+export const SyncJobMileageLegsParams = zod.object({
+  jobId: zod.coerce.number(),
+});
+
+export const syncJobMileageLegsResponseLegsItemLogOneSourceDefault = `gps`;
+
+export const SyncJobMileageLegsResponse = zod.object({
+  jobId: zod.number(),
+  date: zod.string(),
+  legs: zod.array(
+    zod.object({
+      kind: zod.enum(["client_to_jobsite", "business_to_jobsite"]),
+      label: zod.string(),
+      status: zod.enum([
+        "saved",
+        "ready",
+        "outdated",
+        "missing_origin",
+        "missing_destination",
+        "route_unavailable",
+      ]),
+      action: zod.enum(["none", "created", "updated", "unchanged"]),
+      origin: zod.string().nullable(),
+      destination: zod.string().nullable(),
+      miles: zod.number().nullable(),
+      message: zod.string().nullable(),
+      log: zod.union([
+        zod.object({
+          id: zod.number(),
+          date: zod.string(),
+          startLocation: zod.string().nullish(),
+          endLocation: zod.string().nullish(),
+          miles: zod.number(),
+          purpose: zod.string().nullish(),
+          jobId: zod.number().nullish(),
+          jobTitle: zod.string().nullish(),
+          classification: zod.enum(["business", "personal"]),
+          ratePerMile: zod.number(),
+          deductionAmount: zod.number(),
+          notes: zod.string().nullish(),
+          source: zod
+            .enum(["gps", "manual", "job_client_route", "job_business_route"])
+            .default(syncJobMileageLegsResponseLegsItemLogOneSourceDefault),
+          createdAt: zod.string(),
+        }),
+        zod.null(),
+      ]),
+    }),
+  ),
 });
 
 /**
@@ -1292,7 +1400,7 @@ export const UpdateMileageLogResponse = zod.object({
   deductionAmount: zod.number(),
   notes: zod.string().nullish(),
   source: zod
-    .enum(["gps", "manual"])
+    .enum(["gps", "manual", "job_client_route", "job_business_route"])
     .default(updateMileageLogResponseSourceDefault),
   createdAt: zod.string(),
 });

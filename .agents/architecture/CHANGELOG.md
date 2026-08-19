@@ -12,6 +12,23 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-08-19
+
+### Task #1959 — Job mileage persistence through the existing mileage ledger
+
+Extended the existing Mileage system instead of creating a parallel travel ledger:
+
+- Added explicit preview/sync endpoints for two one-way job legs: linked client → jobsite and owning business → jobsite
+- Kept `RoutingEngine` as the sole route-distance source
+- Added reserved `job_client_route` and `job_business_route` source values in `mileage_logs`
+- Generated rows create or update their linked IRS mileage expense in the same transaction
+- Added migration `0046_job_mileage_generated_unique.sql`, which reconciles early duplicates and enforces one generated row per `(job_id, source)`
+- Manual and imported mileage sources remain untouched; generated sources cannot be submitted through the manual endpoint or edited as manual rows
+- Added job-card save/refresh states, missing-address guidance, and generated-route labels in the Mileage ledger
+- Reason: preserve `mileage_logs` as the single source of truth while making job-derived mileage explicit, refreshable, and idempotent
+
+---
+
 ## 2026-08-05
 
 ### Task #1757 → #1760 — Owner Pay Architecture (two-phase correction)

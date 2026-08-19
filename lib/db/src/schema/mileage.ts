@@ -1,5 +1,6 @@
-import { pgTable, serial, text, timestamp, integer, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, numeric, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { jobsTable } from "./jobs";
 import { expensesTable } from "./expenses";
@@ -41,7 +42,11 @@ export const mileageLogsTable = pgTable("mileage_logs", {
   expenseId: integer("expense_id").references(() => expensesTable.id, { onDelete: "set null" }),
   importId: integer("import_id").references(() => mileageImportsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, table => [
+  uniqueIndex("mileage_logs_job_generated_source_unique")
+    .on(table.jobId, table.source)
+    .where(sql`${table.jobId} IS NOT NULL AND ${table.source} IN ('job_client_route', 'job_business_route')`),
+]);
 
 export const insertMileageLogSchema = createInsertSchema(mileageLogsTable).omit({ id: true, createdAt: true });
 export type InsertMileageLog = z.infer<typeof insertMileageLogSchema>;

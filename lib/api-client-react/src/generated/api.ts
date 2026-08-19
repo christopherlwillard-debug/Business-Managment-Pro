@@ -47,6 +47,7 @@ import type {
   Invoice,
   InvoiceDraft,
   Job,
+  JobMileageLegs,
   ListClientBillingProfilesParams,
   ListDailyLogsParams,
   ListExpensesParams,
@@ -3818,6 +3819,170 @@ export const useCreateMileageLog = <
   TContext
 > => {
   return useMutation(getCreateMileageLogMutationOptions(options));
+};
+
+/**
+ * @summary Preview the generated client and business mileage legs for a job
+ */
+export const getGetJobMileageLegsUrl = (jobId: number) => {
+  return `/api/mileage/jobs/${jobId}/legs`;
+};
+
+export const getJobMileageLegs = async (
+  jobId: number,
+  options?: RequestInit,
+): Promise<JobMileageLegs> => {
+  return customFetch<JobMileageLegs>(getGetJobMileageLegsUrl(jobId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetJobMileageLegsQueryKey = (jobId: number) => {
+  return [`/api/mileage/jobs/${jobId}/legs`] as const;
+};
+
+export const getGetJobMileageLegsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getJobMileageLegs>>,
+  TError = ErrorType<void>,
+>(
+  jobId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobMileageLegs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetJobMileageLegsQueryKey(jobId);
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getJobMileageLegs>>
+  > = ({ signal }) => getJobMileageLegs(jobId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!jobId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getJobMileageLegs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetJobMileageLegsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getJobMileageLegs>>
+>;
+export type GetJobMileageLegsQueryError = ErrorType<void>;
+
+/**
+ * @summary Preview the generated client and business mileage legs for a job
+ */
+export function useGetJobMileageLegs<
+  TData = Awaited<ReturnType<typeof getJobMileageLegs>>,
+  TError = ErrorType<void>,
+>(
+  jobId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobMileageLegs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetJobMileageLegsQueryOptions(jobId, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Persist or refresh the generated client and business mileage legs for a job
+ */
+export const getSyncJobMileageLegsUrl = (jobId: number) => {
+  return `/api/mileage/jobs/${jobId}/legs/sync`;
+};
+
+export const syncJobMileageLegs = async (
+  jobId: number,
+  options?: RequestInit,
+): Promise<JobMileageLegs> => {
+  return customFetch<JobMileageLegs>(getSyncJobMileageLegsUrl(jobId), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getSyncJobMileageLegsMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof syncJobMileageLegs>>,
+    TError,
+    { jobId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof syncJobMileageLegs>>,
+  TError,
+  { jobId: number },
+  TContext
+> => {
+  const mutationKey = ["syncJobMileageLegs"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof syncJobMileageLegs>>,
+    { jobId: number }
+  > = props => {
+    const { jobId } = props ?? {};
+    return syncJobMileageLegs(jobId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SyncJobMileageLegsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof syncJobMileageLegs>>
+>;
+export type SyncJobMileageLegsMutationError = ErrorType<void>;
+
+/**
+ * @summary Persist or refresh the generated client and business mileage legs for a job
+ */
+export const useSyncJobMileageLegs = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof syncJobMileageLegs>>,
+    TError,
+    { jobId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof syncJobMileageLegs>>,
+  TError,
+  { jobId: number },
+  TContext
+> => {
+  return useMutation(getSyncJobMileageLegsMutationOptions(options));
 };
 
 /**

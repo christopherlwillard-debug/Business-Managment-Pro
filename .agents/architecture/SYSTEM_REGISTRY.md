@@ -43,7 +43,7 @@ Before implementing any financial, schema, or business logic feature — consult
 
 - **Tables:** `mileage_logs`, `mileage_imports`
 - **Schema:** `lib/db/src/schema/mileage.ts`
-- **API:** `artifacts/api-server/src/routes/mileage.ts`
+- **API:** `artifacts/api-server/src/routes/mileage.ts`, `artifacts/api-server/src/routes/job-mileage.ts`
 - **UI:** `artifacts/contractor-app/src/pages/Mileage.tsx`
 - **Reports:** Yes — mileage deduction in tax reports (`mileageLogsTable`)
 - **Source of truth:** `mileage_logs` for individual trips; `mileage_imports` tracks import batches. Imported trips create one expense per month via `expenses.mileage_import_id`.

@@ -15,4 +15,4 @@ The e2e testing subagent is permanently blocked by a stale bogus "CLERK_SECRET_K
 
 **Why:** browser-use CLI is NOT installed despite the skill existing; runTest cannot be unblocked from the agent side. This is the only proven path for authenticated interactive verification.
 
-**Gotchas:** synthetic `el.click()` in `page.evaluate` does NOT expand the app's collapsible month-group headers (e.g. Expenses page) — use a real `page.mouse.click(x, y)` at the element's bounding rect instead. Also `tsx -e` eval is CJS (no top-level await); write a temp `.mts` file for direct lib-function testing.
+**Gotchas:** synthetic `el.click()` in `page.evaluate` does NOT expand the app's collapsible month-group headers (e.g. Expenses page) — use a real Puppeteer click or `page.mouse.click(x, y)`. Select a user with an approved access request and the needed section permission; arbitrary test users can authenticate while rendering no protected controls. Chromium `innerText` reflects CSS text transforms, so assert display text case-insensitively. Also `tsx -e` eval is CJS (no top-level await); wrap async work in `main()` or use a temp `.mts` file.

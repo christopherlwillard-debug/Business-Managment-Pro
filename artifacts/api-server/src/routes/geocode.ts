@@ -150,6 +150,7 @@ router.get(
         companyAddress: settingsTable.companyAddress,
         companyCity: settingsTable.companyCity,
         companyState: settingsTable.companyState,
+        companyZip: settingsTable.companyZip,
       }).from(settingsTable).limit(1),
       db.select({
         address: jobsTable.address,
@@ -163,7 +164,7 @@ router.get(
       return;
     }
 
-    const businessAddr = [settings?.companyAddress, settings?.companyCity, settings?.companyState]
+    const businessAddr = [settings?.companyAddress, settings?.companyCity, settings?.companyState, settings?.companyZip]
       .filter(Boolean).join(", ");
     const jobAddr = [job.address, job.city, job.state].filter(Boolean).join(", ");
 
