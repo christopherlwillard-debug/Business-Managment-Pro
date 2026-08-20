@@ -12,22 +12,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
+import { createStrictQueryQueue } from "../test/strict-query-queue";
 
 // ── Hoisted mutable state — must be declared before vi.mock calls ─────────────
 const h = vi.hoisted(() => ({
   // Queue of result arrays. Each .where() / .limit() call shifts one off.
-  selectQueue: [] as any[][],
+  selectQueue: undefined as any,
   // Queue for db.execute() calls that return rows (e.g. UPDATE … RETURNING).
   // Each element is the rows array for one execute call.
-  executeQueue: [] as any[][],
+  executeQueue: undefined as any,
   // Record of every .set(data) call (for asserting what was written to DB).
   updates: [] as any[],
   // Controls whether isSquareConfigured() returns true in a given test.
   squareConfigured: false,
-  consumedSelectSlots: 0,
-  missingSelectSlots: [] as number[],
-  consumedExecuteSlots: 0,
-  missingExecuteSlots: [] as number[],
   scenario: "no request",
 }));
 
@@ -40,26 +37,10 @@ vi.mock("@workspace/db", () => {
     orderBy:   () => chain,
     inArray:   () => chain,
     where:     () => {
-      const slot = h.consumedSelectSlots++;
-      const queued = h.selectQueue.shift();
-      if (queued === undefined) {
-        h.missingSelectSlots.push(slot);
-        return Promise.reject(new Error(
-          `[${h.scenario}] missing queued select slot [${slot}]`,
-        ));
-      }
-      return Promise.resolve(queued);
+      return Promise.resolve(h.selectQueue.take(h.scenario));
     },
     limit:     () => {
-      const slot = h.consumedSelectSlots++;
-      const queued = h.selectQueue.shift();
-      if (queued === undefined) {
-        h.missingSelectSlots.push(slot);
-        return Promise.reject(new Error(
-          `[${h.scenario}] missing queued select slot [${slot}]`,
-        ));
-      }
-      return Promise.resolve(queued);
+      return Promise.resolve(h.selectQueue.take(h.scenario));
     },
   };
   const dbOps = {
@@ -76,15 +57,7 @@ vi.mock("@workspace/db", () => {
       }),
     }),
     execute: () => {
-      const slot = h.consumedExecuteSlots++;
-      const queued = h.executeQueue.shift();
-      if (queued === undefined) {
-        h.missingExecuteSlots.push(slot);
-        return Promise.reject(new Error(
-          `[${h.scenario}] missing queued execute slot [${slot}]`,
-        ));
-      }
-      return Promise.resolve({ rows: queued });
+      return Promise.resolve({ rows: h.executeQueue.take(h.scenario) });
     },
     delete:  () => ({ where: () => Promise.resolve() }),
   };
@@ -181,23 +154,17 @@ function fakeInvoice(overrides: Record<string, any> = {}): Record<string, any> {
 
 // ── Reset mock state between tests ────────────────────────────────────────────
 beforeEach(() => {
-  h.selectQueue.length = 0;
-  h.executeQueue.length = 0;
+  h.selectQueue = createStrictQueryQueue<any[]>({ kind: "select" });
+  h.executeQueue = createStrictQueryQueue<any[]>({ kind: "execute" });
   h.updates.length = 0;
   h.squareConfigured = false;
   deleteSquarePaymentLink.mockClear();
-  h.consumedSelectSlots = 0;
-  h.missingSelectSlots.length = 0;
-  h.consumedExecuteSlots = 0;
-  h.missingExecuteSlots.length = 0;
   h.scenario = "no request";
 });
 
 afterEach(() => {
-  expect(h.missingSelectSlots, `[${h.scenario}] missing queued select slot(s)`).toHaveLength(0);
-  expect(h.selectQueue, `[${h.scenario}] unconsumed queued select slot(s)`).toHaveLength(0);
-  expect(h.missingExecuteSlots, `[${h.scenario}] missing queued execute slot(s)`).toHaveLength(0);
-  expect(h.executeQueue, `[${h.scenario}] unconsumed queued execute slot(s)`).toHaveLength(0);
+  h.selectQueue.assertConsumed(h.scenario);
+  h.executeQueue.assertConsumed(h.scenario);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

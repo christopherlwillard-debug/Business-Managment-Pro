@@ -1,18 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
+import { createStrictQueryQueue } from "../test/strict-query-queue";
 
 const h = vi.hoisted(() => ({
-  selectQueue: [] as any[][],
-  insertReturnQueue: [] as any[][],
-  updateReturnQueue: [] as any[][],
+  selectQueue: undefined as any,
+  insertReturnQueue: undefined as any,
+  updateReturnQueue: undefined as any,
   updates: [] as any[],
-  consumedSelectSlots: 0,
-  missingSelectSlots: [] as number[],
-  consumedInsertSlots: 0,
-  missingInsertSlots: [] as number[],
-  consumedUpdateSlots: 0,
-  missingUpdateSlots: [] as number[],
   scenario: "no request",
 }));
 
@@ -24,14 +19,7 @@ vi.mock("@workspace/db", () => {
       orderBy: () => c,
       limit: () => c,
       then(resolve: (value: any) => unknown, reject: (error: unknown) => unknown) {
-        const slot = h.consumedSelectSlots++;
-        const queued = h.selectQueue.shift();
-        if (queued === undefined) {
-          h.missingSelectSlots.push(slot);
-          return Promise.reject(new Error(`[${h.scenario}] missing queued select slot [${slot}]`))
-            .then(resolve, reject);
-        }
-        return Promise.resolve(queued).then(resolve, reject);
+        return Promise.resolve(h.selectQueue.take(h.scenario)).then(resolve, reject);
       },
     };
     return c;
@@ -42,13 +30,7 @@ vi.mock("@workspace/db", () => {
       insert: () => ({
         values: () => ({
           returning: () => {
-            const slot = h.consumedInsertSlots++;
-            const queued = h.insertReturnQueue.shift();
-            if (queued === undefined) {
-              h.missingInsertSlots.push(slot);
-              return Promise.reject(new Error(`[${h.scenario}] missing queued insert slot [${slot}]`));
-            }
-            return Promise.resolve(queued);
+            return Promise.resolve(h.insertReturnQueue.take(h.scenario));
           },
         }),
       }),
@@ -58,13 +40,7 @@ vi.mock("@workspace/db", () => {
           return {
             where: () => ({
               returning: () => {
-                const slot = h.consumedUpdateSlots++;
-                const queued = h.updateReturnQueue.shift();
-                if (queued === undefined) {
-                  h.missingUpdateSlots.push(slot);
-                  return Promise.reject(new Error(`[${h.scenario}] missing queued update slot [${slot}]`));
-                }
-                return Promise.resolve(queued);
+                return Promise.resolve(h.updateReturnQueue.take(h.scenario));
               },
             }),
           };
@@ -105,27 +81,24 @@ const client = {
 };
 
 beforeEach(() => {
-  h.selectQueue.length = 0;
-  h.insertReturnQueue.length = 0;
-  h.updateReturnQueue.length = 0;
+  h.selectQueue = createStrictQueryQueue<any[]>({ kind: "select" });
+  h.insertReturnQueue = createStrictQueryQueue<any[]>({
+    kind: "mutation-return",
+    label: "insert",
+  });
+  h.updateReturnQueue = createStrictQueryQueue<any[]>({
+    kind: "mutation-return",
+    label: "update",
+  });
   h.updates.length = 0;
-  h.consumedSelectSlots = 0;
-  h.missingSelectSlots.length = 0;
-  h.consumedInsertSlots = 0;
-  h.missingInsertSlots.length = 0;
-  h.consumedUpdateSlots = 0;
-  h.missingUpdateSlots.length = 0;
   h.scenario = "no request";
   vi.mocked(RoutingEngine.calculate).mockReset();
 });
 
 afterEach(() => {
-  expect(h.missingSelectSlots, `[${h.scenario}] missing queued select slot(s)`).toHaveLength(0);
-  expect(h.selectQueue, `[${h.scenario}] unconsumed queued select slot(s)`).toHaveLength(0);
-  expect(h.missingInsertSlots, `[${h.scenario}] missing queued insert slot(s)`).toHaveLength(0);
-  expect(h.insertReturnQueue, `[${h.scenario}] unconsumed queued insert slot(s)`).toHaveLength(0);
-  expect(h.missingUpdateSlots, `[${h.scenario}] missing queued update slot(s)`).toHaveLength(0);
-  expect(h.updateReturnQueue, `[${h.scenario}] unconsumed queued update slot(s)`).toHaveLength(0);
+  h.selectQueue.assertConsumed(h.scenario);
+  h.insertReturnQueue.assertConsumed(h.scenario);
+  h.updateReturnQueue.assertConsumed(h.scenario);
 });
 
 describe("mileage surcharge settings and route qualification", () => {

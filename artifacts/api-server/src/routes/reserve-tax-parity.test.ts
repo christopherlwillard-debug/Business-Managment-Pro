@@ -24,12 +24,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
+import { createStrictQueryQueue } from "../test/strict-query-queue";
 
 // ── Hoisted mutable queue ─────────────────────────────────────────────────────
 const h = vi.hoisted(() => ({
-  selectQueue: [] as any[][],
-  consumedSlots: 0,
-  missingSlots: [] as number[],
+  selectQueue: undefined as any,
   strict: false,
   scenario: "no request",
 }));
@@ -46,18 +45,9 @@ vi.mock("@workspace/db", () => {
       groupBy:   () => c,
       limit:     () => c,
       then(resolve: (v: any) => any, reject: (e: any) => any) {
-        const slot = h.consumedSlots++;
-        const queued = h.selectQueue.shift();
-        if (queued === undefined) {
-          h.missingSlots.push(slot);
-          if (h.strict) {
-            return Promise.reject(new Error(
-              `[${h.scenario}] missing queued report query slot [${slot}]`,
-            )).then(resolve, reject);
-          }
-          return Promise.resolve([]).then(resolve, reject);
-        }
-        return Promise.resolve(queued).then(resolve, reject);
+        return Promise.resolve(
+          h.selectQueue.take(h.scenario, { strict: h.strict }),
+        ).then(resolve, reject);
       },
     };
     return c;
@@ -96,23 +86,16 @@ app.use((_req, _res, next) => {
 app.use("/reports", reportsRouter);
 
 beforeEach(() => {
-  h.selectQueue.length = 0;
-  h.consumedSlots = 0;
-  h.missingSlots.length = 0;
+  h.selectQueue = createStrictQueryQueue<any[]>({
+    kind: "select",
+    label: "report query",
+  });
   h.strict = false;
   h.scenario = "no request";
 });
 
 afterEach(() => {
-  if (!h.strict) return;
-  expect(
-    h.missingSlots,
-    `[${h.scenario}] missing queued report query slot(s)`,
-  ).toHaveLength(0);
-  expect(
-    h.selectQueue,
-    `[${h.scenario}] unconsumed queued report query slot(s) after ${h.consumedSlots} consumed`,
-  ).toHaveLength(0);
+  h.selectQueue.assertConsumed(h.scenario, { strict: h.strict });
 });
 
 describe("Report query fixture guard", () => {
@@ -123,7 +106,7 @@ describe("Report query fixture guard", () => {
     const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
 
     expect(res.status).toBe(500);
-    expect(h.missingSlots).toEqual(expect.arrayContaining([1]));
+    expect(h.selectQueue.missingSlots).toEqual(expect.arrayContaining([1]));
     expect(h.scenario).toBe("GET /reports/accounting");
     h.strict = false;
   });
