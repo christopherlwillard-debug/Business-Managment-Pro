@@ -21,13 +21,17 @@
 //     [9]   recurringExpenses
 //     [10]  plaidConnections
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
 
 // ── Hoisted mutable queue ─────────────────────────────────────────────────────
 const h = vi.hoisted(() => ({
   selectQueue: [] as any[][],
+  consumedSlots: 0,
+  missingSlots: [] as number[],
+  strict: false,
+  scenario: "no request",
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -42,7 +46,18 @@ vi.mock("@workspace/db", () => {
       groupBy:   () => c,
       limit:     () => c,
       then(resolve: (v: any) => any, reject: (e: any) => any) {
-        return Promise.resolve(h.selectQueue.shift() ?? []).then(resolve, reject);
+        const slot = h.consumedSlots++;
+        const queued = h.selectQueue.shift();
+        if (queued === undefined) {
+          h.missingSlots.push(slot);
+          if (h.strict) {
+            return Promise.reject(new Error(
+              `[${h.scenario}] missing queued report query slot [${slot}]`,
+            )).then(resolve, reject);
+          }
+          return Promise.resolve([]).then(resolve, reject);
+        }
+        return Promise.resolve(queued).then(resolve, reject);
       },
     };
     return c;
@@ -74,6 +89,7 @@ const { default: reportsRouter } = await import("./reports");
 const app = express();
 app.use(express.json());
 app.use((_req, _res, next) => {
+  h.scenario = `${_req.method} ${_req.path}`;
   (_req as any).user = { id: 1, claims: { sub: "user_1" } };
   next();
 });
@@ -81,6 +97,36 @@ app.use("/reports", reportsRouter);
 
 beforeEach(() => {
   h.selectQueue.length = 0;
+  h.consumedSlots = 0;
+  h.missingSlots.length = 0;
+  h.strict = false;
+  h.scenario = "no request";
+});
+
+afterEach(() => {
+  if (!h.strict) return;
+  expect(
+    h.missingSlots,
+    `[${h.scenario}] missing queued report query slot(s)`,
+  ).toHaveLength(0);
+  expect(
+    h.selectQueue,
+    `[${h.scenario}] unconsumed queued report query slot(s) after ${h.consumedSlots} consumed`,
+  ).toHaveLength(0);
+});
+
+describe("Report query fixture guard", () => {
+  it("identifies an exhausted slot with the route scenario", async () => {
+    h.strict = true;
+    h.selectQueue.push([]); // accounting's first Promise.all slot only
+
+    const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
+
+    expect(res.status).toBe(500);
+    expect(h.missingSlots).toEqual(expect.arrayContaining([1]));
+    expect(h.scenario).toBe("GET /reports/accounting");
+    h.strict = false;
+  });
 });
 
 // ── Shared seed data ───────────────────────────────────────────────────────────
@@ -162,13 +208,11 @@ function pushAccountingSelects() {
   // [8-9] computeDepreciationForYear → assets, assetBusinessUse (both empty → $0 depreciation)
   h.selectQueue.push([]); // assets
   h.selectQueue.push([]); // assetBusinessUse
-  // [10] computeOwnerWaterfall paidInvs (no jobId in PAID_INVOICE → no subHours query → ownerAllocated=0)
-  h.selectQueue.push([]);
-  // [11] accOwnerContribRows — ownerCapitalEntries (same Promise.all, 4th chain)
+  // [10] accOwnerContribRows — ownerCapitalEntries (same Promise.all, 4th chain)
   h.selectQueue.push([]);
 }
 
-// Helper: push the 11 selects consumed by GET /business-reserve
+// Helper: push the 12 selects consumed by GET /business-reserve
 // (invoice has jobId=null → jobIds empty → subHoursRows step is skipped)
 function pushBusinessReserveSelects() {
   // [0] settings
@@ -183,15 +227,17 @@ function pushBusinessReserveSelects() {
   h.selectQueue.push([]);
   // [5] otherIncome
   h.selectQueue.push([OTHER_INCOME_ROW]);
+  // [6] brSubPayRows — fixed/allocation sub payments (empty)
+  h.selectQueue.push([]);
   // jobIds is empty → no subHoursRows select
-  // [6-7] computeDepreciationForYear → assets, assetBusinessUse
+  // [7-8] computeDepreciationForYear → assets, assetBusinessUse
   h.selectQueue.push([]); // assets
   h.selectQueue.push([]); // assetBusinessUse
-  // [8] growthFundDeployments
+  // [9] growthFundDeployments
   h.selectQueue.push([]);
-  // [9] recurringExpenses
+  // [10] recurringExpenses
   h.selectQueue.push([]);
-  // [10] plaidConnections
+  // [11] plaidConnections
   h.selectQueue.push([]);
 }
 
@@ -208,8 +254,10 @@ describe("Reserve tax parity — estimatedTaxes invariant", () => {
     h.selectQueue.push([]);             // subs
     h.selectQueue.push([SETTINGS_ROW]);  // settings
     h.selectQueue.push([]);             // otherIncome — none
+    h.selectQueue.push([]);             // fixed/allocation sub payments
     h.selectQueue.push([]);             // assets
     h.selectQueue.push([]);             // assetBusinessUse
+    h.selectQueue.push([]);             // owner capital entries
 
     const accRes = await request(app).get(`/reports/accounting?year=${YEAR}`);
     expect(accRes.status).toBe(200);
