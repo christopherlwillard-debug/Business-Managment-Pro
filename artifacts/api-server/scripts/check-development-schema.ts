@@ -1,52 +1,60 @@
 import { pool } from "@workspace/db";
+import * as schema from "@workspace/db/schema";
+import { is } from "drizzle-orm";
+import { getTableConfig, PgTable } from "drizzle-orm/pg-core";
 
 type RequiredColumn = {
   table: string;
   column: string;
-  migration: string;
+  migration?: string;
 };
 
-const requiredColumns: RequiredColumn[] = [
+const migrationHints: Record<string, string> = {
   // 0047_business_ownership_backfill.sql
-  ...["clients", "jobs", "invoices", "estimates", "prospects", "assets"].map((table) => ({
-    table,
-    column: "business_id",
-    migration: "0047_business_ownership_backfill.sql",
-  })),
+  "clients.business_id": "0047_business_ownership_backfill.sql",
+  "jobs.business_id": "0047_business_ownership_backfill.sql",
+  "invoices.business_id": "0047_business_ownership_backfill.sql",
+  "estimates.business_id": "0047_business_ownership_backfill.sql",
+  "prospects.business_id": "0047_business_ownership_backfill.sql",
+  "assets.business_id": "0047_business_ownership_backfill.sql",
   // 0048_financial_correction_history.sql
-  ...[
-    ["expenses", "voided_at"],
-    ["expenses", "void_reason"],
-    ["other_income", "voided_at"],
-    ["other_income", "void_reason"],
-    ["owner_capital_entries", "voided_at"],
-    ["owner_capital_entries", "void_reason"],
-    ["mileage_logs", "voided_at"],
-    ["mileage_logs", "void_reason"],
-    ["sub_payment_records", "reversal_reason"],
-    ["invoices", "voided_at"],
-    ["invoices", "void_reason"],
-  ].map(([table, column]) => ({
-    table,
-    column,
-    migration: "0048_financial_correction_history.sql",
-  })),
-];
+  "expenses.voided_at": "0048_financial_correction_history.sql",
+  "expenses.void_reason": "0048_financial_correction_history.sql",
+  "other_income.voided_at": "0048_financial_correction_history.sql",
+  "other_income.void_reason": "0048_financial_correction_history.sql",
+  "owner_capital_entries.voided_at": "0048_financial_correction_history.sql",
+  "owner_capital_entries.void_reason": "0048_financial_correction_history.sql",
+  "mileage_logs.voided_at": "0048_financial_correction_history.sql",
+  "mileage_logs.void_reason": "0048_financial_correction_history.sql",
+  "sub_payment_records.reversal_reason": "0048_financial_correction_history.sql",
+  "invoices.voided_at": "0048_financial_correction_history.sql",
+  "invoices.void_reason": "0048_financial_correction_history.sql",
+};
+
+function getRequiredColumns(): RequiredColumn[] {
+  return Object.values(schema)
+    .filter((value): value is PgTable => is(value, PgTable))
+    .flatMap((table) => {
+      const config = getTableConfig(table);
+      return config.columns.map(({ name: column }) => {
+        const key = `${config.name}.${column}`;
+        return {
+          table: config.name,
+          column,
+          migration: migrationHints[key],
+        };
+      });
+    });
+}
 
 async function checkDevelopmentSchema() {
+  const requiredColumns = getRequiredColumns();
   const result = await pool.query<{ table_name: string; column_name: string }>(
     `
       SELECT table_name, column_name
       FROM information_schema.columns
       WHERE table_schema = 'public'
-        AND (table_name, column_name) IN (
-          SELECT * FROM unnest($1::text[], $2::text[])
-        )
     `,
-    [
-      requiredColumns.map(({ table }) => table),
-      requiredColumns.map(({ column }) => column),
-    ],
   );
 
   const present = new Set(result.rows.map(({ table_name, column_name }) => `${table_name}.${column_name}`));
