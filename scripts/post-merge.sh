@@ -6,7 +6,10 @@ pnpm install --frozen-lockfile
 # and intentionally runs before any database synchronization.
 pnpm run schema-contract:check
 
-pnpm --filter @workspace/db run push-force </dev/null 2>&1 || true
+if ! pnpm --filter @workspace/db run push-force </dev/null; then
+  echo "WARNING: development schema synchronization failed; post-merge setup will continue without applying the failed schema changes." >&2
+  echo "Run 'pnpm run schema-contract:live-check' to see the exact missing or mismatched database fields, then use the approved development synchronization path before release." >&2
+fi
 
 # Idempotent hotfix: ensure daily_logs.author_name column exists (added in Task #35,
 # migration failed on original post-merge run)
