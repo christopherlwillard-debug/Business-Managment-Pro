@@ -55,6 +55,26 @@ ownership column is missing or has the wrong nullability, integer type, foreign
 key target, or delete behavior. It never runs DDL, backfills records, or
 connects to a production database.
 
+The post-merge setup intentionally continues after a failed development
+`drizzle-kit push` so it does not make destructive recovery decisions or block
+unrelated setup. It reports that failure immediately and repeats it in the
+post-merge validation summary. Treat that warning as a failed development
+schema synchronization, not as a successful setup. Confirm the mismatch with
+the read-only check:
+
+```sh
+pnpm run schema-contract:live-check
+```
+
+After review, use the approved development-only synchronization path:
+
+```sh
+pnpm --filter @workspace/db run push-force
+```
+
+Do not use the warning as a reason to run production DDL, ownership backfills,
+or startup self-healing.
+
 ## Business ownership release gate
 
 Core accounting records use `business_id` as the canonical ownership field.

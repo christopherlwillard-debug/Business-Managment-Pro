@@ -6,7 +6,14 @@ pnpm install --frozen-lockfile
 # and intentionally runs before any database synchronization.
 pnpm run schema-contract:check
 
-if ! pnpm --filter @workspace/db run push-force </dev/null; then
+# Keep the historical non-destructive behavior: a failed development push must
+# not prevent the remaining post-merge setup from running. Preserve its status
+# separately so the failure is visible instead of being swallowed by `|| true`.
+schema_sync_status="passed"
+if pnpm --filter @workspace/db run push-force </dev/null; then
+  :
+else
+  schema_sync_status="failed"
   echo "WARNING: development schema synchronization failed; post-merge setup will continue without applying the failed schema changes." >&2
   echo "Run 'pnpm run schema-contract:live-check' to see the exact missing or mismatched database fields, then use the approved development synchronization path before release." >&2
 fi
@@ -988,3 +995,13 @@ pool.query('ALTER TABLE mfh_models ADD COLUMN IF NOT EXISTS active BOOLEAN NOT N
   .then(() => { console.log('mfh_models.active ensured'); pool.end(); })
   .catch(e => { console.error('mfh_models.active hotfix error:', e.message); pool.end(); });
 ")
+
+echo
+if [[ "$schema_sync_status" == "failed" ]]; then
+  echo "Post-merge validation summary: FAILED development schema synchronization."
+  echo "The development database may not match the application schema."
+  echo "Confirm with: pnpm run schema-contract:live-check"
+  echo "After review, synchronize development with: pnpm --filter @workspace/db run push-force"
+else
+  echo "Post-merge validation summary: development schema synchronization passed."
+fi

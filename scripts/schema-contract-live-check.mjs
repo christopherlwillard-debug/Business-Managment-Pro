@@ -156,7 +156,8 @@ async function main() {
           "Live development schema contract check failed.",
           "This is a read-only check; no schema or data changes were attempted.",
           ...errors.map((error) => `- ${error}`),
-          "Apply the reviewed development schema synchronization, then rerun this check before release.",
+          "If post-merge reported a synchronization warning, this is the resulting database mismatch.",
+          "Apply the reviewed development schema synchronization with `pnpm --filter @workspace/db run push-force`, then rerun this check before release.",
         ].join("\n"),
       );
       process.exitCode = 1;
