@@ -36,3 +36,4 @@
 - [Integrations & Credentials Manager](integrations-manager.md) — 25+ catalog entries, portal credential fields (0058 migration), health aggregation from bid_source_connections, SAM.gov slug fix in bids.ts
 - [Forensic repair Aug 2026](forensic-repair-aug2026.md) — code done (mileage filter, P&L routing, reserve, owner pay); 3 mileage data corrections staged, apply via migration endpoint post-publish
 - [Client mileage surcharge](client-mileage-surcharge.md) — client rules + RoutingEngine qualification feed opt-in invoice lines only; never write MileIQ mileage or expenses
+- [Accounting repair guardrails](accounting-repair-guardrails.md) — verify source records, ownership, ledgers, mileage, and reversals before changing cash-basis reports

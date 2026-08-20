@@ -1,0 +1,203 @@
+IMPORTANT — #1966 MUST BE IMPLEMENTED AS A VERIFIED ACCOUNTING REPAIR, NOT A REPORT-MATCHING EXERCISE.
+
+The full August 20 forensic audit confirms that cash-basis revenue timing is inconsistent, but it also identified related source-of-truth problems involving business ownership, subcontractor payments, mileage predicates, IRS rates, owner activity, and reversal semantics.
+
+Do NOT immediately refactor reports merely to make totals agree.
+
+PHASE 1 — READ-ONLY VERIFICATION
+
+Before changing code, independently identify the authoritative source records for:
+
+1. Customer cash receipts
+2. Invoice issue dates
+3. Effective payment dates
+4. Partial payments
+5. Business ownership
+6. Subcontractor payments
+7. Owner activity
+8. Mileage
+9. Mileage IRS rates
+10. Reversals
+
+For each report surface currently called cash-basis, document exactly which source tables, dates, business filters, and predicates it uses.
+
+The authoritative rule for cash-basis revenue should be:
+
+ACTUAL CASH RECEIVED DURING THE REPORTING PERIOD.
+
+Invoice issue date must NOT determine the tax/reporting year when the payment was received in another year.
+
+Do not modify historical payment dates or invoice records.
+
+PHASE 2 — BUSINESS OWNERSHIP
+
+Do not automatically treat business_id/business_line NULL as belonging to the selected business.
+
+Determine and document an explicit policy for:
+- Willard's General Contracting
+- Willard's Asphalt Sealing
+- Unassigned records
+- All-business reporting
+
+A record must never appear in two businesses simply because its business ownership is NULL.
+
+Do not backfill ownership without a separate approved forensic/data-migration task.
+
+PHASE 3 — MILEAGE
+
+Use one canonical mileage predicate everywhere.
+
+Owner standard-mileage deduction must:
+- exclude subcontractor mileage
+- include only appropriate owner/business mileage
+- use the correct trip date
+- use the correct IRS rate for that date
+- use the same predicate for miles, dollars, counts, warnings and Schedule C
+
+For 2026 specifically:
+- Jan 1–Jun 30 = $0.725/mile
+- Jul 1 onward = $0.760/mile
+
+Do not use a single annual rate for 2026.
+
+Do not silently recalculate or alter historical mileage records in this task.
+
+PHASE 4 — SUBCONTRACTOR PAYMENTS
+
+Expenses, Accounting, P&L, Schedule C and subcontractor balances must distinguish:
+
+EARNED / ALLOCATED COMPENSATION
+vs.
+CASH PAID
+vs.
+ADVANCES
+vs.
+REMAINING BALANCE
+
+Example:
+James earns $600.
+James receives a $60 advance.
+Remaining owed = $540.
+Contract Labor = $600.
+Total cash paid when settled = $600.
+
+The $60 advance must not create another $60 expense.
+
+Every James sub_payment_record must be traceable to:
+- earned amount
+- advances
+- subsequent payments
+- total cash paid
+- remaining balance
+- related job
+- related expense row, if any
+
+Do not reclassify James's tax status in this task.
+
+PHASE 5 — OWNER ACTIVITY
+
+Reconcile owner_capital_entries against owner-related expense records.
+
+Determine which source is authoritative for:
+- owner draw
+- owner compensation
+- owner withdrawal
+- business contribution
+
+Owner activity must remain excluded from deductible business expenses while remaining visible in Owner Pay/cash-flow reporting.
+
+Do not create duplicate historical transactions.
+
+PHASE 6 — REVERSALS
+
+Verify the actual semantics of reversal records.
+
+Determine whether a reversal:
+- replaces the original
+- offsets the original
+- marks the original as reversed
+- or represents a separate economic event
+
+Do not assume `isReversal = true` alone is sufficient.
+
+Add a controlled fixture proving the accounting result.
+
+PHASE 7 — CASH-BASIS HELPER
+
+ONLY AFTER PHASES 1–6 ARE VERIFIED:
+
+Create one shared cash-revenue helper.
+
+It must power:
+- P&L
+- Schedule C
+- Dashboard
+- accounting exports
+- any other report claiming cash-basis revenue
+
+It must use effective payment dates and correctly handle:
+- prior-year invoice paid in current year
+- current-year invoice paid next year
+- partial payments
+- multiple payments
+- refunds/reversals
+- business ownership
+- unassigned records
+
+PHASE 8 — RECONCILIATION TESTS
+
+Add fixtures proving:
+
+Raw paid records
+=
+Cash-basis helper
+=
+P&L cash revenue
+=
+Schedule C gross receipts
+=
+Dashboard cash revenue
+=
+Export cash revenue
+
+Also add tests for:
+
+- prior-year invoice paid this year
+- current-year invoice paid next year
+- partial invoice payment
+- multiple payments
+- unassigned business record
+- two-business isolation
+- owner draw exclusion
+- subcontractor advance
+- subcontractor allocation
+- reversal
+- 2026 mileage H1/H2 rates
+- owner vs subcontractor mileage
+
+IMPORTANT:
+Do not make production data changes.
+Do not backfill business ownership.
+Do not modify historical financial records.
+Do not publish.
+Do not delete legacy tables.
+This task is code/reporting architecture only unless a separate explicit production migration is approved.
+
+FINAL OUTPUT REQUIRED
+
+Before implementation:
+1. Current source-of-truth map
+2. Exact discrepancies found
+3. Expected corrected results
+4. Files/routes that need modification
+5. Tests that will prove the correction
+
+After implementation:
+1. Exact before/after report totals
+2. Source records supporting each total
+3. Test results
+4. Typecheck results
+5. Any unresolved business/accountant decisions
+
+Do NOT claim the accounting system is reconciled simply because two reports display the same number.
+The underlying source records must reconcile first.

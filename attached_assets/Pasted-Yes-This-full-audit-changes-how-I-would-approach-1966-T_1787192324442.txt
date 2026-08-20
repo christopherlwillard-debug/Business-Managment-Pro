@@ -1,0 +1,56 @@
+Yes. This full audit changes how I would approach #1966.
+
+The audit confirms that the cash-basis problem is real, but it also shows that #1966 is only one piece of a much larger accounting/source-of-truth problem.
+
+What the audit actually confirmed
+
+The important financial finding is:
+
+P&L and Schedule C are using invoice issue date in places where cash-basis reporting should use the effective payment date.
+
+That’s a legitimate defect and #1966 addresses it.
+
+But there are several related findings that need to be handled together:
+
+1. H1 — Cash-basis revenue timing
+    * P&L/Schedule C use issue date.
+    * Other accounting paths use effective payment date.
+    * This can put revenue in the wrong tax year.
+2. H2 — Unassigned business records
+    * Schedule C can include business_line = NULL records in whichever business you’re viewing.
+    * That’s dangerous for your Willard’s GC vs. Asphalt businesses.
+3. H3 — Mileage predicates
+    * Deduction and mileage-count logic aren’t using exactly the same filters.
+4. H4 — IRS rates
+    * There are multiple rate tables.
+    * This is especially important given what you just found about 2026 being $0.725 Jan–Jun and $0.760 beginning July 1.
+5. H5 — Subcontractor payments
+    * Expenses combines the expense table and sub_payment_records.
+    * Business filtering isn’t consistent between Expenses, Accounting and Schedule C.
+6. H7 — Reversals
+    * Needs verification so a reversal isn’t merely excluded while the original payment remains counted.
+7. H6 — Owner activity
+    * There are competing owner-draw/owner-capital paths that need reconciliation.
+8. M1/M2 — Job profit
+    * Job profit uses invoiced revenue while Accounting uses cash revenue.
+    * There are multiple job-profit calculations.
+
+So I would NOT tell Replit:
+
+“Go ahead and fix #1966.”
+
+I’d tell it:
+
+“Implement #1966 only after proving the underlying source-of-truth and reconciliation rules.”
+
+Because we’ve already seen what happens when we tell the app to make two numbers match without first proving the underlying records.
+
+And your $45,106.54 Expenses total investigation is a perfect example. Replit initially thought the $60 was duplicated, then read the actual Expenses route and proved the $45,106.54 was legitimately:
+
+131 expense records + 19 subcontractor-payment display records = 150 records = $45,106.54.
+
+That’s exactly the kind of forensic verification we want.
+
+⸻
+
+I’d send Replit this before #1966
