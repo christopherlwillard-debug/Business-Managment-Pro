@@ -1234,7 +1234,9 @@ export default function Mileage() {
               <Calculator className="w-8 h-8 opacity-50" />
             </div>
             <p className="text-xs text-primary-foreground/50 mt-4 text-right">
-              ${rate.toFixed(3)}/mile · {rate === 0.760 ? "2026 H2 IRS rate ✓" : rate === 0.725 ? "2026 H1 IRS rate ✓" : rate === 0.700 ? "2025 IRS rate ✓" : "custom rate"}
+              {(summary as any)?.ratePerMile != null
+                ? `$${Number((summary as any).ratePerMile).toFixed(3)}/mile blended from trip dates`
+                : "No business-mile rate yet"}
             </p>
           </CardContent>
         </Card>
@@ -1276,6 +1278,7 @@ export default function Mileage() {
                 <th className="px-6 py-4">Date</th>
                 <th className="px-6 py-4">Route / Purpose</th>
                 <th className="px-6 py-4 text-right">{mileageUnits === "km" ? "Km" : "Miles"}</th>
+                <th className="px-6 py-4 text-right">Rate</th>
                 <th className="px-6 py-4 text-right">Deduction</th>
                 <th className="px-6 py-4 text-center">Type</th>
                 <th className="px-6 py-4 text-center">Actions</th>
@@ -1284,13 +1287,13 @@ export default function Mileage() {
             <tbody className="divide-y divide-border/50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground animate-pulse">
+                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground animate-pulse">
                     Loading logs...
                   </td>
                 </tr>
               ) : !(logs as any[])?.length ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                     <Navigation className="w-8 h-8 mx-auto mb-2 opacity-20" />
                     No mileage logged yet — add your first entry above.
                   </td>
@@ -1322,8 +1325,12 @@ export default function Mileage() {
                         ? (parseFloat(log.miles) * 1.60934).toFixed(2)
                         : parseFloat(log.miles).toFixed(2)}
                     </td>
+                    <td className="px-6 py-4 text-right text-muted-foreground font-mono text-xs">
+                      {log.classification === "business" ? `$${Number(log.calculatedRate ?? log.ratePerMile ?? 0).toFixed(3)}/mi` : "—"}
+                    </td>
                     <td className="px-6 py-4 text-right text-emerald-600 font-medium">
-                      {log.classification === "business" ? `+${formatCurrency(log.deductionAmount)}` : "—"}
+                      {log.classification === "business" ? `+${formatCurrency(log.calculatedDeduction ?? log.deductionAmount)}` : "—"}
+                      {log.snapshotStale && <span className="ml-1 text-amber-600" title="Stored snapshot differs from the current IRS rate">•</span>}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span

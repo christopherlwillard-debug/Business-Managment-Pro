@@ -6,6 +6,7 @@ import {
   settingsTable, subPaymentRecordsTable, jobSubcontractorsTable,
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, sum, count, ne, isNull, sql, inArray } from "drizzle-orm";
+import { calculateMileageDeduction } from "../lib/irs-rates.js";
 
 const router = Router();
 
@@ -280,7 +281,9 @@ router.get("/schedule-c", async (req, res) => {
     const mileageData = await db
       .select({
         totalMiles: sum(mileageLogsTable.miles),
-        totalDeduction: sum(mileageLogsTable.deductionAmount),
+        date: mileageLogsTable.date,
+        miles: mileageLogsTable.miles,
+        classification: mileageLogsTable.classification,
       })
       .from(mileageLogsTable)
       .where(
@@ -308,9 +311,9 @@ router.get("/schedule-c", async (req, res) => {
         )
       );
 
-    const totalBusinessMiles = mileageData[0]?.totalMiles ? parseFloat(mileageData[0].totalMiles as any) : 0;
-    // Use stored deductionAmount (matches dashboard); irsMileageRate is for display only
-    const mileageDeduction = mileageData[0]?.totalDeduction ? parseFloat(mileageData[0].totalDeduction as any) : 0;
+    const totalBusinessMiles = mileageData.reduce((sumMiles, row) => sumMiles + parseFloat(row.miles as any), 0);
+    const mileageDeduction = mileageData.reduce((total, row) =>
+      total + calculateMileageDeduction(row.miles, row.classification, row.date).deduction, 0);
     // Derive blended rate from stored per-trip deductionAmounts — reflects 2026 H1/H2 split.
     const irsMileageRate = totalBusinessMiles > 0 ? mileageDeduction / totalBusinessMiles : getIrsMileageRate(year);
 

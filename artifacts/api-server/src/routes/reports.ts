@@ -5,7 +5,7 @@ import { plaidConnectionsTable } from "@workspace/db";
 import { eq, and, gte, lte, desc, sum, ne, inArray, sql, count, isNull } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
-import { getIrsMileageRate } from "../lib/irs-rates.js";
+import { calculateMileageDeduction, getIrsMileageRate } from "../lib/irs-rates.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { filterCashReceipts, sumCashReceipts } from "../lib/cash-revenue.js";
 
@@ -183,9 +183,9 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const excludedExpenseCount = kpiExpenses.filter(e => e.excludeFromNetProfit).length;
     // Period-consistent mileage deduction used in the profit formula
-    const periodMileageDeduction = allMileage.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+    const periodMileageDeduction = allMileage.reduce((s, m) => s + calculateMileageDeduction(m.miles, m.classification, m.date).deduction, 0);
     // YTD mileage deduction for the "Tax Deductions" display card (always YTD)
-    const mileageDeduction = ytdMileageLogs.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+    const mileageDeduction = ytdMileageLogs.reduce((s, m) => s + calculateMileageDeduction(m.miles, m.classification, m.date).deduction, 0);
     // Mileage cannot be attributed to a single business line — exclude from filtered net profit
     const mileageForNetProfit = validBl ? 0 : periodMileageDeduction;
     const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfitFormula) - mileageForNetProfit;

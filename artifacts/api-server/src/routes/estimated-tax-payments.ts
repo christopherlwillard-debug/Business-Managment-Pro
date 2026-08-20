@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, estimatedTaxPaymentsTable, invoicesTable, expensesTable, mileageLogsTable, otherIncomeTable } from "@workspace/db";
 import { eq, and, gte, lte, sum } from "drizzle-orm";
 import { wrapAsync } from "./guards";
+import { calculateMileageDeduction } from "../lib/irs-rates.js";
 
 const router = Router();
 
@@ -92,7 +93,7 @@ async function computeTaxData(year: number, ytd = false): Promise<YearTaxData> {
   const [invoicesResult, expensesResult, mileageResult, otherIncomeResult] = await Promise.all([
     db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
     db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
-    db.select({ totalDeduction: sum(mileageLogsTable.deductionAmount) }).from(mileageLogsTable).where(
+    db.select({ date: mileageLogsTable.date, miles: mileageLogsTable.miles, classification: mileageLogsTable.classification }).from(mileageLogsTable).where(
       and(eq(mileageLogsTable.classification, "business"), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))
     ),
     db.select({ total: sum(otherIncomeTable.amount) }).from(otherIncomeTable).where(
@@ -107,7 +108,8 @@ async function computeTaxData(year: number, ytd = false): Promise<YearTaxData> {
   const totalExpenses = expensesResult
     .filter(e => e.category !== "mileage" && !OWNER_DRAW_CATS.includes(e.category ?? ""))
     .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-  const mileageDeduction = mileageResult[0]?.totalDeduction ? parseFloat(mileageResult[0].totalDeduction as string) : 0;
+  const mileageDeduction = mileageResult.reduce((total, row) =>
+    total + calculateMileageDeduction(row.miles, row.classification, row.date).deduction, 0);
 
   const netProfit = Math.max(0, (paidRevenue + otherIncomeSum) - totalExpenses - mileageDeduction);
   const selfEmploymentTax = netProfit * 0.9235 * 0.153;

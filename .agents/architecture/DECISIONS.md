@@ -127,6 +127,24 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 ---
 
+## ADR-009
+
+**Title:** Mileage deductions use one effective-date IRS rate engine
+
+**Decision:** `irs-rates.ts` owns the date-aware IRS schedule. Manual entries, imports, mileage summaries, tax/report calculations, and controlled import recalculation all derive deductions from raw trip date, miles, and classification. Stored rate and deduction values remain historical snapshots until an explicit recalculation is confirmed.
+
+**Reason:** A year-only display rate and separate route-local schedule could diverge, while reports trusting stored deductions could remain stale after rate changes. Live recomputation preserves accurate reporting without silently rewriting historical financial snapshots.
+
+**Rejected Alternatives:**
+- Trusting stored deduction snapshots in reports
+- Automatically rewriting every historical mileage row
+- Maintaining separate manual/import/report rate tables
+
+**Status:** Accepted
+**Date:** 2026-08-20
+
+---
+
 ## ADR-006
 
 **Title:** Core records use canonical business ownership with legacy slug compatibility

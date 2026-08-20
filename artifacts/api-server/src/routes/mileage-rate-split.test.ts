@@ -92,7 +92,14 @@ vi.mock("./guards",             () => ({
   ownerGuard:   () => (_req: any, _res: any, next: any) => next(),
   getRequestUserId: () => null,
 }));
-vi.mock("../lib/irs-rates.js",  () => ({ getIrsMileageRate: vi.fn().mockReturnValue(0.760) }));
+vi.mock("../lib/irs-rates.js",  () => ({
+  getIrsMileageRate: vi.fn().mockReturnValue(0.760),
+  getIrsRateForDate: (date: string) => date >= "2026-07-01" ? 0.760 : date >= "2026-01-01" ? 0.725 : date >= "2025-01-01" ? 0.700 : 0.670,
+  calculateMileageDeduction: (miles: number | string, classification: string, date: string) => ({
+    rate: date >= "2026-07-01" ? 0.760 : date >= "2026-01-01" ? 0.725 : date >= "2025-01-01" ? 0.700 : 0.670,
+    deduction: classification === "business" ? Number(miles) * (date >= "2026-07-01" ? 0.760 : date >= "2026-01-01" ? 0.725 : date >= "2025-01-01" ? 0.700 : 0.670) : 0,
+  }),
+}));
 vi.mock("../lib/allocation.js", () => ({
   computeAllocationSplitPools: vi.fn().mockResolvedValue([]),
   computeSubOwed:              vi.fn().mockReturnValue(0),

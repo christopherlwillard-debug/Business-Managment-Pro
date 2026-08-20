@@ -102,3 +102,12 @@ Created the four-document architecture governance system:
   draft invoices remain hard-deletable.
 - Updated report, tax, and job-profit reads to exclude voided source rows while
   preserving their ownership and job/client relationships.
+
+### Mileage rate reconciliation
+
+- Consolidated manual entries, imports, summaries, tax calculations, and
+  reports onto one effective-date IRS mileage-rate engine.
+- Reports now calculate deductions from raw trip date, miles, and
+  classification instead of trusting stale stored snapshots.
+- Added preview/confirm import recalculation endpoints that update snapshots
+  only after explicit confirmation and preserve monthly aggregate expenses.

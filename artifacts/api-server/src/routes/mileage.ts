@@ -3,16 +3,23 @@ import { db } from "@workspace/db";
 import { mileageLogsTable, mileageImportsTable, jobsTable, settingsTable, expensesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, isNull, inArray, getTableColumns } from "drizzle-orm";
 import { getRequestUserId } from "./guards";
+import { calculateMileageDeduction, getIrsRateForDate } from "../lib/irs-rates.js";
 
 const router = Router();
 
 function formatMileage(m: any, jobTitle?: string | null) {
+  const calculated = calculateMileageDeduction(m.miles, m.classification, m.date);
+  const storedDeduction = parseFloat(m.deductionAmount ?? "0");
+  const storedRate = parseFloat(m.ratePerMile ?? "0");
   return {
     ...m,
     jobTitle: jobTitle ?? null,
     miles: parseFloat(m.miles ?? "0"),
     ratePerMile: parseFloat(m.ratePerMile ?? "0.725"),
     deductionAmount: parseFloat(m.deductionAmount ?? "0"),
+    calculatedRate: calculated.rate,
+    calculatedDeduction: calculated.deduction,
+    snapshotStale: storedRate !== calculated.rate || Math.abs(storedDeduction - calculated.deduction) > 0.005,
     createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : m.createdAt,
   };
 }
@@ -22,22 +29,7 @@ async function getRate() {
   return parseFloat(settings?.mileageRate ?? "0.725");
 }
 
-export function getIrsRateForDate(dateStr: string): number {
-  // Rates are sorted descending by effectiveDate.
-  // find() returns the first entry whose effectiveDate ≤ dateStr.
-  // 2026 is a split year: $0.725/mi for H1, $0.760/mi from Jul 1.
-  const rates = [
-    { effectiveDate: "2026-07-01", rate: 0.760 }, // 2026 mid-year rate increase — H2 2026
-    { effectiveDate: "2026-01-01", rate: 0.725 }, // IRS Notice 2025-87 — H1 2026
-    { effectiveDate: "2025-01-01", rate: 0.700 },
-    { effectiveDate: "2024-01-01", rate: 0.670 },
-    { effectiveDate: "2023-01-01", rate: 0.655 },
-    { effectiveDate: "2022-07-01", rate: 0.625 },
-    { effectiveDate: "2022-01-01", rate: 0.585 },
-  ];
-  const match = rates.find(e => dateStr >= e.effectiveDate);
-  return match?.rate ?? 0.585;
-}
+export { getIrsRateForDate };
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -78,7 +70,7 @@ export async function recalcImportExpenses(importId: number) {
     if (!/^\d{4}-\d{2}$/.test(ym)) continue;
     const entry = byMonth.get(ym) ?? { miles: 0, deduction: 0, trips: 0, lastDate: log.date };
     entry.miles += parseFloat(log.miles ?? "0");
-    entry.deduction += parseFloat(log.deductionAmount ?? "0");
+    entry.deduction += calculateMileageDeduction(log.miles, log.classification, log.date).deduction;
     entry.trips += 1;
     if (log.date > entry.lastDate) entry.lastDate = log.date;
     byMonth.set(ym, entry);
@@ -138,12 +130,12 @@ router.get("/summary", async (req, res) => {
       .from(mileageLogsTable)
       .where(and(...baseConditions));
 
-    // Sum stored per-trip deductionAmount instead of recomputing from miles × a single rate.
-    // This is correct for split-year IRS rate changes (e.g. 2026 H1 $0.725 / H2 $0.760).
+    // Recompute from raw miles, classification, and trip date so reports do not
+    // depend on stale snapshots.
     const businessLogs = all.filter(m => m.classification === "business");
     const personalMiles = all.filter(m => m.classification === "personal").reduce((s, m) => s + parseFloat(m.miles), 0);
     const businessMiles = businessLogs.reduce((s, m) => s + parseFloat(m.miles), 0);
-    const totalDeduction = businessLogs.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+    const totalDeduction = businessLogs.reduce((s, m) => s + calculateMileageDeduction(m.miles, m.classification, m.date).deduction, 0);
 
     res.json({
       totalMiles: businessMiles + personalMiles,
@@ -197,9 +189,8 @@ router.post("/", async (req, res) => {
     if (!date || miles == null) return res.status(400).json({ error: "Missing required fields" });
     // Use the IRS date-aware rate so H2 2026 trips automatically get $0.760/mile.
     // getIrsRateForDate() is the authoritative rate table — not the settings override.
-    const rate = getIrsRateForDate(date);
     const milesNum = parseFloat(miles);
-    const deductionAmount = classification === "business" ? milesNum * rate : 0;
+    const { deduction: deductionAmount } = calculateMileageDeduction(milesNum, classification, date);
     const bizId = businessId ? parseInt(businessId) : null;
 
     let expenseId: number | null = null;
@@ -216,7 +207,7 @@ router.post("/", async (req, res) => {
         amount: deductionAmount.toFixed(2),
         jobId: jobId || null,
         businessId: bizId,
-        notes: `Auto-created. ${milesNum.toFixed(2)} mi × $${rate}/mi`,
+        notes: `Auto-created. ${milesNum.toFixed(2)} mi × $${getIrsRateForDate(date)}/mi`,
       }).returning();
       expenseId = expense.id;
     }
@@ -227,7 +218,7 @@ router.post("/", async (req, res) => {
       purpose, jobId: jobId || null,
       businessId: bizId,
       classification: classification || "business",
-      ratePerMile: rate.toString(),
+      ratePerMile: getIrsRateForDate(date).toString(),
       deductionAmount: deductionAmount.toString(),
       notes,
       source: source || "gps",
@@ -251,9 +242,8 @@ router.put("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     const { date, startLocation, endLocation, miles, purpose, jobId, classification, notes } = req.body;
     // Derive rate from the (possibly new) trip date so an edited date picks up the correct split.
-    const rate = getIrsRateForDate(date);
     const milesNum = parseFloat(miles);
-    const deductionAmount = classification === "business" ? milesNum * rate : 0;
+    const { deduction: deductionAmount } = calculateMileageDeduction(milesNum, classification, date);
 
     const [existing] = await db.select().from(mileageLogsTable).where(eq(mileageLogsTable.id, id));
     if (existing?.voidedAt) return res.status(400).json({ error: "Voided mileage records cannot be edited." });
@@ -266,7 +256,7 @@ router.put("/:id", async (req, res) => {
           : `Mileage: Business trip (${milesNum.toFixed(2)} mi)`,
         amount: deductionAmount.toFixed(2),
         jobId: jobId || null,
-        notes: `Auto-created. ${milesNum.toFixed(2)} mi × $${rate}/mi`,
+        notes: `Auto-created. ${milesNum.toFixed(2)} mi × $${getIrsRateForDate(date)}/mi`,
       }).where(eq(expensesTable.id, existing.expenseId));
     }
 
@@ -275,7 +265,7 @@ router.put("/:id", async (req, res) => {
       miles: miles?.toString(),
       purpose, jobId: jobId || null,
       classification,
-      ratePerMile: rate.toString(),
+      ratePerMile: getIrsRateForDate(date).toString(),
       deductionAmount: deductionAmount.toString(),
       notes,
     }).where(eq(mileageLogsTable.id, id)).returning();
@@ -332,6 +322,74 @@ router.post("/:id/void", async (req, res) => {
 });
 
 // ─── GET /api/mileage/imports ────────────────────────────────────────────────
+async function getImportRecalculation(importId: number) {
+  const logs = await db.select().from(mileageLogsTable).where(and(
+    eq(mileageLogsTable.importId, importId),
+    isNull(mileageLogsTable.voidedAt),
+  ));
+  const changes = logs.map(log => {
+    const next = calculateMileageDeduction(log.miles, log.classification, log.date);
+    const oldRate = parseFloat(log.ratePerMile ?? "0");
+    const oldDeduction = parseFloat(log.deductionAmount ?? "0");
+    return {
+      id: log.id,
+      date: log.date,
+      classification: log.classification,
+      miles: parseFloat(log.miles ?? "0"),
+      oldRate,
+      newRate: next.rate,
+      oldDeduction,
+      newDeduction: next.deduction,
+      changed: oldRate !== next.rate || Math.abs(oldDeduction - next.deduction) > 0.005,
+    };
+  });
+  return {
+    importId,
+    rows: changes,
+    changedRows: changes.filter(row => row.changed),
+    currentDeduction: changes.reduce((sum, row) => sum + row.oldDeduction, 0),
+    recalculatedDeduction: changes.reduce((sum, row) => sum + row.newDeduction, 0),
+  };
+}
+
+router.get("/imports/:id/recalculate/preview", async (req, res) => {
+  try {
+    const importId = parseInt(req.params.id);
+    if (isNaN(importId)) return res.status(400).json({ error: "Invalid import id" });
+    const [record] = await db.select().from(mileageImportsTable).where(eq(mileageImportsTable.id, importId));
+    if (!record) return res.status(404).json({ error: "Import not found" });
+    res.json(await getImportRecalculation(importId));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to preview mileage recalculation" });
+  }
+});
+
+router.post("/imports/:id/recalculate", async (req, res) => {
+  try {
+    const importId = parseInt(req.params.id);
+    if (isNaN(importId)) return res.status(400).json({ error: "Invalid import id" });
+    if (req.body?.confirm !== true) {
+      return res.status(400).json({ error: "Explicit confirmation is required. Preview the recalculation first." });
+    }
+    const [record] = await db.select().from(mileageImportsTable).where(eq(mileageImportsTable.id, importId));
+    if (!record) return res.status(404).json({ error: "Import not found" });
+    const preview = await getImportRecalculation(importId);
+    for (const row of preview.changedRows) {
+      await db.update(mileageLogsTable).set({
+        ratePerMile: row.newRate.toString(),
+        deductionAmount: row.newDeduction.toFixed(2),
+      }).where(eq(mileageLogsTable.id, row.id));
+    }
+    await recalcImportExpenses(importId);
+    const result = await getImportRecalculation(importId);
+    res.json({ ...result, updatedRows: preview.changedRows.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to recalculate mileage import" });
+  }
+});
+
 router.get("/imports", async (req, res) => {
   try {
     const { businessId } = req.query;
@@ -466,8 +524,7 @@ router.post("/bulk", async (req, res) => {
 
     if (toInsert.length > 0) {
       const logValues = toInsert.map(t => {
-        const tripRate = getIrsRateForDate(t.date);
-        const deductionAmt = t.classification === "business" ? t.miles * tripRate : 0;
+        const { rate: tripRate, deduction: deductionAmt } = calculateMileageDeduction(t.miles, t.classification, t.date);
         totalMiles += t.miles;
         if (t.classification === "business") estimatedDeduction += deductionAmt;
 
