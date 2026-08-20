@@ -57,13 +57,17 @@
 //     [11] waterfallPaidInvs    — computeOwnerWaterfall
 //     (year-end has no existing tests so slot positions are set by this file)
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
 
 // ── Hoisted mutable queue ─────────────────────────────────────────────────────
 const h = vi.hoisted(() => ({
   selectQueue: [] as any[][],
+  consumedSlots: 0,
+  missingSlots: [] as number[],
+  strict: true,
+  scenario: "no request",
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -78,7 +82,18 @@ vi.mock("@workspace/db", () => {
       groupBy:   () => c,
       limit:     () => c,
       then(resolve: (v: any) => any, reject: (e: any) => any) {
-        return Promise.resolve(h.selectQueue.shift() ?? []).then(resolve, reject);
+        const slot = h.consumedSlots++;
+        const queued = h.selectQueue.shift();
+        if (queued === undefined) {
+          h.missingSlots.push(slot);
+          if (h.strict) {
+            return Promise.reject(new Error(
+              `[${h.scenario}] missing queued report query slot [${slot}]`,
+            )).then(resolve, reject);
+          }
+          return Promise.resolve([]).then(resolve, reject);
+        }
+        return Promise.resolve(queued).then(resolve, reject);
       },
     };
     return c;
@@ -110,6 +125,7 @@ const { default: reportsRouter } = await import("./reports");
 const app = express();
 app.use(express.json());
 app.use((_req, _res, next) => {
+  h.scenario = `${_req.method} ${_req.path}`;
   (_req as any).user = { id: 1, claims: { sub: "user_1" } };
   next();
 });
@@ -117,6 +133,22 @@ app.use("/reports", reportsRouter);
 
 beforeEach(() => {
   h.selectQueue.length = 0;
+  h.consumedSlots = 0;
+  h.missingSlots.length = 0;
+  h.strict = true;
+  h.scenario = "no request";
+});
+
+afterEach(() => {
+  if (!h.strict) return;
+  expect(
+    h.missingSlots,
+    `[${h.scenario}] missing queued report query slot(s)`,
+  ).toHaveLength(0);
+  expect(
+    h.selectQueue,
+    `[${h.scenario}] unconsumed queued report query slot(s) after ${h.consumedSlots} consumed`,
+  ).toHaveLength(0);
 });
 
 // ── Shared fixtures ───────────────────────────────────────────────────────────
@@ -259,6 +291,8 @@ function pushAccounting() {
   h.selectQueue.push([]);                                   // [9] assetBusinessUse
   h.selectQueue.push([WATERFALL_INVOICE]);                  // [10] waterfallPaidInvs
   h.selectQueue.push([]);                                   // [11] accOwnerContribRows (ownerCapitalEntries)
+  h.selectQueue.push([]);                                   // [12] allBusinesses
+  h.selectQueue.push([]);                                   // [13] outstandingSubRows
   // allBusinesses and outstandingSubRows get [] from empty queue → fine
 }
 
@@ -607,6 +641,8 @@ describe("ownerActivity waterfall — cross-year invoice attribution (effective 
     // computeOwnerWaterfall fires synchronously first; accOwnerContribRows is 4th Promise.all chain
     h.selectQueue.push([CROSS_YEAR_WATERFALL_INV]);  // [10] waterfallPaidInvs
     h.selectQueue.push([]);                          // [11] accOwnerContribRows (ownerCapitalEntries)
+    h.selectQueue.push([]);                          // [12] allBusinesses
+    h.selectQueue.push([]);                          // [13] outstandingSubRows
 
     const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
     expect(res.status).toBe(200);
@@ -645,6 +681,8 @@ describe("ownerActivity waterfall — cross-year invoice attribution (effective 
     h.selectQueue.push([]);               // [9] assetBusinessUse
     h.selectQueue.push([NEXT_YEAR_PAID_WATERFALL_INV]); // [10] waterfallPaidInvs
     h.selectQueue.push([]);               // [11] accOwnerContribRows (ownerCapitalEntries)
+    h.selectQueue.push([]);               // [12] allBusinesses
+    h.selectQueue.push([]);               // [13] outstandingSubRows
 
     const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
     expect(res.status).toBe(200);
@@ -689,6 +727,8 @@ describe("ownerActivity — zero-allocation draw scenario", () => {
     h.selectQueue.push([]);               // [9] assetBusinessUse
     h.selectQueue.push([]);               // [10] waterfallPaidInvs (empty → ownerAllocated = 0)
     h.selectQueue.push([]);               // [11] accOwnerContribRows
+    h.selectQueue.push([]);               // [12] allBusinesses
+    h.selectQueue.push([]);               // [13] outstandingSubRows
 
     const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
     expect(res.status).toBe(200);

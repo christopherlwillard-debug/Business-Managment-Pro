@@ -30,13 +30,17 @@
 //   [12] allBusinesses
 //   [13-36] monthlyRevenue loop: 6 months × 4 queries
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
 
 // ── Hoisted mutable queue ─────────────────────────────────────────────────────
 const h = vi.hoisted(() => ({
   selectQueue: [] as any[][],
+  consumedSlots: 0,
+  missingSlots: [] as number[],
+  strict: true,
+  scenario: "no request",
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -51,7 +55,18 @@ vi.mock("@workspace/db", () => {
       groupBy:   () => c,
       limit:     () => c,
       then(resolve: (v: any) => any, reject: (e: any) => any) {
-        return Promise.resolve(h.selectQueue.shift() ?? []).then(resolve, reject);
+        const slot = h.consumedSlots++;
+        const queued = h.selectQueue.shift();
+        if (queued === undefined) {
+          h.missingSlots.push(slot);
+          if (h.strict) {
+            return Promise.reject(new Error(
+              `[${h.scenario}] missing queued report query slot [${slot}]`,
+            )).then(resolve, reject);
+          }
+          return Promise.resolve([]).then(resolve, reject);
+        }
+        return Promise.resolve(queued).then(resolve, reject);
       },
     };
     return c;
@@ -85,6 +100,7 @@ const { default: reportsRouter } = await import("./reports");
 const app = express();
 app.use(express.json());
 app.use((_req, _res, next) => {
+  h.scenario = `${_req.method} ${_req.path}`;
   (_req as any).user = { id: 1, claims: { sub: "user_1" } };
   next();
 });
@@ -92,6 +108,22 @@ app.use("/reports", reportsRouter);
 
 beforeEach(() => {
   h.selectQueue.length = 0;
+  h.consumedSlots = 0;
+  h.missingSlots.length = 0;
+  h.strict = true;
+  h.scenario = "no request";
+});
+
+afterEach(() => {
+  if (!h.strict) return;
+  expect(
+    h.missingSlots,
+    `[${h.scenario}] missing queued report query slot(s)`,
+  ).toHaveLength(0);
+  expect(
+    h.selectQueue,
+    `[${h.scenario}] unconsumed queued report query slot(s) after ${h.consumedSlots} consumed`,
+  ).toHaveLength(0);
 });
 
 // ── Shared fixtures ───────────────────────────────────────────────────────────
@@ -409,6 +441,8 @@ describe("Accounting monthly income chart — sub payment inclusion", () => {
     h.selectQueue.push([]);             // [9] assetBusinessUse
     h.selectQueue.push([]);             // [10] allBusinesses
     h.selectQueue.push([]);             // [11] outstandingSubRows
+    h.selectQueue.push([]);             // [12] ownerContribRows
+    h.selectQueue.push([]);             // [13] outstandingSubRows
 
     const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
     expect(res.status).toBe(200);
@@ -445,6 +479,8 @@ describe("Accounting monthly income chart — sub payment inclusion", () => {
     h.selectQueue.push([]);              // [9] assetBusinessUse
     h.selectQueue.push([]);              // [10] allBusinesses
     h.selectQueue.push([]);              // [11] outstandingSubRows
+    h.selectQueue.push([]);              // [12] ownerContribRows
+    h.selectQueue.push([]);              // [13] outstandingSubRows
 
     const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
     expect(res.status).toBe(200);
