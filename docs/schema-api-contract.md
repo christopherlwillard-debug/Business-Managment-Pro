@@ -68,6 +68,23 @@ every required column is nullable `INTEGER` with a foreign key to
 `businesses(id)` using `ON DELETE SET NULL`. Production must then be rechecked
 after publishing.
 
+### Development gate result — 2026-08-20
+
+The reviewed schema-only change was applied to development through the
+post-merge database flow. Read-only metadata verification confirms that
+`clients`, `jobs`, `invoices`, `estimates`, `prospects`, and `assets` each have
+a nullable `INTEGER business_id` referencing `businesses(id)` with
+`ON DELETE SET NULL`.
+
+The ownership inventory remains intentionally unclassified for historical
+records: clients (3), jobs (3), invoices (1331), estimates (1), and prospects
+(3) have `business_id IS NULL`; assets has 0 unassigned rows. No ambiguous
+rows were backfilled.
+
+Production metadata was checked read-only before publishing and still has no
+`business_id` columns. Replit Publish must apply the verified development
+schema before the final production metadata check and accounting release gate.
+
 ### Approved schema-application path
 
 1. Keep the Drizzle schema and reviewed SQL in `lib/db/migrations/` aligned.
