@@ -10,7 +10,8 @@ import {
   mfhModelsTable,
   mfhManufacturersTable,
 } from "@workspace/db/schema";
-import { eq, sql, and, inArray } from "drizzle-orm";
+import { eq, sql, and, inArray, isNull } from "drizzle-orm";
+import { calcInvoiceFromStored } from "./invoices.js";
 
 const router = Router();
 
@@ -40,17 +41,18 @@ async function computeDraft(jobId: number) {
     crewSize: sql<number>`COUNT(*)`,
   }).from(jobLaborEntriesTable).where(eq(jobLaborEntriesTable.jobId, jobId));
 
-  const [invoiceAgg] = await db.select({
-    total: sql<string>`COALESCE(SUM(total::numeric), 0)`,
+  const invoiceRows = await db.select({
+    lineItems: invoicesTable.lineItems,
+    taxRate: invoicesTable.taxRate,
   }).from(invoicesTable).where(
-    and(eq(invoicesTable.jobId, jobId), sql`status NOT IN ('draft','void')`)
+    and(eq(invoicesTable.jobId, jobId), sql`status NOT IN ('draft','cancelled','void')`)
   );
 
   const expenseRows = await db.select({
     category: expensesTable.category,
     total: sql<string>`SUM(amount::numeric)`,
   }).from(expensesTable)
-    .where(eq(expensesTable.jobId, jobId))
+    .where(and(eq(expensesTable.jobId, jobId), isNull(expensesTable.voidedAt)))
     .groupBy(expensesTable.category);
 
   let materialCost = 0;
@@ -64,7 +66,16 @@ async function computeDraft(jobId: number) {
     else if (cat.includes("consumable")) consumablesCost += amt;
   }
 
-  const invoiceAmount = parseFloat(invoiceAgg?.total ?? "0");
+  const liveInvoices = invoiceRows.map(row => calcInvoiceFromStored(row.lineItems, row.taxRate));
+  const liveInvoice = liveInvoices.reduce(
+    (sum, row) => ({
+      subtotal: sum.subtotal + row.subtotal,
+      taxAmount: sum.taxAmount + row.taxAmount,
+      total: sum.total + row.total,
+    }),
+    { subtotal: 0, taxAmount: 0, total: 0 },
+  );
+  const invoiceAmount = liveInvoice.total;
   const grossProfit = invoiceAmount - materialCost - consumablesCost;
   const netProfit = invoiceAmount - totalExpenses;
 
@@ -99,6 +110,11 @@ async function computeDraft(jobId: number) {
     consumablesCost: consumablesCost || null,
     grossProfit: grossProfit || null,
     netProfit: netProfit || null,
+    calculationSource: {
+      kind: "live_derived",
+      invoiceTotals: liveInvoice,
+      sourcePolicy: "invoice line items and non-void job expenses",
+    },
     callbacks: 0,
     warrantyVisit: false,
     missingMaterialsNotes: null,
@@ -106,6 +122,34 @@ async function computeDraft(jobId: number) {
     originalProductiveHours: null,
     editReason: null,
     editedAt: null,
+  };
+}
+
+function attachCalculationStatus(record: any, draft: any) {
+  const moneyFields = ["invoiceAmount", "materialCost", "consumablesCost", "grossProfit", "netProfit"];
+  const isStale = moneyFields.some(field =>
+    Math.abs(Number(record[field] ?? 0) - Number(draft[field] ?? 0)) >= 0.005,
+  );
+  return {
+    ...record,
+    isDraft: false,
+    calculationStatus: {
+      kind: "historical_snapshot",
+      snapshotAt: record.updatedAt ?? record.createdAt ?? null,
+      isStale,
+      staleFields: moneyFields.filter(field =>
+        Math.abs(Number(record[field] ?? 0) - Number(draft[field] ?? 0)) >= 0.005,
+      ),
+      liveCalculation: {
+        invoiceAmount: draft.invoiceAmount,
+        materialCost: draft.materialCost,
+        consumablesCost: draft.consumablesCost,
+        grossProfit: draft.grossProfit,
+        netProfit: draft.netProfit,
+        invoiceTotals: draft.calculationSource.invoiceTotals,
+        sourcePolicy: draft.calculationSource.sourcePolicy,
+      },
+    },
   };
 }
 
@@ -256,7 +300,7 @@ router.get("/:jobId/knowledge-record", async (req, res) => {
       .where(eq(jobKnowledgeRecordsTable.jobId, jobId));
 
     if (existing) {
-      res.json({ ...existing, isDraft: false });
+      res.json(attachCalculationStatus(existing, await computeDraft(jobId)));
       return;
     }
 
@@ -390,7 +434,7 @@ router.put("/:jobId/knowledge-record", async (req, res) => {
         .values({ ...values, originalValues: draftSnapshot }).returning();
     }
 
-    res.json({ ...record, isDraft: false });
+    res.json(attachCalculationStatus(record, draft));
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 
@@ -421,7 +465,7 @@ router.post("/:jobId/knowledge-record/accept", async (req, res) => {
       .where(eq(jobKnowledgeRecordsTable.id, existing.id))
       .returning();
 
-    res.json({ ...record, isDraft: false });
+    res.json(attachCalculationStatus(record, await computeDraft(jobId)));
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 

@@ -158,6 +158,19 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 ---
 
+## ADR-011
+
+**Title:** Derived financial values are live-derived or explicitly labeled snapshots
+
+**Decision:** Invoice totals are rebuilt from persisted line items whenever exposed to callers and reports; stored totals remain only as a reproducible snapshot with mismatch metadata. MFH knowledge-record profit fields remain immutable learning-history snapshots, while the MFH API also computes and exposes current source-derived values plus stale fields.
+
+**Reason:** Rewriting historical learning records would destroy the evidence used to train and audit the knowledge base, while trusting them silently produces stale profitability. Separating snapshot display from live calculation preserves both historical meaning and current financial truth.
+
+**Status:** Accepted
+**Date:** 2026-08-20
+
+---
+
 ## ADR-006
 
 **Title:** Core records use canonical business ownership with legacy slug compatibility

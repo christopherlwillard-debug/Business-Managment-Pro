@@ -8,6 +8,7 @@ import {
 import { eq, and, gte, lte, sum, count, ne, isNull, sql, inArray } from "drizzle-orm";
 import { calculateMileageDeduction } from "../lib/irs-rates.js";
 import { getTaxAssumptions } from "../lib/tax-estimate.js";
+import { calcInvoiceFromStored } from "./invoices.js";
 
 const router = Router();
 
@@ -184,6 +185,8 @@ router.get("/schedule-c", async (req, res) => {
       .select({
         status: invoicesTable.status,
         total: invoicesTable.total,
+        lineItems: invoicesTable.lineItems,
+        taxRate: invoicesTable.taxRate,
         amountPaid: invoicesTable.amountPaid,
         issueDate: invoicesTable.issueDate,
         stripePaidAt: invoicesTable.stripePaidAt,
@@ -198,7 +201,14 @@ router.get("/schedule-c", async (req, res) => {
         )
       );
 
-    const invoiceReceipts = sumCashReceipts(paidInvoices, startDate, endDate);
+    const invoiceReceipts = sumCashReceipts(
+      paidInvoices.map(invoice => ({
+        ...invoice,
+        total: String(calcInvoiceFromStored(invoice.lineItems, invoice.taxRate).total),
+      })),
+      startDate,
+      endDate,
+    );
 
     // 1b. Prior/external revenue entered as "Other Income"
     const [otherIncomeResult] = await db

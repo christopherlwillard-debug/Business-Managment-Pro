@@ -53,6 +53,16 @@ export function calcInvoice(lineItems: any[], taxRate: number | null) {
   return { subtotal, taxAmount, total };
 }
 
+/** Rebuild invoice money from the persisted line-item source records. */
+export function calcInvoiceFromStored(lineItems: unknown, taxRate: string | number | null) {
+  const rows = Array.isArray(lineItems) ? lineItems : [];
+  const normalized = rows.map((li: any) => ({
+    quantity: Number(li?.quantity ?? 0),
+    unitPrice: Number(li?.unitPrice ?? 0),
+  }));
+  return calcInvoice(normalized, taxRate == null ? null : Number(taxRate));
+}
+
 export async function getNextInvoiceNumber(): Promise<string> {
   // Atomic increment: locks the settings row, advances the counter, and returns
   // the assigned value in one statement — no race condition possible.
@@ -70,6 +80,11 @@ export async function getNextInvoiceNumber(): Promise<string> {
 
 function formatInvoice(inv: any, clientName?: string | null, clientEmail?: string | null, clientAddress?: string | null, clientPhone?: string | null, clientCity?: string | null, clientState?: string | null, clientZip?: string | null, clientNotes?: string | null, jobTitle?: string | null, jobCity?: string | null, jobState?: string | null) {
   const lineItems = Array.isArray(inv.lineItems) ? inv.lineItems : [];
+  const liveTotals = calcInvoiceFromStored(lineItems, inv.taxRate);
+  const storedTotalsMatch =
+    Math.abs(Number(inv.subtotal ?? 0) - liveTotals.subtotal) < 0.005 &&
+    Math.abs(Number(inv.taxAmount ?? 0) - liveTotals.taxAmount) < 0.005 &&
+    Math.abs(Number(inv.total ?? 0) - liveTotals.total) < 0.005;
   return {
     ...inv,
     clientName: clientName ?? null,
@@ -87,6 +102,13 @@ function formatInvoice(inv: any, clientName?: string | null, clientEmail?: strin
     taxRate: inv.taxRate ? parseFloat(inv.taxRate) : null,
     taxAmount: inv.taxAmount ? parseFloat(inv.taxAmount) : null,
     total: parseFloat(inv.total ?? "0"),
+    liveTotals,
+    calculationStatus: {
+      kind: "reproducible_snapshot",
+      snapshotAt: inv.updatedAt ?? inv.createdAt ?? null,
+      storedTotalsMatch,
+      isStale: !storedTotalsMatch,
+    },
     amountPaid: inv.amountPaid ? parseFloat(inv.amountPaid) : null,
     lineItems: lineItems.map((li: any, i: number) => ({
       id: li.id ?? i + 1,

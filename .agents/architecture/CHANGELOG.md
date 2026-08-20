@@ -120,3 +120,10 @@ Created the four-document architecture governance system:
 - Tax reports now roll DBA activity into the parent business tax owner.
 - Existing meal snapshots remain historical; new meal records use the
   configured deductible percentage.
+
+### Financial snapshot drift controls
+
+- Invoice responses and report paths now recompute totals from line items and
+  expose whether persisted totals match the source.
+- MFH knowledge records retain historical profit snapshots but expose live
+  invoice/expense-derived calculations and stale-field metadata.

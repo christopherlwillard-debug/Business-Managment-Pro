@@ -552,6 +552,9 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
                       </button>
                       <span className="font-medium text-foreground flex-1 truncate">{r.jobTitle}</span>
                       <div className="flex items-center gap-2 flex-shrink-0">
+                        {(r as any).calculationStatus?.isStale && (
+                          <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full" title="Source invoice or expense data changed after this historical snapshot">Snapshot stale</span>
+                        )}
                         {r.taughtAt && <span className="text-[10px] text-muted-foreground">{fmtDate(new Date(r.taughtAt).toISOString().split("T")[0])}</span>}
                         {isExpanded ? <ChevronUp className="w-3 h-3 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 text-muted-foreground" />}
                       </div>

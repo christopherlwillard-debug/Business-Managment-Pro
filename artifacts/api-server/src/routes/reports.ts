@@ -9,6 +9,7 @@ import { calculateMileageDeduction, getIrsMileageRate } from "../lib/irs-rates.j
 import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { filterCashReceipts, sumCashReceipts } from "../lib/cash-revenue.js";
+import { calcInvoiceFromStored } from "./invoices.js";
 
 const router = Router();
 
@@ -523,6 +524,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       id: invoicesTable.id,
       status: invoicesTable.status,
       subtotal: invoicesTable.subtotal,
+      taxRate: invoicesTable.taxRate,
       taxAmount: invoicesTable.taxAmount,
       total: invoicesTable.total,
       amountPaid: invoicesTable.amountPaid,
@@ -537,6 +539,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       clientName: clientsTable.name,
       invoiceNumber: invoicesTable.invoiceNumber,
       businessLine: invoicesTable.businessLine,
+      lineItems: invoicesTable.lineItems,
     };
     const [accPaidInvoices, accNonPaidInvoices, expenses, mileageLogs, subs, settings, otherIncomeRows, accFixedAllocSubPayments] = await Promise.all([
       // Paid invoices: no issueDate filter — effective payment date governs year attribution in JS.
@@ -587,7 +590,10 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const invoices = [
       ...filterCashReceipts(accPaidInvoices, startDate, endDate),
       ...accNonPaidInvoices,
-    ];
+    ].map(inv => {
+      const live = calcInvoiceFromStored(inv.lineItems, inv.taxRate);
+      return { ...inv, subtotal: String(live.subtotal), taxAmount: String(live.taxAmount), total: String(live.total) };
+    });
 
     const rate = parseFloat(settings[0]?.mileageRate ?? "0.725");
 

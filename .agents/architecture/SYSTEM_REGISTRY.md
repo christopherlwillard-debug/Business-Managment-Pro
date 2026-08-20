@@ -58,6 +58,11 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Tax ownership:** a business with `parentBusinessId` inherits the parent as its tax owner. Tax reports include the parent and DBA children.
 - **Audit context:** Schedule C and estimated-tax responses include `assumptionsUsed` and the tax owner context.
 
+### Derived financial values
+
+- **Invoice totals:** line items are the source of truth; API formatting and accounting/tax report paths recompute subtotal, tax, and total and expose `calculationStatus`.
+- **MFH knowledge records:** stored profit fields are historical learning snapshots. `/knowledge-record` also returns live source-derived calculations and identifies stale fields and snapshot time.
+
 ---
 
 ## Subcontractor Payroll

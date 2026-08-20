@@ -76,7 +76,7 @@ vi.mock("../lib/generateMaterialsPdf.js",   () => ({ generateMaterialsPdfBuffer:
 // ── Import router + helpers AFTER mocks are hoisted ───────────────────────────
 const mod = await import("./invoices");
 const invoiceRouter = mod.default;
-const { calcInvoice } = mod;
+const { calcInvoice, calcInvoiceFromStored } = mod;
 
 // Grab the spy handle for deleteSquarePaymentLink from the module mock.
 const squareMod = await import("../lib/square.js");
@@ -308,6 +308,12 @@ describe("PUT /:id — line item validation", () => {
 // calcInvoice — pure function unit tests
 // ─────────────────────────────────────────────────────────────────────────────
 describe("calcInvoice", () => {
+  it("rebuilds totals from stored line items", () => {
+    expect(calcInvoiceFromStored([
+      { quantity: 2, unitPrice: 125 },
+      { quantity: 1, unitPrice: 50 },
+    ], "10").total).toBeCloseTo(330);
+  });
   it("sums line items with no tax", () => {
     const r = calcInvoice([
       { quantity: 2, unitPrice: 150 },
