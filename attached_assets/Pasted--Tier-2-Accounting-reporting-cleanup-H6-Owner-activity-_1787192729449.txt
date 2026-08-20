@@ -1,0 +1,233 @@
+🟠 Tier 2 — Accounting/reporting cleanup
+
+H6 — Owner activity
+
+Make one clear distinction between:
+
+* Owner contribution
+* Owner draw
+* Owner compensation
+* Business expense
+* Cash outflow
+
+And make sure the same economic transaction can’t get counted through both owner_capital_entries and expenses.
+
+⸻
+
+H3 — Mileage counts
+
+The audit found that the mileage dollars and mileage-count/warning logic don’t use identical predicates.
+
+That needs to be unified so the app can’t say something like:
+
+5,505 deductible miles
+228 mileage records
+
+when those numbers are coming from different populations.
+
+⸻
+
+M1/M2 — Job profitability
+
+Right now:
+
+Job Profit: based on invoiced revenue
+Business Accounting: based on cash revenue
+
+That’s not necessarily wrong, but the app needs to clearly distinguish:
+
+Job profitability based on earned/invoiced revenue
+
+from:
+
+Business cash-basis profitability
+
+And ideally both should use a common profit engine where appropriate.
+
+⸻
+
+M3/M4 — Mileage accounting model
+
+The app has two different mileage systems:
+
+* individual/manual mileage → individual expense
+* MileIQ/imported mileage → aggregate expense
+
+That’s okay if intentional, but it needs one reconciliation layer so imports, edits, personal/business changes, and rate changes don’t create inconsistencies.
+
+This is especially important given your current mileage problem.
+
+⸻
+
+🟡 Tier 3 — CRM/customer system
+
+This is a big one for where you’re taking Willard’s.
+
+The audit confirmed your current CRM doesn’t properly model:
+
+Company → Multiple Contacts → Multiple Locations → Multiple Opportunities → Jobs → Estimates → Invoices
+
+That’s exactly what you were talking about earlier with:
+
+“A company and multiple contacts.”
+
+I’d fix this before the CRM grows much more.
+
+The proper structure should be something like:
+
+Organization
+
+* Willard’s General Contracting
+    * Contact: John
+    * Contact: Sarah
+    * Contact: Purchasing
+    * Location: Evansville
+    * Location: Owensboro
+    * Location: Job Site A
+    * Opportunity: Home #123
+    * Opportunity: Home #124
+
+Then jobs/invoices/estimates attach to the appropriate organization/contact/site.
+
+This also fixes H12 and helps with H13.
+
+⸻
+
+🟡 Tier 4 — Workflow/data integrity
+
+These need fixing but aren’t as urgent as the accounting foundation:
+
+* H12: Prospect → Client conversion loses company information.
+* H13: Estimate → Job conversion loses address/line-item context.
+* H14: Client profile totals can omit tax.
+* H15: Financial inputs need stronger validation.
+* M5: Client deletion can destroy historical customer provenance.
+* M6: Contacts can become duplicates/disconnected.
+* M7: Route stops can have contradictory relationships.
+* M8: No dedicated Reports section.
+* M9: Errors can appear as empty/zero data.
+* M10: Cache invalidation is inconsistent.
+* M11: Client errors aren’t surfaced properly.
+* M12: Invoice arithmetic should use proper money/rounding handling.
+
+⸻
+
+🔐 Tier 5 — Security
+
+I’d put these on a dedicated security pass:
+
+* H9: Square webhook must fail closed when signature verification isn’t configured.
+* H10: Storage authorization needs database/business ownership, not just path-based authorization.
+* Global ID-only CRUD needs business ownership checks.
+* Development impersonation endpoints must never be available in production.
+* Wix webhook credentials/tokens need review.
+* CORS needs tightening.
+* Upload MIME/type restrictions need strengthening.
+* Dependency vulnerabilities need updating:
+    * ip-address
+    * nanoid
+    * sharp
+* Review the SAST redirect findings.
+
+These aren’t “nice to have” fixes.
+
+⸻
+
+🏗️ Tier 6 — Architecture cleanup
+
+The audit also found a bunch of duplicated/competing systems:
+
+IRS rates
+
+Multiple authorities → one authority
+
+Migrations
+
+Multiple authorities → one migration system
+
+Job profit
+
+Multiple calculations → one profit engine
+
+Cash revenue
+
+Multiple calculations → one cash-revenue helper
+
+Mileage
+
+Multiple calculations → one mileage/rate/reconciliation engine
+
+Owner activity
+
+Multiple ledgers → one authoritative accounting treatment
+
+API contract
+
+OpenAPI/generated client doesn’t completely match actual routes → bring them back into agreement
+
+⸻
+
+If this were my app, I’d do it in this order
+
+Phase 1 — Financial foundation
+
+1. C1 Business isolation
+2. C4 Unassigned-record policy
+3. #1966 Cash-basis revenue
+4. H4 IRS mileage authority
+5. H3 mileage predicate consistency
+6. H5 subcontractor business filtering
+7. H6 owner activity
+8. H7 reversal accounting
+9. M1/M2 job-profit reconciliation
+
+Phase 2 — Database foundation
+
+10. C2 migration authority
+11. Audit production schema vs source
+12. Establish proper migration ledger
+13. Only then start adding/enforcing ownership FKs
+
+Phase 3 — Security
+
+14. C3 migration-key bypass
+15. Square webhook
+16. Storage authorization
+17. Global ID authorization
+18. CORS/uploads/dependencies
+
+Phase 4 — CRM
+
+19. Organization/company model
+20. Multiple contacts
+21. Multiple locations/sites
+22. Opportunities
+23. Prospect conversion
+24. Estimate → Job conversion
+
+Phase 5 — UX/reliability
+
+25. Reports center
+26. Error handling
+27. Cache invalidation
+28. Invoice money/rounding
+29. Validation
+30. Browser-level financial regression tests
+
+⸻
+
+The biggest thing I’d tell Replit
+
+Don’t let it turn this into 30 unrelated little tasks.
+
+The audit is telling us there are several foundations that need to be established first.
+
+The biggest foundation is:
+
+Business → Source Record → Accounting Treatment → Report
+
+Every financial number should be traceable backward through that chain.
+
+Once that’s true, things like your $45,106.54 Expenses, $32,515.47 Accounting, James’s allocation payments, mileage, Schedule C, and cash-basis revenue become independently verifiable instead of us having to trust whatever number happens to appear on a screen.
+
+And I would not let Replit make any production data changes for these audit items until the read-only reconciliation is finished and approved.
