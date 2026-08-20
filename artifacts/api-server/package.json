@@ -7,6 +7,7 @@
     "dev": "NODE_ENV=development tsx ./src/index.ts",
     "build": "tsx ./build.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "tsx ./scripts/check-development-schema.ts",
     "test": "vitest run",
     "postinstall": "node node_modules/puppeteer/install.mjs"
   },
