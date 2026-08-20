@@ -36,6 +36,25 @@ The first command refreshes
 the canonical ledger or missing required contract artifacts, and the generated
 inventory reports route/spec gaps and all remaining startup DDL/data changes.
 
+The source inventory does not inspect the active database. Before running the
+accounting test/release gate, run the read-only development metadata check:
+
+```sh
+pnpm run schema-contract:live-check
+```
+
+For the complete accounting release gate, which intentionally runs the live
+check first, use:
+
+```sh
+pnpm run accounting:gate
+```
+
+The live check fails with a table/column-specific message when a required
+ownership column is missing or has the wrong nullability, integer type, foreign
+key target, or delete behavior. It never runs DDL, backfills records, or
+connects to a production database.
+
 ## Business ownership release gate
 
 Core accounting records use `business_id` as the canonical ownership field.
