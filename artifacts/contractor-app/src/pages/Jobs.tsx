@@ -5404,6 +5404,32 @@ function JobFormDialog({
     setSubmitting(true);
     setError("");
     try {
+      const builderText = builderQuery.trim();
+      const modelText = modelQuery.trim();
+      const selectedBuilder = mfhMfgId != null
+        ? mfhMfgs.find(builder => builder.id === mfhMfgId)
+        : undefined;
+      const selectedModel = mfhModelId != null
+        ? mfhModels.find(model => model.id === mfhModelId)
+        : undefined;
+
+      if (builderText && !mfhMfgId) {
+        showFormError("Select the builder from the list or use the Add option before saving.");
+        return;
+      }
+      if (builderText && selectedBuilder && selectedBuilder.name.trim().toLowerCase() !== builderText.toLowerCase()) {
+        showFormError("Select the builder from the list or use the Add option before saving.");
+        return;
+      }
+      if (modelText && !mfhModelId) {
+        showFormError("Select the model from the list or use the Add option before saving.");
+        return;
+      }
+      if (modelText && selectedModel && selectedModel.name.trim().toLowerCase() !== modelText.toLowerCase()) {
+        showFormError("Select the model from the list or use the Add option before saving.");
+        return;
+      }
+
       const payload: CreateJobRequest = {
         title: form.title.trim(),
         clientId: form.clientId ? parseInt(form.clientId) : undefined,
@@ -5870,9 +5896,15 @@ function JobFormDialog({
                   placeholder="Search or type to add…"
                   value={builderQuery}
                   onChange={e => {
-                    setBuilderQuery(e.target.value);
+                    const nextValue = e.target.value;
+                    setBuilderQuery(nextValue);
                     setBuilderDropOpen(true);
-                    if (!e.target.value) { setMfhMfgId(null); setMfhModelId(null); setModelQuery(""); }
+                    const selected = mfhMfgId != null ? mfhMfgs.find(builder => builder.id === mfhMfgId) : undefined;
+                    if (!nextValue || !selected || selected.name.trim().toLowerCase() !== nextValue.trim().toLowerCase()) {
+                      setMfhMfgId(null);
+                      setMfhModelId(null);
+                      setModelQuery("");
+                    }
                   }}
                   onFocus={() => setBuilderDropOpen(true)}
                   onBlur={() => setTimeout(() => setBuilderDropOpen(false), 150)}
@@ -5881,14 +5913,14 @@ function JobFormDialog({
                   <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-44 overflow-y-auto">
                     {builderFiltered.map(m => (
                       <button key={m.id} type="button"
-                        onMouseDown={e => { e.preventDefault(); setMfhMfgId(m.id); setBuilderQuery(m.name); setMfhModelId(null); setModelQuery(""); setBuilderDropOpen(false); }}
+                         onPointerDown={e => { e.preventDefault(); setMfhMfgId(m.id); setBuilderQuery(m.name); setMfhModelId(null); setModelQuery(""); setBuilderDropOpen(false); }}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors">
                         {m.name}
                       </button>
                     ))}
                     {showBuilderCreate && (
                       <button type="button"
-                        onMouseDown={async e => {
+                         onPointerDown={async e => {
                           e.preventDefault();
                           try {
                             const c = await createMfhManufacturer.mutateAsync({ name: builderQuery.trim() });
@@ -5939,7 +5971,15 @@ function JobFormDialog({
                   placeholder={mfhMfgId ? "Search or type to add…" : "Select builder first"}
                   disabled={!mfhMfgId}
                   value={modelQuery}
-                  onChange={e => { setModelQuery(e.target.value); setModelDropOpen(true); if (!e.target.value) setMfhModelId(null); }}
+                  onChange={e => {
+                     const nextValue = e.target.value;
+                     setModelQuery(nextValue);
+                     setModelDropOpen(true);
+                     const selected = mfhModelId != null ? mfhModels.find(model => model.id === mfhModelId) : undefined;
+                     if (!nextValue || !selected || selected.name.trim().toLowerCase() !== nextValue.trim().toLowerCase()) {
+                       setMfhModelId(null);
+                     }
+                   }}
                   onFocus={() => { if (mfhMfgId) setModelDropOpen(true); }}
                   onBlur={() => setTimeout(() => setModelDropOpen(false), 150)}
                 />
@@ -5947,7 +5987,7 @@ function JobFormDialog({
                   <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto">
                     {modelFiltered.map(m => (
                       <button key={m.id} type="button"
-                        onMouseDown={e => { e.preventDefault(); setMfhModelId(m.id); setModelQuery(m.name); if (m.constructionTypeName) setMfhConstructionType(m.constructionTypeName); setModelDropOpen(false); }}
+                       onPointerDown={e => { e.preventDefault(); setMfhModelId(m.id); setModelQuery(m.name); if (m.constructionTypeName) setMfhConstructionType(m.constructionTypeName); setModelDropOpen(false); }}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors flex items-center justify-between">
                         <span>{m.name}</span>
                         {m.constructionTypeName && <span className="text-[10px] text-muted-foreground ml-2">{m.constructionTypeName}</span>}
@@ -5960,7 +6000,7 @@ function JobFormDialog({
                         <div className="flex gap-1 flex-wrap">
                           {constructionTypes.map(ct => (
                             <button key={ct.id} type="button"
-                              onMouseDown={e => { e.preventDefault(); handleCreateModel(modelQuery.trim(), ct.id, ct.name); }}
+                             onPointerDown={e => { e.preventDefault(); handleCreateModel(modelQuery.trim(), ct.id, ct.name); }}
                               className="px-2.5 py-1 rounded-lg border border-amber-200 text-xs font-medium text-amber-700 hover:bg-amber-50 transition-colors">
                               {ct.name}
                             </button>

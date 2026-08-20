@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
@@ -102,6 +102,48 @@ function parsePermitChecklist(raw: unknown) {
 type PhaseItem = { name: string; completed: boolean };
 type PermitChecklistItem = { label: string; checked: boolean };
 
+async function validateMfhSelection(manufacturerValue: unknown, modelValue: unknown) {
+  const manufacturerId = manufacturerValue == null || manufacturerValue === ""
+    ? null
+    : Number(manufacturerValue);
+  const modelId = modelValue == null || modelValue === ""
+    ? null
+    : Number(modelValue);
+
+  if (manufacturerId != null && (!Number.isInteger(manufacturerId) || manufacturerId <= 0)) {
+    return { error: "Invalid builder selection" } as const;
+  }
+  if (modelId != null && (!Number.isInteger(modelId) || modelId <= 0)) {
+    return { error: "Invalid model selection" } as const;
+  }
+  if (modelId != null && manufacturerId == null) {
+    return { error: "A model requires a builder" } as const;
+  }
+
+  if (manufacturerId != null) {
+    const [builder] = await db
+      .select({ id: mfhManufacturersTable.id })
+      .from(mfhManufacturersTable)
+      .where(eq(mfhManufacturersTable.id, manufacturerId))
+      .limit(1);
+    if (!builder) return { error: "Builder not found" } as const;
+  }
+
+  if (modelId != null) {
+    const [model] = await db
+      .select({ manufacturerId: mfhModelsTable.manufacturerId })
+      .from(mfhModelsTable)
+      .where(eq(mfhModelsTable.id, modelId))
+      .limit(1);
+    if (!model) return { error: "Model not found" } as const;
+    if (model.manufacturerId !== manufacturerId) {
+      return { error: "The selected model does not belong to the selected builder" } as const;
+    }
+  }
+
+  return { manufacturerId, modelId } as const;
+}
+
 type JobRow = {
   id: number;
   title: string;
@@ -128,6 +170,9 @@ type JobRow = {
   phases: PhaseItem[] | null;
   permitChecklist: PermitChecklistItem[] | null;
   serviceBilling: ServiceBilling | null;
+  mfhManufacturerId: number | null;
+  mfhModelId: number | null;
+  mfhModelYear: number | null;
   mfhConstructionType: string | null;
   mhProductionServices: { id: number; name: string }[] | null;
   manHours: string | null;
@@ -182,6 +227,7 @@ async function getJobWithSubs(jobId: number) {
       serviceBilling: jobsTable.serviceBilling,
       mfhManufacturerId: jobsTable.mfhManufacturerId,
       mfhModelId: jobsTable.mfhModelId,
+      mfhModelYear: jobsTable.mfhModelYear,
       mfhConstructionType: jobsTable.mfhConstructionType,
       mhProductionServices: jobsTable.mhProductionServices,
       manHours: jobsTable.manHours,
@@ -277,6 +323,7 @@ router.get("/", async (req, res) => {
         homeModel: jobsTable.homeModel,
         mfhManufacturerId: jobsTable.mfhManufacturerId,
         mfhModelId: jobsTable.mfhModelId,
+         mfhModelYear: jobsTable.mfhModelYear,
         mfhConstructionType: jobsTable.mfhConstructionType,
         mhProductionServices: jobsTable.mhProductionServices,
         manHours: jobsTable.manHours,
@@ -324,6 +371,9 @@ router.post("/", async (req, res) => {
     let parsedPermitChecklist;
     try { parsedPermitChecklist = parsePermitChecklist(permitChecklist); } catch (e: unknown) { return res.status(400).json({ error: e instanceof Error ? e.message : "Invalid permitChecklist" }); }
 
+    const mfhSelection = await validateMfhSelection(mfhManufacturerId, mfhModelId);
+    if ("error" in mfhSelection) return res.status(400).json({ error: mfhSelection.error });
+
     // Assign the next sequential job number (max existing + 1, gap-free)
     const [{ maxNum }] = await db.select({ maxNum: sql<number>`COALESCE(MAX(job_number), 0)` }).from(jobsTable);
     const nextJobNumber = (maxNum ?? 0) + 1;
@@ -343,8 +393,8 @@ router.post("/", async (req, res) => {
       phases: parsedPhases,
       permitChecklist: parsedPermitChecklist,
       jobNumber: nextJobNumber,
-      mfhManufacturerId: mfhManufacturerId || null,
-      mfhModelId: mfhModelId || null,
+      mfhManufacturerId: mfhSelection.manufacturerId,
+      mfhModelId: mfhSelection.modelId,
       mfhModelYear: mfhModelYear != null ? parseInt(mfhModelYear) : null,
       mfhConstructionType: mfhConstructionType || null,
       mhProductionServices: Array.isArray(mhProductionServices) ? mhProductionServices : null,
@@ -1432,6 +1482,12 @@ router.put("/:id", async (req, res) => {
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
 
+    let mfhSelection: Awaited<ReturnType<typeof validateMfhSelection>> | null = null;
+    if ("mfhManufacturerId" in req.body || "mfhModelId" in req.body) {
+      mfhSelection = await validateMfhSelection(mfhManufacturerId, mfhModelId);
+      if ("error" in mfhSelection) return res.status(400).json({ error: mfhSelection.error });
+    }
+
     // Only include fields that were explicitly sent in the request body
     // to avoid wiping existing values (e.g. clientId when only status changes)
     const updates: Record<string, unknown> = {};
@@ -1475,8 +1531,12 @@ router.put("/:id", async (req, res) => {
         updates.serviceBilling = parsed.data;
       }
     }
-    if ("mfhManufacturerId" in req.body) updates.mfhManufacturerId = mfhManufacturerId || null;
-    if ("mfhModelId" in req.body) updates.mfhModelId = mfhModelId || null;
+    if ("mfhManufacturerId" in req.body) {
+      updates.mfhManufacturerId = mfhSelection && "manufacturerId" in mfhSelection ? mfhSelection.manufacturerId : null;
+      updates.mfhModelId = mfhSelection && "modelId" in mfhSelection ? mfhSelection.modelId : null;
+    } else if ("mfhModelId" in req.body) {
+      updates.mfhModelId = mfhSelection && "modelId" in mfhSelection ? mfhSelection.modelId : null;
+    }
     if ("mfhModelYear" in req.body) updates.mfhModelYear = mfhModelYear != null ? parseInt(mfhModelYear) : null;
     if ("mfhConstructionType" in req.body) updates.mfhConstructionType = mfhConstructionType || null;
     if ("mhProductionServices" in req.body) updates.mhProductionServices = Array.isArray(mhProductionServices) ? mhProductionServices : null;
