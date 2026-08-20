@@ -10,7 +10,7 @@ import { eq, and, gte, lte, sum, count, ne, isNull, sql, inArray } from "drizzle
 const router = Router();
 
 import { getIrsMileageRate } from "../lib/irs-rates.js";
-import { filterCashReceipts } from "../lib/cash-revenue.js";
+import { filterCashReceipts, sumCashReceipts } from "../lib/cash-revenue.js";
 
 const SCHEDULE_C_LINES = {
   cogs:            { line: 4,  description: "Cost of goods sold" },
@@ -168,9 +168,11 @@ router.get("/schedule-c", async (req, res) => {
       .select({
         status: invoicesTable.status,
         total: invoicesTable.total,
+        amountPaid: invoicesTable.amountPaid,
         issueDate: invoicesTable.issueDate,
         stripePaidAt: invoicesTable.stripePaidAt,
         squarePaidAt: invoicesTable.squarePaidAt,
+        lastManualPaidAt: invoicesTable.lastManualPaidAt,
       })
       .from(invoicesTable)
       .where(
@@ -180,8 +182,7 @@ router.get("/schedule-c", async (req, res) => {
         )
       );
 
-    const invoiceReceipts = filterCashReceipts(paidInvoices, startDate, endDate)
-      .reduce((total, invoice) => total + parseFloat(invoice.total ?? "0"), 0);
+    const invoiceReceipts = sumCashReceipts(paidInvoices, startDate, endDate);
 
     // 1b. Prior/external revenue entered as "Other Income"
     const [otherIncomeResult] = await db

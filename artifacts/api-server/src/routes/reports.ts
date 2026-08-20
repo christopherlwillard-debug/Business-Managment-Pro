@@ -7,7 +7,7 @@ import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
 import { getIrsMileageRate } from "../lib/irs-rates.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
-import { filterCashReceipts } from "../lib/cash-revenue.js";
+import { filterCashReceipts, sumCashReceipts } from "../lib/cash-revenue.js";
 
 const router = Router();
 
@@ -147,7 +147,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       : await db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, ytdStart), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), mileageWhere));
 
     // Cash-basis: count paid invoice revenue only when the payment was actually received in this period
-    const invoiceRevenue = filterCashReceipts(kpiInvoices, startDate, endDate).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const invoiceRevenue = sumCashReceipts(kpiInvoices, startDate, endDate);
     const otherIncomeTotal = kpiOtherIncome.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const totalRevenue = invoiceRevenue + otherIncomeTotal;
     const pendingInvoices = kpiInvoices.filter(i => i.status === "sent").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
@@ -283,7 +283,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       // pre-payments (already captured in jsh accruals) from the BL breakdown too.
       const blExpenses = rawExpenses.filter(e => e.businessLine === bl && e.category !== "mileage" && !isOutstandingCostBooking(e) && !e.isWageAdvance);
       const blActiveJobs = rawActiveJobs.filter(j => j.businessLine === bl);
-      const blRevenue = filterCashReceipts(blInvoices, startDate, endDate).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
+      const blRevenue = sumCashReceipts(blInvoices, startDate, endDate)
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const blSubPayTotal = subPayByBl.get(bl) ?? 0;
       const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + blSubPayTotal;
@@ -317,7 +317,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     );
     const unattribInvoices = rawInvoices.filter(i => !i.businessLine || !knownBls.has(i.businessLine));
     const unattribOther = rawOtherIncome.filter(o => !o.businessLine || !knownBls.has(o.businessLine));
-    const unattribRevenue = unattribInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0)
+    const unattribRevenue = sumCashReceipts(unattribInvoices, startDate, endDate)
       + unattribOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     // Unattributed sub payments: those with null/unknown businessLine or a slug not in registered businesses
     const unattribSubPay = Array.from(subPayByBl.entries())
@@ -370,7 +370,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         ...filterCashReceipts(monthlyPaidInv, `${monthStr}-01`, `${monthStr}-${lastDay}`),
         ...monthlyNonPaidInv,
       ];
-      const invRevenue = filterCashReceipts(monthlyInv, `${monthStr}-01`, `${monthStr}-${lastDay}`).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+      const invRevenue = sumCashReceipts(monthlyInv, `${monthStr}-01`, `${monthStr}-${lastDay}`);
       const othRevenue = monthlyOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const mo_revenue = invRevenue + othRevenue;
       // Exclude mileage (sourced from mileage_logs), owner distributions (equity, not business costs),
@@ -524,9 +524,11 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       subtotal: invoicesTable.subtotal,
       taxAmount: invoicesTable.taxAmount,
       total: invoicesTable.total,
+      amountPaid: invoicesTable.amountPaid,
       issueDate: invoicesTable.issueDate,
       stripePaidAt: invoicesTable.stripePaidAt,
       squarePaidAt: invoicesTable.squarePaidAt,
+      lastManualPaidAt: invoicesTable.lastManualPaidAt,
       invoiceCity: invoicesTable.city,
       invoiceState: invoicesTable.state,
       jobCity: jobsTable.city,
@@ -590,7 +592,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
 
     const invoiceGrossRevenue = invoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     // Cash-basis: count paid revenue only when payment was received in the selected year
-    const invoicePaidRevenue = filterCashReceipts(invoices, startDate, endDate).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const invoicePaidRevenue = sumCashReceipts(invoices, startDate, endDate);
     const pendingRevenue = invoices.filter(i => ["sent", "overdue"].includes(i.status)).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     const otherIncomeSum = otherIncomeRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const grossRevenue = invoiceGrossRevenue + otherIncomeSum;
@@ -1386,7 +1388,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       ));
     const closedJobCount = closedCountRow?.n ?? 0;
 
-    const grossReceipts = filterCashReceipts(invRows, startDate, endDate).reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const grossReceipts = sumCashReceipts(invRows, startDate, endDate);
     const otherIncome   = otherRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const grossRevenue  = grossReceipts + otherIncome;
 
@@ -1587,12 +1589,14 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
         status: invoicesTable.status,
         issueDate: invoicesTable.issueDate,
         total: invoicesTable.total,
+        amountPaid: invoicesTable.amountPaid,
         subtotal: invoicesTable.subtotal,
         clientName: clientsTable.name,
         city: invoicesTable.city,
         state: invoicesTable.state,
         stripePaidAt: invoicesTable.stripePaidAt,
         squarePaidAt: invoicesTable.squarePaidAt,
+        lastManualPaidAt: invoicesTable.lastManualPaidAt,
       })
         .from(invoicesTable)
         .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
@@ -1651,7 +1655,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     // ── P&L Summary ──────────────────────────────────────────────────────────
     // Cash-basis: use electronic payment timestamps when available; fall back to issueDate for manual payments
      const paidInvoices = filterCashReceipts(invoices, startDate, endDate);
-    const grossReceipts = paidInvoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const grossReceipts = sumCashReceipts(paidInvoices, startDate, endDate);
     const otherIncomeTotal = otherIncomeRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const totalRevenue = grossReceipts + otherIncomeTotal;
 
@@ -2193,9 +2197,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
 
     // Compute YTD net profit (matches accounting route logic) for estimated taxes.
     // Cash-basis: use effective payment date so revenue matches the year-end tax report.
-    const invoicePaidRevenue = invoices
-      .filter(i => filterCashReceipts([i], startDate, endDate).length > 0)
-      .reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const invoicePaidRevenue = sumCashReceipts(invoices, startDate, endDate);
     const otherIncomeSum = otherIncomeRows.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const paidRevenue = invoicePaidRevenue + otherIncomeSum;
     // Exclude wage-advance expenses (isWageAdvance=true) to match the Accounting route.

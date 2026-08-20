@@ -1,22 +1,37 @@
 export interface CashRevenueInvoice {
   status: string;
   total?: string | number | null;
+  amountPaid?: string | number | null;
   issueDate?: string | null;
   stripePaidAt?: Date | null;
   squarePaidAt?: Date | null;
+  lastManualPaidAt?: Date | null;
+}
+
+export interface CashReceiptEvent {
+  amount: string | number;
+  receivedAt: Date | string;
+  isReversal?: boolean | null;
 }
 
 /**
  * Cash-basis payment date for an invoice.
  *
- * Electronic payment timestamps are authoritative when present. Manual paid
- * invoices have no separate payment date, so issueDate is the documented
- * fallback used by the existing ledger.
+ * Electronic payment timestamps are authoritative when present. Manual payment
+ * timestamps are next. Issue date remains the legacy fallback for older rows
+ * that have no recorded payment timestamp.
  */
 export function getEffectivePaymentDate(invoice: CashRevenueInvoice): string {
   if (invoice.stripePaidAt) return invoice.stripePaidAt.toISOString().slice(0, 10);
   if (invoice.squarePaidAt) return invoice.squarePaidAt.toISOString().slice(0, 10);
+  if (invoice.lastManualPaidAt) return invoice.lastManualPaidAt.toISOString().slice(0, 10);
   return invoice.issueDate ?? "";
+}
+
+export function getCashReceiptAmount(invoice: CashRevenueInvoice): number {
+  const rawAmount = invoice.amountPaid ?? invoice.total ?? 0;
+  const amount = Number(rawAmount);
+  return Number.isFinite(amount) && amount >= 0 ? amount : 0;
 }
 
 export function isCashReceiptInPeriod(
@@ -43,5 +58,26 @@ export function sumCashReceipts(
   endDate: string,
 ): number {
   return filterCashReceipts(invoices, startDate, endDate)
-    .reduce((sum, invoice) => sum + parseFloat(String(invoice.total ?? "0")), 0);
+    .reduce((sum, invoice) => sum + getCashReceiptAmount(invoice), 0);
+}
+
+/**
+ * Reconciles a normalized payment-event stream. This is intentionally separate
+ * from invoice snapshots because the current schema does not yet persist
+ * multiple customer payments per invoice.
+ */
+export function sumCashReceiptEvents(
+  events: CashReceiptEvent[],
+  startDate: string,
+  endDate: string,
+): number {
+  return events.reduce((sum, event) => {
+    const receivedAt = event.receivedAt instanceof Date
+      ? event.receivedAt.toISOString().slice(0, 10)
+      : event.receivedAt.slice(0, 10);
+    if (receivedAt < startDate || receivedAt > endDate) return sum;
+    const amount = Number(event.amount);
+    if (!Number.isFinite(amount)) return sum;
+    return sum + (event.isReversal ? -Math.abs(amount) : amount);
+  }, 0);
 }

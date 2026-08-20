@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   filterCashReceipts,
   getEffectivePaymentDate,
+  getCashReceiptAmount,
   sumCashReceipts,
+  sumCashReceiptEvents,
 } from "./cash-revenue.js";
 
 const YEAR = 2026;
@@ -39,5 +41,42 @@ describe("cash revenue reconciliation", () => {
   it("falls back to issue date for manually marked paid invoices", () => {
     const invoice = { status: "paid", issueDate: `${YEAR}-07-15`, total: 42 };
     expect(sumCashReceipts([invoice], `${YEAR}-07-01`, `${YEAR}-07-31`)).toBe(42);
+  });
+
+  it("uses the recorded manual payment date instead of the issue date", () => {
+    const invoice = {
+      status: "paid",
+      issueDate: `${YEAR - 1}-12-31`,
+      lastManualPaidAt: new Date(`${YEAR}-01-04T12:00:00.000Z`),
+      total: "75.00",
+    };
+
+    expect(getEffectivePaymentDate(invoice)).toBe(`${YEAR}-01-04`);
+    expect(sumCashReceipts([invoice], `${YEAR}-01-01`, `${YEAR}-12-31`)).toBe(75);
+    expect(sumCashReceipts([invoice], `${YEAR - 1}-01-01`, `${YEAR - 1}-12-31`)).toBe(0);
+  });
+
+  it("uses aggregate amountPaid for a partial cash receipt instead of the invoice total", () => {
+    const invoice = {
+      status: "paid",
+      issueDate: `${YEAR}-04-01`,
+      amountPaid: "250.00",
+      total: "1000.00",
+    };
+
+    expect(getCashReceiptAmount(invoice)).toBe(250);
+    expect(sumCashReceipts([invoice], `${YEAR}-04-01`, `${YEAR}-04-30`)).toBe(250);
+  });
+
+  it("reconciles multiple payment events and reversals by event date", () => {
+    const events = [
+      { amount: "250.00", receivedAt: `${YEAR}-05-01` },
+      { amount: "250.00", receivedAt: `${YEAR}-05-15` },
+      { amount: "100.00", receivedAt: `${YEAR}-05-20`, isReversal: true },
+      { amount: "500.00", receivedAt: `${YEAR}-06-01` },
+    ];
+
+    expect(sumCashReceiptEvents(events, `${YEAR}-05-01`, `${YEAR}-05-31`)).toBe(400);
+    expect(sumCashReceiptEvents(events, `${YEAR}-06-01`, `${YEAR}-06-30`)).toBe(500);
   });
 });
