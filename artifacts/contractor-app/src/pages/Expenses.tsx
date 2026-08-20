@@ -284,6 +284,28 @@ function useDeleteExpense() {
   });
 }
 
+function useVoidExpense() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
+      const res = await fetch(`${API}/expenses/${id}/void`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as any).error ?? "Failed to void expense");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/expenses"] });
+      qc.invalidateQueries({ queryKey: ["/api/subcontractors"] });
+    },
+  });
+}
+
 function useDeleteSpr() {
   const qc = useQueryClient();
   return useMutation({
@@ -1493,9 +1515,10 @@ function ReceiptDropZone({ file, onFile, onClear, onDriveClick, driveLoading, sh
 function ExpenseDeleteConfirm({
   expense, onConfirm, onCancel, deleting,
 }: {
-  expense: any; onConfirm: () => void; onCancel: () => void; deleting: boolean;
+  expense: any; onConfirm: (reason: string) => void; onCancel: () => void; deleting: boolean;
 }) {
   const isSubPayment = expense?.category?.toLowerCase() === "subcontractor" && expense?.subcontractorName;
+  const [reason, setReason] = useState("");
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
@@ -1505,12 +1528,19 @@ function ExpenseDeleteConfirm({
             <AlertTriangle className="w-5 h-5 text-red-600" />
           </div>
           <div>
-            <h3 className="font-bold text-gray-900 text-base">Permanently delete expense?</h3>
+            <h3 className="font-bold text-gray-900 text-base">Void expense?</h3>
             <p className="text-sm text-gray-500 mt-1">
               <span className="font-semibold text-gray-700">{expense.description}</span>
               {expense.vendor ? ` · ${expense.vendor}` : ""} will be{" "}
-              <span className="font-semibold text-red-600">permanently deleted</span> and cannot be recovered.
+              <span className="font-semibold text-amber-600">marked void</span> and kept in financial history.
             </p>
+            <input
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Reason for correction (required)"
+              className="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              aria-label="Reason for voiding expense"
+            />
             {isSubPayment && (
               <p className="text-xs text-indigo-600 mt-2 bg-indigo-50 rounded-lg px-2.5 py-1.5 border border-indigo-100">
                 This is a subcontractor payment for <strong>{expense.subcontractorName}</strong>. Deleting it will reduce their YTD total by <strong>${parseFloat(expense.amount ?? "0").toFixed(2)}</strong>.
@@ -1523,10 +1553,10 @@ function ExpenseDeleteConfirm({
             className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50">
             Cancel
           </button>
-          <button onClick={onConfirm} disabled={deleting}
-            className="px-5 py-2 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 transition-colors shadow disabled:opacity-60 flex items-center gap-2">
+          <button onClick={() => onConfirm(reason.trim())} disabled={deleting || !reason.trim()}
+            className="px-5 py-2 rounded-xl text-sm font-bold bg-amber-600 text-white hover:bg-amber-700 transition-colors shadow disabled:opacity-60 flex items-center gap-2">
             <Trash2 className="w-3.5 h-3.5" />
-            {deleting ? "Deleting…" : "Yes, Delete Permanently"}
+            {deleting ? "Voiding…" : "Void and Keep History"}
           </button>
         </div>
       </div>
@@ -2513,6 +2543,7 @@ export default function Expenses() {
   const uploadMutation    = useUploadExpenseReceipt();
   const saveVendor        = useSaveVendor();
   const deleteExpense     = useDeleteExpense();
+  const voidExpense       = useVoidExpense();
   const deleteSpr         = useDeleteSpr();
   const updateExpense     = useUpdateExpense();
   const linkExpenseToTrip = useLinkExpenseToTrip();
@@ -3032,14 +3063,14 @@ export default function Expenses() {
     }
   };
 
-  async function handleDeleteConfirmed() {
+  async function handleDeleteConfirmed(reason: string) {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
       if ((deleteTarget as any)._source === "sub_payment_record") {
         await deleteSpr.mutateAsync((deleteTarget as any)._sprId);
       } else {
-        await deleteExpense.mutateAsync(deleteTarget.id);
+        await voidExpense.mutateAsync({ id: deleteTarget.id, reason });
       }
       if (viewExpense?.id === deleteTarget.id) setViewExpense(null);
     } finally {

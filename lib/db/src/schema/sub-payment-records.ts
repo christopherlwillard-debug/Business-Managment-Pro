@@ -19,6 +19,7 @@ export const subPaymentRecordsTable = pgTable("sub_payment_records", {
   agreedOwedSnapshot: numeric("agreed_owed_snapshot", { precision: 10, scale: 2 }),
   isReversal: boolean("is_reversal").default(false),
   reversesPaymentId: integer("reverses_payment_id"),
+  reversalReason: text("reversal_reason"),
   bankTransactionId: integer("bank_transaction_id"),
   // Dual-rate pay breakdown (hourly subs)
   workHours: numeric("work_hours", { precision: 8, scale: 2 }),

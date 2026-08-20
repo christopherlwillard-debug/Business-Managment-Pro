@@ -36,7 +36,7 @@ router.get("/", async (req, res) => {
   try {
     const { startDate, endDate, businessLine } = req.query as { startDate?: string; endDate?: string; businessLine?: string };
     const scope = await requestedBusiness(req);
-    const conditions = [];
+    const conditions: any[] = [isNull(otherIncomeTable.voidedAt)];
     if (startDate && endDate) {
       conditions.push(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate));
     }
@@ -92,6 +92,7 @@ router.put("/:id", async (req, res) => {
     const scope = await requestedBusiness(req);
     const [existing] = await db.select().from(otherIncomeTable).where(eq(otherIncomeTable.id, id));
     if (!existing || !belongsToBusiness(existing, scope)) { res.status(404).json({ error: "Not found" }); return; }
+    if (existing.voidedAt) { res.status(400).json({ error: "Voided income entries cannot be edited." }); return; }
     if (data.jobId != null) {
       const [job] = await db.select({ id: jobsTable.id, businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
         .from(jobsTable).where(eq(jobsTable.id, data.jobId));
@@ -132,11 +133,28 @@ router.delete("/:id", async (req, res) => {
           and(isNull(otherIncomeTable.businessId), eq(otherIncomeTable.businessLine, scope.slug)),
         )
       : undefined;
-    await db.delete(otherIncomeTable).where(and(eq(otherIncomeTable.id, id), ownership));
-    res.status(204).send();
+    return res.status(409).json({ error: "Posted income cannot be deleted. Use the void action to preserve financial history." });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete other income entry" });
+  }
+});
+
+router.post("/:id/void", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!reason) return res.status(400).json({ error: "A void reason is required" });
+    const [updated] = await db.update(otherIncomeTable)
+      .set({ voidedAt: new Date(), voidReason: reason })
+      .where(and(eq(otherIncomeTable.id, id), isNull(otherIncomeTable.voidedAt)))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Income entry not found or already voided" });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to void income entry" });
   }
 });
 

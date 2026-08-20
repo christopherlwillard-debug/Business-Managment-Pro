@@ -41,6 +41,8 @@ export const mileageLogsTable = pgTable("mileage_logs", {
   expenseId: integer("expense_id").references(() => expensesTable.id, { onDelete: "set null" }),
   importId: integer("import_id").references(() => mileageImportsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  voidedAt: timestamp("voided_at"),
+  voidReason: text("void_reason"),
 });
 
 export const insertMileageLogSchema = createInsertSchema(mileageLogsTable).omit({ id: true, createdAt: true });

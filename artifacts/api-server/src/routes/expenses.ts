@@ -31,6 +31,7 @@ async function syncJobSubPayment(jobId: number, subId: number): Promise<void> {
       eq(expensesTable.jobId, jobId),
       eq(expensesTable.subcontractorId, subId),
       isNull(expensesTable.jobSubHoursId),
+      isNull(expensesTable.voidedAt),
     ));
   const total = parseFloat(sumRow?.total ?? "0");
   await db.insert(jobSubcontractorsTable)
@@ -91,7 +92,7 @@ router.get("/", async (req, res) => {
     // Exclude auto-expenses linked to sub hours (jobSubHoursId IS NOT NULL).
     // Those are internal job-cost entries used for P&L math; actual cash paid
     // to hourly subs is captured by sub_payment_records rows (shown below).
-    const conditions: any[] = [isNull(expensesTable.jobSubHoursId)];
+    const conditions: any[] = [isNull(expensesTable.jobSubHoursId), isNull(expensesTable.voidedAt)];
     if (category) conditions.push(eq(expensesTable.category, category as string));
     if (jobId) conditions.push(eq(expensesTable.jobId, parseInt(jobId as string)));
     if (startDate) conditions.push(gte(expensesTable.date, startDate as string));
@@ -417,25 +418,55 @@ router.delete("/spr/:sprId", async (req, res) => {
   try {
     const sprId = parseInt(req.params.sprId as string);
     if (isNaN(sprId)) return res.status(400).json({ error: "Invalid id" });
-    await db.delete(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.id, sprId));
-    res.status(204).send();
+    return res.status(409).json({ error: "Posted subcontractor payments cannot be deleted. Use the reversal action to preserve payment history." });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete payment record" });
   }
 });
 
+router.post("/spr/:sprId/reverse", async (req, res) => {
+  try {
+    const sprId = parseInt(req.params.sprId as string);
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    if (isNaN(sprId)) return res.status(400).json({ error: "Invalid id" });
+    if (!reason) return res.status(400).json({ error: "A reversal reason is required" });
+    const [updated] = await db.update(subPaymentRecordsTable)
+      .set({ isReversal: true, reversalReason: reason })
+      .where(and(eq(subPaymentRecordsTable.id, sprId), sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Payment record not found or already reversed" });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to reverse payment record" });
+  }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
-    const [toDelete] = await db.select().from(expensesTable).where(eq(expensesTable.id, parseInt(req.params.id as string)));
-    await db.delete(expensesTable).where(eq(expensesTable.id, parseInt(req.params.id as string)));
-    if (toDelete?.category?.toLowerCase() === "subcontractor" && toDelete.jobId && toDelete.subcontractorId) {
-      await syncJobSubPayment(toDelete.jobId, toDelete.subcontractorId);
-    }
-    res.status(204).send();
+    return res.status(409).json({ error: "Posted expenses cannot be deleted. Use the void action to preserve financial history." });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete expense" });
+  }
+});
+
+router.post("/:id/void", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!reason) return res.status(400).json({ error: "A void reason is required" });
+    const [updated] = await db.update(expensesTable)
+      .set({ voidedAt: new Date(), voidReason: reason })
+      .where(and(eq(expensesTable.id, id), isNull(expensesTable.voidedAt)))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Expense not found or already voided" });
+    res.json(formatExpense(updated));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to void expense" });
   }
 });
 

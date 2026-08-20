@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { ownerCapitalEntriesTable, settingsTable } from "@workspace/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
 
 const router = Router();
 
@@ -50,6 +50,7 @@ router.get("/", async (req, res) => {
       ? conditions.length === 1 ? conditions[0] : and(...conditions as [any, any])
       : undefined;
 
+    conditions.push(isNull(ownerCapitalEntriesTable.voidedAt));
     const entries = await db
       .select()
       .from(ownerCapitalEntriesTable)
@@ -155,11 +156,28 @@ router.delete("/:id", async (req, res) => {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
-    await db.delete(ownerCapitalEntriesTable).where(eq(ownerCapitalEntriesTable.id, id));
-    res.status(204).send();
+    return res.status(409).json({ error: "Posted owner-capital entries cannot be deleted. Use the void action to preserve financial history." });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete entry" });
+  }
+});
+
+router.post("/:id/void", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!reason) return res.status(400).json({ error: "A void reason is required" });
+    const [updated] = await db.update(ownerCapitalEntriesTable)
+      .set({ voidedAt: new Date(), voidReason: reason })
+      .where(and(eq(ownerCapitalEntriesTable.id, id), isNull(ownerCapitalEntriesTable.voidedAt)))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Owner-capital entry not found or already voided" });
+    res.json(formatEntry(updated));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to void owner-capital entry" });
   }
 });
 

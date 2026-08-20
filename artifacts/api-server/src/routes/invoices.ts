@@ -556,6 +556,8 @@ router.post("/:id/void", async (req, res) => {
     if (inv.status === "draft") {
       return res.status(400).json({ error: "Draft invoices should be deleted, not voided. Use the delete endpoint instead." });
     }
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    if (!reason) return res.status(400).json({ error: "A void reason is required." });
 
     // Best-effort Square cleanup before voiding
     if (inv.squarePaymentLinkId && isSquareConfigured()) {
@@ -567,7 +569,7 @@ router.post("/:id/void", async (req, res) => {
     }
 
     await db.update(invoicesTable)
-      .set({ status: "cancelled", squarePaymentLinkId: null, squarePaymentLinkUrl: null })
+      .set({ status: "cancelled", voidedAt: new Date(), voidReason: reason, squarePaymentLinkId: null, squarePaymentLinkUrl: null })
       .where(eq(invoicesTable.id, id));
 
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));

@@ -68,6 +68,7 @@ export async function recalcImportExpenses(importId: number) {
     .where(and(
       eq(mileageLogsTable.importId, importId),
       eq(mileageLogsTable.classification, "business"),
+      isNull(mileageLogsTable.voidedAt),
     ));
 
   // Group by "YYYY-MM"
@@ -86,7 +87,7 @@ export async function recalcImportExpenses(importId: number) {
   const existingExpenses = await db
     .select()
     .from(expensesTable)
-    .where(eq(expensesTable.mileageImportId, importId));
+    .where(and(eq(expensesTable.mileageImportId, importId), isNull(expensesTable.voidedAt)));
 
   const existingByMonth = new Map(existingExpenses.map(e => [(e.date ?? "").slice(0, 7), e]));
 
@@ -124,9 +125,10 @@ router.get("/summary", async (req, res) => {
     if (!businessId) return res.status(400).json({ error: "businessId is required" });
     const bizId = parseInt(businessId as string);
 
-    const baseConditions: any[] = [
+  const baseConditions: any[] = [
       eq(mileageLogsTable.businessId, bizId),
       isNull(mileageLogsTable.subcontractorId),
+      isNull(mileageLogsTable.voidedAt),
     ];
     if (startDate) baseConditions.push(gte(mileageLogsTable.date, startDate as string));
     if (endDate) baseConditions.push(lte(mileageLogsTable.date, endDate as string));
@@ -169,6 +171,7 @@ router.get("/", async (req, res) => {
     const conditions: any[] = [
       eq(mileageLogsTable.businessId, bizId),
       isNull(mileageLogsTable.subcontractorId),
+      isNull(mileageLogsTable.voidedAt),
     ];
     if (startDate) conditions.push(gte(mileageLogsTable.date, startDate as string));
     if (endDate) conditions.push(lte(mileageLogsTable.date, endDate as string));
@@ -253,6 +256,7 @@ router.put("/:id", async (req, res) => {
     const deductionAmount = classification === "business" ? milesNum * rate : 0;
 
     const [existing] = await db.select().from(mileageLogsTable).where(eq(mileageLogsTable.id, id));
+    if (existing?.voidedAt) return res.status(400).json({ error: "Voided mileage records cannot be edited." });
 
     if (existing?.expenseId) {
       await db.update(expensesTable).set({
@@ -296,24 +300,34 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-
-    const [log] = await db.select().from(mileageLogsTable).where(eq(mileageLogsTable.id, id));
-    if (log?.expenseId) {
-      await db.delete(expensesTable).where(eq(expensesTable.id, log.expenseId));
-    }
-
-    await db.delete(mileageLogsTable).where(eq(mileageLogsTable.id, id));
-
-    // Imported logs (no per-log expense): recalculate the monthly aggregate expense
-    if (log && !log.expenseId && log.importId) {
-      await recalcImportExpenses(log.importId);
-    }
-
-    res.status(204).send();
+    return res.status(409).json({ error: "Mileage records cannot be deleted. Use the void action to preserve deduction history." });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete mileage log" });
+  }
+});
+
+router.post("/:id/void", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!reason) return res.status(400).json({ error: "A void reason is required" });
+    const [log] = await db.select().from(mileageLogsTable).where(eq(mileageLogsTable.id, id));
+    if (!log) return res.status(404).json({ error: "Mileage record not found" });
+    if (log.voidedAt) return res.status(404).json({ error: "Mileage record is already voided" });
+    const [updated] = await db.update(mileageLogsTable)
+      .set({ voidedAt: new Date(), voidReason: reason })
+      .where(eq(mileageLogsTable.id, id))
+      .returning();
+    if (updated?.expenseId) {
+      await db.update(expensesTable).set({ voidedAt: new Date(), voidReason: reason })
+        .where(and(eq(expensesTable.id, updated.expenseId), isNull(expensesTable.voidedAt)));
+    }
+    res.json(formatMileage(updated));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to void mileage record" });
   }
 });
 
@@ -548,14 +562,14 @@ router.delete("/imports/:id/rollback", async (req, res) => {
     const expenseIds = linkedLogs.map(l => l.expenseId).filter((eid): eid is number => eid != null);
 
     if (linkedLogs.length > 0) {
-      await db.delete(mileageLogsTable).where(eq(mileageLogsTable.importId, id));
+      await db.update(mileageLogsTable).set({ voidedAt: new Date(), voidReason: "Mileage import rollback" }).where(eq(mileageLogsTable.importId, id));
     }
     // Legacy per-trip expenses (pre-consolidation imports)
     if (expenseIds.length > 0) {
-      await db.delete(expensesTable).where(inArray(expensesTable.id, expenseIds));
+      await db.update(expensesTable).set({ voidedAt: new Date(), voidReason: "Mileage import rollback" }).where(inArray(expensesTable.id, expenseIds));
     }
     // Monthly aggregate expenses linked to this import
-    await db.delete(expensesTable).where(eq(expensesTable.mileageImportId, id));
+    await db.update(expensesTable).set({ voidedAt: new Date(), voidReason: "Mileage import rollback" }).where(eq(expensesTable.mileageImportId, id));
 
     const [updated] = await db
       .update(mileageImportsTable)

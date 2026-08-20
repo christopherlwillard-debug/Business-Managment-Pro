@@ -80,17 +80,17 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       db.select().from(invoicesTable).where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
       // Non-paid invoices: issueDate-bounded so pending/overdue counts remain period-specific
       db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
-      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate), blWhere(expensesTable.businessLine))),
+      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
       // Period-consistent mileage for the profit formula — matches the selected period.
       // subcontractorId IS NULL: exclude sub-portal mileage (James Willard, Dewayne Lamb, etc.)
       // which is job-tracking data, not the owner's Schedule C standard-mileage deduction.
-      db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), mileageWhere)),
-      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine))),
+      db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt), mileageWhere)),
+      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine), isNull(otherIncomeTable.voidedAt))),
       db.select().from(jobsTable).where(and(eq(jobsTable.status, "in_progress"), blWhere(jobsTable.businessLine))),
       // Recent rows — always unfiltered
       db.select({ id: jobsTable.id, title: jobsTable.title, description: jobsTable.description, clientId: jobsTable.clientId, clientName: clientsTable.name, status: jobsTable.status, jobType: jobsTable.jobType, address: jobsTable.address, city: jobsTable.city, state: jobsTable.state, startDate: jobsTable.startDate, endDate: jobsTable.endDate, notes: jobsTable.notes, createdAt: jobsTable.createdAt }).from(jobsTable).leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id)).orderBy(desc(jobsTable.createdAt)).limit(5),
       db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, clientId: invoicesTable.clientId, clientName: clientsTable.name, jobId: invoicesTable.jobId, status: invoicesTable.status, issueDate: invoicesTable.issueDate, dueDate: invoicesTable.dueDate, subtotal: invoicesTable.subtotal, taxRate: invoicesTable.taxRate, taxAmount: invoicesTable.taxAmount, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid, notes: invoicesTable.notes, terms: invoicesTable.terms, lineItems: invoicesTable.lineItems, createdAt: invoicesTable.createdAt }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).orderBy(desc(invoicesTable.createdAt)).limit(5),
-      db.select().from(ownerCapitalEntriesTable).where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, expenseEndDate))),
+      db.select().from(ownerCapitalEntriesTable).where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, expenseEndDate), isNull(ownerCapitalEntriesTable.voidedAt))),
       // Fixed/allocation sub payments — cash-basis cash out.
       // Date range covers the full 6-month chart window (chartStartDate) so that
       // subPayByMonth is populated for all chart months, not just the KPI period.
@@ -129,8 +129,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
           // Same paid/non-paid split as kpiInvoices — see comment above
           db.select().from(invoicesTable).where(eq(invoicesTable.status, "paid")),
           db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
-          db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate))),
-          db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
+          db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate), isNull(expensesTable.voidedAt))),
+          db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), isNull(otherIncomeTable.voidedAt))),
           db.select().from(jobsTable).where(eq(jobsTable.status, "in_progress")),
         ])
       : [kpiPaidInvoices, kpiNonPaidInvoices, kpiExpenses, kpiOtherIncome, kpiActiveJobs];
@@ -144,7 +144,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // subcontractorId IS NULL: owner vehicle mileage only (excludes sub-portal tracking logs).
     const ytdMileageLogs = period === "year"
       ? allMileage
-      : await db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, ytdStart), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), mileageWhere));
+      : await db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, ytdStart), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt), mileageWhere));
 
     // Cash-basis: count paid invoice revenue only when the payment was actually received in this period
     const invoiceRevenue = sumCashReceipts(kpiInvoices, startDate, endDate);
@@ -361,8 +361,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         db.select().from(invoicesTable).where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
         // Non-paid: issueDate-bounded so outstanding counts remain month-specific
         db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, `${monthStr}-01`), lte(invoicesTable.issueDate, `${monthStr}-${lastDay}`), blWhere(invoicesTable.businessLine))),
-        db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-${lastDay}`), blWhere(expensesTable.businessLine))),
-        db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-${lastDay}`), blWhere(otherIncomeTable.businessLine))),
+        db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-${lastDay}`), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
+        db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-${lastDay}`), blWhere(otherIncomeTable.businessLine), isNull(otherIncomeTable.voidedAt))),
       ]);
       // Filter paid to effective payment date within this month so the revenue bar
       // and outstanding aggregate only reflect invoices that belong to this period.
@@ -444,7 +444,7 @@ router.get("/compliance", sectionGuard("compliance"), async (req, res) => {
 
     const [subs, mileageLogs, uncategorizedMileageResult] = await Promise.all([
       db.select().from(subcontractorsTable),
-      db.select().from(mileageLogsTable).where(eq(mileageLogsTable.classification, "business")),
+      db.select().from(mileageLogsTable).where(and(eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.voidedAt))),
       db.select({ cnt: count() }).from(mileageLogsTable).where(
         sql`(${mileageLogsTable.classification} IS NULL OR ${mileageLogsTable.classification} NOT IN ('business', 'personal'))`
       ),
@@ -551,12 +551,12 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
         .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
         .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
         .where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
-      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), blWhere(expensesTable.businessLine))),
+      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
       // subcontractorId IS NULL: owner vehicle mileage only — excludes sub-portal tracking logs.
-      db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), isNull(mileageLogsTable.subcontractorId), mileageWhere)),
+      db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt), mileageWhere)),
       db.select().from(subcontractorsTable),
       db.select().from(settingsTable).limit(1),
-      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine))),
+      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine), isNull(otherIncomeTable.voidedAt))),
       // Fixed/allocation sub payments — cash-basis cash out (not in expenses after Task #892).
       // Hourly subs already have auto-expense records (jobSubHoursId IS NOT NULL) — excluded here
       // via compensationType filter to avoid double-counting with the expensesTable rows.
@@ -633,7 +633,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       computeOwnerWaterfall(year, blFilter),
       db.select({ amount: ownerCapitalEntriesTable.amount })
         .from(ownerCapitalEntriesTable)
-        .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate))),
+        .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate), isNull(ownerCapitalEntriesTable.voidedAt))),
     ]);
     // Sign convention: positive entries = capital contributions (cash into business).
     const accOwnerContributionsTotal = (accOwnerContribRows as { amount: string | null }[]).reduce((s, r) => {
@@ -1279,14 +1279,14 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
         isWageAdvance: expensesTable.isWageAdvance,
       })
         .from(expensesTable)
-        .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), ne(expensesTable.category, "mileage"), blWhere(expensesTable.businessLine))),
+        .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), ne(expensesTable.category, "mileage"), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
       // subcontractorId IS NULL: owner vehicle mileage only — excludes sub-portal tracking logs.
       db.select({ totalMiles: sum(mileageLogsTable.miles), totalDed: sum(mileageLogsTable.deductionAmount) })
         .from(mileageLogsTable)
-        .where(and(eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), mileageWhere)),
+        .where(and(eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), mileageWhere)),
       db.select({ amount: otherIncomeTable.amount })
         .from(otherIncomeTable)
-        .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine))),
+        .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine), isNull(otherIncomeTable.voidedAt))),
       // Fixed/allocation sub payments — cash-basis cash out. Hourly subs already have
       // auto-expense records (jobSubHoursId IS NOT NULL), so we only add fixed/allocation here
       // to avoid double-counting.
@@ -1456,7 +1456,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       computeDepreciationForYear(year),
       db.select({ amount: ownerCapitalEntriesTable.amount })
         .from(ownerCapitalEntriesTable)
-        .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate))),
+        .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate), isNull(ownerCapitalEntriesTable.voidedAt))),
       db.select({ federalTaxElection: settingsTable.federalTaxElection })
         .from(settingsTable)
         .limit(1),
@@ -1602,12 +1602,12 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
         .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
         .where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
       db.select().from(expensesTable)
-        .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), blWhere(expensesTable.businessLine))),
+        .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
       // subcontractorId IS NULL: owner vehicle mileage only — excludes sub-portal tracking logs.
       db.select().from(mileageLogsTable)
-        .where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), mileageWhere)),
+        .where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt), mileageWhere)),
       db.select().from(otherIncomeTable)
-        .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine))),
+        .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine), isNull(otherIncomeTable.voidedAt))),
       db.select().from(assetsTable),
       db.select().from(estimatedTaxPaymentsTable)
         .where(eq(estimatedTaxPaymentsTable.year, year)),
@@ -1938,7 +1938,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     const [yeOwnerContribRows, yeWaterfall] = await Promise.all([
       db.select({ amount: ownerCapitalEntriesTable.amount })
         .from(ownerCapitalEntriesTable)
-        .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate))),
+        .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate), isNull(ownerCapitalEntriesTable.voidedAt))),
       computeOwnerWaterfall(year, blFilter),
     ]);
     // Sign convention: positive entries = capital contributions (cash in).
@@ -2150,10 +2150,10 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
       db.select(brInvoiceCols).from(invoicesTable)
         .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
         .where(and(ne(invoicesTable.status, "paid"), ne(invoicesTable.status, "draft"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
-      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
+      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), isNull(expensesTable.voidedAt))),
       // subcontractorId IS NULL: owner vehicle mileage only — excludes sub-portal tracking logs.
-      db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), isNull(mileageLogsTable.subcontractorId))),
-      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))),
+      db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt))),
+      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), isNull(otherIncomeTable.voidedAt))),
       // Fixed/allocation sub payments — authoritative cash-basis cost that accounting uses but
       // the reserve route was previously omitting, causing Reserve to show $9,628.47 higher
       // net profit than Accounting and generating phantom SE tax on an accounting loss.
@@ -2427,7 +2427,7 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
         jobId: expensesTable.jobId,
       })
       .from(expensesTable)
-      .where(inArray(expensesTable.category, OWNER_WITHDRAWAL_CATS))
+      .where(and(inArray(expensesTable.category, OWNER_WITHDRAWAL_CATS), isNull(expensesTable.voidedAt)))
       .orderBy(desc(expensesTable.date));
 
     const withdrawals = withdrawalRows.map(r => ({

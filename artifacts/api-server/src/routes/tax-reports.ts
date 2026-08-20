@@ -192,7 +192,8 @@ router.get("/schedule-c", async (req, res) => {
         and(
           gte(otherIncomeTable.date, startDate),
           lte(otherIncomeTable.date, endDate),
-          blWhere(otherIncomeTable.businessLine)
+          blWhere(otherIncomeTable.businessLine),
+          isNull(otherIncomeTable.voidedAt)
         )
       );
 
@@ -224,7 +225,8 @@ router.get("/schedule-c", async (req, res) => {
           // These are accrual-style bookings — the sub has not been paid. The actual cash payment
           // appears in sub_payment_records and is added to contractLabor below.
           sql`(${expensesTable.description} IS NULL OR ${expensesTable.description} NOT LIKE '%(outstanding)')`,
-          blWhere(expensesTable.businessLine)
+          blWhere(expensesTable.businessLine),
+          isNull(expensesTable.voidedAt)
         )
       )
       .groupBy(expensesTable.category);
@@ -287,6 +289,7 @@ router.get("/schedule-c", async (req, res) => {
           isNull(mileageLogsTable.subcontractorId),
           gte(mileageLogsTable.date, startDate),
           lte(mileageLogsTable.date, endDate),
+          isNull(mileageLogsTable.voidedAt),
           mileageWhere
         )
       );
@@ -300,6 +303,7 @@ router.get("/schedule-c", async (req, res) => {
           lte(mileageLogsTable.date, endDate),
           eq(mileageLogsTable.classification, "business"),
           isNull(mileageLogsTable.subcontractorId),
+          isNull(mileageLogsTable.voidedAt),
           mileageWhere
         )
       );
@@ -441,7 +445,8 @@ router.get("/schedule-c", async (req, res) => {
       .where(
         and(
           gte(mileageLogsTable.date, startDate),
-          lte(mileageLogsTable.date, endDate)
+          lte(mileageLogsTable.date, endDate),
+          isNull(mileageLogsTable.voidedAt)
         )
       )
       .then(rows => rows.length - mileageLogCount.length);

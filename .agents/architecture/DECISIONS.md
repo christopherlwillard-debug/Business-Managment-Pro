@@ -109,6 +109,24 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 ---
 
+## ADR-008
+
+**Title:** Posted financial corrections use explicit void/reversal semantics
+
+**Decision:** Posted expenses, other-income rows, owner-capital entries, mileage records, and issued invoices are never hard-deleted. They retain their source row and relationships, receive a required correction reason, and are excluded from accounting calculations. Draft invoices remain permanently removable; subcontractor payments use the existing reversal flag with a stored reason.
+
+**Reason:** Hard deletion made historical reports impossible to reconstruct and removed evidence needed to explain corrections. Extending each existing source ledger preserves one source of truth without introducing a general audit table.
+
+**Rejected Alternatives:**
+- Soft-deleting every non-financial table
+- Creating a parallel correction/audit ledger
+- Silently converting DELETE into a void operation
+
+**Status:** Accepted
+**Date:** 2026-08-20
+
+---
+
 ## ADR-006
 
 **Title:** Core records use canonical business ownership with legacy slug compatibility

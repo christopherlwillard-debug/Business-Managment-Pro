@@ -36,6 +36,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Reports:** Yes — heavily used across P&L, tax, and job profit calculations
 - **Source of truth:** `expenses`. All business operating costs (materials purchases, fuel, tools, supplies, etc.) live here. Subcontractor payroll and owner pay do NOT go here.
 - **Rule:** Do not write payroll, owner draws, or capital transactions to this table.
+- **Correction policy:** Posted expenses use `POST /:id/void` with required `void_reason`; DELETE is not permitted.
 
 ---
 
@@ -48,6 +49,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Reports:** Yes — mileage deduction in tax reports (`mileageLogsTable`)
 - **Source of truth:** `mileage_logs` for individual trips; `mileage_imports` tracks import batches. Imported trips create one expense per month via `expenses.mileage_import_id`.
 - **Rule:** Do not store mileage costs directly in expenses as line items — use the mileage engine.
+- **Correction policy:** Mileage logs and generated expense rows are voided together; import rollback preserves source rows.
 
 ---
 
@@ -60,6 +62,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Reports:** Indirect — job-subcontractor joins used in P&L and labor cost calculations
 - **Source of truth:** `sub_payment_records` is the sole payroll ledger. Pay recorded here; advances in `sub_advances`. (ADR-002)
 - **Rule:** Never write subcontractor pay to the `expenses` table. `sub_payment_records` is the authoritative payroll ledger.
+- **Correction policy:** Posted payments use `is_reversal` plus `reversal_reason`; hard delete is not permitted.
 
 ---
 

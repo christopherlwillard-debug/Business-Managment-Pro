@@ -18,6 +18,8 @@ export const otherIncomeTable = pgTable("other_income", {
   state: text("state"),
   notes: text("notes"),
   businessLine: text("business_line"),
+  voidedAt: timestamp("voided_at"),
+  voidReason: text("void_reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

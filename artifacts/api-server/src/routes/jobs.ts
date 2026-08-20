@@ -376,12 +376,12 @@ router.get("/:id/profit", async (req, res) => {
       // Job-linked other income is standalone cash revenue only when it has an
       // explicit job link. Unlinked rows remain in aggregate/tax reports only.
       db.select({ amount: otherIncomeTable.amount })
-        .from(otherIncomeTable).where(eq(otherIncomeTable.jobId, id)),
+        .from(otherIncomeTable).where(and(eq(otherIncomeTable.jobId, id), isNull(otherIncomeTable.voidedAt))),
       // Fetch all expenses not auto-linked to a sub-hours row.
       // Subcontractor-category expenses are moved into the sub labor bucket below
       // so they never double-count with hours-based sub labor cost.
       db.select({ amount: expensesTable.amount, category: expensesTable.category, countsTowardJobProfit: expensesTable.countsTowardJobProfit, tripId: expensesTable.tripId })
-        .from(expensesTable).where(and(eq(expensesTable.jobId, id), isNull(expensesTable.jobSubHoursId))),
+        .from(expensesTable).where(and(eq(expensesTable.jobId, id), isNull(expensesTable.jobSubHoursId), isNull(expensesTable.voidedAt))),
       // sub_payment_records is the authoritative ledger for fixed/allocation sub payments
       // (pay-worker stopped writing to expenses in Task #892).
       // Only include non-hourly subs — hourly costs are already captured via job_sub_hours.
@@ -629,6 +629,7 @@ router.get("/:id/expenses", async (req, res) => {
         and(
           eq(expensesTable.jobId, id),
           isNull(expensesTable.jobSubHoursId),
+          isNull(expensesTable.voidedAt),
         )
       )
       .orderBy(desc(expensesTable.date));
@@ -665,10 +666,10 @@ router.get("/profit-summary", async (req, res) => {
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
       db.select({ jobId: otherIncomeTable.jobId, amount: otherIncomeTable.amount })
-        .from(otherIncomeTable).where(inArray(otherIncomeTable.jobId, jobIds)),
+        .from(otherIncomeTable).where(and(inArray(otherIncomeTable.jobId, jobIds), isNull(otherIncomeTable.voidedAt))),
       // Exclude auto-linked sub-hour expenses; Subcontractor category goes into sub labor bucket
       db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category, countsTowardJobProfit: expensesTable.countsTowardJobProfit })
-        .from(expensesTable).where(and(inArray(expensesTable.jobId, jobIds), isNull(expensesTable.jobSubHoursId))),
+        .from(expensesTable).where(and(inArray(expensesTable.jobId, jobIds), isNull(expensesTable.jobSubHoursId), isNull(expensesTable.voidedAt))),
       db.select({
         jobId: jobSubHoursTable.jobId,
         total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
@@ -901,6 +902,7 @@ router.get("/:id/sub-expenses", async (req, res) => {
         eq(expensesTable.jobId, id),
         inArray(expensesTable.category, ["Subcontractor", "Labor"]),
         isNull(expensesTable.jobSubHoursId),
+        isNull(expensesTable.voidedAt),
       ));
     res.json(rows);
   } catch (err) {
@@ -2216,6 +2218,7 @@ router.post("/:id/record-owner-draw", async (req, res) => {
         eq(expensesTable.jobId, jobId),
         inArray(expensesTable.category, ["Owner Compensation", "Owner Draw"]),
         eq(expensesTable.date, today),
+          isNull(expensesTable.voidedAt),
       ));
     if (existing) return res.json({ ok: true, expenseId: existing.id, alreadyExists: true });
 
@@ -2314,6 +2317,7 @@ router.post("/:id/record-sub-expenses", async (req, res) => {
           eq(expensesTable.subcontractorId, sub.subcontractorId),
           eq(expensesTable.category, category),
           isNull(expensesTable.jobSubHoursId),
+          isNull(expensesTable.voidedAt),
         ));
       if (existing) continue;
 

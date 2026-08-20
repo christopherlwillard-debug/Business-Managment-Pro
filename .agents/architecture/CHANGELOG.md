@@ -93,3 +93,12 @@ Created the four-document architecture governance system:
 - Established `other_income` as the source of non-invoice cash receipts, with canonical `business_id` ownership and explicit `job_id` attribution.
 - Linked other-income rows now participate once in per-job and batch operational revenue/profit; unmatched rows remain aggregate/tax revenue only.
 - Square unmatched-payment deduplication now claims `square_payment_id` before invoice matching, preventing retry/concurrency duplicates.
+
+### Financial correction history
+
+- Added void metadata to financial source rows and a migration for expenses,
+  invoices, other income, owner capital, mileage, and subcontractor reversals.
+- Replaced posted financial DELETE behavior with explicit void/reversal actions;
+  draft invoices remain hard-deletable.
+- Updated report, tax, and job-profit reads to exclude voided source rows while
+  preserving their ownership and job/client relationships.

@@ -23,6 +23,8 @@ export const ownerCapitalEntriesTable = pgTable("owner_capital_entries", {
   // the same cash event. My Pay reads ONLY from this table — expenseId prevents
   // double-counting in future audit queries but is never included in aggregations.
   expenseId: integer("expense_id"),
+  voidedAt: timestamp("voided_at"),
+  voidReason: text("void_reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
