@@ -229,7 +229,9 @@ router.post("/", async (req, res) => {
       if (scope && !belongsToBusiness(job, scope)) {
         return res.status(404).json({ error: "Job not found" });
       }
-      if (!resolvedBusinessId && job.businessId) resolvedBusinessId = job.businessId;
+      // A job-linked expense always inherits the job's business. Never let a
+      // client-provided businessId reclassify a job cost into another business.
+      if (job.businessId) resolvedBusinessId = job.businessId;
     }
     if (resolvedBusinessLine && !resolvedBusinessId) {
       const [biz] = await db.select({ id: businessesTable.id })

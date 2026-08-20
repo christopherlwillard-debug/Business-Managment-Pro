@@ -4114,6 +4114,108 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   );
 }
 
+const JOB_EXPENSE_CATEGORIES = ["Materials", "Fuel/Travel", "Tools/Equipment", "Meals", "Other"] as const;
+
+function JobExpenseDialog({ job, open, onClose, onSaved }: {
+  job: Job; open: boolean; onClose: () => void; onSaved: () => void;
+}) {
+  const { activeBusiness } = useBusiness();
+  const { toast } = useToast();
+  const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState("Materials");
+  const [date, setDate] = useState(localDateString());
+  const [description, setDescription] = useState("");
+  const [vendor, setVendor] = useState("");
+  const [notes, setNotes] = useState("");
+  const [receipt, setReceipt] = useState<File | null>(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setAmount(""); setCategory("Materials"); setDate(localDateString());
+    setDescription(""); setVendor(""); setNotes(""); setReceipt(null); setError("");
+  }, [open, job.id]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) return setError("Enter an amount greater than $0.");
+    if (!date) return setError("Choose the purchase date.");
+    if (!description.trim()) return setError("Add a short description.");
+    if (!category) return setError("Choose a category.");
+    setSaving(true); setError("");
+    try {
+      const response = await fetch(`${BASE}/api/expenses`, {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: value, category, date, description: description.trim(),
+          vendor: vendor.trim() || undefined, notes: notes.trim() || undefined,
+          jobId: job.id, businessId: job.businessId ?? activeBusiness?.id ?? undefined,
+          businessLine: job.businessLine ?? undefined,
+          countsTowardJobProfit: category === "Fuel/Travel" ? false : true,
+        }),
+      });
+      const created = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(created.error || "Could not save the expense.");
+      if (receipt && created.id) {
+        const form = new FormData(); form.append("receipt", receipt);
+        const upload = await fetch(`${BASE}/api/expenses/${created.id}/receipt`, { method: "POST", credentials: "include", body: form });
+        if (!upload.ok) toast({ title: "Expense saved without receipt", description: "The receipt upload failed.", variant: "destructive" });
+      }
+      toast({ title: "Expense added", description: `${formatCurrency(value)} added to ${job.title}.` });
+      onSaved(); onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the expense.");
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className={`fixed inset-0 z-[70] ${open ? "flex" : "hidden"} items-center justify-center p-4`}>
+      <button type="button" aria-label="Close" className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div><h2 className="text-xl font-display font-bold">Add job expense</h2><p className="text-xs text-muted-foreground mt-1">Record only the portion of a shared purchase used for this job.</p></div>
+          <button type="button" onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs text-blue-800">This expense will be linked to <strong>{job.title}</strong>. The job and business are fixed.</div>
+        <form onSubmit={submit} className="mt-4 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm font-medium">Amount *
+              <input autoFocus type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background" placeholder="0.00" />
+            </label>
+            <label className="text-sm font-medium">Date *
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background" />
+            </label>
+          </div>
+          <label className="block text-sm font-medium">Description *
+            <input value={description} onChange={e => setDescription(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background" placeholder="e.g. Lumber for framing" />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm font-medium">Category *
+              <select value={category} onChange={e => setCategory(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background">{JOB_EXPENSE_CATEGORIES.map(item => <option key={item}>{item}</option>)}</select>
+            </label>
+            <label className="text-sm font-medium">Vendor
+              <input value={vendor} onChange={e => setVendor(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background" placeholder="Optional" />
+            </label>
+          </div>
+          <label className="block text-sm font-medium">Notes
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background resize-none" placeholder="Optional details about the shared purchase" />
+          </label>
+          <label className="block text-sm font-medium">Receipt <span className="font-normal text-muted-foreground">(optional)</span>
+            <input type="file" accept="image/*,.pdf" onChange={e => setReceipt(e.target.files?.[0] ?? null)} className="w-full mt-1 text-xs" />
+          </label>
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          <div className="flex justify-end gap-3 pt-2 border-t border-dashed border-border">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-muted-foreground hover:bg-muted">Cancel</button>
+            <button type="submit" disabled={saving} className="px-5 py-2 rounded-xl text-sm font-semibold bg-primary text-primary-foreground disabled:opacity-50">{saving ? "Saving…" : "Add expense"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Job Card ──────────────────────────────────────────────────────────────────
 type ChecklistSummary = { completedItems: number; totalItems: number; overallPercent: number };
 
@@ -4179,6 +4281,8 @@ function JobCard({
   const [estimatesPanelOpen, setEstimatesPanelOpen] = useState(false);
   const [financialsPanelOpen, setFinancialsPanelOpen] = useState(false);
   const [financialsInitialTab, setFinancialsInitialTab] = useState<"breakdown" | "hours">("breakdown");
+  const [jobExpenseOpen, setJobExpenseOpen] = useState(false);
+  const [displayProfit, setDisplayProfit] = useState<JobProfit | null | undefined>(profitData);
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
   const [checklistPanelOpen, setChecklistPanelOpen] = useState(false);
   const [mfhPanelOpen, setMfhPanelOpen] = useState(false);
@@ -4189,6 +4293,7 @@ function JobCard({
   const isCompleted = displayStatus(job.status) === "completed";
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
+  useEffect(() => { setDisplayProfit(profitData); }, [profitData]);
 
   type OutstandingSubRow = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null; computedOwed?: number; amountPaid?: number; paymentStatus?: string; totalHours?: number | null; accruedBonus?: number | null };
   const [unpaidSubs, setUnpaidSubs] = useState<OutstandingSubRow[] | null>(null);
@@ -4465,7 +4570,7 @@ function JobCard({
         </div>
 
         {/* Inline Job P&L card — tappable, opens Job Financials → Profit Split */}
-        {profitData != null && (profitData.grossInvoiced > 0 || profitData.jobExpenses > 0) && (
+        {displayProfit != null && (displayProfit.grossInvoiced > 0 || displayProfit.jobExpenses > 0) && (
           <button
             type="button"
             onClick={() => { setFinancialsInitialTab("breakdown"); setFinancialsPanelOpen(true); }}
@@ -4477,34 +4582,41 @@ function JobCard({
             <div className="grid grid-cols-2 gap-1.5 text-xs">
               <div className="space-y-0.5">
                 <p className="text-[10px] text-muted-foreground">Invoiced</p>
-                <p className="font-semibold text-foreground">{formatCurrency(profitData.grossInvoiced)}</p>
+                 <p className="font-semibold text-foreground">{formatCurrency(displayProfit.grossInvoiced)}</p>
               </div>
               <div className="space-y-0.5">
                 <p className="text-[10px] text-muted-foreground">Collected</p>
-                <p className="font-semibold text-emerald-600">{formatCurrency(profitData.collected)}</p>
+                 <p className="font-semibold text-emerald-600">{formatCurrency(displayProfit.collected)}</p>
               </div>
               <div className="space-y-0.5">
                 <p className="text-[10px] text-muted-foreground">Expenses</p>
-                <p className="font-semibold text-red-500">{formatCurrency(profitData.jobExpenses)}</p>
+                 <p className="font-semibold text-red-500">{formatCurrency(displayProfit.jobExpenses)}</p>
               </div>
               <div className="space-y-0.5">
                 <p className="text-[10px] text-muted-foreground">Net Profit</p>
-                <p className={`font-bold ${profitData.netProfit > 0 ? "text-emerald-600" : "text-red-500"}`}>
-                  {profitData.netProfit > 0 ? "+" : ""}{formatCurrency(profitData.netProfit)}
+                 <p className={`font-bold ${displayProfit.netProfit > 0 ? "text-emerald-600" : "text-red-500"}`}>
+                   {displayProfit.netProfit > 0 ? "+" : ""}{formatCurrency(displayProfit.netProfit)}
                 </p>
               </div>
-              {profitData.estimatedFuelCost != null && (
+               {displayProfit.estimatedFuelCost != null && (
                 <>
                   <div className="col-span-2 border-t border-border/40 mt-0.5 pt-1.5 flex items-center justify-between">
                     <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
                       <Fuel className="w-2.5 h-2.5 text-amber-500 flex-shrink-0" />
                       Est. Fuel (1 day)
                     </span>
-                    <span className="font-semibold text-amber-600 text-[11px]">-{formatCurrency(profitData.estimatedFuelCost)}</span>
+                     <span className="font-semibold text-amber-600 text-[11px]">-{formatCurrency(displayProfit.estimatedFuelCost)}</span>
                   </div>
                 </>
               )}
             </div>
+          </button>
+        )}
+
+        {canEdit("expenses") && (
+          <button type="button" onClick={() => setJobExpenseOpen(true)}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-semibold w-full">
+            <Plus className="w-3.5 h-3.5" /> Add expense
           </button>
         )}
 
@@ -4892,8 +5004,18 @@ function JobCard({
         />
       )}
       {financialsPanelOpen && (
-        <JobFinancialsPanel job={job} profitData={profitData} initialTab={financialsInitialTab} onClose={() => setFinancialsPanelOpen(false)} onSubsPaidChanged={setLocalSubPaid} />
+        <JobFinancialsPanel job={job} profitData={displayProfit} initialTab={financialsInitialTab} onClose={() => setFinancialsPanelOpen(false)} onSubsPaidChanged={setLocalSubPaid} />
       )}
+      <JobExpenseDialog
+        job={job}
+        open={jobExpenseOpen}
+        onClose={() => setJobExpenseOpen(false)}
+        onSaved={async () => {
+          const fresh = await fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" })
+            .then(r => r.ok ? r.json() : null).catch(() => null);
+          if (fresh) setDisplayProfit(fresh);
+        }}
+      />
       {phasesPanelOpen && (
         <JobPhasePanel job={job} onClose={() => setPhasesPanelOpen(false)} />
       )}
