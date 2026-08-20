@@ -1287,6 +1287,25 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     }
   }
 
+  async function removeAllocation(allocationId: number) {
+    if (!window.confirm("Remove this job allocation? The original expense will remain unchanged.")) return;
+    try {
+      const response = await fetch(`${BASE}/api/expenses/job-allocations/${Math.abs(allocationId)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not remove the allocation.");
+      setExpenseItems(prev => prev?.filter(item => item.id !== allocationId) ?? prev);
+      const fresh = await fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : null).catch(() => null);
+      if (fresh) setProfit(fresh);
+      toast({ title: "Allocation removed", description: "The original expense was not changed." });
+    } catch (err) {
+      toast({ title: "Could not remove allocation", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    }
+  }
+
   function toggleExpenses() {
     if (!expensesOpen) loadExpenses();
     setExpensesOpen(v => !v);
@@ -1683,6 +1702,17 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                                     )}
                                   </div>
                                   <span className="text-xs font-semibold text-red-600 tabular-nums flex-shrink-0">{formatCurrency(parseFloat(e.amount))}</span>
+                                  {e.sourceType === "Job Allocation" && (
+                                    <button
+                                      type="button"
+                                      aria-label="Remove job allocation"
+                                      title="Remove job allocation"
+                                      onClick={() => removeAllocation(e.id)}
+                                      className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                 </div>
                               ))}
                             </div>
