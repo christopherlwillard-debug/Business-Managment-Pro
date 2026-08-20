@@ -2,6 +2,10 @@
 set -e
 pnpm install --frozen-lockfile
 
+# Keep schema/API drift visible during every merge. This check is dependency-free
+# and intentionally runs before any database synchronization.
+pnpm run schema-contract:check
+
 pnpm --filter @workspace/db run push-force </dev/null 2>&1 || true
 
 # Idempotent hotfix: ensure daily_logs.author_name column exists (added in Task #35,
