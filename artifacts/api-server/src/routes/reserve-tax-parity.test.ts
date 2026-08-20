@@ -1052,6 +1052,49 @@ describe("Monthly income chart includes fixed/allocation sub payments", () => {
   });
 });
 
+// ── Business-line-filtered monthly income chart ────────────────────────────────
+//
+// The filtered accounting branch performs a business lookup before its main
+// Promise.all, shifting accFixedAllocSubPayments to slot [8] instead of [7].
+// Keep a dedicated regression test so a slot-ordering regression cannot silently
+// remove fixed/allocation sub payments from a single-business-line view.
+
+describe("Business-line-filtered monthly income includes fixed/allocation sub payments", () => {
+  const FILTERED_SUB_PAY = {
+    amount: "275.00",
+    paymentDate: `${YEAR}-06-15`,
+    businessLine: "mfh",
+  };
+
+  it("/accounting?businessLine=mfh monthlyIncome includes the filtered sub payment", async () => {
+    h.selectQueue.push([{ id: 1 }]);              // [0] business lookup
+    h.selectQueue.push([]);                      // [1] paidInvoices
+    h.selectQueue.push([]);                      // [2] nonPaidInvoices
+    h.selectQueue.push([]);                      // [3] expenses
+    h.selectQueue.push([]);                      // [4] mileageLogs
+    h.selectQueue.push([]);                      // [5] subs
+    h.selectQueue.push([SETTINGS_ROW]);          // [6] settings
+    h.selectQueue.push([]);                      // [7] otherIncome
+    h.selectQueue.push([FILTERED_SUB_PAY]);      // [8] blFilteredFixedAllocSubPayments
+    h.selectQueue.push([]);                      // [9] assets
+    h.selectQueue.push([]);                      // [10] assetBusinessUse
+    h.selectQueue.push([]);                      // [11] waterfallPaidInvs
+    h.selectQueue.push([]);                      // [12] accOwnerContribRows
+    h.selectQueue.push([]);                      // [13] allBusinesses
+    h.selectQueue.push([]);                      // [14] outstandingSubRows
+
+    const res = await request(app).get(`/reports/accounting?year=${YEAR}&businessLine=mfh`);
+    expect(res.status).toBe(200);
+
+    const juneBucket = (res.body.monthlyIncome as any[]).find(
+      (b: any) => b.month === `${YEAR}-06`,
+    );
+    expect(juneBucket).toBeDefined();
+    // Regression: $0 if the filtered sub-payment slot is shifted or ignored.
+    expect(juneBucket.expenses).toBeCloseTo(275, 10);
+  });
+});
+
 // ── Mileage exclusion from accounting totals ──────────────────────────────────
 //
 // Guards the nonMileageExpenses filter (~line 493 of reports.ts).
