@@ -7,4 +7,4 @@ Cash-basis accounting repairs must begin with a read-only source-of-truth map an
 
 **Why:** The forensic audit found that report discrepancies are entangled with incomplete business ownership, competing ledgers, duplicated rate logic, and uncertain reversal semantics. A report-only fix could make consistently wrong totals appear correct.
 
-**How to apply:** Before implementing the cash-revenue helper, document exact source tables/predicates/date rules per report, define unassigned-record behavior, verify subcontractor/owner/reversal semantics, and add fixtures proving raw paid records equal every cash-basis report surface.
+**How to apply:** Treat the accounting foundation as one chain: Business → Source Record → Accounting Treatment → Report. Resolve C1 business isolation and C4 unassigned-record policy before #1966; then verify subcontractor filtering, mileage predicates/rates, owner activity, and reversal semantics before implementing the cash-revenue helper. Add fixtures proving raw paid records equal every cash-basis report surface.
