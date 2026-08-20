@@ -106,6 +106,7 @@ const PAID_INVOICE = {
   businessLine: null,
   // business-reserve also fetches jobId
   jobId: null,
+  lineItems: [{ description: "Test service", quantity: 1, unitPrice: 1000 }],
 };
 
 const OTHER_INCOME_ROW = {
@@ -339,6 +340,7 @@ describe("Cross-year invoice revenue attribution", () => {
     invoiceNumber: "INV-X01",
     businessLine: null,
     jobId: null,
+    lineItems: [{ description: "Cross-year service", quantity: 1, unitPrice: 500 }],
   };
 
   it(`appears in /accounting?year=${YEAR} paidRevenue (payment year) — not in ${YEAR - 1} (issue year)`, async () => {
@@ -455,6 +457,7 @@ describe("Owner-draw exclusion from net profit", () => {
     invoiceNumber: "INV-BL01",
     businessLine: "mfh",
     jobId: null,
+    lineItems: [{ description: "Business service", quantity: 1, unitPrice: 1000 }],
   };
 
   // Owner draw attributed to "mfh" — must never reduce netProfit or expenses

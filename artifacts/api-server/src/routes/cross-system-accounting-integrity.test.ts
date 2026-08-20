@@ -131,6 +131,7 @@ const PAID_INVOICE_PL = {
   status: "paid",
   issueDate: `${YEAR}-06-01`,
   total: "1000.00",
+  lineItems: [{ description: "Test service", quantity: 1, unitPrice: 1000 }],
 };
 
 // Waterfall invoice: must include stripePaidAt/squarePaidAt/issueDate so the
@@ -209,6 +210,7 @@ const ACC_INVOICE = {
   clientName: "Test Client",
   invoiceNumber: "INV-001",
   businessLine: null,
+  lineItems: [{ description: "Test service", quantity: 1, unitPrice: 1000 }],
 };
 
 const ACC_OWNER_DRAW = {
@@ -274,6 +276,7 @@ const YE_INVOICE = {
   state: "KY",
   stripePaidAt: null,
   squarePaidAt: null,
+  lineItems: [{ description: "Test service", quantity: 1, unitPrice: 1000 }],
 };
 
 const YE_OWNER_DRAW = {

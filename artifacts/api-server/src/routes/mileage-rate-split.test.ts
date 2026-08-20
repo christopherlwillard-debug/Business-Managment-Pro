@@ -141,6 +141,7 @@ const PAID_INVOICE = {
   invoiceNumber: "INV-001",
   businessLine: null,
   jobId: null,
+  lineItems: [{ description: "Test service", quantity: 1, unitPrice: 1000 }],
 };
 
 const SETTINGS_ROW = {
