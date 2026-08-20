@@ -9,7 +9,7 @@
 // as unproven, even though its status flag says "uploaded".
 //
 // The DB layer is fully mocked — no real connection required.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
 
@@ -21,6 +21,11 @@ const h = vi.hoisted(() => ({
   updates: [] as any[],
   // Results returned by UPDATE … RETURNING — each pop is consumed in order
   updateReturnQueue: [] as any[][],
+  consumedSelectSlots: 0,
+  missingSelectSlots: [] as number[],
+  consumedUpdateSlots: 0,
+  missingUpdateSlots: [] as number[],
+  scenario: "no request",
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -38,7 +43,15 @@ vi.mock("@workspace/db", () => {
       limit:     () => chain,
       // Make the chain itself awaitable — pops the next queued result
       then(resolve: (v: any) => any, reject: (e: any) => any) {
-        return Promise.resolve(h.selectQueue.shift() ?? []).then(resolve, reject);
+        const slot = h.consumedSelectSlots++;
+        const queued = h.selectQueue.shift();
+        if (queued === undefined) {
+          h.missingSelectSlots.push(slot);
+          return Promise.reject(new Error(
+            `[${h.scenario}] missing queued select slot [${slot}]`,
+          )).then(resolve, reject);
+        }
+        return Promise.resolve(queued).then(resolve, reject);
       },
     };
     return chain;
@@ -51,7 +64,17 @@ vi.mock("@workspace/db", () => {
       update:  () => ({
         set: (data: any) => {
           h.updates.push(data);
-          const returning = () => Promise.resolve(h.updateReturnQueue.shift() ?? [data]);
+          const returning = () => {
+            const slot = h.consumedUpdateSlots++;
+            const queued = h.updateReturnQueue.shift();
+            if (queued === undefined) {
+              h.missingUpdateSlots.push(slot);
+              return Promise.reject(new Error(
+                `[${h.scenario}] missing queued update RETURNING slot [${slot}]`,
+              ));
+            }
+            return Promise.resolve(queued);
+          };
           return {
             where: () => ({ returning }),
             returning,
@@ -77,6 +100,7 @@ const { default: tripsRouter } = await import("./trips");
 const app = express();
 app.use(express.json());
 app.use((_req, _res, next) => {
+  h.scenario = `${_req.method} ${_req.path}`;
   (_req as any).user = { id: 1, claims: { sub: "user_1" } };
   next();
 });
@@ -121,6 +145,18 @@ beforeEach(() => {
   h.selectQueue.length = 0;
   h.updates.length = 0;
   h.updateReturnQueue.length = 0;
+  h.consumedSelectSlots = 0;
+  h.missingSelectSlots.length = 0;
+  h.consumedUpdateSlots = 0;
+  h.missingUpdateSlots.length = 0;
+  h.scenario = "no request";
+});
+
+afterEach(() => {
+  expect(h.missingSelectSlots, `[${h.scenario}] missing queued select slot(s)`).toHaveLength(0);
+  expect(h.selectQueue, `[${h.scenario}] unconsumed queued select slot(s)`).toHaveLength(0);
+  expect(h.missingUpdateSlots, `[${h.scenario}] missing queued update RETURNING slot(s)`).toHaveLength(0);
+  expect(h.updateReturnQueue, `[${h.scenario}] unconsumed queued update RETURNING slot(s)`).toHaveLength(0);
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

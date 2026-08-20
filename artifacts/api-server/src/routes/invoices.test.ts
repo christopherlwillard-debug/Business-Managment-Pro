@@ -9,7 +9,7 @@
 // The DB layer is fully mocked so no database connection is required.
 // Each test pushes expected results onto a shared queue that the mock drains
 // in the order the route handler issues selects/limits.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
 
@@ -24,6 +24,11 @@ const h = vi.hoisted(() => ({
   updates: [] as any[],
   // Controls whether isSquareConfigured() returns true in a given test.
   squareConfigured: false,
+  consumedSelectSlots: 0,
+  missingSelectSlots: [] as number[],
+  consumedExecuteSlots: 0,
+  missingExecuteSlots: [] as number[],
+  scenario: "no request",
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -34,8 +39,28 @@ vi.mock("@workspace/db", () => {
     leftJoin:  () => chain,
     orderBy:   () => chain,
     inArray:   () => chain,
-    where:     () => Promise.resolve(h.selectQueue.shift() ?? []),
-    limit:     () => Promise.resolve(h.selectQueue.shift() ?? []),
+    where:     () => {
+      const slot = h.consumedSelectSlots++;
+      const queued = h.selectQueue.shift();
+      if (queued === undefined) {
+        h.missingSelectSlots.push(slot);
+        return Promise.reject(new Error(
+          `[${h.scenario}] missing queued select slot [${slot}]`,
+        ));
+      }
+      return Promise.resolve(queued);
+    },
+    limit:     () => {
+      const slot = h.consumedSelectSlots++;
+      const queued = h.selectQueue.shift();
+      if (queued === undefined) {
+        h.missingSelectSlots.push(slot);
+        return Promise.reject(new Error(
+          `[${h.scenario}] missing queued select slot [${slot}]`,
+        ));
+      }
+      return Promise.resolve(queued);
+    },
   };
   const dbOps = {
     select:  () => chain,
@@ -50,7 +75,17 @@ vi.mock("@workspace/db", () => {
         returning: () => Promise.resolve([{ id: 42 }]),
       }),
     }),
-    execute: () => Promise.resolve({ rows: h.executeQueue.shift() ?? [] }),
+    execute: () => {
+      const slot = h.consumedExecuteSlots++;
+      const queued = h.executeQueue.shift();
+      if (queued === undefined) {
+        h.missingExecuteSlots.push(slot);
+        return Promise.reject(new Error(
+          `[${h.scenario}] missing queued execute slot [${slot}]`,
+        ));
+      }
+      return Promise.resolve({ rows: queued });
+    },
     delete:  () => ({ where: () => Promise.resolve() }),
   };
   return {
@@ -85,6 +120,11 @@ const deleteSquarePaymentLink = vi.mocked(squareMod.deleteSquarePaymentLink);
 // ── Mount in a minimal Express app ───────────────────────────────────────────
 const app = express();
 app.use(express.json());
+app.use((_req, _res, next) => {
+  h.scenario = `${_req.method} ${_req.path}`;
+  (_req as any).user = { id: 1, claims: { sub: "user_1" } };
+  next();
+});
 app.use("/", invoiceRouter);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -146,6 +186,18 @@ beforeEach(() => {
   h.updates.length = 0;
   h.squareConfigured = false;
   deleteSquarePaymentLink.mockClear();
+  h.consumedSelectSlots = 0;
+  h.missingSelectSlots.length = 0;
+  h.consumedExecuteSlots = 0;
+  h.missingExecuteSlots.length = 0;
+  h.scenario = "no request";
+});
+
+afterEach(() => {
+  expect(h.missingSelectSlots, `[${h.scenario}] missing queued select slot(s)`).toHaveLength(0);
+  expect(h.selectQueue, `[${h.scenario}] unconsumed queued select slot(s)`).toHaveLength(0);
+  expect(h.missingExecuteSlots, `[${h.scenario}] missing queued execute slot(s)`).toHaveLength(0);
+  expect(h.executeQueue, `[${h.scenario}] unconsumed queued execute slot(s)`).toHaveLength(0);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -15,7 +15,7 @@
 //
 // DB layer fully mocked — no real connection required.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
 
@@ -23,6 +23,9 @@ import express from "express";
 const h = vi.hoisted(() => ({
   selectQueue: [] as any[][],
   updates:     [] as any[],
+  consumedSlots: 0,
+  missingSlots: [] as number[],
+  scenario: "no request",
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -39,7 +42,15 @@ vi.mock("@workspace/db", () => {
       groupBy:   () => c,
       limit:     () => c,
       then(resolve: (v: any) => any, reject: (e: any) => any) {
-        return Promise.resolve(h.selectQueue.shift() ?? []).then(resolve, reject);
+        const slot = h.consumedSlots++;
+        const queued = h.selectQueue.shift();
+        if (queued === undefined) {
+          h.missingSlots.push(slot);
+          return Promise.reject(new Error(
+            `[${h.scenario}] missing queued query slot [${slot}]`,
+          )).then(resolve, reject);
+        }
+        return Promise.resolve(queued).then(resolve, reject);
       },
     };
     return c;
@@ -75,6 +86,7 @@ const { default: jobsRouter } = await import("./jobs");
 const app = express();
 app.use(express.json());
 app.use((_req, _res, next) => {
+  h.scenario = `${_req.method} ${_req.path}`;
   (_req as any).user = { id: 1, claims: { sub: "user_1" } };
   next();
 });
@@ -83,6 +95,17 @@ app.use("/jobs", jobsRouter);
 beforeEach(() => {
   h.selectQueue.length = 0;
   h.updates.length = 0;
+  h.consumedSlots = 0;
+  h.missingSlots.length = 0;
+  h.scenario = "no request";
+});
+
+afterEach(() => {
+  expect(h.missingSlots, `[${h.scenario}] missing queued query slot(s)`).toHaveLength(0);
+  expect(
+    h.selectQueue,
+    `[${h.scenario}] unconsumed queued query slot(s) after ${h.consumedSlots} consumed`,
+  ).toHaveLength(0);
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -108,6 +131,10 @@ function pushProfitSelects(opts: {
   h.selectQueue.push([{ total: opts.hoursLaborCost ?? "0" }]);
   h.selectQueue.push([{ total: opts.totalHours     ?? "0" }]);
   h.selectQueue.push([{ total: opts.accruedBonus   ?? "0" }]);
+  // Fuel estimation performs three additional selects after the profit waterfall.
+  h.selectQueue.push([]); // [7] fuel logs
+  h.selectQueue.push([]); // [8] fuel expenses
+  h.selectQueue.push([]); // [9] job mileage
 }
 
 /**
@@ -144,6 +171,10 @@ function pushSummarySelects(opts: {
   // accrued bonus grouped by jobId
   h.selectQueue.push(opts.accruedBonus && opts.accruedBonus !== "0"
     ? [{ jobId, total: opts.accruedBonus }] : []);
+  // Fuel estimation performs three additional selects after the summary query.
+  h.selectQueue.push([]); // [8] fuel logs
+  h.selectQueue.push([]); // [9] fuel expenses
+  h.selectQueue.push([]); // [10] job mileage
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

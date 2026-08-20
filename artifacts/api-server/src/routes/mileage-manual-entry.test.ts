@@ -13,14 +13,17 @@
 // that formatMileage(log) in the response carries the computed ratePerMile /
 // deductionAmount without a real database. db.update().set(vals) does the same.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
 
 // ── Hoisted shared state ──────────────────────────────────────────────────────
 const h = vi.hoisted(() => ({
-  // Queue for db.select() calls (shift() → next result, or [] on empty queue)
+  // Queue for db.select() calls, consumed in route query order.
   selectQueue: [] as any[][],
+  consumedSlots: 0,
+  missingSlots: [] as number[],
+  scenario: "no request",
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -34,7 +37,15 @@ vi.mock("@workspace/db", () => {
       orderBy:   () => c,
       limit:     () => c,
       then(resolve: (v: any) => any, reject: (e: any) => any) {
-        return Promise.resolve(h.selectQueue.shift() ?? []).then(resolve, reject);
+        const slot = h.consumedSlots++;
+        const queued = h.selectQueue.shift();
+        if (queued === undefined) {
+          h.missingSlots.push(slot);
+          return Promise.reject(new Error(
+            `[${h.scenario}] missing queued query slot [${slot}]`,
+          )).then(resolve, reject);
+        }
+        return Promise.resolve(queued).then(resolve, reject);
       },
     };
     return c;
@@ -83,6 +94,7 @@ const app = express();
 app.use(express.json());
 // Simulate a logged-in user (needed by requireAuth middleware calls inside router)
 app.use((_req, _res, next) => {
+  h.scenario = `${_req.method} ${_req.path}`;
   (_req as any).user = { id: 1, claims: { sub: "user_1" } };
   next();
 });
@@ -90,6 +102,17 @@ app.use("/mileage", mileageRouter);
 
 beforeEach(() => {
   h.selectQueue.length = 0;
+  h.consumedSlots = 0;
+  h.missingSlots.length = 0;
+  h.scenario = "no request";
+});
+
+afterEach(() => {
+  expect(h.missingSlots, `[${h.scenario}] missing queued query slot(s)`).toHaveLength(0);
+  expect(
+    h.selectQueue,
+    `[${h.scenario}] unconsumed queued query slot(s) after ${h.consumedSlots} consumed`,
+  ).toHaveLength(0);
 });
 
 // ── POST /mileage — create manual trip ───────────────────────────────────────
