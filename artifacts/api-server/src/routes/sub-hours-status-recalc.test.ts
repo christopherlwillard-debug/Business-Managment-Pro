@@ -17,7 +17,7 @@
 //
 // DB is fully mocked — no real database connection required.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
 
@@ -26,6 +26,11 @@ const h = vi.hoisted(() => ({
   selectQueue:      [] as any[][],
   updates:          [] as any[],
   updateReturnQueue: [] as any[][], // rows returned by update().set().where().returning()
+  consumedSelectSlots: 0,
+  missingSelectSlots: [] as number[],
+  consumedUpdateSlots: 0,
+  missingUpdateSlots: [] as number[],
+  scenario: "no request",
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -38,7 +43,14 @@ vi.mock("@workspace/db", () => {
       orderBy:  () => c,
       limit:    () => c,
       then(resolve: any, reject: any) {
-        return Promise.resolve(h.selectQueue.shift() ?? []).then(resolve, reject);
+        const slot = h.consumedSelectSlots++;
+        const queued = h.selectQueue.shift();
+        if (queued === undefined) {
+          h.missingSelectSlots.push(slot);
+          return Promise.reject(new Error(`[${h.scenario}] missing queued select slot [${slot}]`))
+            .then(resolve, reject);
+        }
+        return Promise.resolve(queued).then(resolve, reject);
       },
     };
     return c;
@@ -53,7 +65,15 @@ vi.mock("@workspace/db", () => {
           h.updates.push(data);
           return {
             where: () => ({
-              returning: () => Promise.resolve(h.updateReturnQueue.shift() ?? []),
+              returning: () => {
+                const slot = h.consumedUpdateSlots++;
+                const queued = h.updateReturnQueue.shift();
+                if (queued === undefined) {
+                  h.missingUpdateSlots.push(slot);
+                  return Promise.reject(new Error(`[${h.scenario}] missing queued update slot [${slot}]`));
+                }
+                return Promise.resolve(queued);
+              },
             }),
           };
         },
@@ -75,6 +95,7 @@ const { default: subHoursRouter } = await import("./job-sub-hours");
 const app = express();
 app.use(express.json());
 app.use((_req, _res, next) => {
+  h.scenario = `${_req.method} ${_req.path}`;
   (_req as any).user = { id: 1, claims: { sub: "user_1" } };
   next();
 });
@@ -84,6 +105,18 @@ beforeEach(() => {
   h.selectQueue.length      = 0;
   h.updates.length          = 0;
   h.updateReturnQueue.length = 0;
+  h.consumedSelectSlots = 0;
+  h.missingSelectSlots.length = 0;
+  h.consumedUpdateSlots = 0;
+  h.missingUpdateSlots.length = 0;
+  h.scenario = "no request";
+});
+
+afterEach(() => {
+  expect(h.missingSelectSlots, `[${h.scenario}] missing queued select slot(s)`).toHaveLength(0);
+  expect(h.selectQueue, `[${h.scenario}] unconsumed queued select slot(s)`).toHaveLength(0);
+  expect(h.missingUpdateSlots, `[${h.scenario}] missing queued update slot(s)`).toHaveLength(0);
+  expect(h.updateReturnQueue, `[${h.scenario}] unconsumed queued update slot(s)`).toHaveLength(0);
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -95,6 +128,7 @@ beforeEach(() => {
  *   4. payments SUM        (recomputeSubPaymentStatus — skipped when amountPaid=0)
  *   5. sub row             (recomputeSubPaymentStatus — skipped when amountPaid=0)
  *   6. computed hours×rate (recomputeSubPaymentStatus — hourly only, optional)
+ *   7. applied advances total (recomputeSubPaymentStatus — when payments exist)
  */
 function setupPutSelects(opts: {
   subName: string;
@@ -108,9 +142,9 @@ function setupPutSelects(opts: {
   h.selectQueue.push([{ name: opts.subName }]);
   h.selectQueue.push([{ businessLine: null }]);
   h.selectQueue.push(opts.hasExistingExpense !== false ? [{ id: 200 }] : []);
+  h.selectQueue.push([{ total: opts.amountPaid }]); // payment sum is always queried
 
   if (parseFloat(opts.amountPaid) > 0.005) {
-    h.selectQueue.push([{ total: opts.amountPaid }]);
     h.selectQueue.push([{
       compensationType: opts.compensationType,
       amountOwed:       opts.amountOwed,
@@ -119,6 +153,7 @@ function setupPutSelects(opts: {
     if (opts.computedOwed !== undefined) {
       h.selectQueue.push([{ computedOwed: opts.computedOwed }]);
     }
+    h.selectQueue.push([{ total: "0" }]); // applied advances; no advances in these scenarios
   }
 }
 

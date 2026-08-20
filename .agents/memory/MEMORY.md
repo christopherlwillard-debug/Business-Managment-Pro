@@ -39,3 +39,4 @@
 - [Client mileage surcharge](client-mileage-surcharge.md) — client rules + RoutingEngine qualification feed opt-in invoice lines only; never write MileIQ mileage or expenses
 - [Accounting repair guardrails](accounting-repair-guardrails.md) — verify source records, ownership, ledgers, mileage, and reversals before changing cash-basis reports
 - [Report test fixture source totals](report-test-fixture-source-totals.md) — report tests must seed invoice lineItems because report calculations rebuild totals from persisted source rows
+- [Strict route fixtures](strict-route-fixtures.md) — ordered DB queues must reject exhaustion and assert every queued response is consumed

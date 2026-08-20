@@ -12,7 +12,7 @@
 //
 // The DB layer is fully mocked; no database connection required.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
 
@@ -23,6 +23,11 @@ const h = vi.hoisted(() => ({
   updates: [] as any[],
   inserts: [] as any[],
   deletes: [] as any[],
+  consumedSelectSlots: 0,
+  missingSelectSlots: [] as number[],
+  consumedExecuteSlots: 0,
+  missingExecuteSlots: [] as number[],
+  scenario: "no request",
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -31,8 +36,24 @@ vi.mock("@workspace/db", () => {
     from:      () => chain,
     leftJoin:  () => chain,
     orderBy:   () => chain,
-    where:     () => Promise.resolve(h.selectQueue.shift() ?? []),
-    limit:     () => Promise.resolve(h.selectQueue.shift() ?? []),
+    where:     () => {
+      const slot = h.consumedSelectSlots++;
+      const queued = h.selectQueue.shift();
+      if (queued === undefined) {
+        h.missingSelectSlots.push(slot);
+        return Promise.reject(new Error(`[${h.scenario}] missing queued select slot [${slot}]`));
+      }
+      return Promise.resolve(queued);
+    },
+    limit:     () => {
+      const slot = h.consumedSelectSlots++;
+      const queued = h.selectQueue.shift();
+      if (queued === undefined) {
+        h.missingSelectSlots.push(slot);
+        return Promise.reject(new Error(`[${h.scenario}] missing queued select slot [${slot}]`));
+      }
+      return Promise.resolve(queued);
+    },
   };
   const dbOps = {
     select:  () => chain,
@@ -49,7 +70,15 @@ vi.mock("@workspace/db", () => {
       },
     }),
     delete:  () => ({ where: () => Promise.resolve() }),
-    execute: () => Promise.resolve({ rows: h.executeQueue.shift() ?? [] }),
+    execute: () => {
+      const slot = h.consumedExecuteSlots++;
+      const queued = h.executeQueue.shift();
+      if (queued === undefined) {
+        h.missingExecuteSlots.push(slot);
+        return Promise.reject(new Error(`[${h.scenario}] missing queued execute slot [${slot}]`));
+      }
+      return Promise.resolve({ rows: queued });
+    },
   };
   return {
     db: {
@@ -82,7 +111,10 @@ const { default: plaidRouter } = await import("./plaid.js");
 
 const app = express();
 app.use(express.json());
-app.use("/", plaidRouter);
+app.use("/", (req, _res, next) => {
+  h.scenario = `${req.method} ${req.path}`;
+  next();
+}, plaidRouter);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -107,6 +139,18 @@ beforeEach(() => {
   h.updates.length = 0;
   h.inserts.length = 0;
   h.deletes.length = 0;
+  h.consumedSelectSlots = 0;
+  h.missingSelectSlots.length = 0;
+  h.consumedExecuteSlots = 0;
+  h.missingExecuteSlots.length = 0;
+  h.scenario = "no request";
+});
+
+afterEach(() => {
+  expect(h.missingSelectSlots, `[${h.scenario}] missing queued select slot(s)`).toHaveLength(0);
+  expect(h.selectQueue, `[${h.scenario}] unconsumed queued select slot(s)`).toHaveLength(0);
+  expect(h.missingExecuteSlots, `[${h.scenario}] missing queued execute slot(s)`).toHaveLength(0);
+  expect(h.executeQueue, `[${h.scenario}] unconsumed queued execute slot(s)`).toHaveLength(0);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

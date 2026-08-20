@@ -14,7 +14,7 @@
 //   3. (regression) remaining paid ≥ computed owed → correctly "paid", not "partial"
 //
 // DB layer is fully mocked — no real database connection required.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
 
@@ -24,6 +24,9 @@ const h = vi.hoisted(() => ({
   selectQueue: [] as any[][],
   // Captures every .set(data) payload from UPDATE calls.
   updates: [] as any[],
+  consumedSelectSlots: 0,
+  missingSelectSlots: [] as number[],
+  scenario: "no request",
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -41,7 +44,14 @@ vi.mock("@workspace/db", () => {
       groupBy:   () => c,
       limit:     () => c,
       then(resolve: (v: any) => any, reject: (e: any) => any) {
-        return Promise.resolve(h.selectQueue.shift() ?? []).then(resolve, reject);
+        const slot = h.consumedSelectSlots++;
+        const queued = h.selectQueue.shift();
+        if (queued === undefined) {
+          h.missingSelectSlots.push(slot);
+          return Promise.reject(new Error(`[${h.scenario}] missing queued select slot [${slot}]`))
+            .then(resolve, reject);
+        }
+        return Promise.resolve(queued).then(resolve, reject);
       },
     };
     return c;
@@ -80,6 +90,7 @@ const app = express();
 app.use(express.json());
 // Inject a stub user so any requireAuth middleware (if present) doesn't block.
 app.use((_req, _res, next) => {
+  h.scenario = `${_req.method} ${_req.path}`;
   (_req as any).user = { id: 1, claims: { sub: "user_1" } };
   next();
 });
@@ -129,6 +140,14 @@ function pushSelects(opts: {
 beforeEach(() => {
   h.selectQueue.length = 0;
   h.updates.length = 0;
+  h.consumedSelectSlots = 0;
+  h.missingSelectSlots.length = 0;
+  h.scenario = "no request";
+});
+
+afterEach(() => {
+  expect(h.missingSelectSlots, `[${h.scenario}] missing queued select slot(s)`).toHaveLength(0);
+  expect(h.selectQueue, `[${h.scenario}] unconsumed queued select slot(s)`).toHaveLength(0);
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
