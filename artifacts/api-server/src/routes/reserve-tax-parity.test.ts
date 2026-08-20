@@ -671,53 +671,59 @@ describe("Owner-draw exclusion from net profit", () => {
 
   // ── 4. All three owner-pay category names are blocked ────────────────────
 
-  it("/accounting byBusinessLine: all three owner-pay category names are excluded", async () => {
-    // Three owner-pay categories: $300 + $400 + $200 = $900 total owner pay.
-    // One regular expense: $150.
-    // A regression that misses any one of the three names would leak that
-    // category's amount into expenses and reduce netProfit by the same amount.
-    const makeOwnerExp = (id: number, category: string, amount: string) => ({
-      id,
-      date: `${YEAR}-06-15`,
-      amount,
-      category,
-      businessLine: "mfh",
-      jobId: null,
-      excludeFromNetProfit: false,
-    });
+  it.each([
+    ["Owner Draw", "Owner Compensation", "Owner Withdrawal"],
+    ["Owner Compensation", "Owner Withdrawal", "Owner Draw"],
+    ["Owner Withdrawal", "Owner Draw", "Owner Compensation"],
+  ] as const)(
+    "/accounting byBusinessLine: all three owner-pay categories are excluded regardless of row order",
+    async (...ownerCategories) => {
+      // All three owner-pay categories are present in the same month alongside
+      // one regular expense. A regression that misses any one of the category
+      // names would leak its amount into expenses and reduce netProfit.
+      const makeOwnerExp = (id: number, category: string, amount: string) => ({
+        id,
+        date: `${YEAR}-06-15`,
+        amount,
+        category,
+        businessLine: "mfh",
+        jobId: null,
+        excludeFromNetProfit: false,
+      });
 
-    h.selectQueue.push([BIZ_INVOICE]); // [0] paidInvoices
-    h.selectQueue.push([]);            // [1] nonPaidInvoices
-    h.selectQueue.push([
-      makeOwnerExp(70, "Owner Draw",         "300.00"),
-      makeOwnerExp(71, "Owner Compensation", "400.00"),
-      makeOwnerExp(72, "Owner Withdrawal",   "200.00"),
-      { ...REGULAR_EXP, amount: "150.00" },
-    ]);                                // [2] expenses
-    h.selectQueue.push([]);            // [3] mileageLogs
-    h.selectQueue.push([]);            // [4] subs
-    h.selectQueue.push([SETTINGS_ROW]); // [5] settings
-    h.selectQueue.push([]);            // [6] otherIncome
-    h.selectQueue.push([]);            // [7] accFixedAllocSubPayments (cash-basis)
-    h.selectQueue.push([]);            // [8] assets
-    h.selectQueue.push([]);            // [9] assetBusinessUse
-    // computeOwnerWaterfall fires synchronously; accOwnerContribRows is 4th chain in same Promise.all
-    h.selectQueue.push([]);            // [10] waterfallPaidInvs (no jobId → ownerAllocated=0)
-    h.selectQueue.push([]);            // [11] accOwnerContribRows (ownerCapitalEntries)
-    h.selectQueue.push([{ slug: "mfh", name: "MFH" }]); // [12] allBusinesses
-    h.selectQueue.push([]); // [13] outstandingSubRows
+      h.selectQueue.push([BIZ_INVOICE]); // [0] paidInvoices
+      h.selectQueue.push([]);            // [1] nonPaidInvoices
+      h.selectQueue.push([
+        makeOwnerExp(70, ownerCategories[0], "300.00"),
+        makeOwnerExp(71, ownerCategories[1], "400.00"),
+        makeOwnerExp(72, ownerCategories[2], "200.00"),
+        { ...REGULAR_EXP, amount: "100.00" },
+      ]);                                // [2] expenses
+      h.selectQueue.push([]);            // [3] mileageLogs
+      h.selectQueue.push([]);            // [4] subs
+      h.selectQueue.push([SETTINGS_ROW]); // [5] settings
+      h.selectQueue.push([]);            // [6] otherIncome
+      h.selectQueue.push([]);            // [7] accFixedAllocSubPayments (cash-basis)
+      h.selectQueue.push([]);            // [8] assets
+      h.selectQueue.push([]);            // [9] assetBusinessUse
+      // computeOwnerWaterfall fires synchronously; accOwnerContribRows is 4th chain in same Promise.all
+      h.selectQueue.push([]);            // [10] waterfallPaidInvs (no jobId → ownerAllocated=0)
+      h.selectQueue.push([]);            // [11] accOwnerContribRows (ownerCapitalEntries)
+      h.selectQueue.push([{ slug: "mfh", name: "MFH" }]); // [12] allBusinesses
+      h.selectQueue.push([]); // [13] outstandingSubRows
 
-    const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
-    expect(res.status).toBe(200);
+      const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
+      expect(res.status).toBe(200);
 
-    const mfhLine = res.body.byBusinessLine.find((b: any) => b.businessLine === "mfh");
-    expect(mfhLine).toBeDefined();
+      const mfhLine = res.body.byBusinessLine.find((b: any) => b.businessLine === "mfh");
+      expect(mfhLine).toBeDefined();
 
-    // Only the $150 regular expense should appear in expenses
-    expect(mfhLine.expenses).toBeCloseTo(150, 10);
-    // netProfit = invoicePaid - businessExpenses = 1000 - 150 = 850
-    expect(mfhLine.netProfit).toBeCloseTo(850, 10);
-  });
+      // Only the $100 regular expense should appear in expenses.
+      expect(mfhLine.expenses).toBeCloseTo(100, 10);
+      // netProfit = invoicePaid - businessExpenses = 1000 - 100 = 900.
+      expect(mfhLine.netProfit).toBeCloseTo(900, 10);
+    },
+  );
 });
 
 // ── Mileage exclusion from dashboard totals ───────────────────────────────────
