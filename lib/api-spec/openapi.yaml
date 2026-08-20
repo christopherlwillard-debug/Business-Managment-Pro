@@ -875,48 +875,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/MileageLog"
 
-  /mileage/jobs/{jobId}/legs:
-    get:
-      operationId: getJobMileageLegs
-      tags: [mileage]
-      summary: Preview the generated client and business mileage legs for a job
-      parameters:
-        - name: jobId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Generated mileage leg status
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JobMileageLegs"
-        "404":
-          description: Job not found
-
-  /mileage/jobs/{jobId}/legs/sync:
-    post:
-      operationId: syncJobMileageLegs
-      tags: [mileage]
-      summary: Persist or refresh the generated client and business mileage legs for a job
-      parameters:
-        - name: jobId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Generated mileage legs reconciled
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JobMileageLegs"
-        "404":
-          description: Job not found
-
   /mileage/{id}:
     put:
       operationId: updateMileageLog
@@ -2469,52 +2427,11 @@ components:
           nullable: true
         source:
           type: string
-          enum: [gps, manual, job_client_route, job_business_route]
+          enum: [gps, manual]
           default: gps
         createdAt:
           type: string
       required: [id, date, miles, classification, ratePerMile, deductionAmount, source, createdAt]
-
-    JobMileageLeg:
-      type: object
-      properties:
-        kind:
-          type: string
-          enum: [client_to_jobsite, business_to_jobsite]
-        label:
-          type: string
-        status:
-          type: string
-          enum: [saved, ready, outdated, missing_origin, missing_destination, route_unavailable]
-        action:
-          type: string
-          enum: [none, created, updated, unchanged]
-        origin:
-          type: [string, 'null']
-        destination:
-          type: [string, 'null']
-        miles:
-          type: [number, 'null']
-        message:
-          type: [string, 'null']
-        log:
-          oneOf:
-            - $ref: "#/components/schemas/MileageLog"
-            - type: 'null'
-      required: [kind, label, status, action, origin, destination, miles, message, log]
-
-    JobMileageLegs:
-      type: object
-      properties:
-        jobId:
-          type: integer
-        date:
-          type: string
-        legs:
-          type: array
-          items:
-            $ref: "#/components/schemas/JobMileageLeg"
-      required: [jobId, date, legs]
 
     CreateMileageLogRequest:
       type: object

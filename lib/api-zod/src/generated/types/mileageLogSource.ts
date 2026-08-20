@@ -12,6 +12,4 @@ export type MileageLogSource =
 export const MileageLogSource = {
   gps: "gps",
   manual: "manual",
-  job_client_route: "job_client_route",
-  job_business_route: "job_business_route",
 } as const;

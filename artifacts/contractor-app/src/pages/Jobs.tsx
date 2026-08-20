@@ -15,7 +15,6 @@ import {
   Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest, DailyLog,
   MaterialList, MaterialListItemInput,
   Estimate, CreateEstimateRequest, getListEstimatesQueryKey,
-  useGetJobMileageLegs, useSyncJobMileageLegs, getGetJobMileageLegsQueryKey,
 } from "@workspace/api-client-react";
 import {
   useListMfhManufacturers, useMfhPanelData, useListMfhConstructionTypes,
@@ -3499,13 +3498,6 @@ function JobTripReceipts({ tripId, tripStatus, refreshKey }: { tripId: number; t
 function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { canEdit } = useUserPermissions();
-  const {
-    data: jobMileage,
-    isLoading: mileageLoading,
-    isError: mileageError,
-  } = useGetJobMileageLegs(job.id);
-  const syncJobMileage = useSyncJobMileageLegs();
   const [trips, setTrips] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -3569,37 +3561,6 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   }
 
   function money(n: number) { return `$${Number(n).toFixed(2)}`; }
-
-  async function saveJobMileage() {
-    try {
-      const result = await syncJobMileage.mutateAsync({ jobId: job.id });
-      qc.setQueryData(getGetJobMileageLegsQueryKey(job.id), result);
-      qc.invalidateQueries({ queryKey: ["/api/mileage"] });
-      qc.invalidateQueries({ queryKey: ["route-distance", job.id] });
-      qc.invalidateQueries({ queryKey: ["business-distance", job.id] });
-
-      const changed = result.legs.filter(leg => leg.action === "created" || leg.action === "updated");
-      const unavailable = result.legs.filter(
-        leg => leg.status === "missing_origin" ||
-          leg.status === "missing_destination" ||
-          leg.status === "route_unavailable",
-      );
-      toast({
-        title: changed.length > 0 ? "Job mileage saved" : "Job mileage is up to date",
-        description: changed.length > 0
-          ? `${changed.length} mileage leg${changed.length === 1 ? "" : "s"} saved to the Mileage ledger.`
-          : unavailable.length > 0
-          ? "Add the missing address details shown in the panel, then refresh again."
-          : "No mileage values changed.",
-      });
-    } catch {
-      toast({
-        title: "Couldn’t save job mileage",
-        description: "Check the addresses and try again.",
-        variant: "destructive",
-      });
-    }
-  }
 
   async function createTrip() {
     if (!tripDest.trim()) return;
@@ -3787,122 +3748,6 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
         </div>
 
         <div className="overflow-y-auto flex-1 p-4 space-y-3">
-
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <Navigation className="w-3.5 h-3.5 text-emerald-700" />
-                  <p className="text-xs font-bold text-emerald-900 uppercase tracking-widest">Job Mileage</p>
-                </div>
-                <p className="text-[11px] text-emerald-800/80 mt-1">
-                  One-way client and business routes saved to Mileage and job expenses.
-                </p>
-              </div>
-              {jobMileage?.date && (
-                <span className="text-[10px] text-emerald-800 bg-white/70 border border-emerald-200 rounded-full px-2 py-1">
-                  {formatDate(jobMileage.date)}
-                </span>
-              )}
-            </div>
-
-            {mileageLoading ? (
-              <div className="space-y-2 animate-pulse">
-                <div className="h-14 rounded-lg bg-emerald-100/70" />
-                <div className="h-14 rounded-lg bg-emerald-100/70" />
-              </div>
-            ) : mileageError ? (
-              <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                Mileage details couldn’t be loaded. Close this panel and try again.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {jobMileage?.legs.map(leg => {
-                  const unavailable =
-                    leg.status === "missing_origin" ||
-                    leg.status === "missing_destination" ||
-                    leg.status === "route_unavailable";
-                  const needsRefresh = leg.status === "outdated";
-                  const saved = leg.status === "saved";
-                  const Icon = leg.kind === "client_to_jobsite" ? Navigation : Truck;
-                  return (
-                    <div
-                      key={leg.kind}
-                      className={`rounded-lg border px-3 py-2.5 ${
-                        unavailable
-                          ? "border-amber-200 bg-amber-50"
-                          : needsRefresh
-                          ? "border-blue-200 bg-blue-50"
-                          : "border-emerald-200 bg-white/80"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${
-                            leg.kind === "client_to_jobsite" ? "text-blue-600" : "text-orange-600"
-                          }`} />
-                          <span className="text-xs font-bold text-foreground">{leg.label}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          {leg.miles != null && (
-                            <span className="text-xs font-bold text-foreground">{leg.miles.toFixed(1)} mi</span>
-                          )}
-                          <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${
-                            saved
-                              ? "bg-emerald-100 text-emerald-700"
-                              : needsRefresh
-                              ? "bg-blue-100 text-blue-700"
-                              : unavailable
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-slate-100 text-slate-600"
-                          }`}>
-                            {saved ? "Saved" : needsRefresh ? "Refresh" : unavailable ? "Needs address" : "Ready"}
-                          </span>
-                        </div>
-                      </div>
-                      {leg.origin && leg.destination && (
-                        <p className="mt-1 text-[10px] text-muted-foreground truncate" title={`${leg.origin} → ${leg.destination}`}>
-                          {leg.origin} → {leg.destination}
-                        </p>
-                      )}
-                      {leg.log?.deductionAmount != null && (
-                        <p className="mt-1 text-[10px] font-medium text-emerald-700">
-                          {formatCurrency(leg.log.deductionAmount)} IRS deduction
-                        </p>
-                      )}
-                      {leg.message && (
-                        <p className={`mt-1 text-[10px] ${unavailable ? "text-amber-800" : "text-blue-700"}`}>
-                          {leg.message}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {canEdit("mileage") && !mileageLoading && !mileageError && (
-              <button
-                type="button"
-                onClick={saveJobMileage}
-                disabled={
-                  syncJobMileage.isPending ||
-                  !jobMileage?.legs.some(leg =>
-                    leg.status === "ready" || leg.status === "outdated" || leg.status === "saved",
-                  )
-                }
-                className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-emerald-700 text-white px-3 py-2 text-xs font-bold hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <RotateCcw className={`w-3.5 h-3.5 ${syncJobMileage.isPending ? "animate-spin" : ""}`} />
-                {syncJobMileage.isPending
-                  ? "Saving mileage…"
-                  : jobMileage?.legs.some(leg => leg.log)
-                  ? "Refresh job mileage"
-                  : "Save job mileage"}
-              </button>
-            )}
-          </div>
 
           {/* ── Inline New Trip Form ── */}
           {showNewTripForm && (
@@ -4306,26 +4151,22 @@ function JobCard({
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  type RouteDistanceData = {
-    miles: number | null;
-    reason?: "missing_address" | "geocoding_failed" | "routing_failed" | "request_failed";
-  };
-  const { data: routeDistData } = useQuery<RouteDistanceData>({
+  const { data: routeDistData } = useQuery<{ miles: number | null }>({
     queryKey: ["route-distance", job.id],
     queryFn: () =>
       fetch(`${BASE}/api/route-distance?clientId=${job.clientId}&jobId=${job.id}`, { credentials: "include" })
-        .then(r => r.ok ? r.json() : { miles: null, reason: "request_failed" }),
+        .then(r => r.ok ? r.json() : { miles: null }),
     enabled: job.clientId != null && !!(job.address || job.city),
     staleTime: 1000 * 60 * 60 * 24,
     gcTime: 1000 * 60 * 60 * 24,
   });
   const routeMiles = routeDistData?.miles ?? null;
 
-  const { data: businessDistData } = useQuery<RouteDistanceData>({
+  const { data: businessDistData } = useQuery<{ miles: number | null }>({
     queryKey: ["business-distance", job.id],
     queryFn: () =>
       fetch(`${BASE}/api/business-distance?jobId=${job.id}`, { credentials: "include" })
-        .then(r => r.ok ? r.json() : { miles: null, reason: "request_failed" }),
+        .then(r => r.ok ? r.json() : { miles: null }),
     enabled: !!(job.address || job.city),
     staleTime: 1000 * 60 * 60 * 24,
     gcTime: 1000 * 60 * 60 * 24,
@@ -4547,40 +4388,10 @@ function JobCard({
               <span className="font-medium">{routeMiles} mi from client</span>
             </div>
           )}
-          {routeMiles == null && job.clientName && (
-            <div className="flex items-center gap-1.5 text-amber-700">
-              <AlertCircle className="w-3 h-3 flex-shrink-0" />
-              <span className="font-medium">
-                {job.clientId == null
-                  ? "Link this client to calculate mileage"
-                  : !(job.address || job.city)
-                  ? "Jobsite address is missing"
-                  : routeDistData?.reason === "missing_address"
-                  ? "Client address is missing"
-                  : routeDistData?.reason
-                  ? "Client route couldn’t be mapped"
-                  : "Checking client route…"}
-              </span>
-            </div>
-          )}
           {businessMiles != null && (
             <div className="flex items-center gap-1.5 text-orange-600">
               <Truck className="w-3 h-3 flex-shrink-0" />
               <span className="font-medium">{businessMiles} mi from shop</span>
-            </div>
-          )}
-          {businessMiles == null && (
-            <div className="flex items-center gap-1.5 text-amber-700">
-              <AlertCircle className="w-3 h-3 flex-shrink-0" />
-              <span className="font-medium">
-                {!(job.address || job.city)
-                  ? "Jobsite address is missing"
-                  : businessDistData?.reason === "missing_address"
-                  ? "Business address is missing"
-                  : businessDistData?.reason
-                  ? "Business route couldn’t be mapped"
-                  : "Checking business route…"}
-              </span>
             </div>
           )}
           {job.startDate && (

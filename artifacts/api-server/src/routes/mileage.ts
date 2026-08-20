@@ -3,10 +3,6 @@ import { db } from "@workspace/db";
 import { mileageLogsTable, mileageImportsTable, jobsTable, settingsTable, expensesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, isNull, inArray, getTableColumns } from "drizzle-orm";
 import { getRequestUserId } from "./guards";
-import {
-  isJobGeneratedMileageSource,
-  isPublicMileageSource,
-} from "../lib/mileage-sources.js";
 
 const router = Router();
 
@@ -196,9 +192,6 @@ router.post("/", async (req, res) => {
   try {
     const { date, startLocation, endLocation, miles, purpose, jobId, businessId, classification, notes, source } = req.body;
     if (!date || miles == null) return res.status(400).json({ error: "Missing required fields" });
-    if (source != null && !isPublicMileageSource(source)) {
-      return res.status(400).json({ error: "Invalid mileage source" });
-    }
     // Use the IRS date-aware rate so H2 2026 trips automatically get $0.760/mile.
     // getIrsRateForDate() is the authoritative rate table — not the settings override.
     const rate = getIrsRateForDate(date);
@@ -260,11 +253,6 @@ router.put("/:id", async (req, res) => {
     const deductionAmount = classification === "business" ? milesNum * rate : 0;
 
     const [existing] = await db.select().from(mileageLogsTable).where(eq(mileageLogsTable.id, id));
-    if (isJobGeneratedMileageSource(existing?.source)) {
-      return res.status(409).json({
-        error: "Generated job mileage must be refreshed from the job",
-      });
-    }
 
     if (existing?.expenseId) {
       await db.update(expensesTable).set({

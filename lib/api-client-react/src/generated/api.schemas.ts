@@ -520,8 +520,6 @@ export type MileageLogSource =
 export const MileageLogSource = {
   gps: "gps",
   manual: "manual",
-  job_client_route: "job_client_route",
-  job_business_route: "job_business_route",
 } as const;
 
 export interface MileageLog {
@@ -539,54 +537,6 @@ export interface MileageLog {
   notes?: string | null;
   source: MileageLogSource;
   createdAt: string;
-}
-
-export type JobMileageLegKind =
-  (typeof JobMileageLegKind)[keyof typeof JobMileageLegKind];
-
-export const JobMileageLegKind = {
-  client_to_jobsite: "client_to_jobsite",
-  business_to_jobsite: "business_to_jobsite",
-} as const;
-
-export type JobMileageLegStatus =
-  (typeof JobMileageLegStatus)[keyof typeof JobMileageLegStatus];
-
-export const JobMileageLegStatus = {
-  saved: "saved",
-  ready: "ready",
-  outdated: "outdated",
-  missing_origin: "missing_origin",
-  missing_destination: "missing_destination",
-  route_unavailable: "route_unavailable",
-} as const;
-
-export type JobMileageLegAction =
-  (typeof JobMileageLegAction)[keyof typeof JobMileageLegAction];
-
-export const JobMileageLegAction = {
-  none: "none",
-  created: "created",
-  updated: "updated",
-  unchanged: "unchanged",
-} as const;
-
-export interface JobMileageLeg {
-  kind: JobMileageLegKind;
-  label: string;
-  status: JobMileageLegStatus;
-  action: JobMileageLegAction;
-  origin: string | null;
-  destination: string | null;
-  miles: number | null;
-  message: string | null;
-  log: MileageLog | null;
-}
-
-export interface JobMileageLegs {
-  jobId: number;
-  date: string;
-  legs: JobMileageLeg[];
 }
 
 export type CreateMileageLogRequestClassification =

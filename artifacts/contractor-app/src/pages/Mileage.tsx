@@ -37,7 +37,6 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
-  Truck,
 } from "lucide-react";
 import { MileIQProvider, computeFileHash, type ParsedTrip, type InvalidRow } from "@/lib/mileageImport";
 import { getIrsRate } from "@/lib/irsMileageRates";
@@ -1313,16 +1312,6 @@ export default function Mileage() {
                         {log.purpose && (
                           <span className="text-muted-foreground text-xs truncate">{log.purpose}</span>
                         )}
-                        {log.source === "job_client_route" && (
-                          <span className="w-fit inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 text-[9px] font-bold uppercase">
-                            <Navigation className="w-2.5 h-2.5" /> Client → Jobsite
-                          </span>
-                        )}
-                        {log.source === "job_business_route" && (
-                          <span className="w-fit inline-flex items-center gap-1 rounded-full bg-orange-50 text-orange-700 border border-orange-200 px-1.5 py-0.5 text-[9px] font-bold uppercase">
-                            <Truck className="w-2.5 h-2.5" /> Business → Jobsite
-                          </span>
-                        )}
                         {!log.startLocation && !log.endLocation && !log.purpose && (
                           <span className="text-muted-foreground text-xs">—</span>
                         )}
@@ -1350,22 +1339,13 @@ export default function Mileage() {
                     <td className="px-6 py-4 text-center">
                       {canEdit("mileage") && (
                         <div className="flex items-center justify-center gap-2">
-                          {log.source === "job_client_route" || log.source === "job_business_route" ? (
-                            <span
-                              className="text-emerald-600"
-                              title="Generated from the job. Refresh it from the job's Business Trips panel."
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => openEdit(log)}
-                              className="text-muted-foreground hover:text-primary transition-colors"
-                              title="Edit entry"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => openEdit(log)}
+                            className="text-muted-foreground hover:text-primary transition-colors"
+                            title="Edit entry"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => handleDelete(log.id, log.classification, log)}
                             className="text-muted-foreground hover:text-destructive transition-colors"
