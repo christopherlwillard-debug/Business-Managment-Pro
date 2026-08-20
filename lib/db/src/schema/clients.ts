@@ -1,4 +1,5 @@
 import { pgTable, serial, text, timestamp, integer, date, boolean, numeric } from "drizzle-orm/pg-core";
+import { businessesTable } from "./businesses";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -15,6 +16,7 @@ export const clientsTable = pgTable("clients", {
   nextServiceDate: date("next_service_date"),
   serviceIntervalMonths: integer("service_interval_months"),
   businessLine: text("business_line"),
+  businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "set null" }),
   squareCustomerId: text("square_customer_id"),
   reminderOptOut: boolean("reminder_opt_out").default(false).notNull(),
   mileageSurchargeEnabled: boolean("mileage_surcharge_enabled").default(false).notNull(),

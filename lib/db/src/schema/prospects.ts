@@ -2,6 +2,7 @@ import { pgTable, serial, text, timestamp, integer, numeric, check, date } from 
 import { sql } from "drizzle-orm";
 import { estimatesTable } from "./estimates";
 import { clientsTable } from "./clients";
+import { businessesTable } from "./businesses";
 
 export const PROSPECT_PROPERTY_TYPES = ["Church", "Retail", "Apartment", "Industrial", "Other"] as const;
 export type ProspectPropertyType = typeof PROSPECT_PROPERTY_TYPES[number];
@@ -46,6 +47,7 @@ export const prospectsTable = pgTable(
     followUpDate: date("follow_up_date"),
     source: text("source").default("manual"),
     businessLine: text("business_line"),
+    businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

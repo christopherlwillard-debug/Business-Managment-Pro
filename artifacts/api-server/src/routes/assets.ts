@@ -6,9 +6,22 @@ import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendEmail } from "../lib/sendEmail";
+import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
+
+router.param("id", (req, res, next, rawId) => {
+  void (async () => {
+    const id = Number(rawId);
+    const scope = await requestedBusiness(req);
+    if (!scope) return next();
+    const [asset] = await db.select().from(assetsTable).where(eq(assetsTable.id, id));
+    if (!asset || !belongsToBusiness(asset, scope)) return res.status(404).json({ error: "Asset not found" });
+    res.locals.businessScopedAsset = asset;
+    next();
+  })().catch(next);
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -36,9 +49,11 @@ function formatAsset(a: typeof assetsTable.$inferSelect) {
 router.get("/", async (req, res) => {
   try {
     const { status, year } = req.query;
-    const conditions: ReturnType<typeof eq>[] = [];
+    const scope = await requestedBusiness(req);
+    const conditions: any[] = [];
     if (status) conditions.push(eq(assetsTable.status, status as string));
     if (year) conditions.push(like(assetsTable.purchaseDate, `${year}-%`));
+    if (scope) conditions.push(eq(assetsTable.businessId, scope.id));
 
     let query = db.select().from(assetsTable);
     const rows = await (conditions.length > 0
@@ -71,6 +86,7 @@ router.post("/", async (req, res) => {
       notes, receiptUrl, section179Eligible, status, saleDate, salePrice,
       usefulLifeYears, salvageValue, depreciationMethod, bonusDepreciationPct,
     } = req.body;
+    const scope = await requestedBusiness(req);
 
     if (!name || !purchaseDate || purchasePrice == null) {
       return res.status(400).json({ error: "name, purchaseDate, and purchasePrice are required" });
@@ -87,6 +103,7 @@ router.post("/", async (req, res) => {
       receiptUrl: receiptUrl ?? null,
       section179Eligible: section179Eligible === true,
       status: status ?? "active",
+       businessId: scope?.id ?? null,
       saleDate: saleDate ?? null,
       salePrice: salePrice != null ? salePrice.toString() : null,
       usefulLifeYears: usefulLifeYears != null ? parseInt(usefulLifeYears) : null,
@@ -105,7 +122,8 @@ router.post("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const [asset] = await db.select().from(assetsTable).where(eq(assetsTable.id, id));
+    const scope = await requestedBusiness(req);
+    const [asset] = await db.select().from(assetsTable).where(and(eq(assetsTable.id, id), ...(scope ? [eq(assetsTable.businessId, scope.id)] : [])));
     if (!asset) return res.status(404).json({ error: "Asset not found" });
     const busUseRows = await db.select().from(assetBusinessUseTable)
       .where(eq(assetBusinessUseTable.assetId, id))
@@ -123,6 +141,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
+    const scope = await requestedBusiness(req);
     const {
       name, assetType, purchaseDate, purchasePrice, vendor, serialNumber,
       notes, receiptUrl, section179Eligible, status, saleDate, salePrice,
@@ -146,7 +165,7 @@ router.put("/:id", async (req, res) => {
       ...(salvageValue !== undefined && { salvageValue: salvageValue != null ? salvageValue.toString() : "0" }),
       ...(depreciationMethod !== undefined && { depreciationMethod }),
       ...(bonusDepreciationPct !== undefined && { bonusDepreciationPct: bonusDepreciationPct != null ? parseInt(bonusDepreciationPct) : 60 }),
-    }).where(eq(assetsTable.id, id)).returning();
+    }).where(and(eq(assetsTable.id, id), ...(scope ? [eq(assetsTable.businessId, scope.id)] : []))).returning();
 
     if (!updated) return res.status(404).json({ error: "Asset not found" });
     res.json(formatAsset(updated));
@@ -158,7 +177,8 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    await db.delete(assetsTable).where(eq(assetsTable.id, parseInt(req.params.id)));
+    const scope = await requestedBusiness(req);
+    await db.delete(assetsTable).where(and(eq(assetsTable.id, parseInt(req.params.id)), ...(scope ? [eq(assetsTable.businessId, scope.id)] : [])));
     res.status(204).send();
   } catch (err) {
     console.error(err);
@@ -169,8 +189,9 @@ router.delete("/:id", async (req, res) => {
 router.get("/:id/business-use", async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
+    const scope = await requestedBusiness(req);
     const rows = await db.select().from(assetBusinessUseTable)
-      .where(eq(assetBusinessUseTable.assetId, id))
+      .where(and(eq(assetBusinessUseTable.assetId, id), ...(scope ? [eq(assetBusinessUseTable.assetId, id)] : [])))
       .orderBy(assetBusinessUseTable.year);
     res.json(rows);
   } catch (err) {
@@ -182,6 +203,7 @@ router.get("/:id/business-use", async (req, res) => {
 router.put("/:id/business-use", async (req, res) => {
   try {
     const assetId = parseInt(req.params.id);
+    const scope = await requestedBusiness(req);
     if (isNaN(assetId)) return res.status(400).json({ error: "Invalid asset id" });
     const { year, businessUsePct } = req.body;
     const yearInt = parseInt(year);
@@ -195,6 +217,9 @@ router.put("/:id/business-use", async (req, res) => {
     if (yearInt < 1900 || yearInt > 2100) {
       return res.status(400).json({ error: "year must be a valid calendar year" });
     }
+    const [asset] = await db.select({ id: assetsTable.id }).from(assetsTable)
+      .where(and(eq(assetsTable.id, assetId), ...(scope ? [eq(assetsTable.businessId, scope.id)] : [])));
+    if (!asset) return res.status(404).json({ error: "Asset not found" });
     const [row] = await db.insert(assetBusinessUseTable)
       .values({ assetId, year: yearInt, businessUsePct: pctInt })
       .onConflictDoUpdate({
@@ -213,6 +238,10 @@ router.delete("/:id/business-use/:year", async (req, res) => {
   try {
     const assetId = parseInt(req.params.id);
     const year = parseInt(req.params.year);
+    const scope = await requestedBusiness(req);
+    const [asset] = await db.select({ id: assetsTable.id }).from(assetsTable)
+      .where(and(eq(assetsTable.id, assetId), ...(scope ? [eq(assetsTable.businessId, scope.id)] : [])));
+    if (!asset) return res.status(404).json({ error: "Asset not found" });
     await db.delete(assetBusinessUseTable)
       .where(and(eq(assetBusinessUseTable.assetId, assetId), eq(assetBusinessUseTable.year, year)));
     res.status(204).send();
@@ -225,6 +254,7 @@ router.delete("/:id/business-use/:year", async (req, res) => {
 router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
+    const scope = await requestedBusiness(req);
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     let fileBuffer = req.file.buffer;
@@ -249,7 +279,8 @@ router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
       originalFilename
     );
 
-    const [updated] = await db.update(assetsTable).set({ receiptUrl: objectPath }).where(eq(assetsTable.id, id)).returning();
+    const [updated] = await db.update(assetsTable).set({ receiptUrl: objectPath })
+      .where(and(eq(assetsTable.id, id), ...(scope ? [eq(assetsTable.businessId, scope.id)] : []))).returning();
     if (!updated) return res.status(404).json({ error: "Asset not found" });
 
     res.json(formatAsset(updated));

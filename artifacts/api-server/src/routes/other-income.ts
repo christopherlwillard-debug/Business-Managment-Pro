@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { otherIncomeTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -31,11 +32,14 @@ function parseBody(body: any): { clientId?: number | null; amount: string; date:
 router.get("/", async (req, res) => {
   try {
     const { startDate, endDate, businessLine } = req.query as { startDate?: string; endDate?: string; businessLine?: string };
+    const scope = await requestedBusiness(req);
     const conditions = [];
     if (startDate && endDate) {
       conditions.push(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate));
     }
-    if (businessLine) {
+    if (scope) {
+      conditions.push(eq(otherIncomeTable.businessLine, scope.slug));
+    } else if (businessLine) {
       conditions.push(eq(otherIncomeTable.businessLine, businessLine));
     }
     const rows = await db.select().from(otherIncomeTable)
@@ -52,6 +56,8 @@ router.post("/", async (req, res) => {
   try {
     const data = parseBody(req.body);
     if (!data) { res.status(400).json({ error: "Invalid payload" }); return; }
+    const scope = await requestedBusiness(req);
+    data.businessLine = scope?.slug ?? data.businessLine ?? null;
     const [row] = await db.insert(otherIncomeTable).values(data).returning();
     res.status(201).json(row);
   } catch (err) {
@@ -66,7 +72,11 @@ router.put("/:id", async (req, res) => {
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const data = parseBody(req.body);
     if (!data) { res.status(400).json({ error: "Invalid payload" }); return; }
-    const [row] = await db.update(otherIncomeTable).set(data).where(eq(otherIncomeTable.id, id)).returning();
+    const scope = await requestedBusiness(req);
+    const [existing] = await db.select().from(otherIncomeTable).where(eq(otherIncomeTable.id, id));
+    if (!existing || !belongsToBusiness(existing, scope)) { res.status(404).json({ error: "Not found" }); return; }
+    data.businessLine = scope?.slug ?? existing.businessLine;
+    const [row] = await db.update(otherIncomeTable).set(data).where(and(eq(otherIncomeTable.id, id), eq(otherIncomeTable.businessLine, data.businessLine ?? ""))).returning();
     if (!row) { res.status(404).json({ error: "Not found" }); return; }
     res.json(row);
   } catch (err) {
@@ -79,7 +89,10 @@ router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-    await db.delete(otherIncomeTable).where(eq(otherIncomeTable.id, id));
+    const scope = await requestedBusiness(req);
+    const [existing] = await db.select().from(otherIncomeTable).where(eq(otherIncomeTable.id, id));
+    if (!existing || !belongsToBusiness(existing, scope)) { res.status(404).json({ error: "Not found" }); return; }
+    await db.delete(otherIncomeTable).where(and(eq(otherIncomeTable.id, id), eq(otherIncomeTable.businessLine, existing.businessLine ?? "")));
     res.status(204).send();
   } catch (err) {
     console.error(err);

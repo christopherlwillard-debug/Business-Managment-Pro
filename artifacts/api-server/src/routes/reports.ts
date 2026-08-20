@@ -30,7 +30,7 @@ function getEffectivePaymentDate(inv: {
 
 router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
   try {
-    const { period = "month", businessLine: blFilter } = req.query as Record<string, string | undefined>;
+    const { period = "month", businessLine: blFilter, businessId: businessIdFilter } = req.query as Record<string, string | undefined>;
 
     const now = new Date();
     let startDate: string;
@@ -63,7 +63,14 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const chartStartDate = `${chartD.getFullYear()}-${String(chartD.getMonth() + 1).padStart(2, "0")}-01`;
 
     // Accept any non-empty business slug — no hardcoded allowlist
-    const validBl = blFilter || null;
+    let validBl = blFilter || null;
+    if (!validBl && businessIdFilter) {
+      const [selectedBusiness] = await db.select({ slug: businessesTable.slug })
+        .from(businessesTable)
+        .where(eq(businessesTable.id, Number(businessIdFilter)))
+        .limit(1);
+      validBl = selectedBusiness?.slug ?? null;
+    }
 
     // Build optional DB-level business-line WHERE condition (returns undefined when no filter = AND ignores it)
     const blWhere = (col: Parameters<typeof eq>[0]) =>

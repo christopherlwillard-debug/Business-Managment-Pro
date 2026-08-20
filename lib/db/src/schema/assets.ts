@@ -1,4 +1,5 @@
 import { pgTable, serial, text, timestamp, numeric, boolean, integer, unique } from "drizzle-orm/pg-core";
+import { businessesTable } from "./businesses";
 
 export const assetsTable = pgTable("assets", {
   id: serial("id").primaryKey(),
@@ -12,6 +13,7 @@ export const assetsTable = pgTable("assets", {
   receiptUrl: text("receipt_url"),
   section179Eligible: boolean("section_179_eligible").default(false).notNull(),
   status: text("status").notNull().default("active"),
+  businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "set null" }),
   saleDate: text("sale_date"),
   salePrice: numeric("sale_price", { precision: 12, scale: 2 }),
   usefulLifeYears: integer("useful_life_years"),

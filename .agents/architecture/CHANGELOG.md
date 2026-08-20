@@ -73,3 +73,12 @@ Created the four-document architecture governance system:
 ---
 
 *Add new entries here as architectural changes are completed and verified.*
+
+## 2026-08-20
+
+### Task #1965 — Core business ownership enforcement
+
+- Added nullable canonical `business_id` ownership columns to clients, jobs, invoices, estimates, prospects, and assets.
+- Backfilled rows whose legacy `business_line` matches a registered business; ambiguous/unassigned rows remain explicitly inventoried.
+- Added scoped ID enforcement for clients, jobs, invoices, expenses, assets, and other-income, including asset receipt/business-use paths.
+- Updated dashboard report business selection to accept canonical `businessId` while retaining legacy slug compatibility.

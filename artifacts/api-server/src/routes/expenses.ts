@@ -6,9 +6,21 @@ import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { reconcileExpense } from "../lib/matchingEngine.js";
+import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
+
+router.param("id", (req, res, next, rawId) => {
+  void (async () => {
+    const id = Number(rawId);
+    const scope = await requestedBusiness(req);
+    const [expense] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));
+    if (!expense || !belongsToBusiness(expense, scope)) return res.status(404).json({ error: "Expense not found" });
+    res.locals.businessScopedExpense = expense;
+    next();
+  })().catch(next);
+});
 
 async function syncJobSubPayment(jobId: number, subId: number): Promise<void> {
   const [sumRow] = await db

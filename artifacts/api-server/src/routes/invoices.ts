@@ -13,8 +13,21 @@ import { eq, and, gte, lte, desc, inArray, ne, getTableColumns, sql } from "driz
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { syncMaterialsToJobInvoice } from "./material-lists.js";
+import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
+
+router.param("id", (req, res, next, rawId) => {
+  void (async () => {
+    const id = Number(rawId);
+    const scope = await requestedBusiness(req);
+    if (!scope) return next();
+    const [invoice] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, id));
+    if (!invoice || !belongsToBusiness(invoice, scope)) return res.status(404).json({ error: "Invoice not found" });
+    res.locals.businessScopedInvoice = invoice;
+    next();
+  })().catch(next);
+});
 
 // Zod schema for a single invoice line item — applied on create and update.
 const lineItemSchema = z.object({
@@ -228,6 +241,7 @@ export async function assignInvoiceNumberIfNeeded(invoiceId: number): Promise<st
 router.post("/", async (req, res) => {
   try {
     const { clientId, jobId, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName, attachments = [], businessLine } = req.body;
+    const scope = await requestedBusiness(req);
     // Validate line items before any DB work
     const lineItemError = validateLineItems(lineItems);
     if (lineItemError) return res.status(400).json({ error: lineItemError });
@@ -254,6 +268,7 @@ router.post("/", async (req, res) => {
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
       attachments: Array.isArray(attachments) ? attachments : [],
       businessLine: businessLine || null,
+      businessId: scope?.id ?? null,
     }).returning();
 
     // Sync material lists into the new draft so materials appear immediately,
@@ -316,8 +331,10 @@ router.get("/summaries", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const scope = await requestedBusiness(req);
     const [inv] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
+    if (!belongsToBusiness(inv, scope)) return res.status(404).json({ error: "Invoice not found" });
     res.json(fmt(inv));
   } catch (err) {
     console.error(err);

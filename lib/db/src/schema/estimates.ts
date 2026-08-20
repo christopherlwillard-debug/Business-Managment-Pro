@@ -2,6 +2,7 @@ import { pgTable, serial, text, timestamp, integer, numeric, jsonb } from "drizz
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
+import { businessesTable } from "./businesses";
 import { jobsTable } from "./jobs";
 
 export const estimatesTable = pgTable("estimates", {
@@ -19,6 +20,7 @@ export const estimatesTable = pgTable("estimates", {
   lineItems: jsonb("line_items").default("[]"),
   jobId: integer("job_id").references(() => jobsTable.id),
   businessLine: text("business_line"),
+  businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "set null" }),
   stripePaymentLinkId: text("stripe_payment_link_id"),
   stripePaymentLinkUrl: text("stripe_payment_link_url"),
   squarePaymentLinkId: text("square_payment_link_id"),

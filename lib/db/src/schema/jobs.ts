@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
 import { subcontractorsTable } from "./subcontractors";
+import { businessesTable } from "./businesses";
 
 export const phaseItemSchema = z.object({
   name: z.string(),
@@ -61,6 +62,7 @@ export const jobsTable = pgTable("jobs", {
   locationName: text("location_name"),
   notes: text("notes"),
   businessLine: text("business_line"),
+  businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "set null" }),
   subPaid: boolean("sub_paid").notNull().default(false),
   sqFt: integer("sq_ft"),
   coats: smallint("coats").default(1),

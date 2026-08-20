@@ -174,6 +174,12 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Reports:** Yes — multi-business filtering in reports
 - **Source of truth:** `businesses`. Supports parent/child structure (`parentBusinessId`) for shell companies and DBAs.
 
+### Business ownership policy
+
+- **Canonical ownership:** `business_id` on core records; `business_line` is a compatibility fallback for legacy rows.
+- **Enforcement:** `artifacts/api-server/src/lib/business-scope.ts` resolves the requested business and scoped route parameters reject records from another business.
+- **Migration:** `lib/db/migrations/0047_business_ownership_backfill.sql` backfills known slugs and emits an inventory of intentionally unassigned rows.
+
 ---
 
 ## Settings

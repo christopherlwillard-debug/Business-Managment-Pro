@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
 import { jobsTable } from "./jobs";
+import { businessesTable } from "./businesses";
 
 export const invoicesTable = pgTable("invoices", {
   id: serial("id").primaryKey(),
@@ -25,6 +26,7 @@ export const invoicesTable = pgTable("invoices", {
   lineItems: jsonb("line_items").default("[]"),
   attachments: jsonb("attachments").default("[]"),
   businessLine: text("business_line"),
+  businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "set null" }),
   stripePaymentLinkId: text("stripe_payment_link_id"),
   stripePaymentLinkUrl: text("stripe_payment_link_url"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),

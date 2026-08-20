@@ -21,7 +21,7 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 - `owner_withdrawals` table
 - Any other separate owner pay ledger
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-08-05
 
 ---
@@ -88,6 +88,24 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted  
 **Date:** 2026-08-05
+
+---
+
+## ADR-006
+
+**Title:** Core records use canonical business ownership with legacy slug compatibility
+
+**Decision:** Core clients, jobs, invoices, estimates, prospects, and assets carry a nullable `business_id` foreign key. During migration, `business_line` remains a read-compatible fallback. Scoped requests resolve the selected business once and reject ID-based access when the record belongs to another business.
+
+**Reason:** Owner-authenticated routes previously accepted global record IDs, allowing cross-business reads and mutations. A nullable backfill preserves existing unassigned data for deliberate classification instead of silently assigning it.
+
+**Rejected Alternatives:**
+- Trusting client-side business filtering
+- Treating `business_line` as an authorization boundary forever
+- Making the new foreign key non-null before legacy rows are inventoried
+
+**Status:** Accepted
+**Date:** 2026-08-20
 
 ---
 

@@ -2,8 +2,22 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable } from "@workspace/db/schema";
 import { eq, desc, or } from "drizzle-orm";
+import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
+
+router.param("id", (req, res, next, rawId) => {
+  void (async () => {
+    const id = Number(rawId);
+    const scope = await requestedBusiness(req);
+    if (!Number.isInteger(id)) return next();
+    if (!scope) return next();
+    const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
+    if (!client || !belongsToBusiness(client, scope)) return res.status(404).json({ error: "Client not found" });
+    res.locals.businessScopedClient = client;
+    next();
+  })().catch(next);
+});
 
 function formatClient(c: typeof clientsTable.$inferSelect) {
   return { ...c, createdAt: c.createdAt.toISOString() };
@@ -48,11 +62,13 @@ router.post("/", async (req, res) => {
   try {
     const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, businessLine, reminderOptOut, mileageSurchargeEnabled, mileageSurchargeTriggerMiles, mileageSurchargeDailyRate } = req.body;
     if (!name) return res.status(400).json({ error: "Name is required" });
+    const scope = await requestedBusiness(req);
     const [client] = await db.insert(clientsTable).values({
       name, email, phone, address, city, state, zip, notes,
       nextServiceDate: nextServiceDate ?? null,
       serviceIntervalMonths: serviceIntervalMonths ?? null,
       businessLine: businessLine ?? null,
+      businessId: scope?.id ?? null,
       reminderOptOut: reminderOptOut === true,
       mileageSurchargeEnabled: mileageSurchargeEnabled === true,
       mileageSurchargeTriggerMiles: mileageSurchargeTriggerMiles ?? null,
@@ -70,7 +86,7 @@ router.get("/:id/profile", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
 
-    const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
+    const client = res.locals.businessScopedClient ?? (await db.select().from(clientsTable).where(eq(clientsTable.id, id)))[0];
     if (!client) return res.status(404).json({ error: "Client not found" });
 
     const [jobs, invoices, squarePayments, linkedProspects, routeStops, otherIncome] = await Promise.all([
@@ -120,7 +136,7 @@ router.get("/:id/profile", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
+    const client = res.locals.businessScopedClient ?? (await db.select().from(clientsTable).where(eq(clientsTable.id, id)))[0];
     if (!client) return res.status(404).json({ error: "Client not found" });
     res.json(formatClient(client));
   } catch (err) {

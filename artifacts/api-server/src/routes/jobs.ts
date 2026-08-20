@@ -9,8 +9,21 @@ import { computeAllocationSplitPool, computeSubOwed } from "../lib/allocation.js
 import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
 import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/productionBilling.js";
 import { z } from "zod/v4";
+import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
+
+router.param("id", (req, res, next, rawId) => {
+  void (async () => {
+    const id = Number(rawId);
+    const scope = await requestedBusiness(req);
+    if (!scope) return next();
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id));
+    if (!job || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
+    res.locals.businessScopedJob = job;
+    next();
+  })().catch(next);
+});
 
 // Shared helper — recompute and persist jobs.sub_paid from per-sub payment/hour data.
 // Call this any time sub_hours or sub_payments change for a job.
@@ -300,6 +313,7 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours } = req.body;
+    const scope = await requestedBusiness(req);
     if (!title) return res.status(400).json({ error: "Title is required" });
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
@@ -322,6 +336,7 @@ router.post("/", async (req, res) => {
       startDate, endDate,
       notes,
       businessLine: businessLine || null,
+      businessId: scope?.id ?? null,
       workflow: workflow || null,
       sqFt: sqFt != null ? parseInt(sqFt) : null,
       coats: coats != null ? parseInt(coats) : null,
@@ -1375,6 +1390,11 @@ router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+    const scope = await requestedBusiness(req);
+    if (scope) {
+      const [ownership] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, id));
+      if (!ownership || !belongsToBusiness(ownership, scope)) return res.status(404).json({ error: "Job not found" });
+    }
     const job = await getJobWithSubs(id);
     if (!job) return res.status(404).json({ error: "Job not found" });
     res.json(job);
