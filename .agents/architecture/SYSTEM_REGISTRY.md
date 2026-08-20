@@ -27,6 +27,18 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ---
 
+## Authentication / Sessions
+
+- **Tables:** `users`, `sessions`
+- **Schema:** `lib/db/src/schema/auth.ts`
+- **API:** `artifacts/api-server/src/routes/auth.ts`, `index.ts` authentication middleware
+- **UI:** shared authenticated application shell and login flow
+- **Reports:** None.
+- **Source of truth:** `users` owns application identities; `sessions` owns active authenticated sessions.
+- **Rule:** Authentication records are infrastructure, not business ownership or accounting records.
+
+---
+
 ## Expenses
 
 - **Table:** `expenses`
@@ -137,12 +149,12 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ## Clients / Customers
 
-- **Table:** `clients`
+- **Tables:** `clients`, `client_billing_profiles`
 - **Schema:** `lib/db/src/schema/clients.ts`
-- **API:** `artifacts/api-server/src/routes/clients.ts`
+- **API:** `artifacts/api-server/src/routes/clients.ts`, `client-billing-profiles.ts`
 - **UI:** `artifacts/contractor-app/src/pages/Clients.tsx`
 - **Reports:** Yes — joined to jobs and invoices in reports
-- **Source of truth:** `clients`. One record per customer. Prospects live elsewhere (CRM/prospect system).
+- **Source of truth:** `clients` owns the customer; `client_billing_profiles` owns payment-provider/billing metadata. One record per customer. Prospects live elsewhere (CRM/prospect system).
 
 ---
 
@@ -265,5 +277,133 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ---
 
-*Last updated: 2026-08-05*  
+## CRM / Prospects / Contacts
+
+- **Tables:** `prospects`, `contacts`, `prospect_events`, `prospect_service_visits`, `inquiries`, `featured_clients`, `client_errors`
+- **Schemas:** `lib/db/src/schema/prospects.ts`, `contacts.ts`, `prospect-events.ts`, `prospect-service-visits.ts`, `inquiries.ts`, `featured-clients.ts`, `client-errors.ts`
+- **API:** `artifacts/api-server/src/routes/prospects.ts`, `contacts.ts`, `clients.ts`, `website.ts`
+- **UI:** `artifacts/contractor-app/src/pages/Prospects.tsx`, `AddressBook.tsx`, `Clients.tsx`, `ProspectDrawer.tsx`
+- **Reports:** Not a financial ledger; prospect pipeline and service-visit activity may feed dashboard views.
+- **Source of truth:** `prospects` owns leads and pipeline state; `contacts` owns reusable people/contact methods; `clients` owns converted customers; event and visit tables own CRM history.
+- **Rule:** Do not use `clients` as a prospect staging table or duplicate prospect activity in jobs. Conversion must preserve the prospect-to-client relationship.
+
+## Communications
+
+- **Tables:** `conversations`, `messages`
+- **Schema:** `lib/db/src/schema/conversations.ts`, `messages.ts`
+- **API:** `artifacts/api-server/src/routes/portal.ts`, `team.ts`, `website.ts`
+- **UI:** customer portal and website communication surfaces; no separate accounting UI
+- **Reports:** No direct financial impact.
+- **Source of truth:** conversation/message records are the communication history; email/SMS/provider delivery state is external integration state.
+- **Rule:** Messages are not authoritative customer, invoice, or payment records. Do not create financial ledger rows from a message without an explicit domain action.
+
+## Compliance / Kentucky Filings / Registered Agent
+
+- **Tables:** `compliance_items`, `ky_filing_settings`, `registered_agents`, `registered_agent_tasks`, `access_requests`
+- **Schemas:** `lib/db/src/schema/compliance.ts`, `registered-agent.ts`, `access-requests.ts`
+- **API:** `artifacts/api-server/src/routes/compliance-items.ts`, `ky-filing-settings.ts`, `registered-agent.ts`, `index.ts` access middleware
+- **UI:** `Settings.tsx`, compliance and registered-agent panels
+- **Reports:** Compliance status is operational; filing/payment records may be referenced by tax-calendar views but are not expense ledger rows unless explicitly recorded in `expenses`.
+- **Source of truth:** compliance tables own obligations, filing configuration, agent details, and access workflow state.
+- **Rule:** Compliance completion is not proof of payment. Keep filing status, uploaded documents, and accounting transactions separate.
+
+## Daily Operations / Routing / Trips
+
+- **Tables:** `daily_logs`, `route_stops`, `business_trips`, `quick_charges`, `job_type_benchmarks`
+- **Schemas:** `lib/db/src/schema/daily-logs.ts`, `route-stops.ts`, `business-trips.ts`, `quick-charges.ts`, `job-type-benchmarks.ts`
+- **API:** `artifacts/api-server/src/routes/daily-logs.ts`, `route-stops.ts`, `trips.ts`, `quick-charges.ts`
+- **UI:** `DailyLogs.tsx`, `RoutePlanner.tsx`, `TripPacket.tsx`, `QuickCharge.tsx`
+- **Reports:** Route and daily-log activity is operational. `business_trips` is a trip-context system; tax mileage deductions remain owned by `mileage_logs` and the IRS-rate engine.
+- **Source of truth:** route stops own planned/visited routing; daily logs own field activity; business trips own trip packets/context; quick charges own small charge records until converted to the applicable invoice/payment flow; `job_type_benchmarks` owns operational estimating benchmarks.
+- **Classification:** `business_trips` is compatibility/context-only relative to canonical mileage; it must not become a second mileage ledger.
+
+## Square Payments / External Payment Mirrors
+
+- **Tables:** `square_payments`, `other_income`, `invoices`, `payments`
+- **Schemas:** `lib/db/src/schema/square-payments.ts`, `other-income.ts`, `invoices.ts`, `payments.ts`
+- **API:** `artifacts/api-server/src/routes/square-webhook.ts`, `square-payments.ts`, `square-transactions.ts`, `square-invoice.ts`, `square-deposit.ts`, `payments.ts`
+- **UI:** `SquareTransactions.tsx`, `Invoices.tsx`, `Accounting.tsx`
+- **Reports:** `other_income` and paid `invoices` feed revenue reports; `square_payments` is a provider-history mirror and reconciliation source.
+- **Source of truth:** invoices own invoice revenue; `other_income` owns explicitly recorded non-invoice cash receipts; Square tables own provider IDs/statuses and must reconcile to one of those records.
+- **Classification:** `square_payments` is an external-provider mirror, not a third revenue ledger. `payments` is legacy/compatibility-only for 1099 lookup until its relationship to `sub_payment_records` is resolved.
+- **Rule:** A Square webhook must be idempotent and must not create duplicate revenue when an invoice or other-income row already represents the receipt.
+
+## MFH Production / Labor Learning
+
+- **Tables:** `mfh_manufacturers`, `mfh_models`, `mfh_construction_types`, `mfh_pricing_guides`, `mfh_guide_items`, `mfh_guide_addons`, `mfh_client_pricing`, `job_knowledge_records`, `job_knowledge_record_versions`, `job_labor_entries`, `production_service_types`, `production_price_overrides`, `service_addon_prompts`
+- **Schemas:** `lib/db/src/schema/mfh.ts`, `jobs.ts`
+- **API:** `artifacts/api-server/src/routes/mfh.ts`, `mfh-labor.ts`, `production-service-types.ts`, `service-addon-prompts.ts`
+- **UI:** `MfhKnowledgeBase.tsx`, `MfhPanel.tsx`, job pricing and labor panels
+- **Reports:** MFH pricing and labor influence job estimates/profit; historical knowledge records are not the accounting ledger.
+- **Source of truth:** guide/catalog tables own manufacturer pricing; job records and invoices/expenses own posted job financials; knowledge records own intentionally preserved learning snapshots and versions.
+- **Rule:** Do not treat stored MFH gross/net profit as current accounting truth. Use live source-derived calculations and retain snapshot timestamps/drift metadata.
+
+## Bids / Grants / Procurement Sources
+
+- **Tables:** `bid_opportunities`, `bid_capability_profiles`, `bid_business_settings`, `bid_source_catalog`, `bid_source_connections`, `grant_opportunities`, `grant_source_catalog`, `grant_source_connections`
+- **Schemas:** `lib/db/src/schema/bid-opportunities.ts`, `bid-profiles.ts`, `bid-sources.ts`, `grants.ts`
+- **API:** `artifacts/api-server/src/routes/bids.ts`, `grants.ts`, `integrations.ts`
+- **UI:** `BidOpportunities.tsx`, `bids/*`, `Grants.tsx`, `grants/*`
+- **Reports:** Pipeline, qualification, and grant activity are operational; awards do not become revenue until an approved invoice/other-income transaction exists.
+- **Source of truth:** opportunity tables own imported and scored opportunities; source catalog/connection tables own source configuration and sync status.
+- **Rule:** External source data is a prospecting cache, not a contract or revenue ledger. Preserve source IDs and sync timestamps.
+
+## Job Checklists / Field Evidence
+
+- **Tables:** `job_checklists`, `job_checklist_sections`, `job_checklist_items`, `job_checklist_item_parts`, `job_checklist_item_photos`, `job_checklist_section_notes`, `job_checklist_status_log`, `job_start_photos`, `job_finished_photos`, `checklist_templates`, `checklist_template_sections`, `checklist_template_items`
+- **Schemas:** `lib/db/src/schema/job-checklists.ts`
+- **API:** `artifacts/api-server/src/routes/checklist-templates.ts`, `job-checklists.ts`
+- **UI:** `ChecklistTemplates.tsx`, `JobChecklistPanel.tsx`, job detail pages
+- **Reports:** Operational completion and evidence; checklist parts do not replace materials or expenses.
+- **Source of truth:** templates own reusable definitions; job checklist tables own the applied job instance, status history, notes, parts, and photos.
+- **Rule:** Copying a template creates a job-specific snapshot. Later template edits must not rewrite completed job evidence.
+
+## Website / Marketing / Media
+
+- **Tables:** `website_configs`, `marketing_content`, `website_form_submissions`, `website_media`, `website_media_folders`, `website_page_views`, `portfolio_photos`, `saved_sections`, `deposit_submissions`
+- **Schemas:** `lib/db/src/schema/website.ts`, `portfolio-photos.ts`
+- **API:** `artifacts/api-server/src/routes/website.ts`, `wix-integration.ts`, `storage.ts`
+- **UI:** `website/*`, `PublicSite.tsx`
+- **Reports:** Website analytics and form submissions are operational; a submitted inquiry belongs to CRM only after explicit conversion/linking.
+- **Source of truth:** website tables own published configuration, content, media metadata, submissions, and analytics; `deposit_submissions` owns website deposit-request records; object storage owns file bytes.
+- **Rule:** Public-site content is not a customer or invoice record. Preserve submission IDs when promoting inquiries into prospects.
+
+## Investments
+
+- **Tables:** `investments`, `investment_accounts`, `investment_transfers`, `investment_account_valuations`, `investment_tax_documents`
+- **Schema:** `lib/db/src/schema/investments.ts`
+- **API:** `artifacts/api-server/src/routes/investments.ts`
+- **UI:** `Accounting.tsx` → `InvestmentsTab.tsx`, `InvestmentAccountDetail.tsx`
+- **Reports:** Investment balances and valuations are separate from operating P&L; transfers must not be treated as revenue or expense without explicit classification.
+- **Source of truth:** investment account, transfer, valuation, and tax-document tables own the investment subsystem.
+- **Rule:** Investment classifications are not owner pay or operating expenses by default; preserve provider transaction references and correction history.
+
+## Integrations / Equipment / Crew
+
+- **Tables:** `integration_credentials`, `plaid_connections`, `equipment_inventory`, `equipment_opportunities`, `equipment_sources`, `crew_members`, `crew_certifications`, `dashboard_tasks`
+- **Schemas:** `lib/db/src/schema/integration-credentials.ts`, `plaid-connections.ts`, `equipment.ts`, `crew.ts`, `dashboard-tasks.ts`
+- **API:** `artifacts/api-server/src/routes/integrations.ts`, `plaid.ts`, `equipment.ts`, `crew.ts`, `dashboard-tasks.ts`
+- **UI:** `IntegrationsPage.tsx`, `Banking.tsx`, `FindEquipment.tsx`, `MyEquipment.tsx`, `CrewManagement.tsx`, dashboard task widget
+- **Reports:** Plaid transactions are reconciliation inputs only; equipment/crew/task data is operational unless explicitly linked to a ledger record.
+- **Source of truth:** each subsystem owns its connection/configuration or operational records; provider APIs remain authoritative for external status.
+- **Rule:** Integration caches and opportunity feeds must never silently become a second accounting ledger.
+
+## Registry Review / Unresolved Ownership
+
+- `payments` versus `sub_payment_records`: `sub_payment_records` is canonical payroll; `payments` remains compatibility-only for legacy 1099 reads. Retirement and backfill require a separate approved migration. Follow-up task #1991 tracks aligning 1099 totals.
+- `record-owner-draw` and hourly sub auto-expense paths remain documented exceptions to the canonical owner-pay/payroll rules; do not add new callers. Their retirement is tracked separately rather than hidden in this registry.
+- `business_trips` versus `mileage_logs`: trips provide context, while mileage owns deductions. Any future shared import must preserve that boundary.
+- High-risk unresolved ledger work should be addressed through the existing project task queue before changing source-of-truth rules.
+
+---
+
+## Registry Validation
+
+- **Repeatable check:** run `pnpm run system-registry:check`.
+- **Guard:** the check extracts every `pgTable("...")` table from `lib/db/src/schema` and fails if its exact table name is absent from this registry.
+- **Review rule:** a failing check requires an architecture-review update before the schema change is considered complete; the script verifies coverage, not ownership decisions.
+
+---
+
+*Last updated: 2026-08-20*
 *To update this file, an architecture review must explicitly approve the change.*
