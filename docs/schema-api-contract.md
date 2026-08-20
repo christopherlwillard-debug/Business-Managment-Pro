@@ -36,6 +36,53 @@ The first command refreshes
 the canonical ledger or missing required contract artifacts, and the generated
 inventory reports route/spec gaps and all remaining startup DDL/data changes.
 
+## Business ownership release gate
+
+Core accounting records use `business_id` as the canonical ownership field.
+The compatibility-period contract is:
+
+| table | column | type | nullable | foreign key | delete behavior |
+| --- | --- | --- | --- | --- | --- |
+| `clients` | `business_id` | `INTEGER` | yes | `businesses(id)` | `ON DELETE SET NULL` |
+| `jobs` | `business_id` | `INTEGER` | yes | `businesses(id)` | `ON DELETE SET NULL` |
+| `invoices` | `business_id` | `INTEGER` | yes | `businesses(id)` | `ON DELETE SET NULL` |
+| `prospects` | `business_id` | `INTEGER` | yes | `businesses(id)` | `ON DELETE SET NULL` |
+| `assets` | `business_id` | `INTEGER` | yes | `businesses(id)` | `ON DELETE SET NULL` |
+
+The Drizzle schema modules and `lib/db/migrations/0047_business_ownership_backfill.sql`
+are the trusted definitions for this contract. The migration also applies the
+same ownership column to `estimates`, which is part of the broader core-record
+policy.
+
+### Verification record — 2026-08-20
+
+Read-only `information_schema` checks were run against both the development and
+production databases. All five required tables exist in both environments, but
+`business_id` is absent from every required table in both environments. No
+ownership foreign keys can therefore be present, and no ownership backfill or
+production data mutation was performed.
+
+**Release decision:** accounting changes must not be published until the
+development schema has been synchronized and the same metadata check confirms
+every required column is nullable `INTEGER` with a foreign key to
+`businesses(id)` using `ON DELETE SET NULL`. Production must then be rechecked
+after publishing.
+
+### Approved schema-application path
+
+1. Keep the Drizzle schema and reviewed SQL in `lib/db/migrations/` aligned.
+2. Merge the schema change and let the post-merge setup apply the development
+   schema; do not manually backfill ownership as part of this verification.
+3. Re-run the read-only metadata checks and inventory checks in development.
+4. Use Replit Publish to diff the verified development schema against
+   production and apply the schema change. Do not use production DDL,
+   `drizzle-kit push` against production, custom production migration scripts,
+   deploy-time schema hooks, or startup-time DDL.
+5. Re-run the same read-only metadata checks against production after Publish.
+
+This follows the database migration-on-Publish policy in
+`.local/skills/database/references/database-migrations-on-publish.md`.
+
 ## Reconciliation queue
 
 The inventory is the review queue for moving startup DDL/backfills behind
