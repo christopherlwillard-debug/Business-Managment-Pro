@@ -21,6 +21,47 @@ interface TaxYearData {
   brackets: ReadonlyArray<{ rate: number; ceiling: number }>;
 }
 
+export interface TaxAssumptions {
+  federalSeRate: number;
+  federalSeBase: number;
+  seDeductionRate: number;
+  federalIncomeRate: number;
+  kentuckyIncomeRate: number;
+  occupationalRate: number;
+  mealDeductionRate: number;
+  taxReserveRate: number;
+  jurisdiction: { federal: string; state: string; local: string };
+  source: "default" | "business_override";
+}
+
+export interface TaxAssumptionConfig {
+  defaults?: Partial<Omit<TaxAssumptions, "jurisdiction" | "source">>;
+  byYear?: Record<string, Partial<Omit<TaxAssumptions, "jurisdiction" | "source">>>;
+  jurisdiction?: Partial<TaxAssumptions["jurisdiction"]>;
+}
+
+const DEFAULT_ASSUMPTIONS: Omit<TaxAssumptions, "source"> = {
+  federalSeRate: 0.153,
+  federalSeBase: 0.9235,
+  seDeductionRate: 0.5,
+  federalIncomeRate: 0.22,
+  kentuckyIncomeRate: 0.04,
+  occupationalRate: 0.0139,
+  mealDeductionRate: 0.5,
+  taxReserveRate: 0.25,
+  jurisdiction: { federal: "US", state: "KY", local: "Owensboro" },
+};
+
+export function getTaxAssumptions(year: number, config?: TaxAssumptionConfig | null): TaxAssumptions {
+  const yearOverride = config?.byYear?.[String(year)] ?? {};
+  const values = { ...DEFAULT_ASSUMPTIONS, ...(config?.defaults ?? {}), ...yearOverride };
+  return {
+    ...values,
+    jurisdiction: { ...DEFAULT_ASSUMPTIONS.jurisdiction, ...(config?.jurisdiction ?? {}) },
+    source: Object.keys(config?.defaults ?? {}).length || Object.keys(yearOverride).length ? "business_override" : "default",
+  };
+}
+
 const TAX_YEAR_DATA: Record<number, TaxYearData> = {
   2022: {
     standardDeduction: 12_950,
@@ -99,7 +140,7 @@ export function getTaxYearData(year: number): TaxYearData {
 }
 
 /** 1.39% Owensboro occupational license tax rate (unchanged across years). */
-export const OWENSBORO_OCC_RATE = 0.0139;
+export const OWENSBORO_OCC_RATE = DEFAULT_ASSUMPTIONS.occupationalRate;
 
 /**
  * Apply the given year's progressive federal income tax brackets
@@ -148,6 +189,22 @@ export interface TaxEstimate {
    * federal income to the required reserve.
    */
   totalWithoutFederalIncome: number;
+  assumptionsUsed: TaxAssumptions;
+}
+
+export function validateTaxAssumptionConfig(config: unknown): TaxAssumptionConfig | null {
+  if (config == null) return null;
+  if (typeof config !== "object" || Array.isArray(config)) throw new Error("taxAssumptions must be an object");
+  const candidate = config as TaxAssumptionConfig;
+  const values = [candidate.defaults, ...(Object.values(candidate.byYear ?? {}))];
+  for (const group of values) {
+    if (!group) continue;
+    for (const [key, value] of Object.entries(group)) {
+      if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} must be a finite number`);
+      if (value < 0 || value > 1) throw new Error(`${key} must be between 0 and 1`);
+    }
+  }
+  return candidate;
 }
 
 /**
@@ -161,14 +218,16 @@ export function computeTaxEstimate(
   netProfit: number,
   owensboroGross: number,
   year: number = new Date().getFullYear(),
+  config?: TaxAssumptionConfig | null,
 ): TaxEstimate {
+  const assumptions = getTaxAssumptions(year, config);
   const { standardDeduction } = getTaxYearData(year);
-  const federalSE = Math.max(0, netProfit * 0.9235 * 0.153);
-  const seDeduction = federalSE * 0.5;
+  const federalSE = Math.max(0, netProfit * assumptions.federalSeBase * assumptions.federalSeRate);
+  const seDeduction = federalSE * assumptions.seDeductionRate;
   const federalTaxableIncome = Math.max(0, netProfit - seDeduction - standardDeduction);
   const federalIncome = calcFederalIncomeTax(federalTaxableIncome, year);
-  const kyState = Math.max(0, netProfit * 0.04);
-  const occ = Math.max(0, owensboroGross * OWENSBORO_OCC_RATE);
+  const kyState = Math.max(0, netProfit * assumptions.kentuckyIncomeRate);
+  const occ = Math.max(0, owensboroGross * assumptions.occupationalRate);
   return {
     federalSE,
     seDeduction,
@@ -179,5 +238,6 @@ export function computeTaxEstimate(
     occ,
     total: federalSE + federalIncome + kyState + occ,
     totalWithoutFederalIncome: federalSE + kyState + occ,
+    assumptionsUsed: assumptions,
   };
 }

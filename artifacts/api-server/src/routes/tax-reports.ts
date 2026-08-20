@@ -7,6 +7,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, sum, count, ne, isNull, sql, inArray } from "drizzle-orm";
 import { calculateMileageDeduction } from "../lib/irs-rates.js";
+import { getTaxAssumptions } from "../lib/tax-estimate.js";
 
 const router = Router();
 
@@ -107,12 +108,14 @@ interface ScheduleCReport {
     deductibleAmount: number;
     explicitOverrideCount: number;
   };
+  assumptionsUsed: ReturnType<typeof getTaxAssumptions>;
   dataQuality: {
     uncategorizedExpenses: number;
     invoicesDraft: number;
     mileageLogsWithoutClassification: number;
     warnings: string[];
   };
+  taxOwner: { id: number; name: string; includedBusinesses: string[] } | null;
 }
 
 /**
@@ -145,12 +148,24 @@ router.get("/schedule-c", async (req, res) => {
     const blFilter = (req.query.businessLine as string | undefined) || null;
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
+    const [taxSettings] = await db.select({ taxAssumptions: settingsTable.taxAssumptions }).from(settingsTable).limit(1);
+    const assumptionsUsed = getTaxAssumptions(year, taxSettings?.taxAssumptions as any);
+    const [selectedBusiness] = blFilter
+      ? await db.select().from(businessesTable).where(eq(businessesTable.slug, blFilter)).limit(1)
+      : [];
+    const taxOwnerId = selectedBusiness?.parentBusinessId ?? selectedBusiness?.id ?? null;
+    const taxBusinesses = taxOwnerId
+      ? await db.select({ id: businessesTable.id, slug: businessesTable.slug, name: businessesTable.name })
+        .from(businessesTable)
+        .where(sql`${businessesTable.id} = ${taxOwnerId} OR ${businessesTable.parentBusinessId} = ${taxOwnerId}`)
+      : [];
+    const taxBusinessSlugs = taxBusinesses.map(b => b.slug);
 
     // Unassigned rows are intentionally excluded from a filtered business
     // report. Without this strict predicate, every selected business would
     // include the same null-owned invoice/expense/sub-payment rows.
     const blWhere = (col: Parameters<typeof eq>[0]) =>
-      blFilter ? eq(col, blFilter) : undefined;
+      blFilter ? (taxBusinessSlugs.length > 0 ? inArray(col, taxBusinessSlugs) : eq(col, blFilter)) : undefined;
 
     // Resolve businessId from slug for mileage isolation
     let mileageBusinessId: number | null = null;
@@ -211,7 +226,7 @@ router.get("/schedule-c", async (req, res) => {
         // deductibleSum: use stored deductible_amount when present (e.g. trip meals),
         // otherwise fall back to 50% of the raw amount. This prevents double-applying
         // the 50% rule when deductible_amount is already set to amount * 0.5.
-        deductibleSum: sql<string>`COALESCE(SUM(COALESCE(${expensesTable.deductibleAmount}::numeric, ${expensesTable.amount}::numeric * 0.5)), '0')`,
+         deductibleSum: sql<string>`COALESCE(SUM(COALESCE(${expensesTable.deductibleAmount}::numeric, ${expensesTable.amount}::numeric * ${assumptionsUsed.mealDeductionRate})), '0')`,
         // Count rows where an explicit deductible_amount override was stored
         explicitDeductibleCount: sql<string>`SUM(CASE WHEN ${expensesTable.deductibleAmount} IS NOT NULL THEN 1 ELSE 0 END)`,
         count: count(expensesTable.id),
@@ -411,7 +426,7 @@ router.get("/schedule-c", async (req, res) => {
     }
     // Line 24b — Meals (50% deductible; stored amount already reflects the 50% portion)
     if (mealsDeductibleAmount > 0) {
-      scheduleLines.push({ line: 24, description: "Meals — 50% deductible (Line 24b)", amount: mealsDeductibleAmount });
+      scheduleLines.push({ line: 24, description: `Meals — ${(assumptionsUsed.mealDeductionRate * 100).toFixed(0)}% deductible (Line 24b)`, amount: mealsDeductibleAmount });
       totalExpenses += mealsDeductibleAmount;
     }
 
@@ -487,12 +502,16 @@ router.get("/schedule-c", async (req, res) => {
         deductibleAmount: mealsDeductibleAmount,
         explicitOverrideCount: mealsExplicitOverrideCount,
       },
+      assumptionsUsed,
       dataQuality: {
         uncategorizedExpenses: uncategorizedCount,
         invoicesDraft: draftInvoices.length,
         mileageLogsWithoutClassification: mileageWithoutClassification,
         warnings,
       },
+      taxOwner: taxOwnerId
+        ? { id: taxOwnerId, name: taxBusinesses.find(b => b.id === taxOwnerId)?.name ?? "Main business", includedBusinesses: taxBusinesses.map(b => b.name) }
+        : null,
     };
 
     res.json(response);

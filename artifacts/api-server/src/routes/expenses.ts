@@ -7,6 +7,8 @@ import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { reconcileExpense } from "../lib/matchingEngine.js";
 import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { getTaxAssumptions } from "../lib/tax-estimate.js";
+import { settingsTable } from "@workspace/db/schema";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
@@ -194,9 +196,11 @@ router.post("/", async (req, res) => {
     const validBusinessLines = ["general_contracting", "asphalt_sealing"];
     const isMealCategory = category?.toLowerCase() === "meals";
     const parsedMealTotal = mealTotal ? parseFloat(mealTotal) : (isMealCategory ? parseFloat(amount) : null);
+    const [taxSettings] = await db.select({ taxAssumptions: settingsTable.taxAssumptions }).from(settingsTable).limit(1);
+    const mealRate = getTaxAssumptions(new Date(date).getFullYear(), taxSettings?.taxAssumptions as any).mealDeductionRate;
     // Always derive server-side: 50/50 split from mealTotal (client overrides not accepted)
-    const computedDeductible = parsedMealTotal != null ? parsedMealTotal * 0.5 : null;
-    const computedNonDeductible = parsedMealTotal != null ? parsedMealTotal * 0.5 : null;
+    const computedDeductible = parsedMealTotal != null ? parsedMealTotal * mealRate : null;
+    const computedNonDeductible = parsedMealTotal != null ? parsedMealTotal * (1 - mealRate) : null;
 
     // Trip validation: check trip is open + inherit businessPurpose for notes
     let resolvedNotes = notes || null;
@@ -353,8 +357,10 @@ router.put("/:id", async (req, res) => {
     const parsedMealTotal = mealTotal !== undefined
       ? (mealTotal ? parseFloat(mealTotal) : null)
       : (amount !== undefined && isMealCategory ? parseFloat(amount) : null);
-    const computedDeductible = parsedMealTotal != null ? parsedMealTotal * 0.5 : null;
-    const computedNonDeductible = parsedMealTotal != null ? parsedMealTotal * 0.5 : null;
+    const [taxSettings] = await db.select({ taxAssumptions: settingsTable.taxAssumptions }).from(settingsTable).limit(1);
+    const mealRate = getTaxAssumptions(new Date((date ?? before.date)).getFullYear(), taxSettings?.taxAssumptions as any).mealDeductionRate;
+    const computedDeductible = parsedMealTotal != null ? parsedMealTotal * mealRate : null;
+    const computedNonDeductible = parsedMealTotal != null ? parsedMealTotal * (1 - mealRate) : null;
 
     const [updated] = await db.update(expensesTable).set({
       ...(description !== undefined && { description }),

@@ -111,3 +111,12 @@ Created the four-document architecture governance system:
   classification instead of trusting stale stored snapshots.
 - Added preview/confirm import recalculation endpoints that update snapshots
   only after explicit confirmation and preserve monthly aggregate expenses.
+
+### Tax assumption configuration
+
+- Centralized federal self-employment, Kentucky, occupational, meal, and
+  reserve assumptions with tax-year-aware defaults and business overrides.
+- Added settings controls and report metadata showing the assumptions used.
+- Tax reports now roll DBA activity into the parent business tax owner.
+- Existing meal snapshots remain historical; new meal records use the
+  configured deductible percentage.

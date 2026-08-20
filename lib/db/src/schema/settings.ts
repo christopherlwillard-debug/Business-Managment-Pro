@@ -49,6 +49,9 @@ export const settingsTable = pgTable("settings", {
   taxFilingFrequency: text("tax_filing_frequency").default("quarterly"),
   // Calculator defaults (plumbing, flooring, trim, siding, drywall, punch list)
   calculatorDefaults: jsonb("calculator_defaults"),
+  // Effective-dated tax assumptions and business overrides. Tax transactions
+  // remain in their source ledgers; this is configuration only.
+  taxAssumptions: jsonb("tax_assumptions"),
   // Contractor portal quick links (label, url, optional username/password)
   quickLinks: jsonb("quick_links"),
   // Company signature image — stored as object storage path; embedded in exported PDFs

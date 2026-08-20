@@ -133,6 +133,7 @@ function ScheduleCTab({ year }: { year: number }) {
   const travelLine = scheduleCLines.find(l => l.line === 24 && l.description.includes("24a"));
   const mealsLine = scheduleCLines.find(l => l.line === 24 && l.description.includes("24b"));
   const mealsBreakdown = report?.mealsBreakdown;
+  const assumptions = (report as any)?.assumptionsUsed;
 
   // Inject home office into line 30
   if (homeOfficeDed > 0) { lineMap[30] = { description: "Expenses for business use of your home (Form 8829)", amount: homeOfficeDed }; }
@@ -182,6 +183,20 @@ function ScheduleCTab({ year }: { year: number }) {
                 <p className="font-medium text-amber-900 text-sm">Data Quality Warnings</p>
                 {report.dataQuality.warnings.map((w, i) => <p key={i} className="text-sm text-amber-800">• {w}</p>)}
               </div>
+            </div>
+          )}
+          {assumptions && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900">
+              <p className="font-semibold">Assumptions used for this estimate</p>
+              <p className="mt-1">
+                {assumptions.jurisdiction?.state ?? "State"} {((assumptions.kentuckyIncomeRate ?? 0) * 100).toFixed(2)}% ·
+                occupational {((assumptions.occupationalRate ?? 0) * 100).toFixed(2)}% ·
+                meals {((assumptions.mealDeductionRate ?? 0) * 100).toFixed(0)}% deductible ·
+                {assumptions.source === "business_override" ? " business override" : " default"}
+              </p>
+              {(report as any).taxOwner && (
+                <p className="mt-1">Tax owner: {(report as any).taxOwner.name} · includes {(report as any).taxOwner.includedBusinesses.join(", ")}</p>
+              )}
             </div>
           )}
 
@@ -333,7 +348,7 @@ function ScheduleCTab({ year }: { year: number }) {
                         </p>
                       ) : (
                         <p className="text-[11px] text-amber-700 leading-snug">
-                          All {mealsBreakdown.receiptCount} receipts used the standard 50% deduction rule ({formatCurrency(mealsBreakdown.totalSpend)} × 50% = {formatCurrency(mealsBreakdown.deductibleAmount)}).
+                          All {mealsBreakdown.receiptCount} receipts used the standard {((assumptions?.mealDeductionRate ?? 0.5) * 100).toFixed(0)}% deduction rule ({formatCurrency(mealsBreakdown.totalSpend)} × {((assumptions?.mealDeductionRate ?? 0.5) * 100).toFixed(0)}% = {formatCurrency(mealsBreakdown.deductibleAmount)}).
                         </p>
                       )}
                     </div>

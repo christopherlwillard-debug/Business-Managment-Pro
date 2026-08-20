@@ -145,6 +145,19 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 ---
 
+## ADR-010
+
+**Title:** Tax assumptions are effective-dated configuration owned by the main business
+
+**Decision:** Tax calculation constants and meal treatment live in the shared tax engine with safe tax-year defaults. Business overrides are stored as JSON configuration on `settings`, and reports return the exact assumptions used. A DBA inherits the parent business as its tax owner; tax reports include the parent and its DBA children.
+
+**Reason:** Tax rates, meal treatment, and jurisdiction rules change independently of application releases. Keeping the assumptions beside the existing settings system makes them reviewable without creating another financial ledger. Parent ownership prevents a DBA from being treated as a separate tax entity by accident.
+
+**Status:** Accepted
+**Date:** 2026-08-20
+
+---
+
 ## ADR-006
 
 **Title:** Core records use canonical business ownership with legacy slug compatibility

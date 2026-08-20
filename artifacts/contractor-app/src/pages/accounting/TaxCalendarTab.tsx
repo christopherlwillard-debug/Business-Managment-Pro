@@ -67,6 +67,14 @@ interface QuarterlyTaxResponse {
     safeHarborPerQuarter: number;
     totalPaid: number;
     remaining: number;
+    assumptionsUsed?: {
+      federalSeRate: number;
+      kentuckyIncomeRate: number;
+      occupationalRate: number;
+      mealDeductionRate: number;
+      source: string;
+      jurisdiction: { state: string; local: string };
+    };
   };
 }
 
@@ -734,6 +742,18 @@ function QuarterlyTaxTracker({ year }: { year: number }) {
                   </div>
                 ))}
               </div>
+              {summary?.assumptionsUsed && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900">
+                  <p className="font-semibold">Assumptions used for this estimate</p>
+                  <p className="mt-1">
+                    Federal SE {((summary.assumptionsUsed.federalSeRate ?? 0) * 100).toFixed(2)}% ·
+                    {summary.assumptionsUsed.jurisdiction.state} {((summary.assumptionsUsed.kentuckyIncomeRate ?? 0) * 100).toFixed(2)}% ·
+                    {summary.assumptionsUsed.jurisdiction.local} {((summary.assumptionsUsed.occupationalRate ?? 0) * 100).toFixed(2)}% ·
+                    meals {((summary.assumptionsUsed.mealDeductionRate ?? 0) * 100).toFixed(0)}% deductible ·
+                    {summary.assumptionsUsed.source === "business_override" ? " business override" : " default"}
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/20 rounded-xl px-3.5 py-2.5">
                 <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />

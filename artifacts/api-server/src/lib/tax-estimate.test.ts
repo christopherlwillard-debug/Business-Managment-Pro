@@ -11,7 +11,34 @@ import {
   calcFederalIncomeTax,
   getTaxYearData,
   OWENSBORO_OCC_RATE,
+  getTaxAssumptions,
 } from "./tax-estimate.js";
+
+describe("tax assumptions", () => {
+  it("uses documented defaults and jurisdiction context", () => {
+    const a = getTaxAssumptions(2026);
+    expect(a.federalSeBase).toBe(0.9235);
+    expect(a.mealDeductionRate).toBe(0.5);
+    expect(a.jurisdiction).toEqual({ federal: "US", state: "KY", local: "Owensboro" });
+    expect(a.source).toBe("default");
+  });
+
+  it("applies business overrides by tax year without changing another year", () => {
+    const config = {
+      defaults: { kentuckyIncomeRate: 0.035, mealDeductionRate: 0.8 },
+      byYear: { "2026": { kentuckyIncomeRate: 0.04 } },
+    };
+    expect(getTaxAssumptions(2026, config).kentuckyIncomeRate).toBe(0.04);
+    expect(getTaxAssumptions(2026, config).mealDeductionRate).toBe(0.8);
+    expect(getTaxAssumptions(2025, config).kentuckyIncomeRate).toBe(0.035);
+  });
+
+  it("uses an overridden meal percentage in the estimate metadata", () => {
+    const result = computeTaxEstimate(50_000, 0, 2026, { defaults: { mealDeductionRate: 0.8 } });
+    expect(result.assumptionsUsed.mealDeductionRate).toBe(0.8);
+    expect(result.assumptionsUsed.source).toBe("business_override");
+  });
+});
 
 // ── getTaxYearData ─────────────────────────────────────────────────────────────
 

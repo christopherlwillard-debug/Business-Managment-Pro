@@ -8,6 +8,7 @@ import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage";
 import fs from "node:fs";
 import path from "node:path";
+import { validateTaxAssumptionConfig } from "../lib/tax-estimate.js";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
@@ -267,6 +268,7 @@ const DEFAULT_SETTINGS = {
     drywall: { laborRate: 2.50 },
     punchList: { halfDayPrice: 500, fullDayPrice: 1000, helperDayRate: 275 },
   },
+  taxAssumptions: null,
 };
 
 /** Convert a raw DB path to a correct serving URL.
@@ -316,6 +318,7 @@ function format(s: any) {
     invoiceReminderDay1: s.invoiceReminderDay1 ?? 7,
     invoiceReminderDay2: s.invoiceReminderDay2 ?? 14,
     calculatorDefaults: s.calculatorDefaults ?? null,
+    taxAssumptions: s.taxAssumptions ?? null,
     quickLinks: Array.isArray(s.quickLinks) ? s.quickLinks : [],
     // P&L layout
     ownerSplitPct: s.ownerSplitPct != null ? parseFloat(String(s.ownerSplitPct)) : 50,
@@ -477,6 +480,9 @@ router.put("/", async (req, res) => {
       calculatorDefaults: body.calculatorDefaults !== undefined
         ? body.calculatorDefaults
         : (settings?.calculatorDefaults ?? null),
+      taxAssumptions: body.taxAssumptions !== undefined
+        ? validateTaxAssumptionConfig(body.taxAssumptions)
+        : (settings?.taxAssumptions ?? null),
       quickLinks: body.quickLinks !== undefined
         ? (Array.isArray(body.quickLinks) ? body.quickLinks : null)
         : (settings?.quickLinks ?? null),

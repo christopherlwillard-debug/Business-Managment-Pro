@@ -6,6 +6,7 @@ import { eq, and, gte, lte, desc, sum, ne, inArray, sql, count, isNull } from "d
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
 import { calculateMileageDeduction, getIrsMileageRate } from "../lib/irs-rates.js";
+import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { filterCashReceipts, sumCashReceipts } from "../lib/cash-revenue.js";
 
@@ -646,8 +647,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const undrawnBalance = netProfit - ownerDrawTotal;
 
     // Income by city — estOccTax replaces taxCollected (Willard never charges sales tax)
-    // Owensboro occupational tax rate: 1.39%
-    const OWENSBORO_OCC_RATE = 0.0139;
+    const taxAssumptions = getTaxAssumptions(year, settings[0]?.taxAssumptions as any);
     const cityMap = new Map<string, { city: string; state: string; invoiceCount: number; gross: number; paid: number; estOccTax: number }>();
     for (const inv of invoices) {
       // Trim before fallback so whitespace-only invoice fields don't suppress job fields
@@ -678,7 +678,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     // Compute estOccTax after all income is accumulated (only for Owensboro rows)
     for (const row of cityMap.values()) {
       if (row.city.toLowerCase() === "owensboro") {
-        row.estOccTax = Math.max(0, row.gross * OWENSBORO_OCC_RATE);
+         row.estOccTax = Math.max(0, row.gross * taxAssumptions.occupationalRate);
       }
     }
     const incomeByCity = Array.from(cityMap.values()).sort((a, b) => b.gross - a.gross);
@@ -690,15 +690,16 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       .reduce((s, r) => s + r.gross, 0);
     // Use shared helper — federal income tax is NOT yet included in this endpoint's total
     // (that addition is handled by Task #1872 for the reserve dashboard).
-    const accTaxEst = computeTaxEstimate(netProfit, owensboroGross, year);
+    const accTaxEst = computeTaxEstimate(netProfit, owensboroGross, year, settings[0]?.taxAssumptions as any);
     const estimatedTaxes = {
       owensboroOccTax: accTaxEst.occ,
       kyStateTax: accTaxEst.kyState,
       federalSETax: accTaxEst.federalSE,
       totalEstimated: accTaxEst.totalWithoutFederalIncome,
-      owensboroOccRate: 0.0139,
-      kyStateRate: 0.04,
-      federalSERate: 0.153,
+      owensboroOccRate: taxAssumptions.occupationalRate,
+      kyStateRate: taxAssumptions.kentuckyIncomeRate,
+      federalSERate: taxAssumptions.federalSeRate,
+      assumptionsUsed: accTaxEst.assumptionsUsed,
     };
 
     // Full records for tax spreadsheet — invoices + other income rows
@@ -1084,7 +1085,6 @@ export function getTaxProfile(taxElection: string | null | undefined): TaxProfil
 // Re-export the types and functions so callers within this file use one import.
 export type { TaxEstimate } from "../lib/tax-estimate.js";
 export { computeTaxEstimate, getTaxYearData } from "../lib/tax-estimate.js";
-import { computeTaxEstimate } from "../lib/tax-estimate.js";
 
 // ─── Shared: Owner Waterfall ───────────────────────────────────────────────────
 // Mirrors the /reserve-summary waterfall constants.

@@ -52,6 +52,12 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Correction policy:** Mileage logs and generated expense rows are voided together; import rollback preserves source rows.
 - **Recalculation policy:** `GET /imports/:id/recalculate/preview` is read-only; `POST /imports/:id/recalculate` requires `{ confirm: true }`.
 
+### Tax assumptions
+
+- **Owner:** `tax-estimate.ts` is the calculation engine; `settings.tax_assumptions` holds business overrides.
+- **Tax ownership:** a business with `parentBusinessId` inherits the parent as its tax owner. Tax reports include the parent and DBA children.
+- **Audit context:** Schedule C and estimated-tax responses include `assumptionsUsed` and the tax owner context.
+
 ---
 
 ## Subcontractor Payroll

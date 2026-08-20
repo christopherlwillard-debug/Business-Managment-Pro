@@ -11,7 +11,7 @@ import {
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
   Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2,
-  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy, ClipboardList, BookOpen, Package, TrendingUp, Car, Pencil, Star,
+  Plus, ChevronDown, ChevronUp, Home, Globe, Eye, EyeOff, Copy, ClipboardList, BookOpen, Package, TrendingUp, Car, Pencil, Star, Calculator,
 } from "lucide-react";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useUserPermissions, type SectionKey, type Permissions } from "@/contexts/UserPermissions";
@@ -1849,6 +1849,8 @@ export default function Settings() {
   const [form, setForm] = useState({
     companyName: "", entityType: "", ein: "",
     federalTaxElection: "sole_prop", taxElectionEffectiveDate: "",
+    taxFederalSeRate: "15.3", taxKentuckyRate: "4", taxOccupationalRate: "1.39",
+    taxMealDeductionRate: "50", taxReserveAssumptionRate: "25",
     companyEmail: "", companyPhone: "",
     companyAddress: "", companyCity: "", companyState: "KY", companyZip: "",
     defaultTaxRate: "", invoicePrefix: "INV-2026-",
@@ -1897,6 +1899,11 @@ export default function Settings() {
         ein: (s.ein as string | undefined) ?? "",
         federalTaxElection: (s as any).federalTaxElection ?? "sole_prop",
         taxElectionEffectiveDate: (s as any).taxElectionEffectiveDate ?? "",
+        taxFederalSeRate: String(Number((s as any).taxAssumptions?.defaults?.federalSeRate ?? 0.153) * 100),
+        taxKentuckyRate: String(Number((s as any).taxAssumptions?.defaults?.kentuckyIncomeRate ?? 0.04) * 100),
+        taxOccupationalRate: String(Number((s as any).taxAssumptions?.defaults?.occupationalRate ?? 0.0139) * 100),
+        taxMealDeductionRate: String(Number((s as any).taxAssumptions?.defaults?.mealDeductionRate ?? 0.5) * 100),
+        taxReserveAssumptionRate: String(Number((s as any).taxAssumptions?.defaults?.taxReserveRate ?? 0.25) * 100),
         companyEmail: s.companyEmail ?? "",
         companyPhone: s.companyPhone ?? "",
         companyAddress: (s.companyAddress as string | undefined) ?? "",
@@ -1992,6 +1999,16 @@ export default function Settings() {
           plStepOrder: JSON.stringify(plStepOrder),
           federalTaxElection: form.federalTaxElection || "sole_prop",
           taxElectionEffectiveDate: form.taxElectionEffectiveDate || null,
+          taxAssumptions: {
+            defaults: {
+              federalSeRate: Number(form.taxFederalSeRate) / 100,
+              kentuckyIncomeRate: Number(form.taxKentuckyRate) / 100,
+              occupationalRate: Number(form.taxOccupationalRate) / 100,
+              mealDeductionRate: Number(form.taxMealDeductionRate) / 100,
+              taxReserveRate: Number(form.taxReserveAssumptionRate) / 100,
+            },
+            jurisdiction: { federal: "US", state: form.companyState || "KY", local: "Owensboro" },
+          },
         } as any,
       });
       queryClient.invalidateQueries();
@@ -2334,6 +2351,28 @@ export default function Settings() {
                     )}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Tax Assumptions */}
+            <Card className="border-border/50 shadow-md bg-card">
+              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
+                <CardTitle className="font-display flex items-center gap-2"><Calculator className="w-5 h-5 text-primary" /> Tax & Meal Assumptions</CardTitle>
+                <CardDescription>
+                  These defaults are used for new estimates and are shown with tax reports. DBA activity rolls up to the main business for tax purposes.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                  <LF label="Federal SE rate" hint="%"><input className={inp} type="number" step="0.01" min="0" max="100" value={form.taxFederalSeRate} onChange={e => setF("taxFederalSeRate", e.target.value)} /></LF>
+                  <LF label="Kentucky rate" hint="%"><input className={inp} type="number" step="0.01" min="0" max="100" value={form.taxKentuckyRate} onChange={e => setF("taxKentuckyRate", e.target.value)} /></LF>
+                  <LF label="Occupational rate" hint="%"><input className={inp} type="number" step="0.01" min="0" max="100" value={form.taxOccupationalRate} onChange={e => setF("taxOccupationalRate", e.target.value)} /></LF>
+                  <LF label="Meals deductible" hint="%"><input className={inp} type="number" step="0.01" min="0" max="100" value={form.taxMealDeductionRate} onChange={e => setF("taxMealDeductionRate", e.target.value)} /></LF>
+                  <LF label="Tax reserve" hint="%"><input className={inp} type="number" step="0.01" min="0" max="100" value={form.taxReserveAssumptionRate} onChange={e => setF("taxReserveAssumptionRate", e.target.value)} /></LF>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Federal brackets and standard deductions remain tax-year specific. Existing receipts and reports retain their stored historical treatment; changing these values affects new calculations only.
+                </p>
               </CardContent>
             </Card>
 

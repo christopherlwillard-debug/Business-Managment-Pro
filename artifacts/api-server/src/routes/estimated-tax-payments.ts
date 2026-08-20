@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { db, estimatedTaxPaymentsTable, invoicesTable, expensesTable, mileageLogsTable, otherIncomeTable } from "@workspace/db";
+import { db, estimatedTaxPaymentsTable, invoicesTable, expensesTable, mileageLogsTable, otherIncomeTable, settingsTable } from "@workspace/db";
 import { eq, and, gte, lte, sum } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { calculateMileageDeduction } from "../lib/irs-rates.js";
+import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
 
 const router = Router();
 
@@ -83,6 +84,7 @@ interface YearTaxData {
   netProfit: number;
   fullYearFederalTax: number;
   fullYearKyTax: number;
+  assumptionsUsed: ReturnType<typeof getTaxAssumptions>;
 }
 
 async function computeTaxData(year: number, ytd = false): Promise<YearTaxData> {
@@ -100,6 +102,7 @@ async function computeTaxData(year: number, ytd = false): Promise<YearTaxData> {
       and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))
     ),
   ]);
+  const [settings] = await db.select({ taxAssumptions: settingsTable.taxAssumptions }).from(settingsTable).limit(1);
 
   const paidRevenue = invoicesResult.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
   const otherIncomeSum = otherIncomeResult[0]?.total ? parseFloat(otherIncomeResult[0].total as string) : 0;
@@ -112,13 +115,11 @@ async function computeTaxData(year: number, ytd = false): Promise<YearTaxData> {
     total + calculateMileageDeduction(row.miles, row.classification, row.date).deduction, 0);
 
   const netProfit = Math.max(0, (paidRevenue + otherIncomeSum) - totalExpenses - mileageDeduction);
-  const selfEmploymentTax = netProfit * 0.9235 * 0.153;
-  const seDeduction = selfEmploymentTax * 0.5;
-  const incomeTax = Math.max(0, netProfit - seDeduction) * 0.22;
-  const fullYearFederalTax = selfEmploymentTax + incomeTax;
-  const fullYearKyTax = netProfit * 0.04;
+  const estimate = computeTaxEstimate(netProfit, 0, year, settings?.taxAssumptions as any);
+  const fullYearFederalTax = estimate.federalSE + estimate.federalIncome;
+  const fullYearKyTax = estimate.kyState;
 
-  return { netProfit, fullYearFederalTax, fullYearKyTax };
+  return { netProfit, fullYearFederalTax, fullYearKyTax, assumptionsUsed: estimate.assumptionsUsed };
 }
 
 // GET /api/estimated-tax-payments?year=YYYY
@@ -218,6 +219,7 @@ router.get("/", wrapAsync(async (req, res) => {
       safeHarborPerQuarter: safeHarborFederalPerQ + safeHarborKyPerQ,
       totalPaid: totalPaidYtd,
       remaining: Math.max(0, totalSafeHarbor - totalPaidYtd),
+      assumptionsUsed: currentYearData.assumptionsUsed,
     },
   });
 }));
