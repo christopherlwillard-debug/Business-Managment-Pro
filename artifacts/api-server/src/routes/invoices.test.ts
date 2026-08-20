@@ -807,7 +807,7 @@ describe("POST /:id/void", () => {
       [fakeInvoice({ status: "cancelled" })],
     );
 
-    const res = await request(app).post("/42/void").send();
+    const res = await request(app).post("/42/void").send({ reason: "Customer cancellation" });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("cancelled");
@@ -821,7 +821,7 @@ describe("POST /:id/void", () => {
   it("returns 400 when voiding a draft (use delete instead)", async () => {
     h.selectQueue.push([{ status: "draft", squarePaymentLinkId: null }]);
 
-    const res = await request(app).post("/42/void").send();
+    const res = await request(app).post("/42/void").send({ reason: "Customer cancellation" });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/draft/i);
@@ -831,7 +831,7 @@ describe("POST /:id/void", () => {
   it("returns 400 when voiding an already-cancelled invoice", async () => {
     h.selectQueue.push([{ status: "cancelled", squarePaymentLinkId: null }]);
 
-    const res = await request(app).post("/42/void").send();
+    const res = await request(app).post("/42/void").send({ reason: "Customer cancellation" });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/already voided/i);
@@ -846,7 +846,7 @@ describe("POST /:id/void", () => {
       [fakeInvoice({ status: "cancelled" })],
     );
 
-    const res = await request(app).post("/42/void").send();
+    const res = await request(app).post("/42/void").send({ reason: "Customer cancellation" });
 
     expect(res.status).toBe(200);
     expect(deleteSquarePaymentLink).toHaveBeenCalledOnce();
@@ -862,7 +862,7 @@ describe("POST /:id/void", () => {
       [fakeInvoice({ status: "cancelled" })],
     );
 
-    const res = await request(app).post("/42/void").send();
+    const res = await request(app).post("/42/void").send({ reason: "Customer cancellation" });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("cancelled");
