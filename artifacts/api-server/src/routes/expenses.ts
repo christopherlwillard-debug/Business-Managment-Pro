@@ -189,6 +189,10 @@ router.post("/", async (req, res) => {
       numPeople, paidBy, receiptStatus, receiptMissingExplanation,
     } = req.body;
     if (!description || !amount || !category || !date) return res.status(400).json({ error: "Missing required fields" });
+    const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ error: "Amount must be greater than zero" });
+    }
     if (receiptStatus === "missing" && !receiptMissingExplanation?.trim()) {
       return res.status(400).json({ error: "receiptMissingExplanation is required when receiptStatus is 'missing'" });
     }
@@ -215,6 +219,18 @@ router.post("/", async (req, res) => {
     // If businessLine is given but no explicit businessId, resolve the slug → id
     let resolvedBusinessId: number | null = businessId ? parseInt(businessId) : null;
     const resolvedBusinessLine = validBusinessLines.includes(businessLine) ? businessLine : null;
+    if (jobId) {
+      const [job] = await db.select({
+        businessId: jobsTable.businessId,
+        businessLine: jobsTable.businessLine,
+      }).from(jobsTable).where(eq(jobsTable.id, parseInt(String(jobId)))).limit(1);
+      if (!job) return res.status(404).json({ error: "Job not found" });
+      const scope = await requestedBusiness(req);
+      if (scope && !belongsToBusiness(job, scope)) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+      if (!resolvedBusinessId && job.businessId) resolvedBusinessId = job.businessId;
+    }
     if (resolvedBusinessLine && !resolvedBusinessId) {
       const [biz] = await db.select({ id: businessesTable.id })
         .from(businessesTable)
@@ -230,7 +246,7 @@ router.post("/", async (req, res) => {
     const isOwnerDist = OWNER_DIST_CATS.includes(category);
 
     const [expense] = await db.insert(expensesTable).values({
-      description, amount: amount.toString(), category, date,
+      description, amount: parsedAmount.toString(), category, date,
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes: resolvedNotes,
       excludeFromNetProfit: isOwnerDist ? true : (excludeFromNetProfit === true),
       countsTowardJobProfit: countsTowardJobProfit === false ? false : true,
