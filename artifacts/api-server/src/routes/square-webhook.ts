@@ -186,6 +186,23 @@ async function handleSquarePayment(opts: {
     const amountDollars = (amountMoney / 100).toFixed(2);
     const dateStr = paidAt.toISOString().split("T")[0];
 
+    // Claim the payment before matching invoices. This makes retries and
+    // concurrent webhook deliveries idempotent even when the first delivery
+    // arrived before an invoice existed and was recorded as other income.
+    const inserted = await db.insert(squarePaymentsTable).values({
+      squarePaymentId,
+      amountCents: amountMoney,
+      description: "Square Payment",
+      clientId: null,
+      clientName: buyerName ?? null,
+      paidAt,
+    }).onConflictDoNothing().returning({ id: squarePaymentsTable.id });
+
+    if (inserted.length === 0) {
+      console.log(`Square payment ${squarePaymentId} already recorded — skipping duplicate`);
+      return;
+    }
+
     if (clientId) {
       const [openInvoice] = await db
         .select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, total: invoicesTable.total })
@@ -210,20 +227,6 @@ async function handleSquarePayment(opts: {
       }
     }
 
-    const inserted = await db.insert(squarePaymentsTable).values({
-      squarePaymentId,
-      amountCents: amountMoney,
-      description: "Square Payment",
-      clientId,
-      clientName: client?.name ?? null,
-      paidAt,
-    }).onConflictDoNothing().returning({ id: squarePaymentsTable.id });
-
-    if (inserted.length === 0) {
-      console.log(`Square payment ${squarePaymentId} already recorded — skipping duplicate`);
-      return;
-    }
-
     await db.insert(otherIncomeTable).values({
       amount: amountDollars,
       date: dateStr,
@@ -231,6 +234,7 @@ async function handleSquarePayment(opts: {
       source: "square_tap_to_pay",
       paymentMethod: "card",
       clientId,
+      businessId: client?.businessId != null ? String(client.businessId) : null,
       businessLine: client?.businessLine ?? null,
     });
 

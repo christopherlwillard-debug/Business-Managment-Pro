@@ -87,3 +87,9 @@ Created the four-document architecture governance system:
 
 - Centralized invoice cash-receipt date attribution (Stripe → Square → manual issue-date fallback) in one reusable calculation helper used by dashboard, accounting, P&L, Schedule C, year-end, reserve, and export data paths.
 - Schedule C now attributes paid invoices by effective payment date, excludes unassigned business-line rows from filtered business reports, and applies the same business-mileage/classification/subcontractor predicates to mileage totals and counts.
+
+### Other-income revenue reconciliation
+
+- Established `other_income` as the source of non-invoice cash receipts, with canonical `business_id` ownership and explicit `job_id` attribution.
+- Linked other-income rows now participate once in per-job and batch operational revenue/profit; unmatched rows remain aggregate/tax revenue only.
+- Square unmatched-payment deduplication now claims `square_payment_id` before invoice matching, preventing retry/concurrency duplicates.

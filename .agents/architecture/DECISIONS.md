@@ -91,6 +91,24 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 ---
 
+## ADR-007
+
+**Title:** Non-invoice cash receipts use `other_income` with explicit job attribution
+
+**Decision:** `other_income` is an approved second revenue source for cash receipts that do not originate from an invoice. A `job_id` link is required before the receipt affects per-job operational revenue/profit; unmatched receipts remain aggregate/tax revenue only. `business_id` is canonical ownership, with `business_line` retained only as a migration fallback.
+
+**Reason:** The application already receives legitimate Square, website-deposit, and manually recorded cash receipts that are not invoices. Treating invoices as the only revenue source omits real receipts, while assigning unmatched receipts to jobs by client or name would create untraceable profit attribution. The existing table and Square payment idempotency key are sufficient; a new payment-event ledger is outside this decision.
+
+**Rejected Alternatives:**
+- Treating every revenue report as invoice-only
+- Inferring a job from client/name when no explicit `job_id` exists
+- Creating a second non-invoice revenue table
+
+**Status:** Accepted
+**Date:** 2026-08-20
+
+---
+
 ## ADR-006
 
 **Title:** Core records use canonical business ownership with legacy slug compatibility

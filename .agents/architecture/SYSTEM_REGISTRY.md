@@ -70,8 +70,20 @@ Before implementing any financial, schema, or business logic feature — consult
 - **API:** `artifacts/api-server/src/routes/invoices.ts`
 - **UI:** `artifacts/contractor-app/src/pages/Invoices.tsx`
 - **Reports:** Yes — revenue, collected, outstanding calculations in reports.ts
-- **Source of truth:** `invoices`. All revenue originates here. Dashboard, P&L, and tax calculations all derive revenue from invoices.
-- **Rule:** Revenue must always be calculated from invoices — never hardcoded or duplicated into another table.
+- **Source of truth:** `invoices` for invoice revenue, plus `other_income` for explicitly recorded non-invoice cash receipts. Each report must apply the source’s approved accounting treatment exactly once.
+- **Rule:** Invoice revenue and non-invoice cash receipts must not be duplicated. Job profit includes only `other_income` rows explicitly linked to that job; unmatched rows remain aggregate/tax revenue only.
+
+---
+
+## Other Income
+
+- **Table:** `other_income`
+- **Schema:** `lib/db/src/schema/other-income.ts`
+- **API:** `artifacts/api-server/src/routes/other-income.ts`; Square ingestion in `artifacts/api-server/src/routes/square-webhook.ts`
+- **UI:** Accounting/other-income entry surfaces
+- **Reports:** Aggregate revenue, accounting, P&L, tax, year-end, and monthly revenue reports
+- **Source of truth:** `other_income` for non-invoice cash receipts. `business_id` is canonical ownership, with `business_line` as a legacy fallback; `job_id` is the only authority for job attribution.
+- **Rule:** A row with `job_id` contributes to that job’s operational revenue/profit and aggregate revenue once. An unmatched row contributes to aggregate/tax revenue but never to a job’s profit.
 
 ---
 

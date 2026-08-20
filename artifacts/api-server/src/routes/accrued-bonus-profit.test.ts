@@ -88,12 +88,13 @@ beforeEach(() => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Push the 6 select results that GET /jobs/:id/profit issues via Promise.all:
- *   [0] invoices      [1] expenses   [2] spr fixed/alloc rows
- *   [3] hours cost    [4] hours cnt  [5] accrued bonus
+ * Push the 7 select results that GET /jobs/:id/profit issues via Promise.all:
+ *   [0] invoices      [1] other income [2] expenses [3] spr fixed/alloc rows
+ *   [4] hours cost    [5] hours cnt    [6] accrued bonus
  */
 function pushProfitSelects(opts: {
   invoices?:       { total: string; status: string }[];
+  otherIncome?:    { amount: string }[];
   expenses?:       any[];
   sprRows?:        { compType: string; total: string }[];
   hoursLaborCost?: string;
@@ -101,6 +102,7 @@ function pushProfitSelects(opts: {
   accruedBonus?:   string;
 }) {
   h.selectQueue.push(opts.invoices ?? []);
+  h.selectQueue.push(opts.otherIncome ?? []);
   h.selectQueue.push(opts.expenses ?? []);
   h.selectQueue.push(opts.sprRows  ?? []);
   h.selectQueue.push([{ total: opts.hoursLaborCost ?? "0" }]);
@@ -109,9 +111,9 @@ function pushProfitSelects(opts: {
 }
 
 /**
- * Push the 7 select results that GET /jobs/profit-summary issues via Promise.all:
- *   [0] invoices  [1] expenses    [2] hours cost rows  [3] hours count rows
- *   [4] manHours  [5] spr rows    [6] accrued bonus rows
+ * Push the 8 select results that GET /jobs/profit-summary issues via Promise.all:
+ *   [0] invoices  [1] other income [2] expenses [3] hours cost rows
+ *   [4] hours count rows [5] manHours [6] spr rows [7] accrued bonus rows
  *
  * All arrays are grouped by jobId on the real DB; the mock just returns the
  * raw rows — the route code maps them by jobId.
@@ -119,6 +121,7 @@ function pushProfitSelects(opts: {
 function pushSummarySelects(opts: {
   jobId:          number;
   invoices?:      { jobId: number; total: string; status: string }[];
+  otherIncome?:   { jobId: number; amount: string }[];
   expenses?:      any[];
   hoursLaborCost?: string;
   totalHours?:    string;
@@ -127,6 +130,7 @@ function pushSummarySelects(opts: {
 }) {
   const { jobId } = opts;
   h.selectQueue.push(opts.invoices ?? []);
+  h.selectQueue.push(opts.otherIncome ?? []);
   h.selectQueue.push(opts.expenses ?? []);
   // hours cost grouped by jobId
   h.selectQueue.push(opts.hoursLaborCost && opts.hoursLaborCost !== "0"
@@ -279,6 +283,22 @@ describe("GET /jobs/:id/profit — accrued bonus included in subLaborCost", () =
     expect(res.body.subLaborCost).toBeCloseTo(275);
     expect(res.body.netProfit).toBeCloseTo(725);
   });
+
+  it("includes explicitly job-linked other income once in revenue and profit", async () => {
+    pushProfitSelects({
+      invoices: [{ total: "1000.00", status: "paid" }],
+      otherIncome: [{ amount: "250.00" }],
+      expenses: [{ amount: "100.00", category: "Materials", countsTowardJobProfit: true }],
+    });
+
+    const res = await request(app).get("/jobs/1/profit");
+
+    expect(res.status).toBe(200);
+    expect(res.body.otherIncomeRevenue).toBeCloseTo(250);
+    expect(res.body.grossInvoiced).toBeCloseTo(1250);
+    expect(res.body.collected).toBeCloseTo(1250);
+    expect(res.body.netProfit).toBeCloseTo(1150);
+  });
 });
 
 describe("GET /jobs/:id/profit — no double-count after a payment is recorded", () => {
@@ -356,6 +376,21 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expect(res.body[5].subLaborCost).toBeCloseTo(275);
     // netProfit = $1000 - $275 = $725
     expect(res.body[5].netProfit).toBeCloseTo(725);
+  });
+
+  it("includes job-linked other income in the batch result", async () => {
+    pushSummarySelects({
+      jobId: 5,
+      otherIncome: [{ jobId: 5, amount: "300.00" }],
+    });
+
+    const res = await request(app).get("/jobs/profit-summary?jobIds=5");
+
+    expect(res.status).toBe(200);
+    expect(res.body[5].otherIncomeRevenue).toBeCloseTo(300);
+    expect(res.body[5].grossInvoiced).toBeCloseTo(300);
+    expect(res.body[5].collected).toBeCloseTo(300);
+    expect(res.body[5].netProfit).toBeCloseTo(300);
   });
 
   it("returns zero subLaborCost when job has no hours and no accrued bonus", async () => {

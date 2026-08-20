@@ -1,22 +1,25 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { otherIncomeTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, isNull, or } from "drizzle-orm";
+import { jobsTable } from "@workspace/db/schema";
 import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 
 const VALID_PAYMENT_METHODS = ["cash", "check", "bank_transfer", "other"] as const;
 type PaymentMethod = typeof VALID_PAYMENT_METHODS[number];
-function parseBody(body: any): { clientId?: number | null; amount: string; date: string; description: string; source?: string | null; paymentMethod: PaymentMethod; city?: string | null; state?: string | null; notes?: string | null; businessLine?: string | null } | null {
-  const { clientId, amount, date, description, source, paymentMethod, city, state, notes, businessLine } = body ?? {};
+function parseBody(body: any): { clientId?: number | null; jobId?: number | null; businessId?: string | null; amount: string; date: string; description: string; source?: string | null; paymentMethod: PaymentMethod; city?: string | null; state?: string | null; notes?: string | null; businessLine?: string | null } | null {
+  const { clientId, jobId, amount, date, description, source, paymentMethod, city, state, notes, businessLine } = body ?? {};
   if (!amount || isNaN(parseFloat(String(amount)))) return null;
   if (!date || typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   if (!description || typeof description !== "string" || description.trim() === "") return null;
   const pm: PaymentMethod = VALID_PAYMENT_METHODS.includes(paymentMethod) ? paymentMethod : "other";
   const parsedClientId = clientId != null && !isNaN(parseInt(String(clientId))) ? parseInt(String(clientId)) : null;
+  const parsedJobId = jobId != null && !isNaN(parseInt(String(jobId))) ? parseInt(String(jobId)) : null;
   return {
     clientId: parsedClientId,
+    jobId: parsedJobId,
     amount: String(parseFloat(String(amount))),
     date,
     description: description.trim(),
@@ -38,7 +41,10 @@ router.get("/", async (req, res) => {
       conditions.push(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate));
     }
     if (scope) {
-      conditions.push(eq(otherIncomeTable.businessLine, scope.slug));
+      conditions.push(or(
+        eq(otherIncomeTable.businessId, String(scope.id)),
+        and(isNull(otherIncomeTable.businessId), eq(otherIncomeTable.businessLine, scope.slug)),
+      ));
     } else if (businessLine) {
       conditions.push(eq(otherIncomeTable.businessLine, businessLine));
     }
@@ -57,6 +63,17 @@ router.post("/", async (req, res) => {
     const data = parseBody(req.body);
     if (!data) { res.status(400).json({ error: "Invalid payload" }); return; }
     const scope = await requestedBusiness(req);
+    if (data.jobId != null) {
+      const [job] = await db.select({ id: jobsTable.id, businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+        .from(jobsTable).where(eq(jobsTable.id, data.jobId));
+      if (!job || !belongsToBusiness(job, scope)) {
+        res.status(404).json({ error: "Job not found" });
+        return;
+      }
+      data.businessId = job.businessId != null ? String(job.businessId) : scope?.id != null ? String(scope.id) : null;
+      data.businessLine = scope?.slug ?? job.businessLine ?? data.businessLine ?? null;
+    }
+    data.businessId = data.businessId ?? (scope?.id != null ? String(scope.id) : null);
     data.businessLine = scope?.slug ?? data.businessLine ?? null;
     const [row] = await db.insert(otherIncomeTable).values(data).returning();
     res.status(201).json(row);
@@ -75,8 +92,25 @@ router.put("/:id", async (req, res) => {
     const scope = await requestedBusiness(req);
     const [existing] = await db.select().from(otherIncomeTable).where(eq(otherIncomeTable.id, id));
     if (!existing || !belongsToBusiness(existing, scope)) { res.status(404).json({ error: "Not found" }); return; }
+    if (data.jobId != null) {
+      const [job] = await db.select({ id: jobsTable.id, businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+        .from(jobsTable).where(eq(jobsTable.id, data.jobId));
+      if (!job || !belongsToBusiness(job, scope)) {
+        res.status(404).json({ error: "Job not found" });
+        return;
+      }
+      data.businessId = job.businessId != null ? String(job.businessId) : scope?.id != null ? String(scope.id) : null;
+      data.businessLine = scope?.slug ?? job.businessLine ?? data.businessLine ?? null;
+    }
+    data.businessId = data.businessId ?? existing.businessId ?? (scope?.id != null ? String(scope.id) : null);
     data.businessLine = scope?.slug ?? existing.businessLine;
-    const [row] = await db.update(otherIncomeTable).set(data).where(and(eq(otherIncomeTable.id, id), eq(otherIncomeTable.businessLine, data.businessLine ?? ""))).returning();
+    const ownership = scope
+      ? or(
+          eq(otherIncomeTable.businessId, String(scope.id)),
+          and(isNull(otherIncomeTable.businessId), eq(otherIncomeTable.businessLine, scope.slug)),
+        )
+      : undefined;
+    const [row] = await db.update(otherIncomeTable).set(data).where(and(eq(otherIncomeTable.id, id), ownership)).returning();
     if (!row) { res.status(404).json({ error: "Not found" }); return; }
     res.json(row);
   } catch (err) {
@@ -92,7 +126,13 @@ router.delete("/:id", async (req, res) => {
     const scope = await requestedBusiness(req);
     const [existing] = await db.select().from(otherIncomeTable).where(eq(otherIncomeTable.id, id));
     if (!existing || !belongsToBusiness(existing, scope)) { res.status(404).json({ error: "Not found" }); return; }
-    await db.delete(otherIncomeTable).where(and(eq(otherIncomeTable.id, id), eq(otherIncomeTable.businessLine, existing.businessLine ?? "")));
+    const ownership = scope
+      ? or(
+          eq(otherIncomeTable.businessId, String(scope.id)),
+          and(isNull(otherIncomeTable.businessId), eq(otherIncomeTable.businessLine, scope.slug)),
+        )
+      : undefined;
+    await db.delete(otherIncomeTable).where(and(eq(otherIncomeTable.id, id), ownership));
     res.status(204).send();
   } catch (err) {
     console.error(err);

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
@@ -370,9 +370,13 @@ router.get("/:id/profit", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
 
-    const [invRows, expRows, sprRows, subHoursRow, subHoursSum, accruedBonusRow] = await Promise.all([
+    const [invRows, otherIncomeRows, expRows, sprRows, subHoursRow, subHoursSum, accruedBonusRow] = await Promise.all([
       db.select({ total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(eq(invoicesTable.jobId, id)),
+      // Job-linked other income is standalone cash revenue only when it has an
+      // explicit job link. Unlinked rows remain in aggregate/tax reports only.
+      db.select({ amount: otherIncomeTable.amount })
+        .from(otherIncomeTable).where(eq(otherIncomeTable.jobId, id)),
       // Fetch all expenses not auto-linked to a sub-hours row.
       // Subcontractor-category expenses are moved into the sub labor bucket below
       // so they never double-count with hours-based sub labor cost.
@@ -415,6 +419,9 @@ router.get("/:id/profit", async (req, res) => {
       grossInvoiced += t;
       if (inv.status === "paid") collected += t;
     }
+    const otherIncomeRevenue = otherIncomeRows.reduce((sum, row) => sum + parseFloat(row.amount ?? "0"), 0);
+    grossInvoiced += otherIncomeRevenue;
+    collected += otherIncomeRevenue;
     let jobExpenses = 0;
     let auditTrailTotal = 0; // Travel/audit expenses — excluded from job profit but tracked separately
     let tripTravelTotal = 0; // Subset of auditTrailTotal: expenses linked to a business trip
@@ -583,7 +590,7 @@ router.get("/:id/profit", async (req, res) => {
     }
 
     res.json({
-      grossInvoiced, collected, jobExpenses, auditTrailTotal, tripTravelTotal, tripMealsDeductible,
+      grossInvoiced, collected, otherIncomeRevenue, jobExpenses, auditTrailTotal, tripTravelTotal, tripMealsDeductible,
       subLaborCost, allocPaid, totalSubHours,
       netProfit, ownerDrawTaken,
       estimatedFuelCost,
@@ -654,9 +661,11 @@ router.get("/profit-summary", async (req, res) => {
     const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
 
-    const [invRows, expRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows] = await Promise.all([
+    const [invRows, otherIncomeRows, expRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows] = await Promise.all([
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
+      db.select({ jobId: otherIncomeTable.jobId, amount: otherIncomeTable.amount })
+        .from(otherIncomeTable).where(inArray(otherIncomeTable.jobId, jobIds)),
       // Exclude auto-linked sub-hour expenses; Subcontractor category goes into sub labor bucket
       db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category, countsTowardJobProfit: expensesTable.countsTowardJobProfit })
         .from(expensesTable).where(and(inArray(expensesTable.jobId, jobIds), isNull(expensesTable.jobSubHoursId))),
@@ -722,8 +731,8 @@ router.get("/profit-summary", async (req, res) => {
     const flatSubCostMap: Record<number, number> = {};
     for (const id of jobIds) flatSubCostMap[id] = 0;
 
-    const result: Record<number, { grossInvoiced: number; collected: number; jobExpenses: number; subLaborCost: number; allocPaid: number; totalSubHours: number; manHours: number | null; netProfit: number; estimatedFuelCost?: number | null }> = {};
-    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, jobExpenses: 0, subLaborCost: 0, allocPaid: 0, totalSubHours: 0, manHours: null, netProfit: 0 };
+    const result: Record<number, { grossInvoiced: number; collected: number; otherIncomeRevenue: number; jobExpenses: number; subLaborCost: number; allocPaid: number; totalSubHours: number; manHours: number | null; netProfit: number; estimatedFuelCost?: number | null }> = {};
+    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, otherIncomeRevenue: 0, jobExpenses: 0, subLaborCost: 0, allocPaid: 0, totalSubHours: 0, manHours: null, netProfit: 0 };
 
     for (const inv of invRows) {
       if (inv.jobId == null) continue;
@@ -732,6 +741,15 @@ router.get("/profit-summary", async (req, res) => {
       const t = parseFloat(inv.total ?? "0");
       r.grossInvoiced += t;
       if (inv.status === "paid") r.collected += t;
+    }
+    for (const otherIncome of otherIncomeRows) {
+      if (otherIncome.jobId == null) continue;
+      const r = result[otherIncome.jobId];
+      if (!r) continue;
+      const amount = parseFloat(otherIncome.amount ?? "0");
+      r.otherIncomeRevenue += amount;
+      r.grossInvoiced += amount;
+      r.collected += amount;
     }
     for (const exp of expRows) {
       if (exp.jobId == null) continue;
