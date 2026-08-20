@@ -29,5 +29,4 @@ export interface CreateJobRequest {
   coats?: number | null;
   phases?: PhaseItem[] | null;
   serviceBilling?: ServiceBilling | null;
-  manHours?: number | null;
 }

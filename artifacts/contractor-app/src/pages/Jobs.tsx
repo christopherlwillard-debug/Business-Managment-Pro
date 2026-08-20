@@ -6865,6 +6865,67 @@ export default function Jobs() {
     }
   }
 
+  async function getMileageSurchargeLine(job: Job, existingLines: any[]): Promise<any | null> {
+    const alreadyAdded = existingLines.some((line) =>
+      typeof line?.description === "string" &&
+      line.description.toLowerCase().startsWith("mileage surcharge"),
+    );
+    if (alreadyAdded || job.clientId == null || !(job.address || job.city)) return null;
+
+    const routeRes = await fetch(
+      `${BASE}/api/route-distance?clientId=${job.clientId}&jobId=${job.id}`,
+      { credentials: "include" },
+    );
+    if (!routeRes.ok) return null;
+    const route = await routeRes.json() as {
+      miles?: number | null;
+      surcharge?: {
+        enabled?: boolean;
+        triggerMiles?: number | null;
+        dailyRate?: number | null;
+        qualifies?: boolean;
+      };
+    };
+    const surcharge = route.surcharge;
+    if (
+      !surcharge?.qualifies ||
+      route.miles == null ||
+      surcharge.dailyRate == null ||
+      surcharge.triggerMiles == null
+    ) return null;
+
+    const start = job.startDate ? new Date(`${job.startDate}T00:00:00`) : null;
+    const end = job.endDate ? new Date(`${job.endDate}T00:00:00`) : null;
+    const calculatedDays = start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())
+      ? Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1)
+      : 1;
+    const datesDescription = start && end
+      ? `${job.startDate} through ${job.endDate}`
+      : "job dates are incomplete";
+    const accepted = window.confirm(
+      `This route is ${route.miles.toFixed(1)} miles and reaches ${surcharge.triggerMiles} miles for ${job.clientName ?? "this client"}.\n\n` +
+      `Add a ${surcharge.dailyRate.toFixed(2)}/day mileage surcharge? The date range is ${datesDescription}.`,
+    );
+    if (!accepted) return null;
+
+    const enteredDays = window.prompt(
+      "How many surcharge days should be billed? You can edit this count.",
+      String(calculatedDays),
+    );
+    if (enteredDays == null) return null;
+    const days = Math.floor(Number(enteredDays));
+    if (!Number.isFinite(days) || days < 1) {
+      toast({ title: "Surcharge not added", description: "Enter at least 1 surcharge day.", variant: "destructive" });
+      return null;
+    }
+
+    return {
+      description: `Mileage surcharge — ${route.miles.toFixed(1)} mi route`,
+      quantity: days,
+      unitPrice: Number(surcharge.dailyRate.toFixed(2)),
+    };
+  }
+
   async function handleReviewInvoice(job: Job) {
     setInvoiceFetching(true);
     try {
@@ -6878,9 +6939,23 @@ export default function Jobs() {
       if (draftRes.ok) {
         existingDraft = await draftRes.json();
       }
+      const currentLines = [
+        ...(Array.isArray(existingDraft?.lineItems) ? existingDraft!.lineItems : []),
+        ...(Array.isArray(jobDraft?.lineItems) ? jobDraft!.lineItems : []),
+      ];
+      const surchargeLine = existingDraft?.status === "draft" || !existingDraft
+        ? await getMileageSurchargeLine(job, currentLines)
+        : null;
+      const withSurcharge = (lines: any[]) => {
+        if (!surchargeLine || lines.some((line) =>
+          typeof line?.description === "string" &&
+          line.description.toLowerCase().startsWith("mileage surcharge"),
+        )) return lines;
+        return [...lines, surchargeLine];
+      };
 
       // Helper: merge job location into a draft invoice if the invoice's location fields are empty
-      function mergeJobLocation<T extends { locationName?: string | null; city?: string | null; state?: string | null }>(draft: T, j: Job): T {
+      function mergeJobLocation<T extends Record<string, any>>(draft: T, j: Job): T {
         const needsLocation = !draft.locationName && !draft.city && !draft.state;
         if (!needsLocation) return draft;
         return {
@@ -6906,8 +6981,10 @@ export default function Jobs() {
           const jobDraftDescriptions = new Set(filteredJobDraftLines.map((li: any) => li.description));
           const existingMaterialLines = (Array.isArray(existingDraft.lineItems) ? existingDraft.lineItems as any[] : [])
             .filter((li: any) => isMaterialLine(li) && !jobDraftDescriptions.has(li.description));
-          const mergedLines = [...filteredJobDraftLines, ...existingMaterialLines];
-          existingDraft = mergeJobLocation({ ...existingDraft, lineItems: mergedLines as any }, job);
+          const existingSurchargeLines = (Array.isArray(existingDraft.lineItems) ? existingDraft.lineItems as any[] : [])
+            .filter((li: any) => typeof li.description === "string" && li.description.toLowerCase().startsWith("mileage surcharge"));
+          const mergedLines = withSurcharge([...filteredJobDraftLines, ...existingMaterialLines, ...existingSurchargeLines]);
+          existingDraft = mergeJobLocation<Invoice>({ ...existingDraft, lineItems: mergedLines as any }, job);
           setInvoiceDraftData(null);
           setSelectedExistingInvoice(existingDraft);
           setInvoiceEditorOpen(true);
@@ -6966,7 +7043,10 @@ export default function Jobs() {
         }
 
         // Back-fill job location into the draft if the invoice's location fields are blank
-        if (existingDraft) existingDraft = mergeJobLocation(existingDraft, job);
+        if (existingDraft) {
+          existingDraft = mergeJobLocation<Invoice>(existingDraft, job);
+          existingDraft = { ...existingDraft, lineItems: withSurcharge(Array.isArray(existingDraft.lineItems) ? existingDraft.lineItems : []) };
+        }
 
         setInvoiceDraftData(null);
         setSelectedExistingInvoice(existingDraft ?? null);
@@ -6986,7 +7066,7 @@ export default function Jobs() {
 
       // Truly no invoice yet — open the editor using job draft data (creates new invoice on save)
       if (jobDraft) {
-        setInvoiceDraftData(jobDraft);
+        setInvoiceDraftData({ ...jobDraft, lineItems: withSurcharge(Array.isArray(jobDraft.lineItems) ? jobDraft.lineItems : []) });
         setSelectedExistingInvoice(null);
         setInvoiceEditorOpen(true);
       }

@@ -46,7 +46,7 @@ router.get("/", async (_req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, businessLine, reminderOptOut } = req.body;
+    const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, businessLine, reminderOptOut, mileageSurchargeEnabled, mileageSurchargeTriggerMiles, mileageSurchargeDailyRate } = req.body;
     if (!name) return res.status(400).json({ error: "Name is required" });
     const [client] = await db.insert(clientsTable).values({
       name, email, phone, address, city, state, zip, notes,
@@ -54,6 +54,9 @@ router.post("/", async (req, res) => {
       serviceIntervalMonths: serviceIntervalMonths ?? null,
       businessLine: businessLine ?? null,
       reminderOptOut: reminderOptOut === true,
+      mileageSurchargeEnabled: mileageSurchargeEnabled === true,
+      mileageSurchargeTriggerMiles: mileageSurchargeTriggerMiles ?? null,
+      mileageSurchargeDailyRate: mileageSurchargeDailyRate ?? null,
     }).returning();
     res.status(201).json(formatClient(client));
   } catch (err) {
@@ -129,7 +132,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, businessLine, reminderOptOut } = req.body;
+    const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, businessLine, reminderOptOut, mileageSurchargeEnabled, mileageSurchargeTriggerMiles, mileageSurchargeDailyRate } = req.body;
     const updates: Record<string, unknown> = {};
     if ("name" in req.body) updates.name = name;
     if ("email" in req.body) updates.email = email;
@@ -143,6 +146,9 @@ router.put("/:id", async (req, res) => {
     if ("serviceIntervalMonths" in req.body) updates.serviceIntervalMonths = serviceIntervalMonths ?? null;
     if ("businessLine" in req.body) updates.businessLine = businessLine ?? null;
     if ("reminderOptOut" in req.body) updates.reminderOptOut = reminderOptOut === true;
+    if ("mileageSurchargeEnabled" in req.body) updates.mileageSurchargeEnabled = mileageSurchargeEnabled === true;
+    if ("mileageSurchargeTriggerMiles" in req.body) updates.mileageSurchargeTriggerMiles = mileageSurchargeTriggerMiles ?? null;
+    if ("mileageSurchargeDailyRate" in req.body) updates.mileageSurchargeDailyRate = mileageSurchargeDailyRate ?? null;
     const [client] = await db.update(clientsTable)
       .set(updates)
       .where(eq(clientsTable.id, id))

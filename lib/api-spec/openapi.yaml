@@ -506,6 +506,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/Invoice"
 
+  /invoices/{id}/void:
+    post:
+      operationId: voidInvoice
+      tags: [invoices]
+      summary: Void an invoice while retaining its audit record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Voided invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
   /invoices/tax-report:
     get:
       operationId: getInvoiceTaxReport
@@ -1653,6 +1672,16 @@ components:
         notes:
           type: string
           nullable: true
+        reminderOptOut:
+          type: boolean
+        mileageSurchargeEnabled:
+          type: boolean
+        mileageSurchargeTriggerMiles:
+          type: number
+          nullable: true
+        mileageSurchargeDailyRate:
+          type: number
+          nullable: true
         createdAt:
           type: string
       required: [id, name, createdAt]
@@ -1682,6 +1711,16 @@ components:
           nullable: true
         notes:
           type: string
+          nullable: true
+        reminderOptOut:
+          type: boolean
+        mileageSurchargeEnabled:
+          type: boolean
+        mileageSurchargeTriggerMiles:
+          type: number
+          nullable: true
+        mileageSurchargeDailyRate:
+          type: number
           nullable: true
       required: [name]
 
@@ -2828,6 +2867,12 @@ components:
         invoiceLogoPosition:
           type: string
           enum: [top-left, top-center, top-right]
+          nullable: true
+        ownerSplitPct:
+          type: number
+          nullable: true
+        taxReservePct:
+          type: number
           nullable: true
       required: [enabledFeatures]
 

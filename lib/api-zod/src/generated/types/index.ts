@@ -64,6 +64,7 @@ export * from "./handleBrowserLoginCallbackParams";
 export * from "./healthStatus";
 export * from "./invoice";
 export * from "./invoiceAttachment";
+export * from "./invoiceAttachmentPhotoType";
 export * from "./invoiceDraft";
 export * from "./invoiceLineItem";
 export * from "./invoiceStatus";

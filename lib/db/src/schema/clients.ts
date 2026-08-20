@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, date, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, date, boolean, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -17,6 +17,9 @@ export const clientsTable = pgTable("clients", {
   businessLine: text("business_line"),
   squareCustomerId: text("square_customer_id"),
   reminderOptOut: boolean("reminder_opt_out").default(false).notNull(),
+  mileageSurchargeEnabled: boolean("mileage_surcharge_enabled").default(false).notNull(),
+  mileageSurchargeTriggerMiles: numeric("mileage_surcharge_trigger_miles", { precision: 8, scale: 2 }),
+  mileageSurchargeDailyRate: numeric("mileage_surcharge_daily_rate", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

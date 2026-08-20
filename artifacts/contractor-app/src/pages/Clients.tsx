@@ -52,6 +52,9 @@ export default function Clients() {
       zip: formData.get("zip") as string,
       notes: formData.get("notes") as string,
       reminderOptOut: formData.get("reminderOptOut") === "on",
+      mileageSurchargeEnabled: formData.get("mileageSurchargeEnabled") === "on",
+      mileageSurchargeTriggerMiles: formData.get("mileageSurchargeTriggerMiles") ? Number(formData.get("mileageSurchargeTriggerMiles")) : null,
+      mileageSurchargeDailyRate: formData.get("mileageSurchargeDailyRate") ? Number(formData.get("mileageSurchargeDailyRate")) : null,
     };
 
     try {
@@ -311,6 +314,24 @@ export default function Clients() {
                 <span className="block text-sm font-medium">Exclude from invoice reminders</span>
                 <span className="block text-xs text-muted-foreground mt-0.5">This client will not receive automated payment reminder emails.</span>
               </label>
+            </div>
+            <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-3">
+              <div>
+                <p className="text-sm font-medium">Mileage surcharge</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Prompt before adding a daily travel charge to a draft invoice when the route reaches the threshold.</p>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="mileageSurchargeEnabled" defaultChecked={editingClient?.mileageSurchargeEnabled ?? false} className="h-4 w-4 accent-primary" />
+                Enable mileage surcharge prompts
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs text-muted-foreground">Trigger miles
+                  <input name="mileageSurchargeTriggerMiles" type="number" min="0" step="0.1" defaultValue={editingClient?.mileageSurchargeTriggerMiles ?? ""} className="mt-1 w-full px-3 py-2 rounded-xl border border-border bg-background" />
+                </label>
+                <label className="text-xs text-muted-foreground">Daily rate
+                  <input name="mileageSurchargeDailyRate" type="number" min="0" step="0.01" defaultValue={editingClient?.mileageSurchargeDailyRate ?? ""} className="mt-1 w-full px-3 py-2 rounded-xl border border-border bg-background" />
+                </label>
+              </div>
             </div>
             <div className="pt-4 flex justify-end gap-3">
               <button type="button" onClick={closeDialog} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors">Cancel</button>

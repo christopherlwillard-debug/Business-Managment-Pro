@@ -127,13 +127,25 @@ router.post("/seed-clayton-billback", async (_req: Request, res: Response) => {
   try {
     // 1. Upsert client
     let clientId: number;
-    const existing = await db.select({ id: clientsTable.id })
+    const existing = await db.select({
+      id: clientsTable.id,
+      mileageSurchargeEnabled: clientsTable.mileageSurchargeEnabled,
+      mileageSurchargeTriggerMiles: clientsTable.mileageSurchargeTriggerMiles,
+      mileageSurchargeDailyRate: clientsTable.mileageSurchargeDailyRate,
+    })
       .from(clientsTable)
       .where(ilike(clientsTable.name, "Clayton Homes of Evansville"))
       .limit(1);
 
     if (existing.length > 0) {
       clientId = existing[0].id;
+      await db.update(clientsTable)
+        .set({
+          mileageSurchargeEnabled: existing[0].mileageSurchargeEnabled || true,
+          mileageSurchargeTriggerMiles: existing[0].mileageSurchargeTriggerMiles ?? "60",
+          mileageSurchargeDailyRate: existing[0].mileageSurchargeDailyRate ?? "150",
+        })
+        .where(eq(clientsTable.id, clientId));
     } else {
       const [inserted] = await db.insert(clientsTable).values({
         name: "Clayton Homes of Evansville",
@@ -141,6 +153,9 @@ router.post("/seed-clayton-billback", async (_req: Request, res: Response) => {
         city: "Evansville",
         state: "IN",
         zip: "47725",
+        mileageSurchargeEnabled: true,
+        mileageSurchargeTriggerMiles: "60",
+        mileageSurchargeDailyRate: "150",
       }).returning({ id: clientsTable.id });
       clientId = inserted.id;
     }

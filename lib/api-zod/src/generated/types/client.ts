@@ -16,5 +16,9 @@ export interface Client {
   state?: string | null;
   zip?: string | null;
   notes?: string | null;
+  reminderOptOut?: boolean;
+  mileageSurchargeEnabled?: boolean;
+  mileageSurchargeTriggerMiles?: number | null;
+  mileageSurchargeDailyRate?: number | null;
   createdAt: string;
 }

@@ -111,6 +111,10 @@ export const ListClientsResponseItem = zod.object({
   state: zod.string().nullish(),
   zip: zod.string().nullish(),
   notes: zod.string().nullish(),
+  reminderOptOut: zod.boolean().optional(),
+  mileageSurchargeEnabled: zod.boolean().optional(),
+  mileageSurchargeTriggerMiles: zod.number().nullish(),
+  mileageSurchargeDailyRate: zod.number().nullish(),
   createdAt: zod.string(),
 });
 export const ListClientsResponse = zod.array(ListClientsResponseItem);
@@ -127,6 +131,10 @@ export const CreateClientBody = zod.object({
   state: zod.string().nullish(),
   zip: zod.string().nullish(),
   notes: zod.string().nullish(),
+  reminderOptOut: zod.boolean().optional(),
+  mileageSurchargeEnabled: zod.boolean().optional(),
+  mileageSurchargeTriggerMiles: zod.number().nullish(),
+  mileageSurchargeDailyRate: zod.number().nullish(),
 });
 
 /**
@@ -146,6 +154,10 @@ export const GetClientResponse = zod.object({
   state: zod.string().nullish(),
   zip: zod.string().nullish(),
   notes: zod.string().nullish(),
+  reminderOptOut: zod.boolean().optional(),
+  mileageSurchargeEnabled: zod.boolean().optional(),
+  mileageSurchargeTriggerMiles: zod.number().nullish(),
+  mileageSurchargeDailyRate: zod.number().nullish(),
   createdAt: zod.string(),
 });
 
@@ -165,6 +177,10 @@ export const UpdateClientBody = zod.object({
   state: zod.string().nullish(),
   zip: zod.string().nullish(),
   notes: zod.string().nullish(),
+  reminderOptOut: zod.boolean().optional(),
+  mileageSurchargeEnabled: zod.boolean().optional(),
+  mileageSurchargeTriggerMiles: zod.number().nullish(),
+  mileageSurchargeDailyRate: zod.number().nullish(),
 });
 
 export const UpdateClientResponse = zod.object({
@@ -177,6 +193,10 @@ export const UpdateClientResponse = zod.object({
   state: zod.string().nullish(),
   zip: zod.string().nullish(),
   notes: zod.string().nullish(),
+  reminderOptOut: zod.boolean().optional(),
+  mileageSurchargeEnabled: zod.boolean().optional(),
+  mileageSurchargeTriggerMiles: zod.number().nullish(),
+  mileageSurchargeDailyRate: zod.number().nullish(),
   createdAt: zod.string(),
 });
 
@@ -632,6 +652,7 @@ export const ListInvoicesResponseItem = zod.object({
         name: zod.string(),
         url: zod.string(),
         size: zod.number().nullish(),
+        photoType: zod.enum(["before", "after", "general"]).nullish(),
       }),
     )
     .nullish(),
@@ -669,6 +690,7 @@ export const CreateInvoiceBody = zod.object({
         name: zod.string(),
         url: zod.string(),
         size: zod.number().nullish(),
+        photoType: zod.enum(["before", "after", "general"]).nullish(),
       }),
     )
     .nullish(),
@@ -717,6 +739,7 @@ export const GetInvoiceResponse = zod.object({
         name: zod.string(),
         url: zod.string(),
         size: zod.number().nullish(),
+        photoType: zod.enum(["before", "after", "general"]).nullish(),
       }),
     )
     .nullish(),
@@ -757,6 +780,7 @@ export const UpdateInvoiceBody = zod.object({
         name: zod.string(),
         url: zod.string(),
         size: zod.number().nullish(),
+        photoType: zod.enum(["before", "after", "general"]).nullish(),
       }),
     )
     .nullish(),
@@ -798,6 +822,7 @@ export const UpdateInvoiceResponse = zod.object({
         name: zod.string(),
         url: zod.string(),
         size: zod.number().nullish(),
+        photoType: zod.enum(["before", "after", "general"]).nullish(),
       }),
     )
     .nullish(),
@@ -858,6 +883,57 @@ export const UpdateInvoiceStatusResponse = zod.object({
         name: zod.string(),
         url: zod.string(),
         size: zod.number().nullish(),
+        photoType: zod.enum(["before", "after", "general"]).nullish(),
+      }),
+    )
+    .nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Void an invoice while retaining its audit record
+ */
+export const VoidInvoiceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const VoidInvoiceResponse = zod.object({
+  id: zod.number(),
+  invoiceNumber: zod.string(),
+  clientId: zod.number().nullish(),
+  clientName: zod.string().nullish(),
+  jobId: zod.number().nullish(),
+  jobTitle: zod.string().nullish(),
+  jobCity: zod.string().nullish(),
+  jobState: zod.string().nullish(),
+  status: zod.enum(["draft", "sent", "paid", "overdue", "cancelled"]),
+  issueDate: zod.string(),
+  dueDate: zod.string().nullish(),
+  subtotal: zod.number(),
+  taxRate: zod.number().nullish(),
+  taxAmount: zod.number().nullish(),
+  total: zod.number(),
+  amountPaid: zod.number().nullish(),
+  notes: zod.string().nullish(),
+  terms: zod.string().nullish(),
+  lineItems: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        description: zod.string(),
+        quantity: zod.number(),
+        unitPrice: zod.number(),
+        total: zod.number(),
+      }),
+    )
+    .optional(),
+  attachments: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        url: zod.string(),
+        size: zod.number().nullish(),
+        photoType: zod.enum(["before", "after", "general"]).nullish(),
       }),
     )
     .nullish(),
@@ -1816,6 +1892,8 @@ export const GetSettingsResponse = zod.object({
   invoiceLogoPosition: zod
     .enum(["top-left", "top-center", "top-right"])
     .nullish(),
+  ownerSplitPct: zod.number().nullish(),
+  taxReservePct: zod.number().nullish(),
 });
 
 /**
@@ -1843,6 +1921,8 @@ export const UpdateSettingsBody = zod.object({
   invoiceLogoPosition: zod
     .enum(["top-left", "top-center", "top-right"])
     .nullish(),
+  ownerSplitPct: zod.number().nullish(),
+  taxReservePct: zod.number().nullish(),
 });
 
 export const UpdateSettingsResponse = zod.object({
@@ -1867,6 +1947,8 @@ export const UpdateSettingsResponse = zod.object({
   invoiceLogoPosition: zod
     .enum(["top-left", "top-center", "top-right"])
     .nullish(),
+  ownerSplitPct: zod.number().nullish(),
+  taxReservePct: zod.number().nullish(),
 });
 
 /**
@@ -1993,6 +2075,7 @@ export const GetDashboardStatsResponse = zod.object({
             name: zod.string(),
             url: zod.string(),
             size: zod.number().nullish(),
+            photoType: zod.enum(["before", "after", "general"]).nullish(),
           }),
         )
         .nullish(),

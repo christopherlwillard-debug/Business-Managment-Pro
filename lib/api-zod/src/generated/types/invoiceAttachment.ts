@@ -5,10 +5,11 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { InvoiceAttachmentPhotoType } from "./invoiceAttachmentPhotoType";
 
 export interface InvoiceAttachment {
   name: string;
   url: string;
   size?: number | null;
-  photoType?: "before" | "after" | "general" | null;
+  photoType?: InvoiceAttachmentPhotoType;
 }

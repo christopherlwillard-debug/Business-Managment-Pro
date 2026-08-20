@@ -123,8 +123,26 @@ router.get(
     const jobAddr = [job.address, job.city, job.state].filter(Boolean).join(", ");
 
     const result = await RoutingEngine.calculate({ origin: clientAddr, destination: jobAddr });
+    const triggerMiles = client.mileageSurchargeTriggerMiles == null
+      ? null
+      : Number(client.mileageSurchargeTriggerMiles);
+    const dailyRate = client.mileageSurchargeDailyRate == null
+      ? null
+      : Number(client.mileageSurchargeDailyRate);
     res.json({
       miles: result.miles,
+      surcharge: {
+        enabled: client.mileageSurchargeEnabled,
+        triggerMiles,
+        dailyRate,
+        qualifies: Boolean(
+          client.mileageSurchargeEnabled &&
+          result.miles != null &&
+          triggerMiles != null &&
+          dailyRate != null &&
+          result.miles >= triggerMiles,
+        ),
+      },
       ...(result.routeStatus !== "ok" ? { reason: result.routeStatus } : {}),
     });
   })
