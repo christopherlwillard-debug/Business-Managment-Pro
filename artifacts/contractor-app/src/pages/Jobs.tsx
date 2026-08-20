@@ -4116,99 +4116,88 @@ function JobTripsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 
 const JOB_EXPENSE_CATEGORIES = ["Materials", "Fuel/Travel", "Tools/Equipment", "Meals", "Other"] as const;
 
-function JobExpenseDialog({ job, open, onClose, onSaved }: {
+function JobAllocationDialog({ job, open, onClose, onSaved }: {
   job: Job; open: boolean; onClose: () => void; onSaved: () => void;
 }) {
-  const { activeBusiness } = useBusiness();
   const { toast } = useToast();
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [sourceExpenseId, setSourceExpenseId] = useState("");
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("Materials");
-  const [date, setDate] = useState(localDateString());
-  const [description, setDescription] = useState("");
-  const [vendor, setVendor] = useState("");
   const [notes, setNotes] = useState("");
-  const [receipt, setReceipt] = useState<File | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setAmount(""); setCategory("Materials"); setDate(localDateString());
-    setDescription(""); setVendor(""); setNotes(""); setReceipt(null); setError("");
-  }, [open, job.id]);
+    setSourceExpenseId(""); setAmount(""); setNotes(""); setError("");
+    setLoading(true);
+    const businessQuery = job.businessId ? `?businessId=${job.businessId}` : "";
+    fetch(`${BASE}/api/expenses${businessQuery}`, { credentials: "include" })
+      .then(async response => {
+        if (!response.ok) throw new Error("Could not load existing expenses.");
+        const rows = await response.json();
+        setExpenses((Array.isArray(rows) ? rows : []).filter((expense: any) =>
+          expense.id > 0 && !expense.jobId && !expense.jobSubHoursId && Number(expense.amount) > 0
+        ));
+      })
+      .catch(err => setError(err instanceof Error ? err.message : "Could not load existing expenses."))
+      .finally(() => setLoading(false));
+  }, [open, job.id, job.businessId]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const value = Number(amount);
-    if (!Number.isFinite(value) || value <= 0) return setError("Enter an amount greater than $0.");
-    if (!date) return setError("Choose the purchase date.");
-    if (!description.trim()) return setError("Add a short description.");
-    if (!category) return setError("Choose a category.");
+    if (!sourceExpenseId) return setError("Choose the existing expense.");
+    if (!Number.isFinite(value) || value <= 0) return setError("Enter an allocation amount greater than $0.");
     setSaving(true); setError("");
     try {
-      const response = await fetch(`${BASE}/api/expenses`, {
+      const response = await fetch(`${BASE}/api/expenses/${sourceExpenseId}/job-allocations`, {
         method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: value, category, date, description: description.trim(),
-          vendor: vendor.trim() || undefined, notes: notes.trim() || undefined,
-          jobId: job.id, businessId: job.businessId ?? activeBusiness?.id ?? undefined,
-          businessLine: job.businessLine ?? undefined,
-          countsTowardJobProfit: category === "Fuel/Travel" ? false : true,
-        }),
+        body: JSON.stringify({ amount: value, jobId: job.id, notes: notes.trim() || undefined }),
       });
-      const created = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(created.error || "Could not save the expense.");
-      if (receipt && created.id) {
-        const form = new FormData(); form.append("receipt", receipt);
-        const upload = await fetch(`${BASE}/api/expenses/${created.id}/receipt`, { method: "POST", credentials: "include", body: form });
-        if (!upload.ok) toast({ title: "Expense saved without receipt", description: "The receipt upload failed.", variant: "destructive" });
-      }
-      toast({ title: "Expense added", description: `${formatCurrency(value)} added to ${job.title}.` });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not allocate the expense.");
+      toast({ title: "Amount allocated to job", description: `${formatCurrency(value)} from the existing expense was added to ${job.title}.` });
       onSaved(); onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the expense.");
+      setError(err instanceof Error ? err.message : "Could not allocate the expense.");
     } finally { setSaving(false); }
   }
+
+  const selectedExpense = expenses.find(expense => String(expense.id) === sourceExpenseId);
 
   return (
     <div className={`fixed inset-0 z-[70] ${open ? "flex" : "hidden"} items-center justify-center p-4`}>
       <button type="button" aria-label="Close" className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
-          <div><h2 className="text-xl font-display font-bold">Add job expense</h2><p className="text-xs text-muted-foreground mt-1">Record only the portion of a shared purchase used for this job.</p></div>
+          <div><h2 className="text-xl font-display font-bold">Allocate expense to job</h2><p className="text-xs text-muted-foreground mt-1">Assign only the portion of an existing purchase used for this job.</p></div>
           <button type="button" onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center"><X className="w-4 h-4" /></button>
         </div>
-        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs text-blue-800">This expense will be linked to <strong>{job.title}</strong>. The job and business are fixed.</div>
+        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs text-blue-800">This does <strong>not</strong> create another expense. It allocates only the amount you enter to <strong>{job.title}</strong>.</div>
         <form onSubmit={submit} className="mt-4 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm font-medium">Amount *
-              <input autoFocus type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background" placeholder="0.00" />
-            </label>
-            <label className="text-sm font-medium">Date *
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background" />
-            </label>
-          </div>
-          <label className="block text-sm font-medium">Description *
-            <input value={description} onChange={e => setDescription(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background" placeholder="e.g. Lumber for framing" />
+          <label className="block text-sm font-medium">Existing expense *
+            <select autoFocus value={sourceExpenseId} onChange={e => { setSourceExpenseId(e.target.value); setAmount(""); }} disabled={loading} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background">
+              <option value="">{loading ? "Loading expenses…" : expenses.length ? "Choose an expense" : "No unlinked expenses found"}</option>
+              {expenses.map(expense => (
+                <option key={expense.id} value={expense.id}>
+                  {formatDate(expense.date)} · {formatCurrency(Number(expense.amount))} · {expense.description}
+                </option>
+              ))}
+            </select>
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm font-medium">Category *
-              <select value={category} onChange={e => setCategory(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background">{JOB_EXPENSE_CATEGORIES.map(item => <option key={item}>{item}</option>)}</select>
-            </label>
-            <label className="text-sm font-medium">Vendor
-              <input value={vendor} onChange={e => setVendor(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background" placeholder="Optional" />
-            </label>
-          </div>
+          {selectedExpense && <p className="text-xs text-muted-foreground -mt-2">Original purchase: {formatCurrency(Number(selectedExpense.amount))}. The original expense stays unchanged.</p>}
+          <label className="block text-sm font-medium">Amount used by this job *
+            <input type="number" min="0.01" max={selectedExpense?.amount ?? undefined} step="0.01" value={amount} onChange={e => setAmount(e.target.value)} disabled={!selectedExpense} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background" placeholder="0.00" />
+          </label>
           <label className="block text-sm font-medium">Notes
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="w-full mt-1 px-3 py-2 rounded-xl border border-border bg-background resize-none" placeholder="Optional details about the shared purchase" />
-          </label>
-          <label className="block text-sm font-medium">Receipt <span className="font-normal text-muted-foreground">(optional)</span>
-            <input type="file" accept="image/*,.pdf" onChange={e => setReceipt(e.target.files?.[0] ?? null)} className="w-full mt-1 text-xs" />
           </label>
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <div className="flex justify-end gap-3 pt-2 border-t border-dashed border-border">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-muted-foreground hover:bg-muted">Cancel</button>
-            <button type="submit" disabled={saving} className="px-5 py-2 rounded-xl text-sm font-semibold bg-primary text-primary-foreground disabled:opacity-50">{saving ? "Saving…" : "Add expense"}</button>
+            <button type="submit" disabled={saving || loading || !selectedExpense} className="px-5 py-2 rounded-xl text-sm font-semibold bg-primary text-primary-foreground disabled:opacity-50">{saving ? "Allocating…" : "Allocate to job"}</button>
           </div>
         </form>
       </div>
@@ -4616,7 +4605,7 @@ function JobCard({
         {canEdit("expenses") && (
           <button type="button" onClick={() => setJobExpenseOpen(true)}
             className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-semibold w-full">
-            <Plus className="w-3.5 h-3.5" /> Add expense
+            <Plus className="w-3.5 h-3.5" /> Allocate expense
           </button>
         )}
 
@@ -5006,7 +4995,7 @@ function JobCard({
       {financialsPanelOpen && (
         <JobFinancialsPanel job={job} profitData={displayProfit} initialTab={financialsInitialTab} onClose={() => setFinancialsPanelOpen(false)} onSubsPaidChanged={setLocalSubPaid} />
       )}
-      <JobExpenseDialog
+      <JobAllocationDialog
         job={job}
         open={jobExpenseOpen}
         onClose={() => setJobExpenseOpen(false)}

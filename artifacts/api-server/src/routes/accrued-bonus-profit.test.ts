@@ -112,8 +112,8 @@ afterEach(() => {
 
 /**
  * Push the 7 select results that GET /jobs/:id/profit issues via Promise.all:
- *   [0] invoices      [1] other income [2] expenses [3] spr fixed/alloc rows
- *   [4] hours cost    [5] hours cnt    [6] accrued bonus
+ *   [0] invoices      [1] other income [2] expenses [3] job allocations
+ *   [4] spr fixed/alloc rows [5] hours cost [6] hours cnt [7] accrued bonus
  */
 function pushProfitSelects(opts: {
   invoices?:       { total: string; status: string }[];
@@ -127,6 +127,7 @@ function pushProfitSelects(opts: {
   h.selectQueue.push(opts.invoices ?? []);
   h.selectQueue.push(opts.otherIncome ?? []);
   h.selectQueue.push(opts.expenses ?? []);
+  h.selectQueue.push([]); // job-only allocations
   h.selectQueue.push(opts.sprRows  ?? []);
   h.selectQueue.push([{ total: opts.hoursLaborCost ?? "0" }]);
   h.selectQueue.push([{ total: opts.totalHours     ?? "0" }]);
@@ -139,8 +140,8 @@ function pushProfitSelects(opts: {
 
 /**
  * Push the 8 select results that GET /jobs/profit-summary issues via Promise.all:
- *   [0] invoices  [1] other income [2] expenses [3] hours cost rows
- *   [4] hours count rows [5] manHours [6] spr rows [7] accrued bonus rows
+ *   [0] invoices  [1] other income [2] expenses [3] job allocations
+ *   [4] hours cost rows [5] hours count rows [6] manHours [7] spr rows [8] accrued bonus rows
  *
  * All arrays are grouped by jobId on the real DB; the mock just returns the
  * raw rows — the route code maps them by jobId.
@@ -159,6 +160,7 @@ function pushSummarySelects(opts: {
   h.selectQueue.push(opts.invoices ?? []);
   h.selectQueue.push(opts.otherIncome ?? []);
   h.selectQueue.push(opts.expenses ?? []);
+  h.selectQueue.push([]); // job-only allocations
   // hours cost grouped by jobId
   h.selectQueue.push(opts.hoursLaborCost && opts.hoursLaborCost !== "0"
     ? [{ jobId, total: opts.hoursLaborCost }] : []);

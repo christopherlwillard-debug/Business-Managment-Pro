@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { expensesTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable, businessTripsTable, ownerCapitalEntriesTable } from "@workspace/db/schema";
+import { expensesTable, jobExpenseAllocationsTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable, businessTripsTable, ownerCapitalEntriesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, sql, isNull, or, desc, getTableColumns } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
@@ -87,6 +87,75 @@ function buildExpenseQuery() {
     .leftJoin(subcontractorsTable, eq(expensesTable.subcontractorId, subcontractorsTable.id))
     .leftJoin(businessesTable, eq(expensesTable.businessId, businessesTable.id));
 }
+
+function cents(value: unknown): number {
+  return Math.round(Number(value) * 100);
+}
+
+async function getAllocationBusiness(req: any, expense: any, jobId: number) {
+  const [job] = await db
+    .select({ id: jobsTable.id, businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+    .from(jobsTable)
+    .where(eq(jobsTable.id, jobId))
+    .limit(1);
+  if (!job) return { error: "Job not found" as const };
+
+  const scope = await requestedBusiness(req);
+  if (scope && !belongsToBusiness(job, scope)) return { error: "Job not found" as const };
+  if (expense.businessId && job.businessId && expense.businessId !== job.businessId) {
+    return { error: "The expense and job belong to different businesses" as const };
+  }
+
+  const businessId = expense.businessId ?? job.businessId ?? scope?.id ?? null;
+  if (!businessId) return { error: "A business is required for a job allocation" as const };
+  return { job, businessId };
+}
+
+async function allocationTotal(expenseId: number, excludeId?: number): Promise<number> {
+  const conditions = [eq(jobExpenseAllocationsTable.expenseId, expenseId)];
+  if (excludeId != null) conditions.push(sql`${jobExpenseAllocationsTable.id} <> ${excludeId}`);
+  const [row] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${jobExpenseAllocationsTable.amount}), 0)` })
+    .from(jobExpenseAllocationsTable)
+    .where(and(...conditions));
+  return cents(row?.total ?? "0");
+}
+
+const allocationSelect = {
+  id: jobExpenseAllocationsTable.id,
+  expenseId: jobExpenseAllocationsTable.expenseId,
+  jobId: jobExpenseAllocationsTable.jobId,
+  businessId: jobExpenseAllocationsTable.businessId,
+  amount: jobExpenseAllocationsTable.amount,
+  notes: jobExpenseAllocationsTable.notes,
+  createdAt: jobExpenseAllocationsTable.createdAt,
+  updatedAt: jobExpenseAllocationsTable.updatedAt,
+  sourceDescription: expensesTable.description,
+  sourceDate: expensesTable.date,
+  sourceAmount: expensesTable.amount,
+  sourceCategory: expensesTable.category,
+};
+
+// Job-only allocations distribute an existing expense without creating another
+// row in the expenses ledger.
+router.get("/job-allocations", async (req, res) => {
+  try {
+    const scope = await requestedBusiness(req);
+    const conditions: any[] = [];
+    if (scope) conditions.push(eq(jobExpenseAllocationsTable.businessId, scope.id));
+    if (req.query.jobId) conditions.push(eq(jobExpenseAllocationsTable.jobId, parseInt(String(req.query.jobId))));
+    const rows = await db
+      .select(allocationSelect)
+      .from(jobExpenseAllocationsTable)
+      .innerJoin(expensesTable, eq(jobExpenseAllocationsTable.expenseId, expensesTable.id))
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(jobExpenseAllocationsTable.createdAt));
+    res.json(rows.map(row => ({ ...row, amount: parseFloat(row.amount ?? "0"), sourceAmount: parseFloat(row.sourceAmount ?? "0") })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch job allocations" });
+  }
+});
 
 router.get("/", async (req, res) => {
   try {
@@ -176,6 +245,82 @@ router.get("/", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch expenses" });
+  }
+});
+
+router.post("/:id/job-allocations", async (req, res) => {
+  try {
+    const expense = res.locals.businessScopedExpense;
+    if (!expense || expense.voidedAt) return res.status(404).json({ error: "Expense not found" });
+    if (expense.jobId) return res.status(409).json({ error: "This expense is already assigned to a job. Edit the expense instead." });
+
+    const jobId = Number(req.body?.jobId);
+    const amountCents = cents(req.body?.amount);
+    if (!Number.isInteger(jobId) || jobId <= 0) return res.status(400).json({ error: "A valid job is required" });
+    if (!Number.isInteger(amountCents) || amountCents <= 0) return res.status(400).json({ error: "Allocation amount must be greater than zero" });
+
+    const allocationContext = await getAllocationBusiness(req, expense, jobId);
+    if ("error" in allocationContext) return res.status(404).json({ error: allocationContext.error });
+
+    const sourceCents = cents(expense.amount);
+    const usedCents = await allocationTotal(expense.id);
+    if (usedCents + amountCents > sourceCents) {
+      return res.status(400).json({ error: `Allocation exceeds the unallocated source amount of $${((sourceCents - usedCents) / 100).toFixed(2)}` });
+    }
+
+    const [created] = await db.insert(jobExpenseAllocationsTable).values({
+      expenseId: expense.id,
+      jobId,
+      businessId: allocationContext.businessId,
+      amount: (amountCents / 100).toFixed(2),
+      notes: typeof req.body?.notes === "string" && req.body.notes.trim() ? req.body.notes.trim() : null,
+    }).returning();
+    res.status(201).json({ ...created, amount: parseFloat(created.amount) });
+  } catch (err: any) {
+    if (err?.code === "23505") return res.status(409).json({ error: "This expense is already allocated to that job. Edit the existing allocation instead." });
+    console.error(err);
+    res.status(500).json({ error: "Failed to create job allocation" });
+  }
+});
+
+router.put("/job-allocations/:allocationId", async (req, res) => {
+  try {
+    const allocationId = Number(req.params.allocationId);
+    const scope = await requestedBusiness(req);
+    const [allocation] = await db.select().from(jobExpenseAllocationsTable).where(eq(jobExpenseAllocationsTable.id, allocationId));
+    if (!allocation || (scope && allocation.businessId !== scope.id)) return res.status(404).json({ error: "Job allocation not found" });
+
+    const [expense] = await db.select().from(expensesTable).where(eq(expensesTable.id, allocation.expenseId));
+    if (!expense || expense.voidedAt) return res.status(404).json({ error: "Source expense not found" });
+    const amountCents = req.body?.amount === undefined ? cents(allocation.amount) : cents(req.body.amount);
+    if (!Number.isInteger(amountCents) || amountCents <= 0) return res.status(400).json({ error: "Allocation amount must be greater than zero" });
+    const usedCents = await allocationTotal(expense.id, allocation.id);
+    if (usedCents + amountCents > cents(expense.amount)) {
+      return res.status(400).json({ error: `Allocation exceeds the unallocated source amount of $${((cents(expense.amount) - usedCents) / 100).toFixed(2)}` });
+    }
+    const [updated] = await db.update(jobExpenseAllocationsTable).set({
+      amount: (amountCents / 100).toFixed(2),
+      ...(req.body?.notes !== undefined ? { notes: req.body.notes?.trim() || null } : {}),
+      updatedAt: new Date(),
+    }).where(eq(jobExpenseAllocationsTable.id, allocation.id)).returning();
+    res.json({ ...updated, amount: parseFloat(updated.amount) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update job allocation" });
+  }
+});
+
+router.delete("/job-allocations/:allocationId", async (req, res) => {
+  try {
+    const allocationId = Number(req.params.allocationId);
+    const scope = await requestedBusiness(req);
+    const [allocation] = await db.select().from(jobExpenseAllocationsTable).where(eq(jobExpenseAllocationsTable.id, allocationId));
+    if (!allocation || (scope && allocation.businessId !== scope.id)) return res.status(404).json({ error: "Job allocation not found" });
+    await db.delete(jobExpenseAllocationsTable).where(eq(jobExpenseAllocationsTable.id, allocationId));
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to remove job allocation" });
   }
 });
 

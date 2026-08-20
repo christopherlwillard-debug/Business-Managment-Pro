@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
@@ -420,7 +420,7 @@ router.get("/:id/profit", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
 
-    const [invRows, otherIncomeRows, expRows, sprRows, subHoursRow, subHoursSum, accruedBonusRow] = await Promise.all([
+    const [invRows, otherIncomeRows, expRows, allocationRows, sprRows, subHoursRow, subHoursSum, accruedBonusRow] = await Promise.all([
       db.select({ total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(eq(invoicesTable.jobId, id)),
       // Job-linked other income is standalone cash revenue only when it has an
@@ -432,6 +432,10 @@ router.get("/:id/profit", async (req, res) => {
       // so they never double-count with hours-based sub labor cost.
       db.select({ amount: expensesTable.amount, category: expensesTable.category, countsTowardJobProfit: expensesTable.countsTowardJobProfit, tripId: expensesTable.tripId })
         .from(expensesTable).where(and(eq(expensesTable.jobId, id), isNull(expensesTable.jobSubHoursId), isNull(expensesTable.voidedAt))),
+      db.select({ amount: jobExpenseAllocationsTable.amount })
+        .from(jobExpenseAllocationsTable)
+        .innerJoin(expensesTable, eq(jobExpenseAllocationsTable.expenseId, expensesTable.id))
+        .where(and(eq(jobExpenseAllocationsTable.jobId, id), isNull(expensesTable.voidedAt))),
       // sub_payment_records is the authoritative ledger for fixed/allocation sub payments
       // (pay-worker stopped writing to expenses in Task #892).
       // Only include non-hourly subs — hourly costs are already captured via job_sub_hours.
@@ -481,6 +485,9 @@ router.get("/:id/profit", async (req, res) => {
     // Owner-pay category set: "Owner Draw", "Owner Compensation", "Owner Withdrawal" are all equity withdrawals.
     // record-owner-draw writes "Owner Compensation"; admin migrations may also leave "Owner Draw".
     const OWNER_PAY_CATEGORIES = new Set(["Owner Draw", "Owner Compensation", "Owner Withdrawal"]);
+    for (const allocation of allocationRows) {
+      jobExpenses += parseFloat(allocation.amount ?? "0");
+    }
     for (const exp of expRows) {
       if (OWNER_PAY_CATEGORIES.has(exp.category ?? "")) {
         ownerDrawTaken += parseFloat(exp.amount ?? "0");
@@ -697,7 +704,30 @@ router.get("/:id/expenses", async (req, res) => {
       )
       .map(({ countsTowardJobProfit: _ctp, ...rest }) => rest);
 
-    res.json(items);
+    const allocations = await db
+      .select({
+        id: jobExpenseAllocationsTable.id,
+        date: expensesTable.date,
+        category: expensesTable.category,
+        description: expensesTable.description,
+        amount: jobExpenseAllocationsTable.amount,
+        notes: jobExpenseAllocationsTable.notes,
+      })
+      .from(jobExpenseAllocationsTable)
+      .innerJoin(expensesTable, eq(jobExpenseAllocationsTable.expenseId, expensesTable.id))
+      .where(and(eq(jobExpenseAllocationsTable.jobId, id), isNull(expensesTable.voidedAt)))
+      .orderBy(desc(expensesTable.date));
+
+    res.json([
+      ...items,
+      ...allocations.map(row => ({
+        ...row,
+        id: -row.id,
+        amount: parseFloat(row.amount ?? "0"),
+        sourceType: "Job Allocation",
+        description: `${row.description} — allocated portion`,
+      })),
+    ]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch job expenses" });
@@ -712,7 +742,7 @@ router.get("/profit-summary", async (req, res) => {
     const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
 
-    const [invRows, otherIncomeRows, expRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows] = await Promise.all([
+    const [invRows, otherIncomeRows, expRows, allocationRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows] = await Promise.all([
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
       db.select({ jobId: otherIncomeTable.jobId, amount: otherIncomeTable.amount })
@@ -720,6 +750,10 @@ router.get("/profit-summary", async (req, res) => {
       // Exclude auto-linked sub-hour expenses; Subcontractor category goes into sub labor bucket
       db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category, countsTowardJobProfit: expensesTable.countsTowardJobProfit })
         .from(expensesTable).where(and(inArray(expensesTable.jobId, jobIds), isNull(expensesTable.jobSubHoursId), isNull(expensesTable.voidedAt))),
+      db.select({ jobId: jobExpenseAllocationsTable.jobId, amount: jobExpenseAllocationsTable.amount })
+        .from(jobExpenseAllocationsTable)
+        .innerJoin(expensesTable, eq(jobExpenseAllocationsTable.expenseId, expensesTable.id))
+        .where(and(inArray(jobExpenseAllocationsTable.jobId, jobIds), isNull(expensesTable.voidedAt))),
       db.select({
         jobId: jobSubHoursTable.jobId,
         total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
@@ -813,6 +847,10 @@ router.get("/profit-summary", async (req, res) => {
       }
       if (exp.countsTowardJobProfit === false) continue; // audit-trail only — not a job cost
       r.jobExpenses += parseFloat(exp.amount ?? "0");
+    }
+    for (const allocation of allocationRows) {
+      const r = result[allocation.jobId];
+      if (r) r.jobExpenses += parseFloat(allocation.amount ?? "0");
     }
     for (const id of jobIds) {
       const hoursLaborCost = hoursMap.get(id) ?? 0;
