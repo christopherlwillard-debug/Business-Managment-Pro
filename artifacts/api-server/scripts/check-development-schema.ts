@@ -49,6 +49,40 @@ function getRequiredColumns(): RequiredColumn[] {
 
 async function checkDevelopmentSchema() {
   const requiredColumns = getRequiredColumns();
+  const duplicateTokens = await pool.query<{
+    pay_token: string;
+    invoice_ids: number[];
+    duplicate_count: string;
+  }>(
+    `
+      SELECT pay_token, ARRAY_AGG(id ORDER BY id) AS invoice_ids, COUNT(*) AS duplicate_count
+      FROM invoices
+      WHERE pay_token IS NOT NULL
+      GROUP BY pay_token
+      HAVING COUNT(*) > 1
+      ORDER BY COUNT(*) DESC, pay_token
+      LIMIT 20
+    `,
+  );
+
+  if (duplicateTokens.rows.length > 0) {
+    const details = duplicateTokens.rows
+      .map(({ pay_token, invoice_ids, duplicate_count }) =>
+        `  ${JSON.stringify(pay_token)} (${duplicate_count} invoices: ${invoice_ids.join(", ")})`,
+      )
+      .join("\n");
+
+    throw new Error(
+      [
+        "Development database contains duplicate invoice payment tokens:",
+        details,
+        "",
+        "Resolve the duplicate pay_token values before synchronizing the schema.",
+        "No invoice rows were changed by this check, and schema synchronization was not attempted.",
+      ].join("\n"),
+    );
+  }
+
   const result = await pool.query<{ table_name: string; column_name: string }>(
     `
       SELECT table_name, column_name

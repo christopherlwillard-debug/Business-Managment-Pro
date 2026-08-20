@@ -1,4 +1,5 @@
-import { pgTable, serial, text, timestamp, integer, numeric, jsonb } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgTable, serial, text, timestamp, integer, numeric, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
@@ -34,7 +35,7 @@ export const invoicesTable = pgTable("invoices", {
   squarePaymentLinkId: text("square_payment_link_id"),
   squarePaymentLinkUrl: text("square_payment_link_url"),
   squarePaidAt: timestamp("square_paid_at"),
-  payToken: text("pay_token").unique(),
+  payToken: text("pay_token"),
   remindersSentAt: jsonb("reminders_sent_at").default("[]"),
   acceptedAt: timestamp("accepted_at"),
   sentAt: timestamp("sent_at"),
@@ -43,7 +44,11 @@ export const invoicesTable = pgTable("invoices", {
   voidedAt: timestamp("voided_at"),
   voidReason: text("void_reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  // Keep the existing nullable-token index shape. PostgreSQL permits multiple
+  // NULLs, while every actual payment token remains unique.
+  uniqueIndex("invoices_pay_token_unique").on(table.payToken).where(sql`${table.payToken} IS NOT NULL`),
+]);
 
 export const insertInvoiceSchema = createInsertSchema(invoicesTable).omit({ id: true, createdAt: true });
 export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;

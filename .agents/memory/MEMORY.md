@@ -40,3 +40,4 @@
 - [Accounting repair guardrails](accounting-repair-guardrails.md) — verify source records, ownership, ledgers, mileage, and reversals before changing cash-basis reports
 - [Report test fixture source totals](report-test-fixture-source-totals.md) — report tests must seed invoice lineItems because report calculations rebuild totals from persisted source rows
 - [Strict route fixtures](strict-route-fixtures.md) — ordered DB queues must reject exhaustion and assert every queued response is consumed
+- [Invoice token schema sync](invoice-token-schema-sync.md) — pay_token must stay a nullable partial unique index; check duplicates before automated Drizzle pushes

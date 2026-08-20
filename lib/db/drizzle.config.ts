@@ -8,6 +8,10 @@ if (!process.env.DATABASE_URL) {
 export default defineConfig({
   schema: path.join(__dirname, "./src/schema/index.ts"),
   dialect: "postgresql",
+  // Development pushes must be safe to run from scripts and CI. Any
+  // potentially destructive change should fail explicitly rather than wait
+  // for an interactive confirmation.
+  strict: false,
   dbCredentials: {
     url: process.env.DATABASE_URL,
   },
