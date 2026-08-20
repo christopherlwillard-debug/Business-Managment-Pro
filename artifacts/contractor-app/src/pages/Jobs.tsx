@@ -48,6 +48,7 @@ import { ApplyProductionPricingDialog } from "@/components/ApplyProductionPricin
 import { KbTrainingModal } from "@/components/KbTrainingModal";
 import { LaborSummaryPanel } from "@/components/LaborSummaryPanel";
 import { ServiceBillingPanel } from "@/components/ServiceBillingPanel";
+import { calculateSurchargeDays, isMileageSurchargeLine, mergeMileageSurchargeLine } from "@/lib/mileageSurcharge";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -6866,10 +6867,7 @@ export default function Jobs() {
   }
 
   async function getMileageSurchargeLine(job: Job, existingLines: any[]): Promise<any | null> {
-    const alreadyAdded = existingLines.some((line) =>
-      typeof line?.description === "string" &&
-      line.description.toLowerCase().startsWith("mileage surcharge"),
-    );
+    const alreadyAdded = existingLines.some(isMileageSurchargeLine);
     if (alreadyAdded || job.clientId == null || !(job.address || job.city)) return null;
 
     const routeRes = await fetch(
@@ -6894,12 +6892,8 @@ export default function Jobs() {
       surcharge.triggerMiles == null
     ) return null;
 
-    const start = job.startDate ? new Date(`${job.startDate}T00:00:00`) : null;
-    const end = job.endDate ? new Date(`${job.endDate}T00:00:00`) : null;
-    const calculatedDays = start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())
-      ? Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1)
-      : 1;
-    const datesDescription = start && end
+    const calculatedDays = calculateSurchargeDays(job.startDate, job.endDate);
+    const datesDescription = job.startDate && job.endDate
       ? `${job.startDate} through ${job.endDate}`
       : "job dates are incomplete";
     const accepted = window.confirm(
@@ -6946,13 +6940,7 @@ export default function Jobs() {
       const surchargeLine = existingDraft?.status === "draft" || !existingDraft
         ? await getMileageSurchargeLine(job, currentLines)
         : null;
-      const withSurcharge = (lines: any[]) => {
-        if (!surchargeLine || lines.some((line) =>
-          typeof line?.description === "string" &&
-          line.description.toLowerCase().startsWith("mileage surcharge"),
-        )) return lines;
-        return [...lines, surchargeLine];
-      };
+      const withSurcharge = (lines: any[]) => mergeMileageSurchargeLine(lines, surchargeLine);
 
       // Helper: merge job location into a draft invoice if the invoice's location fields are empty
       function mergeJobLocation<T extends Record<string, any>>(draft: T, j: Job): T {
@@ -6982,7 +6970,7 @@ export default function Jobs() {
           const existingMaterialLines = (Array.isArray(existingDraft.lineItems) ? existingDraft.lineItems as any[] : [])
             .filter((li: any) => isMaterialLine(li) && !jobDraftDescriptions.has(li.description));
           const existingSurchargeLines = (Array.isArray(existingDraft.lineItems) ? existingDraft.lineItems as any[] : [])
-            .filter((li: any) => typeof li.description === "string" && li.description.toLowerCase().startsWith("mileage surcharge"));
+            .filter(isMileageSurchargeLine);
           const mergedLines = withSurcharge([...filteredJobDraftLines, ...existingMaterialLines, ...existingSurchargeLines]);
           existingDraft = mergeJobLocation<Invoice>({ ...existingDraft, lineItems: mergedLines as any }, job);
           setInvoiceDraftData(null);

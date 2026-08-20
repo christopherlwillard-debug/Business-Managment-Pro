@@ -330,6 +330,15 @@ describe("calcInvoice", () => {
     expect(r.subtotal).toBe(0);
     expect(r.total).toBe(0);
   });
+
+  it("includes an accepted mileage surcharge line exactly once in invoice totals", () => {
+    const r = calcInvoice([
+      { description: "Labor", quantity: 1, unitPrice: 500 },
+      { description: "Mileage surcharge — 60.0 mi route", quantity: 3, unitPrice: 150 },
+    ], null);
+    expect(r.subtotal).toBe(950);
+    expect(r.total).toBe(950);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
