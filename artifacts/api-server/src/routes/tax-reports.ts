@@ -5,11 +5,12 @@ import {
   otherIncomeTable, businessesTable,
   settingsTable, subPaymentRecordsTable, jobSubcontractorsTable,
 } from "@workspace/db/schema";
-import { eq, and, gte, lte, sum, count, ne, or, isNull, sql, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, sum, count, ne, isNull, sql, inArray } from "drizzle-orm";
 
 const router = Router();
 
 import { getIrsMileageRate } from "../lib/irs-rates.js";
+import { filterCashReceipts } from "../lib/cash-revenue.js";
 
 const SCHEDULE_C_LINES = {
   cogs:            { line: 4,  description: "Cost of goods sold" },
@@ -144,8 +145,11 @@ router.get("/schedule-c", async (req, res) => {
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
 
+    // Unassigned rows are intentionally excluded from a filtered business
+    // report. Without this strict predicate, every selected business would
+    // include the same null-owned invoice/expense/sub-payment rows.
     const blWhere = (col: Parameters<typeof eq>[0]) =>
-      blFilter ? or(eq(col, blFilter), isNull(col)) : undefined;
+      blFilter ? eq(col, blFilter) : undefined;
 
     // Resolve businessId from slug for mileage isolation
     let mileageBusinessId: number | null = null;
@@ -160,19 +164,24 @@ router.get("/schedule-c", async (req, res) => {
 
     // 1. Gross Receipts (Line 1) — cash basis: only paid invoices count as received income.
     // Draft, sent, overdue, and cancelled invoices are excluded because no cash has been received.
-    const [grossResult] = await db
-      .select({ total: sum(invoicesTable.total) })
+    const paidInvoices = await db
+      .select({
+        status: invoicesTable.status,
+        total: invoicesTable.total,
+        issueDate: invoicesTable.issueDate,
+        stripePaidAt: invoicesTable.stripePaidAt,
+        squarePaidAt: invoicesTable.squarePaidAt,
+      })
       .from(invoicesTable)
       .where(
         and(
-          gte(invoicesTable.issueDate, startDate),
-          lte(invoicesTable.issueDate, endDate),
           eq(invoicesTable.status, "paid"),
           blWhere(invoicesTable.businessLine)
         )
       );
 
-    const invoiceReceipts = grossResult?.total ? parseFloat(grossResult.total as any) : 0;
+    const invoiceReceipts = filterCashReceipts(paidInvoices, startDate, endDate)
+      .reduce((total, invoice) => total + parseFloat(invoice.total ?? "0"), 0);
 
     // 1b. Prior/external revenue entered as "Other Income"
     const [otherIncomeResult] = await db
@@ -288,6 +297,8 @@ router.get("/schedule-c", async (req, res) => {
         and(
           gte(mileageLogsTable.date, startDate),
           lte(mileageLogsTable.date, endDate),
+          eq(mileageLogsTable.classification, "business"),
+          isNull(mileageLogsTable.subcontractorId),
           mileageWhere
         )
       );

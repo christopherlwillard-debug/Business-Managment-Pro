@@ -82,3 +82,8 @@ Created the four-document architecture governance system:
 - Backfilled rows whose legacy `business_line` matches a registered business; ambiguous/unassigned rows remain explicitly inventoried.
 - Added scoped ID enforcement for clients, jobs, invoices, expenses, assets, and other-income, including asset receipt/business-use paths.
 - Updated dashboard report business selection to accept canonical `businessId` while retaining legacy slug compatibility.
+
+### Cash-basis revenue reconciliation
+
+- Centralized invoice cash-receipt date attribution (Stripe → Square → manual issue-date fallback) in one reusable calculation helper used by dashboard, accounting, P&L, Schedule C, year-end, reserve, and export data paths.
+- Schedule C now attributes paid invoices by effective payment date, excludes unassigned business-line rows from filtered business reports, and applies the same business-mileage/classification/subcontractor predicates to mileage totals and counts.
