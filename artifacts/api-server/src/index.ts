@@ -652,6 +652,13 @@ async function backfillUsaSpendingOpportunityType(): Promise<void> {
 }
 
 async function start() {
+  // Bind before the startup backfills and seed checks. Autoscale probes the
+  // service while it is starting; the lightweight health route must be able to
+  // answer before database initialization finishes.
+  app.listen(port, () => {
+    console.log(`Server listening on port ${port}`);
+  });
+
   // Load encrypted API credentials from DB into memory before any routes use them.
   // Non-fatal: if the table doesn't exist yet (pre-migration), getCredential falls back to process.env.
   const { init: initCredentials } = await import("./lib/credentialManager.js");
@@ -680,19 +687,16 @@ async function start() {
 
   await ensureBidScopeCleanup();
   await backfillMileageBusiness();
-  app.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
-    startRecurringExpensesJob();
-    startInvoiceReminderJob();
-    startPlaidSyncJob();
-    startBidSyncJob();
-    startComplianceReminderJob();
-    // Warm Chrome in the background so PDF generation is ready without
-    // blocking the server from accepting requests (and passing healthchecks).
-    ensureChrome().catch(err =>
-      console.error("[startup] Chrome warm-up failed (non-fatal):", err)
-    );
-  });
+  startRecurringExpensesJob();
+  startInvoiceReminderJob();
+  startPlaidSyncJob();
+  startBidSyncJob();
+  startComplianceReminderJob();
+  // Warm Chrome in the background so PDF generation is ready without
+  // blocking the server from accepting requests (and passing healthchecks).
+  ensureChrome().catch(err =>
+    console.error("[startup] Chrome warm-up failed (non-fatal):", err)
+  );
 }
 
 start().catch((err) => {
