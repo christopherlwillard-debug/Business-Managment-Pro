@@ -7,9 +7,10 @@
  * It is a release prerequisite: source-code schema validation alone cannot
  * prove that the active database has the columns the application will query.
  */
-import pg from "pg";
+import { createRequire } from "node:module";
 
-const { Pool } = pg;
+const requireFromDb = createRequire(new URL("../lib/db/package.json", import.meta.url));
+const { Pool } = requireFromDb("pg");
 const REQUIRED_OWNERSHIP_COLUMNS = [
   "clients.business_id",
   "jobs.business_id",
