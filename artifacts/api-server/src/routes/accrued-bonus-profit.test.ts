@@ -200,6 +200,26 @@ function pushSummarySelects(opts: {
 }
 
 describe("job mileage reimbursement ownership and validation", () => {
+  it("resets a removed subcontractor reimbursement recipient to the owner", async () => {
+    h.selectQueue.push(
+      [{ subcontractorId: 12 }, { subcontractorId: 13 }], // current assignments
+      [], // recomputeSubPaid
+      [{ id: 7, createdAt: new Date(), subcontractorId: null, subcontractorName: null }], // refreshed job
+    );
+
+    const res = await request(app)
+      .put("/jobs/7")
+      .send({ subcontractorIds: [13] });
+
+    expect(res.status).toBe(200);
+    expect(h.updates).toHaveLength(3);
+    expect(h.updates[1]).toEqual({
+      recipientType: "owner",
+      recipientName: "Business owner",
+      recipientSubcontractorId: null,
+    });
+  });
+
   it("returns 404 for a cross-business GET before reading the reimbursement", async () => {
     h.selectQueue.push(
       [{ id: 1, slug: "business-one" }],

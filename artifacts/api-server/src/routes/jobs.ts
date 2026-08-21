@@ -359,6 +359,21 @@ async function replaceSubcontractors(jobId: number, ids: number[]) {
         inArray(jobSubcontractorsTable.subcontractorId, toRemove)
       )
     );
+    // A reimbursement recipient must remain assigned to the job. If the
+    // selected subcontractor is removed, preserve the reimbursement amount
+    // but safely reset its recipient to the business owner. Other recipient
+    // types are intentionally left unchanged.
+    await db.update(jobMileageReimbursementsTable)
+      .set({
+        recipientType: "owner",
+        recipientName: "Business owner",
+        recipientSubcontractorId: null,
+      })
+      .where(and(
+        eq(jobMileageReimbursementsTable.jobId, jobId),
+        eq(jobMileageReimbursementsTable.recipientType, "subcontractor"),
+        inArray(jobMileageReimbursementsTable.recipientSubcontractorId, toRemove),
+      ));
   }
   // Keep sub_paid in sync whenever the sub assignment changes
   if (toAdd.length > 0 || toRemove.length > 0) {
