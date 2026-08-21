@@ -127,3 +127,11 @@ Created the four-document architecture governance system:
   expose whether persisted totals match the source.
 - MFH knowledge records retain historical profit snapshots but expose live
   invoice/expense-derived calculations and stale-field metadata.
+
+### Job mileage reimbursement
+
+- Added a job-card-only reimbursement record for route-based fuel estimates.
+- Job costs and net profit include the reimbursement once, while percentage
+  split calculations exclude it.
+- MileIQ mileage, IRS deductions, company expenses, and owner-capital ledgers
+  remain unchanged.

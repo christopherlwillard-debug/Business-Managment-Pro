@@ -64,6 +64,16 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Correction policy:** Mileage logs and generated expense rows are voided together; import rollback preserves source rows.
 - **Recalculation policy:** `GET /imports/:id/recalculate/preview` is read-only; `POST /imports/:id/recalculate` requires `{ confirm: true }`.
 
+## Job Mileage Reimbursement
+
+- **Table:** `job_mileage_reimbursements`
+- **Schema:** `lib/db/src/schema/job-mileage-reimbursements.ts`
+- **API:** `artifacts/api-server/src/routes/jobs.ts` (`/:id/mileage-reimbursement`)
+- **UI:** `artifacts/contractor-app/src/pages/Jobs.tsx` → Job Financials
+- **Reports:** No — job-card operational deduction only
+- **Source of truth:** `job_mileage_reimbursements` for the editable route-estimate reimbursement amount and recipient
+- **Rule:** This table must never receive MileIQ imports, IRS mileage deductions, or company expense rows. Its amount reduces the individual job's profit but is excluded from the percentage split pool.
+
 ### Tax assumptions
 
 - **Owner:** `tax-estimate.ts` is the calculation engine; `settings.tax_assumptions` holds business overrides.

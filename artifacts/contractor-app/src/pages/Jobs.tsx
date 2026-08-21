@@ -1012,6 +1012,18 @@ type JobProfit = {
   subLaborCost?: number; allocPaid?: number; totalSubHours?: number; manHours?: number | null;
   netProfit: number;
   ownerDrawTaken?: number;
+  mileageReimbursement?: {
+    id: number;
+    amount: number;
+    estimatedAmount?: number | null;
+    recipientType: "owner" | "subcontractor" | "other";
+    recipientName: string;
+    recipientSubcontractorId?: number | null;
+    status: "owed" | "paid";
+    paidAt?: string | null;
+    notes?: string | null;
+  } | null;
+  mileageReimbursementApplied?: boolean;
   estimatedFuelCost?: number | null;
   actualFuelCost?: number | null;
   fuelStatus?: "ok" | "missing_address" | "geocoding_failed" | "error";
@@ -1204,6 +1216,13 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const [expensesOpen, setExpensesOpen] = useState(false);
   const [expenseItems, setExpenseItems] = useState<ExpenseItem[] | null>(null);
   const [expensesLoading, setExpensesLoading] = useState(false);
+  const [reimbursementAmount, setReimbursementAmount] = useState("");
+  const [reimbursementRecipientType, setReimbursementRecipientType] = useState<"owner" | "subcontractor" | "other">("owner");
+  const [reimbursementRecipientName, setReimbursementRecipientName] = useState("Business owner");
+  const [reimbursementSubcontractorId, setReimbursementSubcontractorId] = useState("");
+  const [reimbursementNotes, setReimbursementNotes] = useState("");
+  const [reimbursementStatus, setReimbursementStatus] = useState<"owed" | "paid">("owed");
+  const [reimbursementSaving, setReimbursementSaving] = useState(false);
 
   // Owner pay ledger — reads from owner_capital_entries filtered by jobId.
   // This is the SAME ledger as the Accounting page; entries recorded here
@@ -1382,6 +1401,53 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     }, 500);
   }
 
+  useEffect(() => {
+    if (!profit) return;
+    const saved = profit.mileageReimbursement;
+    setReimbursementAmount(saved ? Number(saved.amount).toFixed(2) : profit.estimatedFuelCost != null ? Number(profit.estimatedFuelCost).toFixed(2) : "");
+    setReimbursementRecipientType(saved?.recipientType ?? "owner");
+    setReimbursementRecipientName(saved?.recipientName ?? "Business owner");
+    setReimbursementSubcontractorId(saved?.recipientSubcontractorId ? String(saved.recipientSubcontractorId) : "");
+    setReimbursementNotes(saved?.notes ?? "");
+    setReimbursementStatus(saved?.status ?? "owed");
+  }, [profit]);
+
+  async function saveMileageReimbursement() {
+    const amount = Number(reimbursementAmount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast({ title: "Enter a valid reimbursement amount", variant: "destructive" });
+      return;
+    }
+    setReimbursementSaving(true);
+    try {
+      const response = await fetch(`${BASE}/api/jobs/${job.id}/mileage-reimbursement`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount,
+          estimatedAmount: profit?.estimatedFuelCost ?? null,
+          recipientType: reimbursementRecipientType,
+          recipientName: reimbursementRecipientType === "owner" ? "Business owner" : reimbursementRecipientName,
+          recipientSubcontractorId: reimbursementRecipientType === "subcontractor" ? Number(reimbursementSubcontractorId) || null : null,
+          status: reimbursementStatus,
+          paidAt: reimbursementStatus === "paid" ? new Date().toISOString() : null,
+          notes: reimbursementNotes.trim() || null,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not save mileage reimbursement.");
+      const fresh = await fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : null);
+      if (fresh) setProfit(fresh as JobProfit);
+      toast({ title: "Mileage reimbursement saved", description: "This amount is added to job costs and excluded from the percentage split." });
+    } catch (err) {
+      toast({ title: "Could not save mileage reimbursement", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setReimbursementSaving(false);
+    }
+  }
+
   async function handleDeleteHour(id: number) {
     setDeletingHourId(id);
     try {
@@ -1432,7 +1498,11 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     ? (profit?.collected || profit?.grossInvoiced || 0)
     : (profit?.grossInvoiced || 0);
   const jobExpenses = profit?.jobExpenses ?? 0;
-  const jobIncome = Math.max(0, revenue - jobExpenses);
+  const mileageReimbursementCost = profit?.mileageReimbursementApplied === false
+    ? 0
+    : (profit?.mileageReimbursement?.amount ?? (profit?.estimatedFuelCost ?? 0));
+  const splitEligibleExpenses = Math.max(0, jobExpenses - mileageReimbursementCost);
+  const jobIncome = Math.max(0, revenue - splitEligibleExpenses);
   const memberSubs = payments.filter(p => p.role === 'member');
   const hourlyFixedSubs = payments.filter(p => p.compensationType !== 'allocation');
   const pctSubs = payments.filter(p => p.compensationType === 'allocation');
@@ -1584,6 +1654,93 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                     </div>
                   );
                 })()}
+                {(profit?.estimatedFuelCost != null || profit?.mileageReimbursement) && (
+                  <div className="rounded-xl border border-violet-200/70 bg-violet-50/40 px-4 py-3 space-y-3">
+                    <div>
+                      <p className="text-xs text-violet-700 font-bold uppercase tracking-wide">Mileage Reimbursement</p>
+                      <p className="text-[10px] text-violet-600/80 mt-0.5">
+                        Added to Job Costs, not the 50/50 or percentage split pool.
+                      </p>
+                      {profit.mileageReimbursementApplied === false && (
+                        <p className="text-[10px] text-amber-700 font-semibold mt-1">
+                          An actual Fuel/Travel expense is already linked, so this reimbursement is not added again.
+                        </p>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[11px] font-medium text-foreground">
+                        Reimbursement amount
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={reimbursementAmount}
+                          onChange={e => setReimbursementAmount(e.target.value)}
+                          className="w-full mt-1 px-2.5 py-2 rounded-lg border border-violet-200 bg-background text-sm"
+                        />
+                      </label>
+                      <label className="text-[11px] font-medium text-foreground">
+                        Status
+                        <select
+                          value={reimbursementStatus}
+                          onChange={e => setReimbursementStatus(e.target.value as "owed" | "paid")}
+                          className="w-full mt-1 px-2.5 py-2 rounded-lg border border-violet-200 bg-background text-sm"
+                        >
+                          <option value="owed">Owed</option>
+                          <option value="paid">Paid</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label className="block text-[11px] font-medium text-foreground">
+                      Paid to
+                      <select
+                        value={reimbursementRecipientType}
+                        onChange={e => setReimbursementRecipientType(e.target.value as "owner" | "subcontractor" | "other")}
+                        className="w-full mt-1 px-2.5 py-2 rounded-lg border border-violet-200 bg-background text-sm"
+                      >
+                        <option value="owner">Me / business owner</option>
+                        <option value="subcontractor">Subcontractor or team member</option>
+                        <option value="other">Other person</option>
+                      </select>
+                    </label>
+                    {reimbursementRecipientType === "subcontractor" ? (
+                      <select
+                        value={reimbursementSubcontractorId}
+                        onChange={e => {
+                          setReimbursementSubcontractorId(e.target.value);
+                          const selected = payments.find(p => String(p.subcontractorId) === e.target.value);
+                          if (selected?.subName) setReimbursementRecipientName(selected.subName);
+                        }}
+                        className="w-full px-2.5 py-2 rounded-lg border border-violet-200 bg-background text-sm"
+                      >
+                        <option value="">Choose a team member</option>
+                        {payments.map(p => <option key={p.subcontractorId} value={p.subcontractorId}>{p.subName ?? `Sub #${p.subcontractorId}`}</option>)}
+                      </select>
+                    ) : reimbursementRecipientType === "other" ? (
+                      <input
+                        value={reimbursementRecipientName}
+                        onChange={e => setReimbursementRecipientName(e.target.value)}
+                        className="w-full px-2.5 py-2 rounded-lg border border-violet-200 bg-background text-sm"
+                        placeholder="Name of person who paid"
+                      />
+                    ) : null}
+                    <textarea
+                      value={reimbursementNotes}
+                      onChange={e => setReimbursementNotes(e.target.value)}
+                      rows={2}
+                      className="w-full px-2.5 py-2 rounded-lg border border-violet-200 bg-background text-xs resize-none"
+                      placeholder="Optional reimbursement note"
+                    />
+                    <button
+                      type="button"
+                      onClick={saveMileageReimbursement}
+                      disabled={reimbursementSaving}
+                      className="w-full rounded-lg bg-violet-600 text-white px-3 py-2 text-xs font-semibold hover:bg-violet-700 disabled:opacity-50"
+                    >
+                      {reimbursementSaving ? "Saving…" : profit.mileageReimbursement ? "Save reimbursement changes" : "Add mileage reimbursement"}
+                    </button>
+                  </div>
+                )}
                 {/* Actual Fuel Cost — real gas receipts linked to this job */}
                 {profit?.actualFuelCost != null && (
                   <div className="rounded-xl border border-blue-200/70 bg-blue-50/40 px-4 py-3 flex items-center justify-between gap-3">
@@ -2872,7 +3029,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                   const pf = payForm[pay.subcontractorId] ?? { amountOwed: "", amountPaid: "", paidDate: "", paidNotes: "" };
                   // Compute split pool for allocation workers (mirrors JobFinancialsPanel waterfall)
                   const _rev = profit?.grossInvoiced ?? 0;
-                  const _exp = profit?.jobExpenses ?? 0;
+                  const _exp = Math.max(0, (profit?.jobExpenses ?? 0) - (profit?.mileageReimbursement?.amount ?? (profit?.estimatedFuelCost ?? 0)));
                   const _jobIncome = Math.max(0, _rev - _exp);
                   const _hfCost = payments.filter(p => p.compensationType !== 'allocation').reduce((s, p) => s + (p.compensationType === 'fixed' ? (p.fixedAmount ?? 0) : p.computedOwed), 0);
                   const _afterW = Math.max(0, _jobIncome - Math.max(profit?.subLaborCost ?? 0, _hfCost));
@@ -4330,7 +4487,7 @@ function JobCard({
   // Compute split pool for allocation sub amounts (mirrors JobFinancialsPanel waterfall)
   const toSplit = (() => {
     if (!profitData) return 0;
-    const income = Math.max(0, (profitData.grossInvoiced ?? 0) - (profitData.jobExpenses ?? 0));
+        const income = Math.max(0, (profitData.grossInvoiced ?? 0) - Math.max(0, (profitData.jobExpenses ?? 0) - (profitData.mileageReimbursement?.amount ?? (profitData.estimatedFuelCost ?? 0))));
     const afterWorkers = Math.max(0, income - (profitData.subLaborCost ?? 0));
     return Math.max(0, afterWorkers - afterWorkers * 0.05);
   })();
@@ -6904,7 +7061,7 @@ export default function Jobs() {
 
       // Compute allocation split pool from profit data
       const toSplit = profitData ? (() => {
-        const income = Math.max(0, profitData.grossInvoiced - profitData.jobExpenses);
+        const income = Math.max(0, profitData.grossInvoiced - Math.max(0, profitData.jobExpenses - (profitData.mileageReimbursement?.amount ?? (profitData.estimatedFuelCost ?? 0))));
         const afterWorkers = Math.max(0, income - profitData.subLaborCost);
         return Math.max(0, afterWorkers - afterWorkers * 0.05);
       })() : 0;

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
@@ -23,6 +23,73 @@ router.param("id", (req, res, next, rawId) => {
     res.locals.businessScopedJob = job;
     next();
   })().catch(next);
+});
+
+router.get("/:id/mileage-reimbursement", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const scope = await requestedBusiness(req);
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!job || (scope && !belongsToBusiness(job, scope))) return res.status(404).json({ error: "Job not found" });
+    const [reimbursement] = await db.select().from(jobMileageReimbursementsTable)
+      .where(eq(jobMileageReimbursementsTable.jobId, id)).limit(1);
+    res.json(reimbursement ?? null);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch mileage reimbursement" });
+  }
+});
+
+router.put("/:id/mileage-reimbursement", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const scope = await requestedBusiness(req);
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!job || (scope && !belongsToBusiness(job, scope))) return res.status(404).json({ error: "Job not found" });
+
+    const amount = Number(req.body?.amount);
+    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "Reimbursement amount must be zero or greater" });
+    const recipientType = ["owner", "subcontractor", "other"].includes(req.body?.recipientType)
+      ? req.body.recipientType
+      : "owner";
+    const recipientName = typeof req.body?.recipientName === "string" && req.body.recipientName.trim()
+      ? req.body.recipientName.trim()
+      : recipientType === "owner" ? "Business owner" : "";
+    if (!recipientName) return res.status(400).json({ error: "Reimbursement recipient is required" });
+
+    const businessId = job.businessId ?? scope?.id;
+    if (!businessId) return res.status(400).json({ error: "A business is required for mileage reimbursement" });
+    const subcontractorId = req.body?.recipientSubcontractorId == null
+      ? null
+      : Number(req.body.recipientSubcontractorId);
+    if (subcontractorId != null && (!Number.isInteger(subcontractorId) || subcontractorId <= 0)) {
+      return res.status(400).json({ error: "Invalid subcontractor recipient" });
+    }
+
+    const values = {
+      jobId: id,
+      businessId,
+      amount: amount.toFixed(2),
+      estimatedAmount: req.body?.estimatedAmount == null ? null : Number(req.body.estimatedAmount).toFixed(2),
+      recipientType,
+      recipientName,
+      recipientSubcontractorId: subcontractorId,
+      status: req.body?.status === "paid" ? "paid" : "owed",
+      paidAt: req.body?.status === "paid" && req.body?.paidAt ? new Date(req.body.paidAt) : null,
+      notes: typeof req.body?.notes === "string" && req.body.notes.trim() ? req.body.notes.trim() : null,
+      updatedAt: new Date(),
+    } as const;
+
+    const [existing] = await db.select({ id: jobMileageReimbursementsTable.id })
+      .from(jobMileageReimbursementsTable).where(eq(jobMileageReimbursementsTable.jobId, id)).limit(1);
+    const [saved] = existing
+      ? await db.update(jobMileageReimbursementsTable).set(values).where(eq(jobMileageReimbursementsTable.id, existing.id)).returning()
+      : await db.insert(jobMileageReimbursementsTable).values(values).returning();
+    res.json({ ...saved, amount: Number(saved.amount), estimatedAmount: saved.estimatedAmount == null ? null : Number(saved.estimatedAmount) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to save mileage reimbursement" });
+  }
 });
 
 // Shared helper — recompute and persist jobs.sub_paid from per-sub payment/hour data.
@@ -420,7 +487,7 @@ router.get("/:id/profit", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
 
-    const [invRows, otherIncomeRows, expRows, allocationRows, sprRows, subHoursRow, subHoursSum, accruedBonusRow] = await Promise.all([
+    const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, sprRows, subHoursRow, subHoursSum, accruedBonusRow] = await Promise.all([
       db.select({ total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(eq(invoicesTable.jobId, id)),
       // Job-linked other income is standalone cash revenue only when it has an
@@ -436,6 +503,18 @@ router.get("/:id/profit", async (req, res) => {
         .from(jobExpenseAllocationsTable)
         .innerJoin(expensesTable, eq(jobExpenseAllocationsTable.expenseId, expensesTable.id))
         .where(and(eq(jobExpenseAllocationsTable.jobId, id), isNull(expensesTable.voidedAt))),
+      db.select({
+        id: jobMileageReimbursementsTable.id,
+        amount: jobMileageReimbursementsTable.amount,
+        estimatedAmount: jobMileageReimbursementsTable.estimatedAmount,
+        recipientType: jobMileageReimbursementsTable.recipientType,
+        recipientName: jobMileageReimbursementsTable.recipientName,
+        recipientSubcontractorId: jobMileageReimbursementsTable.recipientSubcontractorId,
+        status: jobMileageReimbursementsTable.status,
+        paidAt: jobMileageReimbursementsTable.paidAt,
+        notes: jobMileageReimbursementsTable.notes,
+      }).from(jobMileageReimbursementsTable)
+        .where(eq(jobMileageReimbursementsTable.jobId, id)),
       // sub_payment_records is the authoritative ledger for fixed/allocation sub payments
       // (pay-worker stopped writing to expenses in Task #892).
       // Only include non-hourly subs — hourly costs are already captured via job_sub_hours.
@@ -482,6 +561,14 @@ router.get("/:id/profit", async (req, res) => {
     let tripMealsDeductible = 0; // 50% of Meals-category trip expenses (IRS rule)
     let flatSubCost = 0; // Subcontractor-category expenses not linked to hours (legacy fallback)
     let ownerDrawTaken = 0; // Owner draws/compensation — equity withdrawals, NEVER reduce Net Profit
+    const mileageReimbursement = reimbursementRows[0] ?? null;
+    const hasActualFuelExpense = expRows.some(e =>
+      e.category === "Fuel/Travel" && e.countsTowardJobProfit !== false
+    );
+    const mileageReimbursementApplied = !hasActualFuelExpense;
+    if (mileageReimbursementApplied) {
+      jobExpenses += parseFloat(mileageReimbursement?.amount ?? "0");
+    }
     // Owner-pay category set: "Owner Draw", "Owner Compensation", "Owner Withdrawal" are all equity withdrawals.
     // record-owner-draw writes "Owner Compensation"; admin migrations may also leave "Owner Draw".
     const OWNER_PAY_CATEGORIES = new Set(["Owner Draw", "Owner Compensation", "Owner Withdrawal"]);
@@ -534,7 +621,7 @@ router.get("/:id/profit", async (req, res) => {
     // Net profit uses grossInvoiced (accrual view) — shows job profitability the moment
     // it's invoiced rather than waiting for cash collection. The accounting/tax system
     // stays on cash basis; this is an operational job-management metric only.
-    const netProfit = grossInvoiced - jobExpenses - subLaborCost - allocPaid;
+    let netProfit = grossInvoiced - jobExpenses - subLaborCost - allocPaid;
 
     // ── Estimated fuel cost (informational only — never affects accounting or tax) ──
     // RoutingEngine is the single source of truth for driving distance (Constitution Rule 51).
@@ -626,7 +713,7 @@ router.get("/:id/profit", async (req, res) => {
           });
 
           estimatedFuelCost = vehicleCost.fuelCost;
-          operationalProfit = parseFloat((netProfit - vehicleCost.fuelCost).toFixed(2));
+          operationalProfit = null;
           fuelStatus = "ok";
           fuelBreakdown = {
             onewayMiles: route.miles,
@@ -646,10 +733,25 @@ router.get("/:id/profit", async (req, res) => {
       console.warn("[profit] fuel cost estimation skipped:", fuelErr);
     }
 
+    // If the user has not saved an editable reimbursement yet, the calculated
+    // estimate is still a job-card-only deduction. Once saved, the edited
+    // reimbursement amount replaces the estimate exactly once.
+    if (!mileageReimbursement && !hasActualFuelExpense && estimatedFuelCost != null) {
+      jobExpenses += estimatedFuelCost;
+    }
+    netProfit = grossInvoiced - jobExpenses - subLaborCost - allocPaid;
+    if (estimatedFuelCost != null) operationalProfit = netProfit;
+
     res.json({
       grossInvoiced, collected, otherIncomeRevenue, jobExpenses, auditTrailTotal, tripTravelTotal, tripMealsDeductible,
       subLaborCost, allocPaid, totalSubHours,
       netProfit, ownerDrawTaken,
+      mileageReimbursement: mileageReimbursement ? {
+        ...mileageReimbursement,
+        amount: parseFloat(mileageReimbursement.amount ?? "0"),
+        estimatedAmount: mileageReimbursement.estimatedAmount == null ? null : parseFloat(mileageReimbursement.estimatedAmount),
+      } : null,
+      mileageReimbursementApplied,
       estimatedFuelCost,
       actualFuelCost: actualFuelCost > 0 ? actualFuelCost : null,
       fuelStatus,
@@ -718,6 +820,17 @@ router.get("/:id/expenses", async (req, res) => {
       .where(and(eq(jobExpenseAllocationsTable.jobId, id), isNull(expensesTable.voidedAt)))
       .orderBy(desc(expensesTable.date));
 
+    const [reimbursement] = await db
+      .select({
+        id: jobMileageReimbursementsTable.id,
+        amount: jobMileageReimbursementsTable.amount,
+        recipientName: jobMileageReimbursementsTable.recipientName,
+        createdAt: jobMileageReimbursementsTable.createdAt,
+      })
+      .from(jobMileageReimbursementsTable)
+      .where(eq(jobMileageReimbursementsTable.jobId, id))
+      .limit(1);
+
     res.json([
       ...items,
       ...allocations.map(row => ({
@@ -727,6 +840,14 @@ router.get("/:id/expenses", async (req, res) => {
         sourceType: "Job Allocation",
         description: `${row.description} — allocated portion`,
       })),
+      ...(reimbursement ? [{
+        id: -1000000 - reimbursement.id,
+        date: reimbursement.createdAt,
+        category: "Mileage Reimbursement",
+        description: `Estimated mileage reimbursement — ${reimbursement.recipientName}`,
+        amount: parseFloat(reimbursement.amount ?? "0"),
+        sourceType: "Job Mileage Reimbursement",
+      }] : []),
     ]);
   } catch (err) {
     console.error(err);
@@ -742,7 +863,7 @@ router.get("/profit-summary", async (req, res) => {
     const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
 
-    const [invRows, otherIncomeRows, expRows, allocationRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows] = await Promise.all([
+    const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows] = await Promise.all([
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
       db.select({ jobId: otherIncomeTable.jobId, amount: otherIncomeTable.amount })
@@ -754,6 +875,9 @@ router.get("/profit-summary", async (req, res) => {
         .from(jobExpenseAllocationsTable)
         .innerJoin(expensesTable, eq(jobExpenseAllocationsTable.expenseId, expensesTable.id))
         .where(and(inArray(jobExpenseAllocationsTable.jobId, jobIds), isNull(expensesTable.voidedAt))),
+      db.select({ jobId: jobMileageReimbursementsTable.jobId, amount: jobMileageReimbursementsTable.amount })
+        .from(jobMileageReimbursementsTable)
+        .where(inArray(jobMileageReimbursementsTable.jobId, jobIds)),
       db.select({
         jobId: jobSubHoursTable.jobId,
         total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
@@ -813,6 +937,11 @@ router.get("/profit-summary", async (req, res) => {
       else if (r.compType === "allocation") sprAllocMap.set(r.jobId, (sprAllocMap.get(r.jobId) ?? 0) + total);
     }
     const accruedBonusMap = new Map(accruedBonusRows.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
+    const actualFuelJobIds = new Set(
+      expRows
+        .filter(e => e.category === "Fuel/Travel" && e.countsTowardJobProfit !== false && e.jobId != null)
+        .map(e => e.jobId as number)
+    );
     const flatSubCostMap: Record<number, number> = {};
     for (const id of jobIds) flatSubCostMap[id] = 0;
 
@@ -851,6 +980,10 @@ router.get("/profit-summary", async (req, res) => {
     for (const allocation of allocationRows) {
       const r = result[allocation.jobId];
       if (r) r.jobExpenses += parseFloat(allocation.amount ?? "0");
+    }
+    for (const reimbursement of reimbursementRows) {
+      const r = result[reimbursement.jobId];
+      if (r && !actualFuelJobIds.has(reimbursement.jobId)) r.jobExpenses += parseFloat(reimbursement.amount ?? "0");
     }
     for (const id of jobIds) {
       const hoursLaborCost = hoursMap.get(id) ?? 0;
@@ -918,6 +1051,13 @@ router.get("/profit-summary", async (req, res) => {
             vehicleProfile: { avgMpg: mpg, fuelPricePerGallon: fuelPrice },
           });
           result[jobRow.id].estimatedFuelCost = vehicleCost.fuelCost;
+           if (!reimbursementRows.some(row => row.jobId === jobRow.id) && !actualFuelJobIds.has(jobRow.id)) {
+             result[jobRow.id].jobExpenses += vehicleCost.fuelCost;
+             result[jobRow.id].netProfit = result[jobRow.id].grossInvoiced
+               - result[jobRow.id].jobExpenses
+               - result[jobRow.id].subLaborCost
+               - result[jobRow.id].allocPaid;
+           }
         }
       }
     } catch (fuelErr) {

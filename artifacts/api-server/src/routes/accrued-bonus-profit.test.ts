@@ -119,6 +119,7 @@ function pushProfitSelects(opts: {
   invoices?:       { total: string; status: string }[];
   otherIncome?:    { amount: string }[];
   expenses?:       any[];
+  mileageReimbursement?: { id: number; amount: string; recipientType: string; recipientName: string };
   sprRows?:        { compType: string; total: string }[];
   hoursLaborCost?: string;
   totalHours?:     string;
@@ -128,6 +129,7 @@ function pushProfitSelects(opts: {
   h.selectQueue.push(opts.otherIncome ?? []);
   h.selectQueue.push(opts.expenses ?? []);
   h.selectQueue.push([]); // job-only allocations
+  h.selectQueue.push(opts.mileageReimbursement ? [opts.mileageReimbursement] : []); // job-card mileage reimbursements
   h.selectQueue.push(opts.sprRows  ?? []);
   h.selectQueue.push([{ total: opts.hoursLaborCost ?? "0" }]);
   h.selectQueue.push([{ total: opts.totalHours     ?? "0" }]);
@@ -139,7 +141,7 @@ function pushProfitSelects(opts: {
 }
 
 /**
- * Push the 8 select results that GET /jobs/profit-summary issues via Promise.all:
+ * Push the 9 select results that GET /jobs/profit-summary issues via Promise.all:
  *   [0] invoices  [1] other income [2] expenses [3] job allocations
  *   [4] hours cost rows [5] hours count rows [6] manHours [7] spr rows [8] accrued bonus rows
  *
@@ -161,6 +163,7 @@ function pushSummarySelects(opts: {
   h.selectQueue.push(opts.otherIncome ?? []);
   h.selectQueue.push(opts.expenses ?? []);
   h.selectQueue.push([]); // job-only allocations
+  h.selectQueue.push([]); // job-card mileage reimbursements
   // hours cost grouped by jobId
   h.selectQueue.push(opts.hoursLaborCost && opts.hoursLaborCost !== "0"
     ? [{ jobId, total: opts.hoursLaborCost }] : []);
@@ -174,9 +177,9 @@ function pushSummarySelects(opts: {
   h.selectQueue.push(opts.accruedBonus && opts.accruedBonus !== "0"
     ? [{ jobId, total: opts.accruedBonus }] : []);
   // Fuel estimation performs three additional selects after the summary query.
-  h.selectQueue.push([]); // [8] fuel logs
-  h.selectQueue.push([]); // [9] fuel expenses
-  h.selectQueue.push([]); // [10] job mileage
+  h.selectQueue.push([]); // [9] fuel logs
+  h.selectQueue.push([]); // [10] fuel expenses
+  h.selectQueue.push([]); // [11] job mileage
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -331,6 +334,35 @@ describe("GET /jobs/:id/profit — accrued bonus included in subLaborCost", () =
     expect(res.body.grossInvoiced).toBeCloseTo(1250);
     expect(res.body.collected).toBeCloseTo(1250);
     expect(res.body.netProfit).toBeCloseTo(1150);
+  });
+
+  it("includes a saved owner reimbursement in job costs exactly once", async () => {
+    pushProfitSelects({
+      invoices: [{ total: "1000.00", status: "paid" }],
+      mileageReimbursement: { id: 7, amount: "125.00", recipientType: "owner", recipientName: "Business owner" },
+    });
+
+    const res = await request(app).get("/jobs/1/profit");
+
+    expect(res.status).toBe(200);
+    expect(res.body.jobExpenses).toBeCloseTo(125);
+    expect(res.body.netProfit).toBeCloseTo(875);
+    expect(res.body.mileageReimbursement.amount).toBeCloseTo(125);
+  });
+
+  it("does not add mileage reimbursement on top of an actual Fuel/Travel expense", async () => {
+    pushProfitSelects({
+      invoices: [{ total: "1000.00", status: "paid" }],
+      expenses: [{ amount: "80.00", category: "Fuel/Travel", countsTowardJobProfit: true }],
+      mileageReimbursement: { id: 8, amount: "125.00", recipientType: "other", recipientName: "A team member" },
+    });
+
+    const res = await request(app).get("/jobs/1/profit");
+
+    expect(res.status).toBe(200);
+    expect(res.body.jobExpenses).toBeCloseTo(80);
+    expect(res.body.netProfit).toBeCloseTo(920);
+    expect(res.body.mileageReimbursementApplied).toBe(false);
   });
 });
 

@@ -160,6 +160,25 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 ## ADR-011
 
+**Title:** Job mileage reimbursement is separate from mileage and expense ledgers**
+
+**Decision:** Store the editable job-card route-estimate reimbursement in `job_mileage_reimbursements`. Include its amount in the individual job's costs and net profit, but exclude it from the 50/50 or percentage split pool. Do not write it to `mileage_logs`, MileIQ imports, `expenses`, or `owner_capital_entries`.
+
+**Reason:** The user needs to reimburse whoever fronted fuel while preserving the existing monthly mileage-import workflow and company accounting source of truth. Existing ledgers cannot store a flexible recipient and editable job-only amount without changing tax/accounting meaning.
+
+**Rejected Alternatives:**
+- Writing the estimate to `expenses`
+- Writing it to the IRS/MileIQ mileage ledger
+- Writing all reimbursements to owner capital entries
+- Subtracting it from the percentage split pool
+
+**Status:** Accepted
+**Date:** 2026-08-21
+
+---
+
+## ADR-011
+
 **Title:** Derived financial values are live-derived or explicitly labeled snapshots
 
 **Decision:** Invoice totals are rebuilt from persisted line items whenever exposed to callers and reports; stored totals remain only as a reproducible snapshot with mismatch metadata. MFH knowledge-record profit fields remain immutable learning-history snapshots, while the MFH API also computes and exposes current source-derived values plus stale fields.
