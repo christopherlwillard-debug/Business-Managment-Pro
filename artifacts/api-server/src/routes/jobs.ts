@@ -62,8 +62,20 @@ router.put("/:id/mileage-reimbursement", async (req, res) => {
     const subcontractorId = req.body?.recipientSubcontractorId == null
       ? null
       : Number(req.body.recipientSubcontractorId);
-    if (subcontractorId != null && (!Number.isInteger(subcontractorId) || subcontractorId <= 0)) {
-      return res.status(400).json({ error: "Invalid subcontractor recipient" });
+    if (recipientType === "subcontractor") {
+      if (subcontractorId == null || !Number.isInteger(subcontractorId) || subcontractorId <= 0) {
+        return res.status(400).json({ error: "Invalid subcontractor recipient" });
+      }
+      const [assignment] = await db.select({ subcontractorId: jobSubcontractorsTable.subcontractorId })
+        .from(jobSubcontractorsTable)
+        .where(and(
+          eq(jobSubcontractorsTable.jobId, id),
+          eq(jobSubcontractorsTable.subcontractorId, subcontractorId),
+        ))
+        .limit(1);
+      if (!assignment) {
+        return res.status(404).json({ error: "Subcontractor is not assigned to this job" });
+      }
     }
 
     const values = {

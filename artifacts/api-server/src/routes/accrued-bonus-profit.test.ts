@@ -262,6 +262,7 @@ describe("job mileage reimbursement ownership and validation", () => {
     ["non-numeric", "abc"],
     ["zero", 0],
     ["fractional", 1.5],
+    ["missing", null],
   ])("rejects an invalid subcontractor ID (%s)", async (_label, recipientSubcontractorId) => {
     h.selectQueue.push([{ id: 7, businessId: 1 }]);
 
@@ -278,15 +279,37 @@ describe("job mileage reimbursement ownership and validation", () => {
     expect(res.body.error).toMatch(/invalid subcontractor/i);
   });
 
+  it("rejects a subcontractor who is not assigned to the job", async () => {
+    h.selectQueue.push(
+      [{ id: 7, businessId: 1 }],
+      [],
+    );
+
+    const res = await request(app)
+      .put("/jobs/7/mileage-reimbursement")
+      .send({
+        amount: 125,
+        recipientType: "subcontractor",
+        recipientName: "Crew lead",
+        recipientSubcontractorId: 12,
+      });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not assigned to this job/i);
+    expect(h.updates).toHaveLength(0);
+    expect(h.inserts).toHaveLength(0);
+  });
+
   it.each([
     ["owner", { recipientType: "owner" }, "Business owner", null],
     ["subcontractor", { recipientType: "subcontractor", recipientName: "Crew lead", recipientSubcontractorId: 12 }, "Crew lead", 12],
     ["manual", { recipientType: "other", recipientName: "  Fuel helper  " }, "Fuel helper", null],
   ])("keeps valid %s recipients editable", async (_label, body, expectedName, expectedSubcontractorId) => {
-    h.selectQueue.push(
-      [{ id: 7, businessId: 1 }],
-      [{ id: 41 }],
-    );
+    h.selectQueue.push([{ id: 7, businessId: 1 }]);
+    if (body.recipientType === "subcontractor") {
+      h.selectQueue.push([{ subcontractorId: 12 }]);
+    }
+    h.selectQueue.push([{ id: 41 }]);
 
     const res = await request(app)
       .put("/jobs/7/mileage-reimbursement")
