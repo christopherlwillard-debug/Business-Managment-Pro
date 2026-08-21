@@ -1051,6 +1051,9 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 
   const net = data?.netProfit ?? 0;
   const isProfit = net > 0;
+  const margin = data && data.collected > 0
+    ? Math.round((net / data.collected) * 100)
+    : null;
   const subLaborCost = data?.subLaborCost ?? 0;
   const allocPaid = data?.allocPaid ?? 0;
   const totalSubHours = data?.totalSubHours ?? 0;
@@ -1179,6 +1182,20 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
                 </div>
                 <TrendingUp className={`w-8 h-8 ${isProfit ? "text-emerald-300" : "text-red-300"}`} />
               </div>
+
+              {margin !== null && (
+                <div className={`rounded-xl border p-4 flex items-center justify-between ${
+                  margin > 0 ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"
+                }`}>
+                  <div>
+                    <p className={`text-xs font-bold uppercase tracking-wide ${margin > 0 ? "text-emerald-700" : "text-red-700"}`}>Margin</p>
+                    <p className={`text-2xl font-bold mt-0.5 ${margin > 0 ? "text-emerald-700" : "text-red-600"}`}>
+                      {margin}%
+                    </p>
+                  </div>
+                  <TrendingUp className={`w-8 h-8 ${margin > 0 ? "text-emerald-300" : "text-red-300"}`} />
+                </div>
+              )}
 
               {data.grossInvoiced > 0 && data.collected < data.grossInvoiced && (
                 <p className="text-xs text-muted-foreground text-center pt-1">
