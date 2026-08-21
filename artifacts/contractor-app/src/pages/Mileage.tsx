@@ -325,6 +325,7 @@ export default function Mileage() {
   });
   const [distCalcLoading, setDistCalcLoading] = useState(false);
   const [distCalcError, setDistCalcError] = useState("");
+  const [calculatedDistance, setCalculatedDistance] = useState<number | null>(null);
 
   const calculateMiles = async () => {
     if (!manual.startLocation.trim() || !manual.endLocation.trim()) {
@@ -340,6 +341,7 @@ export default function Mileage() {
       ]);
       const miles = await getDrivingDistanceMiles(fromCoords, toCoords);
       setManual(m => ({ ...m, miles: String(miles) }));
+      setCalculatedDistance(miles);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Couldn't calculate distance. Try a more specific address.";
       setDistCalcError(msg);
@@ -443,6 +445,7 @@ export default function Mileage() {
           : `Trip saved. ${miles.toFixed(2)} personal miles logged.`
       );
       setManual({ date: today, startLocation: "", endLocation: "", miles: "", purpose: "", classification: mileageDefaultClassification, jobId: "" });
+      setCalculatedDistance(null);
       setDistCalcError("");
     } finally {
       setManualSaving(false);
@@ -1017,9 +1020,18 @@ export default function Mileage() {
                       step="0.1"
                       placeholder="e.g. 12.5"
                       value={manual.miles}
-                      onChange={e => setManual(m => ({ ...m, miles: e.target.value }))}
+                      onChange={e => {
+                        setManual(m => ({ ...m, miles: e.target.value }));
+                        setCalculatedDistance(null);
+                      }}
                       className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
+                    {calculatedDistance !== null && (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-50 border border-sky-200 text-xs text-sky-700">
+                        <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>{calculatedDistance.toFixed(1)} mi via driving route · from address lookup</span>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium text-foreground">Start Address</label>
@@ -1027,7 +1039,11 @@ export default function Mileage() {
                       type="text"
                       placeholder="e.g. 123 Main St, Owensboro KY"
                       value={manual.startLocation}
-                      onChange={e => { setManual(m => ({ ...m, startLocation: e.target.value })); setDistCalcError(""); }}
+                      onChange={e => {
+                        setManual(m => ({ ...m, startLocation: e.target.value }));
+                        setCalculatedDistance(null);
+                        setDistCalcError("");
+                      }}
                       className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
@@ -1037,7 +1053,11 @@ export default function Mileage() {
                       type="text"
                       placeholder="e.g. 456 Oak Ave, Owensboro KY"
                       value={manual.endLocation}
-                      onChange={e => { setManual(m => ({ ...m, endLocation: e.target.value })); setDistCalcError(""); }}
+                      onChange={e => {
+                        setManual(m => ({ ...m, endLocation: e.target.value }));
+                        setCalculatedDistance(null);
+                        setDistCalcError("");
+                      }}
                       className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
