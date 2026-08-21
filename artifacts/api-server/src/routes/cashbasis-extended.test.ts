@@ -498,6 +498,143 @@ describe("Accounting monthly income chart — sub payment inclusion", () => {
   });
 });
 
+// ── Cross-route cash-basis consistency ─────────────────────────────────────────
+//
+// Auditable 2026 correction scenario:
+//   Revenue                         $10,000.00
+//   Outstanding cost-booking       ($ 9,628.47)  excluded until paid
+//   Fixed/allocation cash payment  ($ 9,628.47)  included from sub_payment_records
+//   Operating expenses after fix    $ 9,628.47
+//   Net profit after fix            $   371.53
+//
+// Before the cash-basis correction, P&L and Accounting omitted the payment and
+// reported $10,000.00 net profit while Year-End correctly reported $371.53.
+// Keeping this fixture across all three routes prevents that $9,628.47 gap from
+// silently returning.
+//
+// Queue order:
+//   P&L:      [inv, exp, mileage, otherIncome, subPayments, outstandingSubs,
+//              closedJobs, assets, businessUse, waterfallInvoices,
+//              ownerCapital, settings]
+//   Accounting: [paidInv, nonPaidInv, expenses, mileage, subs, settings,
+//                otherIncome, subPayments, assets, businessUse,
+//                waterfallInvoices, ownerCapital, businesses, outstandingSubs]
+//   Year-End: [invoices, expenses, mileage, otherIncome, assets, taxPayments,
+//              subs, settings, businessUse, subPayments, ownerCapital,
+//              waterfallInvoices]
+describe("Cash-basis net-profit consistency across reports", () => {
+  const CONSISTENCY_INVOICE = {
+    id: 9001,
+    status: "paid",
+    issueDate: `${YEAR}-06-01`,
+    total: "10000.00",
+    subtotal: "10000.00",
+    amountPaid: "10000.00",
+    stripePaidAt: null,
+    squarePaidAt: null,
+    lastManualPaidAt: null,
+    invoiceNumber: "INV-CB-2026",
+    clientName: "Cash Basis Fixture",
+    city: "Other City",
+    state: "KY",
+  };
+  const OUTSTANDING_BOOKING = {
+    id: 9002,
+    date: `${YEAR}-06-02`,
+    category: "Subcontractor",
+    amount: "9628.47",
+    description: "Allocation labor (outstanding)",
+    excludeFromNetProfit: false,
+    isWageAdvance: false,
+    voidedAt: null,
+    businessLine: null,
+    jobId: 900,
+  };
+  const SUB_PAYMENT = {
+    id: 9003,
+    jobId: 900,
+    subcontractorId: 901,
+    amount: "9628.47",
+    paymentDate: `${YEAR}-06-15`,
+    description: "Allocation labor paid",
+    businessLine: null,
+    isReversal: false,
+  };
+
+  function pushPAndLFixture() {
+    h.selectQueue.push([CONSISTENCY_INVOICE]); // invRows
+    h.selectQueue.push([OUTSTANDING_BOOKING]); // expRows
+    h.selectQueue.push(NO_MILEAGE);             // mileage
+    h.selectQueue.push([]);                     // other income
+    h.selectQueue.push([SUB_PAYMENT]);          // sub payments
+    h.selectQueue.push([]);                     // outstanding subs
+    h.selectQueue.push([{ n: 0 }]);             // closed jobs
+    h.selectQueue.push([]);                     // assets
+    h.selectQueue.push([]);                     // business use
+    h.selectQueue.push([]);                     // waterfall invoices
+    h.selectQueue.push([]);                     // owner capital
+    h.selectQueue.push([{}]);                   // settings
+  }
+
+  function pushAccountingFixture() {
+    h.selectQueue.push([CONSISTENCY_INVOICE]); // paid invoices
+    h.selectQueue.push([]);                    // non-paid invoices
+    h.selectQueue.push([OUTSTANDING_BOOKING]); // expenses
+    h.selectQueue.push([]);                    // mileage
+    h.selectQueue.push([]);                    // subcontractors
+    h.selectQueue.push([{}]);                  // settings
+    h.selectQueue.push([]);                    // other income
+    h.selectQueue.push([SUB_PAYMENT]);         // fixed/allocation payments
+    h.selectQueue.push([]);                    // assets
+    h.selectQueue.push([]);                    // business use
+    h.selectQueue.push([]);                    // waterfall invoices
+    h.selectQueue.push([]);                    // owner capital
+    h.selectQueue.push([]);                    // businesses
+    h.selectQueue.push([]);                    // outstanding subs
+  }
+
+  function pushYearEndFixture() {
+    h.selectQueue.push([CONSISTENCY_INVOICE]); // invoices
+    h.selectQueue.push([OUTSTANDING_BOOKING]); // expenses
+    h.selectQueue.push([]);                    // mileage
+    h.selectQueue.push([]);                    // other income
+    h.selectQueue.push([]);                    // assets
+    h.selectQueue.push([]);                    // tax payments
+    h.selectQueue.push([]);                    // subcontractors
+    h.selectQueue.push([{}]);                  // settings
+    h.selectQueue.push([]);                    // business use
+    h.selectQueue.push([SUB_PAYMENT]);         // fixed/allocation payments
+    h.selectQueue.push([]);                    // owner capital
+    h.selectQueue.push([]);                    // waterfall invoices
+  }
+
+  it("returns the same netProfit after including the cash payment exactly once", async () => {
+    pushPAndLFixture();
+    const pl = await request(app).get(`/reports/profit-loss?year=${YEAR}`);
+    expect(pl.status).toBe(200);
+
+    pushAccountingFixture();
+    const accounting = await request(app).get(`/reports/accounting?year=${YEAR}`);
+    expect(accounting.status).toBe(200);
+
+    pushYearEndFixture();
+    const yearEnd = await request(app).get(`/reports/year-end?year=${YEAR}`);
+    expect(yearEnd.status).toBe(200);
+
+    expect(pl.body.netProfit).toBeCloseTo(371.53, 2);
+    expect(accounting.body.summary.netProfit).toBeCloseTo(371.53, 2);
+    expect(yearEnd.body.summary.netProfit).toBeCloseTo(371.53, 2);
+    expect(pl.body.netProfit).toBeCloseTo(accounting.body.summary.netProfit, 10);
+    expect(accounting.body.summary.netProfit).toBeCloseTo(yearEnd.body.summary.netProfit, 10);
+
+    const contractLabor = (pl.body.operatingExpenses as any[])
+      .find(entry => entry.key === "contractLabor");
+    expect(contractLabor?.amount).toBeCloseTo(9628.47, 2);
+    expect(accounting.body.summary.totalExpenses).toBeCloseTo(9628.47, 2);
+    expect(yearEnd.body.summary.totalExpenses).toBeCloseTo(9628.47, 2);
+  });
+});
+
 // ── Dashboard monthly chart: sub payment in prior chart month ─────────────────
 //
 // The dashboard chart always renders the last 6 months.  For period=month the
