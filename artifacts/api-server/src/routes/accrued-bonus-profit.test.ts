@@ -61,6 +61,15 @@ vi.mock("@workspace/db", () => {
     db: {
       select: () => makeChain(),
       delete: () => ({ where: () => Promise.resolve() }),
+      transaction: async (callback: (tx: any) => Promise<void>) => callback({
+        update: (table: any) => ({
+          set: (data: any) => {
+            h.updates.push(data);
+            return { where: () => Promise.resolve() };
+          },
+        }),
+        delete: () => ({ where: () => Promise.resolve() }),
+      }),
       update: () => ({
         set: (data: any) => {
           h.updates.push(data);
@@ -98,6 +107,7 @@ vi.mock("./invoices",                  () => ({ calcInvoice: vi.fn(), buildInvoi
 vi.mock("../lib/productionBilling.js", () => ({ buildProductionLineItems: vi.fn(), ensureProductionBillingSeed: vi.fn() }));
 
 const { default: jobsRouter } = await import("./jobs");
+const { default: subcontractorsRouter } = await import("./subcontractors");
 
 const app = express();
 app.use(express.json());
@@ -107,6 +117,7 @@ app.use((_req, _res, next) => {
   next();
 });
 app.use("/jobs", jobsRouter);
+app.use("/subcontractors", subcontractorsRouter);
 
 beforeEach(() => {
   h.selectQueue.length = 0;
@@ -344,6 +355,20 @@ describe("job mileage reimbursement ownership and validation", () => {
       recipientSubcontractorId: expectedSubcontractorId,
     });
     expect(res.body.amount).toBe(125);
+  });
+});
+
+describe("DELETE /subcontractors/:id — reimbursement ownership", () => {
+  it("resets that subcontractor's reimbursement recipient while preserving its financial fields", async () => {
+    const res = await request(app).delete("/subcontractors/12");
+
+    expect(res.status).toBe(204);
+    expect(h.updates).toHaveLength(6);
+    expect(h.updates[5]).toEqual({
+      recipientType: "owner",
+      recipientName: "Business owner",
+      recipientSubcontractorId: null,
+    });
   });
 });
 

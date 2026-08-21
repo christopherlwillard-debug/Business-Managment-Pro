@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable, jobsTable, jobSubHoursTable, jobSubcontractorsTable, invoicesTable, subPaymentRecordsTable } from "@workspace/db/schema";
+import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable, jobsTable, jobSubHoursTable, jobSubcontractorsTable, invoicesTable, subPaymentRecordsTable, jobMileageReimbursementsTable } from "@workspace/db/schema";
 import { eq, and, sql, inArray, ne, gte, lte } from "drizzle-orm";
 
 const router = Router();
@@ -500,6 +500,16 @@ router.delete("/:id", async (req, res) => {
       await tx.update(mileageLogsTable).set({ subcontractorId: null }).where(eq(mileageLogsTable.subcontractorId, id));
       await tx.update(generated1099sTable).set({ subcontractorId: null }).where(eq(generated1099sTable.subcontractorId, id));
       await tx.update(jobsTable).set({ subcontractorId: null }).where(eq(jobsTable.subcontractorId, id));
+      await tx.update(jobMileageReimbursementsTable)
+        .set({
+          recipientType: "owner",
+          recipientName: "Business owner",
+          recipientSubcontractorId: null,
+        })
+        .where(and(
+          eq(jobMileageReimbursementsTable.recipientSubcontractorId, id),
+          eq(jobMileageReimbursementsTable.recipientType, "subcontractor"),
+        ));
       await tx.delete(subcontractorsTable).where(eq(subcontractorsTable.id, id));
     });
     res.status(204).send();
