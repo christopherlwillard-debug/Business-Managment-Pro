@@ -23,6 +23,7 @@ import express from "express";
 const h = vi.hoisted(() => ({
   selectQueue: [] as any[][],
   updates:     [] as any[],
+  inserts:     [] as any[],
   consumedSlots: 0,
   missingSlots: [] as number[],
   scenario: "no request",
@@ -63,13 +64,28 @@ vi.mock("@workspace/db", () => {
       update: () => ({
         set: (data: any) => {
           h.updates.push(data);
-          return { where: () => Promise.resolve() };
+          return {
+            where: () => ({
+              returning: () => Promise.resolve([{
+                id: 99,
+                ...data,
+                amount: data.amount ?? "0.00",
+                estimatedAmount: data.estimatedAmount ?? null,
+              }]),
+            }),
+          };
         },
       }),
       insert: () => ({
-        values: (_data: any) => ({
-          returning: () => Promise.resolve([{ id: 99 }]),
-        }),
+        values: (data: any) => {
+          h.inserts.push(data);
+          return {
+            returning: () => Promise.resolve([{
+              id: 99,
+              ...data,
+            }]),
+          };
+        },
       }),
     },
   };
@@ -95,6 +111,7 @@ app.use("/jobs", jobsRouter);
 beforeEach(() => {
   h.selectQueue.length = 0;
   h.updates.length = 0;
+  h.inserts.length = 0;
   h.consumedSlots = 0;
   h.missingSlots.length = 0;
   h.scenario = "no request";
@@ -181,6 +198,111 @@ function pushSummarySelects(opts: {
   h.selectQueue.push([]); // [10] fuel expenses
   h.selectQueue.push([]); // [11] job mileage
 }
+
+describe("job mileage reimbursement ownership and validation", () => {
+  it("returns 404 for a cross-business GET before reading the reimbursement", async () => {
+    h.selectQueue.push(
+      [{ id: 1, slug: "business-one" }],
+      [{ id: 7, businessId: 2 }],
+    );
+
+    const res = await request(app)
+      .get("/jobs/7/mileage-reimbursement?businessId=1");
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/job not found/i);
+  });
+
+  it("returns 404 for a cross-business PUT without attempting a write", async () => {
+    h.selectQueue.push(
+      [{ id: 1, slug: "business-one" }],
+      [{ id: 7, businessId: 2 }],
+    );
+
+    const res = await request(app)
+      .put("/jobs/7/mileage-reimbursement")
+      .query({ businessId: 1 })
+      .send({ amount: 125, recipientType: "owner" });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/job not found/i);
+    expect(h.updates).toHaveLength(0);
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it.each([
+    ["negative", -1],
+    ["NaN", "not-a-number"],
+    ["infinite", "Infinity"],
+  ])("rejects a %s reimbursement amount", async (_label, amount) => {
+    h.selectQueue.push([{ id: 7, businessId: 1 }]);
+
+    const res = await request(app)
+      .put("/jobs/7/mileage-reimbursement")
+      .send({ amount, recipientType: "owner" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/zero or greater/i);
+    expect(h.updates).toHaveLength(0);
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it("rejects a blank manual recipient", async () => {
+    h.selectQueue.push([{ id: 7, businessId: 1 }]);
+
+    const res = await request(app)
+      .put("/jobs/7/mileage-reimbursement")
+      .send({ amount: 125, recipientType: "other", recipientName: "   " });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/recipient is required/i);
+  });
+
+  it.each([
+    ["non-numeric", "abc"],
+    ["zero", 0],
+    ["fractional", 1.5],
+  ])("rejects an invalid subcontractor ID (%s)", async (_label, recipientSubcontractorId) => {
+    h.selectQueue.push([{ id: 7, businessId: 1 }]);
+
+    const res = await request(app)
+      .put("/jobs/7/mileage-reimbursement")
+      .send({
+        amount: 125,
+        recipientType: "subcontractor",
+        recipientName: "Crew lead",
+        recipientSubcontractorId,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid subcontractor/i);
+  });
+
+  it.each([
+    ["owner", { recipientType: "owner" }, "Business owner", null],
+    ["subcontractor", { recipientType: "subcontractor", recipientName: "Crew lead", recipientSubcontractorId: 12 }, "Crew lead", 12],
+    ["manual", { recipientType: "other", recipientName: "  Fuel helper  " }, "Fuel helper", null],
+  ])("keeps valid %s recipients editable", async (_label, body, expectedName, expectedSubcontractorId) => {
+    h.selectQueue.push(
+      [{ id: 7, businessId: 1 }],
+      [{ id: 41 }],
+    );
+
+    const res = await request(app)
+      .put("/jobs/7/mileage-reimbursement")
+      .send({ amount: 125, ...body });
+
+    expect(res.status).toBe(200);
+    expect(h.updates[0]).toMatchObject({
+      jobId: 7,
+      businessId: 1,
+      amount: "125.00",
+      recipientName: expectedName,
+      recipientSubcontractorId: expectedSubcontractorId,
+    });
+    expect(res.body.amount).toBe(125);
+  });
+});
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
