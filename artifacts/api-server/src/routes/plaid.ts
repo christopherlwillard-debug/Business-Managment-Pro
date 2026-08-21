@@ -106,6 +106,8 @@ router.post("/link-token", wrapAsync(async (req, res) => {
       const userMessage =
         plaidErr.error_code === "INVALID_PRODUCT"
           ? "The Transactions product hasn't been approved for your Plaid production account yet. Complete the production approval in your Plaid dashboard."
+          : plaidErr.error_code === "UNAUTHORIZED_ENVIRONMENT"
+            ? "This Plaid production account isn't authorized for the current environment. Complete production approval in your Plaid dashboard."
           : plaidErr.display_message ?? `Plaid error: ${plaidErr.error_code} — ${plaidErr.error_message}`;
       res.status(502).json({ error: userMessage, plaid_error_code: plaidErr.error_code, plaid_error_type: plaidErr.error_type });
     } else {

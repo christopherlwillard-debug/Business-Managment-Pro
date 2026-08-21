@@ -50,7 +50,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error((data as { error?: string }).error ?? `Request failed: ${res.status}`);
+    const error = new Error((data as { error?: string }).error ?? `Request failed: ${res.status}`) as Error & {
+      plaid_error_code?: string;
+    };
+    error.plaid_error_code = (data as { plaid_error_code?: string }).plaid_error_code;
+    throw error;
   }
   return res.json() as Promise<T>;
 }
@@ -258,6 +262,7 @@ export default function Banking() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [plaidApprovalErrorCode, setPlaidApprovalErrorCode] = useState<string | null>(null);
 
   // Plaid settings panel
   const [showSettings, setShowSettings] = useState(false);
@@ -474,8 +479,18 @@ export default function Banking() {
 
   const getLinkTokenMutation = useMutation({
     mutationFn: () => apiFetch<{ link_token: string }>("/api/plaid/link-token", { method: "POST" }),
-    onSuccess: (data) => setLinkToken(data.link_token),
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onSuccess: (data) => {
+      setPlaidApprovalErrorCode(null);
+      setLinkToken(data.link_token);
+    },
+    onError: (err: Error & { plaid_error_code?: string }) => {
+      const code = err.plaid_error_code;
+      if (code === "INVALID_PRODUCT" || code === "UNAUTHORIZED_ENVIRONMENT") {
+        setPlaidApprovalErrorCode(code);
+        return;
+      }
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
   });
 
   const exchangeMutation = useMutation({
@@ -868,7 +883,27 @@ export default function Banking() {
           <h1 className="text-2xl font-bold tracking-tight">Banking</h1>
           <p className="text-muted-foreground">Connect your business bank account to see live balance and transactions.</p>
         </div>
-        {isProduction && (
+        {plaidApprovalErrorCode ? (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="flex items-start gap-4 pt-6">
+              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-amber-800">Plaid production approval is still pending</p>
+                <p className="text-sm text-amber-700 mt-1">
+                  Plaid returned <span className="font-mono font-semibold">{plaidApprovalErrorCode}</span>. Your production account may not be approved for the Transactions product yet.
+                </p>
+                <p className="text-sm text-amber-700 mt-2">
+                  Check your approval status in the{" "}
+                  <a href="https://dashboard.plaid.com/team/api" target="_blank" rel="noreferrer" className="underline font-medium">
+                    Plaid dashboard
+                    <ExternalLink className="inline-block w-3.5 h-3.5 ml-1 align-text-bottom" />
+                  </a>
+                  .
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : isProduction && (
           <Card className="border-blue-200 bg-blue-50">
             <CardContent className="flex items-start gap-4 pt-6">
               <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
