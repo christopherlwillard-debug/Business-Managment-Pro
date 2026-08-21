@@ -564,6 +564,38 @@ export default function Assets() {
     }
   }
 
+  async function handleExportSingleAsset(asset: AssetWithBusUse) {
+    setIsExportingPdf(true);
+    try {
+      const pdfAsset = {
+        name: asset.name,
+        assetType: asset.assetType,
+        status: asset.status,
+        purchaseDate: asset.purchaseDate,
+        purchasePrice: asset.purchasePrice,
+        vendor: asset.vendor,
+        serialNumber: asset.serialNumber,
+        depreciationMethod: asset.depreciationMethod ?? "straight-line",
+        usefulLifeYears: asset.usefulLifeYears,
+        salvageValue: asset.salvageValue,
+        section179Eligible: asset.section179Eligible,
+        schedule: calcDepreciationSchedule(asset, asset.businessUseRows),
+      };
+      const blob = await generateAssetDepreciationPdf([pdfAsset]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safeName = asset.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "asset";
+      a.download = `asset-depreciation-${safeName}-${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Failed to generate PDF", variant: "destructive" });
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }
+
   function openPdfFilterDialog() {
     setPdfFilterType("all");
     setPdfFilterYear(CURRENT_YEAR.toString());
@@ -947,6 +979,20 @@ export default function Assets() {
                           <div className="text-sm font-medium">{fmt(asset.salePrice)}</div>
                         </div>
                       )}
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); handleExportSingleAsset(asset); }}
+                        disabled={isExportingPdf}
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={`Export ${asset.name} depreciation schedule as PDF`}
+                        aria-label={`Export ${asset.name} depreciation schedule as PDF`}
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        Export PDF
+                      </button>
                     </div>
 
                     {/* Disposal gain/loss */}

@@ -92,6 +92,9 @@ export async function generateAssetDepreciationPdf(
   const filterBadge = filter.type !== "all"
     ? `<span style="display:inline-block;background:#dbeafe;color:#1e40af;font-size:10px;font-weight:700;padding:3px 10px;border-radius:12px;border:1px solid #bfdbfe;">${esc(filterLabel(filter))}</span>`
     : "";
+  const reportScope = filteredAssets.length === 1
+    ? filteredAssets[0].name
+    : filterLabel(filter);
 
   const assetSections = filteredAssets.map((asset) => {
     const scheduleRows = asset.schedule.length > 0
@@ -189,7 +192,7 @@ export async function generateAssetDepreciationPdf(
     <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:18px 24px;margin-bottom:28px;display:flex;justify-content:space-between;align-items:center;">
       <div>
         <div style="font-size:22px;font-weight:900;color:#1e3a8a;letter-spacing:0.02em;">Asset Depreciation Schedule</div>
-        <div style="font-size:12px;color:#3b82f6;margin-top:4px;">Equipment &amp; Assets &mdash; ${esc(filterLabel(filter))} Report</div>
+        <div style="font-size:12px;color:#3b82f6;margin-top:4px;">Equipment &amp; Assets &mdash; ${esc(reportScope)} Report</div>
         <div style="font-size:11px;color:#6b7280;margin-top:4px;">Generated ${esc(today)}${filterBadge ? ` &nbsp;` : ""}</div>
         ${filterBadge ? `<div style="margin-top:6px;">${filterBadge}</div>` : ""}
       </div>
@@ -211,7 +214,7 @@ export async function generateAssetDepreciationPdf(
 
     <!-- Footer -->
     <div style="border-top:1px solid #e5e7eb;padding-top:12px;font-size:9px;color:#9ca3af;margin-top:8px;">
-      Asset Depreciation Schedule &middot; ${esc(filterLabel(filter))} &middot; Generated ${esc(today)} &middot; For informational purposes only. Consult a qualified tax professional.
+      Asset Depreciation Schedule &middot; ${esc(reportScope)} &middot; Generated ${esc(today)} &middot; For informational purposes only. Consult a qualified tax professional.
     </div>
   </div>
   <div style="height:4px;background:linear-gradient(to right,#3b82f6,#1d4ed8);margin-top:32px;"></div>
