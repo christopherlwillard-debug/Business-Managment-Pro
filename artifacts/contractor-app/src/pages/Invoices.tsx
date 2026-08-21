@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   FileText, Download, Plus, Trash2, X,
   Check, Eye, AlertTriangle, Ban,
-  Paperclip, CreditCard, Copy, ExternalLink, Bell, Search, Send,
+  Paperclip, CreditCard, Copy, ExternalLink, Bell, Search, Send, Mail,
 } from "lucide-react";
 import { InvoicePanel } from "@/components/InvoicePanel";
 
@@ -206,6 +206,7 @@ export default function Invoices() {
   const [voidTarget,   setVoidTarget]   = useState<any | null>(null);
   const [voiding,      setVoiding]      = useState(false);
   const [showVoided,   setShowVoided]   = useState(false);
+  const [reminderHistoryInvoiceId, setReminderHistoryInvoiceId] = useState<number | null>(null);
 
   useEffect(() => {
     const openId = searchParams.get("openInvoice");
@@ -504,6 +505,10 @@ export default function Invoices() {
                   filteredInvoices.map((inv: any) => {
                     const isVoided = inv.status === "cancelled";
                     const isDraft = !inv.invoiceNumber;
+                    const remindersSentAt = Array.isArray(inv.remindersSentAt)
+                      ? inv.remindersSentAt.filter((timestamp: unknown): timestamp is string => typeof timestamp === "string")
+                      : [];
+                    const hasInitialEmail = Boolean(inv.sentAt);
                     return (
                     <tr key={inv.id}
                       onClick={() => setViewInvoice(inv)}
@@ -518,6 +523,55 @@ export default function Invoices() {
                           {Array.isArray(inv.attachments) && inv.attachments.length > 0 && (
                             <span className="flex items-center gap-0.5 text-[10px] text-gray-400" title={`${inv.attachments.length} attachment${inv.attachments.length > 1 ? "s" : ""}`}>
                               <Paperclip className="w-3 h-3" />{inv.attachments.length}
+                            </span>
+                          )}
+                          {hasInitialEmail && (
+                            <span
+                              className="flex items-center text-[10px] text-blue-600"
+                              title={`Payment link email sent ${new Date(inv.sentAt).toLocaleString()}`}
+                              aria-label={`Payment link email sent ${new Date(inv.sentAt).toLocaleString()}`}
+                            >
+                              <Mail className="w-3 h-3" />
+                            </span>
+                          )}
+                          {remindersSentAt.length > 0 && (
+                            <span className="relative">
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setReminderHistoryInvoiceId(current => current === inv.id ? null : inv.id);
+                                }}
+                                className="inline-flex items-center gap-0.5 rounded px-1 text-[10px] font-semibold text-blue-600 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                aria-label={`${remindersSentAt.length} reminder${remindersSentAt.length > 1 ? "s" : ""} sent`}
+                                title={`${remindersSentAt.length} reminder${remindersSentAt.length > 1 ? "s" : ""} sent`}
+                              >
+                                <Bell className="w-3 h-3" />
+                                {remindersSentAt.length}
+                              </button>
+                              {reminderHistoryInvoiceId === inv.id && (
+                                <div
+                                  role="dialog"
+                                  aria-label={`Reminder history for invoice ${inv.invoiceNumber ?? "draft"}`}
+                                  className="absolute left-0 top-full z-30 mt-2 w-56 rounded-xl border border-border bg-card p-3 text-left shadow-xl"
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  <p className="mb-1.5 text-[11px] font-semibold text-foreground">Reminder history</p>
+                                  <div className="space-y-1">
+                                    {remindersSentAt.map((timestamp: string, index: number) => (
+                                      <p key={`${timestamp}-${index}`} className="text-[11px] font-normal text-muted-foreground">
+                                        {new Date(timestamp).toLocaleString("en-US", {
+                                          month: "short",
+                                          day: "numeric",
+                                          year: "numeric",
+                                          hour: "numeric",
+                                          minute: "2-digit",
+                                        })}
+                                      </p>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </span>
                           )}
                         </div>
