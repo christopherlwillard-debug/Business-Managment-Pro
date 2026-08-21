@@ -6835,6 +6835,7 @@ export default function Jobs() {
 
   type InvoiceWithSquare = Invoice & { squarePaidAt?: string | null };
   const [invoiceSummaryMap, setInvoiceSummaryMap] = useState<Map<number, InvoiceWithSquare | null>>(new Map());
+  const [invoiceSummaryRefreshKey, setInvoiceSummaryRefreshKey] = useState(0);
 
   const searchLower   = jobSearch.toLowerCase().trim();
   const jobMatchesSearch = (j: Job) => {
@@ -6953,7 +6954,7 @@ export default function Jobs() {
       });
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleJobIds.join(",")]);
+  }, [visibleJobIds.join(","), invoiceSummaryRefreshKey]);
 
   // Fetch profit summary for all visible jobs in a single batch request
   const [profitMap, setProfitMap] = useState<Map<number, JobProfit | null>>(new Map());
@@ -8015,7 +8016,10 @@ export default function Jobs() {
         }}
         initialData={invoiceDraftData}
         existingInvoice={selectedExistingInvoice ?? undefined}
-        onSaved={() => { queryClient.invalidateQueries(); }}
+        onSaved={() => {
+          queryClient.invalidateQueries();
+          setInvoiceSummaryRefreshKey(key => key + 1);
+        }}
       />
 
       {productionPricingJob && (
