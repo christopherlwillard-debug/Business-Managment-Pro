@@ -261,6 +261,37 @@ describe("job mileage reimbursement ownership and validation", () => {
     expect(h.inserts).toHaveLength(0);
   });
 
+  it("resolves a legacy businessLine before saving the reimbursement", async () => {
+    h.selectQueue.push(
+      [{ id: 7, businessId: null, businessLine: "business-one" }],
+      [{ id: 1 }],
+      [],
+    );
+
+    const res = await request(app)
+      .put("/jobs/7/mileage-reimbursement")
+      .send({ amount: 125, recipientType: "owner" });
+
+    expect(res.status).toBe(200);
+    expect(h.inserts[0]).toMatchObject({
+      jobId: 7,
+      businessId: 1,
+      amount: "125.00",
+    });
+  });
+
+  it("rejects an unowned job with an actionable business message", async () => {
+    h.selectQueue.push([{ id: 7, businessId: null, businessLine: null }]);
+
+    const res = await request(app)
+      .put("/jobs/7/mileage-reimbursement")
+      .send({ amount: 125, recipientType: "owner" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/assign this job to a business/i);
+    expect(h.inserts).toHaveLength(0);
+  });
+
   it.each([
     ["negative", -1],
     ["NaN", "not-a-number"],

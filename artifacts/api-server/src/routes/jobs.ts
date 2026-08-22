@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
@@ -57,8 +57,20 @@ router.put("/:id/mileage-reimbursement", async (req, res) => {
       : recipientType === "owner" ? "Business owner" : "";
     if (!recipientName) return res.status(400).json({ error: "Reimbursement recipient is required" });
 
-    const businessId = job.businessId ?? scope?.id;
-    if (!businessId) return res.status(400).json({ error: "A business is required for mileage reimbursement" });
+    let businessId = job.businessId ?? scope?.id;
+    if (!businessId && job.businessLine) {
+      const [legacyBusiness] = await db
+        .select({ id: businessesTable.id })
+        .from(businessesTable)
+        .where(eq(businessesTable.slug, job.businessLine))
+        .limit(1);
+      businessId = legacyBusiness?.id;
+    }
+    if (!businessId) {
+      return res.status(400).json({
+        error: "Assign this job to a business before adding a mileage reimbursement",
+      });
+    }
     const subcontractorId = req.body?.recipientSubcontractorId == null
       ? null
       : Number(req.body.recipientSubcontractorId);
