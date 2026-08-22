@@ -672,6 +672,7 @@ router.get("/:id/profit", async (req, res) => {
       totalMiles: number; fuelGallons: number; mpg: number; fuelPrice: number;
       routeProvider: "osrm" | "haversine";
     } | null = null;
+    let includeMileageInJobCosts = true;
 
     try {
       const [[settingsRow], defaultVehicles] = await Promise.all([
@@ -709,10 +710,7 @@ router.get("/:id/profit", async (req, res) => {
           .filter(Boolean).join(", ");
         const jobAddr = [jobRow?.address, jobRow?.city, jobRow?.state]
           .filter(Boolean).join(", ");
-        const includeMileageInJobCosts = jobRow?.includeMileageInJobCosts !== false;
-        if (includeMileageInJobCosts && mileageReimbursementApplied) {
-          jobExpenses += parseFloat(mileageReimbursement?.amount ?? "0");
-        }
+        includeMileageInJobCosts = jobRow?.includeMileageInJobCosts !== false;
 
         // RoutingEngine.calculate() is the only place OSRM is called server-side for job routing.
         // It shares a single 24h in-memory cache with /api/business-distance — same engine,
@@ -779,7 +777,9 @@ router.get("/:id/profit", async (req, res) => {
     // If the user has not saved an editable reimbursement yet, the calculated
     // estimate is still a job-card-only deduction. Once saved, the edited
     // reimbursement amount replaces the estimate exactly once.
-    if (jobRowForProfit?.includeMileageInJobCosts !== false && !mileageReimbursement && !hasActualFuelExpense && estimatedFuelCost != null) {
+    if (includeMileageInJobCosts && mileageReimbursementApplied && mileageReimbursement && mileageReimbursement.amount != null) {
+      jobExpenses += parseFloat(mileageReimbursement.amount);
+    } else if (includeMileageInJobCosts && !mileageReimbursement && !hasActualFuelExpense && estimatedFuelCost != null) {
       jobExpenses += estimatedFuelCost;
     }
     netProfit = grossInvoiced - jobExpenses - subLaborCost - allocPaid;
@@ -796,6 +796,7 @@ router.get("/:id/profit", async (req, res) => {
       } : null,
       mileageReimbursementApplied,
       estimatedFuelCost,
+      includeMileageInJobCosts,
       actualFuelCost: actualFuelCost > 0 ? actualFuelCost : null,
       fuelStatus,
       operationalProfit,
@@ -873,6 +874,12 @@ router.get("/:id/expenses", async (req, res) => {
       .from(jobMileageReimbursementsTable)
       .where(eq(jobMileageReimbursementsTable.jobId, id))
       .limit(1);
+    const [jobSetting] = await db
+      .select({ includeMileageInJobCosts: jobsTable.includeMileageInJobCosts })
+      .from(jobsTable)
+      .where(eq(jobsTable.id, id))
+      .limit(1);
+    const includeMileageInJobCosts = jobSetting?.includeMileageInJobCosts !== false;
     const hasActualFuelExpense = rows.some(r =>
       r.category === "Fuel/Travel" && r.countsTowardJobProfit !== false
     );
@@ -886,7 +893,7 @@ router.get("/:id/expenses", async (req, res) => {
         sourceType: "Job Allocation",
         description: `${row.description} — allocated portion`,
       })),
-      ...(reimbursement && !hasActualFuelExpense ? [{
+      ...(reimbursement && includeMileageInJobCosts && !hasActualFuelExpense ? [{
         id: -1000000 - reimbursement.id,
         date: reimbursement.createdAt,
         category: "Mileage Reimbursement",
@@ -940,7 +947,7 @@ router.get("/profit-summary", async (req, res) => {
         .where(inArray(jobSubHoursTable.jobId, jobIds))
         .groupBy(jobSubHoursTable.jobId),
       // Manually-entered man-hours from the job form (fallback when no sub hours tracked)
-      db.select({ id: jobsTable.id, manHours: jobsTable.manHours })
+      db.select({ id: jobsTable.id, manHours: jobsTable.manHours, includeMileageInJobCosts: jobsTable.includeMileageInJobCosts })
         .from(jobsTable)
         .where(inArray(jobsTable.id, jobIds)),
       // sub_payment_records for non-hourly (fixed/allocation) subs — new ledger since Task #892.
@@ -974,6 +981,7 @@ router.get("/profit-summary", async (req, res) => {
     const hoursMap = new Map(hoursRows.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
     const hoursCountMap = new Map(hoursCountRows.map(r => [r.jobId, parseFloat(r.totalHours ?? "0")]));
     const manHoursMap = new Map(manHoursRows.map(r => [r.id, r.manHours != null ? parseFloat(r.manHours) : null]));
+    const mileageIncludedMap = new Map(manHoursRows.map(r => [r.id, r.includeMileageInJobCosts !== false]));
     const sprFixedMap = new Map<number, number>();
     const sprAllocMap = new Map<number, number>();
     for (const r of sprNonHoursRows) {
@@ -1029,7 +1037,7 @@ router.get("/profit-summary", async (req, res) => {
     }
     for (const reimbursement of reimbursementRows) {
       const r = result[reimbursement.jobId];
-      if (r && !actualFuelJobIds.has(reimbursement.jobId)) r.jobExpenses += parseFloat(reimbursement.amount ?? "0");
+      if (r && mileageIncludedMap.get(reimbursement.jobId) !== false && !actualFuelJobIds.has(reimbursement.jobId)) r.jobExpenses += parseFloat(reimbursement.amount ?? "0");
     }
     for (const id of jobIds) {
       const hoursLaborCost = hoursMap.get(id) ?? 0;
@@ -1070,7 +1078,8 @@ router.get("/profit-summary", async (req, res) => {
           id: jobsTable.id,
           address: jobsTable.address,
           city: jobsTable.city,
-          state: jobsTable.state,
+           state: jobsTable.state,
+           includeMileageInJobCosts: jobsTable.includeMileageInJobCosts,
         }).from(jobsTable).where(inArray(jobsTable.id, jobIds)),
       ]);
 
@@ -1097,7 +1106,7 @@ router.get("/profit-summary", async (req, res) => {
             vehicleProfile: { avgMpg: mpg, fuelPricePerGallon: fuelPrice },
           });
           result[jobRow.id].estimatedFuelCost = vehicleCost.fuelCost;
-           if (!reimbursementRows.some(row => row.jobId === jobRow.id) && !actualFuelJobIds.has(jobRow.id)) {
+            if (jobRow.includeMileageInJobCosts !== false && !reimbursementRows.some(row => row.jobId === jobRow.id) && !actualFuelJobIds.has(jobRow.id)) {
              result[jobRow.id].jobExpenses += vehicleCost.fuelCost;
              result[jobRow.id].netProfit = result[jobRow.id].grossInvoiced
                - result[jobRow.id].jobExpenses
@@ -1702,9 +1711,10 @@ router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
-    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, daysOnJob } = req.body;
+    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, daysOnJob, includeMileageInJobCosts } = req.body;
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
+    if ("includeMileageInJobCosts" in req.body && typeof includeMileageInJobCosts !== "boolean") return res.status(400).json({ error: "includeMileageInJobCosts must be a boolean" });
 
     let mfhSelection: Awaited<ReturnType<typeof validateMfhSelection>> | null = null;
     if ("mfhManufacturerId" in req.body || "mfhModelId" in req.body) {
@@ -1781,6 +1791,7 @@ router.put("/:id", async (req, res) => {
     if ("mhProductionServices" in req.body) updates.mhProductionServices = Array.isArray(mhProductionServices) ? mhProductionServices : null;
     if ("manHours" in req.body) updates.manHours = manHours != null ? String(manHours) : null;
     if ("daysOnJob" in req.body) updates.daysOnJob = daysOnJob != null ? Math.max(1, parseInt(String(daysOnJob)) || 1) : 1;
+    if ("includeMileageInJobCosts" in req.body) updates.includeMileageInJobCosts = includeMileageInJobCosts;
 
     const [job] = await db.update(jobsTable).set(updates).where(eq(jobsTable.id, id)).returning();
     if (!job) return res.status(404).json({ error: "Job not found" });

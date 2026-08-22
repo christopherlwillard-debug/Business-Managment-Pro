@@ -5413,6 +5413,7 @@ function JobFormDialog({
         endDate: editJob.endDate ?? "",
         notes: editJob.notes ?? "",
         businessLine: editJob.businessLine ?? "",
+        includeMileageInJobCosts: editJob.includeMileageInJobCosts !== false,
         sqFt: editJob.sqFt != null ? String(editJob.sqFt) : "",
         coats: editJob.coats != null ? String(editJob.coats) : "1",
       };
@@ -5423,6 +5424,7 @@ function JobFormDialog({
       locationName: "", city: "", state: "KY",
       startDate: "", endDate: "", notes: "",
       businessLine: activeBusiness?.slug ?? "",
+      includeMileageInJobCosts: true,
       sqFt: "",
       coats: "1",
     };
@@ -5617,6 +5619,7 @@ function JobFormDialog({
     setMfhYear((editJob as unknown as Record<string, unknown>)?.mfhModelYear ? String((editJob as unknown as Record<string, unknown>).mfhModelYear) : "");
     setMfhConstructionType((editJob as unknown as Record<string, unknown>)?.mfhConstructionType as string ?? "");
     setMhProductionServices((editJob as unknown as Record<string, unknown>)?.mhProductionServices as number[] ?? []);
+    setFormState(makeForm());
     setBuilderQuery("");
     setModelQuery("");
     setShowAddService(false);
@@ -5717,6 +5720,7 @@ function JobFormDialog({
         sqFt: form.businessLine === "asphalt_sealing" && form.sqFt !== "" ? parseInt(form.sqFt) : undefined,
         coats: form.businessLine === "asphalt_sealing" && form.coats !== "" ? parseInt(form.coats) : undefined,
         manHours: manHoursTotal !== "" ? parseFloat(manHoursTotal) : null,
+        includeMileageInJobCosts: form.includeMileageInJobCosts,
       };
       if (editJob) {
         await updateJob.mutateAsync({ id: editJob.id, data: payload });
