@@ -1728,7 +1728,22 @@ router.put("/:id", async (req, res) => {
     if (startDate !== undefined) updates.startDate = startDate;
     if (endDate !== undefined) updates.endDate = endDate;
     if (notes !== undefined) updates.notes = notes;
-    if ("businessLine" in req.body) updates.businessLine = businessLine || null;
+    if ("businessLine" in req.body) {
+      const normalizedBusinessLine = typeof businessLine === "string" ? businessLine.trim() : "";
+      if (!normalizedBusinessLine) {
+        updates.businessLine = null;
+        updates.businessId = null;
+      } else {
+        const [business] = await db
+          .select({ id: businessesTable.id, slug: businessesTable.slug })
+          .from(businessesTable)
+          .where(eq(businessesTable.slug, normalizedBusinessLine))
+          .limit(1);
+        if (!business) return res.status(400).json({ error: "Select a valid business before saving this job" });
+        updates.businessLine = business.slug;
+        updates.businessId = business.id;
+      }
+    }
     if ("workflow" in req.body) updates.workflow = workflow || null;
     if ("subPaid" in req.body) updates.subPaid = subPaid === true;
     if ("sqFt" in req.body) updates.sqFt = sqFt != null ? parseInt(sqFt) : null;

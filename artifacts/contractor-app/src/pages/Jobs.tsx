@@ -5678,7 +5678,7 @@ function JobFormDialog({
         startDate: form.startDate || undefined,
         endDate: form.endDate || undefined,
         notes: form.notes || undefined,
-        businessLine: form.businessLine || undefined,
+        businessLine: editJob ? (form.businessLine || null) : (form.businessLine || undefined),
         workflow: selectedWorkflow || undefined,
         sqFt: form.businessLine === "asphalt_sealing" && form.sqFt !== "" ? parseInt(form.sqFt) : undefined,
         coats: form.businessLine === "asphalt_sealing" && form.coats !== "" ? parseInt(form.coats) : undefined,
@@ -5841,9 +5841,17 @@ function JobFormDialog({
             </select>
           </div>
 
-          {editJob && !activeBusiness && (
+          {editJob && (!activeBusiness || !editJob.businessId) && (
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Business</label>
+            <label className="block text-sm font-medium text-foreground mb-1">
+              Business
+              {!editJob.businessId && <span className="text-xs font-normal text-amber-600 ml-1">(required for reimbursements)</span>}
+            </label>
+            {!editJob.businessId && (
+              <p className="text-xs text-muted-foreground mb-2">
+                Assign this job to the correct business so mileage reimbursements and other business records save correctly.
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
               {[{ value: "", label: "Unassigned" }, ...businesses.map(b => ({ value: b.slug, label: b.name }))].map(opt => (
                 <label key={opt.value} className="flex-1 min-w-[100px]">
