@@ -826,8 +826,10 @@ router.get("/:id/expenses", async (req, res) => {
         amount: expensesTable.amount,
         countsTowardJobProfit: expensesTable.countsTowardJobProfit,
         sourceType: expensesTable.sourceType,
+        includeMileageInJobCosts: jobsTable.includeMileageInJobCosts,
       })
       .from(expensesTable)
+      .leftJoin(jobsTable, eq(expensesTable.jobId, jobsTable.id))
       .where(
         and(
           eq(expensesTable.jobId, id),
@@ -848,7 +850,7 @@ router.get("/:id/expenses", async (req, res) => {
         r.category !== "Subcontractor" &&
         r.countsTowardJobProfit !== false
       )
-      .map(({ countsTowardJobProfit: _ctp, ...rest }) => rest);
+      .map(({ countsTowardJobProfit: _ctp, includeMileageInJobCosts: _includeMileage, ...rest }) => rest);
 
     const allocations = await db
       .select({
@@ -874,12 +876,7 @@ router.get("/:id/expenses", async (req, res) => {
       .from(jobMileageReimbursementsTable)
       .where(eq(jobMileageReimbursementsTable.jobId, id))
       .limit(1);
-    const [jobSetting] = await db
-      .select({ includeMileageInJobCosts: jobsTable.includeMileageInJobCosts })
-      .from(jobsTable)
-      .where(eq(jobsTable.id, id))
-      .limit(1);
-    const includeMileageInJobCosts = jobSetting?.includeMileageInJobCosts !== false;
+    const includeMileageInJobCosts = rows[0]?.includeMileageInJobCosts !== false;
     const hasActualFuelExpense = rows.some(r =>
       r.category === "Fuel/Travel" && r.countsTowardJobProfit !== false
     );

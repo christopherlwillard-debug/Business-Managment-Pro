@@ -1026,6 +1026,7 @@ type JobProfit = {
   } | null;
   mileageReimbursementApplied?: boolean;
   estimatedFuelCost?: number | null;
+  includeMileageInJobCosts?: boolean;
   actualFuelCost?: number | null;
   fuelStatus?: "ok" | "missing_address" | "geocoding_failed" | "error";
   operationalProfit?: number | null;
@@ -1324,7 +1325,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       // actual fuel expense or editable reimbursement replaces it. Keep that
       // operational amount visible in the same detail list without creating a
       // fake accounting expense row.
-      if (estimatedFuel > 0 && !hasActualFuel && !hasSavedReimbursement) {
+      if (estimatedFuel > 0 && profit?.includeMileageInJobCosts !== false && !hasActualFuel && !hasSavedReimbursement) {
         items.push({
           id: -2000000,
           date: null,
@@ -1539,7 +1540,8 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     ? (profit?.collected || profit?.grossInvoiced || 0)
     : (profit?.grossInvoiced || 0);
   const jobExpenses = profit?.jobExpenses ?? 0;
-  const mileageReimbursementCost = profit?.mileageReimbursementApplied === false
+  const mileageIncluded = profit?.includeMileageInJobCosts !== false;
+  const mileageReimbursementCost = !mileageIncluded || profit?.mileageReimbursementApplied === false
     ? 0
     : (profit?.mileageReimbursement?.amount ?? (profit?.estimatedFuelCost ?? 0));
   const splitEligibleExpenses = Math.max(0, jobExpenses - mileageReimbursementCost);
@@ -1566,7 +1568,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   // personal out-of-pocket cost, not profit-based owner pay. Keep it outside
   // the split and tax reserve, and show only the outstanding amount in the
   // settlement total.
-  const ownerReimbursement = profit?.mileageReimbursementApplied === false
+  const ownerReimbursement = !mileageIncluded || profit?.mileageReimbursementApplied === false
     ? 0
     : profit?.mileageReimbursement?.recipientType === "owner"
       ? (profit.mileageReimbursement.amount ?? 0)
@@ -1713,7 +1715,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                     <div>
                       <p className="text-xs text-violet-700 font-bold uppercase tracking-wide">Mileage Reimbursement</p>
                       <p className="text-[10px] text-violet-600/80 mt-0.5">
-                        Added to Job Costs, not the 50/50 or percentage split pool.
+                        {mileageIncluded
+                          ? "Added to Job Costs, not the 50/50 or percentage split pool."
+                          : "Excluded from Job Costs for this job. Saving it here does not change the profit calculation."}
                       </p>
                       {profit.mileageReimbursementApplied === false && (
                         <p className="text-[10px] text-amber-700 font-semibold mt-1">
@@ -3116,7 +3120,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                   const pf = payForm[pay.subcontractorId] ?? { amountOwed: "", amountPaid: "", paidDate: "", paidNotes: "" };
                   // Compute split pool for allocation workers (mirrors JobFinancialsPanel waterfall)
                   const _rev = profit?.grossInvoiced ?? 0;
-                  const _exp = Math.max(0, (profit?.jobExpenses ?? 0) - (profit?.mileageReimbursement?.amount ?? (profit?.estimatedFuelCost ?? 0)));
+                  const _exp = Math.max(0, (profit?.jobExpenses ?? 0) - (profit?.includeMileageInJobCosts === false ? 0 : (profit?.mileageReimbursement?.amount ?? (profit?.estimatedFuelCost ?? 0))));
                   const _jobIncome = Math.max(0, _rev - _exp);
                   const _hfCost = payments.filter(p => p.compensationType !== 'allocation').reduce((s, p) => s + (p.compensationType === 'fixed' ? (p.fixedAmount ?? 0) : p.computedOwed), 0);
                   const _afterW = Math.max(0, _jobIncome - Math.max(profit?.subLaborCost ?? 0, _hfCost));
@@ -4574,7 +4578,7 @@ function JobCard({
   // Compute split pool for allocation sub amounts (mirrors JobFinancialsPanel waterfall)
   const toSplit = (() => {
     if (!profitData) return 0;
-        const income = Math.max(0, (profitData.grossInvoiced ?? 0) - Math.max(0, (profitData.jobExpenses ?? 0) - (profitData.mileageReimbursement?.amount ?? (profitData.estimatedFuelCost ?? 0))));
+        const income = Math.max(0, (profitData.grossInvoiced ?? 0) - Math.max(0, (profitData.jobExpenses ?? 0) - (profitData.includeMileageInJobCosts === false ? 0 : (profitData.mileageReimbursement?.amount ?? (profitData.estimatedFuelCost ?? 0)))));
     const afterWorkers = Math.max(0, income - (profitData.subLaborCost ?? 0));
     return Math.max(0, afterWorkers - afterWorkers * 0.05);
   })();
@@ -4861,7 +4865,7 @@ function JobCard({
                    {displayProfit.netProfit > 0 ? "+" : ""}{formatCurrency(displayProfit.netProfit)}
                 </p>
               </div>
-               {displayProfit.estimatedFuelCost != null && (
+               {displayProfit.estimatedFuelCost != null && displayProfit.includeMileageInJobCosts !== false && (
                 <>
                   <div className="col-span-2 border-t border-border/40 mt-0.5 pt-1.5 flex items-center justify-between">
                     <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -4871,7 +4875,16 @@ function JobCard({
                      <span className="font-semibold text-amber-600 text-[11px]">-{formatCurrency(displayProfit.estimatedFuelCost)}</span>
                   </div>
                 </>
-              )}
+               )}
+               {displayProfit.estimatedFuelCost != null && displayProfit.includeMileageInJobCosts === false && (
+                 <div className="col-span-2 border-t border-border/40 mt-0.5 pt-1.5 flex items-center justify-between">
+                   <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                     <Fuel className="w-2.5 h-2.5 text-muted-foreground flex-shrink-0" />
+                     Mileage estimate excluded
+                   </span>
+                   <span className="font-semibold text-muted-foreground text-[11px]">{formatCurrency(displayProfit.estimatedFuelCost)}</span>
+                 </div>
+               )}
             </div>
           </button>
         )}
@@ -5878,6 +5891,21 @@ function JobFormDialog({
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+
+          <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded accent-amber-500"
+              checked={form.includeMileageInJobCosts}
+              onChange={e => setFormState(f => ({ ...f, includeMileageInJobCosts: e.target.checked }))}
+            />
+            <span>
+              <span className="block text-sm font-medium text-foreground">Include mileage/fuel estimate in job costs</span>
+              <span className="block text-xs text-muted-foreground mt-0.5">
+                Controls route-based estimates and saved mileage reimbursements only. Actual Fuel/Travel expenses and billing mileage are unchanged.
+              </span>
+            </span>
+          </label>
 
           {editJob && (!activeBusiness || !editJob.businessId) && (
           <div>
