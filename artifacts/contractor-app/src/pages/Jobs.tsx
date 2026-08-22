@@ -1539,6 +1539,19 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const subShare = toSplit * ((100 - ownerPct) / 100);
   const taxReserve = ownerShare * (taxReservePct / 100);
   const ownerTakeHome = ownerShare - taxReserve;
+  // A reimbursement paid to the business owner is money owed back for a
+  // personal out-of-pocket cost, not profit-based owner pay. Keep it outside
+  // the split and tax reserve, and show only the outstanding amount in the
+  // settlement total.
+  const ownerReimbursement = profit?.mileageReimbursementApplied === false
+    ? 0
+    : profit?.mileageReimbursement?.recipientType === "owner"
+      ? (profit.mileageReimbursement.amount ?? 0)
+      : 0;
+  const outstandingOwnerReimbursement = profit?.mileageReimbursement?.status === "owed"
+    ? ownerReimbursement
+    : 0;
+  const totalOwnerSettlement = ownerTakeHome + outstandingOwnerReimbursement;
   const net = profit?.netProfit ?? 0;
   const isProfit = net > 0;
   const subLaborCost = profit?.subLaborCost ?? 0;
@@ -1937,6 +1950,28 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                     <div><p className="text-sm font-black text-emerald-800">Recommended Take Home</p>{taxReservePct > 0 && <p className="text-[10px] text-emerald-600">After {taxReservePct}% tax reserve</p>}</div>
                     <span className="text-xl font-black text-emerald-700">${fmt(ownerTakeHome)}</span>
                   </div>
+                  {ownerReimbursement > 0 && (
+                    <>
+                      <div className="flex items-center justify-between px-4 py-3 bg-violet-50/60">
+                        <div>
+                          <p className="text-sm text-violet-800">Owner Reimbursement</p>
+                          <p className="text-[10px] text-violet-600">
+                            {profit?.mileageReimbursement?.status === "paid" ? "Already paid back" : "Personal cost owed back to you"}
+                          </p>
+                        </div>
+                        <span className={`text-sm font-bold ${profit?.mileageReimbursement?.status === "paid" ? "text-violet-500" : "text-violet-700"}`}>
+                          {profit?.mileageReimbursement?.status === "paid" ? "Paid " : "+"}{formatCurrency(ownerReimbursement)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-3 bg-emerald-100/70 border-t border-emerald-200">
+                        <div>
+                          <p className="text-sm font-black text-emerald-900">Total Owner Settlement</p>
+                          <p className="text-[10px] text-emerald-700">Take-home plus reimbursement</p>
+                        </div>
+                        <span className="text-xl font-black text-emerald-800">${fmt(totalOwnerSettlement)}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
