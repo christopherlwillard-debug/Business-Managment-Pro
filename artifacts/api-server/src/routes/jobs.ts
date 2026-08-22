@@ -869,6 +869,9 @@ router.get("/:id/expenses", async (req, res) => {
       .from(jobMileageReimbursementsTable)
       .where(eq(jobMileageReimbursementsTable.jobId, id))
       .limit(1);
+    const hasActualFuelExpense = rows.some(r =>
+      r.category === "Fuel/Travel" && r.countsTowardJobProfit !== false
+    );
 
     res.json([
       ...items,
@@ -879,7 +882,7 @@ router.get("/:id/expenses", async (req, res) => {
         sourceType: "Job Allocation",
         description: `${row.description} — allocated portion`,
       })),
-      ...(reimbursement ? [{
+      ...(reimbursement && !hasActualFuelExpense ? [{
         id: -1000000 - reimbursement.id,
         date: reimbursement.createdAt,
         category: "Mileage Reimbursement",

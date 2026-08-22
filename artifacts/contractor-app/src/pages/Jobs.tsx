@@ -1230,7 +1230,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const [fuelExpanded, setFuelExpanded] = useState(false);
 
   // Expense drill-down state
-  type ExpenseItem = { id: number; date: string | null; category: string | null; description: string | null; amount: string; sourceType?: string | null };
+  type ExpenseItem = { id: number; date: string | null; category: string | null; description: string | null; amount: number | string; sourceType?: string | null; informational?: boolean };
   const [expensesOpen, setExpensesOpen] = useState(false);
   const [expenseItems, setExpenseItems] = useState<ExpenseItem[] | null>(null);
   const [expensesLoading, setExpensesLoading] = useState(false);
@@ -1316,7 +1316,26 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     try {
       const data = await fetch(`${BASE}/api/jobs/${job.id}/expenses`, { credentials: "include" })
         .then(r => r.ok ? r.json() : []);
-      setExpenseItems(data);
+      const items: ExpenseItem[] = Array.isArray(data) ? data : [];
+      const hasActualFuel = (profit?.actualFuelCost ?? 0) > 0;
+      const hasSavedReimbursement = profit?.mileageReimbursement != null;
+      const estimatedFuel = profit?.estimatedFuelCost ?? 0;
+      // The profit endpoint includes estimate-only fuel in Job Costs until an
+      // actual fuel expense or editable reimbursement replaces it. Keep that
+      // operational amount visible in the same detail list without creating a
+      // fake accounting expense row.
+      if (estimatedFuel > 0 && !hasActualFuel && !hasSavedReimbursement) {
+        items.push({
+          id: -2000000,
+          date: null,
+          category: "Estimated Fuel",
+          description: "Estimated fuel cost (informational)",
+          amount: estimatedFuel,
+          sourceType: "Estimated Fuel Cost",
+          informational: true,
+        });
+      }
+      setExpenseItems(items);
     } catch {
       setExpenseItems([]);
     } finally {
@@ -1875,8 +1894,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                             <div className="p-3 space-y-2">
                               {[1,2,3].map(i => <div key={i} className="h-7 rounded-lg bg-muted/40 animate-pulse" />)}
                             </div>
-                          ) : !expenseItems || expenseItems.length === 0 ? (
-                            <div className="px-4 py-4 text-center text-xs text-muted-foreground">No expense line items found</div>
+                           ) : !expenseItems || expenseItems.length === 0 ? (
+                            <div className="px-4 py-4 text-center text-xs text-muted-foreground">
+                              No recorded costs found for this job.
+                            </div>
                           ) : (
                             <div className="divide-y divide-border/40">
                               {expenseItems.map(e => (
@@ -1888,8 +1909,11 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                                     {e.sourceType === "Material List" && (
                                       <p className="text-[10px] text-emerald-600 font-medium mt-0.5">Auto-created from Material List</p>
                                     )}
+                                     {e.informational && (
+                                       <p className="text-[10px] text-amber-600 font-medium mt-0.5">Estimate only — not in accounting reports</p>
+                                     )}
                                   </div>
-                                  <span className="text-xs font-semibold text-red-600 tabular-nums flex-shrink-0">{formatCurrency(parseFloat(e.amount))}</span>
+                                   <span className={`text-xs font-semibold tabular-nums flex-shrink-0 ${e.informational ? "text-amber-700" : "text-red-600"}`}>{formatCurrency(Number(e.amount))}</span>
                                   {e.sourceType === "Job Allocation" && (
                                     <button
                                       type="button"
