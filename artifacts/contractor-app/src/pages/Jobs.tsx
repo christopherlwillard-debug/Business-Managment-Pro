@@ -1476,7 +1476,11 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       if (!response.ok) throw new Error(result.error || "Could not save mileage reimbursement.");
       const fresh = await fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" })
         .then(r => r.ok ? r.json() : null);
-      if (fresh) setProfit(fresh as JobProfit);
+      if (fresh) {
+        setProfit(fresh as JobProfit);
+        setExpenseItems(null);
+        if (expensesOpen) void loadExpenses();
+      }
       toast({ title: "Mileage reimbursement saved", description: "This amount is added to job costs and excluded from the percentage split." });
     } catch (err) {
       toast({ title: "Could not save mileage reimbursement", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
@@ -1927,6 +1931,12 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                                   )}
                                 </div>
                               ))}
+                             <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-t border-border/50">
+                               <span className="text-[11px] font-semibold text-muted-foreground">Shown cost total</span>
+                               <span className="text-xs font-bold text-red-600 tabular-nums">
+                                 {formatCurrency(expenseItems.reduce((sum, item) => sum + Number(item.amount), 0))}
+                               </span>
+                             </div>
                             </div>
                           )}
                         </div>
