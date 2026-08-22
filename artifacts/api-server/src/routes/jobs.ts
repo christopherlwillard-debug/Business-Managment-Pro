@@ -465,9 +465,10 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours } = req.body;
+    const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, includeMileageInJobCosts = true } = req.body;
     const scope = await requestedBusiness(req);
     if (!title) return res.status(400).json({ error: "Title is required" });
+    if (typeof includeMileageInJobCosts !== "boolean") return res.status(400).json({ error: "includeMileageInJobCosts must be a boolean" });
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
 
@@ -505,6 +506,7 @@ router.post("/", async (req, res) => {
       mfhConstructionType: mfhConstructionType || null,
       mhProductionServices: Array.isArray(mhProductionServices) ? mhProductionServices : null,
       manHours: manHours != null ? String(manHours) : null,
+      includeMileageInJobCosts,
     }).returning();
 
     if (Array.isArray(subcontractorIds) && subcontractorIds.length > 0) {
@@ -605,9 +607,6 @@ router.get("/:id/profit", async (req, res) => {
       e.category === "Fuel/Travel" && e.countsTowardJobProfit !== false
     );
     const mileageReimbursementApplied = !hasActualFuelExpense;
-    if (mileageReimbursementApplied) {
-      jobExpenses += parseFloat(mileageReimbursement?.amount ?? "0");
-    }
     // Owner-pay category set: "Owner Draw", "Owner Compensation", "Owner Withdrawal" are all equity withdrawals.
     // record-owner-draw writes "Owner Compensation"; admin migrations may also leave "Owner Draw".
     const OWNER_PAY_CATEGORIES = new Set(["Owner Draw", "Owner Compensation", "Owner Withdrawal"]);
@@ -703,12 +702,17 @@ router.get("/:id/profit", async (req, res) => {
         const [jobRow] = await db.select({
           address: jobsTable.address, city: jobsTable.city, state: jobsTable.state,
           startDate: jobsTable.startDate, endDate: jobsTable.endDate,
+          includeMileageInJobCosts: jobsTable.includeMileageInJobCosts,
         }).from(jobsTable).where(eq(jobsTable.id, id));
 
         const businessAddr = [settingsRow?.companyAddress, settingsRow?.companyCity, settingsRow?.companyState]
           .filter(Boolean).join(", ");
         const jobAddr = [jobRow?.address, jobRow?.city, jobRow?.state]
           .filter(Boolean).join(", ");
+        const includeMileageInJobCosts = jobRow?.includeMileageInJobCosts !== false;
+        if (includeMileageInJobCosts && mileageReimbursementApplied) {
+          jobExpenses += parseFloat(mileageReimbursement?.amount ?? "0");
+        }
 
         // RoutingEngine.calculate() is the only place OSRM is called server-side for job routing.
         // It shares a single 24h in-memory cache with /api/business-distance — same engine,
@@ -775,7 +779,7 @@ router.get("/:id/profit", async (req, res) => {
     // If the user has not saved an editable reimbursement yet, the calculated
     // estimate is still a job-card-only deduction. Once saved, the edited
     // reimbursement amount replaces the estimate exactly once.
-    if (!mileageReimbursement && !hasActualFuelExpense && estimatedFuelCost != null) {
+    if (jobRowForProfit?.includeMileageInJobCosts !== false && !mileageReimbursement && !hasActualFuelExpense && estimatedFuelCost != null) {
       jobExpenses += estimatedFuelCost;
     }
     netProfit = grossInvoiced - jobExpenses - subLaborCost - allocPaid;

@@ -157,6 +157,7 @@ export interface Job {
   businessLine?: string | null;
   workflow?: string | null;
   subPaid?: boolean;
+  includeMileageInJobCosts?: boolean;
   sqFt?: number | null;
   coats?: number | null;
   phases?: PhaseItem[] | null;
@@ -217,6 +218,7 @@ export interface CreateJobRequest {
   mhProductionServices?: number[] | null;
   manHours?: number | null;
   permitChecklist?: Record<string, unknown> | null;
+  includeMileageInJobCosts?: boolean;
 }
 
 export interface DraftLineItem {
