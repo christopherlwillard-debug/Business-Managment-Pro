@@ -7096,17 +7096,6 @@ export default function Jobs() {
   }
 
   async function handleMarkCompleted(job: Job) {
-    // Invoice gate — preserved from before: unpaid invoice blocks close with a toast
-    const invoiceSummary = invoiceSummaryMap.get(job.id);
-    if (invoiceSummary && invoiceSummary.status !== "paid") {
-      toast({
-        title: "Cannot close job",
-        description: "The invoice has not been paid yet. Collect payment or void the invoice before closing.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     // MFH jobs → show KB training review before completing
     if ((job as unknown as Record<string, unknown>).mfhModelId) {
       setKbTrainingJob(job);
@@ -7594,7 +7583,7 @@ export default function Jobs() {
                 className="flex items-center gap-2 w-full text-left group mb-3"
               >
                 <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                <h2 className="font-semibold text-foreground">Completed</h2>
+                  <h2 className="font-semibold text-foreground">Awaiting Payment</h2>
                 <span className="text-sm text-muted-foreground">({completedUnpaidBase.length})</span>
                 <span className="ml-auto text-muted-foreground group-hover:text-foreground transition-colors">
                   {completedExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
