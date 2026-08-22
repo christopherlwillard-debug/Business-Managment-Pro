@@ -639,10 +639,24 @@ router.post("/:id/void", async (req, res) => {
   }
 });
 
-router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
+router.post("/:id/receipt", (req, res, next) => {
+  // Multer runs before the route handler, so its size/type errors otherwise
+  // escape the handler's try/catch and become an opaque proxy error.
+  upload.single("receipt")(req, res, (uploadError) => {
+    if (uploadError) {
+      console.error("receipt upload middleware error:", uploadError);
+      if (uploadError instanceof multer.MulterError && uploadError.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ error: "Receipt file is too large. Choose a file smaller than 20 MB." });
+      }
+      return res.status(400).json({ error: "The receipt file could not be uploaded. Please choose the file again." });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
-    const id = parseInt(req.params.id as string);
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid expense id" });
+    if (!req.file) return res.status(400).json({ error: "No receipt file was selected." });
 
     let fileBuffer = req.file.buffer;
     let fileMimetype = req.file.mimetype;
@@ -675,8 +689,8 @@ router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
     const [joined] = await buildExpenseQuery().where(eq(expensesTable.id, updated.id));
     res.json(formatExpense(joined ?? updated, joined?.jobTitle, joined?.subcontractorName));
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to upload receipt" });
+    console.error("receipt upload error:", err);
+    res.status(500).json({ error: "The expense was saved, but the receipt could not be stored. Please retry the upload." });
   }
 });
 

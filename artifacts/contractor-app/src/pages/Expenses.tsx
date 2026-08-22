@@ -1359,6 +1359,13 @@ function isHeic(f: File) {
   return mimeCheck || nameCheck;
 }
 
+function expenseSaveError(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : "";
+  // customFetch includes the API's { error } response in ApiError.message.
+  const apiMessage = message.replace(/^HTTP \d+\s*[^:]*:\s*/i, "").trim();
+  return apiMessage || fallback;
+}
+
 async function processReceiptFile(f: File): Promise<File> {
   if (!isHeic(f)) return f;
   const heic2anyModule = await import("heic2any");
@@ -2918,8 +2925,8 @@ export default function Expenses() {
         try {
           await uploadMutation.mutateAsync({ id: createdExpenseId, data: { receipt: pendingReceiptFile } });
           qc.invalidateQueries({ queryKey: ["/api/expenses"] });
-        } catch {
-          setUploadError("Upload failed again — close to keep the expense without a receipt, then re-attach from the expense list.");
+        } catch (error) {
+          setUploadError(`${expenseSaveError(error, "Receipt upload failed.")} You can retry without creating another expense.`);
           return;
         }
         setCreatedExpenseId(null);
@@ -2992,9 +2999,9 @@ export default function Expenses() {
         try {
           await uploadMutation.mutateAsync({ id: expense.id, data: { receipt: pendingReceiptFile } });
           qc.invalidateQueries({ queryKey: ["/api/expenses"] });
-        } catch {
+        } catch (error) {
           // Keep dialog open — footer switches to "Retry Upload" / "Close (no receipt)" via createdExpenseId
-          setUploadError("Receipt photo couldn't be saved — the expense was created. Tap Retry Upload to try again, or close to keep the expense without a receipt.");
+          setUploadError(`${expenseSaveError(error, "Receipt upload failed.")} The expense was created; tap Retry Upload to try again, or close to keep it without a receipt.`);
           return;
         }
       }
@@ -3058,8 +3065,8 @@ export default function Expenses() {
       // Background invalidation — marks cache stale so a background refetch fills in any gaps
       qc.invalidateQueries({ queryKey: ["/api/expenses"] });
 
-    } catch {
-      setUploadError("Failed to save expense. Please try again.");
+    } catch (error) {
+      setUploadError(expenseSaveError(error, "Failed to save expense. Please check the fields and try again."));
     }
   };
 
