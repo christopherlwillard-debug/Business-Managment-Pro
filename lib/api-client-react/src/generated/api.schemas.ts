@@ -155,6 +155,7 @@ export interface Job {
   endDate?: string | null;
   notes?: string | null;
   businessLine?: string | null;
+  businessId?: number | null;
   workflow?: string | null;
   subPaid?: boolean;
   includeMileageInJobCosts?: boolean;

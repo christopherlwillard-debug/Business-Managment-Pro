@@ -6969,7 +6969,12 @@ export default function Jobs() {
       j.state?.toLowerCase().includes(searchLower)
     );
   };
-  const jobMatchesBL = (j: Job) => !jobBLFilter || j.businessLine === jobBLFilter;
+  const jobMatchesBL = (j: Job) => {
+    if (!jobBLFilter) return true;
+    // Prefer the FK when available, while retaining businessLine compatibility
+    // for historical jobs that have not been backfilled yet.
+    return j.businessId === activeBusiness?.id || j.businessLine === jobBLFilter;
+  };
   const jobMatchesPayout = (j: Job) => !needsPayoutFilter || jobsWithOutstandingSubs.has(j.id);
 
   async function handleExportCsv() {

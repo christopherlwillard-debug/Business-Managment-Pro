@@ -254,6 +254,7 @@ type JobRow = {
   closedAt: string | null;
   notes: string | null;
   businessLine: string | null;
+  businessId: number | null;
   workflow: string | null;
   subPaid: boolean;
   sqFt: number | null;
@@ -309,6 +310,7 @@ async function getJobWithSubs(jobId: number) {
       closedAt: jobsTable.closedAt,
       notes: jobsTable.notes,
       businessLine: jobsTable.businessLine,
+      businessId: jobsTable.businessId,
       workflow: jobsTable.workflow,
       subPaid: jobsTable.subPaid,
       sqFt: jobsTable.sqFt,
@@ -419,6 +421,7 @@ router.get("/", async (req, res) => {
         closedAt: jobsTable.closedAt,
         notes: jobsTable.notes,
         businessLine: jobsTable.businessLine,
+        businessId: jobsTable.businessId,
         workflow: jobsTable.workflow,
         subPaid: jobsTable.subPaid,
         sqFt: jobsTable.sqFt,

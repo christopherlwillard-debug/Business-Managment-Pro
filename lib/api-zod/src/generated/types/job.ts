@@ -27,6 +27,7 @@ export interface Job {
   endDate?: string | null;
   notes?: string | null;
   businessLine?: string | null;
+  businessId?: number | null;
   subPaid?: boolean;
   sqFt?: number | null;
   coats?: number | null;
