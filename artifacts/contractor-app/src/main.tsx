@@ -4,6 +4,31 @@ import "./index.css";
 import { reportCrash } from "./lib/reportCrash";
 import { toast } from "@/hooks/use-toast";
 
+// A rolling deployment can briefly leave an older HTML shell pointing at a
+// content-hashed chunk that no longer exists. Vite emits this event when a
+// lazy import fails; recover once instead of leaving the user on a blank page.
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
+  const recoveryKey = "buildpro_chunk_recovery";
+  const previousRecovery = sessionStorage.getItem(recoveryKey);
+  const now = Date.now();
+
+  if (!previousRecovery || now - Number(previousRecovery) > 15_000) {
+    sessionStorage.setItem(recoveryKey, String(now));
+    void caches.keys()
+      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+      .catch(() => undefined)
+      .finally(() => window.location.reload());
+  } else {
+    sessionStorage.removeItem(recoveryKey);
+    toast({
+      title: "The app is updating",
+      description: "Please reload the page in a moment.",
+      duration: 8000,
+    });
+  }
+});
+
 const recentErrors = new Map<string, number>();
 const DEDUP_WINDOW_MS = 5000;
 
