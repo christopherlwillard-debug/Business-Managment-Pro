@@ -40,8 +40,8 @@ describe("calculateJobFinancialWaterfall", () => {
   });
 
   it("uses the same pool when the close-job path includes team allocations", () => {
-    const panel = calculateJobFinancialWaterfall({ ...base, allocationPcts: [50], hourlyFixedCost: 100 });
-    const closeJob = calculateJobFinancialWaterfall({ ...base, allocationPcts: [50], hourlyFixedCost: 100 });
+    const panel = calculateJobFinancialWaterfall({ ...base, allocationPcts: [50], hourlyFixedCost: base.subLaborCost });
+    const closeJob = calculateJobFinancialWaterfall({ ...base, allocationPcts: [50], hourlyFixedCost: base.subLaborCost });
 
     expect(closeJob.toSplit).toBeCloseTo(panel.toSplit, 2);
     expect(closeJob.toSplit * 0.5).toBeCloseTo(830.78, 2);

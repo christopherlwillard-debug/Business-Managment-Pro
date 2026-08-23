@@ -12,7 +12,10 @@ export type JobFinancialWaterfallInput = {
 export function calculateJobFinancialWaterfall(input: JobFinancialWaterfallInput) {
   const splitEligibleExpenses = Math.max(0, input.jobExpenses - input.mileageReimbursementCost);
   const jobIncome = Math.max(0, input.revenue - splitEligibleExpenses);
-  const hourlyWorkers = Math.max(input.subLaborCost, input.hourlyFixedCost ?? 0);
+  // When payment rows are loaded, hourlyFixedCost is the authoritative agreed
+  // amount (including fixed workers). Do not let a historical hours×rate total
+  // override a saved job-level payout.
+  const hourlyWorkers = Math.max(0, input.hourlyFixedCost ?? input.subLaborCost);
   const afterWorkers = Math.max(0, jobIncome - hourlyWorkers);
   const growthReserve = afterWorkers * 0.05;
   const toSplit = Math.max(0, afterWorkers - growthReserve);

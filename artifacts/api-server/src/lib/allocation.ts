@@ -18,7 +18,8 @@ const GROWTH_RESERVE_PCT = 0.05;
  * GET /:id/profit:
  *   grossInvoiced (ALL invoices, not just paid)
  *   - jobExpenses  (non-Owner-Draw, non-Subcontractor category)
- *   - subLaborCost (hours×rate if any hours exist, else Subcontractor-category expenses)
+ *   - subLaborCost (agreed hourly amount when set, otherwise hours×rate; legacy
+ *     Subcontractor-category expenses are used only when no tracked hourly labor exists)
  *   → afterWorkers × 0.95  (5% growth reserve withheld)
  *
  * Callers must filter to `isNull(expensesTable.jobSubHoursId)` already handled

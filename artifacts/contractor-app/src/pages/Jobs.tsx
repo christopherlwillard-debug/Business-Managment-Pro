@@ -1548,11 +1548,11 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const memberSubs = payments.filter(p => p.role === 'member');
   const hourlyFixedSubs = payments.filter(p => p.compensationType !== 'allocation');
   const pctSubs = payments.filter(p => p.compensationType === 'allocation');
-  const hourlyFixedCost = hourlyFixedSubs.reduce((s, p) => {
+  const hourlyFixedCost = payments.length > 0 ? hourlyFixedSubs.reduce((s, p) => {
     // A saved agreed amount is authoritative for hourly workers too. Without
     // this, the waterfall can resurrect the raw hours×rate total after close.
     return s + (p.amountOwed ?? (p.compensationType === 'fixed' ? (p.fixedAmount ?? 0) : p.computedOwed));
-  }, 0);
+  }, 0) : undefined;
   const waterfall = calculateJobFinancialWaterfall({
     revenue,
     jobExpenses,
@@ -3126,8 +3126,8 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                   const _rev = profit?.grossInvoiced ?? 0;
                   const _exp = Math.max(0, (profit?.jobExpenses ?? 0) - (profit?.includeMileageInJobCosts === false ? 0 : (profit?.mileageReimbursement?.amount ?? (profit?.estimatedFuelCost ?? 0))));
                   const _jobIncome = Math.max(0, _rev - _exp);
-                  const _hfCost = payments.filter(p => p.compensationType !== 'allocation').reduce((s, p) => s + (p.compensationType === 'fixed' ? (p.fixedAmount ?? 0) : p.computedOwed), 0);
-                  const _afterW = Math.max(0, _jobIncome - Math.max(profit?.subLaborCost ?? 0, _hfCost));
+                   const _hfCost = payments.filter(p => p.compensationType !== 'allocation').reduce((s, p) => s + (p.amountOwed ?? (p.compensationType === 'fixed' ? (p.fixedAmount ?? 0) : p.computedOwed)), 0);
+                   const _afterW = Math.max(0, _jobIncome - (payments.length > 0 ? _hfCost : (profit?.subLaborCost ?? 0)));
                   const _toSplit = Math.max(0, _afterW - _afterW * 0.05);
                   const displayOwed = pay.amountOwed != null
                     ? pay.amountOwed
@@ -7209,9 +7209,9 @@ export default function Jobs() {
               ? 0
               : (profitData.mileageReimbursement?.amount ?? profitData.estimatedFuelCost ?? 0),
             subLaborCost: profitData.subLaborCost ?? 0,
-            hourlyFixedCost: closeSubs
+             hourlyFixedCost: closeSubs
               .filter(sub => sub.compensationType !== "allocation")
-              .reduce((sum, sub) => sum + (sub.compensationType === "fixed" ? (sub.fixedAmount ?? 0) : (sub.computedOwed ?? 0)), 0),
+               .reduce((sum, sub) => sum + (sub.amountOwed ?? (sub.compensationType === "fixed" ? (sub.fixedAmount ?? 0) : (sub.computedOwed ?? 0))), 0),
             allocationPcts: closeSubs
               .filter(sub => sub.compensationType === "allocation")
               .map(sub => sub.allocationPct ?? 0),
