@@ -40,6 +40,7 @@ export async function computeAllocationSplitPools(
         jobId: expensesTable.jobId,
         amount: expensesTable.amount,
         category: expensesTable.category,
+        subcontractorId: expensesTable.subcontractorId,
       })
       .from(expensesTable)
       .where(
@@ -85,6 +86,8 @@ export async function computeAllocationSplitPools(
     let expenses = 0;
     let flatSubCost = 0;
     for (const exp of poolExps.filter((e) => e.jobId === jobId)) {
+      // Payroll-linked expense rows are legacy duplicates, not operating costs.
+      if (exp.subcontractorId != null) continue;
       if (exp.category === "Owner Draw") continue;
       if (exp.category === "Subcontractor") {
         flatSubCost += parseFloat(exp.amount ?? "0");

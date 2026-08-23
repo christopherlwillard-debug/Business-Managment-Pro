@@ -538,7 +538,7 @@ router.get("/:id/profit", async (req, res) => {
       // Fetch all expenses not auto-linked to a sub-hours row.
       // Subcontractor-category expenses are moved into the sub labor bucket below
       // so they never double-count with hours-based sub labor cost.
-      db.select({ amount: expensesTable.amount, category: expensesTable.category, countsTowardJobProfit: expensesTable.countsTowardJobProfit, tripId: expensesTable.tripId })
+      db.select({ amount: expensesTable.amount, category: expensesTable.category, subcontractorId: expensesTable.subcontractorId, countsTowardJobProfit: expensesTable.countsTowardJobProfit, tripId: expensesTable.tripId })
         .from(expensesTable).where(and(eq(expensesTable.jobId, id), isNull(expensesTable.jobSubHoursId), isNull(expensesTable.voidedAt))),
       db.select({ amount: jobExpenseAllocationsTable.amount })
         .from(jobExpenseAllocationsTable)
@@ -632,6 +632,11 @@ router.get("/:id/profit", async (req, res) => {
     for (const exp of expRows) {
       if (OWNER_PAY_CATEGORIES.has(exp.category ?? "")) {
         ownerDrawTaken += parseFloat(exp.amount ?? "0");
+        continue;
+      }
+      // Payroll-linked expense rows are legacy duplicate bookkeeping. Payroll
+      // belongs to sub_payment_records/job_subcontractors, never Job Costs.
+      if (exp.subcontractorId != null) {
         continue;
       }
       if (exp.category === "Subcontractor") {
@@ -840,6 +845,7 @@ router.get("/:id/expenses", async (req, res) => {
         category: expensesTable.category,
         description: expensesTable.description,
         amount: expensesTable.amount,
+        subcontractorId: expensesTable.subcontractorId,
         countsTowardJobProfit: expensesTable.countsTowardJobProfit,
         sourceType: expensesTable.sourceType,
         includeMileageInJobCosts: jobsTable.includeMileageInJobCosts,
@@ -857,16 +863,18 @@ router.get("/:id/expenses", async (req, res) => {
 
     // Apply exactly the same exclusions as /:id/profit's jobExpenses bucket:
     // - Skip owner-pay categories (equity withdrawals, not business expenses)
-    // - Skip Subcontractor category (goes into sub labor bucket)
+    // - Skip subcontractor-linked payroll rows (payroll has its own ledger)
+    // - Skip Subcontractor category (goes into sub labor/allocation buckets)
     // - Skip countsTowardJobProfit=false rows (those are audit/travel trail, not job expenses)
     const OWNER_PAY_CATS = new Set(["Owner Draw", "Owner Compensation", "Owner Withdrawal"]);
     const items = rows
       .filter(r =>
         !OWNER_PAY_CATS.has(r.category ?? "") &&
+        r.subcontractorId == null &&
         r.category !== "Subcontractor" &&
         r.countsTowardJobProfit !== false
       )
-      .map(({ countsTowardJobProfit: _ctp, includeMileageInJobCosts: _includeMileage, ...rest }) => rest);
+      .map(({ countsTowardJobProfit: _ctp, includeMileageInJobCosts: _includeMileage, subcontractorId: _subcontractorId, ...rest }) => rest);
 
     const allocations = await db
       .select({
@@ -934,8 +942,8 @@ router.get("/profit-summary", async (req, res) => {
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
       db.select({ jobId: otherIncomeTable.jobId, amount: otherIncomeTable.amount })
         .from(otherIncomeTable).where(and(inArray(otherIncomeTable.jobId, jobIds), isNull(otherIncomeTable.voidedAt))),
-      // Exclude auto-linked sub-hour expenses; Subcontractor category goes into sub labor bucket
-      db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category, countsTowardJobProfit: expensesTable.countsTowardJobProfit })
+      // Exclude auto-linked sub-hour expenses; payroll-linked rows are not job costs
+      db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category, subcontractorId: expensesTable.subcontractorId, countsTowardJobProfit: expensesTable.countsTowardJobProfit })
         .from(expensesTable).where(and(inArray(expensesTable.jobId, jobIds), isNull(expensesTable.jobSubHoursId), isNull(expensesTable.voidedAt))),
       db.select({ jobId: jobExpenseAllocationsTable.jobId, amount: jobExpenseAllocationsTable.amount })
         .from(jobExpenseAllocationsTable)
@@ -1053,7 +1061,12 @@ router.get("/profit-summary", async (req, res) => {
       const r = result[exp.jobId];
       if (!r) continue;
       if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(exp.category ?? "")) continue;
-      if (exp.category === "Subcontractor") {
+       // Payroll-linked expense rows are legacy duplicate bookkeeping. Payroll
+       // belongs to sub_payment_records/job_subcontractors, never Job Costs.
+       if (exp.subcontractorId != null) {
+         continue;
+       }
+       if (exp.category === "Subcontractor") {
         flatSubCostMap[exp.jobId] = (flatSubCostMap[exp.jobId] ?? 0) + parseFloat(exp.amount ?? "0");
         continue;
       }
@@ -2617,63 +2630,10 @@ router.post("/:id/record-sub-expenses", async (req, res) => {
       ));
     if (unpaidSubs.length === 0) return res.json({ ok: true, created: 0 });
 
-    const [jobRow] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
-    const today = new Date().toISOString().split("T")[0];
-
-    // 2. Compute toSplit for allocation subs — shared helper (allocation.ts)
-    let toSplit = 0;
-    const hasAllocation = unpaidSubs.some(s => s.compensationType === "allocation");
-    if (hasAllocation) {
-      const pool = await computeAllocationSplitPool(jobId);
-      toSplit = pool.splitPool;
-    }
-
-    // 3. Fetch sub names
-    const subIds = unpaidSubs.map(s => s.subcontractorId);
-    const subNameRows = await db.select({ id: subcontractorsTable.id, name: subcontractorsTable.name })
-      .from(subcontractorsTable).where(inArray(subcontractorsTable.id, subIds));
-    const nameMap = new Map(subNameRows.map(s => [s.id, s.name ?? `Sub #${s.id}`]));
-
-    // 4. Create expense entries — category and amount mirror pay-worker exactly
-    let created = 0;
-    for (const sub of unpaidSubs) {
-      const compType = sub.compensationType ?? "fixed";
-      // Mirror pay-worker: fixed → Labor, allocation → Subcontractor
-      const category = compType === "fixed" ? "Labor" : "Subcontractor";
-      let amount = 0;
-      if (compType === "fixed") {
-        amount = parseFloat(sub.fixedAmount ?? "0");
-      } else if (compType === "allocation") {
-        amount = computeSubOwed({ compensationType: "allocation", amountOwed: null, fixedAmount: null, allocationPct: sub.allocationPct ?? "0" }, toSplit) ?? 0;
-      }
-      if (amount <= 0) continue; // skip allocation subs with no invoice yet
-
-      // Idempotent: skip if non-hours-linked expense already exists for this sub+job+category
-      const [existing] = await db.select({ id: expensesTable.id })
-        .from(expensesTable)
-        .where(and(
-          eq(expensesTable.jobId, jobId),
-          eq(expensesTable.subcontractorId, sub.subcontractorId),
-          eq(expensesTable.category, category),
-          isNull(expensesTable.jobSubHoursId),
-          isNull(expensesTable.voidedAt),
-        ));
-      if (existing) continue;
-
-      const subName = nameMap.get(sub.subcontractorId) ?? `Sub #${sub.subcontractorId}`;
-      const typeLabel = compType === "allocation" ? "Allocation Pay" : "Fixed Pay";
-      await db.insert(expensesTable).values({
-        description: `${subName} — ${typeLabel} (outstanding)`,
-        amount: amount.toFixed(2),
-        category,
-        date: today,
-        jobId,
-        subcontractorId: sub.subcontractorId,
-        businessLine: jobRow?.businessLine,
-      });
-      created++;
-    }
-    res.json({ ok: true, created });
+    // Payroll obligations are derived from the payroll tables and must never
+    // be copied into expenses. Keep this endpoint harmless for older clients
+    // that still call it, but deliberately perform no writes.
+    res.json({ ok: true, created: 0, skippedPayrollRows: unpaidSubs.length });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to record sub expenses" });

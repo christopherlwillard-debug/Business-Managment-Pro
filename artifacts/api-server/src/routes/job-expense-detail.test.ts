@@ -4,6 +4,7 @@ import express from "express";
 
 const h = vi.hoisted(() => ({
   selectQueue: [] as any[][],
+  insertCount: 0,
 }));
 
 vi.mock("@workspace/db", () => {
@@ -31,7 +32,10 @@ vi.mock("@workspace/db", () => {
     db: {
       select: () => chain(),
       update: () => chain(),
-      insert: () => chain(),
+      insert: () => {
+        h.insertCount++;
+        return chain();
+      },
       delete: () => chain(),
     },
   };
@@ -77,6 +81,7 @@ function queueExpenseQueries({
 describe("GET /jobs/:id/expenses", () => {
   beforeEach(() => {
     h.selectQueue.length = 0;
+    h.insertCount = 0;
   });
 
   it("returns ordinary costs with their source metadata and excludes non-job-cost rows", async () => {
@@ -118,6 +123,16 @@ describe("GET /jobs/:id/expenses", () => {
           countsTowardJobProfit: false,
           sourceType: null,
         },
+        {
+          id: 5,
+          date: "2026-08-05",
+          category: "Labor",
+          description: "Dewayne Lamb — Fixed Pay (outstanding)",
+          amount: "800.00",
+          subcontractorId: 42,
+          countsTowardJobProfit: true,
+          sourceType: "job_payroll",
+        },
       ],
     });
 
@@ -132,6 +147,41 @@ describe("GET /jobs/:id/expenses", () => {
         sourceType: "Material List",
       }),
     ]);
+  });
+
+  it("excludes subcontractor-linked Labor payroll from Job Costs", async () => {
+    queueExpenseQueries({
+      expenses: [{
+        id: 21,
+        date: "2026-08-05",
+        category: "Labor",
+        description: "Dewayne Lamb — Fixed Pay (outstanding)",
+        amount: "800.00",
+        subcontractorId: 42,
+        countsTowardJobProfit: true,
+        sourceType: "job_payroll",
+      }],
+    });
+
+    const response = await request(app).get("/jobs/10/expenses");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([]);
+  });
+
+  it("does not create payroll expense rows when recording outstanding sub pay", async () => {
+    h.selectQueue.push([{
+      subcontractorId: 42,
+      compensationType: "fixed",
+      fixedAmount: "800.00",
+      allocationPct: null,
+    }]);
+
+    const response = await request(app).post("/jobs/10/record-sub-expenses");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true, created: 0, skippedPayrollRows: 1 });
+    expect(h.insertCount).toBe(0);
   });
 
   it("returns allocation-only costs as signed-safe synthetic detail rows", async () => {
