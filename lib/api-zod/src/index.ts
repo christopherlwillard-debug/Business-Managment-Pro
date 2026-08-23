@@ -8,3 +8,5 @@ export {
   UploadExpenseReceiptBody,
   UploadFileBody,
 } from "./generated/api";
+export { calculateInvoiceTotals, roundCurrency } from "./invoice-calculations";
+export type { InvoiceCalculationLine, InvoiceTotals } from "./invoice-calculations";

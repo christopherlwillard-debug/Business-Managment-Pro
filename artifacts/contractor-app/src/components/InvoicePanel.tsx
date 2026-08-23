@@ -5,6 +5,7 @@ import {
   useCreateInvoicePaymentLink, useDeleteInvoicePaymentLink,
   Invoice, InvoiceDraft, AppSettings, Client, CreateInvoiceRequest, InvoiceAttachment,
 } from "@workspace/api-client-react";
+import { calculateInvoiceTotals } from "@workspace/api-zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, localDateString } from "@/lib/utils";
 import { printInvoiceWindow } from "@/lib/printInvoice";
@@ -405,10 +406,8 @@ export function InvoicePanel({
     }
   }
 
-  const subtotal = lineItems.reduce((a, l) => a + l.quantity * l.unitPrice, 0);
   const taxRate = parseFloat(form.taxRate) || 0;
-  const taxAmount = subtotal * taxRate / 100;
-  const total = subtotal + taxAmount;
+  const { lineTotals, subtotal, taxAmount, total } = calculateInvoiceTotals(lineItems, taxRate);
 
   const suggestions: Client[] = clientInput.trim()
     ? clients.filter(c => c.name.toLowerCase().includes(clientInput.toLowerCase()))
@@ -1502,7 +1501,7 @@ export function InvoicePanel({
                               className="w-full text-right text-gray-600 bg-transparent border-b border-dashed border-transparent hover:border-gray-200 focus:border-amber-300 focus:outline-none py-0.5" />
                           </td>
                           <td className="py-1.5 text-right font-semibold text-gray-900 tabular-nums">
-                            {formatCurrency(li.quantity * li.unitPrice)}
+                            {formatCurrency(lineTotals[i] ?? 0)}
                           </td>
                           <td className="py-1.5 pl-2 text-center">
                             <button type="button" onClick={() => removeLine(i)}

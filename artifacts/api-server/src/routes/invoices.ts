@@ -14,6 +14,7 @@ import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { syncMaterialsToJobInvoice } from "./material-lists.js";
 import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { calculateInvoiceTotals } from "@workspace/api-zod";
 
 const router = Router();
 
@@ -47,10 +48,7 @@ export function validateLineItems(lineItems: unknown): string | null {
 }
 
 export function calcInvoice(lineItems: any[], taxRate: number | null) {
-  const subtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unitPrice, 0);
-  const taxAmount = taxRate ? subtotal * (taxRate / 100) : 0;
-  const total = subtotal + taxAmount;
-  return { subtotal, taxAmount, total };
+  return calculateInvoiceTotals(lineItems, taxRate);
 }
 
 /** Rebuild invoice money from the persisted line-item source records. */
@@ -98,10 +96,10 @@ function formatInvoice(inv: any, clientName?: string | null, clientEmail?: strin
     jobTitle: jobTitle ?? null,
     jobCity: jobCity ?? null,
     jobState: jobState ?? null,
-    subtotal: parseFloat(inv.subtotal ?? "0"),
+    subtotal: liveTotals.subtotal,
     taxRate: inv.taxRate ? parseFloat(inv.taxRate) : null,
-    taxAmount: inv.taxAmount ? parseFloat(inv.taxAmount) : null,
-    total: parseFloat(inv.total ?? "0"),
+    taxAmount: liveTotals.taxAmount,
+    total: liveTotals.total,
     liveTotals,
     calculationStatus: {
       kind: "reproducible_snapshot",
@@ -115,7 +113,7 @@ function formatInvoice(inv: any, clientName?: string | null, clientEmail?: strin
       description: li.description,
       quantity: parseFloat(li.quantity),
       unitPrice: parseFloat(li.unitPrice),
-      total: parseFloat(li.quantity) * parseFloat(li.unitPrice),
+      total: liveTotals.lineTotals[i] ?? 0,
     })),
     lastManualPaidAt: inv.lastManualPaidAt instanceof Date ? inv.lastManualPaidAt.toISOString() : (inv.lastManualPaidAt ?? null),
     createdAt: inv.createdAt instanceof Date ? inv.createdAt.toISOString() : inv.createdAt,
@@ -164,6 +162,7 @@ router.get("/tax-report", async (req, res) => {
         taxRate: invoicesTable.taxRate,
         taxAmount: invoicesTable.taxAmount,
         total: invoicesTable.total,
+        lineItems: invoicesTable.lineItems,
         clientName: clientsTable.name,
         jobTitle: jobsTable.title,
         invoiceCity: invoicesTable.city,
@@ -181,10 +180,15 @@ router.get("/tax-report", async (req, res) => {
       ...inv,
       city: inv.invoiceCity || inv.jobCity || null,
       state: inv.invoiceState || inv.jobState || null,
-      subtotal: parseFloat(inv.subtotal ?? "0"),
+      ...(() => {
+        const liveTotals = calcInvoiceFromStored(inv.lineItems, inv.taxRate);
+        return {
+          subtotal: liveTotals.subtotal,
+          taxAmount: liveTotals.taxAmount,
+          total: liveTotals.total,
+        };
+      })(),
       taxRate: inv.taxRate ? parseFloat(inv.taxRate) : null,
-      taxAmount: inv.taxAmount ? parseFloat(inv.taxAmount) : null,
-      total: parseFloat(inv.total ?? "0"),
     })));
   } catch (err) {
     console.error(err);

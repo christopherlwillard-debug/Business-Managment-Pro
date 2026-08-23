@@ -84,7 +84,7 @@ vi.mock("../lib/generateMaterialsPdf.js",   () => ({ generateMaterialsPdfBuffer:
 // ── Import router + helpers AFTER mocks are hoisted ───────────────────────────
 const mod = await import("./invoices");
 const invoiceRouter = mod.default;
-const { calcInvoice, calcInvoiceFromStored } = mod;
+const { calcInvoice, calcInvoiceFromStored, fmt } = mod;
 
 // Grab the spy handle for deleteSquarePaymentLink from the module mock.
 const squareMod = await import("../lib/square.js");
@@ -348,6 +348,40 @@ describe("calcInvoice", () => {
     expect(r.subtotal).toBe(1000);
     expect(r.taxAmount).toBeCloseTo(100);
     expect(r.total).toBeCloseTo(1100);
+  });
+
+  it("rounds each line, subtotal, tax, and total to cents consistently", () => {
+    const r = calcInvoice([
+      { quantity: 1, unitPrice: 1.005 },
+      { quantity: 3, unitPrice: 0.333 },
+    ], 8.25);
+
+    expect(r.lineTotals).toEqual([1.01, 1.00]);
+    expect(r.subtotal).toBe(2.01);
+    expect(r.taxAmount).toBe(0.17);
+    expect(r.total).toBe(2.18);
+  });
+
+  it("reopens a saved invoice with the same rounded live totals", () => {
+    const reopened = fmt(fakeInvoice({
+      lineItems: [
+        { description: "Precision line", quantity: 1, unitPrice: 1.005 },
+        { description: "Fractional quantity", quantity: 3, unitPrice: 0.333 },
+      ],
+      subtotal: "2.01",
+      taxRate: "8.25",
+      taxAmount: "0.17",
+      total: "2.18",
+    }));
+
+    expect(reopened.liveTotals).toEqual({
+      lineTotals: [1.01, 1],
+      subtotal: 2.01,
+      taxAmount: 0.17,
+      total: 2.18,
+    });
+    expect(reopened.calculationStatus.storedTotalsMatch).toBe(true);
+    expect(reopened.lineItems.map((line: any) => line.total)).toEqual([1.01, 1]);
   });
 
   it("returns zeros for empty line items", () => {

@@ -135,3 +135,11 @@ Created the four-document architecture governance system:
   split calculations exclude it.
 - MileIQ mileage, IRS deductions, company expenses, and owner-capital ledgers
   remain unchanged.
+
+## 2026-08-23
+
+### Invoice cent-precision reconciliation
+
+- Centralized invoice line, subtotal, tax, and total rounding in the shared API calculation library.
+- Editor previews, API saves and reads, invoice lists, print output, email output, and report serialization now use the same cent-based totals.
+- Persisted line items remain the invoice source of truth; stored snapshots continue to expose drift status.

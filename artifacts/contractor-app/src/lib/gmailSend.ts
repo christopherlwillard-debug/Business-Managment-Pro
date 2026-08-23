@@ -1,3 +1,5 @@
+import { calculateInvoiceTotals } from "@workspace/api-zod";
+
 function sanitizeHeader(value: string): string {
   return value.replace(/[\r\n]+/g, " ").trim();
 }
@@ -201,6 +203,7 @@ export interface BuildInvoiceEmailHtmlOpts {
 }
 
 export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
+  const calculated = calculateInvoiceTotals(opts.lineItems, opts.taxRate);
   const cityLine = [opts.companyCity, opts.companyState, opts.companyZip].filter(Boolean).join(", ");
 
   const displayCompanyName = opts.dbaName
@@ -273,11 +276,11 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
       <td style="padding:10px 12px 10px 0;font-size:11px;color:#1f2937;">${esc(li.description)}</td>
       <td style="padding:10px 0;font-size:11px;text-align:right;color:#6b7280;">${li.quantity}</td>
       <td style="padding:10px 0 10px 12px;font-size:11px;text-align:right;color:#6b7280;">${fmtCurrency(li.unitPrice)}</td>
-      <td style="padding:10px 0 10px 12px;font-size:11px;text-align:right;font-weight:600;color:#111827;">${fmtCurrency(li.quantity * li.unitPrice)}</td>
+      <td style="padding:10px 0 10px 12px;font-size:11px;text-align:right;font-weight:600;color:#111827;">${fmtCurrency(calculated.lineTotals[i] ?? 0)}</td>
     </tr>`).join("");
 
   const taxRow = (opts.taxRate ?? 0) > 0
-    ? `<tr><td style="text-align:right;padding:4px 0;font-size:12px;color:#6b7280;padding-right:20px;">Tax (${opts.taxRate}%)</td><td style="text-align:right;padding:4px 0;font-size:12px;color:#6b7280;">${fmtCurrency(opts.taxAmount)}</td></tr>`
+    ? `<tr><td style="text-align:right;padding:4px 0;font-size:12px;color:#6b7280;padding-right:20px;">Tax (${opts.taxRate}%)</td><td style="text-align:right;padding:4px 0;font-size:12px;color:#6b7280;">${fmtCurrency(calculated.taxAmount)}</td></tr>`
     : "";
 
   const notesHtml = opts.notes
@@ -293,7 +296,7 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
            <tr><td align="center">
              <p style="margin:0 0 12px;font-size:12px;font-weight:600;color:#374151;">Pay this invoice securely online:</p>
              <a href="${esc(opts.paymentLink)}" target="_blank" style="display:inline-block;background:#f59e0b;color:#fff;font-size:14px;font-weight:700;padding:12px 32px;border-radius:8px;text-decoration:none;">
-               Pay Now — ${fmtCurrency(opts.total)}
+               Pay Now — ${fmtCurrency(calculated.total)}
              </a>
              <p style="margin:10px 0 0;font-size:10px;color:#9ca3af;">Square Payments · Secure checkout</p>
            </td></tr>
@@ -353,13 +356,13 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
               <table cellpadding="0" cellspacing="0">
                 <tr>
                   <td style="text-align:right;padding:4px 20px 4px 0;font-size:12px;color:#6b7280;">Subtotal</td>
-                  <td style="text-align:right;padding:4px 0;font-size:12px;color:#6b7280;">${fmtCurrency(opts.subtotal)}</td>
+                  <td style="text-align:right;padding:4px 0;font-size:12px;color:#6b7280;">${fmtCurrency(calculated.subtotal)}</td>
                 </tr>
                 ${taxRow}
                 <tr><td colspan="2" style="height:1px;background:#1f2937;padding:0;"></td></tr>
                 <tr>
                   <td style="text-align:right;padding:10px 20px 0 0;font-size:15px;font-weight:800;color:#111827;">Total Due</td>
-                  <td style="text-align:right;padding:10px 0 0;font-size:15px;font-weight:800;color:#f59e0b;">${fmtCurrency(opts.total)}</td>
+                  <td style="text-align:right;padding:10px 0 0;font-size:15px;font-weight:800;color:#f59e0b;">${fmtCurrency(calculated.total)}</td>
                 </tr>
               </table>
             </td></tr>

@@ -1,4 +1,5 @@
 import { getLogoDims } from "./invoiceLogoConstants";
+import { calculateInvoiceTotals } from "@workspace/api-zod";
 
 export interface PrintableInvoice {
   invoiceNumber: string;
@@ -174,18 +175,19 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
          ${billToContent}
        </div>`;
 
+  const calculated = calculateInvoiceTotals(inv.lineItems, inv.taxRate);
   const lineRows = inv.lineItems.length > 0
     ? inv.lineItems.map((li, i) => `
       <tr style="${i % 2 === 1 ? "background:#f9fafb;" : ""}">
         <td style="padding:10px 12px 10px 0;color:#1f2937;">${esc(li.description)}</td>
         <td style="padding:10px 0;text-align:right;color:#6b7280;">${li.quantity}</td>
         <td style="padding:10px 0 10px 12px;text-align:right;color:#6b7280;">${fmtCurrency(li.unitPrice)}</td>
-        <td style="padding:10px 0 10px 12px;text-align:right;font-weight:600;color:#111827;">${fmtCurrency(li.quantity * li.unitPrice)}</td>
+        <td style="padding:10px 0 10px 12px;text-align:right;font-weight:600;color:#111827;">${fmtCurrency(calculated.lineTotals[i] ?? 0)}</td>
       </tr>`).join("")
     : `<tr><td colspan="4" style="padding:16px;text-align:center;color:#d1d5db;font-style:italic;">No line items</td></tr>`;
 
   const taxRow = (inv.taxRate ?? 0) > 0
-    ? `<tr><td style="text-align:right;padding:4px 0;color:#6b7280;">Tax (${inv.taxRate}%)</td><td style="text-align:right;padding:4px 0 4px 20px;color:#6b7280;">${fmtCurrency(inv.taxAmount)}</td></tr>`
+    ? `<tr><td style="text-align:right;padding:4px 0;color:#6b7280;">Tax (${inv.taxRate}%)</td><td style="text-align:right;padding:4px 0 4px 20px;color:#6b7280;">${fmtCurrency(calculated.taxAmount)}</td></tr>`
     : "";
 
   const notesHtml = inv.notes
@@ -215,12 +217,12 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
       <table style="font-size:11px;border-collapse:collapse;min-width:200px;">
         <tr>
           <td style="text-align:right;padding:4px 0;color:#6b7280;">Subtotal</td>
-          <td style="text-align:right;padding:4px 0 4px 20px;color:#6b7280;">${fmtCurrency(inv.subtotal)}</td>
+          <td style="text-align:right;padding:4px 0 4px 20px;color:#6b7280;">${fmtCurrency(calculated.subtotal)}</td>
         </tr>
         ${taxRow}
         <tr>
           <td style="text-align:right;padding:10px 0 0;font-weight:800;font-size:13px;color:#111827;border-top:2px solid #1f2937;">Total Due</td>
-          <td style="text-align:right;padding:10px 0 0 20px;font-weight:800;font-size:13px;color:#d97706;border-top:2px solid #1f2937;">${fmtCurrency(inv.total)}</td>
+          <td style="text-align:right;padding:10px 0 0 20px;font-weight:800;font-size:13px;color:#d97706;border-top:2px solid #1f2937;">${fmtCurrency(calculated.total)}</td>
         </tr>
       </table>
     </div>
