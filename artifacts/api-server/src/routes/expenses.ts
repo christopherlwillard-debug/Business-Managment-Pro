@@ -62,10 +62,14 @@ function toServingUrl(raw: string | null | undefined): string | null {
 }
 
 function formatExpense(e: any, jobTitle?: string | null, subcontractorName?: string | null) {
+  const category = String(e.category ?? "").trim().toLowerCase();
+  const legacyPayrollDuplicate =
+    e.subcontractorId != null && (category === "labor" || category === "subcontractor");
   return {
     ...e,
     jobTitle: jobTitle ?? null,
     subcontractorName: subcontractorName ?? null,
+    legacyPayrollDuplicate,
     amount: parseFloat(e.amount ?? "0"),
     createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
     receiptUrl: toServingUrl(e.receiptUrl),

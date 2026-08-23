@@ -1525,6 +1525,7 @@ function ExpenseDeleteConfirm({
   expense: any; onConfirm: (reason: string) => void; onCancel: () => void; deleting: boolean;
 }) {
   const isSubPayment = expense?.category?.toLowerCase() === "subcontractor" && expense?.subcontractorName;
+  const isLegacyPayroll = expense?.legacyPayrollDuplicate === true;
   const [reason, setReason] = useState("");
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -1535,7 +1536,9 @@ function ExpenseDeleteConfirm({
             <AlertTriangle className="w-5 h-5 text-red-600" />
           </div>
           <div>
-            <h3 className="font-bold text-gray-900 text-base">Void expense?</h3>
+            <h3 className="font-bold text-gray-900 text-base">
+              {isLegacyPayroll ? "Void legacy payroll expense?" : "Void expense?"}
+            </h3>
             <p className="text-sm text-gray-500 mt-1">
               <span className="font-semibold text-gray-700">{expense.description}</span>
               {expense.vendor ? ` · ${expense.vendor}` : ""} will be{" "}
@@ -1548,7 +1551,11 @@ function ExpenseDeleteConfirm({
               className="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               aria-label="Reason for voiding expense"
             />
-            {isSubPayment && (
+            {isLegacyPayroll ? (
+              <p className="text-xs text-amber-700 mt-2 bg-amber-50 rounded-lg px-2.5 py-1.5 border border-amber-100">
+                This old payroll-linked row is associated with <strong>{expense.subcontractorName ?? "a subcontractor"}</strong>. Voiding it removes the duplicate from operating-cost reports without changing the worker payroll ledger.
+              </p>
+            ) : isSubPayment && (
               <p className="text-xs text-indigo-600 mt-2 bg-indigo-50 rounded-lg px-2.5 py-1.5 border border-indigo-100">
                 This is a subcontractor payment for <strong>{expense.subcontractorName}</strong>. Deleting it will reduce their YTD total by <strong>${parseFloat(expense.amount ?? "0").toFixed(2)}</strong>.
               </p>
@@ -1752,6 +1759,13 @@ function ExpenseViewModal({
             <p className="text-[10px] uppercase tracking-widest font-bold text-amber-400 mb-1">Amount</p>
             <p className="text-4xl font-black text-amber-600">{formatCurrency(expense.amount)}</p>
           </div>
+
+          {expense.legacyPayrollDuplicate && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+              <p className="font-bold flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Legacy payroll copy</p>
+              <p className="mt-1">Review the job, worker, amount, and source before correcting this row. Voiding it removes the duplicate from operating-cost reports and does not change the worker payroll ledger.</p>
+            </div>
+          )}
 
           {/* Details grid */}
           <div className="grid grid-cols-2 gap-3">
@@ -3511,6 +3525,11 @@ export default function Expenses() {
                                         <FileText className="w-2.5 h-2.5" /> Audit Trail
                                       </span>
                                     )}
+                                    {exp.legacyPayrollDuplicate && (
+                                      <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-amber-200 flex-shrink-0" title="Legacy payroll copy. Review and void with a reason if it is not a legitimate operating expense.">
+                                        <AlertTriangle className="w-2.5 h-2.5" /> Legacy payroll copy
+                                      </span>
+                                    )}
                                     {exp.recurringExpenseId && (
                                       <button
                                         type="button"
@@ -3620,7 +3639,7 @@ export default function Expenses() {
                                       ) : (
                                         <span className="text-[10px] text-muted-foreground italic">Pay-Worker</span>
                                       )
-                                    ) : canEdit("expenses") && !(exp as any).jobSubHoursId ? (
+                                    ) : canEdit("expenses") && !(exp as any).jobSubHoursId && !exp.legacyPayrollDuplicate ? (
                                       <>
                                         <button onClick={() => { setEditReceiptFile(null); setEditingRow({
                                             id: exp.id,
