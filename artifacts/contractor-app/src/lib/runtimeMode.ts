@@ -12,7 +12,7 @@
 
 /** Known BuildPro origins — localhost and all Replit-managed hostnames. */
 const BUILD_PRO_HOST_RE =
-  /^(localhost|.*\.replit\.dev|.*\.replit\.app|.*\.repl\.co)$/i;
+  /^(localhost|127\.0\.0\.1|.*\.replit\.dev|.*\.replit\.app|.*\.repl\.co)$/i;
 
 /** Returns true when running inside the BuildPro application shell. */
 export function isBuildProMode(): boolean {
