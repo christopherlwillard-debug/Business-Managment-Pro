@@ -577,8 +577,24 @@ router.get("/:id/profit", async (req, res) => {
           sql`${jobSubcontractorsTable.compensationType} IN ('fixed', 'allocation')`,
         ))
         .groupBy(jobSubcontractorsTable.compensationType),
-      db.select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)` })
-        .from(jobSubHoursTable).where(eq(jobSubHoursTable.jobId, id)),
+      // Hourly labor uses a job-level agreed amount when one exists; otherwise
+      // it falls back to the immutable hours × rate snapshot calculation.
+      db.select({ total: sql<string>`COALESCE(SUM(
+        CASE
+          WHEN ${jobSubcontractorsTable.compensationType} = 'hourly'
+            AND ${jobSubcontractorsTable.amountOwed} IS NOT NULL
+          THEN ${jobSubcontractorsTable.amountOwed}
+          WHEN ${jobSubcontractorsTable.compensationType} = 'hourly'
+          THEN COALESCE((
+            SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
+            FROM job_sub_hours h
+            WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+              AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+          ), 0)
+          ELSE 0
+        END
+      ), 0)` })
+        .from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, id)),
       db.select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)` })
         .from(jobSubHoursTable).where(eq(jobSubHoursTable.jobId, id)),
       // Accrued bonuses saved via Save Changes — counted as labor cost even before payment
@@ -929,12 +945,28 @@ router.get("/profit-summary", async (req, res) => {
         .from(jobMileageReimbursementsTable)
         .where(inArray(jobMileageReimbursementsTable.jobId, jobIds)),
       db.select({
-        jobId: jobSubHoursTable.jobId,
-        total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
+        jobId: jobSubcontractorsTable.jobId,
+        // Match the per-job profit route: a saved hourly agreed amount wins
+        // over the raw hours × rate total for that worker.
+        total: sql<string>`COALESCE(SUM(
+          CASE
+            WHEN ${jobSubcontractorsTable.compensationType} = 'hourly'
+              AND ${jobSubcontractorsTable.amountOwed} IS NOT NULL
+            THEN ${jobSubcontractorsTable.amountOwed}
+            WHEN ${jobSubcontractorsTable.compensationType} = 'hourly'
+            THEN COALESCE((
+              SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
+              FROM job_sub_hours h
+              WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+                AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+            ), 0)
+            ELSE 0
+          END
+        ), 0)`,
       })
-        .from(jobSubHoursTable)
-        .where(inArray(jobSubHoursTable.jobId, jobIds))
-        .groupBy(jobSubHoursTable.jobId),
+        .from(jobSubcontractorsTable)
+        .where(inArray(jobSubcontractorsTable.jobId, jobIds))
+        .groupBy(jobSubcontractorsTable.jobId),
       // Raw hour count (not cost) — used for man-hours display in the archive table
       db.select({
         jobId: jobSubHoursTable.jobId,
@@ -2802,7 +2834,7 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
           SELECT SUM(h.hours) FROM job_sub_hours h
           WHERE h.job_id = ${id} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
         ), 0)`,
-        // hours×rate total — used to determine whether ledger covers the obligation
+        // Raw hours×rate total — used when no agreed hourly amount is locked.
         computedOwed: sql<string>`COALESCE((
           SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0)) FROM job_sub_hours h
           WHERE h.job_id = ${id} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
@@ -2904,8 +2936,10 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
           return { row: r, paid, hours, bonus, outstanding: false };
         }
 
-        // Truly outstanding only when the ledger hasn't covered hours×rate + bonus yet
-        const outstanding = (owedFromHours + bonus) > (paid + 0.005);
+        // A saved agreed amount is authoritative for hourly pay, just as it is
+        // in computeSubOwed and the Job Financials waterfall.
+        const owed = r.amountOwed != null ? parseFloat(r.amountOwed) : owedFromHours;
+        const outstanding = (owed + bonus) > (paid + 0.005);
         if (!outstanding && (r.paymentStatus === "unpaid" || r.paymentStatus === "partial")) {
           if (r.subcontractorId != null) repairItems.push({ subId: r.subcontractorId, lockOwed: null });
         }
@@ -2919,7 +2953,7 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
         fixedAmount: null as number | null,
         allocationPct: null as number | null,
         amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
-        computedOwed: parseFloat(r.computedOwed ?? "0"),
+         computedOwed: parseFloat(r.computedOwed ?? "0"),
         amountPaid: paid,
         paymentStatus: r.paymentStatus ?? "unpaid",
         totalHours: hours,

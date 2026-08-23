@@ -1549,8 +1549,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const hourlyFixedSubs = payments.filter(p => p.compensationType !== 'allocation');
   const pctSubs = payments.filter(p => p.compensationType === 'allocation');
   const hourlyFixedCost = hourlyFixedSubs.reduce((s, p) => {
-    if (p.compensationType === 'fixed') return s + (p.fixedAmount ?? 0);
-    return s + p.computedOwed;
+    // A saved agreed amount is authoritative for hourly workers too. Without
+    // this, the waterfall can resurrect the raw hours×rate total after close.
+    return s + (p.amountOwed ?? (p.compensationType === 'fixed' ? (p.fixedAmount ?? 0) : p.computedOwed));
   }, 0);
   const waterfall = calculateJobFinancialWaterfall({
     revenue,

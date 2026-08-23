@@ -46,4 +46,16 @@ describe("calculateJobFinancialWaterfall", () => {
     expect(closeJob.toSplit).toBeCloseTo(panel.toSplit, 2);
     expect(closeJob.toSplit * 0.5).toBeCloseTo(830.78, 2);
   });
+
+  it("uses the agreed hourly payout when the worker has an amount override", () => {
+    const result = calculateJobFinancialWaterfall({
+      ...base,
+      subLaborCost: 800,
+      hourlyFixedCost: 800,
+      allocationPcts: [20],
+    });
+
+    expect(result.hourlyWorkers).toBe(800);
+    expect(result.toSplit).toBeCloseTo(3112.29, 2);
+  });
 });

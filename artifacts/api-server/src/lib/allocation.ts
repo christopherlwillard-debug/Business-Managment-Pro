@@ -1,5 +1,5 @@
 import { db } from "@workspace/db";
-import { invoicesTable, expensesTable, jobSubHoursTable } from "@workspace/db/schema";
+import { invoicesTable, expensesTable, jobSubcontractorsTable } from "@workspace/db/schema";
 import { and, inArray, isNull, sql } from "drizzle-orm";
 
 export interface AllocationSplitPool {
@@ -49,12 +49,26 @@ export async function computeAllocationSplitPools(
       ),
     db
       .select({
-        jobId: jobSubHoursTable.jobId,
-        total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
+        jobId: jobSubcontractorsTable.jobId,
+        total: sql<string>`COALESCE(SUM(
+          CASE
+            WHEN ${jobSubcontractorsTable.compensationType} = 'hourly'
+              AND ${jobSubcontractorsTable.amountOwed} IS NOT NULL
+            THEN ${jobSubcontractorsTable.amountOwed}
+            WHEN ${jobSubcontractorsTable.compensationType} = 'hourly'
+            THEN COALESCE((
+              SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
+              FROM job_sub_hours h
+              WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+                AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+            ), 0)
+            ELSE 0
+          END
+        ), 0)`,
       })
-      .from(jobSubHoursTable)
-      .where(inArray(jobSubHoursTable.jobId, jobIds))
-      .groupBy(jobSubHoursTable.jobId),
+      .from(jobSubcontractorsTable)
+      .where(inArray(jobSubcontractorsTable.jobId, jobIds))
+      .groupBy(jobSubcontractorsTable.jobId),
   ]);
 
   const hoursMap = new Map(
