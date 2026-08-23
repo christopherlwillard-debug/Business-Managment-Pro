@@ -6972,8 +6972,16 @@ export default function Jobs() {
   const jobMatchesBL = (j: Job) => {
     if (!jobBLFilter) return true;
     // Prefer the FK when available, while retaining businessLine compatibility
-    // for historical jobs that have not been backfilled yet.
-    return j.businessId === activeBusiness?.id || j.businessLine === jobBLFilter;
+    // for historical jobs that have not been backfilled yet. Completely
+    // unassigned legacy jobs belong to the first/default business for display
+    // purposes; this keeps old work visible without rewriting production data.
+    const isUnassignedLegacyJob = j.businessId == null && !j.businessLine;
+    const isDefaultBusiness = activeBusiness?.id === businesses[0]?.id;
+    return (
+      j.businessId === activeBusiness?.id ||
+      j.businessLine === jobBLFilter ||
+      (isUnassignedLegacyJob && isDefaultBusiness)
+    );
   };
   const jobMatchesPayout = (j: Job) => !needsPayoutFilter || jobsWithOutstandingSubs.has(j.id);
 
