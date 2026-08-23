@@ -276,6 +276,8 @@ type JobRow = {
   serviceBilling: ServiceBilling | null;
   mfhManufacturerId: number | null;
   mfhModelId: number | null;
+  mfhManufacturerName?: string | null;
+  mfhModelName?: string | null;
   mfhModelYear: number | null;
   mfhConstructionType: string | null;
   mhProductionServices: { id: number; name: string }[] | null;
@@ -332,6 +334,8 @@ async function getJobWithSubs(jobId: number) {
       serviceBilling: jobsTable.serviceBilling,
       mfhManufacturerId: jobsTable.mfhManufacturerId,
       mfhModelId: jobsTable.mfhModelId,
+      mfhManufacturerName: mfhManufacturersTable.name,
+      mfhModelName: mfhModelsTable.name,
       mfhModelYear: jobsTable.mfhModelYear,
       mfhConstructionType: jobsTable.mfhConstructionType,
       mhProductionServices: jobsTable.mhProductionServices,
@@ -342,6 +346,8 @@ async function getJobWithSubs(jobId: number) {
     })
     .from(jobsTable)
     .leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id))
+    .leftJoin(mfhManufacturersTable, eq(jobsTable.mfhManufacturerId, mfhManufacturersTable.id))
+    .leftJoin(mfhModelsTable, eq(jobsTable.mfhModelId, mfhModelsTable.id))
     .leftJoin(jobSubcontractorsTable, eq(jobsTable.id, jobSubcontractorsTable.jobId))
     .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
     .where(eq(jobsTable.id, jobId));
@@ -444,6 +450,8 @@ router.get("/", async (req, res) => {
         homeModel: jobsTable.homeModel,
         mfhManufacturerId: jobsTable.mfhManufacturerId,
         mfhModelId: jobsTable.mfhModelId,
+        mfhManufacturerName: mfhManufacturersTable.name,
+        mfhModelName: mfhModelsTable.name,
          mfhModelYear: jobsTable.mfhModelYear,
         mfhConstructionType: jobsTable.mfhConstructionType,
         mhProductionServices: jobsTable.mhProductionServices,
@@ -454,6 +462,8 @@ router.get("/", async (req, res) => {
       })
       .from(jobsTable)
       .leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id))
+      .leftJoin(mfhManufacturersTable, eq(jobsTable.mfhManufacturerId, mfhManufacturersTable.id))
+      .leftJoin(mfhModelsTable, eq(jobsTable.mfhModelId, mfhModelsTable.id))
       .leftJoin(jobSubcontractorsTable, eq(jobsTable.id, jobSubcontractorsTable.jobId))
       .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
       .where(conditions.length ? and(...conditions) : undefined)

@@ -4982,7 +4982,11 @@ function JobCard({
                   {`$${parseFloat(String((job as unknown as Record<string, unknown>).mfhQuotedPrice)).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                 </span>
               ) : (
-                <span className="text-[10px] text-amber-400">{jobWorkflow === "mh_production" ? "Builder & model" : "Set pricing"}</span>
+                <span className="text-[10px] text-amber-600">
+                  {jobWorkflow === "mh_production"
+                    ? [job.mfhManufacturerName, job.mfhModelName].filter(Boolean).join(" · ") || "Builder & model"
+                    : "Set pricing"}
+                </span>
               )}
             </button>
           ) : (
@@ -7175,7 +7179,21 @@ export default function Jobs() {
   }, [searchParams, jobs]);
 
   function openNewJob() { setEditJob(null); setJobFormOpen(true); }
-  function openEditJob(job: Job) { setEditJob(job); setJobFormOpen(true); }
+  async function openEditJob(job: Job) {
+    // The list can be briefly stale after an edit. Load the authoritative row
+    // before opening the form so structured MFH fields repopulate reliably.
+    try {
+      const response = await fetch(`${BASE}/api/jobs/${job.id}`, { credentials: "include" });
+      if (response.ok) {
+        setEditJob(await response.json() as Job);
+      } else {
+        setEditJob(job);
+      }
+    } catch {
+      setEditJob(job);
+    }
+    setJobFormOpen(true);
+  }
 
   async function openDeleteTarget(job: Job) {
     setDeleteTarget(job);

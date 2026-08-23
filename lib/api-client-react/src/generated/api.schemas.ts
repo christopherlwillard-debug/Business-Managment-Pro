@@ -166,6 +166,8 @@ export interface Job {
   permitChecklist?: Record<string, unknown> | null;
   mfhManufacturerId?: number | null;
   mfhModelId?: number | null;
+  mfhManufacturerName?: string | null;
+  mfhModelName?: string | null;
   mfhModelYear?: number | null;
   mfhConstructionType?: string | null;
   mhProductionServices?: number[] | null;
