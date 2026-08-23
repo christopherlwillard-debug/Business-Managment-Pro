@@ -6847,7 +6847,7 @@ export default function Jobs() {
   const createPaymentLinkMutation = useCreateInvoicePaymentLink();
   const { toast } = useToast();
 
-  type CloseJobDialogSub = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null; amountPaid: number | null };
+  type CloseJobDialogSub = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null; amountPaid: number | null; computedOwed?: number | null };
   const [closeJobDialog, setCloseJobDialog] = useState<{ job: Job; subs: CloseJobDialogSub[]; toSplit: number } | null>(null);
   const [kbTrainingJob, setKbTrainingJob] = useState<Job | null>(null);
   const [closeJobBusy, setCloseJobBusy] = useState(false);
@@ -7197,14 +7197,29 @@ export default function Jobs() {
         return;
       }
 
-      // Compute allocation split pool from profit data
-      const toSplit = profitData ? (() => {
-        const income = Math.max(0, profitData.grossInvoiced - Math.max(0, profitData.jobExpenses - (profitData.mileageReimbursement?.amount ?? (profitData.estimatedFuelCost ?? 0))));
-        const afterWorkers = Math.max(0, income - profitData.subLaborCost);
-        return Math.max(0, afterWorkers - afterWorkers * 0.05);
-      })() : 0;
+      // Use the same waterfall as Job Financials and the job-card payment flow.
+      // Mileage reimbursement is a job cost but stays outside the split pool.
+      const closeSubs = subsData as CloseJobDialogSub[];
+      const toSplit = profitData
+        ? calculateJobFinancialWaterfall({
+            revenue: profitData.grossInvoiced ?? 0,
+            jobExpenses: profitData.jobExpenses ?? 0,
+            mileageReimbursementCost: profitData.includeMileageInJobCosts === false || profitData.mileageReimbursementApplied === false
+              ? 0
+              : (profitData.mileageReimbursement?.amount ?? profitData.estimatedFuelCost ?? 0),
+            subLaborCost: profitData.subLaborCost ?? 0,
+            hourlyFixedCost: closeSubs
+              .filter(sub => sub.compensationType !== "allocation")
+              .reduce((sum, sub) => sum + (sub.compensationType === "fixed" ? (sub.fixedAmount ?? 0) : (sub.computedOwed ?? 0)), 0),
+            allocationPcts: closeSubs
+              .filter(sub => sub.compensationType === "allocation")
+              .map(sub => sub.allocationPct ?? 0),
+            ownerSplitPct: 50,
+            taxReservePct: 0,
+          }).toSplit
+        : 0;
 
-      setCloseJobDialog({ job, subs: subsData, toSplit });
+      setCloseJobDialog({ job, subs: closeSubs, toSplit });
     } catch {
       toast({
         title: "Cannot close job",
