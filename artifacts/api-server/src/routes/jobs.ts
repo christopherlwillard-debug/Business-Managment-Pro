@@ -19,7 +19,19 @@ router.param("id", (req, res, next, rawId) => {
     const scope = await requestedBusiness(req);
     if (!scope) return next();
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id));
-    if (!job || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
+    // Permit the edit form to claim a completely unassigned legacy job for
+    // the selected business. The PUT handler will validate the slug and write
+    // the authoritative businessId; other scoped reads and mutations still
+    // require the job to already belong to the requested business.
+    const isLegacyAssignmentUpdate =
+      req.method === "PUT" &&
+      job != null &&
+      job.businessId == null &&
+      !job.businessLine &&
+      req.body?.businessLine === scope.slug;
+    if (!job || (!belongsToBusiness(job, scope) && !isLegacyAssignmentUpdate)) {
+      return res.status(404).json({ error: "Job not found" });
+    }
     res.locals.businessScopedJob = job;
     next();
   })().catch(next);
