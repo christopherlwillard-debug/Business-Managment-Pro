@@ -40,6 +40,23 @@ function normalizeUrl(raw: string): string {
   return `https://${t}`;
 }
 
+function isSamQuotaExhausted(source: BidSourceConnection): boolean {
+  return source.slug === "sam_gov" &&
+    source.connectionStatus === "error" &&
+    (source.lastSyncError?.toLowerCase().includes("quota exhausted") ?? false);
+}
+
+function formatQuotaReset(error: string | null): string {
+  const rawReset = error?.match(/resets(?: at)?\s+(.+)$/i)?.[1]?.trim();
+  if (!rawReset) return "the next quota window";
+  const parsed = new Date(rawReset);
+  if (Number.isNaN(parsed.getTime())) return rawReset;
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(parsed);
+}
+
 // ── Small toggle switch ───────────────────────────────────────────────────────
 
 function ToggleSwitch({
@@ -77,6 +94,7 @@ function AutoSourceRow({
 }) {
   const isActive  = source.connectionStatus === "active";
   const isError   = source.connectionStatus === "error";
+  const isQuotaExhausted = isSamQuotaExhausted(source);
   const isNew     = source.connectionStatus === "not_configured";
   const [errExpanded, setErrExpanded] = useState(false);
 
@@ -87,7 +105,8 @@ function AutoSourceRow({
         <span className={cn(
           "flex-shrink-0 w-2 h-2 rounded-full",
           isActive ? "bg-emerald-500"
-          : isError ? "bg-red-500"
+          : isError && !isQuotaExhausted ? "bg-red-500"
+          : isQuotaExhausted ? "bg-amber-500"
           : "bg-muted-foreground/30"
         )} />
 
@@ -123,7 +142,7 @@ function AutoSourceRow({
               )}
             </>
           )}
-          {isError && (
+          {isError && !isQuotaExhausted && (
             <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
               <AlertCircle className="w-3 h-3 flex-shrink-0" />
               <button
@@ -143,6 +162,28 @@ function AutoSourceRow({
           {isNew && source.enabled && (
             <span className="text-muted-foreground/60">Will sync on next refresh</span>
           )}
+        </div>
+      )}
+
+      {isQuotaExhausted && (
+        <div className="ml-4 mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="min-w-0">
+              <p className="font-semibold">
+                Daily API limit reached — syncing resumes {formatQuotaReset(source.lastSyncError)}
+              </p>
+              <a
+                href="https://open.gsa.gov/api/sam-api/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex items-center gap-1 text-amber-700 underline decoration-amber-400 underline-offset-2 hover:text-amber-950 dark:text-amber-300 dark:hover:text-amber-100"
+              >
+                How to request a higher quota
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          </div>
         </div>
       )}
 
