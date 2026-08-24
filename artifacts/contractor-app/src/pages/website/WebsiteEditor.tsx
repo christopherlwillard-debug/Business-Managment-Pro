@@ -1750,6 +1750,11 @@ function WebsiteEditor() {
   const isDirtyRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataInitializedRef = useRef(false);
+  const editorRevisionRef = useRef(0);
+  const businessSessionRef = useRef(0);
+  const saveInFlightRef = useRef(false);
+  const saveQueuedRef = useRef(false);
+  const saveErrorRevisionRef = useRef<number | null>(null);
 
   const bizId = activeBusiness?.id;
 
@@ -1800,6 +1805,12 @@ function WebsiteEditor() {
     setLocalSettings(null);
     setActivePageId("home");
     isDirtyRef.current = false;
+    editorRevisionRef.current = 0;
+    businessSessionRef.current += 1;
+    saveInFlightRef.current = false;
+    saveQueuedRef.current = false;
+    saveErrorRevisionRef.current = null;
+    setHasUnpublishedChanges(false);
     pickerShownRef.current = false;
     dataInitializedRef.current = false;
     history.reset();
@@ -2234,7 +2245,7 @@ function WebsiteEditor() {
     }, 40);
   }
 
-  const { data: config, isLoading } = useQuery<WebsiteConfig>({
+  const { data: config, isLoading, isError: configLoadFailed, refetch: refetchConfig } = useQuery<WebsiteConfig>({
     queryKey: ["website-config", bizId],
     enabled: !!bizId,
     queryFn: async () => {
@@ -2340,7 +2351,7 @@ function WebsiteEditor() {
   // Keep shortcut refs current every render
   activeSectionRef.current = activeSection;
   copiedSectionRef.current = copiedSection;
-  saveMutateRef.current = () => saveMutation.mutate();
+  saveMutateRef.current = () => requestSave();
 
   useEffect(() => {
     if (!config || dataInitializedRef.current) return;
@@ -2461,36 +2472,87 @@ function WebsiteEditor() {
     settings.footerTextColor, settings.footerLinkColor, settings.focusRingColor,
   ]);
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      const currentPages = pagesRef.current;
-      const homePage = currentPages.find(p => p.id === "home") ?? currentPages[0];
-      const additionalPages = currentPages.filter(p => p.id !== "home");
-      const payload = {
+  type SaveRequest = {
+    businessId: number;
+    session: number;
+    revision: number;
+    payload: { sections: Section[]; settings: SiteSettings & { pages?: SitePage[] } };
+  };
+
+  function captureSaveRequest(): SaveRequest | null {
+    if (!bizId) return null;
+    const currentPages = pagesRef.current;
+    const homePage = currentPages.find(p => p.id === "home") ?? currentPages[0];
+    const additionalPages = currentPages.filter(p => p.id !== "home");
+    return {
+      businessId: bizId,
+      session: businessSessionRef.current,
+      revision: editorRevisionRef.current,
+      payload: {
         sections: (homePage?.sections ?? []).map((s, i) => ({ ...s, order: i })),
         settings: {
           ...settingsRef.current,
           ...(additionalPages.length > 0 ? { pages: additionalPages } : {}),
         },
-      };
-      const res = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
+      },
+    };
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: async (request: SaveRequest) => {
+      const res = await fetch(`${BASE}/api/website?businessId=${request.businessId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(payload),
+        body: JSON.stringify(request.payload),
       });
-      if (!res.ok) throw new Error("Save failed");
-      return res.json();
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Save failed");
+      }
+      return { response: await res.json(), request };
     },
-    onSuccess: () => {
-      isDirtyRef.current = false;
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      setShowSaved(true);
+    onSuccess: ({ response, request }) => {
+      if (request.businessId !== bizId || request.session !== businessSessionRef.current) return;
+      saveErrorRevisionRef.current = null;
+      qc.setQueryData(["website-config", bizId], response);
+      if (request.revision === editorRevisionRef.current) {
+        isDirtyRef.current = false;
+      } else {
+        // A newer edit happened while this request was in flight. Keep the
+        // editor dirty and immediately queue a snapshot of the newer revision.
+        saveQueuedRef.current = true;
+      }
+      setShowSaved(request.revision === editorRevisionRef.current);
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
       savedTimerRef.current = setTimeout(() => setShowSaved(false), 2500);
     },
-    onError: () => toast({ title: "Save failed", variant: "destructive" }),
+    onError: (_error, request) => {
+      if (request.businessId !== bizId || request.session !== businessSessionRef.current) return;
+      saveErrorRevisionRef.current = request.revision;
+      isDirtyRef.current = true;
+      toast({ title: "Save failed", description: "Your changes are still here. Retry when ready.", variant: "destructive" });
+    },
+    onSettled: (_data, _error, request) => {
+      if (request.businessId !== bizId || request.session !== businessSessionRef.current) return;
+      saveInFlightRef.current = false;
+      if (saveQueuedRef.current) {
+        saveQueuedRef.current = false;
+        requestSave();
+      }
+    },
   });
+
+  function requestSave() {
+    const request = captureSaveRequest();
+    if (!request) return;
+    if (saveInFlightRef.current) {
+      saveQueuedRef.current = true;
+      return;
+    }
+    saveInFlightRef.current = true;
+    saveMutation.mutate(request);
+  }
 
   const createSavedSectionMutation = useMutation({
     mutationFn: async (data: { name: string; sectionType: string; content: Record<string, unknown>; blockStyle?: Record<string, unknown> }) => {
@@ -2528,36 +2590,47 @@ function WebsiteEditor() {
   useEffect(() => {
     if (!isDirtyRef.current) return;
     if (!bizId) return;
+    // Each state change after initialization represents a new local revision.
+    // Save requests capture this revision rather than reading mutable refs
+    // after the request has started.
+    editorRevisionRef.current += 1;
     setHasUnpublishedChanges(true);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      saveMutation.mutate();
+      requestSave();
     }, 2000);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [localPages, localSettings, bizId]);
 
   async function handlePublish() {
     setPublishing(true);
+    const request = captureSaveRequest();
+    if (!request) {
+      setPublishing(false);
+      return;
+    }
     try {
-      const currentPages = pagesRef.current;
-      const homePage = currentPages.find(p => p.id === "home") ?? currentPages[0];
-      const additionalPages = currentPages.filter(p => p.id !== "home");
-      const payload = {
-        sections: (homePage?.sections ?? []).map((s, i) => ({ ...s, order: i })),
-        settings: {
-          ...settingsRef.current,
-          ...(additionalPages.length > 0 ? { pages: additionalPages } : {}),
-        },
-      };
-      const res = await fetch(`${BASE}/api/website/publish?businessId=${bizId}`, {
+      const res = await fetch(`${BASE}/api/website/publish?businessId=${request.businessId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(payload),
+        body: JSON.stringify(request.payload),
       });
-      if (!res.ok) throw new Error("Publish failed");
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      setHasUnpublishedChanges(false);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Publish failed");
+      }
+      const response = await res.json();
+      if (request.businessId === bizId && request.session === businessSessionRef.current) {
+        qc.setQueryData(["website-config", bizId], response);
+        if (request.revision === editorRevisionRef.current) {
+          setHasUnpublishedChanges(false);
+          isDirtyRef.current = false;
+        } else {
+          setHasUnpublishedChanges(true);
+          isDirtyRef.current = true;
+        }
+      }
       setShowPublished(true);
       setTimeout(() => setShowPublished(false), 5000);
       toast({ title: "Website published!" });
