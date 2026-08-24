@@ -5978,6 +5978,25 @@ function WebsiteEditor() {
     );
   }
 
+  if (configLoadFailed || !config) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3 px-6 text-center">
+        <p className="font-semibold text-destructive">Website editor could not load</p>
+        <p className="text-sm text-muted-foreground max-w-md">
+          Your existing website was not loaded, so editing is disabled to protect it from being replaced with a blank site.
+        </p>
+        <button
+          type="button"
+          onClick={() => refetchConfig()}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
     {showPageTemplatePicker && (
@@ -6664,6 +6683,16 @@ function WebsiteEditor() {
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Saving…
               </span>
+            ) : saveMutation.isError ? (
+              <button
+                type="button"
+                onClick={requestSave}
+                className="hidden sm:flex items-center gap-1 text-[11px] text-destructive hover:underline"
+                title="Retry saving your changes"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Save failed · Retry
+              </button>
             ) : showSaved ? (
               <span className="hidden sm:flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
                 <Check className="w-3 h-3" />
@@ -6673,7 +6702,7 @@ function WebsiteEditor() {
 
             {/* Save Draft */}
             <button
-              onClick={() => saveMutation.mutate()}
+              onClick={requestSave}
               disabled={saveMutation.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors disabled:opacity-60"
             >
@@ -6790,7 +6819,7 @@ function WebsiteEditor() {
             settings={settings}
             pages={pages.filter(p => p.id !== "home")}
             onSeoChange={(seo: SeoSettings) => patchSettings({ seo } as Partial<SiteSettings>)}
-            onSave={() => saveMutation.mutate()}
+            onSave={requestSave}
             isSaving={saveMutation.isPending}
             domain={(settings as any).customDomain ?? undefined}
           />
