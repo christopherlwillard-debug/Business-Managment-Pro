@@ -72,6 +72,14 @@ Created the four-document architecture governance system:
 
 ---
 
+### Owner pay ledger correction
+
+- Job-linked owner pay now writes exclusively to `owner_capital_entries` as a
+  negative withdrawal, and the Owner Pay report reads that ledger directly.
+- Legacy owner-pay expense rows are linked into the canonical ledger and voided
+  by migration `0053_migrate_owner_pay_expenses.sql`, preserving audit history
+  without retaining an operating-expense effect.
+
 *Add new entries here as architectural changes are completed and verified.*
 
 ## 2026-08-20

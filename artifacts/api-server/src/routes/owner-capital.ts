@@ -12,8 +12,8 @@ const router = Router();
  *
  * The UI always stores the user-entered value as-is. Report routes sum positive
  * entries for ownerContributionsTotal and use |negative entries| for capital
- * withdrawals. Owner draws recorded as expenses use the "Owner Draw" /
- * "Owner Compensation" / "Owner Withdrawal" category and are NOT stored here.
+ * withdrawals. Owner draws are stored here as negative entries, including
+ * job-linked withdrawals recorded from the Pay Breakdown tab.
  */
 function formatEntry(e: typeof ownerCapitalEntriesTable.$inferSelect) {
   return {

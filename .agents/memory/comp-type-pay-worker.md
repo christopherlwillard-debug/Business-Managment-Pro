@@ -16,7 +16,9 @@ Expense category: 'Labor' for hourly/fixed; 'Subcontractor' for allocation.
 **Why:** If expense insert fails after status update, accounting would be permanently desynced. A transaction ensures both succeed or both roll back.
 
 ## owner-draw idempotency
-Deduplicates by `jobId + category + date + description` before inserting.
+Job-linked owner pay is written only to `owner_capital_entries` as a negative
+withdrawal and deduplicates by `jobId + date` before inserting. It must never
+be written to `expenses`.
 
 ## recomputeSubPaid() authoritative signals
 1. `paymentStatus='paid'` → always paid (set by pay-worker within its transaction)

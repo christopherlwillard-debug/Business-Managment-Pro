@@ -2584,46 +2584,37 @@ router.post("/:id/record-owner-draw", async (req, res) => {
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
     const amount = parseFloat(String(req.body.amount ?? "0"));
     if (isNaN(amount) || amount <= 0) return res.status(400).json({ error: "Invalid amount" });
-    const [job] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
+    const [job] = await db.select({
+      businessId: jobsTable.businessId,
+      businessLine: jobsTable.businessLine,
+    }).from(jobsTable).where(eq(jobsTable.id, jobId));
     const today = new Date().toISOString().split("T")[0];
     const description = String(req.body.description ?? `Owner Draw — Job ${jobId}`);
 
-    // Idempotency: return existing record if owner pay already recorded for this job today
-    const [existing] = await db.select({ id: expensesTable.id })
-      .from(expensesTable)
+    // Idempotency: owner pay is one ledger event, so check the owner-pay ledger
+    // rather than the operating-expense table.
+    const [existing] = await db.select({ id: ownerCapitalEntriesTable.id })
+      .from(ownerCapitalEntriesTable)
       .where(and(
-        eq(expensesTable.jobId, jobId),
-        inArray(expensesTable.category, ["Owner Compensation", "Owner Draw"]),
-        eq(expensesTable.date, today),
-          isNull(expensesTable.voidedAt),
+        eq(ownerCapitalEntriesTable.jobId, jobId),
+        eq(ownerCapitalEntriesTable.date, today),
+        sql`${ownerCapitalEntriesTable.amount} < 0`,
+        isNull(ownerCapitalEntriesTable.voidedAt),
       ));
-    if (existing) return res.json({ ok: true, expenseId: existing.id, alreadyExists: true });
+    if (existing) return res.json({ ok: true, ownerCapitalId: existing.id, alreadyExists: true });
 
-    const [exp] = await db.insert(expensesTable).values({
-      description,
-      amount: String(amount),
-      category: "Owner Compensation",
-      date: today,
-      jobId,
-      businessLine: job?.businessLine,
-      // Single-member LLC: owner pay is an equity withdrawal, never a deductible business expense
-      excludeFromNetProfit: true,
-    }).returning();
-
-    // Dual-write to the canonical owner-withdrawal ledger so My Pay can read
-    // exclusively from owner_capital_entries without unioning expenses.
-    // amount is negative per sign convention (withdrawal = money out).
-    // expenseId links both rows so dedup queries can identify this as one event.
-    await db.insert(ownerCapitalEntriesTable).values({
+    // Owner pay is an equity withdrawal, not an operating expense. Keep the
+    // canonical negative sign so all Owner Pay surfaces use one ledger.
+    const [entry] = await db.insert(ownerCapitalEntriesTable).values({
+      businessId: job?.businessId ?? null,
       jobId,
       date: today,
       description,
       amount: String(-amount),
       source: "job_payroll",
-      expenseId: exp.id,
-    }).onConflictDoNothing();
+    }).returning();
 
-    res.status(201).json({ ok: true, expenseId: exp.id });
+    res.status(201).json({ ok: true, ownerCapitalId: entry.id });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to record owner draw" });

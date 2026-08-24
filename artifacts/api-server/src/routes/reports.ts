@@ -2414,36 +2414,31 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
     });
 
     // ── Canonical withdrawal ledger ──────────────────────────────────────────────
-    // Forensic audit (Aug 2026) confirmed owner_capital_entries has only contribution
-    // rows ($7,200 total) and ZERO withdrawal records. The actual $8,418.64 in owner
-    // draws lives in the expenses table under Owner Draw / Owner Compensation.
-    // The planned migration endpoint (admin-migrations /owner-pay-reconciliation)
-    // that would copy expense-draws into owner_capital_entries was NOT run per
-    // owner's explicit decision. So we read directly from the expenses table.
-    // This must NOT also include owner_capital_entries withdrawals (amount < 0)
-    // or we risk double-counting once/if the migration is later applied.
-    const OWNER_WITHDRAWAL_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
+    // Owner pay is equity, not an operating expense. Every withdrawal is stored
+    // as a negative owner-capital entry; expenses are only retained as voided
+    // historical rows by the one-time migration.
     const withdrawalRows = await db
       .select({
-        id: expensesTable.id,
-        date: expensesTable.date,
-        amount: expensesTable.amount,
-        description: expensesTable.description,
-        category: expensesTable.category,
-        jobId: expensesTable.jobId,
+        id: ownerCapitalEntriesTable.id,
+        date: ownerCapitalEntriesTable.date,
+        amount: ownerCapitalEntriesTable.amount,
+        description: ownerCapitalEntriesTable.description,
+        source: ownerCapitalEntriesTable.source,
+        jobId: ownerCapitalEntriesTable.jobId,
+        expenseId: ownerCapitalEntriesTable.expenseId,
       })
-      .from(expensesTable)
-      .where(and(inArray(expensesTable.category, OWNER_WITHDRAWAL_CATS), isNull(expensesTable.voidedAt)))
-      .orderBy(desc(expensesTable.date));
+      .from(ownerCapitalEntriesTable)
+      .where(and(sql`${ownerCapitalEntriesTable.amount} < 0`, isNull(ownerCapitalEntriesTable.voidedAt)))
+      .orderBy(desc(ownerCapitalEntriesTable.date));
 
     const withdrawals = withdrawalRows.map(r => ({
-      id: `exp-${r.id}`,
+      id: `owner-${r.id}`,
       date: r.date,
       amount: Math.abs(parseFloat(r.amount as string)),
-      description: r.description ?? r.category ?? "Owner Pay",
-      source: r.category ?? "Owner Draw",
+      description: r.description ?? "Owner Pay",
+      source: r.source ?? "Owner Pay",
       jobId: r.jobId ?? null,
-      expenseId: r.id,
+      expenseId: r.expenseId ?? null,
     }));
 
     const totalWithdrawn = withdrawals.reduce((s, w) => s + w.amount, 0);
