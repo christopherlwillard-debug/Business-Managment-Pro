@@ -22,6 +22,7 @@ import {
   Paperclip, CreditCard, Copy, ExternalLink, Bell, Search, Send, Mail,
 } from "lucide-react";
 import { InvoicePanel } from "@/components/InvoicePanel";
+import { InvoiceDeliveryHistory } from "@/components/InvoiceDeliveryHistory";
 
 const STATUS_COLORS: Record<string, string> = {
   paid:          "bg-emerald-100 text-emerald-700",
@@ -534,46 +535,12 @@ export default function Invoices() {
                               <Mail className="w-3 h-3" />
                             </span>
                           )}
-                          {remindersSentAt.length > 0 && (
-                            <span className="relative">
-                              <button
-                                type="button"
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  setReminderHistoryInvoiceId(current => current === inv.id ? null : inv.id);
-                                }}
-                                className="inline-flex items-center gap-0.5 rounded px-1 text-[10px] font-semibold text-blue-600 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                aria-label={`${remindersSentAt.length} reminder${remindersSentAt.length > 1 ? "s" : ""} sent`}
-                                title={`${remindersSentAt.length} reminder${remindersSentAt.length > 1 ? "s" : ""} sent`}
-                              >
-                                <Bell className="w-3 h-3" />
-                                {remindersSentAt.length}
-                              </button>
-                              {reminderHistoryInvoiceId === inv.id && (
-                                <div
-                                  role="dialog"
-                                  aria-label={`Reminder history for invoice ${inv.invoiceNumber ?? "draft"}`}
-                                  className="absolute left-0 top-full z-30 mt-2 w-56 rounded-xl border border-border bg-card p-3 text-left shadow-xl"
-                                  onClick={e => e.stopPropagation()}
-                                >
-                                  <p className="mb-1.5 text-[11px] font-semibold text-foreground">Reminder history</p>
-                                  <div className="space-y-1">
-                                    {remindersSentAt.map((timestamp: string, index: number) => (
-                                      <p key={`${timestamp}-${index}`} className="text-[11px] font-normal text-muted-foreground">
-                                        {new Date(timestamp).toLocaleString("en-US", {
-                                          month: "short",
-                                          day: "numeric",
-                                          year: "numeric",
-                                          hour: "numeric",
-                                          minute: "2-digit",
-                                        })}
-                                      </p>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </span>
-                          )}
+                          <InvoiceDeliveryHistory
+                            invoiceNumber={inv.invoiceNumber}
+                            remindersSentAt={remindersSentAt}
+                            isOpen={reminderHistoryInvoiceId === inv.id}
+                            onToggle={() => setReminderHistoryInvoiceId(current => current === inv.id ? null : inv.id)}
+                          />
                         </div>
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">{formatDate(inv.issueDate)}</td>
