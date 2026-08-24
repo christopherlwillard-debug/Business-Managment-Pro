@@ -40,6 +40,8 @@ import {
 } from "lucide-react";
 import { MileIQProvider, computeFileHash, type ParsedTrip, type InvalidRow } from "@/lib/mileageImport";
 import { getIrsRate } from "@/lib/irsMileageRates";
+import { confirmRouteDistance, clearRouteDistanceConfirmation } from "@/lib/mileageRouteConfirmation";
+import { MileageRouteConfirmation } from "@/components/MileageRouteConfirmation";
 
 async function geocodeAddress(address: string): Promise<{ lat: string; lon: string }> {
   const params = new URLSearchParams({ q: address, format: "json", limit: "1" });
@@ -341,7 +343,7 @@ export default function Mileage() {
       ]);
       const miles = await getDrivingDistanceMiles(fromCoords, toCoords);
       setManual(m => ({ ...m, miles: String(miles) }));
-      setCalculatedDistance(miles);
+      setCalculatedDistance(confirmRouteDistance(miles));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Couldn't calculate distance. Try a more specific address.";
       setDistCalcError(msg);
@@ -1022,16 +1024,11 @@ export default function Mileage() {
                       value={manual.miles}
                       onChange={e => {
                         setManual(m => ({ ...m, miles: e.target.value }));
-                        setCalculatedDistance(null);
+                        setCalculatedDistance(clearRouteDistanceConfirmation());
                       }}
                       className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
-                    {calculatedDistance !== null && (
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-50 border border-sky-200 text-xs text-sky-700">
-                        <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>{calculatedDistance.toFixed(1)} mi via driving route · from address lookup</span>
-                      </div>
-                    )}
+                    <MileageRouteConfirmation miles={calculatedDistance} />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium text-foreground">Start Address</label>
@@ -1041,7 +1038,7 @@ export default function Mileage() {
                       value={manual.startLocation}
                       onChange={e => {
                         setManual(m => ({ ...m, startLocation: e.target.value }));
-                        setCalculatedDistance(null);
+                        setCalculatedDistance(clearRouteDistanceConfirmation());
                         setDistCalcError("");
                       }}
                       className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -1055,7 +1052,7 @@ export default function Mileage() {
                       value={manual.endLocation}
                       onChange={e => {
                         setManual(m => ({ ...m, endLocation: e.target.value }));
-                        setCalculatedDistance(null);
+                        setCalculatedDistance(clearRouteDistanceConfirmation());
                         setDistCalcError("");
                       }}
                       className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
