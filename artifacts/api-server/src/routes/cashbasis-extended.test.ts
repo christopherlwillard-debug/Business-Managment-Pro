@@ -633,6 +633,103 @@ describe("Cash-basis net-profit consistency across reports", () => {
     expect(accounting.body.summary.totalExpenses).toBeCloseTo(9628.47, 2);
     expect(yearEnd.body.summary.totalExpenses).toBeCloseTo(9628.47, 2);
   });
+
+  it("keeps a business-line filter consistent across P&L, Accounting, and Year-End", async () => {
+    const FILTERED_LINE = "mfh";
+    const FILTERED_INVOICE = {
+      ...CONSISTENCY_INVOICE,
+      total: "1000.00",
+      subtotal: "1000.00",
+      amountPaid: "1000.00",
+      businessLine: FILTERED_LINE,
+    };
+    const FILTERED_SUB_PAYMENT = {
+      ...SUB_PAYMENT,
+      amount: "250.00",
+      businessLine: FILTERED_LINE,
+    };
+
+    // The DB-level businessLine predicate excludes null and other-line rows before
+    // these route calculations receive their results. Keep those rows documented in
+    // the fixture so this test protects the intended boundary, not just the totals.
+    const UNTAGGED_PAYMENT = { ...SUB_PAYMENT, amount: "900.00", businessLine: null };
+    const OTHER_LINE_PAYMENT = { ...SUB_PAYMENT, amount: "800.00", businessLine: "services" };
+    expect([UNTAGGED_PAYMENT, OTHER_LINE_PAYMENT].every(p => p.businessLine !== FILTERED_LINE)).toBe(true);
+
+    function pushFilteredPAndLFixture() {
+      h.selectQueue.push([{ id: 1 }]);              // business lookup
+      h.selectQueue.push([FILTERED_INVOICE]);       // invRows
+      h.selectQueue.push([]);                       // expRows
+      h.selectQueue.push(NO_MILEAGE);               // mileage
+      h.selectQueue.push([]);                       // other income
+      h.selectQueue.push([FILTERED_SUB_PAYMENT]);  // matching sub payment only
+      h.selectQueue.push([]);                       // outstanding subs
+      h.selectQueue.push([{ n: 0 }]);               // closed jobs
+      h.selectQueue.push([]);                       // assets
+      h.selectQueue.push([]);                       // business use
+      h.selectQueue.push([]);                       // waterfall invoices
+      h.selectQueue.push([]);                       // owner capital
+      h.selectQueue.push([{}]);                     // settings
+    }
+
+    function pushFilteredAccountingFixture() {
+      h.selectQueue.push([{ id: 1 }]);              // business lookup
+      h.selectQueue.push([FILTERED_INVOICE]);       // paid invoices
+      h.selectQueue.push([]);                       // non-paid invoices
+      h.selectQueue.push([]);                       // expenses
+      h.selectQueue.push([]);                       // mileage
+      h.selectQueue.push([]);                       // subcontractors
+      h.selectQueue.push([{}]);                     // settings
+      h.selectQueue.push([]);                       // other income
+      h.selectQueue.push([FILTERED_SUB_PAYMENT]);  // matching sub payment only
+      h.selectQueue.push([]);                       // assets
+      h.selectQueue.push([]);                       // business use
+      h.selectQueue.push([]);                       // waterfall invoices
+      h.selectQueue.push([]);                       // owner capital
+      h.selectQueue.push([]);                       // businesses
+      h.selectQueue.push([]);                       // outstanding subs
+    }
+
+    function pushFilteredYearEndFixture() {
+      h.selectQueue.push([{ id: 1 }]);              // business lookup
+      h.selectQueue.push([FILTERED_INVOICE]);       // invoices
+      h.selectQueue.push([]);                       // expenses
+      h.selectQueue.push([]);                       // mileage
+      h.selectQueue.push([]);                       // other income
+      h.selectQueue.push([]);                       // assets
+      h.selectQueue.push([]);                       // tax payments
+      h.selectQueue.push([]);                       // subcontractors
+      h.selectQueue.push([{}]);                     // settings
+      h.selectQueue.push([]);                       // business use
+      h.selectQueue.push([FILTERED_SUB_PAYMENT]);  // matching sub payment only
+      h.selectQueue.push([]);                       // owner capital
+      h.selectQueue.push([]);                       // waterfall invoices
+    }
+
+    pushFilteredPAndLFixture();
+    const pl = await request(app).get(`/reports/profit-loss?year=${YEAR}&businessLine=${FILTERED_LINE}`);
+    expect(pl.status).toBe(200);
+
+    pushFilteredAccountingFixture();
+    const accounting = await request(app).get(`/reports/accounting?year=${YEAR}&businessLine=${FILTERED_LINE}`);
+    expect(accounting.status).toBe(200);
+
+    pushFilteredYearEndFixture();
+    const yearEnd = await request(app).get(`/reports/year-end?year=${YEAR}&businessLine=${FILTERED_LINE}`);
+    expect(yearEnd.status).toBe(200);
+
+    expect(pl.body.netProfit).toBeCloseTo(750, 2);
+    expect(accounting.body.summary.netProfit).toBeCloseTo(750, 2);
+    expect(yearEnd.body.summary.netProfit).toBeCloseTo(750, 2);
+    expect(pl.body.netProfit).toBeCloseTo(accounting.body.summary.netProfit, 10);
+    expect(accounting.body.summary.netProfit).toBeCloseTo(yearEnd.body.summary.netProfit, 10);
+
+    const contractLabor = (pl.body.operatingExpenses as any[])
+      .find(entry => entry.key === "contractLabor");
+    expect(contractLabor?.amount).toBeCloseTo(250, 2);
+    expect(accounting.body.summary.totalExpenses).toBeCloseTo(250, 2);
+    expect(yearEnd.body.summary.totalExpenses).toBeCloseTo(250, 2);
+  });
 });
 
 // ── Dashboard monthly chart: sub payment in prior chart month ─────────────────
