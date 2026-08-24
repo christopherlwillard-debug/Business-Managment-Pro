@@ -173,16 +173,24 @@ const NO_MILEAGE = [{ totalMiles: null, totalDed: null }];
  * @param expSlot — the expenses array to place in slot [1]
  * @param subPaySlot — the sub_payment_records array for slot [4] (default [])
  */
-function pushPLSelects(expSlot: any[], subPaySlot: any[] = []): void {
+function pushPLSelects(
+  expSlot: any[],
+  subPaySlot: any[] = [],
+  outstandingSubSlot: any[] = [],
+  hourlyCostSlot: any[] = [],
+): void {
   h.selectQueue.push([PAID_INVOICE]);  // [0] invRows
   h.selectQueue.push(expSlot);         // [1] expRows
   h.selectQueue.push(NO_MILEAGE);      // [2] mileRows (aggregate)
   h.selectQueue.push([]);              // [3] otherRows
   h.selectQueue.push(subPaySlot);      // [4] plSubPayRows
-  h.selectQueue.push([]);              // [5] outstandingSubRows
-  h.selectQueue.push([{ n: 0 }]);     // [6] closedCountRow
-  h.selectQueue.push([]);              // [7] assets (computeDepreciationForYear)
-  h.selectQueue.push([]);              // [8] busUseRows (computeDepreciationForYear)
+  h.selectQueue.push(outstandingSubSlot); // [5] outstandingSubRows
+  if (outstandingSubSlot.some(r => r.compensationType === "hourly")) {
+    h.selectQueue.push(hourlyCostSlot); // [6] hourly hours × rate_snapshot
+  }
+  h.selectQueue.push([{ n: 0 }]);     // closedCountRow
+  h.selectQueue.push([]);              // assets (computeDepreciationForYear)
+  h.selectQueue.push([]);              // busUseRows (computeDepreciationForYear)
   // computeOwnerWaterfall fires its first await synchronously before the outer
   // Promise.all calls .then() on the two direct chain objects (ownerContribRows, settingsRows).
   h.selectQueue.push([]);             // [9]  waterfallPaidInvs (no jobId → no subHours query)
@@ -285,6 +293,40 @@ describe("P&L report — owner-draw exclusion from operating expenses and net pr
 
     // ownerDrawTotal must be zero when no draws are present
     expect(res.body.ownerActivity.ownerDrawTotal).toBeCloseTo(0, 10);
+  });
+
+  it("shows an unpaid hourly sub using logged hours and rate_snapshot when amountOwed is null", async () => {
+    const HOURLY_OUTSTANDING = {
+      subName: "Hourly Sub",
+      jobTitle: "Kitchen remodel",
+      jobId: 42,
+      subcontractorId: 7,
+      amountOwed: null,
+      fixedAmount: null,
+      amountPaid: "15.00",
+      compensationType: "hourly",
+      businessLine: null,
+    };
+
+    pushPLSelects(
+      [],
+      [],
+      [HOURLY_OUTSTANDING],
+      [{ jobId: 42, subcontractorId: 7, cost: "75.00" }],
+    );
+
+    const res = await request(app).get(`/reports/profit-loss?year=${YEAR}`);
+    expect(res.status).toBe(200);
+
+    expect(res.body.outstandingSubLiability.total).toBeCloseTo(60, 10);
+    expect(res.body.outstandingSubLiability.items).toEqual([
+      expect.objectContaining({
+        subName: "Hourly Sub",
+        jobTitle: "Kitchen remodel",
+        compensationType: "hourly",
+        amount: 60,
+      }),
+    ]);
   });
 
   // ── 6. netOperatingIncome reflects exclusion before deductions ────────────
