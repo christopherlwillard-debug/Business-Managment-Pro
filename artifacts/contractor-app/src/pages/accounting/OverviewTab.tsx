@@ -859,6 +859,8 @@ function BusinessReserveDashboard() {
               <button
                 onClick={() => toggle("taxes")}
                 className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
+                aria-expanded={expanded === "taxes"}
+                aria-controls="reserve-tax-breakdown"
               >
                 <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
                   <DollarSign className="w-4 h-4 text-amber-600" />
@@ -871,7 +873,7 @@ function BusinessReserveDashboard() {
                 <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${expanded === "taxes" ? "rotate-180" : ""}`} />
               </button>
               {expanded === "taxes" && (
-                <div className="border-t border-border p-4 bg-amber-50/40 space-y-3">
+                <div id="reserve-tax-breakdown" role="region" aria-label="Estimated tax breakdown" className="border-t border-border p-4 bg-amber-50/40 space-y-3">
                   <div className="grid grid-cols-2 gap-2">
                     <div className="rounded-lg bg-white border border-amber-200 p-2 text-center">
                       <p className="text-[9px] uppercase font-semibold text-amber-700">Federal SE</p>
