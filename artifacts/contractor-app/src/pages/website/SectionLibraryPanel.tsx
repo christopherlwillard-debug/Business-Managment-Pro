@@ -312,6 +312,8 @@ export function SectionLibraryPanel({
   const [showSaved, setShowSaved] = useState(false);
   const [favIds, setFavIds] = useState<Set<string>>(() => loadFavs());
   const searchRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   // ── AI Section Builder state ──────────────────────────────────────────────
   const [aiPrompt, setAiPrompt] = useState("");
@@ -365,12 +367,31 @@ export function SectionLibraryPanel({
   // Reset and focus on open
   useEffect(() => {
     if (show) {
+      restoreFocusRef.current = document.activeElement as HTMLElement | null;
       setSearch("");
       setActiveCategory("All");
       setShowFavs(false);
       setShowSaved(false);
       setTimeout(() => searchRef.current?.focus(), 80);
     }
+  }, [show]);
+
+  useEffect(() => {
+    if (!show) return;
+    function trapFocus(e: KeyboardEvent) {
+      if (e.key !== "Tab" || !panelRef.current) return;
+      const focusable = [...panelRef.current.querySelectorAll<HTMLElement>("button, [href], input, [tabindex]:not([tabindex='-1'])")].filter(el => !el.hasAttribute("disabled"));
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    window.addEventListener("keydown", trapFocus, true);
+    return () => {
+      window.removeEventListener("keydown", trapFocus, true);
+      restoreFocusRef.current?.focus();
+    };
   }, [show]);
 
   // Esc closes (capture phase so it fires before canvas Esc handler)
@@ -447,6 +468,7 @@ export function SectionLibraryPanel({
     <>
       {/* Backdrop — click to close */}
       <div
+        ref={panelRef}
         className="fixed inset-0 z-[400] bg-black/40 backdrop-blur-[1px]"
         onClick={onClose}
         aria-hidden="true"
@@ -487,6 +509,7 @@ export function SectionLibraryPanel({
             onClick={onClose}
             className="flex-shrink-0 p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
             title="Close (Esc)"
+            aria-label="Close section library"
           >
             <X className="w-4 h-4" />
           </button>

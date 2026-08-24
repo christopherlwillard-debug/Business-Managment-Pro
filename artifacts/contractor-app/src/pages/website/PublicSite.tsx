@@ -215,6 +215,9 @@ export default function PublicSite() {
   const pageSlug = params.page;
   const [paymentSuccessDismissed, setPaymentSuccessDismissed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileMenuRef = useRef<HTMLElement>(null);
+  const hadOpenMobileMenuRef = useRef(false);
   const paymentSuccess = new URLSearchParams(window.location.search).get("payment") === "success";
   const isDraftPreview = new URLSearchParams(window.location.search).get("draft") === "1";
 
@@ -250,6 +253,29 @@ export default function PublicSite() {
     trackedRef.current = true;
     fetch(`${BASE}/api/public/site/${s}/view`, { method: "POST", keepalive: true }).catch(() => {});
   }, [data?.businessSlug, isDraftPreview]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const firstLink = mobileMenuRef.current?.querySelector<HTMLElement>("a");
+    firstLink?.focus();
+    function handleMenuKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMobileMenuOpen(false);
+      }
+    }
+    window.addEventListener("keydown", handleMenuKeyDown);
+    return () => window.removeEventListener("keydown", handleMenuKeyDown);
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      hadOpenMobileMenuRef.current = true;
+    } else if (hadOpenMobileMenuRef.current) {
+      mobileMenuButtonRef.current?.focus();
+      hadOpenMobileMenuRef.current = false;
+    }
+  }, [mobileMenuOpen]);
 
   async function handleContactSubmit(formData: Record<string, unknown>) {
     const fieldValues = (formData.fieldValues ?? {}) as Record<string, string>;
@@ -617,10 +643,14 @@ export default function PublicSite() {
           )}
           {showNav && navLinks.length > 0 && (
             <button
+              ref={mobileMenuButtonRef}
+              type="button"
               className="md:hidden p-1"
               style={{ color: `var(--theme-header-text, ${isDarkHeader ? "#ffffff" : "#111111"})` }}
               onClick={() => setMobileMenuOpen(v => !v)}
               aria-label="Toggle menu"
+              aria-expanded={mobileMenuOpen}
+              aria-controls="public-mobile-navigation"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -630,9 +660,12 @@ export default function PublicSite() {
 
       {/* Mobile nav drawer */}
       {showNav && mobileMenuOpen && navLinks.length > 0 && (
-        <div
+        <nav
+          ref={mobileMenuRef}
+          id="public-mobile-navigation"
           className={`md:hidden border-b ${mobileBorder} px-6 py-4 space-y-3 shadow-md`}
           style={{ backgroundColor: `var(--theme-header-bg, ${isDarkHeader ? "#111827" : "#ffffff"})` }}
+          aria-label="Mobile navigation"
         >
           {navLinks.map(link => (
             link.href.startsWith("/") ? (
@@ -666,7 +699,7 @@ export default function PublicSite() {
               {headerPhone}
             </a>
           )}
-        </div>
+        </nav>
       )}
 
       {bodySections.map(section =>

@@ -101,7 +101,7 @@ export function InlineEditableText({
 
   // Keyboard handler for the selected-but-not-editing state
   function handleSelectedKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       ctx?.startEditing(id, value, onCommit, enterBehavior, escapeBehavior);
     }
@@ -173,8 +173,11 @@ export function InlineEditableText({
       ref={ref}
       className={`${className}${empty && ctx ? " opacity-40 italic" : ""}${ctx ? " cursor-text" : ""}`}
       style={style}
+      tabIndex={ctx ? 0 : undefined}
+      aria-label={ctx ? (empty ? placeholder : value) : undefined}
       onClick={ctx ? handleClick : undefined}
       onDoubleClick={ctx ? handleDoubleClick : undefined}
+      onKeyDown={ctx ? handleSelectedKeyDown : undefined}
       data-inline-editable={id}
     >
       {empty && ctx ? placeholder : value}

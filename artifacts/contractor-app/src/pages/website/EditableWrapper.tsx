@@ -94,6 +94,27 @@ function PaddingGuides({
     dragRef.current = null;
   }
 
+  function handleGuideKeyDown(e: React.KeyboardEvent<HTMLDivElement>, which: "top" | "bottom") {
+    if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dragStartedRef.current) { dragStartedRef.current = true; onDragStart(); }
+    const current = which === "top" ? (liveTop ?? paddingTop) : (liveBottom ?? paddingBottom);
+    const next = e.key === "Home"
+      ? 0
+      : e.key === "End"
+        ? 200
+        : Math.max(0, Math.min(200, current + (e.key === "ArrowUp" ? 8 : -8)));
+    if (which === "top") {
+      setLiveTop(next);
+      onChangeLive(next, liveBottom ?? paddingBottom);
+    } else {
+      setLiveBottom(next);
+      onChangeLive(liveTop ?? paddingTop, next);
+    }
+    handlePointerUp();
+  }
+
   const topActive = dragging === "top" || snapFlash === "top";
   const bottomActive = dragging === "bottom" || snapFlash === "bottom";
 
@@ -103,7 +124,6 @@ function PaddingGuides({
       <div
         className="absolute left-0 right-0 z-30 select-none pointer-events-none"
         style={{ top: displayTop }}
-        aria-hidden="true"
       >
         {/* 16 px hit area centred on the guide line */}
         <div
@@ -112,7 +132,14 @@ function PaddingGuides({
           onPointerDown={handlePointerDownTop}
           onPointerMove={handlePointerMoveTop}
           onPointerUp={handlePointerUp}
+          onKeyDown={e => handleGuideKeyDown(e, "top")}
           onClick={e => e.stopPropagation()}
+          role="slider"
+          tabIndex={0}
+          aria-label="Top section padding"
+          aria-valuemin={0}
+          aria-valuemax={200}
+          aria-valuenow={displayTop}
         >
           {/* Visual dashed line */}
           <div
@@ -137,7 +164,6 @@ function PaddingGuides({
       <div
         className="absolute left-0 right-0 z-30 select-none pointer-events-none"
         style={{ bottom: displayBottom }}
-        aria-hidden="true"
       >
         <div
           className="absolute left-0 right-0 cursor-ns-resize"
@@ -145,7 +171,14 @@ function PaddingGuides({
           onPointerDown={handlePointerDownBottom}
           onPointerMove={handlePointerMoveBottom}
           onPointerUp={handlePointerUp}
+          onKeyDown={e => handleGuideKeyDown(e, "bottom")}
           onClick={e => e.stopPropagation()}
+          role="slider"
+          tabIndex={0}
+          aria-label="Bottom section padding"
+          aria-valuemin={0}
+          aria-valuemax={200}
+          aria-valuenow={displayBottom}
         >
           {/* Visual dashed line */}
           <div
@@ -193,6 +226,7 @@ function ToolbarBtn({
         onClick={onClick}
         disabled={disabled}
         className={className}
+        aria-label={tooltip}
       >
         {children}
       </button>
@@ -367,6 +401,10 @@ export function EditableWrapper({
   return (
     <div
       data-section-canvas-id={id}
+      role="group"
+      tabIndex={locked ? -1 : 0}
+      aria-label={`${label}${isSelected ? ", selected" : ""}${isHidden ? ", hidden" : ""}`}
+      aria-selected={isSelected}
       className={`group/sec relative transition-all duration-100 ${
         locked
           ? "cursor-not-allowed"
@@ -381,6 +419,13 @@ export function EditableWrapper({
           : "ring-2 ring-inset ring-slate-400/40"
       } ${isHidden ? "opacity-50" : ""}`}
       onClick={locked ? undefined : onSelect}
+      onKeyDown={locked ? undefined : e => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          onSelect(e as unknown as React.MouseEvent);
+        }
+      }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onDoubleClick={locked ? undefined : (e) => {

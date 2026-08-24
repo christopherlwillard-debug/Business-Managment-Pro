@@ -102,7 +102,7 @@ export function SelectionHandles({
 
   const hasResize = !!(onResizeStart && onResizeLive && onResizeCommit);
 
-  function handlePointerDown(e: React.PointerEvent<HTMLDivElement>, edge: HandleId) {
+  function handlePointerDown(e: React.PointerEvent<HTMLButtonElement>, edge: HandleId) {
     if (!hasResize) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -110,7 +110,7 @@ export function SelectionHandles({
     onResizeStart!(edge);
   }
 
-  function handlePointerMove(e: React.PointerEvent<HTMLDivElement>, edge: HandleId) {
+  function handlePointerMove(e: React.PointerEvent<HTMLButtonElement>, edge: HandleId) {
     if (!dragRef.current || dragRef.current.edge !== edge) return;
     e.stopPropagation();
     const dx = e.clientX - dragRef.current.startX;
@@ -118,7 +118,7 @@ export function SelectionHandles({
     onResizeLive!(edge, dx, dy);
   }
 
-  function handlePointerUp(e: React.PointerEvent<HTMLDivElement>, edge: HandleId) {
+  function handlePointerUp(e: React.PointerEvent<HTMLButtonElement>, edge: HandleId) {
     if (!dragRef.current || dragRef.current.edge !== edge) return;
     e.stopPropagation();
     const dx = e.clientX - dragRef.current.startX;
@@ -140,8 +140,10 @@ export function SelectionHandles({
 
       {/* Resize handles — pointer-events-auto so cursors still show and drag events fire */}
       {HANDLES.map(h => (
-        <div
+        <button
           key={h.id}
+          type="button"
+          aria-label={`Resize ${h.id.toUpperCase()} edge`}
           className="pointer-events-auto absolute w-[10px] h-[10px] rounded-[2px] bg-white border-[2px] shadow-sm transition-transform hover:scale-125"
           style={{
             ...h.style as React.CSSProperties,
@@ -151,6 +153,16 @@ export function SelectionHandles({
           onPointerDown={hasResize ? e => handlePointerDown(e, h.id) : undefined}
           onPointerMove={hasResize ? e => handlePointerMove(e, h.id) : undefined}
           onPointerUp={hasResize ? e => handlePointerUp(e, h.id) : undefined}
+          onKeyDown={hasResize ? e => {
+            if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
+            e.preventDefault();
+            const step = e.shiftKey ? 10 : 2;
+            const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+            const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+            onResizeStart!(h.id);
+            onResizeLive!(h.id, dx, dy);
+            onResizeCommit!(h.id, dx, dy);
+          } : undefined}
         />
       ))}
     </div>,

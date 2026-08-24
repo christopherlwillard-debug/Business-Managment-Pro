@@ -9,7 +9,7 @@
  *   My Library   — existing MediaLibrary component (upload + browse)
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X, Sparkles, Images, Loader2, AlertCircle, ExternalLink } from "lucide-react";
 import { MediaLibrary } from "./MediaLibrary";
@@ -56,20 +56,19 @@ function ImageGrid({
       {images.map((img, i) => {
         if (errored.has(img.thumbUrl)) return null; // skip broken images
         return (
-          <button
+          <div
             key={`${img.url}-${i}`}
-            type="button"
-            onClick={() => onSelect(img.url)}
             className="group relative rounded-lg overflow-hidden border border-border hover:border-primary hover:shadow-md transition-all aspect-video bg-muted"
-            title={img.label}
           >
-            <img
-              src={img.thumbUrl}
-              alt={img.label}
-              loading="lazy"
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-              onError={() => setErrored(prev => new Set(prev).add(img.thumbUrl))}
-            />
+            <button type="button" onClick={() => onSelect(img.url)} className="absolute inset-0 w-full text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset" aria-label={`Select ${img.label}`}>
+              <img
+                src={img.thumbUrl}
+                alt=""
+                loading="lazy"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                onError={() => setErrored(prev => new Set(prev).add(img.thumbUrl))}
+              />
+            </button>
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
             <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <p className="text-[10px] text-white font-medium leading-tight truncate">{img.label}</p>
@@ -89,7 +88,7 @@ function ImageGrid({
                 <ExternalLink className="w-2.5 h-2.5 text-white" />
               </a>
             )}
-          </button>
+          </div>
         );
       })}
     </div>
@@ -230,6 +229,33 @@ export function ImagePickerModal({
   onClose,
 }: ImagePickerModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("suggested");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    const firstFocusable = dialogRef.current?.querySelector<HTMLElement>("button, [href], input, [tabindex]:not([tabindex='-1'])");
+    firstFocusable?.focus();
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab" || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>("button, [href], input, [tabindex]:not([tabindex='-1'])")].filter(el => !el.hasAttribute("disabled"));
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      restoreFocusRef.current?.focus();
+    };
+  }, [onClose]);
 
   function handleSelect(url: string) {
     onSelect(url);
@@ -242,16 +268,17 @@ export function ImagePickerModal({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6">
-      <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl h-[70vh] flex flex-col overflow-hidden border border-border">
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6" role="presentation">
+      <div ref={dialogRef} className="bg-background rounded-xl shadow-2xl w-full max-w-2xl h-[70vh] max-h-[calc(100vh-3rem)] flex flex-col overflow-hidden border border-border" role="dialog" aria-modal="true" aria-labelledby="replace-image-title">
 
         {/* Modal header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border flex-shrink-0">
-          <p className="font-semibold text-foreground text-sm flex-1">Replace Image</p>
+          <p id="replace-image-title" className="font-semibold text-foreground text-sm flex-1">Replace Image</p>
           <button
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            aria-label="Close image picker"
           >
             <X className="w-4 h-4" />
           </button>
@@ -264,6 +291,9 @@ export function ImagePickerModal({
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
+              aria-selected={activeTab === tab.id}
+              role="tab"
+              aria-controls={`image-picker-panel-${tab.id}`}
               className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
                 activeTab === tab.id
                   ? "border-primary text-primary"
@@ -278,7 +308,7 @@ export function ImagePickerModal({
         {/* Tab content */}
         <div className="flex-1 overflow-hidden">
           {activeTab === "suggested" ? (
-            <div className="h-full overflow-y-auto p-4">
+            <div id="image-picker-panel-suggested" role="tabpanel" className="h-full overflow-y-auto p-4">
               <SuggestedTab
                 businessId={businessId}
                 businessType={businessType}
@@ -288,12 +318,14 @@ export function ImagePickerModal({
             </div>
           ) : (
             // My Library tab — existing MediaLibrary in select mode
+            <div id="image-picker-panel-library" role="tabpanel" className="h-full overflow-hidden">
             <MediaLibrary
               businessId={businessId}
               mode="select"
               onSelect={handleSelect}
               onClose={onClose}
             />
+            </div>
           )}
         </div>
       </div>
