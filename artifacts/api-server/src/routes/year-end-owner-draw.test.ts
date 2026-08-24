@@ -163,7 +163,7 @@ const REGULAR_EXP = {
  * Push the 10 select slots consumed by GET /year-end (no blFilter).
  * Pass the expenses array you want the route to see in slot [1].
  */
-function pushYearEndSelects(expensesSlot: any[]): void {
+function pushYearEndSelects(expensesSlot: any[], fixedAllocSubPaymentsSlot: any[] = []): void {
   h.selectQueue.push([PAID_INVOICE]); // [0] invoices (paid only)
   h.selectQueue.push(expensesSlot);   // [1] expenses
   h.selectQueue.push([]);             // [2] mileageLogs
@@ -173,7 +173,7 @@ function pushYearEndSelects(expensesSlot: any[]): void {
   h.selectQueue.push([]);             // [6] subs (empty → no computeYtd calls)
   h.selectQueue.push([SETTINGS_ROW]); // [7] settings
   h.selectQueue.push([]);             // [8] busUseRows (assetBusinessUse)
-  h.selectQueue.push([]);             // [9] fixedAllocSubPayments
+  h.selectQueue.push(fixedAllocSubPaymentsSlot); // [9] fixedAllocSubPayments
   h.selectQueue.push([]);             // [10] ownerContribRows
   h.selectQueue.push([]);             // [11] waterfallPaidInvs
 }
@@ -298,6 +298,58 @@ describe("Year-end / Schedule C — owner-draw exclusion from deductible expense
     expect(res.body.totalExpenses).toBeCloseTo(100, 10);
     // netProfit = $1 000 − $100 = $900
     expect(res.body.summary.netProfit).toBeCloseTo(900, 10);
+  });
+
+  it("reconciles Schedule C detail with totalExpenses across hourly and fixed sub pay", async () => {
+    const hourlyAutoExpense = {
+      id: 30,
+      date: `${YEAR}-06-20`,
+      amount: "120.00",
+      category: "Subcontractor",
+      businessLine: null,
+      jobId: 10,
+      jobSubHoursId: 77,
+      subcontractorId: 1,
+      excludeFromNetProfit: false,
+      description: "Hourly sub labor",
+      vendor: "Hourly Sub",
+      notes: null,
+      isWageAdvance: false,
+    };
+    const fixedSubPayment = {
+      id: 31,
+      jobId: 11,
+      amount: "300.00",
+      paymentDate: `${YEAR}-06-21`,
+      description: "Fixed sub final payment",
+      subcontractorId: 2,
+    };
+
+    // Hourly labor enters through its jobSubHours-linked auto-expense. Fixed
+    // labor enters through sub_payment_records and must be injected once.
+    pushYearEndSelects([hourlyAutoExpense], [fixedSubPayment]);
+
+    const res = await request(app).get(`/reports/year-end?year=${YEAR}`);
+    expect(res.status).toBe(200);
+
+    const contractLabor = (res.body.expensesBySchedC as {
+      schedCLine: string;
+      amount: number;
+      count: number;
+      items: { amount: number; description: string }[];
+    }[]).find(c => c.schedCLine === "Line 11 – Contract Labor");
+    expect(contractLabor).toBeDefined();
+    expect(contractLabor!.amount).toBeCloseTo(420, 10);
+    expect(contractLabor!.count).toBe(2);
+    expect(contractLabor!.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ amount: 120, description: "Hourly sub labor" }),
+      expect.objectContaining({ amount: 300, description: "Fixed sub final payment" }),
+    ]));
+
+    const detailTotal = (res.body.expensesBySchedC as { amount: number }[])
+      .reduce((sum, category) => sum + category.amount, 0);
+    expect(detailTotal).toBeCloseTo(res.body.totalExpenses, 10);
+    expect(res.body.totalExpenses).toBeCloseTo(420, 10);
   });
 
   // ── 6. Tax estimates use owner-draw-excluded net profit ───────────────────
