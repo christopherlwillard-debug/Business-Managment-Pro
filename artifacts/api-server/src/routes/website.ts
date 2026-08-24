@@ -2213,6 +2213,61 @@ publicRouter.get("/:slug/portfolio-photo/:photoUuid", wrapAsync(async (req, res)
 
 // ── Media Library ──────────────────────────────────────────────────────────────
 
+type MediaAssetPaths = {
+  objectPath: string;
+  webpObjectPath?: string;
+  thumbnailObjectPath?: string;
+  displayObjectPath?: string;
+};
+
+async function cleanupMediaObjects(paths: Array<string | null | undefined>): Promise<string[]> {
+  const uniquePaths = [...new Set(paths.filter((path): path is string => Boolean(path)))];
+  const results = await Promise.allSettled(uniquePaths.map(path => objectStorageService.deleteObject(path)));
+  return results.flatMap((result, index) =>
+    result.status === "rejected" ? [`${uniquePaths[index]}: ${result.reason instanceof Error ? result.reason.message : "cleanup failed"}`] : [],
+  );
+}
+
+/**
+ * Upload the original and all generated variants as one media asset.
+ * Callers only write the DB row after this resolves, so a failed variant
+ * cannot leave a library item that silently has incomplete derivatives.
+ */
+async function uploadMediaAssets(
+  buffer: Buffer,
+  mimetype: string,
+  filename: string,
+  uuidPrefix?: string,
+): Promise<MediaAssetPaths> {
+  const uploaded: string[] = [];
+  try {
+    const objectPath = await objectStorageService.uploadBufferWithFilename(buffer, mimetype, "uploads/website-media", filename);
+    uploaded.push(objectPath);
+    const assets: MediaAssetPaths = { objectPath };
+
+    if (mimetype.startsWith("image/") && mimetype !== "image/svg+xml") {
+      const { webpBuffer, thumbBuffer, displayBuffer } = await createMediaVariants(buffer);
+      const variantId = uuidPrefix ?? objectPath.split("/").pop()!.replace(/\.[^.]+$/, "");
+      assets.webpObjectPath = await objectStorageService.uploadBufferWithFilename(
+        webpBuffer, "image/webp", "uploads/website-media-webp", `${variantId}.webp`,
+      );
+      uploaded.push(assets.webpObjectPath);
+      assets.thumbnailObjectPath = await objectStorageService.uploadBufferWithFilename(
+        thumbBuffer, "image/webp", "uploads/website-media-thumb", `${variantId}.webp`,
+      );
+      uploaded.push(assets.thumbnailObjectPath);
+      assets.displayObjectPath = await objectStorageService.uploadBufferWithFilename(
+        displayBuffer, "image/webp", "uploads/website-media-display", `${variantId}.webp`,
+      );
+      uploaded.push(assets.displayObjectPath);
+    }
+    return assets;
+  } catch (error) {
+    await cleanupMediaObjects(uploaded);
+    throw error;
+  }
+}
+
 router.get("/media", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
@@ -2229,45 +2284,26 @@ router.post("/media/upload", mediaUpload.single("file"), wrapAsync(async (req, r
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   if (!req.file) return res.status(400).json({ error: "No file provided" });
   const { originalname, mimetype, buffer, size } = req.file;
-  const objectPath = await objectStorageService.uploadBufferWithFilename(buffer, mimetype, "uploads/website-media", originalname);
+  const assets = await uploadMediaAssets(buffer, mimetype, originalname);
+  const objectPath = assets.objectPath;
   const uuid = objectPath.split("/").pop()!;
   const url = `${BASE_URL}/api/public/site/media-image/${uuid}`;
   const folderId = req.body.folderId ? parseInt(req.body.folderId) : null;
-  const [item] = await db
-    .insert(websiteMediaTable)
-    .values({ businessId, filename: originalname, objectPath, url, size: size ?? 0, folderId: folderId ?? null })
-    .returning();
-  res.json(item);
-
-  // ── Background variant generation ──────────────────────────────────────────
-  // Runs after the response is sent so the upload feels instant.
-  // Only processes image/* uploads; skips SVGs (no useful WebP conversion).
-  if (mimetype.startsWith("image/") && mimetype !== "image/svg+xml") {
-    const capturedBuffer = Buffer.from(buffer);
-    const capturedId = item.id;
-    const capturedUuid = uuid;
-    setImmediate(async () => {
-      try {
-        const { webpBuffer, thumbBuffer, displayBuffer } = await createMediaVariants(capturedBuffer);
-        const [webpPath, thumbPath, displayPath] = await Promise.all([
-          objectStorageService.uploadBufferWithFilename(
-            webpBuffer, "image/webp", "uploads/website-media-webp", `${capturedUuid}.webp`,
-          ),
-          objectStorageService.uploadBufferWithFilename(
-            thumbBuffer, "image/webp", "uploads/website-media-thumb", `${capturedUuid}.webp`,
-          ),
-          objectStorageService.uploadBufferWithFilename(
-            displayBuffer, "image/webp", "uploads/website-media-display", `${capturedUuid}.webp`,
-          ),
-        ]);
-        await db.update(websiteMediaTable)
-          .set({ webpObjectPath: webpPath, thumbnailObjectPath: thumbPath, displayObjectPath: displayPath, optimized: true })
-          .where(eq(websiteMediaTable.id, capturedId));
-      } catch (err) {
-        // Non-fatal — original is always available; variants are a best-effort enhancement.
-        console.error("[media-variants] Processing failed for", capturedUuid, err);
-      }
-    });
+  try {
+    const [item] = await db
+      .insert(websiteMediaTable)
+      .values({
+        businessId, filename: originalname, objectPath, url, size: size ?? 0, folderId: folderId ?? null,
+        webpObjectPath: assets.webpObjectPath,
+        thumbnailObjectPath: assets.thumbnailObjectPath,
+        displayObjectPath: assets.displayObjectPath,
+        optimized: Boolean(assets.webpObjectPath),
+      })
+      .returning();
+    res.json(item);
+  } catch (error) {
+    await cleanupMediaObjects(Object.values(assets));
+    throw error;
   }
 }));
 
@@ -2293,7 +2329,10 @@ router.delete("/media/:id", wrapAsync(async (req, res) => {
     .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
   if (!item) return res.status(404).json({ error: "Not found" });
   await db.delete(websiteMediaTable).where(eq(websiteMediaTable.id, id));
-  res.json({ ok: true });
+  const cleanupWarnings = await cleanupMediaObjects([
+    item.objectPath, item.webpObjectPath, item.thumbnailObjectPath, item.displayObjectPath,
+  ]);
+  res.json({ ok: true, cleanupWarnings });
 }));
 
 // ── Media PATCH (rename / move to folder / set alt text) ──────────────────────
@@ -2408,48 +2447,30 @@ router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
   // Upload enhanced image — stored as WebP (applyEnhancements always returns WebP)
   const baseFilename = item.filename.replace(/\.[^.]+$/, "");
   const enhancedFilename = `${baseFilename}_enhanced.webp`;
-  const enhancedPath = await objectStorageService.uploadBufferWithFilename(
-    enhancedBuffer, "image/webp", "uploads/website-media", enhancedFilename,
-  );
+  const enhancedAssets = await uploadMediaAssets(enhancedBuffer, "image/webp", enhancedFilename);
+  const enhancedPath = enhancedAssets.objectPath;
   const enhancedUuid = enhancedPath.split("/").pop()!;
   const enhancedUrl  = `${BASE_URL}/api/public/site/media-image/${enhancedUuid}`;
 
-  const [newItem] = await db.insert(websiteMediaTable).values({
-    businessId,
-    filename:  enhancedFilename,
-    objectPath: enhancedPath,
-    url: enhancedUrl,
-    size: enhancedBuffer.length,
-    folderId: item.folderId ?? null,
-    displayName: `${item.displayName ?? baseFilename} (enhanced)`,
-  }).returning();
-
-  res.json(newItem);
-
-  // Background: generate WebP + thumbnail + display variants for the enhanced image too
-  const capturedId   = newItem.id;
-  const capturedUuid = enhancedUuid;
-  setImmediate(async () => {
-    try {
-      const { webpBuffer, thumbBuffer, displayBuffer } = await createMediaVariants(enhancedBuffer);
-      const [webpPath, thumbPath, displayPath] = await Promise.all([
-        objectStorageService.uploadBufferWithFilename(
-          webpBuffer, "image/webp", "uploads/website-media-webp", `${capturedUuid}.webp`,
-        ),
-        objectStorageService.uploadBufferWithFilename(
-          thumbBuffer, "image/webp", "uploads/website-media-thumb", `${capturedUuid}.webp`,
-        ),
-        objectStorageService.uploadBufferWithFilename(
-          displayBuffer, "image/webp", "uploads/website-media-display", `${capturedUuid}.webp`,
-        ),
-      ]);
-      await db.update(websiteMediaTable)
-        .set({ webpObjectPath: webpPath, thumbnailObjectPath: thumbPath, displayObjectPath: displayPath, optimized: true })
-        .where(eq(websiteMediaTable.id, capturedId));
-    } catch (err) {
-      console.error("[media-enhance-variants]", capturedUuid, err);
-    }
-  });
+  try {
+    const [newItem] = await db.insert(websiteMediaTable).values({
+      businessId,
+      filename:  enhancedFilename,
+      objectPath: enhancedPath,
+      url: enhancedUrl,
+      size: enhancedBuffer.length,
+      folderId: item.folderId ?? null,
+      displayName: `${item.displayName ?? baseFilename} (enhanced)`,
+      webpObjectPath: enhancedAssets.webpObjectPath,
+      thumbnailObjectPath: enhancedAssets.thumbnailObjectPath,
+      displayObjectPath: enhancedAssets.displayObjectPath,
+      optimized: Boolean(enhancedAssets.webpObjectPath),
+    }).returning();
+    res.json(newItem);
+  } catch (error) {
+    await cleanupMediaObjects(Object.values(enhancedAssets));
+    throw error;
+  }
 }));
 
 // ── Media replace-everywhere ────────────────────────────────────────────────
@@ -2484,11 +2505,22 @@ router.post("/media/:id/replace", wrapAsync(async (req, res) => {
   }
 
   const [updated] = await db.update(websiteMediaTable)
-    .set({ url: newUrl, objectPath: newObjectPath, filename: newFilename ?? item.filename })
+    .set({
+      url: newUrl,
+      objectPath: newObjectPath,
+      filename: newFilename ?? item.filename,
+      webpObjectPath: null,
+      thumbnailObjectPath: null,
+      displayObjectPath: null,
+      optimized: false,
+    })
     .where(eq(websiteMediaTable.id, id))
     .returning();
 
-  res.json({ ok: true, replacedInConfigs, item: updated });
+  const cleanupWarnings = await cleanupMediaObjects([
+    item.objectPath, item.webpObjectPath, item.thumbnailObjectPath, item.displayObjectPath,
+  ].filter(path => path !== newObjectPath));
+  res.json({ ok: true, replacedInConfigs, item: updated, cleanupWarnings });
 }));
 
 router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(async (req, res) => {
@@ -2502,7 +2534,8 @@ router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(a
   if (!item) return res.status(404).json({ error: "Not found" });
 
   const { originalname, mimetype, buffer, size } = req.file;
-  const newObjectPath = await objectStorageService.uploadBufferWithFilename(buffer, mimetype, "uploads/website-media", originalname);
+  const newAssets = await uploadMediaAssets(buffer, mimetype, originalname);
+  const newObjectPath = newAssets.objectPath;
   const uuid = newObjectPath.split("/").pop()!;
   const newUrl = `${BASE_URL}/api/public/site/media-image/${uuid}`;
   const oldUrl = item.url;
@@ -2510,26 +2543,41 @@ router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(a
   const configs = await db.select().from(websiteConfigsTable)
     .where(eq(websiteConfigsTable.businessId, businessId));
 
-  let replacedInConfigs = 0;
-  for (const config of configs) {
-    const sectionsJson = JSON.stringify(config.sections);
-    const settingsJson = JSON.stringify(config.settings);
-    const newSectionsJson = sectionsJson.split(oldUrl).join(newUrl);
-    const newSettingsJson = settingsJson.split(oldUrl).join(newUrl);
-    if (newSectionsJson !== sectionsJson || newSettingsJson !== settingsJson) {
-      await db.update(websiteConfigsTable)
-        .set({ sections: JSON.parse(newSectionsJson) as any, settings: JSON.parse(newSettingsJson) as any, updatedAt: new Date() })
-        .where(eq(websiteConfigsTable.id, config.id));
-      replacedInConfigs++;
-    }
+  try {
+    let replacedInConfigs = 0;
+    let updated;
+    await db.transaction(async tx => {
+      for (const config of configs) {
+        const sectionsJson = JSON.stringify(config.sections);
+        const settingsJson = JSON.stringify(config.settings);
+        const newSectionsJson = sectionsJson.split(oldUrl).join(newUrl);
+        const newSettingsJson = settingsJson.split(oldUrl).join(newUrl);
+        if (newSectionsJson !== sectionsJson || newSettingsJson !== settingsJson) {
+          await tx.update(websiteConfigsTable)
+            .set({ sections: JSON.parse(newSectionsJson) as any, settings: JSON.parse(newSettingsJson) as any, updatedAt: new Date() })
+            .where(eq(websiteConfigsTable.id, config.id));
+          replacedInConfigs++;
+        }
+      }
+      [updated] = await tx.update(websiteMediaTable)
+        .set({
+          url: newUrl, objectPath: newObjectPath, filename: originalname, size: size ?? item.size,
+          webpObjectPath: newAssets.webpObjectPath,
+          thumbnailObjectPath: newAssets.thumbnailObjectPath,
+          displayObjectPath: newAssets.displayObjectPath,
+          optimized: Boolean(newAssets.webpObjectPath),
+        })
+        .where(eq(websiteMediaTable.id, id))
+        .returning();
+    });
+    const cleanupWarnings = await cleanupMediaObjects([
+      item.objectPath, item.webpObjectPath, item.thumbnailObjectPath, item.displayObjectPath,
+    ]);
+    res.json({ ok: true, replacedInConfigs, item: updated, cleanupWarnings });
+  } catch (error) {
+    await cleanupMediaObjects(Object.values(newAssets));
+    throw error;
   }
-
-  const [updated] = await db.update(websiteMediaTable)
-    .set({ url: newUrl, objectPath: newObjectPath, filename: originalname, size: size ?? item.size })
-    .where(eq(websiteMediaTable.id, id))
-    .returning();
-
-  res.json({ ok: true, replacedInConfigs, item: updated });
 }));
 
 // ── Media bulk delete ──────────────────────────────────────────────────────
@@ -2539,9 +2587,19 @@ router.post("/media/bulk-delete", wrapAsync(async (req, res) => {
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   const { ids } = req.body as { ids: number[] };
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids required" });
+  const items = await db.select({
+    objectPath: websiteMediaTable.objectPath,
+    webpObjectPath: websiteMediaTable.webpObjectPath,
+    thumbnailObjectPath: websiteMediaTable.thumbnailObjectPath,
+    displayObjectPath: websiteMediaTable.displayObjectPath,
+  }).from(websiteMediaTable)
+    .where(and(eq(websiteMediaTable.businessId, businessId), inArray(websiteMediaTable.id, ids)));
   await db.delete(websiteMediaTable)
     .where(and(eq(websiteMediaTable.businessId, businessId), inArray(websiteMediaTable.id, ids)));
-  res.json({ ok: true, deleted: ids.length });
+  const cleanupWarnings = (await Promise.all(items.map(item => cleanupMediaObjects([
+    item.objectPath, item.webpObjectPath, item.thumbnailObjectPath, item.displayObjectPath,
+  ])))).flat();
+  res.json({ ok: true, deleted: items.length, cleanupWarnings });
 }));
 
 // ── Media usage counts ─────────────────────────────────────────────────────
@@ -2666,8 +2724,8 @@ router.delete("/media/folders/:folderId", wrapAsync(async (req, res) => {
 publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
   const { uuid } = req.params as { uuid: string };
   // The original image is always served from a deterministic path derived from
-  // the uuid, with no DB query, so that deleted media records don't break
-  // published pages that still reference the URL.
+  // the uuid, with no DB query. Published pages may still reference deleted
+  // URLs, but the underlying object is intentionally removed with the record.
   //
   // WebP content negotiation: when the browser sends Accept: image/webp, we
   // look up the DB record by objectPath to find the actual webpObjectPath

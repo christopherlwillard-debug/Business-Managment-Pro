@@ -102,6 +102,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
 
   const [uploading, setUploading] = useState(false);
   const [replacing, setReplacing] = useState(false);
+  const [operationNotice, setOperationNotice] = useState<{ tone: "error" | "success"; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
 
@@ -117,7 +118,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
-  const { data: items = [], isLoading } = useQuery<MediaItem[]>({
+  const { data: items = [], isLoading, isError: mediaLoadFailed, refetch: refetchMedia } = useQuery<MediaItem[]>({
     queryKey: ["website-media", businessId],
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/website/media?businessId=${businessId}`, { credentials: "include" });
@@ -189,6 +190,9 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     const fileArr = Array.from(files).filter(f => f.type.startsWith("image/"));
     if (!fileArr.length) return;
     setUploading(true);
+    setOperationNotice(null);
+    const succeeded: string[] = [];
+    const failed: string[] = [];
     try {
       for (const file of fileArr) {
         const formData = new FormData();
@@ -198,11 +202,25 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
           method: "POST", credentials: "include", body: formData,
         });
         if (!res.ok) {
-          console.error("Upload failed", await res.text());
+          failed.push(`${file.name} (${res.status})`);
           continue;
         }
+        succeeded.push(file.name);
       }
       invalidateAll();
+      if (failed.length > 0) {
+        setOperationNotice({
+          tone: "error",
+          message: `${succeeded.length} uploaded; ${failed.length} failed: ${failed.join(", ")}. Retry the failed files.`,
+        });
+      } else {
+        setOperationNotice({ tone: "success", message: `${succeeded.length} image${succeeded.length === 1 ? "" : "s"} uploaded.` });
+      }
+    } catch {
+      setOperationNotice({
+        tone: "error",
+        message: `${succeeded.length} uploaded; the remaining files could not be uploaded. Retry the failed files.`,
+      });
     } finally {
       setUploading(false);
     }
@@ -210,6 +228,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
 
   async function handleReplace(file: File, target: MediaItem) {
     setReplacing(true);
+    setOperationNotice(null);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -217,12 +236,19 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         method: "POST", credentials: "include", body: formData,
       });
       if (!res.ok) {
-        console.error("Replace failed", await res.text());
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        setOperationNotice({ tone: "error", message: body?.error ?? "Replacement failed. Your original image is still in place. Retry." });
         return;
       }
+      const body = await res.json().catch(() => null) as { cleanupWarnings?: string[] } | null;
       invalidateAll();
       qc.invalidateQueries({ queryKey: ["website-media-usage-details", businessId, target.id] });
       setDetailItem(null);
+      setOperationNotice(body?.cleanupWarnings?.length
+        ? { tone: "error", message: `Image replaced, but old files could not all be cleaned up. ${body.cleanupWarnings[0]}` }
+        : { tone: "success", message: "Image replaced." });
+    } catch {
+      setOperationNotice({ tone: "error", message: "Replacement failed. Your original image is still in place. Retry." });
     } finally {
       setReplacing(false);
     }
@@ -233,13 +259,18 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await fetch(`${BASE}/api/website/media/${id}?businessId=${businessId}`, { method: "DELETE", credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) throw new Error((await res.json().catch(() => null) as { error?: string } | null)?.error ?? "Delete failed");
+      return res.json() as Promise<{ cleanupWarnings?: string[] }>;
     },
-    onSuccess: (_, id) => {
+    onSuccess: (result, id) => {
       invalidateAll();
       setDeleteConfirm(null);
       if (detailItem?.id === id) setDetailItem(null);
+      setOperationNotice(result.cleanupWarnings?.length
+        ? { tone: "error", message: `Image deleted, but cleanup needs attention: ${result.cleanupWarnings[0]}` }
+        : { tone: "success", message: "Image deleted." });
     },
+    onError: (error) => setOperationNotice({ tone: "error", message: error.message }),
   });
 
   const bulkDeleteMutation = useMutation({
@@ -248,13 +279,18 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ ids }),
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) throw new Error((await res.json().catch(() => null) as { error?: string } | null)?.error ?? "Bulk delete failed");
+      return res.json() as Promise<{ deleted: number; cleanupWarnings?: string[] }>;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       invalidateAll();
       setSelectedIds(new Set());
       setBulkDeleteConfirm(false);
+      setOperationNotice(result.cleanupWarnings?.length
+        ? { tone: "error", message: `${result.deleted} images deleted, but cleanup needs attention: ${result.cleanupWarnings[0]}` }
+        : { tone: "success", message: `${result.deleted} images deleted.` });
     },
+    onError: (error) => setOperationNotice({ tone: "error", message: error.message }),
   });
 
   const renameMutation = useMutation({
@@ -420,6 +456,20 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         </div>
       </div>
 
+      {operationNotice && (
+        <div className={`flex items-start gap-2 px-4 py-2 text-xs border-b ${
+          operationNotice.tone === "error"
+            ? "bg-destructive/10 border-destructive/20 text-destructive"
+            : "bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+        }`}>
+          {operationNotice.tone === "error" ? <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> : <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />}
+          <span className="flex-1">{operationNotice.message}</span>
+          <button type="button" onClick={() => setOperationNotice(null)} className="opacity-70 hover:opacity-100" aria-label="Dismiss notification">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Bulk bar */}
       {selectedIds.size > 0 && (
         <div className="flex items-center justify-between px-4 py-1.5 bg-primary/10 border-b border-primary/20 flex-shrink-0">
@@ -564,6 +614,15 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
               <div className="flex items-center justify-center h-32">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
+            ) : mediaLoadFailed ? (
+              <div className="flex flex-col items-center justify-center h-40 gap-2 text-center text-muted-foreground">
+                <AlertTriangle className="w-7 h-7 text-destructive/80" />
+                <p className="text-sm font-medium text-foreground">Couldn’t load your media library</p>
+                <p className="text-xs">Your images are safe. Try again to reconnect.</p>
+                <button type="button" onClick={() => refetchMedia()} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary text-primary text-xs font-medium hover:bg-primary/5">
+                  <RefreshCw className="w-3 h-3" />Retry
+                </button>
+              </div>
             ) : filteredItems.length === 0 ? (
               <EmptyState
                 hasItems={items.length > 0}
@@ -665,7 +724,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
               <div className="flex items-start gap-2 mb-3 p-2.5 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
                 <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-                  {selectedWithUsage} image{selectedWithUsage > 1 ? "s are" : " is"} used on your site. Deleting removes them from the library but existing published pages will still show them.
+                  {selectedWithUsage} image{selectedWithUsage > 1 ? "s are" : " is"} used on your site. Deleting removes them from the library and existing pages may no longer display them.
                 </p>
               </div>
             )}
