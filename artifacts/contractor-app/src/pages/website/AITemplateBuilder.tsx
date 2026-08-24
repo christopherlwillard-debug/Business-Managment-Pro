@@ -68,6 +68,7 @@ export function AITemplateBuilder({ show, onClose, businessId, onSelect }: Props
   const [isSaved, setIsSaved] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [showSections, setShowSections] = useState(false);
+  const [regeneratingSectionId, setRegeneratingSectionId] = useState<string | null>(null);
 
   if (!show) return null;
 
@@ -158,6 +159,49 @@ export function AITemplateBuilder({ show, onClose, businessId, onSelect }: Props
   async function saveAndApply() {
     await saveTemplate();
     applyNow();
+  }
+
+  async function regenerateSection(section: NonNullable<WebsiteTemplate["sections"]>[number]) {
+    if (!generated || regeneratingSectionId) return;
+    setRegeneratingSectionId(section.id);
+    setErrorMsg("");
+    try {
+      const res = await fetch(`${BASE}/api/website/regenerate-section`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          sectionType: section.type,
+          section,
+          templateContext: {
+            name: generated.name,
+            description: generated.description,
+            style: style || undefined,
+            brandColor: generated.brandColor,
+            settings: generated.settings,
+            sections: generated.sections,
+          },
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || typeof data !== "object") {
+        throw new Error(data?.error ?? `HTTP ${res.status}`);
+      }
+      setGenerated(current => current
+        ? {
+            ...current,
+            sections: current.sections.map(existing =>
+              existing.id === section.id
+                ? { ...existing, ...data, id: section.id, type: section.type, order: section.order, enabled: section.enabled }
+                : existing,
+            ),
+          }
+        : current);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Could not regenerate that section. Please try again.");
+    } finally {
+      setRegeneratingSectionId(null);
+    }
   }
 
   function regenerate() {
@@ -315,6 +359,18 @@ export function AITemplateBuilder({ show, onClose, businessId, onSelect }: Props
                         {s.content?.heading ? (
                           <span className="opacity-50 truncate max-w-[180px]">— {String(s.content.heading as unknown)}</span>
                         ) : null}
+                        <button
+                          type="button"
+                          onClick={() => regenerateSection(s)}
+                          disabled={regeneratingSectionId !== null}
+                          className="ml-auto p-1 rounded hover:bg-muted hover:text-foreground disabled:opacity-50 transition-colors"
+                          aria-label={`Regenerate ${s.type} section`}
+                          title={`Regenerate ${s.type} section`}
+                        >
+                          {regeneratingSectionId === s.id
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : <RefreshCw className="w-3 h-3" />}
+                        </button>
                       </li>
                     ))}
                   </ol>
