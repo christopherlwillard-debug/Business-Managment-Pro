@@ -438,7 +438,7 @@ type OppWithSource = SamOpportunity & { source?: string; sourceLabel?: string };
 // ── Rescore all existing bids regardless of API fetch results ─────────────────
 // Called once per sync after capabilities are loaded so that profile changes
 // take effect immediately without needing a fresh API response for every bid.
-async function rescoreExistingBids(businessId: number, profile: ResolvedProfile): Promise<number> {
+export async function rescoreExistingBids(businessId: number, profile: ResolvedProfile): Promise<number> {
   const existing = await db
     .select({
       id:               bidOpportunitiesTable.id,
