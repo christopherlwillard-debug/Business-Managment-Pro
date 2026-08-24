@@ -28,6 +28,72 @@ const publicRouter = Router();
 
 const BASE_URL = process.env["BASE_URL"] ?? "";
 
+export function normalizePageSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+type WebsitePageLike = { id?: string; name?: string; slug?: string };
+
+export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePageLike[] } | {
+  ok: false;
+  error: string;
+  conflict: { slug: string; pageId?: string; pageName?: string };
+} {
+  if (!Array.isArray(pages)) return { ok: true, pages: [] };
+  const seen = new Map<string, WebsitePageLike>();
+  const normalized: WebsitePageLike[] = [];
+  for (const raw of pages) {
+    if (!raw || typeof raw !== "object") continue;
+    const page = raw as WebsitePageLike;
+    const slug = normalizePageSlug(String(page.slug ?? ""));
+    if (!slug || slug === "home") {
+      return {
+        ok: false,
+        error: "Page slugs must be non-empty and cannot be 'home'.",
+        conflict: { slug: slug || "home", pageId: page.id, pageName: page.name },
+      };
+    }
+    const prior = seen.get(slug);
+    if (prior) {
+      return {
+        ok: false,
+        error: `The page slug "${slug}" is already used by another page.`,
+        conflict: { slug, pageId: prior.id, pageName: prior.name },
+      };
+    }
+    const normalizedPage = { ...page, slug };
+    seen.set(slug, normalizedPage);
+    normalized.push(normalizedPage);
+  }
+  return { ok: true, pages: normalized };
+}
+
+// Every website route that supplies a business ID is checked here before its
+// handler runs. The current application grants website access only to the
+// authenticated owner; checking the referenced row prevents arbitrary IDs
+// from creating or probing website records for nonexistent businesses.
+router.use(wrapAsync(async (req, res, next) => {
+  const bodyBusinessId = req.body && typeof req.body === "object" ? req.body.businessId : undefined;
+  const raw = Array.isArray(req.query.businessId) ? req.query.businessId[0] : req.query.businessId ?? bodyBusinessId;
+  if (raw === undefined || raw === null || raw === "") return next();
+  const businessId = Number(raw);
+  if (!Number.isInteger(businessId) || businessId <= 0) {
+    return res.status(400).json({ error: "businessId must be a positive integer" });
+  }
+  const [business] = await db
+    .select({ id: businessesTable.id })
+    .from(businessesTable)
+    .where(eq(businessesTable.id, businessId));
+  if (!business) return res.status(404).json({ error: "Business not found" });
+  next();
+}));
+
 function getPrefillKey(): string {
   const raw = process.env.DATABASE_URL ?? "buildpro-prefill-default-key";
   return createHash("sha256").update(raw).digest("hex").slice(0, 32);
@@ -333,6 +399,13 @@ router.put("/", wrapAsync(async (req, res) => {
   }
 
   const { sections, settings } = req.body as { sections: unknown[]; settings: Record<string, unknown> };
+  const pageValidation = validatePageSlugs(settings?.pages);
+  if (!pageValidation.ok) {
+    return res.status(409).json({ error: pageValidation.error, code: "DUPLICATE_PAGE_SLUG", conflict: pageValidation.conflict });
+  }
+  const normalizedSettings = settings
+    ? { ...settings, ...(pageValidation.pages.length > 0 ? { pages: pageValidation.pages } : {}) }
+    : settings;
 
   const [existing] = await db
     .select({ id: websiteConfigsTable.id })
@@ -342,7 +415,7 @@ router.put("/", wrapAsync(async (req, res) => {
   if (existing) {
     const [updated] = await db
       .update(websiteConfigsTable)
-      .set({ sections: sections as any, settings: settings as any, updatedAt: new Date() })
+      .set({ sections: sections as any, settings: normalizedSettings as any, updatedAt: new Date() })
       .where(eq(websiteConfigsTable.id, existing.id))
       .returning();
     return res.json(updated);
@@ -350,7 +423,7 @@ router.put("/", wrapAsync(async (req, res) => {
 
   const [created] = await db
     .insert(websiteConfigsTable)
-    .values({ businessId, sections: sections as any, settings: settings as any })
+    .values({ businessId, sections: sections as any, settings: normalizedSettings as any })
     .returning();
   res.json(created);
 }));
@@ -362,6 +435,13 @@ router.post("/publish", wrapAsync(async (req, res) => {
   }
 
   const { sections, settings } = req.body as { sections?: unknown[]; settings?: Record<string, unknown> };
+  if (settings) {
+    const pageValidation = validatePageSlugs(settings.pages);
+    if (!pageValidation.ok) {
+      return res.status(409).json({ error: pageValidation.error, code: "DUPLICATE_PAGE_SLUG", conflict: pageValidation.conflict });
+    }
+    settings.pages = pageValidation.pages;
+  }
 
   const [existing] = await db
     .select({ id: websiteConfigsTable.id })
@@ -670,6 +750,13 @@ publicRouter.get("/by-host", wrapAsync(async (req, res) => {
     .where(eq(businessesTable.id, config.businessId));
 
   if (!biz) return res.status(404).json({ error: "Business not found" });
+  const requestedPage = typeof req.query.page === "string" ? normalizePageSlug(req.query.page) : "";
+  if (requestedPage) {
+    const pages = ((config.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+    if (!pages.some(page => normalizePageSlug(String(page.slug ?? "")) === requestedPage)) {
+      return res.status(404).json({ error: "Page not found", code: "PUBLIC_PAGE_NOT_FOUND", pageSlug: requestedPage });
+    }
+  }
 
   res.json({ ...config, businessName: biz.name, businessSlug: biz.slug });
 }));
@@ -685,6 +772,13 @@ publicRouter.get("/:slug", wrapAsync(async (req, res) => {
     .where(and(eq(websiteConfigsTable.businessId, biz.id), eq(websiteConfigsTable.published, true)));
 
   if (!config) return res.status(404).json({ error: "Website not published" });
+
+  const requestedPage = typeof req.query.page === "string" ? normalizePageSlug(req.query.page) : "";
+  if (requestedPage) {
+    const pages = ((config.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+    const page = pages.find(candidate => normalizePageSlug(String(candidate.slug ?? "")) === requestedPage);
+    if (!page) return res.status(404).json({ error: "Page not found", code: "PUBLIC_PAGE_NOT_FOUND", pageSlug: requestedPage });
+  }
 
   res.json({ ...config, businessName: biz.name, businessSlug: biz.slug });
 }));
@@ -1682,6 +1776,16 @@ router.post("/generate-site-copy", wrapAsync(async (req, res) => {
   const results = await Promise.allSettled(
     sections.map(s => generateSectionCopy(s, businessContext)),
   );
+  const failures: Record<string, string> = {};
+  results.forEach((outcome, i) => {
+    if (outcome.status === "rejected") {
+      failures[sections[i]!.id] = outcome.reason instanceof Error
+        ? outcome.reason.message
+        : "AI could not generate this section.";
+    } else if (!outcome.value) {
+      failures[sections[i]!.id] = "This section type does not support AI copy generation.";
+    }
+  });
 
   // Merge generated copy back into sections immutably
   const enriched = sections.map((section, i) => {
@@ -1751,7 +1855,7 @@ router.post("/generate-site-copy", wrapAsync(async (req, res) => {
     return { ...section, content: { ...section.content, ...copy } };
   });
 
-  res.json({ sections: enriched });
+  res.json({ sections: enriched, failures });
 }));
 
 // ── AI Layout Assistant ────────────────────────────────────────────────────────
@@ -2811,6 +2915,13 @@ router.get("/preview-by-slug/:slug", wrapAsync(async (req, res) => {
     .where(eq(websiteConfigsTable.businessId, biz.id));
 
   if (!config) return res.status(404).json({ error: "No website config" });
+  const requestedPage = typeof req.query.page === "string" ? normalizePageSlug(req.query.page) : "";
+  if (requestedPage) {
+    const pages = ((config.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+    if (!pages.some(page => normalizePageSlug(String(page.slug ?? "")) === requestedPage)) {
+      return res.status(404).json({ error: "Page not found", code: "PUBLIC_PAGE_NOT_FOUND", pageSlug: requestedPage });
+    }
+  }
 
   const normalizedSections = normalizeSections(config.sections as SectionRow[]);
   res.json({ ...config, sections: normalizedSections, businessName: biz.name, businessSlug: biz.slug });
@@ -3297,6 +3408,20 @@ Return slug as a clean URL slug (lowercase, hyphens only, no spaces or special c
     slug:     resolvedSlug,
     sections,
   };
+
+  const [existingConfig] = await db
+    .select({ settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+  const existingPages = ((existingConfig?.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+  const conflict = existingPages.find(existing => normalizePageSlug(String(existing.slug ?? "")) === resolvedSlug);
+  if (conflict || resolvedSlug === "home") {
+    return res.status(409).json({
+      error: `The page slug "${resolvedSlug}" is already in use.`,
+      code: "DUPLICATE_PAGE_SLUG",
+      conflict: { slug: resolvedSlug, pageId: conflict?.id, pageName: conflict?.name },
+    });
+  }
 
   res.json({ page });
 }));
@@ -5286,12 +5411,22 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
   if (!biz) return res.status(404).json({ error: "Business not found" });
 
   const [config] = await db
-    .select({ sections: websiteConfigsTable.sections })
+    .select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
     .from(websiteConfigsTable)
     .where(eq(websiteConfigsTable.businessId, businessId));
 
   type SectionRow = { type: string; content: Record<string, unknown> };
   const siteSections = (config?.sections ?? []) as SectionRow[];
+  const existingPages = ((config?.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+  const requestedSlugs = validIds.map(id => DEALER_BRANDS[id]!.slug);
+  const conflicts = existingPages.filter(page => requestedSlugs.includes(normalizePageSlug(String(page.slug ?? ""))));
+  if (conflicts.length > 0) {
+    return res.status(409).json({
+      error: "One or more dealer page slugs are already in use.",
+      code: "DUPLICATE_PAGE_SLUG",
+      conflicts: conflicts.map(page => ({ slug: normalizePageSlug(String(page.slug ?? "")), pageId: page.id, pageName: page.name })),
+    });
+  }
 
   const servicesSection = siteSections.find(s => s.type === "services");
   const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
@@ -5341,20 +5476,22 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
   );
 
   const pages: Record<string, unknown>[] = [];
+  const failures: Record<string, string> = {};
   validIds.forEach((brandId, i) => {
     const result = results[i];
     if (result.status === "fulfilled") {
       pages.push(result.value);
       progressMap[brandId] = "done";
     } else {
-      // Assemble with empty copy as graceful fallback
-      const brand = DEALER_BRANDS[brandId]!;
-      pages.push(assembleDealerPage(brand, {}, bizContext.name, bizContext.phone ?? "", bizContext.email ?? ""));
-      progressMap[brandId] = "done"; // still returns a page, just with defaults
+      progressMap[brandId] = "error";
+      const reason = result.reason;
+      failures[brandId] = reason instanceof Error
+        ? reason.message
+        : "AI could not generate this dealer page.";
     }
   });
 
-  return res.json({ pages, progress: progressMap });
+  return res.json({ pages, progress: progressMap, failures });
 }));
 
 // ── POST /regenerate-section ──────────────────────────────────────────────────

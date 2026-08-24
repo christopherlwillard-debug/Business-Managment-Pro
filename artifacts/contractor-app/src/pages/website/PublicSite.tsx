@@ -222,16 +222,19 @@ export default function PublicSite() {
     queryKey: ["public-site", slug ?? `__host__${window.location.host}`, isDraftPreview],
     queryFn: async () => {
       if (isDraftPreview && slug) {
-        const res = await fetch(`${BASE}/api/website/preview-by-slug/${slug}`, { credentials: "include" });
+        const query = pageSlug ? `?page=${encodeURIComponent(pageSlug)}` : "";
+        const res = await fetch(`${BASE}/api/website/preview-by-slug/${slug}${query}`, { credentials: "include" });
         if (!res.ok) throw new Error("Not found");
         return res.json();
       }
       if (slug) {
-        const res = await fetch(`${BASE}/api/public/site/${slug}`);
+        const query = pageSlug ? `?page=${encodeURIComponent(pageSlug)}` : "";
+        const res = await fetch(`${BASE}/api/public/site/${slug}${query}`);
         if (!res.ok) throw new Error("Not found");
         return res.json();
       }
-      const res = await fetch(`${BASE}/api/public/site/by-host`);
+      const query = pageSlug ? `?page=${encodeURIComponent(pageSlug)}` : "";
+      const res = await fetch(`${BASE}/api/public/site/by-host${query}`);
       if (!res.ok) throw new Error("Not found");
       return res.json();
     },
@@ -290,9 +293,11 @@ export default function PublicSite() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
         <div className="text-center max-w-md">
-          <div className="text-6xl mb-6">🚧</div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-3">Coming Soon</h1>
-          <p className="text-gray-500">This website is being set up. Check back soon.</p>
+          <div className="text-6xl mb-6">{pageSlug ? "🔎" : "🚧"}</div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-3">{pageSlug ? "Page not found" : "Coming Soon"}</h1>
+          <p className="text-gray-500">
+            {pageSlug ? "The page you requested doesn’t exist on this website." : "This website is being set up. Check back soon."}
+          </p>
         </div>
       </div>
     );
@@ -309,9 +314,7 @@ export default function PublicSite() {
   let bodySections: Section[];
   if (pageSlug) {
     const targetPage = additionalPages.find(p => p.slug === pageSlug);
-    bodySections = targetPage
-      ? targetPage.sections.filter(s => s.enabled)
-      : homeBodySections;
+    bodySections = targetPage ? targetPage.sections.filter(s => s.enabled) : [];
   } else {
     bodySections = homeBodySections;
   }

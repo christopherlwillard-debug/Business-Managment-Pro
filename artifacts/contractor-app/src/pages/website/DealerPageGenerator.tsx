@@ -88,7 +88,11 @@ export function DealerPageGenerator({ businessId, businessContext, existingPages
         throw new Error((err as any).error ?? `HTTP ${res.status}`);
       }
 
-      const data = await res.json() as { pages: SitePage[]; progress?: Record<string, "done" | "error"> };
+      const data = await res.json() as {
+        pages: SitePage[];
+        progress?: Record<string, "done" | "error">;
+        failures?: Record<string, string>;
+      };
       const pages: SitePage[] = data.pages ?? [];
 
       // Update progress indicators from server response
@@ -98,7 +102,7 @@ export function DealerPageGenerator({ businessId, businessContext, existingPages
         status: (serverProgress[id] as "done" | "error") ?? (pages.some(p => p.id?.includes(id) || p.slug === id || p.slug.includes(id.replace("-homes", "").replace("-", ""))) ? "done" : "error"),
       })));
 
-      setGeneratedPages(pages);
+      setGeneratedPages(pages.filter(page => !existingSlugs.has(page.slug)));
       setStep("done");
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : "Failed to generate dealer pages.");

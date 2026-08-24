@@ -4274,6 +4274,15 @@ function WebsiteEditor() {
 
   function addPage(name: string, customSlug?: string, prebuiltSections?: Section[]) {
     const slug = (customSlug ?? name).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
+    const conflict = pagesRef.current.find(page => page.slug === slug || page.id === "home" && slug === "home");
+    if (conflict) {
+      toast({
+        title: "Page slug already in use",
+        description: `"${slug}" is already used by ${conflict.name}. Choose a different URL slug.`,
+        variant: "destructive",
+      });
+      return;
+    }
     const id = "page-" + Math.random().toString(36).slice(2, 9);
     const newPage: SitePage = { id, name, slug, sections: prebuiltSections ?? [] };
     const siteSlug = activeBusiness?.slug ?? "";
