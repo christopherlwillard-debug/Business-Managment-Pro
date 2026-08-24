@@ -4,10 +4,9 @@
  * Data source: Kentucky Finance Cabinet procurement system (CGI Advantage 4).
  *
  * The portal migrated from web.emarketplace.ky.gov (PeopleSoft) to
- * vss.ky.gov/vssprod-ext/Advantage4 (CGI Advantage 4) in 2024.  The new
- * system is a full Angular SPA — no server-rendered solicitation listings
- * exist, so this connector uses Puppeteer to render the page and extract
- * solicitation data.
+ * vss.ky.gov/vssprod-ext/Advantage4 (CGI Advantage 4) in 2024. The new
+ * system is a full Angular SPA, so the connector uses the server-rendered
+ * BidNet Kentucky mirror first and keeps Puppeteer as a fallback for VSS.
  *
  * "My Commodities" (account-specific matching) requires a VSS vendor login that
  * we intentionally do not store.  Instead, opportunities are filtered client-side
@@ -28,6 +27,12 @@ const USER_AGENT = "Mozilla/5.0 (compatible; BuildProBot/1.0; +https://buildpro.
 const VSS_BASE_URL = "https://vss.ky.gov/vssprod-ext/Advantage4";
 
 const VSS_CANDIDATES: Array<{ url: string; label: string; requiresPuppeteer?: boolean }> = [
+  // Production-safe fallback: BidNet publishes the Kentucky open-bid listing
+  // in server-rendered HTML, so this path does not depend on Chrome/Puppeteer.
+  {
+    url: "https://www.bidnetdirect.com/kentucky/solicitations/open-bids",
+    label: "BidNet Direct — Kentucky open bids",
+  },
   // Primary: CGI Advantage 4 SPA — Puppeteer clicks into Published Solicitations
   {
     url: VSS_BASE_URL,
@@ -211,10 +216,46 @@ function parseHtmlResponse(html: string, baseUrl: string): LocalOpportunity[] {
   const results: LocalOpportunity[] = [];
   const seen = new Set<string>();
 
+  // BidNet's server-rendered listing uses one-cell rows rather than a normal
+  // header/cell table. Parse these rows explicitly so navigation links and
+  // search controls are not mistaken for solicitations.
+  const bidNetRows = $("table.sol-table tr.mets-table-row");
+  if (bidNetRows.length > 0) {
+    bidNetRows.each((_, row) => {
+      const $row = $(row);
+      const link = $row.find("a.solicitation-link").first();
+      const title = link.text().trim();
+      if (!title || title.length < 4) return;
+
+      const href = resolveUrl(baseUrl, link.attr("href") ?? "");
+      const noticeId = stableId(SOL_NUMBER_RE.exec($row.text())?.[0] ?? null, href || title);
+      if (seen.has(noticeId)) return;
+      seen.add(noticeId);
+
+      const postedDate = parseIsoDate($row.find(".sol-publication-date .date-value").text().trim());
+      const responseDeadline = parseIsoDate($row.find(".sol-closing-date .date-value").text().trim());
+      const region = $row.find(".sol-region-item").text().trim();
+
+      results.push({
+        noticeId,
+        title,
+        agency: region || "Kentucky State Government",
+        naicsCode: null,
+        description: region ? `Region: ${region}` : null,
+        postedDate,
+        responseDeadline,
+        url: href || baseUrl,
+        source: "state-local",
+        sourceLabel: "KY eMarketplace",
+      });
+    });
+    if (results.length > 0) return results;
+  }
+
   // ── Strategy 1: structured table rows ────────────────────────────────────────
   const tableRows = $(
     "table.ms-listviewtable tr, table.soi-grid tr, table.grid tr, .bid-table tr, .opportunities-table tr, " +
-    "table.solicitations-table tr, table[data-testid] tr, .ag-row, .cdk-row"
+     "table.solicitations-table tr, table.sol-table tr, table[data-testid] tr, .ag-row, .cdk-row"
   );
 
   if (tableRows.length > 1) {

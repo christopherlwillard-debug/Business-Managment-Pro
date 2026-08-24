@@ -256,6 +256,32 @@ describe("parseHtmlResponse — SharePoint table (Strategy 1)", () => {
   });
 });
 
+describe("parseHtmlResponse — BidNet server-rendered table", () => {
+  it("parses solicitation rows from BidNet's sol-table markup", () => {
+    const html = `
+      <table class="sol-table">
+        <thead><tr><th>Solicitation Title</th><th>Agency</th><th>Published Date</th><th>Closing Date</th></tr></thead>
+        <tbody>
+          <tr class="mets-table-row">
+            <td><a href="/public/supplier/solicitations/statewide/444139583373/abstract">Parking Lot Repair</a></td>
+            <td>Kentucky Transportation Cabinet</td>
+            <td>03/15/2026</td>
+            <td>04/15/2026</td>
+          </tr>
+        </tbody>
+      </table>`;
+
+    const [result] = parseHtmlResponse(html, "https://www.bidnetdirect.com/kentucky/solicitations/open-bids");
+    expect(result).toMatchObject({
+      title: "Parking Lot Repair",
+      agency: "Kentucky Transportation Cabinet",
+      postedDate: "2026-03-15",
+      responseDeadline: "2026-04-15",
+      url: "https://www.bidnetdirect.com/public/supplier/solicitations/statewide/444139583373/abstract",
+    });
+  });
+});
+
 // ── parseHtmlResponse — link scan fallback ────────────────────────────────────
 
 describe("parseHtmlResponse — link scan fallback (Strategy 3)", () => {
