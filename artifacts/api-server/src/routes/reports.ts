@@ -1689,7 +1689,12 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       !isOutstandingCostBooking(e) &&
       !e.isWageAdvance
     );
-    // Fixed/allocation sub payments live only in sub_payment_records (not expenses) after Task #892.
+    // LEDGER INVARIANT: pay-worker payments are represented exactly once. Fixed/allocation
+    // payments live only in sub_payment_records (not expenses) after the ledger migration;
+    // hourly payments are represented by their jobSubHours-linked auto-expense. There is
+    // currently no FK from expenses to sub_payment_records, so do not add a second write
+    // path without also adding an explicit source link/flag and excluding linked expenses
+    // here. Otherwise a Schedule C payment would be silently counted twice.
     const fixedAllocSubPaymentTotal = fixedAllocSubPayments.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + fixedAllocSubPaymentTotal;
 
@@ -1848,8 +1853,10 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       });
       catMap.set(line, existing);
     }
-    // Inject fixed/allocation sub payments under Contract Labor.
-    // These payments exist only in sub_payment_records (not expenses) after Task #892.
+    // Inject fixed/allocation sub payments under Contract Labor. This is the only
+    // Schedule C representation for those pay-worker payments; hourly payments stay
+    // in the expenses loop through their jobSubHours-linked auto-expense. Keep this
+    // paired with the ledger invariant above if either write path changes.
     // Hourly sub payments are excluded — their auto-expense records (jobSubHoursId IS NOT NULL)
     // are already in the expenses loop above, so including them here would double-count.
     const CONTRACT_LABOR_LINE = "Line 11 – Contract Labor";

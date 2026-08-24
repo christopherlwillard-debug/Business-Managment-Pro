@@ -2492,7 +2492,12 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         if (hoursOwed > 0) agreedOwed = hoursOwed + prevBonuses + (bonusAmount ?? 0);
       }
 
-      // 1. Insert the payment record first
+      // 1. Insert the payment record first.
+      // LEDGER INVARIANT: this pay-worker path must not also insert an expenses row.
+      // Fixed/allocation payments are owned by sub_payment_records; hourly labor is
+      // already represented by the jobSubHours-linked auto-expense. If a future
+      // caller needs a linked expense, add an explicit source link/flag and update
+      // the Schedule C filter rather than creating an unlinked duplicate.
       const [spr] = await tx.insert(subPaymentRecordsTable).values({
         jobId,
         subcontractorId: subId,
