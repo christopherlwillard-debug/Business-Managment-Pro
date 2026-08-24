@@ -6,6 +6,7 @@ import {
   bidBusinessSettingsTable,
   settingsTable,
   businessesTable,
+  bidSourceConnectionsTable,
 } from "@workspace/db";
 import { eq, sql, and, isNull, ne } from "drizzle-orm";
 import {
@@ -65,6 +66,19 @@ interface ResolvedProfile {
 function isHardSuppressedByTitle(title: string): boolean {
   const t = title.toLowerCase();
   return TITLE_HARD_SUPPRESS_TERMS.some((term) => t.includes(term));
+}
+
+/**
+ * Return the future reset time from a stored SAM quota error.
+ * Unknown/malformed reset values deliberately return null so a normal sync can
+ * resume rather than being blocked indefinitely.
+ */
+export function parseSamQuotaResetAt(error: string | null | undefined): Date | null {
+  if (!error || !error.toLowerCase().includes("quota exhausted")) return null;
+  const match = error.match(/resets(?: at)?\s+(.+)$/i);
+  if (!match) return null;
+  const resetAt = new Date(match[1].trim());
+  return Number.isNaN(resetAt.getTime()) || resetAt.getTime() <= Date.now() ? null : resetAt;
 }
 
 // ── Minimum score to store a new bid ─────────────────────────────────────────
@@ -865,7 +879,25 @@ export async function runBidSync(
 
   // Track whether each source was actually attempted.
   // SAM.gov additionally requires an API key — no key means no attempt (and no health record).
-  const samActuallyRan      = isEnabled(enabledSources, "sam_gov")      && !!getCredential("sam_gov", "SAM_GOV_API_KEY");
+  // A known future quota reset suppresses only SAM.gov; the other sources still run.
+  const samEnabled = isEnabled(enabledSources, "sam_gov");
+  const samHasApiKey = !!getCredential("sam_gov", "SAM_GOV_API_KEY");
+  const [samConnection] = samEnabled
+    ? await db
+      .select({ lastSyncError: bidSourceConnectionsTable.lastSyncError })
+      .from(bidSourceConnectionsTable)
+      .where(and(
+        eq(bidSourceConnectionsTable.businessId, businessId),
+        eq(bidSourceConnectionsTable.catalogSlug, "sam_gov"),
+      ))
+      .limit(1)
+    : [];
+  const storedSamQuotaResetAt = parseSamQuotaResetAt(samConnection?.lastSyncError);
+  const samQuotaBlocked = samEnabled && samHasApiKey && storedSamQuotaResetAt != null;
+  if (samQuotaBlocked) {
+    console.log(`[bid-sync] SAM.gov quota exhausted for "${business.name}" — skipping until ${storedSamQuotaResetAt!.toISOString()}`);
+  }
+  const samActuallyRan      = samEnabled && samHasApiKey && !samQuotaBlocked;
   const kyLocalActuallyRan  = isEnabled(enabledSources, "ky_in_local");
   const awardsActuallyRan   = isEnabled(enabledSources, "usa_spending");
 
