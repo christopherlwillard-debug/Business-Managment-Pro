@@ -62,6 +62,7 @@ vi.mock("@workspace/db", () => {
       select: () => makeChain(),
       delete: () => ({ where: () => Promise.resolve() }),
       transaction: async (callback: (tx: any) => Promise<void>) => callback({
+        select: () => makeChain(),
         update: (table: any) => ({
           set: (data: any) => {
             h.updates.push(data);
@@ -391,9 +392,11 @@ describe("job mileage reimbursement ownership and validation", () => {
 
 describe("DELETE /subcontractors/:id — reimbursement ownership", () => {
   it("resets that subcontractor's reimbursement recipient while preserving its financial fields", async () => {
+    h.selectQueue.push([]);
     const res = await request(app).delete("/subcontractors/12");
 
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
+    expect(res.body.reassignedJobs).toEqual([]);
     expect(h.updates).toHaveLength(6);
     expect(h.updates[5]).toEqual({
       recipientType: "owner",

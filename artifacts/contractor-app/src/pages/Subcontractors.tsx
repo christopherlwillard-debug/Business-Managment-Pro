@@ -457,8 +457,18 @@ export default function Subcontractors() {
   async function handleDelete(id: number) {
     setDeletingId(id);
     try {
-      await deleteMutation.mutateAsync({ id });
+      const result = await deleteMutation.mutateAsync({ id }) as unknown as {
+        reassignedJobs?: Array<{ jobId: number; jobTitle: string | null }>;
+      };
       refetch();
+      const reassignedJobs = result?.reassignedJobs ?? [];
+      if (reassignedJobs.length > 0) {
+        const jobNames = reassignedJobs.map(job => job.jobTitle || `Job #${job.jobId}`);
+        toast({
+          title: "Subcontractor deleted",
+          description: `Mileage reimbursement reassigned to the business owner for: ${jobNames.join(", ")}.`,
+        });
+      }
     } catch (err) {
       console.error(err);
       toast({ title: "Delete failed", description: "Could not delete this subcontractor. Please try again.", variant: "destructive" });

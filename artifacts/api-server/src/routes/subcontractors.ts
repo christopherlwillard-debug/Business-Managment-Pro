@@ -494,12 +494,23 @@ router.delete("/:id/settle", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await db.transaction(async (tx) => {
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    const reassignedJobs = await db.transaction(async (tx) => {
       await tx.update(expensesTable).set({ subcontractorId: null }).where(eq(expensesTable.subcontractorId, id));
       await tx.update(paymentsTable).set({ subcontractorId: null }).where(eq(paymentsTable.subcontractorId, id));
       await tx.update(mileageLogsTable).set({ subcontractorId: null }).where(eq(mileageLogsTable.subcontractorId, id));
       await tx.update(generated1099sTable).set({ subcontractorId: null }).where(eq(generated1099sTable.subcontractorId, id));
       await tx.update(jobsTable).set({ subcontractorId: null }).where(eq(jobsTable.subcontractorId, id));
+      const affectedJobs = await tx.select({
+        jobId: jobMileageReimbursementsTable.jobId,
+        jobTitle: jobsTable.title,
+      })
+        .from(jobMileageReimbursementsTable)
+        .innerJoin(jobsTable, eq(jobMileageReimbursementsTable.jobId, jobsTable.id))
+        .where(and(
+          eq(jobMileageReimbursementsTable.recipientSubcontractorId, id),
+          eq(jobMileageReimbursementsTable.recipientType, "subcontractor"),
+        ));
       await tx.update(jobMileageReimbursementsTable)
         .set({
           recipientType: "owner",
@@ -511,8 +522,9 @@ router.delete("/:id", async (req, res) => {
           eq(jobMileageReimbursementsTable.recipientType, "subcontractor"),
         ));
       await tx.delete(subcontractorsTable).where(eq(subcontractorsTable.id, id));
+      return affectedJobs;
     });
-    res.status(204).send();
+    res.json({ reassignedJobs });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete subcontractor" });
