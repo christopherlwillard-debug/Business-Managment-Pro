@@ -397,3 +397,21 @@ export function buildCaption(codes: string[]): string {
   const last = names.pop()!;
   return `Proudly Serving ${names.join(", ")} & ${last}`;
 }
+
+/**
+ * Convert a geocoded center and mile radius into the SVG map's approximate
+ * coordinate space. The map is intentionally illustrative rather than a
+ * navigation map; state label centroids provide stable intersection points.
+ */
+export function getRadiusMapData(lat: number, lon: number, miles: number): {
+  circle: { cx: number; cy: number; r: number };
+  selectedStates: string[];
+} {
+  const cx = ((lon + 125) / 60) * 960;
+  const cy = ((50 - lat) / 25) * 600;
+  const r = (miles / 69) * (600 / 25);
+  const selectedStates = US_STATES
+    .filter(state => Math.hypot(state.lx - cx, state.ly - cy) <= r + 18)
+    .map(state => state.code);
+  return { circle: { cx, cy, r }, selectedStates };
+}

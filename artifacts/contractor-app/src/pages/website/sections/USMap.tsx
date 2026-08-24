@@ -11,6 +11,7 @@ interface USMapProps {
   className?: string;
   /** When true, zoom into only the selected states and hide everything else. */
   focusMode?: boolean;
+  radiusCircle?: { cx: number; cy: number; r: number } | null;
 }
 
 const VIEWBOX = "0 0 960 600";
@@ -27,6 +28,7 @@ export function USMap({
   mapStyle = "modern",
   className = "",
   focusMode = false,
+  radiusCircle = null,
 }: USMapProps) {
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
   const isInteractive = !!onToggleState;
@@ -172,6 +174,19 @@ export function USMap({
             {s.code}
           </text>
         ))}
+        {radiusCircle && (
+          <circle
+            cx={radiusCircle.cx}
+            cy={radiusCircle.cy}
+            r={radiusCircle.r}
+            fill={brandColor}
+            fillOpacity={0.18}
+            stroke={brandColor}
+            strokeWidth={2}
+            strokeDasharray="6 4"
+            aria-label="Service radius"
+          />
+        )}
       </svg>
     );
   }
@@ -290,6 +305,19 @@ export function USMap({
             </g>
           );
         })
+      )}
+      {radiusCircle && (
+        <circle
+          cx={radiusCircle.cx}
+          cy={radiusCircle.cy}
+          r={radiusCircle.r}
+          fill={brandColor}
+          fillOpacity={0.18}
+          stroke={brandColor}
+          strokeWidth={2}
+          strokeDasharray="6 4"
+          aria-label="Service radius"
+        />
       )}
     </svg>
   );

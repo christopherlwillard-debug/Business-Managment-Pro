@@ -12,9 +12,7 @@ import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { InlineEditableText } from "../InlineEditableText";
 import type { SiteSettings } from "../website-types";
 import { USMap } from "./USMap";
-import { STATE_CODE_TO_NAME, buildCaption, migrateAreas } from "./USMapData";
-import { MapContainer, TileLayer, Circle } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
+import { STATE_CODE_TO_NAME, buildCaption, migrateAreas, getRadiusMapData } from "./USMapData";
 
 export interface ServiceAreaContent {
   heading: string;
@@ -38,6 +36,8 @@ export interface ServiceAreaContent {
   serviceRadius?: number;
   /** City/address used as the centre for the radius circle (e.g. "Louisville, KY") */
   radiusCity?: string;
+  /** Select manually covered states or derive coverage from the radius circle. */
+  radiusMode?: "states" | "radius";
 }
 
 interface Props {
@@ -131,6 +131,7 @@ export function ServiceAreaSection({
     : migrated.areas;
 
   const displayMode    = content.displayMode ?? "both";
+  const radiusMode     = content.radiusMode ?? "states";
   const mapStyle       = content.mapStyle ?? "modern";
   const showLabels     = content.showLabels !== false;
   const showBorders    = content.showBorders !== false;
@@ -216,12 +217,16 @@ export function ServiceAreaSection({
   }, [radiusCity, serviceRadius]);
 
   // State names sorted alphabetically for the checkmark list
-  const stateNames = [...selectedStates]
-    .map(c => STATE_CODE_TO_NAME[c] ?? c)
-    .sort((a, b) => a.localeCompare(b));
-
   // Stable sortable IDs for freeform chips
   const chipIds = freeformAreas.map((_, i) => `area-${i}`);
+
+  const radiusMapData = radiusMode === "radius" && radiusLatLng && serviceRadius
+    ? getRadiusMapData(radiusLatLng[0], radiusLatLng[1], serviceRadius)
+    : null;
+  const displayedStates = radiusMapData?.selectedStates ?? selectedStates;
+  const stateNames = [...displayedStates]
+    .map(c => STATE_CODE_TO_NAME[c] ?? c)
+    .sort((a, b) => a.localeCompare(b));
 
   return (
     <BlockStyleWrapper
@@ -266,49 +271,23 @@ export function ServiceAreaSection({
           />
         )}
 
-        {/* Radius circle map */}
-        {serviceRadius && radiusCity && (
-          <div className="mb-6 rounded-xl overflow-hidden border border-border" style={{ height: 320 }}>
-            {radiusLatLng ? (
-              <MapContainer
-                center={radiusLatLng}
-                zoom={9}
-                style={{ width: "100%", height: "100%" }}
-                scrollWheelZoom={false}
-                dragging={!isEditing}
-                zoomControl={!isEditing}
-              >
-                <TileLayer
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                />
-                <Circle
-                  center={radiusLatLng}
-                  radius={serviceRadius * 1609.34}
-                  pathOptions={{ color: highlightColor, fillColor: highlightColor, fillOpacity: 0.15, weight: 2 }}
-                />
-              </MapContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-sm text-muted-foreground bg-muted/20">
-                {radiusCity ? "Loading map…" : "Enter a city in the inspector to show the radius"}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* SVG Map */}
         {showMap && (
           <div className="mb-6">
             <USMap
-              selectedStates={selectedStates}
-              onToggleState={isEditing ? toggleState : undefined}
+              selectedStates={displayedStates}
+              onToggleState={isEditing && radiusMode === "states" ? toggleState : undefined}
               highlightColor={highlightColor}
               showLabels={showLabels}
               showBorders={showBorders}
               mapStyle={mapStyle}
               focusMode={focusMode}
+              radiusCircle={radiusMapData?.circle}
               className="max-w-2xl mx-auto"
             />
+            {radiusMode === "radius" && radiusCity && !radiusMapData && (
+              <p className="text-sm text-muted-foreground mt-2">Loading coverage radius…</p>
+            )}
 
             {/* Caption — inline-editable in edit mode */}
             {!content.captionHidden && (caption || isEditing) && (

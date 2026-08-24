@@ -457,6 +457,27 @@ export function CoverageMapInspector({ content, onChange }: Props) {
           </p>
           <div className="space-y-2">
             <div>
+              <p className="text-[10px] text-muted-foreground mb-1">Coverage display</p>
+              <div className="grid grid-cols-2 gap-1">
+                {(["states", "radius"] as const).map(mode => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => onChange({ radiusMode: mode })}
+                    aria-pressed={(content.radiusMode ?? "states") === mode}
+                    className={cn(
+                      "py-1 text-[10px] font-medium rounded border transition-colors",
+                      (content.radiusMode ?? "states") === mode
+                        ? "bg-primary/10 border-primary/40 text-primary"
+                        : "border-border text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    {mode === "states" ? "States" : "Radius"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
               <label className="text-[10px] text-muted-foreground block mb-0.5">Center city / address</label>
               <input
                 type="text"
