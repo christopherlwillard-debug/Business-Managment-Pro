@@ -40,7 +40,7 @@ import { detectContractType } from "../lib/bidContractTypeDetector.js";
 import { classifyOpportunityScope, isScopeCompatibleWithBusiness, assessDataCompleteness } from "../lib/bidScopeClassifier.js";
 import { quarantineOrphanBidOpportunities } from "../lib/bid-ownership.js";
 import { classifyBidGeography } from "../lib/bidGeography.js";
-import { isActionableBid } from "../lib/bidLifecycle.js";
+import { isActionableBid, normalizedBidIdentity } from "../lib/bidLifecycle.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -464,6 +464,7 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
       agency:           bidOpportunitiesTable.agency,
       url:              bidOpportunitiesTable.url,
       placeOfPerformance: bidOpportunitiesTable.placeOfPerformance,
+        aiSummary:        bidOpportunitiesTable.aiSummary,
     })
     .from(bidOpportunitiesTable)
     .where(and(
@@ -535,6 +536,10 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
           geographyReason: geography.geographyReason,
         // Suppress stale bids: move them out of 'new' so they don't clutter the feed
         ...(autoNobd ? { stage: "no_bid" as const } : {}),
+        ...(completeness !== "complete" ? {
+          recommendation: "review" as const,
+          recommendationFactors: [],
+        } : {}),
       })
       .where(eq(bidOpportunitiesTable.id, bid.id));
     updated++;
@@ -555,6 +560,18 @@ async function upsertOpportunities(
 ): Promise<{ inserted: OppWithSource[]; scopeRejected: OppWithSource[] }> {
   const newOnes: OppWithSource[] = [];
   const scopeRejected: OppWithSource[] = [];
+  const existingKeys = new Set(
+    (await db
+      .select({
+        noticeId: bidOpportunitiesTable.noticeId,
+        title: bidOpportunitiesTable.title,
+        agency: bidOpportunitiesTable.agency,
+        source: bidOpportunitiesTable.source,
+      })
+      .from(bidOpportunitiesTable)
+      .where(eq(bidOpportunitiesTable.businessId, businessId)))
+      .map((row) => normalizedBidIdentity(row)),
+  );
 
   for (const opp of opportunities) {
     // Award intelligence has a dedicated ingestion path and must never enter
@@ -576,6 +593,19 @@ async function upsertOpportunities(
     // BEFORE assigning it to a business. This prevents paving/asphalt bids from
     // landing in Willard's Flooring and flooring bids from landing in Asphalt Sealing.
     const effectiveSource = opp.source ?? defaultSource;
+    const duplicateKey = normalizedBidIdentity({ source: effectiveSource, title: opp.title, agency: opp.agency });
+    const hasSameNotice = existingKeys.has(duplicateKey);
+    if (hasSameNotice && !await db
+      .select({ id: bidOpportunitiesTable.id })
+      .from(bidOpportunitiesTable)
+      .where(and(
+        eq(bidOpportunitiesTable.noticeId, opp.noticeId),
+        eq(bidOpportunitiesTable.businessId, businessId),
+      ))
+      .then((rows) => rows.length > 0)) {
+      console.log(`[bid-sync] Duplicate source record suppressed: "${opp.title.slice(0, 70)}"`);
+      continue;
+    }
     const scope = classifyOpportunityScope(opp.title, opp.naicsCode ?? null, effectiveSource);
     if (!isScopeCompatibleWithBusiness(scope.primaryCategory, scope.confidence, profile.businessType)) {
       scopeRejected.push(opp);
@@ -695,8 +725,10 @@ async function upsertOpportunities(
         opportunityScore,
         capabilityMatches,
         opportunityType:       derivedOppType,
-        recommendation:        rec.recommendation,
-        recommendationFactors: rec.factors as unknown as Record<string, unknown>[],
+        recommendation:        completeness === "complete" ? rec.recommendation : "review",
+        recommendationFactors: completeness === "complete"
+          ? rec.factors as unknown as Record<string, unknown>[]
+          : [],
         officialSourceStatus:  srcStatus,
         contractType:          detectedNew.contractType,
         scopeSize:             detectedNew.scopeSize,
@@ -710,6 +742,7 @@ async function upsertOpportunities(
         geographyReason:       geography.geographyReason,
       }).onConflictDoNothing().returning({ id: bidOpportunitiesTable.id });
       if (createdRow) newOnes.push(opp);
+      if (createdRow) existingKeys.add(duplicateKey);
     } else {
       // Re-score existing row so capability profile changes take effect immediately.
       // Pass cached AI summary so recommendation can incorporate prior analysis.
@@ -744,8 +777,10 @@ async function upsertOpportunities(
           noticeType:            (opp as SamOpportunity).noticeType ?? null,
           setAsideType:          rawSetAside,
           opportunityType:       derivedOppType,
-          recommendation:        rec.recommendation,
-          recommendationFactors: rec.factors as unknown as Record<string, unknown>[],
+          recommendation:        completeness === "complete" ? rec.recommendation : "review",
+          recommendationFactors: completeness === "complete"
+            ? rec.factors as unknown as Record<string, unknown>[]
+            : [],
           contractType:          detectedExisting.contractType,
           scopeSize:             detectedExisting.scopeSize,
           licenseFlags:          detectedExisting.licenseFlags,

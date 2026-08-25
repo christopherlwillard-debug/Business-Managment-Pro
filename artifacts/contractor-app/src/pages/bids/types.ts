@@ -130,6 +130,8 @@ export interface BidOpportunity {
   // Phase 7 — scope classification + data completeness
   scopeCategory?:     string | null;  // asphalt|flooring|general_contracting|industrial_maintenance|mfg_homes|site_work|dump_waste
   dataCompleteness?:  string | null;  // complete|partial|needs_verification|unknown
+  lifecycleState?: "active" | "incomplete" | "verification_needed" | "expired" | "historical";
+  defaultActive?: boolean;
   sourceReferenceId?: string | null;  // external source's own identifier
   geography?:          "local" | "regional" | "outside_area" | "unknown" | string | null;
   placeOfPerformance?: string | null;

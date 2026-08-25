@@ -22,6 +22,7 @@ import { findOfficialSource, classifySourceHeuristic, makeStatusLabel, makeStatu
 import { getCredential } from "../lib/credentialManager.js";
 import { CapabilityDefinition, getCapabilitiesForBusinessType } from "../lib/bidCapabilitySeeds.js";
 import { getExistingBusiness } from "../lib/bid-ownership.js";
+import { getBidLifecycleState, isDefaultActiveBid } from "../lib/bidLifecycle.js";
 
 type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid";
 const VALID_STAGES: BidStage[] = ["new", "reviewing", "bidding", "submitted", "won", "lost", "no_bid"];
@@ -282,7 +283,10 @@ router.get("/", async (req, res) => {
       ))
       .orderBy(desc(bidOpportunitiesTable.createdAt));
 
-    res.json(rows);
+    const includeHistory = req.query.includeHistory === "true";
+    res.json(includeHistory
+      ? rows
+      : rows.filter((row) => isDefaultActiveBid(row)));
   } catch (err) {
     console.error("[bids] GET /bids error:", err);
     res.status(500).json({ error: "Failed to load bids" });
@@ -446,11 +450,27 @@ router.get("/unified", async (req, res) => {
         displayRep.naicsCode ?? null,
       );
 
-      unified.push({ ...displayRep, capabilityCategories, relevantBusinessNames, relevanceReason });
+      unified.push({
+        ...displayRep,
+        lifecycleState: getBidLifecycleState(displayRep),
+        defaultActive: isDefaultActiveBid(displayRep),
+        // Never let a stale cached recommendation make incomplete source data
+        // look decision-ready in the API contract.
+        recommendation: displayRep.dataCompleteness === "complete"
+          ? displayRep.recommendation
+          : "review",
+        recommendationFactors: displayRep.dataCompleteness === "complete"
+          ? displayRep.recommendationFactors
+          : [],
+        capabilityCategories,
+        relevantBusinessNames,
+        relevanceReason,
+      });
     }
 
-    // Sort: highest score first, newest on tie
+    // Active, decision-ready opportunities first; retained history follows.
     unified.sort((a, b) => {
+      if (a.defaultActive !== b.defaultActive) return a.defaultActive ? -1 : 1;
       const aScore = (a.opportunityScore as number | null) ?? -1;
       const bScore = (b.opportunityScore as number | null) ?? -1;
       if (bScore !== aScore) return bScore - aScore;
@@ -851,20 +871,29 @@ router.post("/:id/summarize", async (req, res) => {
       summary as unknown as Record<string, unknown>,
     );
 
+    const safeRecommendation = bid.dataCompleteness === "complete"
+      ? recResult.recommendation
+      : "review" as const;
     await db
       .update(bidOpportunitiesTable)
       .set({
         aiSummary:             summary,
         aiSummaryAt:           new Date(),
-        recommendation:        recResult.recommendation,
-        recommendationFactors: recResult.factors as unknown as Record<string, unknown>[],
+        recommendation:        safeRecommendation,
+        recommendationFactors: bid.dataCompleteness === "complete"
+          ? recResult.factors as unknown as Record<string, unknown>[]
+          : [],
       })
       .where(and(
         eq(bidOpportunitiesTable.id, id),
         eq(bidOpportunitiesTable.businessId, bizId),
       ));
 
-    res.json({ summary, recommendation: recResult, cached: false });
+    res.json({
+      summary,
+      recommendation: { ...recResult, recommendation: safeRecommendation, confidence: bid.dataCompleteness === "complete" ? recResult.confidence : "low" },
+      cached: false,
+    });
   } catch (err) {
     console.error("[bids] POST /bids/:id/summarize error:", err);
     res.status(500).json({ error: "Failed to generate summary" });

@@ -16,3 +16,56 @@ export function isActionableBid(record: {
 }): boolean {
   return !isAwardIntelligence(record);
 }
+
+export type BidLifecycleState =
+  | "active"
+  | "incomplete"
+  | "verification_needed"
+  | "expired"
+  | "historical";
+
+export interface BidLifecycleInput {
+  source?: string | null;
+  opportunityType?: string | null;
+  stage?: string | null;
+  responseDeadline?: string | null;
+  dataCompleteness?: string | null;
+  opportunityScore?: number | null;
+}
+
+export function isExpiredDeadline(deadline: string | null | undefined, now = new Date()): boolean {
+  if (!deadline) return false;
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(deadline)
+    ? new Date(`${deadline}T00:00:00`)
+    : new Date(deadline);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  return parsed.getTime() < today.getTime();
+}
+
+export function normalizedBidIdentity(record: {
+  source?: string | null;
+  title: string;
+  agency?: string | null;
+}): string {
+  return `${record.source ?? ""}|${record.title.trim().toLowerCase()}|${(record.agency ?? "").trim().toLowerCase()}`;
+}
+
+export function getBidLifecycleState(record: BidLifecycleInput, now = new Date()): BidLifecycleState {
+  if (isAwardIntelligence(record) || ["won", "lost", "no_bid", "score_rejected"].includes(record.stage ?? "")) {
+    return "historical";
+  }
+  if (isExpiredDeadline(record.responseDeadline, now)) return "expired";
+  if (record.dataCompleteness === "needs_verification") return "verification_needed";
+  if (record.dataCompleteness === "partial" || record.dataCompleteness === "unknown" || !record.dataCompleteness) {
+    return "incomplete";
+  }
+  return "active";
+}
+
+export function isDefaultActiveBid(record: BidLifecycleInput, now = new Date()): boolean {
+  return isActionableBid(record)
+    && getBidLifecycleState(record, now) === "active"
+    && (record.opportunityScore ?? 0) > 0;
+}

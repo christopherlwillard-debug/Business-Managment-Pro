@@ -22,7 +22,7 @@ import PipelineBoard from "./bids/PipelineBoard";
 import AwardsPanel from "./bids/AwardsPanel";
 import BidEducationPanel from "./bids/BidEducationPanel";
 import BidQualificationPanel from "./bids/BidQualificationPanel";
-import type { BidFilter, SourceFilter, CapabilityFilter, GeographyFilter } from "./bids/BidFilterBar";
+import type { BidFilter, SourceFilter, CapabilityFilter, GeographyFilter, QualityFilter } from "./bids/BidFilterBar";
 import type { QuickLink, AiSummary, BidOpportunity, BidStage, EducationSummary, BidSourceConnection, IndustrialQualSummary } from "./bids/types";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -88,6 +88,7 @@ export default function BidOpportunities() {
   const [tmOnlyFilter, setTmOnlyFilter] = useState(false);
   const [sourceFilter,     setSourceFilter]     = useState<SourceFilter>("all");
   const [geographyFilter,  setGeographyFilter]  = useState<GeographyFilter>("service_area");
+  const [qualityFilter, setQualityFilter] = useState<QualityFilter>("ready");
   const [capabilityFilter, setCapabilityFilter] = useState<CapabilityFilter>("all");
   const [panelBid,     setPanelBid]     = useState<BidOpportunity | null>(null);
   const [panelSummary, setPanelSummary] = useState<AiSummary | null>(null);
@@ -408,6 +409,21 @@ export default function BidOpportunities() {
   const isAward = (b: BidOpportunity) => b.source === "usa-spending" || b.opportunityType === "award_intelligence";
   const awards = bids.filter(isAward);
   const pipelineBids = bids.filter((b) => !isAward(b));
+  const isReady = (b: BidOpportunity) => b.defaultActive === true
+    || (b.defaultActive === undefined
+      && b.stage !== "no_bid"
+      && b.stage !== "score_rejected"
+      && b.opportunityScore !== 0
+      && b.lifecycleState !== "expired"
+      && b.lifecycleState !== "incomplete"
+      && b.lifecycleState !== "verification_needed");
+  const qualityFiltered = qualityFilter === "ready"
+    ? pipelineBids.filter(isReady)
+    : qualityFilter === "verification"
+      ? pipelineBids.filter((b) => b.lifecycleState === "incomplete" || b.lifecycleState === "verification_needed" || b.dataCompleteness === "partial" || b.dataCompleteness === "needs_verification")
+      : qualityFilter === "history"
+        ? pipelineBids.filter((b) => b.lifecycleState === "expired" || b.lifecycleState === "historical" || b.stage === "no_bid" || b.stage === "score_rejected")
+        : pipelineBids;
   const scoreRejectedBids = pipelineBids.filter((b) => b.stage === "score_rejected");
 
   const profileNaicsCodes = BUSINESS_NAICS[activeBusiness?.type ?? ""] ?? [];
@@ -416,8 +432,8 @@ export default function BidOpportunities() {
   // Private opportunities (source="private") always appear in the industrial_maintenance view
   const isPrivateBid = (b: BidOpportunity) => b.isPrivateOpportunity === true || b.isPrivateOpportunity === "true";
   const capabilityFiltered = capabilityFilter === "all"
-    ? pipelineBids
-    : pipelineBids.filter((b) =>
+    ? qualityFiltered
+    : qualityFiltered.filter((b) =>
         (b.capabilityCategories?.includes(capabilityFilter) ?? false) ||
         (capabilityFilter === "industrial_maintenance" && isPrivateBid(b))
       );
@@ -428,10 +444,10 @@ export default function BidOpportunities() {
     "site_work", "general_contracting", "industrial_maintenance", "subcontracting",
   ];
   const capabilityCounts: Partial<Record<CapabilityFilter, number>> = {
-    all: pipelineBids.filter((b) => b.stage !== "no_bid").length,
+    all: qualityFiltered.filter((b) => b.stage !== "no_bid").length,
     ...Object.fromEntries(ALL_CAP_KEYS.map((key) => [
       key,
-      pipelineBids.filter((b) => {
+       qualityFiltered.filter((b) => {
         if (b.stage === "no_bid") return false;
         if (b.capabilityCategories?.includes(key)) return true;
         if (key === "industrial_maintenance" && isPrivateBid(b)) return true;
@@ -454,7 +470,9 @@ export default function BidOpportunities() {
   };
 
   const stageFiltered = filter === "all"
-    ? capabilityFiltered.filter((b) => b.stage !== "no_bid" && b.stage !== "score_rejected")
+    ? (qualityFilter === "history"
+      ? capabilityFiltered
+      : capabilityFiltered.filter((b) => b.stage !== "no_bid" && b.stage !== "score_rejected"))
     : capabilityFiltered.filter((b) => b.stage === filter);
 
   const geographyFiltered = sourceFilter === "usa-spending"
@@ -744,6 +762,8 @@ export default function BidOpportunities() {
         tmCount={tmCount}
         geographyFilter={geographyFilter}
         setGeographyFilter={setGeographyFilter}
+        qualityFilter={qualityFilter}
+        setQualityFilter={setQualityFilter}
       />
 
       {/* ── Sync health strip ───────────────────────────────────────────────── */}
@@ -794,7 +814,7 @@ export default function BidOpportunities() {
         <>
           {showPipeline && (
             <>
-              {pipelineBids.length === 0 ? (
+              {qualityFiltered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
                   <FileSearch className="w-10 h-10 text-muted-foreground/40" />
                   <p className="text-muted-foreground font-medium">No bid opportunities yet</p>

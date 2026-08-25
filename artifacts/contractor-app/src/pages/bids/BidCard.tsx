@@ -1,7 +1,7 @@
 import {
   ExternalLink, Sparkles, XCircle, CheckCircle2,
   Building2, Shield, Users, Globe, Award, ChevronDown, Handshake, Info, Calendar, BookOpen,
-  Eye, Lock, BadgeCheck, Zap, AlertTriangle, AlertCircle, Wrench,
+  Eye, Lock, BadgeCheck, Zap, AlertTriangle, AlertCircle, Wrench, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AiSummary, BidOpportunity, BidStage, SetAsideType, RecommendationLevel, OfficialSourceStatus } from "./types";
@@ -441,6 +441,15 @@ export default function BidCard({
           >
             <AlertCircle className="w-3 h-3" />
             Partial data
+          </span>
+        )}
+        {bid.lifecycleState === "expired" && (
+          <span
+            title="The response deadline has passed. This record is retained in history and is not part of the default active feed."
+            className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
+          >
+            <Clock className="w-3 h-3" />
+            Expired
           </span>
         )}
       </div>

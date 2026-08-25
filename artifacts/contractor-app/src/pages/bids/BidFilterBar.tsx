@@ -15,6 +15,7 @@ export type CapabilityFilter =
   | "industrial_maintenance"
   | "subcontracting";
 export type GeographyFilter = "service_area" | "outside_area" | "unknown" | "all";
+export type QualityFilter = "ready" | "verification" | "history" | "all";
 
 const STAGE_FILTER_TABS: Array<{ value: BidFilter; label: string }> = [
   { value: "all",       label: "All" },
@@ -71,6 +72,8 @@ interface Props {
   tmCount?:          number;
   geographyFilter:   GeographyFilter;
   setGeographyFilter: (f: GeographyFilter) => void;
+  qualityFilter: QualityFilter;
+  setQualityFilter: (f: QualityFilter) => void;
 }
 
 export default function BidFilterBar({
@@ -80,6 +83,7 @@ export default function BidFilterBar({
   activeBusinessType,
   tmOnlyFilter = false, setTmOnlyFilter, tmCount = 0,
   geographyFilter, setGeographyFilter,
+  qualityFilter, setQualityFilter,
 }: Props) {
   // Show T&M quick-filter when industrial maintenance capability or general contracting is selected
   const showTmFilter = setTmOnlyFilter && (
@@ -304,6 +308,31 @@ export default function BidFilterBar({
               "flex-shrink-0 px-2.5 py-1 rounded-md text-xs font-medium transition-colors border whitespace-nowrap",
               geographyFilter === value
                 ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-1.5 overflow-x-auto md:overflow-visible" style={{ scrollbarWidth: "none" } as React.CSSProperties}>
+        <span className="flex-shrink-0 text-xs text-muted-foreground font-medium">Records:</span>
+        {([
+          ["ready", "Ready to review"],
+          ["verification", "Needs verification"],
+          ["history", "History"],
+          ["all", "All records"],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            onClick={() => setQualityFilter(value)}
+            className={cn(
+              "flex-shrink-0 px-2.5 py-1 rounded-md text-xs font-medium transition-colors border whitespace-nowrap",
+              qualityFilter === value
+                ? value === "verification"
+                  ? "bg-amber-600 text-white border-amber-600"
+                  : "bg-primary text-primary-foreground border-primary"
                 : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
             )}
           >
