@@ -11,7 +11,7 @@ import {
   crewCertificationsTable,
   equipmentInventoryTable,
 } from "@workspace/db";
-import { eq, desc, and, inArray, sql, isNotNull } from "drizzle-orm";
+import { eq, desc, and, inArray, sql, isNotNull, isNull, not, or } from "drizzle-orm";
 import { deriveCapabilityCategories } from "../lib/bidCategories.js";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { BUILDPRO_AI_MINI_MODEL } from "../ai-models";
@@ -272,7 +272,14 @@ router.get("/", async (req, res) => {
     const rows = await db
       .select()
       .from(bidOpportunitiesTable)
-      .where(eq(bidOpportunitiesTable.businessId, bizId))
+      .where(and(
+        eq(bidOpportunitiesTable.businessId, bizId),
+        not(eq(bidOpportunitiesTable.source, "usa-spending")),
+        or(
+          isNull(bidOpportunitiesTable.opportunityType),
+          not(eq(bidOpportunitiesTable.opportunityType, "award_intelligence")),
+        ),
+      ))
       .orderBy(desc(bidOpportunitiesTable.createdAt));
 
     res.json(rows);

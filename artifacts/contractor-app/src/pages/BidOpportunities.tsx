@@ -405,8 +405,9 @@ export default function BidOpportunities() {
   }
 
   // ── USASpending awards (separate source) ─────────────────────────────────
-  const awards = bids.filter((b) => b.source === "usa-spending");
-  const pipelineBids = bids.filter((b) => b.source !== "usa-spending");
+  const isAward = (b: BidOpportunity) => b.source === "usa-spending" || b.opportunityType === "award_intelligence";
+  const awards = bids.filter(isAward);
+  const pipelineBids = bids.filter((b) => !isAward(b));
   const scoreRejectedBids = pipelineBids.filter((b) => b.stage === "score_rejected");
 
   const profileNaicsCodes = BUSINESS_NAICS[activeBusiness?.type ?? ""] ?? [];

@@ -28,7 +28,7 @@ export default function AwardsPanel({ awards, profileNaicsCodes }: Props) {
           <Trophy className="w-4 h-4 text-violet-600 dark:text-violet-400" />
           <span className="font-semibold text-foreground text-sm">Awards Intelligence</span>
           <span className="text-xs text-muted-foreground">
-            {awards.length} awarded contract{awards.length !== 1 ? "s" : ""} via USASpending.gov
+            {awards.length} historical award{awards.length !== 1 ? "s" : ""} · Market intelligence only
             {matchCount > 0 && (
               <span className="ml-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
                 · {matchCount} similar to your work
@@ -46,7 +46,7 @@ export default function AwardsPanel({ awards, profileNaicsCodes }: Props) {
       {expanded && (
         <div className="px-4 pb-4 space-y-3">
           <p className="text-xs text-muted-foreground">
-            These are past awarded contracts from government agencies — competitors who have won similar work. Use this to identify which companies are winning, how much they're getting, and which agencies are buying.
+            These are past awarded contracts from government agencies — not open solicitations and not part of your bid pipeline. Use them to identify which companies are winning, how much they're getting, and which agencies are buying.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {awards.map((award) => (

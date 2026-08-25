@@ -40,6 +40,7 @@ import { detectContractType } from "../lib/bidContractTypeDetector.js";
 import { classifyOpportunityScope, isScopeCompatibleWithBusiness, assessDataCompleteness } from "../lib/bidScopeClassifier.js";
 import { quarantineOrphanBidOpportunities } from "../lib/bid-ownership.js";
 import { classifyBidGeography } from "../lib/bidGeography.js";
+import { isActionableBid } from "../lib/bidLifecycle.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -556,6 +557,14 @@ async function upsertOpportunities(
   const scopeRejected: OppWithSource[] = [];
 
   for (const opp of opportunities) {
+    // Award intelligence has a dedicated ingestion path and must never enter
+    // the actionable upsert pipeline, even if a future source is mislabelled.
+    if (!isActionableBid({
+      source: opp.source ?? defaultSource,
+      opportunityType: deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType),
+    })) {
+      continue;
+    }
     // Hard title gate: skip clearly incompatible opportunities before storing
     if (isHardSuppressedByTitle(opp.title)) {
       console.log(`[bid-sync] Hard-suppressed: "${opp.title.slice(0, 70)}"`);

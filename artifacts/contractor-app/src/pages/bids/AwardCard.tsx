@@ -46,7 +46,7 @@ export default function AwardCard({ award, profileNaicsCodes }: Props) {
     <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-3 hover:border-border/80 transition-colors">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
-          Awards Intel
+          Market intelligence · Awarded
         </span>
         {isMatch && (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
