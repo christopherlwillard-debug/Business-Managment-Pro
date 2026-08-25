@@ -151,3 +151,13 @@ Created the four-document architecture governance system:
 - Centralized invoice line, subtotal, tax, and total rounding in the shared API calculation library.
 - Editor previews, API saves and reads, invoice lists, print output, email output, and report serialization now use the same cent-based totals.
 - Persisted line items remain the invoice source of truth; stored snapshots continue to expose drift status.
+
+## 2026-08-24
+
+### Bid ownership enforcement
+
+- Removed the legacy sync behavior that assigned every null-owned bid to the asphalt business.
+- Legacy null-owned bid rows are now retained and marked as quarantined for manual review.
+- Scoped bid routes validate that the requested business exists; AI enrichment writes retain the business predicate used by their reads.
+- Automated bid inserts use the existing `(notice_id, business_id)` uniqueness rule with conflict-safe inserts.
+- The intentional owner-only unified feed excludes unowned rows and validates a requested scoring business.

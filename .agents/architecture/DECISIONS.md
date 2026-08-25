@@ -38,7 +38,7 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 - Writing sub pay to `expenses` as category "Subcontractor"
 - Any dual-write approach
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-08-05
 
 ---
@@ -54,7 +54,7 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 **Rejected Alternatives:**
 - `settings.calculatorDefaults.ownerPersonalInvestment` (legacy, migrated away from)
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-08-05
 
 ---
@@ -208,5 +208,24 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 ---
 
-*Add new ADRs here as architectural decisions are made. Number sequentially (ADR-006, ADR-007, ...).*  
+## ADR-012
+
+**Title:** Bid opportunities require explicit ownership; legacy orphans are quarantined
+
+**Decision:** `bid_opportunities.business_id` remains the canonical ownership field. New and synchronized rows must use an existing `businesses` row, scoped bid reads and mutations must match the requested business, and legacy rows with null ownership are marked `status="quarantined"` with `stage="no_bid"` rather than guessed into a business or deleted. The intentional all-business unified feed remains owner-only and excludes null-owned rows.
+
+**Reason:** A legacy sync path assigned every null-owned bid to the asphalt business, which could misattribute records. Quarantine preserves recovery evidence while preventing unowned data from appearing in normal feeds. The existing table and unique `(notice_id, business_id)` index remain sufficient.
+
+**Rejected Alternatives:**
+- Assigning null-owned bids to the first, asphalt, or currently syncing business
+- Deleting legacy orphan rows
+- Creating a parallel quarantine table
+- Making `business_id` non-null before legacy rows are inventoried and manually classified
+
+**Status:** Accepted
+**Date:** 2026-08-24
+
+---
+
+*Add new ADRs here as architectural decisions are made. Number sequentially (ADR-006, ADR-007, ...).*
 *Format: Title | Decision | Reason | Rejected Alternatives | Status | Date*

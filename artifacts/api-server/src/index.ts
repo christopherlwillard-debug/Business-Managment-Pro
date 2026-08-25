@@ -15,6 +15,7 @@ import { businessesTable, mileageLogsTable, expensesTable, clientsTable, clientB
 import { invoicesTable, jobSubcontractorsTable, subPaymentRecordsTable, settingsTable, bidOpportunitiesTable } from "@workspace/db/schema";
 import { isNull, isNotNull, and, inArray, asc, sql, ilike, eq } from "drizzle-orm";
 import { classifyOpportunityScope, isScopeCompatibleWithBusiness } from "./lib/bidScopeClassifier.js";
+import { quarantineOrphanBidOpportunities } from "./lib/bid-ownership.js";
 
 const rawPort = process.env["PORT"];
 
@@ -685,6 +686,10 @@ async function start() {
   const { seedEquipmentSources } = await import("./lib/equipmentSourceSeeds.js");
   await seedEquipmentSources();
 
+  const quarantinedBids = await quarantineOrphanBidOpportunities();
+  if (quarantinedBids > 0) {
+    console.log(`[startup] Quarantined ${quarantinedBids} bid(s) without business ownership.`);
+  }
   await ensureBidScopeCleanup();
   await backfillMileageBusiness();
   startRecurringExpensesJob();

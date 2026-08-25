@@ -38,6 +38,7 @@ import { loadEnabledSources, isEnabled, writeConnectionHealth, bootstrapAutomate
 import { getCredential } from "../lib/credentialManager.js";
 import { detectContractType } from "../lib/bidContractTypeDetector.js";
 import { classifyOpportunityScope, isScopeCompatibleWithBusiness, assessDataCompleteness } from "../lib/bidScopeClassifier.js";
+import { quarantineOrphanBidOpportunities } from "../lib/bid-ownership.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -602,7 +603,7 @@ async function upsertOpportunities(
       // what was filtered and restore any false positives.
       if (opportunityScore < MIN_SCORE_TO_STORE) {
         console.log(`[bid-sync] Score-floor skip (score=${opportunityScore}): "${opp.title.slice(0, 70)}"`);
-        await db.insert(bidOpportunitiesTable).values({
+        const [rejectedRow] = await db.insert(bidOpportunitiesTable).values({
           businessId,
           noticeId:         opp.noticeId,
           title:            opp.title,
@@ -622,7 +623,8 @@ async function upsertOpportunities(
           capabilityMatches,
           opportunityType:  derivedOppType,
           notes:            `Filtered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`,
-        }).onConflictDoNothing();
+        }).onConflictDoNothing().returning({ id: bidOpportunitiesTable.id });
+        if (!rejectedRow) continue;
         continue;
       }
 
@@ -645,7 +647,7 @@ async function upsertOpportunities(
         title: opp.title, description: opp.description, aiSummary: null,
         noticeType: (opp as SamOpportunity).noticeType ?? null,
       });
-      await db.insert(bidOpportunitiesTable).values({
+      const [createdRow] = await db.insert(bidOpportunitiesTable).values({
         businessId,
         noticeId:              opp.noticeId,
         title:                 opp.title,
@@ -674,8 +676,8 @@ async function upsertOpportunities(
         // Phase 7 — scope + completeness
         scopeCategory:         scope.primaryCategory,
         dataCompleteness:      completeness,
-      });
-      newOnes.push(opp);
+      }).onConflictDoNothing().returning({ id: bidOpportunitiesTable.id });
+      if (createdRow) newOnes.push(opp);
     } else {
       // Re-score existing row so capability profile changes take effect immediately.
       // Pass cached AI summary so recommendation can incorporate prior analysis.
@@ -745,7 +747,7 @@ async function upsertUsaSpendingAwards(awards: UsaSpendingAward[], businessId: n
         postedDate: award.postedDate, responseDeadline: null, url: award.url,
         status: "dismissed", stage: "no_bid", source: "usa-spending", sourceLabel: "Awards Intel",
         opportunityType: "award_intelligence",
-      });
+      }).onConflictDoNothing();
       newOnes.push(award);
     } else {
       // Repair legacy rows that were inserted before opportunityType was set
@@ -850,15 +852,11 @@ export async function runBidSync(
   // This ensures profile changes take effect immediately even if API fetches fail.
   await rescoreExistingBids(businessId, profile);
 
-  // One-time backfill: attribute legacy NULL-business rows only to asphalt business
-  if (business.type === "asphalt_sealing") {
-    const backfillResult = await db.execute(
-      sql`UPDATE bid_opportunities SET business_id = ${businessId} WHERE business_id IS NULL`
-    );
-    const backfillCount = (backfillResult as { rowCount?: number }).rowCount ?? 0;
-    if (backfillCount > 0) {
-      console.log(`[bid-sync] Backfilled ${backfillCount} legacy pavement bid(s) to "${business.name}"`);
-    }
+  // Legacy rows without ownership must never be guessed into this business.
+  // Quarantine is idempotent and preserves the original row for manual review.
+  const quarantined = await quarantineOrphanBidOpportunities();
+  if (quarantined > 0) {
+    console.log(`[bid-sync] Quarantined ${quarantined} bid(s) with missing business ownership`);
   }
 
   // Purge stale/irrelevant rows

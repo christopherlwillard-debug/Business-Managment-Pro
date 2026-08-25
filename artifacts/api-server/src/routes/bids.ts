@@ -11,7 +11,7 @@ import {
   crewCertificationsTable,
   equipmentInventoryTable,
 } from "@workspace/db";
-import { eq, desc, and, inArray, sql } from "drizzle-orm";
+import { eq, desc, and, inArray, sql, isNotNull } from "drizzle-orm";
 import { deriveCapabilityCategories } from "../lib/bidCategories.js";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { BUILDPRO_AI_MINI_MODEL } from "../ai-models";
@@ -21,9 +21,16 @@ import { computeRecommendation } from "../lib/bidRecommendation.js";
 import { findOfficialSource, classifySourceHeuristic, makeStatusLabel, makeStatusDetail } from "../lib/officialSourceFinder.js";
 import { getCredential } from "../lib/credentialManager.js";
 import { CapabilityDefinition, getCapabilitiesForBusinessType } from "../lib/bidCapabilitySeeds.js";
+import { getExistingBusiness } from "../lib/bid-ownership.js";
 
 type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid";
 const VALID_STAGES: BidStage[] = ["new", "reviewing", "bidding", "submitted", "won", "lost", "no_bid"];
+
+async function requireExistingBusiness(res: import("express").Response, businessId: number): Promise<boolean> {
+  if (await getExistingBusiness(businessId)) return true;
+  res.status(404).json({ error: "Business not found" });
+  return false;
+}
 
 // ── Relevance reason builder ───────────────────────────────────────────────────
 // Maps v2 capability keys (and legacy v1 keys) to human-readable labels.
@@ -260,6 +267,7 @@ router.get("/", async (req, res) => {
     const { businessId } = req.query;
     const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
     if (isNaN(bizId)) { res.status(400).json({ error: "businessId query param is required" }); return; }
+    if (!(await requireExistingBusiness(res, bizId))) return;
 
     const rows = await db
       .select()
@@ -280,6 +288,7 @@ router.get("/settings", async (req, res) => {
     const { businessId } = req.query;
     const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
     if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+    if (!(await requireExistingBusiness(res, bizId))) return;
 
     const settings = await db
       .select()
@@ -308,6 +317,7 @@ router.get("/capabilities", async (req, res) => {
     const { businessId } = req.query;
     const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
     if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+    if (!(await requireExistingBusiness(res, bizId))) return;
 
     const rows = await db
       .select()
@@ -329,6 +339,7 @@ router.get("/unified", async (req, res) => {
     const { scoringBusinessId } = req.query;
     const rawScoringId = scoringBusinessId ? parseInt(scoringBusinessId as string, 10) : NaN;
     const validScoringId = !isNaN(rawScoringId) ? rawScoringId : null;
+    if (validScoringId !== null && !(await requireExistingBusiness(res, validScoringId))) return;
 
     // Load all businesses (single-tenant — no per-user filter needed)
     const allBusinesses = await db
@@ -344,7 +355,10 @@ router.get("/unified", async (req, res) => {
     const allRows = await db
       .select()
       .from(bidOpportunitiesTable)
-      .where(inArray(bidOpportunitiesTable.businessId, bizIds))
+      .where(and(
+        inArray(bidOpportunitiesTable.businessId, bizIds),
+        isNotNull(bidOpportunitiesTable.businessId),
+      ))
       .orderBy(desc(bidOpportunitiesTable.createdAt));
 
     if (allRows.length === 0) { res.json([]); return; }
@@ -447,6 +461,7 @@ router.get("/sources", async (req, res) => {
     const { businessId } = req.query;
     const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
     if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+    if (!(await requireExistingBusiness(res, bizId))) return;
 
     // Load the full global catalog
     const catalog = await db
@@ -545,6 +560,7 @@ router.patch("/sources/:slug", async (req, res) => {
     const { businessId } = req.query;
     const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
     if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+    if (!(await requireExistingBusiness(res, bizId))) return;
 
     // Validate the slug exists in the catalog
     const [catalog] = await db
@@ -631,6 +647,7 @@ router.post("/private", async (req, res) => {
     res.status(400).json({ error: "businessId and companyName are required" });
     return;
   }
+  if (!(await requireExistingBusiness(res, businessId))) return;
 
   const TYPE_LABELS: Record<string, string> = {
     subcontract:       "Subcontracting",
@@ -684,6 +701,7 @@ router.patch("/:id", async (req, res) => {
   const rawBizId = req.body?.businessId ?? req.query.businessId;
   const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
   if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+  if (!(await requireExistingBusiness(res, bizId))) return;
 
   const {
     stage, notes, status,
@@ -831,7 +849,10 @@ router.post("/:id/summarize", async (req, res) => {
         recommendation:        recResult.recommendation,
         recommendationFactors: recResult.factors as unknown as Record<string, unknown>[],
       })
-      .where(eq(bidOpportunitiesTable.id, id));
+      .where(and(
+        eq(bidOpportunitiesTable.id, id),
+        eq(bidOpportunitiesTable.businessId, bizId),
+      ));
 
     res.json({ summary, recommendation: recResult, cached: false });
   } catch (err) {
@@ -848,6 +869,7 @@ router.post("/:id/find-official-source", async (req, res) => {
   const rawBizId = req.body?.businessId ?? req.query["businessId"];
   const bizId    = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
   if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+  if (!(await requireExistingBusiness(res, bizId))) return;
 
   try {
     const [bid] = await db
@@ -891,7 +913,10 @@ router.post("/:id/find-official-source", async (req, res) => {
         officialSourceStatus:    result.status,
         officialSourceCheckedAt: result.resolvedAt,
       })
-      .where(eq(bidOpportunitiesTable.id, id));
+      .where(and(
+        eq(bidOpportunitiesTable.id, id),
+        eq(bidOpportunitiesTable.businessId, bizId),
+      ));
 
     res.json({
       officialSourceUrl:    result.url,
@@ -1106,6 +1131,7 @@ router.post("/:id/educate", async (req, res) => {
   const rawBizId = req.body?.businessId ?? req.query["businessId"];
   const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
   if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+  if (!(await requireExistingBusiness(res, bizId))) return;
 
   // Optional: force=true regenerates even if already cached
   const force = req.body?.force === true || req.query["force"] === "true";
@@ -1174,7 +1200,10 @@ router.post("/:id/educate", async (req, res) => {
     await db
       .update(bidOpportunitiesTable)
       .set({ educationSummary: education as unknown as Record<string, unknown>, educationSummaryAt: new Date() })
-      .where(eq(bidOpportunitiesTable.id, id));
+      .where(and(
+        eq(bidOpportunitiesTable.id, id),
+        eq(bidOpportunitiesTable.businessId, bizId),
+      ));
 
     res.json({ education, cached: false });
   } catch (err) {
@@ -1361,6 +1390,7 @@ router.post("/:id/qualify", async (req, res) => {
   const rawBizId = req.body?.businessId ?? req.query["businessId"];
   const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
   if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+  if (!(await requireExistingBusiness(res, bizId))) return;
 
   const force = req.body?.force === true || req.query["force"] === "true";
 
@@ -1431,7 +1461,10 @@ router.post("/:id/qualify", async (req, res) => {
         industrialQualSummary:   qualification as unknown as Record<string, unknown>,
         industrialQualSummaryAt: new Date(),
       })
-      .where(eq(bidOpportunitiesTable.id, id));
+      .where(and(
+        eq(bidOpportunitiesTable.id, id),
+        eq(bidOpportunitiesTable.businessId, bizId),
+      ));
 
     res.json({ qualification, cached: false });
   } catch (err) {
