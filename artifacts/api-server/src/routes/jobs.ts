@@ -1061,8 +1061,8 @@ router.get("/profit-summary", async (req, res) => {
     const flatSubCostMap: Record<number, number> = {};
     for (const id of jobIds) flatSubCostMap[id] = 0;
 
-    const result: Record<number, { grossInvoiced: number; collected: number; otherIncomeRevenue: number; jobExpenses: number; subLaborCost: number; allocPaid: number; totalSubHours: number; manHours: number | null; netProfit: number; estimatedFuelCost?: number | null }> = {};
-    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, otherIncomeRevenue: 0, jobExpenses: 0, subLaborCost: 0, allocPaid: 0, totalSubHours: 0, manHours: null, netProfit: 0 };
+    const result: Record<number, { grossInvoiced: number; collected: number; otherIncomeRevenue: number; jobExpenses: number; subLaborCost: number; allocPaid: number; totalSubHours: number; manHours: number | null; netProfit: number; estimatedFuelCost?: number | null; includeMileageInJobCosts: boolean }> = {};
+    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, otherIncomeRevenue: 0, jobExpenses: 0, subLaborCost: 0, allocPaid: 0, totalSubHours: 0, manHours: null, netProfit: 0, includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true };
 
     for (const inv of invRows) {
       if (inv.jobId == null) continue;

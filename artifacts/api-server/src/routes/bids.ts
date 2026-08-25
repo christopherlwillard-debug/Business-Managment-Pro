@@ -410,6 +410,7 @@ router.get("/unified", async (req, res) => {
         if (scoringRow) {
           displayRep.id                        = scoringRow.id;
           displayRep.businessId                = scoringRow.businessId;
+          displayRep.jobId                     = scoringRow.jobId;
           displayRep.stage                     = scoringRow.stage;
           displayRep.notes                     = scoringRow.notes;
           displayRep.aiSummary                 = scoringRow.aiSummary;
@@ -681,7 +682,7 @@ router.post("/private", async (req, res) => {
   const {
     businessId, companyName, description,
     sourceType, contactName, contactEmail, contactPhone,
-    url, deadline,
+    url, deadline, jobId,
   } = req.body as {
     businessId:    number;
     companyName:   string;
@@ -692,6 +693,7 @@ router.post("/private", async (req, res) => {
     contactPhone?: string;
     url?:          string;
     deadline?:     string;
+    jobId?:        number | null;
   };
 
   if (!businessId || !companyName?.trim()) {
@@ -699,6 +701,20 @@ router.post("/private", async (req, res) => {
     return;
   }
   if (!(await requireExistingBusiness(res, businessId))) return;
+  if (jobId !== undefined && jobId !== null) {
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      res.status(400).json({ error: "jobId must be a positive integer or null" });
+      return;
+    }
+    const [job] = await db.select({ id: jobsTable.id })
+      .from(jobsTable)
+      .where(and(eq(jobsTable.id, jobId), eq(jobsTable.businessId, businessId)))
+      .limit(1);
+    if (!job) {
+      res.status(400).json({ error: "Job not found for this business" });
+      return;
+    }
+  }
 
   const TYPE_LABELS: Record<string, string> = {
     subcontract:       "Subcontracting",
@@ -734,6 +750,7 @@ router.post("/private", async (req, res) => {
         isPrivateOpportunity:      true,
         privateOpportunityContact: contactStr,
         privateSourceType:         sourceType ?? null,
+        jobId:                     jobId ?? null,
       })
       .returning();
 
