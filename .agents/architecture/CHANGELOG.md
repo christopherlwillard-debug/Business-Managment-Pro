@@ -161,3 +161,9 @@ Created the four-document architecture governance system:
 - Scoped bid routes validate that the requested business exists; AI enrichment writes retain the business predicate used by their reads.
 - Automated bid inserts use the existing `(notice_id, business_id)` uniqueness rule with conflict-safe inserts.
 - The intentional owner-only unified feed excludes unowned rows and validates a requested scoring business.
+
+### Bid service-area classification
+
+- Added structured place-of-performance and service-area classification to the existing bid opportunity system.
+- Synchronization now classifies local, regional, outside-area, and unknown opportunities without changing capability scoring or deleting historical records.
+- The bid feed defaults to Local + Regional and exposes the classification reason on each card.

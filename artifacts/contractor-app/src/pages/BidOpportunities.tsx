@@ -22,7 +22,7 @@ import PipelineBoard from "./bids/PipelineBoard";
 import AwardsPanel from "./bids/AwardsPanel";
 import BidEducationPanel from "./bids/BidEducationPanel";
 import BidQualificationPanel from "./bids/BidQualificationPanel";
-import type { BidFilter, SourceFilter, CapabilityFilter } from "./bids/BidFilterBar";
+import type { BidFilter, SourceFilter, CapabilityFilter, GeographyFilter } from "./bids/BidFilterBar";
 import type { QuickLink, AiSummary, BidOpportunity, BidStage, EducationSummary, BidSourceConnection, IndustrialQualSummary } from "./bids/types";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -87,6 +87,7 @@ export default function BidOpportunities() {
   const [fitOnly,      setFitOnly]      = useState(false);
   const [tmOnlyFilter, setTmOnlyFilter] = useState(false);
   const [sourceFilter,     setSourceFilter]     = useState<SourceFilter>("all");
+  const [geographyFilter,  setGeographyFilter]  = useState<GeographyFilter>("service_area");
   const [capabilityFilter, setCapabilityFilter] = useState<CapabilityFilter>("all");
   const [panelBid,     setPanelBid]     = useState<BidOpportunity | null>(null);
   const [panelSummary, setPanelSummary] = useState<AiSummary | null>(null);
@@ -455,13 +456,21 @@ export default function BidOpportunities() {
     ? capabilityFiltered.filter((b) => b.stage !== "no_bid" && b.stage !== "score_rejected")
     : capabilityFiltered.filter((b) => b.stage === filter);
 
+  const geographyFiltered = sourceFilter === "usa-spending"
+    ? stageFiltered
+    : stageFiltered.filter((b) => geographyFilter === "all"
+      ? true
+      : geographyFilter === "service_area"
+        ? b.geography === "local" || b.geography === "regional"
+        : b.geography === geographyFilter);
+
   const sourceFiltered = sourceFilter === "federal"
-    ? stageFiltered.filter((b) => b.source === "federal")
+    ? geographyFiltered.filter((b) => b.source === "federal")
     : sourceFilter === "local"
-    ? stageFiltered.filter((b) => b.source === "state-local")
+    ? geographyFiltered.filter((b) => b.source === "state-local")
     : sourceFilter === "subnet"
-    ? stageFiltered.filter((b) => b.source === "subnet" || b.source === "gsa-forecast")
-    : stageFiltered;
+    ? geographyFiltered.filter((b) => b.source === "subnet" || b.source === "gsa-forecast")
+    : geographyFiltered;
 
   const fitCount = sourceFiltered.filter(
     (b) => (summaryCache[b.id] ?? b.aiSummary)?.isFit === true
@@ -732,6 +741,8 @@ export default function BidOpportunities() {
         tmOnlyFilter={tmOnlyFilter}
         setTmOnlyFilter={setTmOnlyFilter}
         tmCount={tmCount}
+        geographyFilter={geographyFilter}
+        setGeographyFilter={setGeographyFilter}
       />
 
       {/* ── Sync health strip ───────────────────────────────────────────────── */}

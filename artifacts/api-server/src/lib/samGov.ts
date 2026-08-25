@@ -128,6 +128,7 @@ export interface SamOpportunity {
   naicsMismatch?:   boolean;
   /** capabilityKey of the search group that first surfaced this opportunity */
   matchedCapability?: string;
+  placeOfPerformance?: string | null;
 }
 
 function toIsoDate(d: Date): string {
@@ -198,6 +199,7 @@ async function fetchPage(
         uiLink?:                string;
         type?:                  string;
         typeOfSetAside?:        string;
+        placeOfPerformance?:    { city?: string; state?: string; stateCode?: string; country?: string; zip?: string } | string;
       }>;
     };
 
@@ -214,6 +216,12 @@ async function fetchPage(
         url:              item.uiLink ?? `https://sam.gov/opp/${item.noticeId}/view`,
         noticeType:       resolveNoticeType(item.type),
         typeOfSetAside:   item.typeOfSetAside ?? undefined,
+        placeOfPerformance: typeof item.placeOfPerformance === "string"
+          ? item.placeOfPerformance
+          : item.placeOfPerformance
+            ? [item.placeOfPerformance.city, item.placeOfPerformance.stateCode ?? item.placeOfPerformance.state, item.placeOfPerformance.zip, item.placeOfPerformance.country]
+              .filter(Boolean).join(", ") || null
+            : null,
       }));
 
     return { records, totalRecords: data.totalRecords ?? records.length };

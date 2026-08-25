@@ -350,6 +350,21 @@ export default function BidCard({
 
         <EligibilityBadge summary={effectiveSummary} />
 
+        {bid.geography && (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full",
+              bid.geography === "local" && "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+              bid.geography === "regional" && "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+              bid.geography === "outside_area" && "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+              bid.geography === "unknown" && "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+            )}
+            title={bid.geographyReason ?? undefined}
+          >
+            {bid.geography === "local" ? "Local" : bid.geography === "regional" ? "Regional" : bid.geography === "outside_area" ? "Outside area" : "Location unknown"}
+          </span>
+        )}
+
         {effectiveSummary?.bondingRequired && (
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
             Bond Req
@@ -429,6 +444,12 @@ export default function BidCard({
           </span>
         )}
       </div>
+      {bid.geographyReason && (
+        <p className="text-xs text-muted-foreground flex items-start gap-1">
+          <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+          {bid.placeOfPerformance ? `${bid.placeOfPerformance} — ` : ""}{bid.geographyReason}
+        </p>
+      )}
 
       {/* ── Title + agency ── */}
       <div>

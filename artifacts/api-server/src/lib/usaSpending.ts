@@ -20,6 +20,7 @@ export interface UsaSpendingAward {
   postedDate:       string | null;
   responseDeadline: null;
   url:              string;
+  placeOfPerformance: string | null;
 }
 
 interface RawAward {
@@ -104,6 +105,7 @@ async function fetchAwardPage(
         postedDate:       r["Date Signed"]?.slice(0, 10) ?? null,
         responseDeadline: null,
         url:              `https://www.usaspending.gov/award/${encodeURIComponent(r.generated_internal_id!)}`,
+        placeOfPerformance: r["Place of Performance State Code"] ?? null,
       }));
   } catch (err) {
     console.error(`[usa-spending] Fetch error for ${label}:`, err);

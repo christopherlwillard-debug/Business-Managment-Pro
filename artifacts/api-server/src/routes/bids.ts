@@ -416,6 +416,9 @@ router.get("/unified", async (req, res) => {
           displayRep.scopeCategory             = scoringRow.scopeCategory;
           displayRep.dataCompleteness          = scoringRow.dataCompleteness;
           displayRep.sourceReferenceId         = scoringRow.sourceReferenceId;
+          displayRep.geography                 = scoringRow.geography;
+          displayRep.placeOfPerformance       = scoringRow.placeOfPerformance;
+          displayRep.geographyReason          = scoringRow.geographyReason;
         }
       }
 

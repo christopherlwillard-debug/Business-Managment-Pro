@@ -51,6 +51,9 @@ export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   scopeCategory:             text("scope_category"),               // primary capability scope: asphalt|flooring|general_contracting|industrial_maintenance|mfg_homes|site_work|dump_waste|subcontracting
   dataCompleteness:          text("data_completeness").notNull().default("unknown"), // complete|partial|needs_verification|unknown
   sourceReferenceId:         text("source_reference_id"),          // external source's own ID (SAM.gov noticeId, BidNet solicitation id, etc.)
+  geography:                 text("geography"),                   // local|regional|outside_area|unknown
+  placeOfPerformance:        text("place_of_performance"),
+  geographyReason:           text("geography_reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   noticeBusinessUniq: uniqueIndex("bid_opportunities_notice_id_business_id_unique").on(table.noticeId, table.businessId),

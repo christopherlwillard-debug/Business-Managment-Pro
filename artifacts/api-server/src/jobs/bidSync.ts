@@ -39,6 +39,7 @@ import { getCredential } from "../lib/credentialManager.js";
 import { detectContractType } from "../lib/bidContractTypeDetector.js";
 import { classifyOpportunityScope, isScopeCompatibleWithBusiness, assessDataCompleteness } from "../lib/bidScopeClassifier.js";
 import { quarantineOrphanBidOpportunities } from "../lib/bid-ownership.js";
+import { classifyBidGeography } from "../lib/bidGeography.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -436,6 +437,13 @@ async function purgeIrrelevantFederalBids(businessId: number, allowedNaicsCodes:
 
 type OppWithSource = SamOpportunity & { source?: string; sourceLabel?: string };
 
+function geographyForOpportunity(opp: OppWithSource, fallbackLabel: string) {
+  return classifyBidGeography(
+    opp.placeOfPerformance,
+    [opp.sourceLabel ?? fallbackLabel, opp.agency ?? "", opp.title, opp.description ?? ""].join(" "),
+  );
+}
+
 // ── Rescore all existing bids regardless of API fetch results ─────────────────
 // Called once per sync after capabilities are loaded so that profile changes
 // take effect immediately without needing a fresh API response for every bid.
@@ -454,6 +462,7 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
       naicsCode:        bidOpportunitiesTable.naicsCode,
       agency:           bidOpportunitiesTable.agency,
       url:              bidOpportunitiesTable.url,
+      placeOfPerformance: bidOpportunitiesTable.placeOfPerformance,
     })
     .from(bidOpportunitiesTable)
     .where(and(
@@ -474,6 +483,10 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
       agency:           bid.agency,
       url:              bid.url,
     });
+    const geography = classifyBidGeography(
+      bid.placeOfPerformance,
+      [bid.agency ?? "", bid.title, bid.description ?? ""].join(" "),
+    );
 
     // Scope pruning: delete rows that don't belong to this business type.
     // Only auto-delete un-reviewed rows (new / no_bid) — never touch rows
@@ -516,6 +529,9 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
         // Phase 7 — update scope classification and completeness on every rescore
         scopeCategory:    scope.primaryCategory,
         dataCompleteness: completeness,
+          geography: geography.geography,
+          placeOfPerformance: geography.placeOfPerformance,
+          geographyReason: geography.geographyReason,
         // Suppress stale bids: move them out of 'new' so they don't clutter the feed
         ...(autoNobd ? { stage: "no_bid" as const } : {}),
       })
@@ -565,6 +581,7 @@ async function upsertOpportunities(
       agency:           opp.agency,
       url:              opp.url,
     });
+    const geography = geographyForOpportunity(opp, defaultSourceLabel);
 
     // Select aiSummary so we can incorporate it into the recommendation engine
     // for existing rows that have already been analysed.
@@ -623,6 +640,9 @@ async function upsertOpportunities(
           capabilityMatches,
           opportunityType:  derivedOppType,
           notes:            `Filtered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`,
+          geography:        geography.geography,
+          placeOfPerformance: geography.placeOfPerformance,
+          geographyReason:   geography.geographyReason,
         }).onConflictDoNothing().returning({ id: bidOpportunitiesTable.id });
         if (!rejectedRow) continue;
         continue;
@@ -676,6 +696,9 @@ async function upsertOpportunities(
         // Phase 7 — scope + completeness
         scopeCategory:         scope.primaryCategory,
         dataCompleteness:      completeness,
+        geography:             geography.geography,
+        placeOfPerformance:    geography.placeOfPerformance,
+        geographyReason:       geography.geographyReason,
       }).onConflictDoNothing().returning({ id: bidOpportunitiesTable.id });
       if (createdRow) newOnes.push(opp);
     } else {
@@ -721,6 +744,9 @@ async function upsertOpportunities(
           // Phase 7 — keep scope + completeness current on every sync
           scopeCategory:         scope.primaryCategory,
           dataCompleteness:      completeness,
+          geography:             geography.geography,
+          placeOfPerformance:    geography.placeOfPerformance,
+          geographyReason:       geography.geographyReason,
         })
         .where(eq(bidOpportunitiesTable.id, existing.id));
     }
@@ -747,6 +773,10 @@ async function upsertUsaSpendingAwards(awards: UsaSpendingAward[], businessId: n
         postedDate: award.postedDate, responseDeadline: null, url: award.url,
         status: "dismissed", stage: "no_bid", source: "usa-spending", sourceLabel: "Awards Intel",
         opportunityType: "award_intelligence",
+        ...(() => {
+          const geography = classifyBidGeography(award.placeOfPerformance, `${award.agency ?? ""} ${award.title}`);
+          return { geography: geography.geography, placeOfPerformance: geography.placeOfPerformance, geographyReason: geography.geographyReason };
+        })(),
       }).onConflictDoNothing();
       newOnes.push(award);
     } else {
@@ -1050,6 +1080,7 @@ export async function runBidSync(
         url:              s.url,
         source:           "subnet",
         sourceLabel:      "SBA SUBNet",
+        placeOfPerformance: s.placeOfPerformance,
       }));
       await upsertOpportunities(subnetRows, "subnet", "SBA SUBNet", businessId, profile,
         { opportunityTypeOverride: "subcontracting" });
@@ -1079,6 +1110,7 @@ export async function runBidSync(
         url:              f.url,
         source:           "gsa-forecast",
         sourceLabel:      "GSA Forecast",
+        placeOfPerformance: f.placeOfPerformance,
       }));
       await upsertOpportunities(forecastRows, "gsa-forecast", "GSA Forecast", businessId, profile,
         { opportunityTypeOverride: "forecast" });
@@ -1107,6 +1139,7 @@ export async function runBidSync(
         url:              v.url,
         source:           "state-local",    // state/local for scoring bonus + purge logic
         sourceLabel:      "KY eMarketplace",
+        placeOfPerformance: v.placeOfPerformance ?? null,
       }));
       await upsertOpportunities(vssRows, "state-local", "KY eMarketplace", businessId, profile);
       console.log(`[bid-sync] KY VSS: ${vssOpportunities.length} state solicitation(s) processed`);

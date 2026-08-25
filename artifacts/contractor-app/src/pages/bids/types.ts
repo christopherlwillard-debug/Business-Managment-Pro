@@ -131,6 +131,9 @@ export interface BidOpportunity {
   scopeCategory?:     string | null;  // asphalt|flooring|general_contracting|industrial_maintenance|mfg_homes|site_work|dump_waste
   dataCompleteness?:  string | null;  // complete|partial|needs_verification|unknown
   sourceReferenceId?: string | null;  // external source's own identifier
+  geography?:          "local" | "regional" | "outside_area" | "unknown" | string | null;
+  placeOfPerformance?: string | null;
+  geographyReason?:    string | null;
   // Unified feed enrichment (present on GET /api/bids/unified responses)
   capabilityCategories?:   string[];
   relevantBusinessNames?:  string[];

@@ -229,3 +229,19 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 *Add new ADRs here as architectural decisions are made. Number sequentially (ADR-006, ADR-007, ...).*
 *Format: Title | Decision | Reason | Rejected Alternatives | Status | Date*
+
+## ADR-013
+
+**Title:** Bid service-area eligibility is stored separately from capability scoring
+
+**Decision:** Extend `bid_opportunities` with normalized place-of-performance, a `local|regional|outside_area|unknown` classification, and an explanation. Classification is computed by one shared geography classifier during synchronization and is independent of NAICS/capability scoring. The feed defaults to local and regional while retaining explicit access to outside-area and unknown records.
+
+**Reason:** Service-area eligibility answers a different question from whether the work matches a capability. Keeping the dimensions separate makes the default feed explainable without changing ranking, historical records, awards intelligence, or business ownership.
+
+**Rejected Alternatives:**
+- Filtering or deleting opportunities during synchronization
+- Reusing opportunity score as geographic eligibility
+- Creating a parallel geography table
+
+**Status:** Accepted
+**Date:** 2026-08-24
