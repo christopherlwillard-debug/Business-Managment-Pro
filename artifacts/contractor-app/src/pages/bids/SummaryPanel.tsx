@@ -143,6 +143,8 @@ export default function SummaryPanel({
   onClose,
   onStageChange,
   onNotesSave,
+  jobs,
+  onJobChange,
   onRegenerate,
   regenerating,
 }: {
@@ -153,11 +155,14 @@ export default function SummaryPanel({
   onClose: () => void;
   onStageChange: (stage: BidStage) => void;
   onNotesSave: (notes: string) => void;
+  jobs?: Array<{ id: number; title: string; status?: string | null }>;
+  onJobChange?: (jobId: number | null) => void;
   onRegenerate?: () => void;
   regenerating?: boolean;
 }) {
   const [notes, setNotes] = useState(bid.notes ?? "");
   const [savedIndicator, setSavedIndicator] = useState(false);
+  const [jobSaving, setJobSaving] = useState(false);
 
   useEffect(() => {
     setNotes(bid.notes ?? "");
@@ -170,6 +175,16 @@ export default function SummaryPanel({
       onNotesSave(trimmed);
       setSavedIndicator(true);
       setTimeout(() => setSavedIndicator(false), 2000);
+    }
+  }
+
+  async function handleJobChange(value: string) {
+    if (!onJobChange) return;
+    setJobSaving(true);
+    try {
+      onJobChange(value ? Number(value) : null);
+    } finally {
+      setJobSaving(false);
     }
   }
 
@@ -202,6 +217,26 @@ export default function SummaryPanel({
                 <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
               </div>
             </div>
+            {onJobChange && (
+              <div className="flex items-center gap-2 mt-2">
+                <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground font-medium">Job:</span>
+                <select
+                  value={bid.jobId ?? ""}
+                  onChange={(e) => void handleJobChange(e.target.value)}
+                  disabled={jobSaving}
+                  className="min-w-0 flex-1 appearance-none px-2.5 py-1 text-xs rounded-lg border border-border bg-card text-foreground cursor-pointer disabled:opacity-50"
+                  aria-label="Link this opportunity to a job"
+                >
+                  <option value="">No linked job</option>
+                  {(jobs ?? []).map((job) => (
+                    <option key={job.id} value={job.id}>
+                      {job.title}{job.status ? ` · ${job.status}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           {summary && !loading && onRegenerate && (
             <button

@@ -10,6 +10,7 @@ import {
   crewMembersTable,
   crewCertificationsTable,
   equipmentInventoryTable,
+  jobsTable,
 } from "@workspace/db";
 import { eq, desc, and, inArray, sql, isNotNull, isNull, not, or } from "drizzle-orm";
 import { deriveCapabilityCategories } from "../lib/bidCategories.js";
@@ -656,6 +657,26 @@ router.patch("/sources/:slug", async (req, res) => {
 
 // ── POST /api/bids/private — create a manually-entered private opportunity ────
 // IMPORTANT: registered before PATCH /:id so Express doesn't treat "private" as an id.
+router.get("/jobs", async (req, res) => {
+  const rawBizId = req.query.businessId;
+  const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
+  if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+  if (!(await requireExistingBusiness(res, bizId))) return;
+  try {
+    const jobs = await db.select({
+      id: jobsTable.id,
+      title: jobsTable.title,
+      status: jobsTable.status,
+    }).from(jobsTable)
+      .where(eq(jobsTable.businessId, bizId))
+      .orderBy(desc(jobsTable.createdAt));
+    res.json(jobs);
+  } catch (err) {
+    console.error("[bids] GET /bids/jobs error:", err);
+    res.status(500).json({ error: "Failed to load jobs" });
+  }
+});
+
 router.post("/private", async (req, res) => {
   const {
     businessId, companyName, description,
@@ -736,12 +757,14 @@ router.patch("/:id", async (req, res) => {
   const {
     stage, notes, status,
     privateOpportunityContact, privateSourceType,
+    jobId,
   } = req.body as {
     stage?:                    string;
     notes?:                    string;
     status?:                   string;
     privateOpportunityContact?: string | null;
     privateSourceType?:        string | null;
+    jobId?:                    number | null;
   };
   const updates: Record<string, unknown> = {};
 
@@ -769,6 +792,23 @@ router.patch("/:id", async (req, res) => {
 
   if (privateOpportunityContact !== undefined) updates.privateOpportunityContact = privateOpportunityContact ?? null;
   if (privateSourceType !== undefined)         updates.privateSourceType = privateSourceType ?? null;
+  if (jobId !== undefined) {
+    if (jobId !== null && (!Number.isInteger(jobId) || jobId <= 0)) {
+      res.status(400).json({ error: "jobId must be a positive integer or null" });
+      return;
+    }
+    if (jobId !== null) {
+      const [job] = await db.select({ id: jobsTable.id })
+        .from(jobsTable)
+        .where(and(eq(jobsTable.id, jobId), eq(jobsTable.businessId, bizId)))
+        .limit(1);
+      if (!job) {
+        res.status(400).json({ error: "Job not found for this business" });
+        return;
+      }
+    }
+    updates.jobId = jobId;
+  }
 
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: "No valid fields to update." });

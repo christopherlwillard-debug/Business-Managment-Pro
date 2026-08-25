@@ -271,6 +271,17 @@ export default function BidOpportunities() {
     },
   });
 
+  const { data: jobs = [] } = useQuery<Array<{ id: number; title: string; status?: string | null }>>({
+    queryKey: ["bid-jobs", businessId],
+    queryFn: async () => {
+      if (!businessId) return [];
+      const res = await fetch(`${BASE_URL}/api/bids/jobs?businessId=${businessId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load jobs");
+      return res.json();
+    },
+    enabled: !!businessId && !!panelBid,
+  });
+
   const updateStage = useMutation({
     mutationFn: async ({ id, stage, bidBusinessId }: { id: number; stage: BidStage; bidBusinessId?: number | null }) => {
       const res = await fetch(`${BASE_URL}/api/bids/${id}`, {
@@ -311,6 +322,31 @@ export default function BidOpportunities() {
       );
       if (panelBid?.id === updated.id) setPanelBid((prev) => prev ? { ...prev, notes: updated.notes } : null);
     },
+  });
+
+  const updateJob = useMutation({
+    mutationFn: async ({ id, jobId, bidBusinessId }: { id: number; jobId: number | null; bidBusinessId?: number | null }) => {
+      const res = await fetch(`${BASE_URL}/api/bids/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ jobId, businessId: bidBusinessId ?? businessId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? "Failed to update linked job");
+      }
+      return res.json() as Promise<BidOpportunity>;
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<BidOpportunity[]>(
+        ["bids-unified", activeBusiness?.id ?? "all"],
+        (prev = []) => prev.map((b) => b.id === updated.id ? { ...b, jobId: updated.jobId } : b)
+      );
+      setPanelBid((prev) => prev?.id === updated.id ? { ...prev, jobId: updated.jobId } : prev);
+      toast({ title: updated.jobId ? "Job linked" : "Job link cleared" });
+    },
+    onError: (err: Error) => toast({ title: "Couldn't update linked job", description: err.message, variant: "destructive" }),
   });
 
   function dismissBid(bid: BidOpportunity) {
@@ -589,6 +625,8 @@ export default function BidOpportunities() {
           onClose={() => setPanelBid(null)}
           onStageChange={(stage) => updateStage.mutate({ id: panelBid.id, stage, bidBusinessId: panelBid.businessId })}
           onNotesSave={(notes) => updateNotes.mutate({ id: panelBid.id, notes, bidBusinessId: panelBid.businessId })}
+          jobs={jobs}
+          onJobChange={(jobId) => updateJob.mutate({ id: panelBid.id, jobId, bidBusinessId: panelBid.businessId })}
           onRegenerate={handleRegenerate}
           regenerating={panelRegenerating}
         />

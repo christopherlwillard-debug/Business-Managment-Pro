@@ -1,10 +1,12 @@
 import { boolean, integer, pgTable, serial, text, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 // NOTE: contract_type, scope_size, license_flags, out_of_scope_flags added in migration 0059
 import { businessesTable } from "./businesses";
+import { jobsTable } from "./jobs";
 
 export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   id: serial("id").primaryKey(),
   businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "set null" }),
+  jobId: integer("job_id").references(() => jobsTable.id, { onDelete: "set null" }),
   noticeId: text("notice_id").notNull(),
   title: text("title").notNull(),
   agency: text("agency"),

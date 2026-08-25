@@ -85,6 +85,7 @@ export interface BidOpportunity {
   educationSummaryAt?: string | null;
   id:                number;
   businessId?:       number | null;   // which business's record this row belongs to
+  jobId?:            number | null;
   noticeId:          string;
   title:             string;
   agency:            string | null;
