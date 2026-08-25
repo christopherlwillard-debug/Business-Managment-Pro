@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
 
 // ── Pure helpers re-implemented here for unit testing (no DB / OpenAI needed) ─
 
@@ -425,6 +426,33 @@ describe("generate-seo request contract", () => {
     const body = {};
     const ctx = (body as any).businessContext ?? {};
     expect(ctx).toEqual({});
+  });
+});
+
+describe("shared SEO metadata validation", () => {
+  const valid = {
+    metaTitle: "Smith HVAC | Nashville",
+    metaDescription: "Reliable HVAC repair and installation for Nashville homes. Call Smith HVAC for a licensed, friendly, and prompt free estimate today.",
+    keywords: "HVAC repair Nashville, AC installation",
+    ogTitle: "Smith HVAC | Nashville",
+    ogDescription: "Reliable HVAC repair and installation for Nashville homes. Call Smith HVAC for a licensed, friendly, and prompt free estimate today.",
+  };
+
+  it("accepts practical metadata and absolute image URLs", () => {
+    expect(validateSeoMetadata({ ...valid, ogImage: "https://example.com/og.jpg" })).toEqual({});
+    expect(isAbsoluteHttpUrl("https://example.com/og.jpg")).toBe(true);
+  });
+
+  it("rejects short required fields and relative or non-http image URLs", () => {
+    const errors = validateSeoMetadata({ ...valid, metaTitle: "HVAC", ogImage: "/uploads/og.jpg" });
+    expect(errors.metaTitle).toContain("between");
+    expect(errors.ogImage).toContain("absolute HTTP(S)");
+    expect(isAbsoluteHttpUrl("javascript:alert(1)")).toBe(false);
+  });
+
+  it("keeps landing-page input limits shared by client and server", () => {
+    expect(SEO_LIMITS.landingDescription).toBe(2000);
+    expect(SEO_LIMITS.landingDetails).toBe(2000);
   });
 });
 

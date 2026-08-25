@@ -409,6 +409,12 @@ export default function PublicSite() {
   const effectiveOgTitle         = pageSeo.ogTitle         ?? seo?.ogTitle         ?? effectiveMetaTitle;
   const effectiveOgDescription   = pageSeo.ogDescription   ?? seo?.ogDescription   ?? effectiveMetaDescription;
   const effectiveOgImage         = pageSeo.ogImage         ?? seo?.ogImage         ?? "";
+  const canonicalUrl = (() => {
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  })();
 
   // ── FAQ JSON-LD: build if any FAQ sections are rendered on this page ─────────
   const faqItems = bodySections
@@ -489,8 +495,10 @@ export default function PublicSite() {
           {effectiveMetaTitle       && <title>{effectiveMetaTitle}</title>}
           {effectiveMetaDescription && <meta name="description" content={effectiveMetaDescription} />}
           {effectiveKeywords        && <meta name="keywords" content={effectiveKeywords} />}
+          {!isDraftPreview && <link rel="canonical" href={canonicalUrl} />}
           {/* OpenGraph */}
           <meta property="og:type" content="website" />
+          {!isDraftPreview && <meta property="og:url" content={canonicalUrl} />}
           {effectiveOgTitle       && <meta property="og:title"       content={effectiveOgTitle} />}
           {effectiveOgDescription && <meta property="og:description" content={effectiveOgDescription} />}
           {effectiveOgImage       && <meta property="og:image"       content={effectiveOgImage} />}

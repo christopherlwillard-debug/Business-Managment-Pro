@@ -16,6 +16,7 @@ import { Sparkles, X, Loader2, ChevronRight, ArrowLeft } from "lucide-react";
 import { LANDING_PAGE_PROFILES } from "./landingPageProfiles";
 import type { BusinessContext } from "./website-types";
 import type { SitePage } from "./WebsiteEditor";
+import { SEO_LIMITS } from "@workspace/api-zod";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -205,7 +206,8 @@ export function LandingPageGenerator({ businessId, businessContext, onSuccess, o
               </label>
               <textarea
                 value={customDescription}
-                onChange={e => setCustomDescription(e.target.value)}
+                onChange={e => setCustomDescription(e.target.value.slice(0, SEO_LIMITS.landingDescription))}
+                maxLength={SEO_LIMITS.landingDescription}
                 placeholder="e.g. 'A page for our summer deck staining special — 10% off for the month of June, targeting homeowners in the Nashville area'"
                 rows={4}
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none"
@@ -222,7 +224,8 @@ export function LandingPageGenerator({ businessId, businessContext, onSuccess, o
             </label>
             <textarea
               value={extraDetails}
-              onChange={e => setExtraDetails(e.target.value)}
+              onChange={e => setExtraDetails(e.target.value.slice(0, SEO_LIMITS.landingDetails))}
+              maxLength={SEO_LIMITS.landingDetails}
               placeholder={
                 isCustom
                   ? "Any other notes — specific services, dates, discount amounts, etc."

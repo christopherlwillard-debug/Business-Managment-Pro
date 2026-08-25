@@ -17,6 +17,7 @@ import {
   ChevronDown, ChevronRight, Image as ImageIcon,
 } from "lucide-react";
 import type { SiteSettings, SeoSettings, PageSeo } from "./website-types";
+import { validateSeoMetadata } from "@workspace/api-zod";
 
 /** Minimal page descriptor — matches the SitePage shape in WebsiteEditor. */
 interface SitePage {
@@ -176,6 +177,7 @@ export function SeoPanel({
 }: SeoPanelProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const seo: SeoSettings = (settings as any).seo ?? {};
   const score = calcScore(seo);
@@ -183,6 +185,12 @@ export function SeoPanel({
 
   function updateSeo(patch: Partial<SeoSettings>) {
     onSeoChange({ ...seo, ...patch });
+    const next = { ...seo, ...patch };
+    setValidationErrors(validateSeoMetadata({
+      ...next,
+      ogTitle: next.ogTitle || next.metaTitle,
+      ogDescription: next.ogDescription || next.metaDescription,
+    }));
   }
 
   function updatePageSeo(pageId: string, patch: Partial<PageSeo>) {
@@ -212,12 +220,28 @@ export function SeoPanel({
         throw new Error(err.error ?? "SEO generation failed");
       }
       const generated = await res.json() as SeoSettings;
+      const errors = validateSeoMetadata(generated);
+      if (Object.keys(errors).length > 0) {
+        throw new Error("Generated SEO did not pass validation. Please try again.");
+      }
       onSeoChange({ ...seo, ...generated, generated: true, generatedAt: new Date().toISOString() });
+      setValidationErrors({});
     } catch (e) {
       setGenError(e instanceof Error ? e.message : "Generation failed");
     } finally {
       setIsGenerating(false);
     }
+  }
+
+  function handleSave() {
+    const errors = validateSeoMetadata({
+      ...seo,
+      ogTitle: seo.ogTitle || seo.metaTitle,
+      ogDescription: seo.ogDescription || seo.metaDescription,
+    });
+    setValidationErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+    onSave();
   }
 
   const hasLocalBusiness = !!seo.localBusinessSchema;
@@ -231,7 +255,7 @@ export function SeoPanel({
           <span className="text-sm font-semibold text-foreground">SEO Settings</span>
         </div>
         <button
-          onClick={onSave}
+          onClick={handleSave}
           disabled={isSaving}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors"
         >
@@ -303,6 +327,7 @@ export function SeoPanel({
             value={seo.metaTitle ?? ""}
             onChange={v => updateSeo({ metaTitle: v })}
           />
+          {validationErrors.metaTitle && <p className="text-[11px] text-destructive">{validationErrors.metaTitle}</p>}
           <SeoField
             label="Meta Description"
             hint="Shown below your title in Google. Write for humans."
@@ -311,12 +336,14 @@ export function SeoPanel({
             multiline
             onChange={v => updateSeo({ metaDescription: v })}
           />
+          {validationErrors.metaDescription && <p className="text-[11px] text-destructive">{validationErrors.metaDescription}</p>}
           <SeoField
             label="Keywords"
             hint="Comma-separated — e.g. HVAC repair Nashville, AC installation"
             value={seo.keywords ?? ""}
             onChange={v => updateSeo({ keywords: v })}
           />
+          {validationErrors.keywords && <p className="text-[11px] text-destructive">{validationErrors.keywords}</p>}
         </div>
 
         {/* OpenGraph */}
@@ -329,6 +356,7 @@ export function SeoPanel({
             value={seo.ogTitle ?? seo.metaTitle ?? ""}
             onChange={v => updateSeo({ ogTitle: v })}
           />
+          {validationErrors.ogTitle && <p className="text-[11px] text-destructive">{validationErrors.ogTitle}</p>}
           <SeoField
             label="OG Description"
             maxLen={160}
@@ -336,12 +364,14 @@ export function SeoPanel({
             multiline
             onChange={v => updateSeo({ ogDescription: v })}
           />
+          {validationErrors.ogDescription && <p className="text-[11px] text-destructive">{validationErrors.ogDescription}</p>}
           <SeoField
             label="OG Image URL"
             hint="Recommended: 1200×630px. Paste a URL from your media library."
             value={seo.ogImage ?? ""}
             onChange={v => updateSeo({ ogImage: v })}
           />
+          {validationErrors.ogImage && <p className="text-[11px] text-destructive">{validationErrors.ogImage}</p>}
           <OgPreview
             title={seo.ogTitle ?? seo.metaTitle ?? businessName}
             description={seo.ogDescription ?? seo.metaDescription ?? ""}

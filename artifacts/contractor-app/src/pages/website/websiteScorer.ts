@@ -74,6 +74,21 @@ function findAnyEnabled(sections: SectionLike[], types: string[]): SectionLike |
   return sections.find(s => types.includes(s.type) && s.enabled);
 }
 
+function meaningful(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length >= 3;
+}
+
+function meaningfulItems(section: SectionLike | undefined, field: string, minimum = 1): boolean {
+  if (!section) return false;
+  const value = section.content[field];
+  if (!Array.isArray(value)) return false;
+  return value.filter(item => {
+    if (typeof item === "string") return meaningful(item);
+    if (!item || typeof item !== "object") return false;
+    return Object.values(item as Record<string, unknown>).some(meaningful);
+  }).length >= minimum;
+}
+
 /** Count non-empty items in a content array field. */
 function itemCount(section: SectionLike | undefined, field: string): number {
   if (!section) return 0;
@@ -115,7 +130,10 @@ function evaluate(
       description: "Every high-converting site starts with a full-width hero that tells visitors who you are and what you do.",
       fixHint: "Add or re-enable the Hero section.",
       fixAction: { kind: "scroll-to-section", sectionType: "hero" },
-      check: () => !!findEnabled(sections, "hero"),
+       check: () => {
+         const hero = findEnabled(sections, "hero");
+         return !!hero && (meaningful(hero.content.headline) || meaningful(hero.content.subheadline));
+       },
     },
     {
       id: "hero-cta",
@@ -142,7 +160,14 @@ function evaluate(
       description: "A contact form is the primary lead-capture mechanism. Without one, visitors have no easy way to reach you.",
       fixHint: "Add a Contact / Quote Form or Quote Request Form section.",
       fixAction: { kind: "open-library", sectionType: "contact" },
-      check: () => !!findAnyEnabled(sections, ["contact", "quote-form"]),
+       check: () => {
+         const sec = findAnyEnabled(sections, ["contact", "quote-form"]);
+         return !!sec && (
+           meaningful(sec.content.heading) ||
+           meaningful(sec.content.subheading) ||
+           meaningfulItems(sec, "serviceTypes")
+         );
+       },
     },
     {
       id: "cta-section",
@@ -153,7 +178,10 @@ function evaluate(
       description: "A dedicated CTA strip mid-page or near the bottom re-engages visitors who scrolled past the hero.",
       fixHint: "Add a CTA Banner section to prompt visitors to call or request a quote.",
       fixAction: { kind: "add-section", sectionType: "cta" },
-      check: () => !!findEnabled(sections, "cta"),
+       check: () => {
+         const sec = findEnabled(sections, "cta");
+         return !!sec && (meaningful(sec.content.heading) || meaningful(sec.content.text) || meaningful(sec.content.ctaLabel));
+       },
     },
 
     // ── TRUST ────────────────────────────────────────────────────────────────
@@ -170,7 +198,7 @@ function evaluate(
         const sec = findEnabled(sections, "testimonials");
         if (!sec) return false;
         const items = sec.content.items as unknown[] | undefined;
-        return Array.isArray(items) && items.length >= 1;
+         return meaningfulItems(sec, "items");
       },
     },
     {
@@ -193,7 +221,14 @@ function evaluate(
       description: "Licenses, certifications, or a trust counter (years in business, jobs completed) reassure visitors you're the real deal.",
       fixHint: "Add a Certifications section or Trust Counter to highlight your credentials.",
       fixAction: { kind: "open-library", sectionType: "certifications" },
-      check: () => !!findAnyEnabled(sections, ["certifications", "trust-counter", "why-choose-us"]),
+       check: () => {
+         const sec = findAnyEnabled(sections, ["certifications", "trust-counter", "why-choose-us"]);
+         return !!sec && (
+           meaningful(sec.content.heading) ||
+           meaningfulItems(sec, "items") ||
+           meaningfulItems(sec, "badges")
+         );
+       },
     },
 
     // ── CONTENT ──────────────────────────────────────────────────────────────
@@ -209,7 +244,7 @@ function evaluate(
       check: () => {
         const sec = findEnabled(sections, "services");
         if (!sec) return false;
-        return itemCount(sec, "items") >= 2;
+         return meaningfulItems(sec, "items", 2);
       },
     },
     {
@@ -224,7 +259,7 @@ function evaluate(
       check: () => {
         const sec = findEnabled(sections, "faq");
         if (!sec) return false;
-        return itemCount(sec, "items") >= 1;
+         return meaningfulItems(sec, "items");
       },
     },
     {
@@ -236,7 +271,10 @@ function evaluate(
       description: "People hire people they trust. An About Us or Meet the Owner section makes your business feel personal, not corporate.",
       fixHint: "Enable your About Us section or add a Meet the Owner section.",
       fixAction: { kind: "scroll-to-section", sectionType: "about" },
-      check: () => !!findAnyEnabled(sections, ["about", "meet-owner"]),
+       check: () => {
+         const sec = findAnyEnabled(sections, ["about", "meet-owner"]);
+         return !!sec && (meaningful(sec.content.heading) || meaningful(sec.content.body) || meaningful(sec.content.name));
+       },
     },
 
     // ── DESIGN ───────────────────────────────────────────────────────────────
@@ -268,8 +306,7 @@ function evaluate(
         if (!sec) return false;
         const phone = sec.content.phone as string | undefined;
         const email = sec.content.email as string | undefined;
-        return (typeof phone === "string" && phone.trim().length > 0) ||
-               (typeof email === "string" && email.trim().length > 0);
+         return meaningful(phone) || meaningful(email);
       },
     },
     {
@@ -281,7 +318,10 @@ function evaluate(
       description: "Contractors who clearly show where they work get fewer out-of-area inquiries and more local conversions.",
       fixHint: "Add a Coverage Map section to show which states and regions you serve.",
       fixAction: { kind: "add-section", sectionType: "service-area" },
-      check: () => !!findEnabled(sections, "service-area"),
+       check: () => {
+         const sec = findEnabled(sections, "service-area");
+         return !!sec && (meaningful(sec.content.heading) || meaningful(sec.content.description) || meaningfulItems(sec, "areas"));
+       },
     },
   ];
 

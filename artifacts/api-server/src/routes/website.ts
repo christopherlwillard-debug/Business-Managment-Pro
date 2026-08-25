@@ -13,6 +13,7 @@ import { getSuggestedImages } from "../lib/industryImageKeywords";
 import { createMediaVariants, applyEnhancements, type EnhancementOptions } from "../lib/imageProcessor";
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
+import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -399,6 +400,17 @@ router.put("/", wrapAsync(async (req, res) => {
   }
 
   const { sections, settings } = req.body as { sections: unknown[]; settings: Record<string, unknown> };
+  if (settings?.seo && typeof settings.seo === "object") {
+    const seo = settings.seo as Record<string, unknown>;
+    const seoErrors = validateSeoMetadata({
+      ...seo,
+      ogTitle: seo.ogTitle || seo.metaTitle,
+      ogDescription: seo.ogDescription || seo.metaDescription,
+    });
+    if (Object.keys(seoErrors).length > 0) {
+      return res.status(422).json({ error: "SEO metadata failed validation", fields: seoErrors });
+    }
+  }
   const pageValidation = validatePageSlugs(settings?.pages);
   if (!pageValidation.ok) {
     return res.status(409).json({ error: pageValidation.error, code: "DUPLICATE_PAGE_SLUG", conflict: pageValidation.conflict });
@@ -436,6 +448,17 @@ router.post("/publish", wrapAsync(async (req, res) => {
 
   const { sections, settings } = req.body as { sections?: unknown[]; settings?: Record<string, unknown> };
   if (settings) {
+    if (settings.seo && typeof settings.seo === "object") {
+      const seo = settings.seo as Record<string, unknown>;
+      const seoErrors = validateSeoMetadata({
+        ...seo,
+        ogTitle: seo.ogTitle || seo.metaTitle,
+        ogDescription: seo.ogDescription || seo.metaDescription,
+      });
+      if (Object.keys(seoErrors).length > 0) {
+        return res.status(422).json({ error: "SEO metadata failed validation", fields: seoErrors });
+      }
+    }
     const pageValidation = validatePageSlugs(settings.pages);
     if (!pageValidation.ok) {
       return res.status(409).json({ error: pageValidation.error, code: "DUPLICATE_PAGE_SLUG", conflict: pageValidation.conflict });
@@ -1497,7 +1520,11 @@ Return ONLY a valid JSON object with exactly these keys (no markdown, no code fe
   };
   if (phone)    localBusiness.telephone = phone;
   if (email)    localBusiness.email     = email;
-  if (biz.slug) localBusiness.url       = `https://${biz.slug}.buildpro.app`;
+  const configuredDomain = (config?.settings as Record<string, unknown> | undefined)?.customDomain;
+  const publicBaseUrl = typeof configuredDomain === "string" && configuredDomain.trim()
+    ? `https://${configuredDomain.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
+    : BASE_URL ? `${BASE_URL.replace(/\/+$/, "")}/site/${biz.slug}` : undefined;
+  if (publicBaseUrl) localBusiness.url = publicBaseUrl;
 
   const addressParts = [biz.address, biz.city, biz.state, biz.zip].filter(Boolean);
   if (addressParts.length > 0) {
@@ -1540,9 +1567,16 @@ Return ONLY a valid JSON object with exactly these keys (no markdown, no code fe
     keywords:            sanitizeSeoString((seoFields.keywords         ?? services.join(", ")), 500),
     ogTitle:             sanitizeSeoString((seoFields.ogTitle          ?? seoFields.metaTitle   ?? biz.name), 60),
     ogDescription:       sanitizeSeoString((seoFields.ogDescription    ?? seoFields.metaDescription ?? ""), 160),
+    ogImage:             typeof seoFields.ogImage === "string" && isAbsoluteHttpUrl(seoFields.ogImage.trim())
+      ? seoFields.ogImage.trim()
+      : undefined,
     localBusinessSchema: JSON.stringify(localBusiness),
   };
 
+  const metadataErrors = validateSeoMetadata(result);
+  if (Object.keys(metadataErrors).length > 0) {
+    return res.status(422).json({ error: "Generated SEO metadata failed validation", fields: metadataErrors });
+  }
   res.json(result);
 }));
 
@@ -3101,6 +3135,13 @@ router.post("/generate-landing-page", wrapAsync(async (req, res) => {
   if (isCustom && !customDescription?.trim()) {
     return res.status(400).json({ error: "customDescription required for type=custom" });
   }
+  if (customDescription && customDescription.length > SEO_LIMITS.landingDescription) {
+    return res.status(400).json({ error: `customDescription must be ${SEO_LIMITS.landingDescription} characters or fewer` });
+  }
+  const contextTagline = (ctxBody as BusinessContext | undefined)?.tagline;
+  if (contextTagline && contextTagline.length > SEO_LIMITS.landingDetails) {
+    return res.status(400).json({ error: `businessContext.tagline must be ${SEO_LIMITS.landingDetails} characters or fewer` });
+  }
 
   // ── Resolve business context ────────────────────────────────────────────────
   // Prefer caller-supplied businessContext; fall back to loading from DB
@@ -3609,6 +3650,18 @@ function scoreSections(sections: SectionInput[], settings: Record<string, unknow
     const arr = sec.content[field];
     return Array.isArray(arr) ? arr.filter(Boolean).length : 0;
   }
+  function meaningful(value: unknown): boolean {
+    return typeof value === "string" && value.trim().length >= 3;
+  }
+  function meaningfulItems(sec: SectionInput | undefined, field: string, minimum = 1): boolean {
+    const value = sec?.content[field];
+    if (!Array.isArray(value)) return false;
+    return value.filter(item => {
+      if (typeof item === "string") return meaningful(item);
+      if (!item || typeof item !== "object") return false;
+      return Object.values(item as Record<string, unknown>).some(meaningful);
+    }).length >= minimum;
+  }
   function portfolioPhotos() {
     const p = findEnabled("portfolio");
     if (!p) return 0;
@@ -3624,7 +3677,7 @@ function scoreSections(sections: SectionInput[], settings: Record<string, unknow
     { id: "hero-enabled", category: "Conversion", severity: "critical", points: 10,
       label: "Hero section is present", fixHint: "Add or re-enable the Hero section.",
       description: "Every high-converting site starts with a full-width hero.",
-      ...(() => { const ok = !!findEnabled("hero"); return { passed: ok, earned: ok ? 10 : 0 }; })() },
+       ...(() => { const h = findEnabled("hero"); const ok = !!h && (meaningful(h.content.headline) || meaningful(h.content.subheadline)); return { passed: ok, earned: ok ? 10 : 0 }; })() },
     { id: "hero-cta", category: "Conversion", severity: "critical", points: 8,
       label: "Hero has a CTA button", fixHint: "Fill in the CTA button label in your Hero section.",
       description: "A hero without a CTA misses your best chance to convert visitors.",
@@ -3632,15 +3685,15 @@ function scoreSections(sections: SectionInput[], settings: Record<string, unknow
     { id: "contact-form", category: "Conversion", severity: "critical", points: 10,
       label: "Contact or quote form is enabled", fixHint: "Add a Contact / Quote Form section.",
       description: "Without a contact form, visitors have no easy way to reach you.",
-      ...(() => { const ok = !!findAnyEnabled(["contact", "quote-form"]); return { passed: ok, earned: ok ? 10 : 0 }; })() },
+       ...(() => { const s = findAnyEnabled(["contact", "quote-form"]); const ok = !!s && (meaningful(s.content.heading) || meaningful(s.content.subheading) || meaningfulItems(s, "serviceTypes")); return { passed: ok, earned: ok ? 10 : 0 }; })() },
     { id: "cta-section", category: "Conversion", severity: "recommended", points: 10,
       label: "CTA banner section drives action", fixHint: "Add a CTA Banner section.",
       description: "A dedicated CTA strip re-engages visitors who scrolled past the hero.",
-      ...(() => { const ok = !!findEnabled("cta"); return { passed: ok, earned: ok ? 10 : 0 }; })() },
+       ...(() => { const s = findEnabled("cta"); const ok = !!s && (meaningful(s.content.heading) || meaningful(s.content.text) || meaningful(s.content.ctaLabel)); return { passed: ok, earned: ok ? 10 : 0 }; })() },
     { id: "testimonials", category: "Trust", severity: "critical", points: 10,
       label: "Customer testimonials are shown", fixHint: "Add a Testimonials section with at least one review.",
       description: "Testimonials are the #1 trust signal for local service businesses.",
-      ...(() => { const s = findEnabled("testimonials"); const ok = !!s && itemCount(s, "items") >= 1; return { passed: ok, earned: ok ? 10 : 0 }; })() },
+       ...(() => { const s = findEnabled("testimonials"); const ok = meaningfulItems(s, "items"); return { passed: ok, earned: ok ? 10 : 0 }; })() },
     { id: "portfolio-photos", category: "Trust", severity: "recommended", points: 8,
       label: "Portfolio shows real project photos", fixHint: "Add photos to your Portfolio or Image Gallery section.",
       description: "Seeing finished work removes doubt — aim for at least 3 photos.",
@@ -3648,19 +3701,19 @@ function scoreSections(sections: SectionInput[], settings: Record<string, unknow
     { id: "trust-signals", category: "Trust", severity: "recommended", points: 7,
       label: "Trust badges or credentials are displayed", fixHint: "Add a Certifications or Trust Counter section.",
       description: "Licenses and certifications reassure visitors you're the real deal.",
-      ...(() => { const ok = !!findAnyEnabled(["certifications", "trust-counter", "why-choose-us"]); return { passed: ok, earned: ok ? 7 : 0 }; })() },
+       ...(() => { const s = findAnyEnabled(["certifications", "trust-counter", "why-choose-us"]); const ok = !!s && (meaningful(s.content.heading) || meaningfulItems(s, "items") || meaningfulItems(s, "badges")); return { passed: ok, earned: ok ? 7 : 0 }; })() },
     { id: "services-items", category: "Content", severity: "critical", points: 8,
       label: "Services section lists what you offer", fixHint: "Open Services and add at least 2 service cards.",
       description: "Visitors need to understand what you do right away.",
-      ...(() => { const s = findEnabled("services"); const ok = !!s && itemCount(s, "items") >= 2; return { passed: ok, earned: ok ? 8 : 0 }; })() },
+       ...(() => { const s = findEnabled("services"); const ok = meaningfulItems(s, "items", 2); return { passed: ok, earned: ok ? 8 : 0 }; })() },
     { id: "faq", category: "Content", severity: "recommended", points: 7,
       label: "FAQ answers common visitor questions", fixHint: "Add an FAQ section with 4+ questions.",
       description: "An FAQ reduces pre-sale objections and helps prospects self-qualify.",
-      ...(() => { const s = findEnabled("faq"); const ok = !!s && itemCount(s, "items") >= 1; return { passed: ok, earned: ok ? 7 : 0 }; })() },
+       ...(() => { const s = findEnabled("faq"); const ok = meaningfulItems(s, "items"); return { passed: ok, earned: ok ? 7 : 0 }; })() },
     { id: "about-story", category: "Content", severity: "recommended", points: 7,
       label: "About or owner story builds connection", fixHint: "Enable the About Us or add a Meet the Owner section.",
       description: "People hire people they trust — a personal story helps.",
-      ...(() => { const ok = !!findAnyEnabled(["about", "meet-owner"]); return { passed: ok, earned: ok ? 7 : 0 }; })() },
+       ...(() => { const s = findAnyEnabled(["about", "meet-owner"]); const ok = !!s && (meaningful(s.content.heading) || meaningful(s.content.body) || meaningful(s.content.name)); return { passed: ok, earned: ok ? 7 : 0 }; })() },
     { id: "logo-set", category: "Design", severity: "recommended", points: 7,
       label: "Business logo is uploaded", fixHint: "Upload your logo in Theme & Design settings.",
       description: "A logo makes your site look professional and memorable.",
@@ -3672,7 +3725,7 @@ function scoreSections(sections: SectionInput[], settings: Record<string, unknow
     { id: "coverage-map", category: "Design", severity: "optional", points: 3,
       label: "Coverage map shows your service area", fixHint: "Add a Coverage Map section.",
       description: "Showing your service area reduces out-of-area inquiries.",
-      ...(() => { const ok = !!findEnabled("service-area"); return { passed: ok, earned: ok ? 3 : 0 }; })() },
+       ...(() => { const s = findEnabled("service-area"); const ok = !!s && (meaningful(s.content.heading) || meaningful(s.content.description) || meaningfulItems(s, "areas")); return { passed: ok, earned: ok ? 3 : 0 }; })() },
   ];
 
   const totalPoints = rules.reduce((s, r) => s + r.points, 0);
