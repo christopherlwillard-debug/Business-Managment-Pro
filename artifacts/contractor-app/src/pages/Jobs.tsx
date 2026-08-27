@@ -5761,6 +5761,7 @@ function JobFormDialog({
     setMfhModelId(created.id);
     setModelQuery(name);
     setMfhConstructionType(ctName);
+    fillLotAddressFromClient(form.clientId, ctName);
     setModelDropOpen(false);
   }
 
@@ -5886,6 +5887,29 @@ function JobFormDialog({
 
   function setField(k: string, v: string) {
     setFormState(f => ({ ...f, [k]: v }));
+  }
+
+  function isLotModelPlacement(constructionType = mfhConstructionType) {
+    const placement = (constructionType ?? "").toUpperCase();
+    return placement === "LOT" || placement.startsWith("LOT_");
+  }
+
+  function fillLotAddressFromClient(clientId: string, constructionType = mfhConstructionType) {
+    if (selectedWorkflow !== "mh_production" || !isLotModelPlacement(constructionType)) return;
+    const client = clients.find(candidate => String(candidate.id) === clientId);
+    if (!client || (!client.address && !client.city && !client.state)) return;
+
+    // This is intentionally a one-time default. A partially filled or existing
+    // lot address belongs to the job and must not be overwritten.
+    setFormState(current => {
+      if (current.address.trim() || current.city.trim()) return current;
+      return {
+        ...current,
+        address: client.address ?? "",
+        city: client.city ?? "",
+        state: client.state ?? current.state,
+      };
+    });
   }
 
   function showFormError(msg: string) {
@@ -6106,7 +6130,12 @@ function JobFormDialog({
             <label className="block text-sm font-medium text-foreground mb-1">Client <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
             <select
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-              value={form.clientId} onChange={e => setField("clientId", e.target.value)}>
+              value={form.clientId}
+              onChange={e => {
+                const clientId = e.target.value;
+                setField("clientId", clientId);
+                fillLotAddressFromClient(clientId);
+              }}>
               <option value="">No client</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -6510,7 +6539,16 @@ function JobFormDialog({
                   <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto">
                     {modelFiltered.map(m => (
                       <button key={m.id} type="button"
-                       onPointerDown={e => { e.preventDefault(); setMfhModelId(m.id); setModelQuery(m.name); if (m.constructionTypeName) setMfhConstructionType(m.constructionTypeName); setModelDropOpen(false); }}
+                        onPointerDown={e => {
+                          e.preventDefault();
+                          setMfhModelId(m.id);
+                          setModelQuery(m.name);
+                          if (m.constructionTypeName) {
+                            setMfhConstructionType(m.constructionTypeName);
+                            fillLotAddressFromClient(form.clientId, m.constructionTypeName);
+                          }
+                          setModelDropOpen(false);
+                        }}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors flex items-center justify-between">
                         <span>{m.name}</span>
                         {m.constructionTypeName && <span className="text-[10px] text-muted-foreground ml-2">{m.constructionTypeName}</span>}
@@ -6568,8 +6606,11 @@ function JobFormDialog({
                             return (
                               <button key={pl} type="button"
                                 onClick={() => {
-                                  if (activeCt) setMfhConstructionType(`${token}_${activeCt}`);
-                                  else setMfhConstructionType(activePl === token ? "" : token);
+                                   const nextConstructionType = activeCt ? `${token}_${activeCt}` : (activePl === token ? "" : token);
+                                   setMfhConstructionType(nextConstructionType);
+                                   if (token === "LOT" && isLotModelPlacement(nextConstructionType)) {
+                                     fillLotAddressFromClient(form.clientId, nextConstructionType);
+                                   }
                                 }}
                                 className={btnCls(activePl === token)}>
                                 {pl}
@@ -6647,7 +6688,12 @@ function JobFormDialog({
                 value={form.locationName} onChange={e => setField("locationName", e.target.value)} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Street Address</label>
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  Street Address
+                  {selectedWorkflow === "mh_production" && isLotModelPlacement() && (
+                    <span className="ml-1 text-xs font-normal text-amber-600">(defaults from client for lot models)</span>
+                  )}
+                </label>
               <input type="text"
                 className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                 placeholder="e.g. 123 Main St"
