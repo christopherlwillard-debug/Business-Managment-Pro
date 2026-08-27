@@ -1,0 +1,91 @@
+<h2>Which compact Jobs-first layout feels right?</h2>
+<p class="subtitle">Both options keep the existing Job Cards primary, exclude completed/closed work, and show only actionable incomplete checklist items.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#f6f7f9">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <strong style="font-size:18px">Jobs</strong><span style="background:#f59e0b;color:white;padding:7px 12px;border-radius:9px;font-size:11px">+ New Job</span>
+      </div>
+      <div style="background:white;border:1px solid #dfe3e8;border-radius:12px;padding:12px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><b style="font-size:12px">Upcoming work</b><div style="font-size:9px;color:#667085">3 active jobs this week</div></div>
+          <span style="font-size:9px;color:#667085">Collapse ↑</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px">
+          <div style="border-left:3px solid #f59e0b;background:#fff8e7;padding:7px;border-radius:5px"><b style="font-size:9px">MON 31</b><div style="font-size:10px;margin-top:3px">Trim</div><div style="font-size:8px;color:#667085">Start job · James</div></div>
+          <div style="border-left:3px solid #3b82f6;background:#eff6ff;padding:7px;border-radius:5px"><b style="font-size:9px">TUE 1</b><div style="font-size:10px;margin-top:3px">Napier</div><div style="font-size:8px;color:#667085">Plumbing hookup</div></div>
+          <div style="border-left:3px solid #10b981;background:#ecfdf5;padding:7px;border-radius:5px"><b style="font-size:9px">WED 2</b><div style="font-size:10px;margin-top:3px">Trim</div><div style="font-size:8px;color:#667085">Exterior trim · Chris</div></div>
+        </div>
+      </div>
+      <div style="font-size:10px;font-weight:700;margin-bottom:7px">Active jobs</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:9px">
+        <div style="background:white;border:1px solid #dfe3e8;border-radius:10px;padding:10px">
+          <div style="display:flex;justify-content:space-between"><b style="font-size:11px">Trim</b><span style="font-size:8px;color:#2563eb">SCHEDULED</span></div>
+          <div style="font-size:9px;color:#667085;margin-top:5px">Aug 31 – Sep 3 · KY</div>
+          <div style="margin-top:8px;padding-top:7px;border-top:1px solid #eee"><b style="font-size:9px">Next</b><div style="font-size:9px">Aug 31 · Start job</div><div style="font-size:8px;color:#667085">James Willard</div></div>
+        </div>
+        <div style="background:white;border:1px solid #dfe3e8;border-radius:10px;padding:10px">
+          <div style="display:flex;justify-content:space-between"><b style="font-size:11px">Napier</b><span style="font-size:8px;color:#2563eb">SCHEDULED</span></div>
+          <div style="font-size:9px;color:#667085;margin-top:5px">Sep 1 – Sep 5 · TN</div>
+          <div style="margin-top:8px;padding-top:7px;border-top:1px solid #eee"><b style="font-size:9px">Next</b><div style="font-size:9px">Sep 1 · Plumbing hookup</div><div style="font-size:8px;color:#667085">Unassigned</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Expanded weekly strip</h3>
+      <p>A concise, collapsible day-by-day strip sits above the normal cards. Best when the weekly schedule needs to be immediately visible.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:16px;background:#f6f7f9">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <strong style="font-size:18px">Jobs</strong><span style="background:#f59e0b;color:white;padding:7px 12px;border-radius:9px;font-size:11px">+ New Job</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;background:white;border:1px solid #dfe3e8;border-radius:11px;padding:10px 12px;margin-bottom:14px">
+        <div><b style="font-size:11px">This week</b><span style="font-size:9px;color:#667085;margin-left:7px">3 jobs · 4 scheduled items</span></div>
+        <span style="font-size:9px;color:#2563eb">View upcoming ↓</span>
+      </div>
+      <div style="font-size:10px;font-weight:700;margin-bottom:7px">Active jobs</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:9px">
+        <div style="background:white;border:1px solid #dfe3e8;border-radius:10px;padding:10px">
+          <div style="display:flex;justify-content:space-between"><b style="font-size:11px">Trim</b><span style="font-size:8px;color:#2563eb">SCHEDULED</span></div>
+          <div style="font-size:9px;color:#667085;margin-top:5px">Aug 31 – Sep 3 · KY</div>
+          <div style="margin-top:8px;background:#fff8e7;border-radius:7px;padding:7px"><b style="font-size:9px">Next · Aug 31</b><div style="font-size:9px;margin-top:2px">Start job · James</div></div>
+        </div>
+        <div style="background:white;border:1px solid #dfe3e8;border-radius:10px;padding:10px">
+          <div style="display:flex;justify-content:space-between"><b style="font-size:11px">Napier</b><span style="font-size:8px;color:#2563eb">SCHEDULED</span></div>
+          <div style="font-size:9px;color:#667085;margin-top:5px">Sep 1 – Sep 5 · TN</div>
+          <div style="margin-top:8px;background:#eff6ff;border-radius:7px;padding:7px"><b style="font-size:9px">Next · Sep 1</b><div style="font-size:9px;margin-top:2px">Plumbing hookup · Unassigned</div></div>
+        </div>
+      </div>
+      <div style="margin-top:9px;background:white;border:1px solid #dfe3e8;border-radius:10px;padding:10px;opacity:.55">
+        <b style="font-size:11px">Completed jobs</b><div style="font-size:9px;color:#667085;margin-top:3px">Collapsed archive — never included in planning</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Card-first with collapsed summary</h3>
+      <p>The top strip stays one line until opened. Each active Job Card carries its own “Next” item. Best for minimal scrolling and phone use.</p>
+    </div>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros">
+    <h4>Shared behavior</h4>
+    <ul>
+      <li>Only active/open jobs participate</li>
+      <li>Skipped, inactive-section, and completed items are excluded</li>
+      <li>Only the next 1–2 scheduled items appear per card</li>
+      <li>Full checklist remains behind the existing Checklist action</li>
+    </ul>
+  </div>
+  <div class="cons">
+    <h4>Recommendation</h4>
+    <ul>
+      <li>Choose B for the shortest page and strongest mobile experience</li>
+      <li>Choose A if the week-at-a-glance strip must always be open</li>
+    </ul>
+  </div>
+</div>
