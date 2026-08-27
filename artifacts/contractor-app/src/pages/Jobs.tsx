@@ -109,66 +109,48 @@ function addScheduleDays(date: string, amount: number): string {
   return scheduleDateString(next);
 }
 
-function addScheduleMonths(date: string, amount: number): string {
-  const value = scheduleDate(date);
-  value.setDate(1);
-  value.setMonth(value.getMonth() + amount);
-  return scheduleDateString(value);
-}
-
 function formatScheduleDate(date: string): string {
   return scheduleDate(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function scheduleMonthRange(date: string) {
-  const first = scheduleDate(date);
-  first.setDate(1);
-  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
-  return { from: scheduleDateString(first), to: scheduleDateString(last) };
-}
-
-function scheduleMonthDays(from: string, to: string): string[] {
-  const days: string[] = [];
-  for (let day = from; day <= to; day = addScheduleDays(day, 1)) days.push(day);
-  return days;
-}
-
-function jobRunsOnDate(job: ScheduleJob, date: string): boolean {
-  if (job.startDate && job.endDate) return job.startDate <= date && job.endDate >= date;
-  if (job.startDate) return job.startDate === date;
-  if (job.endDate) return job.endDate === date;
-  return false;
 }
 
 function ScheduleOverview({
   businessId,
   onOpenChecklist,
   onOpenJob,
+  onLoaded,
+  refreshKey,
 }: {
   businessId?: number;
   onOpenChecklist: (job: Job) => void;
   onOpenJob: (job: Job) => void;
+  onLoaded: (jobs: ScheduleJob[]) => void;
+  refreshKey: number;
 }) {
   const today = localDateString();
-  const [selectedMonth, setSelectedMonth] = useState(scheduleMonthRange(today).from);
   const [schedule, setSchedule] = useState<{ jobs: ScheduleJob[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
-  const range = scheduleMonthRange(selectedMonth);
+  const weekEnd = addScheduleDays(today, 6);
+  const requestEnd = addScheduleDays(today, 30);
 
   useEffect(() => {
     const controller = new AbortController();
-    const params = new URLSearchParams({ from: range.from, to: range.to });
+    const params = new URLSearchParams({ from: today, to: requestEnd });
     if (businessId != null) params.set("businessId", String(businessId));
     setLoading(true);
     setError(false);
     fetch(`${BASE}/api/jobs/schedule-overview?${params.toString()}`, { credentials: "include", signal: controller.signal })
       .then(response => response.ok ? response.json() as Promise<{ jobs: ScheduleJob[] }> : Promise.reject(new Error("Schedule request failed")))
-      .then(data => setSchedule(data))
+      .then(data => {
+        setSchedule(data);
+        onLoaded(data.jobs);
+      })
       .catch(err => {
         if (!controller.signal.aborted) {
           setSchedule(null);
+          onLoaded([]);
           setError(true);
         }
       })
@@ -176,181 +158,103 @@ function ScheduleOverview({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [businessId, range.from, range.to, retryKey]);
+    // onLoaded is intentionally excluded so parent renders do not refetch the schedule.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId, today, requestEnd, retryKey, refreshKey]);
 
   const scheduleJobs = schedule?.jobs ?? [];
-  const monthDays = scheduleMonthDays(range.from, range.to);
-  const dayRows = monthDays
-    .map(date => ({
-      date,
-      jobs: scheduleJobs.filter(job =>
-        jobRunsOnDate(job, date) || job.checklistItems.some(item => item.scheduledDate === date),
-      ),
-    }))
-    .filter(row => row.jobs.length > 0 || row.date === today);
-  const needsScheduling = scheduleJobs.filter(job =>
-    (!job.startDate && !job.endDate) || job.unscheduledChecklistItems.length > 0,
+  const weekDays = Array.from({ length: 7 }, (_, index) => addScheduleDays(today, index));
+  const activeThisWeek = scheduleJobs.filter(job =>
+    job.startDate != null && job.startDate <= weekEnd && (job.endDate == null || job.endDate >= today),
   );
-  const todayJobs = dayRows.find(row => row.date === today)?.jobs.length ?? 0;
-  const nextWorkDate = dayRows.find(row => row.date > today && row.jobs.length > 0)?.date;
-  const monthLabel = scheduleDate(range.from).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-
-  function renderJob(job: ScheduleJob, date: string, needsMode = false) {
-    const checklistItems = needsMode
-      ? job.unscheduledChecklistItems
-      : job.checklistItems.filter(item => item.scheduledDate === date);
-    const jobRange = job.startDate && job.endDate && job.startDate !== job.endDate
-      ? `${formatScheduleDate(job.startDate)} – ${formatScheduleDate(job.endDate)}`
-      : job.startDate ? formatScheduleDate(job.startDate) : job.endDate ? `Through ${formatScheduleDate(job.endDate)}` : "No dates assigned";
-    return (
-      <div key={job.id} className="rounded-xl border border-border bg-card p-3 shadow-sm">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-          <div className="flex items-start gap-3 min-w-0 flex-1">
-          <div className="mt-0.5 w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
-            <Briefcase className="w-4 h-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-bold text-foreground truncate">{job.title}</h3>
-              <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${job.status === "closed" ? "bg-slate-100 text-slate-600" : job.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>
-                {job.status === "closed" ? "Closed" : displayStatus(job.status)}
-              </span>
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-1 flex flex-wrap items-center gap-1">
-              <CalendarDays className="w-3 h-3" /> {jobRange}
-              {(job.locationName || job.city) && <><span>·</span><span className="truncate">{[job.locationName, job.city].filter(Boolean).join(", ")}</span></>}
-            </p>
-          </div>
-          </div>
-          <div className="flex items-center gap-1.5 ml-11 sm:ml-0 sm:shrink-0">
-            <button type="button" onClick={() => onOpenJob(job)}
-              className="min-h-8 px-2.5 rounded-lg border border-border text-[11px] font-bold text-foreground hover:bg-muted/50">
-              Open job
-            </button>
-            <button type="button" onClick={() => onOpenChecklist(job)}
-              className="min-h-8 px-2.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px] font-bold hover:bg-emerald-100">
-              Checklist
-            </button>
-          </div>
-        </div>
-        {checklistItems.length > 0 ? (
-          <div className="mt-2.5 ml-11 border-l-2 border-emerald-100 pl-3 space-y-1.5">
-            {checklistItems.map(item => (
-              <div key={item.id} className="flex items-start gap-2 text-xs">
-                <span className={`mt-1 w-2 h-2 rounded-full shrink-0 ${item.completed ? "bg-emerald-500" : "bg-amber-400"}`} />
-                <div className="min-w-0">
-                  <p className={`font-medium ${item.completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{item.title}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {item.sectionName ?? "Checklist"}
-                    {item.assignedSubcontractorName ? ` · ${item.assignedSubcontractorName}` : ""}
-                    {needsMode ? " · Needs a date" : ""}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    );
-  }
+  const scheduledItemsThisWeek = scheduleJobs.flatMap(job =>
+    job.checklistItems
+      .filter(item => item.scheduledDate != null && item.scheduledDate >= today && item.scheduledDate <= weekEnd)
+      .map(item => ({ job, item })),
+  );
+  const needsJobDates = scheduleJobs.filter(job => !job.startDate && !job.endDate);
+  const dayRows = weekDays.map(date => {
+    const events: Array<{ key: string; job: ScheduleJob; item?: ScheduleItem; label: string }> = [];
+    for (const job of scheduleJobs) {
+      if (job.startDate === date) events.push({ key: `start-${job.id}`, job, label: "Job starts" });
+      if (job.endDate === date && job.endDate !== job.startDate) events.push({ key: `end-${job.id}`, job, label: "Job ends" });
+      for (const item of job.checklistItems.filter(value => value.scheduledDate === date)) {
+        events.push({ key: `item-${item.id}`, job, item, label: item.title });
+      }
+    }
+    return { date, events };
+  }).filter(row => row.events.length > 0);
 
   return (
-    <section className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
-      <div className="p-4 sm:p-5 border-b border-border bg-gradient-to-r from-amber-50/80 via-card to-card">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-amber-700">Work overview</p>
-            <h2 className="text-xl font-display font-bold text-foreground">What’s happening</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">Jobs and scheduled checklist work, organized by date.</p>
-          </div>
-          <div className="flex items-center gap-1 rounded-xl border border-border bg-background p-1">
-            <button type="button" onClick={() => setSelectedMonth(month => addScheduleMonths(month, -1))}
-              className="w-9 h-9 rounded-lg hover:bg-muted flex items-center justify-center" aria-label="Previous month">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button type="button" onClick={() => setSelectedMonth(scheduleMonthRange(today).from)}
-              className="min-w-32 px-3 text-sm font-bold text-foreground hover:text-amber-700">
-              {monthLabel}
-            </button>
-            <button type="button" onClick={() => setSelectedMonth(month => addScheduleMonths(month, 1))}
-              className="w-9 h-9 rounded-lg hover:bg-muted flex items-center justify-center" aria-label="Next month">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-        <div className="grid grid-cols-3 gap-2 mt-4">
-          <div className="rounded-xl border border-border bg-background px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wide font-bold text-muted-foreground">Today</p>
-            <p className="text-lg font-bold text-foreground">{todayJobs}</p>
-          </div>
-          <div className="rounded-xl border border-border bg-background px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wide font-bold text-muted-foreground">Coming next</p>
-            <p className="text-sm font-bold text-foreground mt-1">{nextWorkDate ? formatScheduleDate(nextWorkDate) : "Clear"}</p>
-          </div>
-          <div className={`rounded-xl border px-3 py-2 ${needsScheduling.length > 0 ? "border-amber-200 bg-amber-50" : "border-border bg-background"}`}>
-            <p className="text-[10px] uppercase tracking-wide font-bold text-muted-foreground">Needs scheduling</p>
-            <p className="text-lg font-bold text-foreground">{needsScheduling.length}</p>
-          </div>
-        </div>
-      </div>
+    <section className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(value => !value)}
+        className="w-full min-h-14 px-3 sm:px-4 py-3 flex items-center gap-3 text-left hover:bg-muted/20 transition-colors"
+        aria-expanded={expanded}
+      >
+        <span className="w-9 h-9 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+          <CalendarDays className="w-4 h-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold text-foreground">Upcoming work</span>
+          <span className="block text-xs text-muted-foreground truncate">
+            {loading ? "Loading active schedule…" : error ? "Schedule unavailable" : `${activeThisWeek.length} active this week · ${scheduledItemsThisWeek.length} scheduled item${scheduledItemsThisWeek.length === 1 ? "" : "s"}`}
+          </span>
+        </span>
+        {!loading && !error && needsJobDates.length > 0 && (
+          <span className="hidden sm:inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800">
+            {needsJobDates.length} need job dates
+          </span>
+        )}
+        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
+      </button>
 
-      <div className="p-4 sm:p-5">
-      {loading ? (
-        <div className="space-y-3" aria-label="Loading schedule">
-          {[1, 2, 3].map(i => <div key={i} className="h-24 rounded-xl border border-border bg-muted/20 animate-pulse" />)}
-        </div>
-      ) : error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-5 text-sm text-red-800">
-          <p className="font-semibold">Schedule could not be loaded.</p>
-          <button type="button" onClick={() => setRetryKey(key => key + 1)} className="mt-2 text-xs font-bold underline">Retry</button>
-        </div>
-      ) : dayRows.length === 0 && needsScheduling.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-muted/10 px-5 py-10 text-center">
-          <CalendarDays className="w-8 h-8 mx-auto text-muted-foreground/40" />
-          <p className="mt-3 font-semibold text-foreground">This month is open</p>
-          <p className="mt-1 text-sm text-muted-foreground">Add a start date to a job and it will appear here.</p>
-        </div>
-      ) : (
-        <div className="space-y-5">
-          <div className="space-y-3">
-            {dayRows.map(row => {
-              const value = scheduleDate(row.date);
-              const isToday = row.date === today;
-              return (
-                <div key={row.date} className={`grid grid-cols-[66px_minmax(0,1fr)] sm:grid-cols-[92px_minmax(0,1fr)] gap-3 rounded-xl border p-3 ${isToday ? "border-amber-300 bg-amber-50/40" : "border-border bg-muted/10"}`}>
-                  <div className="border-r border-border pr-3">
-                    <p className={`text-[10px] uppercase tracking-wider font-bold ${isToday ? "text-amber-700" : "text-muted-foreground"}`}>
-                      {isToday ? "Today" : value.toLocaleDateString("en-US", { weekday: "short" })}
-                    </p>
-                    <p className="text-2xl font-bold leading-none text-foreground mt-1">{value.getDate()}</p>
-                    <p className="text-[10px] text-muted-foreground mt-1">{value.toLocaleDateString("en-US", { month: "short" })}</p>
-                  </div>
-                  <div className="space-y-2 min-w-0">
-                    {row.jobs.length > 0
-                      ? row.jobs.map(job => renderJob(job, row.date))
-                      : <div className="h-full min-h-16 flex items-center text-sm text-muted-foreground">No work scheduled today.</div>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {needsScheduling.length > 0 && (
-            <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/50 p-3 sm:p-4">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div>
-                  <p className="text-sm font-bold text-amber-900">Needs scheduling</p>
-                  <p className="text-xs text-amber-800/80">Jobs without dates and checklist work without a day.</p>
-                </div>
-                <span className="rounded-full bg-amber-200/70 px-2.5 py-1 text-xs font-bold text-amber-900">{needsScheduling.length}</span>
-              </div>
-              <div className="space-y-2">
-                {needsScheduling.map(job => renderJob(job, range.from, true))}
-              </div>
+      {expanded && (
+        <div className="border-t border-border px-3 sm:px-4 py-3">
+          {error ? (
+            <div className="flex items-center justify-between gap-3 text-xs text-red-700">
+              <span>Could not load upcoming work.</span>
+              <button type="button" onClick={() => setRetryKey(key => key + 1)} className="font-bold underline">Retry</button>
             </div>
+          ) : dayRows.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No job starts, endings, or scheduled checklist work in the next seven days.</p>
+          ) : (
+            <div className="space-y-2">
+              {dayRows.map(row => (
+                <div key={row.date} className="flex items-start gap-3">
+                  <div className="w-14 shrink-0 pt-1">
+                    <p className="text-[10px] font-bold uppercase text-muted-foreground">{row.date === today ? "Today" : scheduleDate(row.date).toLocaleDateString("en-US", { weekday: "short" })}</p>
+                    <p className="text-xs font-semibold text-foreground">{formatScheduleDate(row.date)}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 min-w-0">
+                    {row.events.slice(0, 4).map(event => (
+                      <button
+                        type="button"
+                        key={event.key}
+                        onClick={() => event.item ? onOpenChecklist(event.job) : onOpenJob(event.job)}
+                        className="max-w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-left hover:border-amber-300 hover:bg-amber-50 transition-colors"
+                      >
+                        <span className="block text-[11px] font-bold text-foreground truncate">{event.job.title}</span>
+                        <span className="block text-[10px] text-muted-foreground truncate">
+                          {event.label}{event.item?.assignedSubcontractorName ? ` · ${event.item.assignedSubcontractorName}` : ""}
+                        </span>
+                      </button>
+                    ))}
+                    {row.events.length > 4 && <span className="self-center text-[10px] text-muted-foreground">+{row.events.length - 4} more</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {needsJobDates.length > 0 && (
+            <p className="mt-3 pt-3 border-t border-border text-[11px] text-amber-800">
+              <span className="font-bold">{needsJobDates.length} active job{needsJobDates.length === 1 ? "" : "s"} need start/end dates.</span>
+              {" "}Checklist items are scheduled only when you choose a date for them.
+            </p>
           )}
         </div>
       )}
-      </div>
     </section>
   );
 }
@@ -4761,7 +4665,7 @@ function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, estimatesLoading, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
-  checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [],
+  checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [], scheduleJob,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -4788,6 +4692,7 @@ function JobCard({
   onApplyProductionPricing?: () => void;
   onAcceptInvoice?: (job: Job, invoice: Invoice) => void;
   subcontractorOptions?: Subcontractor[];
+  scheduleJob?: ScheduleJob;
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -4830,6 +4735,10 @@ function JobCard({
   const [localSubPaid, setLocalSubPaid] = useState(job.subPaid);
   const jobWorkflow = getJobWorkflow(job);
   const isCompleted = displayStatus(job.status) === "completed";
+  const today = localDateString();
+  const nextScheduledItem = scheduleJob?.checklistItems
+    .filter(item => item.scheduledDate != null && item.scheduledDate >= today)
+    .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? ""))[0];
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
   useEffect(() => { setDisplayProfit(profitData); }, [profitData]);
@@ -5050,6 +4959,30 @@ function JobCard({
             <div className="flex items-center gap-1.5">
               <Calendar className="w-3 h-3 flex-shrink-0" />
               <span>{formatDate(job.startDate)}{job.endDate && ` – ${formatDate(job.endDate)}`}</span>
+            </div>
+          )}
+          {!isCompleted && (
+            <div className="mt-1 rounded-lg border border-amber-200/80 bg-amber-50/60 px-2.5 py-2 text-amber-950">
+              <div className="flex items-center gap-1.5">
+                <CalendarDays className="w-3 h-3 shrink-0 text-amber-700" />
+                <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                  {nextScheduledItem ? "Next" : "Schedule"}
+                </span>
+              </div>
+              {nextScheduledItem ? (
+                <p className="mt-0.5 text-[11px] leading-4">
+                  <span className="font-bold">{formatScheduleDate(nextScheduledItem.scheduledDate!)}</span>
+                  {" · "}{nextScheduledItem.title}
+                  {nextScheduledItem.assignedSubcontractorName ? ` · ${nextScheduledItem.assignedSubcontractorName}` : ""}
+                </p>
+              ) : job.startDate ? (
+                <p className="mt-0.5 text-[11px] leading-4">
+                  {job.startDate > today ? `Starts ${formatScheduleDate(job.startDate)}` :
+                    job.endDate ? `Active through ${formatScheduleDate(job.endDate)}` : `Started ${formatScheduleDate(job.startDate)}`}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-[11px] leading-4 font-medium">Job dates not set</p>
+              )}
             </div>
           )}
           {(job.subcontractorNames?.length ?? 0) > 0 && (
@@ -7099,6 +7032,8 @@ export default function Jobs() {
   const [jobFormOpen, setJobFormOpen]   = useState(false);
   const [editJob, setEditJob]           = useState<Job | null>(null);
   const [scheduleChecklistJob, setScheduleChecklistJob] = useState<Job | null>(null);
+  const [scheduleJobsById, setScheduleJobsById] = useState<Map<number, ScheduleJob>>(new Map());
+  const [scheduleRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
   const [deleting, setDeleting]         = useState(false);
   const [relatedCounts, setRelatedCounts] = useState<{ dailyLogs: number; expenses: number; mileageLogs: number; recurringExpenses: number; invoices: number } | null>(null);
@@ -7881,6 +7816,8 @@ export default function Jobs() {
          businessId={activeBusiness?.id}
          onOpenChecklist={setScheduleChecklistJob}
          onOpenJob={openEditJob}
+         onLoaded={loadedJobs => setScheduleJobsById(new Map(loadedJobs.map(job => [job.id, job])))}
+         refreshKey={scheduleRefreshKey}
        />
 
        <div className="flex items-center justify-between gap-3 pt-1">
@@ -7995,6 +7932,7 @@ export default function Jobs() {
                 {scheduledJobs.map(job => {
                   return (
                     <JobCard key={job.id} job={job} onEdit={openEditJob}
+                      scheduleJob={scheduleJobsById.get(job.id)}
                       onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
                       onMarkCompleted={handleMarkCompleted}
                       materialListCount={materialListCountByJob[job.id] ?? 0}

@@ -285,7 +285,13 @@ router.get("/schedule-overview", async (req, res) => {
     if (invalidBusinessScope(res, scope)) return;
 
     const allJobs = await db.select().from(jobsTable);
-    const scopedJobs = allJobs.filter(job => belongsToBusiness(job, scope));
+    const scopedJobs = allJobs.filter(job =>
+      belongsToBusiness(job, scope) &&
+      job.status !== "completed" &&
+      job.status !== "invoiced" &&
+      job.status !== "closed" &&
+      job.closedAt == null,
+    );
     if (scopedJobs.length === 0) return res.json({ from, to, jobs: [] });
 
     const jobIds = scopedJobs.map(job => job.id);
@@ -300,6 +306,7 @@ router.get("/schedule-overview", async (req, res) => {
         .select({
           item: jobChecklistItemsTable,
           sectionName: jobChecklistSectionsTable.name,
+          sectionActive: jobChecklistSectionsTable.active,
           assignedSubcontractorName: subcontractorsTable.name,
         })
         .from(jobChecklistItemsTable)
@@ -313,7 +320,7 @@ router.get("/schedule-overview", async (req, res) => {
     const unscheduledByJob = new Map<number, ReturnType<typeof scheduleItemShape>[]>();
     for (const row of scheduledRows) {
       const jobId = checklistJobById.get(row.item.jobChecklistId);
-      if (!jobId || row.item.skipped) continue;
+      if (!jobId || row.item.completed || row.item.skipped || row.sectionActive !== true) continue;
       const shaped = scheduleItemShape(row.item, row.sectionName, row.assignedSubcontractorName);
       if (row.item.scheduledDate && (row.item.scheduledDate < from || row.item.scheduledDate > to)) continue;
       const target = row.item.scheduledDate ? scheduleByJob : unscheduledByJob;
@@ -323,12 +330,6 @@ router.get("/schedule-overview", async (req, res) => {
     }
 
     const jobs = scopedJobs
-      .filter(job => {
-        const overlaps = job.startDate != null && job.startDate <= to && (job.endDate == null || job.endDate >= from);
-        const hasScheduledItems = (scheduleByJob.get(job.id)?.length ?? 0) > 0;
-        const needsScheduling = job.startDate == null && job.endDate == null || (unscheduledByJob.get(job.id)?.length ?? 0) > 0;
-        return overlaps || hasScheduledItems || needsScheduling;
-      })
       .map(job => ({
         ...job,
         checklistItems: scheduleByJob.get(job.id) ?? [],

@@ -115,6 +115,7 @@ describe("GET /jobs/schedule-overview", () => {
           assignedSubcontractorId: 7,
         },
         sectionName: "Prep",
+        sectionActive: true,
         assignedSubcontractorName: "James Willard",
       },
       {
@@ -128,6 +129,7 @@ describe("GET /jobs/schedule-overview", () => {
           assignedSubcontractorId: null,
         },
         sectionName: "Prep",
+        sectionActive: true,
         assignedSubcontractorName: null,
       },
       {
@@ -141,6 +143,7 @@ describe("GET /jobs/schedule-overview", () => {
           assignedSubcontractorId: null,
         },
         sectionName: "Closeout",
+        sectionActive: true,
         assignedSubcontractorName: null,
       },
     ]);
@@ -157,7 +160,7 @@ describe("GET /jobs/schedule-overview", () => {
     expect(response.body.jobs[0].unscheduledChecklistItems.map((item: any) => item.id)).toEqual([101]);
   });
 
-  it("keeps jobs with no dates visible for Needs Scheduling without using Route Planner stops", async () => {
+  it("excludes completed jobs from active planning even when they have no dates", async () => {
     h.selectQueue.push([{
       id: 3,
       title: "Needs a date",
@@ -167,19 +170,50 @@ describe("GET /jobs/schedule-overview", () => {
       startDate: null,
       endDate: null,
     }]);
-    h.selectQueue.push([]);
-
     const response = await request(app)
       .get("/jobs/schedule-overview?from=2026-08-27&to=2027-08-27");
 
     expect(response.status).toBe(200);
+    expect(response.body.jobs).toHaveLength(0);
+  });
+
+  it("excludes completed, skipped, and inactive-section items from planning", async () => {
+    h.selectQueue.push([{
+      id: 4,
+      title: "Active work",
+      status: "scheduled",
+      closedAt: null,
+      businessId: 1,
+      businessLine: "general_contracting",
+      startDate: "2026-08-27",
+      endDate: "2026-08-29",
+    }]);
+    h.selectQueue.push([{ id: 40, jobId: 4 }]);
+    h.selectQueue.push([
+      {
+        item: { id: 401, jobChecklistId: 40, title: "Done", completed: true, skipped: false, scheduledDate: null, assignedSubcontractorId: null },
+        sectionName: "Prep", sectionActive: true, assignedSubcontractorName: null,
+      },
+      {
+        item: { id: 402, jobChecklistId: 40, title: "Not applicable", completed: false, skipped: true, scheduledDate: null, assignedSubcontractorId: null },
+        sectionName: "Prep", sectionActive: true, assignedSubcontractorName: null,
+      },
+      {
+        item: { id: 403, jobChecklistId: 40, title: "Inactive section", completed: false, skipped: false, scheduledDate: null, assignedSubcontractorId: null },
+        sectionName: "Optional", sectionActive: false, assignedSubcontractorName: null,
+      },
+      {
+        item: { id: 404, jobChecklistId: 40, title: "Actionable", completed: false, skipped: false, scheduledDate: "2026-08-28", assignedSubcontractorId: 7 },
+        sectionName: "Prep", sectionActive: true, assignedSubcontractorName: "James Willard",
+      },
+    ]);
+
+    const response = await request(app).get("/jobs/schedule-overview?from=2026-08-27&to=2026-08-29");
+
+    expect(response.status).toBe(200);
     expect(response.body.jobs).toHaveLength(1);
-    expect(response.body.jobs[0]).toMatchObject({
-      id: 3,
-      status: "completed",
-      checklistItems: [],
-      unscheduledChecklistItems: [],
-    });
+    expect(response.body.jobs[0].checklistItems.map((item: any) => item.id)).toEqual([404]);
+    expect(response.body.jobs[0].unscheduledChecklistItems).toEqual([]);
   });
 });
 

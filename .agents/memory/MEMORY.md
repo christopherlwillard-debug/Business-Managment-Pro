@@ -46,3 +46,4 @@
 - [Job-only expense allocations](job-expense-allocations.md) — split job costs belong in a derived allocation table; the original expense remains the sole accounting ledger row
 - [Job mileage reimbursement](job-mileage-reimbursement.md) — editable job-card reimbursement stays outside MileIQ, expenses, owner pay, and percentage splits
 - [Award intelligence boundary](award-intelligence-boundary.md) — historical USA Spending awards must stay out of actionable bid APIs, counts, and lifecycle controls
+- [Jobs scheduling boundary](jobs-scheduling-boundary.md) — planning is compact and Jobs-first; only open jobs and actionable incomplete checklist work participate
