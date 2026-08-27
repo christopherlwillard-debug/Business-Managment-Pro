@@ -132,8 +132,7 @@ function ScheduleOverview({
   const [error, setError] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
-  const weekEnd = addScheduleDays(today, 6);
-  const requestEnd = addScheduleDays(today, 30);
+  const requestEnd = addScheduleDays(today, 60);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -163,17 +162,17 @@ function ScheduleOverview({
   }, [businessId, today, requestEnd, retryKey, refreshKey]);
 
   const scheduleJobs = schedule?.jobs ?? [];
-  const weekDays = Array.from({ length: 7 }, (_, index) => addScheduleDays(today, index));
-  const activeThisWeek = scheduleJobs.filter(job =>
-    job.startDate != null && job.startDate <= weekEnd && (job.endDate == null || job.endDate >= today),
+  const activeInWindow = scheduleJobs.filter(job =>
+    job.startDate != null && job.startDate <= requestEnd && (job.endDate == null || job.endDate >= today),
   );
-  const scheduledItemsThisWeek = scheduleJobs.flatMap(job =>
+  const scheduledItemsInWindow = scheduleJobs.flatMap(job =>
     job.checklistItems
-      .filter(item => item.scheduledDate != null && item.scheduledDate >= today && item.scheduledDate <= weekEnd)
+      .filter(item => item.scheduledDate != null && item.scheduledDate >= today && item.scheduledDate <= requestEnd)
       .map(item => ({ job, item })),
   );
   const needsJobDates = scheduleJobs.filter(job => !job.startDate && !job.endDate);
-  const dayRows = weekDays.map(date => {
+  const horizonDays = Array.from({ length: 61 }, (_, index) => addScheduleDays(today, index));
+  const dayRows = horizonDays.map(date => {
     const events: Array<{ key: string; job: ScheduleJob; item?: ScheduleItem; label: string }> = [];
     for (const job of scheduleJobs) {
       if (job.startDate === date) events.push({ key: `start-${job.id}`, job, label: "Job starts" });
@@ -199,7 +198,7 @@ function ScheduleOverview({
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-bold text-foreground">Upcoming work</span>
           <span className="block text-xs text-muted-foreground truncate">
-            {loading ? "Loading active schedule…" : error ? "Schedule unavailable" : `${activeThisWeek.length} active this week · ${scheduledItemsThisWeek.length} scheduled item${scheduledItemsThisWeek.length === 1 ? "" : "s"}`}
+            {loading ? "Loading active schedule…" : error ? "Schedule unavailable" : `${scheduleJobs.length} open job${scheduleJobs.length === 1 ? "" : "s"} · ${activeInWindow.length} dated in the next 60 days · ${scheduledItemsInWindow.length} scheduled item${scheduledItemsInWindow.length === 1 ? "" : "s"}`}
           </span>
         </span>
         {!loading && !error && needsJobDates.length > 0 && (
@@ -218,7 +217,7 @@ function ScheduleOverview({
               <button type="button" onClick={() => setRetryKey(key => key + 1)} className="font-bold underline">Retry</button>
             </div>
           ) : dayRows.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No job starts, endings, or scheduled checklist work in the next seven days.</p>
+            <p className="text-xs text-muted-foreground">No job starts, endings, or scheduled checklist work in the next 60 days.</p>
           ) : (
             <div className="space-y-2">
               {dayRows.map(row => (
@@ -4665,7 +4664,7 @@ function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, estimatesLoading, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
-  checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [], scheduleJob,
+  checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [], scheduleJob, compact = false,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -4693,6 +4692,7 @@ function JobCard({
   onAcceptInvoice?: (job: Job, invoice: Invoice) => void;
   subcontractorOptions?: Subcontractor[];
   scheduleJob?: ScheduleJob;
+  compact?: boolean;
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -4732,6 +4732,7 @@ function JobCard({
   const [mfhPanelOpen, setMfhPanelOpen] = useState(false);
   const [serviceBillingOpen, setServiceBillingOpen] = useState(false);
   const [tripsPanelOpen, setTripsPanelOpen] = useState(false);
+  const [compactExpanded, setCompactExpanded] = useState(false);
   const [localSubPaid, setLocalSubPaid] = useState(job.subPaid);
   const jobWorkflow = getJobWorkflow(job);
   const isCompleted = displayStatus(job.status) === "completed";
@@ -4739,6 +4740,11 @@ function JobCard({
   const nextScheduledItem = scheduleJob?.checklistItems
     .filter(item => item.scheduledDate != null && item.scheduledDate >= today)
     .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? ""))[0];
+  const overviewOnly = compact && !compactExpanded;
+  const productionServiceIds = jobWorkflow === "mh_production" && Array.isArray((job as unknown as Record<string, unknown>).mhProductionServices)
+    ? (job as unknown as Record<string, unknown>).mhProductionServices as number[]
+    : [];
+  const visibleProductionServiceIds = overviewOnly ? productionServiceIds.slice(0, 2) : productionServiceIds;
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
   useEffect(() => { setDisplayProfit(profitData); }, [profitData]);
@@ -4819,7 +4825,7 @@ function JobCard({
 
   return (
     <>
-      <Card className="p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
+      <Card className={`${overviewOnly ? "p-3 gap-2" : "p-4 gap-3"} flex flex-col hover:shadow-md transition-shadow`}>
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -4851,8 +4857,7 @@ function JobCard({
                   })()}
                 </span>
               ) : null}
-              {jobWorkflow === "mh_production" && Array.isArray((job as unknown as Record<string, unknown>).mhProductionServices) &&
-                ((job as unknown as Record<string, unknown>).mhProductionServices as number[]).map(svcId => {
+              {visibleProductionServiceIds.map(svcId => {
                   const svc = productionServiceTypes.find(t => t.id === svcId);
                   if (!svc) return null;
                   return (
@@ -4860,8 +4865,12 @@ function JobCard({
                       {svc.name}
                     </span>
                   );
-                })
-              }
+                })}
+              {overviewOnly && productionServiceIds.length > visibleProductionServiceIds.length && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-muted text-muted-foreground">
+                  +{productionServiceIds.length - visibleProductionServiceIds.length} more
+                </span>
+              )}
               {hasSubExpenses && localSubPaid && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
                   <HardHat className="w-2.5 h-2.5" />
@@ -4907,8 +4916,19 @@ function JobCard({
               <p className="text-amber-600 font-bold text-sm">{formatCurrency(estimateTotal)}</p>
             ) : null}
           </div>
-          {canEdit("jobs") && (
-            <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0">
+              {compact && compactExpanded && (
+                <button
+                  type="button"
+                  onClick={() => setCompactExpanded(false)}
+                  title="Collapse job details"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+                >
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+              )}
+            {canEdit("jobs") && (
+              <>
               <button onClick={() => onEdit(job)}
                 className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors">
                 <Edit2 className="w-3.5 h-3.5" />
@@ -4917,8 +4937,9 @@ function JobCard({
                 className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-500 transition-colors">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
 
         <div className="space-y-1.5 text-xs text-muted-foreground">
@@ -4943,13 +4964,13 @@ function JobCard({
               <span>{[job.locationName, job.city, job.state].filter(Boolean).join(", ")}</span>
             </div>
           )}
-          {routeMiles != null && (
+          {!overviewOnly && routeMiles != null && (
             <div className="flex items-center gap-1.5 text-blue-600">
               <Navigation className="w-3 h-3 flex-shrink-0" />
               <span className="font-medium">{routeMiles} mi from client</span>
             </div>
           )}
-          {businessMiles != null && (
+          {!overviewOnly && businessMiles != null && (
             <div className="flex items-center gap-1.5 text-orange-600">
               <Truck className="w-3 h-3 flex-shrink-0" />
               <span className="font-medium">{businessMiles} mi from shop</span>
@@ -4961,7 +4982,7 @@ function JobCard({
               <span>{formatDate(job.startDate)}{job.endDate && ` – ${formatDate(job.endDate)}`}</span>
             </div>
           )}
-          {!isCompleted && (
+          {!isCompleted && (!overviewOnly || nextScheduledItem) && (
             <div className="mt-1 rounded-lg border border-amber-200/80 bg-amber-50/60 px-2.5 py-2 text-amber-950">
               <div className="flex items-center gap-1.5">
                 <CalendarDays className="w-3 h-3 shrink-0 text-amber-700" />
@@ -5004,7 +5025,7 @@ function JobCard({
             </div>
           )}
 
-          {(job as unknown as Record<string, unknown>).manHours != null && (profitData == null || (profitData.totalSubHours ?? 0) === 0) && (
+          {!overviewOnly && (job as unknown as Record<string, unknown>).manHours != null && (profitData == null || (profitData.totalSubHours ?? 0) === 0) && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Timer className="w-3 h-3 flex-shrink-0" />
               <span className="font-medium">{parseFloat(String((job as unknown as Record<string, unknown>).manHours)).toLocaleString(undefined, { maximumFractionDigits: 1 })} man-hrs</span>
@@ -5048,6 +5069,8 @@ function JobCard({
 
         </div>
 
+        {!overviewOnly ? (
+        <>
         {/* Inline Job P&L card — tappable, opens Job Financials → Profit Split */}
         {displayProfit != null && (displayProfit.grossInvoiced > 0 || displayProfit.jobExpenses > 0) && (
           <button
@@ -5479,6 +5502,16 @@ function JobCard({
             onClick={() => onArchiveJob(job)}
             className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-slate-50 text-slate-600 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-colors">
             <Archive className="w-3.5 h-3.5" /> Close Job
+          </button>
+        )}
+        </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setCompactExpanded(true)}
+            className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/20 text-xs font-semibold text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
+          >
+            <Eye className="w-3.5 h-3.5" /> Open full job
           </button>
         )}
       </Card>
@@ -7974,7 +8007,7 @@ export default function Jobs() {
                 <h2 className="font-semibold text-foreground">Scheduled</h2>
                 <span className="text-sm text-muted-foreground">({scheduledJobs.length})</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {scheduledJobs.map(job => {
                   return (
                     <JobCard key={job.id} job={job} onEdit={openEditJob}
@@ -7998,7 +8031,8 @@ export default function Jobs() {
                       checklistSummary={checklistSummaries[job.id] ?? null}
                        subcontractorOptions={subcontractors}
                       productionServiceTypes={allProductionServiceTypes}
-                      onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined} />
+                       onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined}
+                       compact />
                   );
                 })}
               </div>
