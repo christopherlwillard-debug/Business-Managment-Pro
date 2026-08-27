@@ -2888,16 +2888,17 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
         if (!outstanding && (r.paymentStatus === "unpaid" || r.paymentStatus === "partial")) {
           if (r.subcontractorId != null) repairItems.push({ subId: r.subcontractorId, lockOwed: null });
         }
-        return { row: r, paid, outstanding };
+        return { row: r, paid, owed, outstanding };
       })
       .filter(({ outstanding }) => outstanding)
-      .map(({ row: r, paid }) => ({
+      .map(({ row: r, paid, owed }) => ({
         subcontractorId: r.subcontractorId,
         subName: r.subName ?? `Sub #${r.subcontractorId}`,
         compensationType: r.compensationType ?? "fixed",
         fixedAmount: r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
         allocationPct: r.allocationPct != null ? parseFloat(r.allocationPct) : null,
         amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
+        computedOwed: r.compensationType === "allocation" && r.amountOwed == null ? owed : undefined,
         amountPaid: paid,
         paymentStatus: r.paymentStatus ?? "unpaid",
         totalHours: null as number | null,

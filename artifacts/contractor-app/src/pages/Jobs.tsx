@@ -4585,7 +4585,7 @@ function JobCard({
   function outstandingAmount(sub: OutstandingSubRow): number {
     const fullOwed = sub.amountOwed != null ? sub.amountOwed
       : sub.compensationType === "fixed" ? (sub.fixedAmount ?? 0)
-      : sub.compensationType === "allocation" ? toSplit * ((sub.allocationPct ?? 0) / 100)
+      : sub.compensationType === "allocation" ? (sub.computedOwed ?? toSplit * ((sub.allocationPct ?? 0) / 100))
       : sub.compensationType === "hourly" ? (sub.computedOwed ?? 0)
       : 0;
     const alreadyPaid = sub.amountPaid ?? 0;
@@ -4595,7 +4595,7 @@ function JobCard({
   function agreedOwedAmount(sub: OutstandingSubRow): number {
     if (sub.amountOwed != null) return sub.amountOwed;
     if (sub.compensationType === "fixed") return sub.fixedAmount ?? 0;
-    if (sub.compensationType === "allocation") return toSplit * ((sub.allocationPct ?? 0) / 100);
+    if (sub.compensationType === "allocation") return sub.computedOwed ?? toSplit * ((sub.allocationPct ?? 0) / 100);
     if (sub.compensationType === "hourly") return sub.computedOwed ?? 0;
     return 0;
   }

@@ -1,6 +1,11 @@
 import { db } from "@workspace/db";
-import { invoicesTable, expensesTable, jobSubcontractorsTable } from "@workspace/db/schema";
-import { and, inArray, isNull, sql } from "drizzle-orm";
+import {
+  invoicesTable,
+  expensesTable,
+  jobSubcontractorsTable,
+  subPaymentRecordsTable,
+} from "@workspace/db/schema";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 export interface AllocationSplitPool {
   revenue: number;
@@ -18,8 +23,9 @@ const GROWTH_RESERVE_PCT = 0.05;
  * GET /:id/profit:
  *   grossInvoiced (ALL invoices, not just paid)
  *   - jobExpenses  (non-Owner-Draw, non-Subcontractor category)
- *   - subLaborCost (agreed hourly amount when set, otherwise hours×rate; legacy
- *     Subcontractor-category expenses are used only when no tracked hourly labor exists)
+ *   - subLaborCost (hourly labor + fixed payroll ledger payments + accrued bonuses;
+ *     legacy Subcontractor-category expenses are used only when no tracked labor or
+ *     fixed payroll exists)
  *   → afterWorkers × 0.95  (5% growth reserve withheld)
  *
  * Callers must filter to `isNull(expensesTable.jobSubHoursId)` already handled
@@ -30,7 +36,7 @@ export async function computeAllocationSplitPools(
 ): Promise<Map<number, AllocationSplitPool>> {
   if (jobIds.length === 0) return new Map();
 
-  const [poolInvs, poolExps, poolHours] = await Promise.all([
+  const [poolInvs, poolExps, poolHours, poolFixedPayments, poolAccruedBonuses] = await Promise.all([
     db
       .select({ jobId: invoicesTable.jobId, total: invoicesTable.total })
       .from(invoicesTable)
@@ -41,12 +47,15 @@ export async function computeAllocationSplitPools(
         amount: expensesTable.amount,
         category: expensesTable.category,
         subcontractorId: expensesTable.subcontractorId,
+        countsTowardJobProfit: expensesTable.countsTowardJobProfit,
+        voidedAt: expensesTable.voidedAt,
       })
       .from(expensesTable)
       .where(
         and(
           inArray(expensesTable.jobId, jobIds),
           isNull(expensesTable.jobSubHoursId),
+          isNull(expensesTable.voidedAt),
         ),
       ),
     db
@@ -71,10 +80,40 @@ export async function computeAllocationSplitPools(
       .from(jobSubcontractorsTable)
       .where(inArray(jobSubcontractorsTable.jobId, jobIds))
       .groupBy(jobSubcontractorsTable.jobId),
+    db
+      .select({
+        jobId: subPaymentRecordsTable.jobId,
+        total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), 0)`,
+      })
+      .from(subPaymentRecordsTable)
+      .innerJoin(jobSubcontractorsTable, and(
+        eq(subPaymentRecordsTable.jobId, jobSubcontractorsTable.jobId),
+        eq(subPaymentRecordsTable.subcontractorId, jobSubcontractorsTable.subcontractorId),
+        eq(jobSubcontractorsTable.compensationType, "fixed"),
+      ))
+      .where(and(
+        inArray(subPaymentRecordsTable.jobId, jobIds),
+        sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+      ))
+      .groupBy(subPaymentRecordsTable.jobId),
+    db
+      .select({
+        jobId: jobSubcontractorsTable.jobId,
+        total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.accruedBonus}), 0)`,
+      })
+      .from(jobSubcontractorsTable)
+      .where(inArray(jobSubcontractorsTable.jobId, jobIds))
+      .groupBy(jobSubcontractorsTable.jobId),
   ]);
 
   const hoursMap = new Map(
     poolHours.map((r) => [r.jobId, parseFloat(r.total ?? "0")]),
+  );
+  const fixedPaymentMap = new Map(
+    poolFixedPayments.map((r) => [r.jobId, parseFloat(r.total ?? "0")]),
+  );
+  const accruedBonusMap = new Map(
+    poolAccruedBonuses.map((r) => [r.jobId, parseFloat(r.total ?? "0")]),
   );
 
   const result = new Map<number, AllocationSplitPool>();
@@ -89,6 +128,7 @@ export async function computeAllocationSplitPools(
       // Payroll-linked expense rows are legacy duplicates, not operating costs.
       if (exp.subcontractorId != null) continue;
       if (exp.category === "Owner Draw") continue;
+      if (exp.countsTowardJobProfit === false) continue;
       if (exp.category === "Subcontractor") {
         flatSubCost += parseFloat(exp.amount ?? "0");
       } else {
@@ -97,7 +137,12 @@ export async function computeAllocationSplitPools(
     }
 
     const hoursLaborCost = hoursMap.get(jobId) ?? 0;
-    const subLaborCost = hoursLaborCost > 0 ? hoursLaborCost : flatSubCost;
+    const fixedPaymentCost = fixedPaymentMap.get(jobId) ?? 0;
+    const accruedBonusCost = accruedBonusMap.get(jobId) ?? 0;
+    const nonHoursCost = fixedPaymentCost > 0
+      ? fixedPaymentCost
+      : (hoursLaborCost > 0 ? 0 : flatSubCost);
+    const subLaborCost = hoursLaborCost + nonHoursCost + accruedBonusCost;
     const income = Math.max(0, revenue - expenses);
     const afterWorkers = Math.max(0, income - subLaborCost);
     const growthReserve = afterWorkers * GROWTH_RESERVE_PCT;
