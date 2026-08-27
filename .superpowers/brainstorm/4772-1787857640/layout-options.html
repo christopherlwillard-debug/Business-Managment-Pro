@@ -1,0 +1,49 @@
+<h2>How should the Jobs overview organize a month?</h2>
+<p class="subtitle">All three keep job dates and checklist work together in one Jobs screen. Click the direction that feels easiest to scan.</p>
+
+<div class="cards" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;">
+  <div class="card" data-choice="calendar-grid" onclick="toggleSelect(this)" style="cursor:pointer;">
+    <div class="card-image" style="padding:14px;background:#f6f7f9;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <strong style="font-size:15px;">August 2026</strong>
+        <span style="font-size:11px;color:#657080;">‹  ›</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-size:9px;color:#8a93a1;text-align:center;margin-bottom:4px;">
+        <span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span><span>SUN</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
+        <div></div><div></div><div></div><div style="background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:6px 4px;height:54px;"><b style="font-size:10px;">1</b></div>
+        <div style="background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:6px 4px;height:54px;"><b style="font-size:10px;">2</b></div><div style="background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:6px 4px;height:54px;"><b style="font-size:10px;">3</b></div><div style="background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:6px 4px;height:54px;"><b style="font-size:10px;">4</b></div>
+        <div style="background:#fff8e7;border:1px solid #f0c96b;border-radius:6px;padding:6px 4px;height:54px;"><b style="font-size:10px;">5</b><div style="margin-top:5px;background:#e9f7ef;border-left:3px solid #31a567;padding:3px;font-size:8px;color:#236746;">Napier</div></div>
+        <div style="background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:6px 4px;height:54px;"><b style="font-size:10px;">6</b></div><div style="background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:6px 4px;height:54px;"><b style="font-size:10px;">7</b></div><div style="background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:6px 4px;height:54px;"><b style="font-size:10px;">8</b></div><div style="background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:6px 4px;height:54px;"><b style="font-size:10px;">9</b></div><div style="background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:6px 4px;height:54px;"><b style="font-size:10px;">10</b></div><div style="background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:6px 4px;height:54px;"><b style="font-size:10px;">11</b></div><div style="background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:6px 4px;height:54px;"><b style="font-size:10px;">12</b></div>
+      </div>
+    </div>
+    <div class="card-body"><h3>Calendar blocks</h3><p>Strongest month-at-a-glance view. Each day is a clear block; jobs and checklist items sit inside the date.</p></div>
+  </div>
+
+  <div class="card" data-choice="agenda-list" onclick="toggleSelect(this)" style="cursor:pointer;">
+    <div class="card-image" style="padding:14px;background:#f6f7f9;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><strong style="font-size:15px;">August 2026</strong><span style="font-size:11px;color:#657080;">‹  ›</span></div>
+      <div style="border-left:3px solid #f0b43c;padding-left:10px;margin-bottom:9px;"><b style="font-size:11px;">MON · AUG 31</b><div style="margin-top:5px;background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:7px;font-size:9px;"><strong>Napier remodel</strong><span style="color:#657080;"> · scheduled</span><div style="color:#657080;margin-top:3px;">Prep forms · James Willard</div></div></div>
+      <div style="border-left:3px solid #d8dee7;padding-left:10px;margin-bottom:9px;"><b style="font-size:11px;">TUE · SEP 1</b><div style="margin-top:5px;background:#fff;border:1px solid #e3e7ec;border-radius:6px;padding:7px;font-size:9px;"><strong>Oak Street</strong><span style="color:#657080;"> · in progress</span><div style="color:#657080;margin-top:3px;">Materials pickup · Unassigned</div></div></div>
+      <div style="border-left:3px solid #d8dee7;padding-left:10px;"><b style="font-size:11px;color:#8993a1;">WED · SEP 2</b><div style="margin-top:5px;background:#fff;border:1px dashed #cfd6df;border-radius:6px;padding:8px;font-size:9px;color:#8993a1;">Open day</div></div>
+    </div>
+    <div class="card-body"><h3>Vertical month agenda</h3><p>Best for reading the flow of work. Every date becomes a “blocked off” section with more room for job details.</p></div>
+  </div>
+
+  <div class="card" data-choice="hybrid" onclick="toggleSelect(this)" style="cursor:pointer;">
+    <div class="card-image" style="padding:14px;background:#f6f7f9;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><strong style="font-size:15px;">August 2026</strong><span style="font-size:11px;color:#657080;">‹  ›</span></div>
+      <div style="display:flex;gap:4px;margin-bottom:12px;">
+        <div style="width:30px;height:30px;border-radius:6px;background:#fff;border:1px solid #e3e7ec;text-align:center;padding-top:4px;font-size:8px;">28<br><b>3</b></div>
+        <div style="width:30px;height:30px;border-radius:6px;background:#fff8e7;border:1px solid #f0c96b;text-align:center;padding-top:4px;font-size:8px;">29<br><b>4</b></div>
+        <div style="width:30px;height:30px;border-radius:6px;background:#162033;color:#fff;text-align:center;padding-top:4px;font-size:8px;">30<br><b>5</b></div>
+        <div style="width:30px;height:30px;border-radius:6px;background:#fff;border:1px solid #e3e7ec;text-align:center;padding-top:4px;font-size:8px;">31<br><b>6</b></div>
+        <div style="width:30px;height:30px;border-radius:6px;background:#fff;border:1px solid #e3e7ec;text-align:center;padding-top:4px;font-size:8px;">1<br><b>7</b></div>
+      </div>
+      <div style="background:#fff;border:1px solid #e3e7ec;border-radius:8px;padding:9px;font-size:9px;"><b>Today · Aug 30</b><div style="margin-top:5px;background:#e9f7ef;border-left:3px solid #31a567;padding:5px;"><strong>Napier remodel</strong><div style="color:#657080;margin-top:2px;">2 checklist items · James Willard</div></div></div>
+      <div style="display:flex;gap:6px;margin-top:7px;font-size:8px;color:#657080;"><span style="background:#fff;border:1px solid #e3e7ec;border-radius:5px;padding:5px;">Aug 31 · 1 job</span><span style="background:#fff;border:1px solid #e3e7ec;border-radius:5px;padding:5px;">Sep 1 · 2 jobs</span></div>
+    </div>
+    <div class="card-body"><h3>Month strip + daily focus</h3><p>A compact month navigator above a rich “what’s happening” day block. Keeps context without a dense full grid.</p></div>
+  </div>
+</div>
