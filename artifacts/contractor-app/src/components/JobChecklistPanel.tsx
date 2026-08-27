@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft, X, ClipboardCheck, Plus, Check, Minus, ChevronDown, ChevronUp,
   Share2, ExternalLink, AlertCircle, Loader2, Copy, ToggleLeft, ToggleRight, Trash2,
-  MessageSquare, FileDown, Mail, Camera, Pencil, Clock, PauseCircle,
+  MessageSquare, FileDown, Mail, Camera, Pencil, Clock, PauseCircle, Calendar,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -39,6 +39,8 @@ interface ChecklistItem {
   skipped: boolean;
   notes: string | null;
   sortOrder: number;
+  scheduledDate: string | null;
+  assignedSubcontractorId: number | null;
   photos: ChecklistItemPhoto[];
   parts: ChecklistItemPart[];
 }
@@ -100,7 +102,15 @@ interface Template {
 }
 
 interface JobChecklistPanelProps {
-  job: { id: number; title: string; clientEmail?: string | null };
+  job: {
+    id: number;
+    title: string;
+    clientEmail?: string | null;
+    businessId?: number | null;
+    businessLine?: string | null;
+    subcontractorIds?: number[] | null;
+  };
+  subcontractors?: Array<{ id: number; name: string }>;
   onClose: () => void;
 }
 
@@ -121,6 +131,14 @@ function toLocalDatetimeInput(iso: string | null): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function checklistScopeQuery(job: JobChecklistPanelProps["job"]): string {
+  const params = new URLSearchParams();
+  if (job.businessId != null) params.set("businessId", String(job.businessId));
+  else if (job.businessLine) params.set("businessLine", job.businessLine);
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 const STATUS_BUTTONS = [
@@ -165,7 +183,7 @@ async function compressImage(file: File): Promise<File> {
 }
 
 // ── Main panel ────────────────────────────────────────────────────────────────
-export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
+export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChecklistPanelProps) {
   const { toast } = useToast();
   const { canEdit } = useUserPermissions();
 
@@ -183,6 +201,8 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
   const [itemNoteOpen, setItemNoteOpen] = useState<Set<number>>(new Set());
   const [itemNoteDraft, setItemNoteDraft] = useState<Record<number, string>>({});
   const [savingItemNote, setSavingItemNote] = useState<number | null>(null);
+  const [itemScheduleDraft, setItemScheduleDraft] = useState<Record<number, { scheduledDate: string; assignedSubcontractorId: string }>>({});
+  const [savingScheduleItem, setSavingScheduleItem] = useState<number | null>(null);
   const [publicNotes, setPublicNotes] = useState("");
   const [statusOverride, setStatusOverride] = useState("");
   const [savingMeta, setSavingMeta] = useState(false);
@@ -377,6 +397,32 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
       toast({ title: "Failed to save note", variant: "destructive" });
     } finally {
       setSavingItemNote(null);
+    }
+  }
+
+  async function saveItemSchedule(item: ChecklistItem, changes: { scheduledDate?: string | null; assignedSubcontractorId?: number | null }) {
+    setSavingScheduleItem(item.id);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${item.id}${checklistScopeQuery(job)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(changes),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to save schedule");
+      }
+      setChecklist(await r.json());
+      setItemScheduleDraft(prev => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    } catch (err) {
+      toast({ title: "Failed to save schedule", description: err instanceof Error ? err.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSavingScheduleItem(null);
     }
   }
 
@@ -913,6 +959,10 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
     });
   };
 
+  const linkedSubcontractors = subcontractors.filter(sub =>
+    job.subcontractorIds?.includes(sub.id)
+  );
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -1185,6 +1235,59 @@ export function JobChecklistPanel({ job, onClose }: JobChecklistPanelProps) {
                                     ✓ {item.completedByName} · {formatDate(item.completedAt)}
                                   </p>
                                 )}
+                                 {canEdit("jobs") && (
+                                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                     <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                       <Calendar className="w-3 h-3" />
+                                       <input
+                                         type="date"
+                                         value={itemScheduleDraft[item.id]?.scheduledDate ?? item.scheduledDate ?? ""}
+                                         onChange={e => setItemScheduleDraft(prev => ({
+                                           ...prev,
+                                           [item.id]: {
+                                             scheduledDate: e.target.value,
+                                             assignedSubcontractorId: prev[item.id]?.assignedSubcontractorId ?? String(item.assignedSubcontractorId ?? ""),
+                                           },
+                                         }))}
+                                         onBlur={() => {
+                                           const draft = itemScheduleDraft[item.id];
+                                           if (draft && draft.scheduledDate !== (item.scheduledDate ?? "")) {
+                                             void saveItemSchedule(item, { scheduledDate: draft.scheduledDate || null });
+                                           }
+                                         }}
+                                         aria-label={`Schedule ${item.title}`}
+                                         className="h-6 rounded-md border border-border bg-background px-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                       />
+                                     </label>
+                                     {linkedSubcontractors.length > 0 ? (
+                                       <select
+                                         value={itemScheduleDraft[item.id]?.assignedSubcontractorId ?? String(item.assignedSubcontractorId ?? "")}
+                                         onChange={e => {
+                                           const assignedSubcontractorId = e.target.value;
+                                           setItemScheduleDraft(prev => ({
+                                             ...prev,
+                                             [item.id]: {
+                                               scheduledDate: prev[item.id]?.scheduledDate ?? item.scheduledDate ?? "",
+                                               assignedSubcontractorId,
+                                             },
+                                           }));
+                                           void saveItemSchedule(item, {
+                                             assignedSubcontractorId: assignedSubcontractorId ? Number(assignedSubcontractorId) : null,
+                                           });
+                                         }}
+                                         disabled={savingScheduleItem === item.id}
+                                         aria-label={`Assign ${item.title}`}
+                                         className="h-6 max-w-[150px] rounded-md border border-border bg-background px-1.5 text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                       >
+                                         <option value="">Unassigned</option>
+                                         {linkedSubcontractors.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
+                                       </select>
+                                     ) : (
+                                       <span className="text-[10px] text-muted-foreground/70">Assign crew on the job first</span>
+                                     )}
+                                     {savingScheduleItem === item.id && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+                                   </div>
+                                 )}
                                 {/* Existing note display (when editor is closed) */}
                                 {item.notes && !itemNoteOpen.has(item.id) && (
                                   <p className="text-[10px] text-muted-foreground italic mt-0.5">{item.notes}</p>

@@ -41,6 +41,7 @@ import {
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
   Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench, Navigation, Fuel, Truck,
+  CalendarDays, ChevronLeft, ChevronRight, ListTodo,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 import { JobChecklistPanel } from "@/components/JobChecklistPanel";
@@ -74,6 +75,268 @@ function getJobWorkflow(job: Job): WorkflowKey | null {
 function displayStatus(status: string): "scheduled" | "completed" {
   if (status === "completed" || status === "invoiced") return "completed";
   return "scheduled";
+}
+
+type ScheduleItem = {
+  id: number;
+  title: string;
+  completed: boolean;
+  skipped: boolean;
+  scheduledDate: string | null;
+  assignedSubcontractorId: number | null;
+  assignedSubcontractorName: string | null;
+  sectionName: string | null;
+};
+
+type ScheduleJob = Job & {
+  checklistItems: ScheduleItem[];
+  unscheduledChecklistItems: ScheduleItem[];
+};
+
+type ScheduleMode = "today" | "week" | "upcoming" | "needs";
+
+function scheduleDate(date: string): Date {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function scheduleDateString(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function addScheduleDays(date: string, amount: number): string {
+  const next = scheduleDate(date);
+  next.setDate(next.getDate() + amount);
+  return scheduleDateString(next);
+}
+
+function scheduleWeekStart(date: string): string {
+  const value = scheduleDate(date);
+  const mondayOffset = (value.getDay() + 6) % 7;
+  value.setDate(value.getDate() - mondayOffset);
+  return scheduleDateString(value);
+}
+
+function formatScheduleDate(date: string): string {
+  return scheduleDate(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function scheduleRangeFor(mode: ScheduleMode, selectedDate: string, today: string) {
+  if (mode === "week") {
+    const from = scheduleWeekStart(selectedDate);
+    return { from, to: addScheduleDays(from, 6) };
+  }
+  if (mode === "upcoming") return { from: addScheduleDays(today, 1), to: addScheduleDays(today, 30) };
+  if (mode === "needs") return { from: today, to: addScheduleDays(today, 365) };
+  return { from: selectedDate, to: selectedDate };
+}
+
+function ScheduleOverview({
+  jobs,
+  businessId,
+  onOpenChecklist,
+}: {
+  jobs: Job[];
+  businessId?: number;
+  onOpenChecklist: (job: Job) => void;
+}) {
+  const today = localDateString();
+  const [mode, setMode] = useState<ScheduleMode>("today");
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [schedule, setSchedule] = useState<{ jobs: ScheduleJob[] } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const range = scheduleRangeFor(mode, selectedDate, today);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams({ from: range.from, to: range.to });
+    if (businessId != null) params.set("businessId", String(businessId));
+    setLoading(true);
+    setError(false);
+    fetch(`${BASE}/api/jobs/schedule-overview?${params.toString()}`, { credentials: "include", signal: controller.signal })
+      .then(response => response.ok ? response.json() as Promise<{ jobs: ScheduleJob[] }> : Promise.reject(new Error("Schedule request failed")))
+      .then(data => setSchedule(data))
+      .catch(err => {
+        if (!controller.signal.aborted) {
+          setSchedule(null);
+          setError(true);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [businessId, range.from, range.to, retryKey]);
+
+  const scheduleJobs = schedule?.jobs ?? [];
+  const visibleJobs = mode === "needs"
+    ? scheduleJobs.filter(job => (!job.startDate && !job.endDate) || job.unscheduledChecklistItems.length > 0)
+    : scheduleJobs;
+  const datedJobs = visibleJobs.filter(job => job.startDate || job.endDate);
+  const undatedJobs = visibleJobs.filter(job => !job.startDate && !job.endDate);
+  const nearestFutureDate = jobs
+    .map(job => job.startDate)
+    .filter((date): date is string => !!date && date > selectedDate)
+    .sort()[0];
+
+  function changeDate(amount: number) {
+    setSelectedDate(current => addScheduleDays(current, amount));
+  }
+
+  function renderJob(job: ScheduleJob) {
+    const checklistItems = mode === "needs" ? job.unscheduledChecklistItems : job.checklistItems;
+    const jobRange = job.startDate && job.endDate && job.startDate !== job.endDate
+      ? `${formatScheduleDate(job.startDate)} – ${formatScheduleDate(job.endDate)}`
+      : job.startDate ? formatScheduleDate(job.startDate) : job.endDate ? `Through ${formatScheduleDate(job.endDate)}` : "No dates assigned";
+    return (
+      <div key={job.id} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 w-9 h-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+            <Briefcase className="w-4 h-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-bold text-foreground truncate">{job.title}</h3>
+              <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${job.status === "closed" ? "bg-slate-100 text-slate-600" : job.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>
+                {job.status === "closed" ? "Closed" : displayStatus(job.status)}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+              <CalendarDays className="w-3 h-3" /> {jobRange}
+              {(job.locationName || job.city) && <><span>·</span><span className="truncate">{[job.locationName, job.city].filter(Boolean).join(", ")}</span></>}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onOpenChecklist(job)}
+            className="shrink-0 inline-flex items-center gap-1.5 min-h-9 px-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-bold hover:bg-emerald-100 transition-colors"
+          >
+            <ListTodo className="w-3.5 h-3.5" /> Checklist
+          </button>
+        </div>
+        {checklistItems.length > 0 ? (
+          <div className="mt-3 ml-12 border-l-2 border-emerald-100 pl-3 space-y-2">
+            {checklistItems.map(item => (
+              <div key={item.id} className="flex items-start gap-2 text-xs">
+                <span className={`mt-1 w-2 h-2 rounded-full shrink-0 ${item.completed ? "bg-emerald-500" : "bg-amber-400"}`} />
+                <div className="min-w-0">
+                  <p className={`font-medium ${item.completed ? "text-muted-foreground line-through" : "text-foreground"}`}>{item.title}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {item.sectionName ?? "Checklist"}
+                    {item.assignedSubcontractorName ? ` · ${item.assignedSubcontractorName}` : ""}
+                    {mode === "needs" ? " · Needs a date" : ""}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 ml-12 text-[11px] text-muted-foreground">Open the checklist to review work items.</p>
+        )}
+      </div>
+    );
+  }
+
+  const modeLabels: Array<[ScheduleMode, string]> = [
+    ["today", "Today"],
+    ["week", "This Week"],
+    ["upcoming", "Upcoming"],
+    ["needs", "Needs Scheduling"],
+  ];
+
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Jobs overview</p>
+            <h2 className="text-xl font-display font-bold text-foreground">Schedule</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">A quick view of work dates and checklist items. Route planning stays separate.</p>
+          </div>
+          <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+            <span className="font-bold text-foreground">{visibleJobs.length}</span> job{visibleJobs.length === 1 ? "" : "s"} in view
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Schedule views">
+          {modeLabels.map(([value, label]) => (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === value}
+              key={value}
+              onClick={() => { setMode(value); if (value === "today" || value === "week") setSelectedDate(today); }}
+              className={`min-h-10 px-3.5 rounded-xl border text-xs font-bold transition-colors ${mode === value ? "bg-foreground border-foreground text-background" : "bg-card border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {(mode === "today" || mode === "week") && (
+        <div className="flex items-center justify-between rounded-2xl border border-border bg-muted/20 px-3 py-2">
+          <button type="button" onClick={() => changeDate(-1)} className="w-10 h-10 rounded-xl hover:bg-background flex items-center justify-center text-muted-foreground" aria-label="Previous date">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <div className="text-center">
+            <p className="text-sm font-bold text-foreground">
+              {mode === "week" ? `${formatScheduleDate(range.from)} – ${formatScheduleDate(range.to)}` : selectedDate === today ? "Today" : formatScheduleDate(selectedDate)}
+            </p>
+            <button type="button" onClick={() => setSelectedDate(today)} className="text-[11px] font-semibold text-primary hover:underline">Jump to today</button>
+          </div>
+          <button type="button" onClick={() => changeDate(1)} className="w-10 h-10 rounded-xl hover:bg-background flex items-center justify-center text-muted-foreground" aria-label="Next date">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {mode === "upcoming" && (
+        <p className="text-xs text-muted-foreground">Showing {formatScheduleDate(range.from)} through {formatScheduleDate(range.to)}.</p>
+      )}
+      {mode === "needs" && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Jobs without dates and checklist items without a scheduled day are listed here. Adding a checklist date does not change job status or Route Planner stops.
+        </div>
+      )}
+
+      {loading ? (
+        <div className="space-y-3" aria-label="Loading schedule">
+          {[1, 2, 3].map(i => <div key={i} className="h-24 rounded-2xl border border-border bg-muted/20 animate-pulse" />)}
+        </div>
+      ) : error ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-5 text-sm text-red-800">
+          <p className="font-semibold">Schedule could not be loaded.</p>
+          <button type="button" onClick={() => setRetryKey(key => key + 1)} className="mt-2 text-xs font-bold underline">Retry</button>
+        </div>
+      ) : visibleJobs.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border bg-card px-5 py-10 text-center">
+          <CalendarDays className="w-8 h-8 mx-auto text-muted-foreground/40" />
+          <p className="mt-3 font-semibold text-foreground">{mode === "needs" ? "Everything has a date" : "No jobs scheduled here"}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {mode === "today" && nearestFutureDate ? `The next dated job starts ${formatScheduleDate(nearestFutureDate)}.` : mode === "today" ? "Try This Week or Upcoming to see the next work." : "Open an existing job to add dates or checklist work."}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {datedJobs.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{mode === "needs" ? "Dated jobs with unscheduled work" : "Job dates"}</p>
+              {datedJobs.map(renderJob)}
+            </div>
+          )}
+          {undatedJobs.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-amber-700">No date assigned</p>
+              {undatedJobs.map(renderJob)}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
 }
 
 // ─── Subcontractor multi-select chip picker ────────────────────────────────────
@@ -4482,7 +4745,7 @@ function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, estimatesLoading, onLoadEstimateIntoInvoice,
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
-  checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice,
+  checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [],
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -4508,6 +4771,7 @@ function JobCard({
   productionServiceTypes?: import("@workspace/api-client-react").ProductionServiceType[];
   onApplyProductionPricing?: () => void;
   onAcceptInvoice?: (job: Job, invoice: Invoice) => void;
+  subcontractorOptions?: Subcontractor[];
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -5299,10 +5563,14 @@ function JobCard({
         <JobPhasePanel job={job} onClose={() => setPhasesPanelOpen(false)} />
       )}
       {checklistPanelOpen && (
-        <JobChecklistPanel job={job} onClose={() => {
+        <JobChecklistPanel
+          job={job}
+          subcontractors={subcontractorOptions.filter(sub => (job.subcontractorIds as number[] | null | undefined)?.includes(sub.id))}
+          onClose={() => {
           setChecklistPanelOpen(false);
           qc.invalidateQueries({ queryKey: ["checklist-summaries"] });
-        }} />
+          }}
+        />
       )}
       {mfhPanelOpen && (
         <MfhPanel
@@ -6822,6 +7090,8 @@ export default function Jobs() {
   const [csvBL, setCsvBL] = useState<string>(() => activeBusiness?.slug ?? "all");
   const [jobFormOpen, setJobFormOpen]   = useState(false);
   const [editJob, setEditJob]           = useState<Job | null>(null);
+  const [jobsView, setJobsView]         = useState<"list" | "schedule">("list");
+  const [scheduleChecklistJob, setScheduleChecklistJob] = useState<Job | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
   const [deleting, setDeleting]         = useState(false);
   const [relatedCounts, setRelatedCounts] = useState<{ dailyLogs: number; expenses: number; mileageLogs: number; recurringExpenses: number; invoices: number } | null>(null);
@@ -7578,9 +7848,26 @@ export default function Jobs() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground">Jobs</h1>
-          <p className="text-muted-foreground mt-1">Manage jobs and generate invoices for completed work.</p>
+           <p className="text-muted-foreground mt-1">{jobsView === "schedule" ? "See what work is happening and open the right checklist." : "Manage jobs and generate invoices for completed work."}</p>
         </div>
         <div className="flex items-center gap-2">
+           <div className="flex items-center rounded-xl border border-border bg-card p-1">
+             <button
+               type="button"
+               onClick={() => setJobsView("list")}
+               className={`min-h-9 px-3 rounded-lg text-xs font-bold transition-colors ${jobsView === "list" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
+             >
+               Jobs
+             </button>
+             <button
+               type="button"
+               onClick={() => setJobsView("schedule")}
+               className={`min-h-9 px-3 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1.5 ${jobsView === "schedule" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
+             >
+               <CalendarDays className="w-3.5 h-3.5" /> Schedule
+             </button>
+           </div>
+           {jobsView === "list" && (
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input
@@ -7591,6 +7878,7 @@ export default function Jobs() {
               className="pl-9 pr-3 py-2 rounded-xl border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 w-48"
             />
           </div>
+           )}
           {canEditJobs && (
             <button onClick={openNewJob}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-sm hover:bg-amber-600 transition-colors shadow-sm">
@@ -7600,6 +7888,14 @@ export default function Jobs() {
         </div>
       </div>
 
+       {jobsView === "schedule" ? (
+         <ScheduleOverview
+           jobs={jobs}
+           businessId={activeBusiness?.id}
+           onOpenChecklist={setScheduleChecklistJob}
+         />
+       ) : (
+       <>
       {/* Loading */}
       {isLoading && (
         <div className="flex items-center justify-center py-16">
@@ -7721,6 +8017,7 @@ export default function Jobs() {
                       generatingLinkId={generatingLinkId}
                       onSmartEstimate={j => setGcWizardJob(j)}
                       checklistSummary={checklistSummaries[job.id] ?? null}
+                       subcontractorOptions={subcontractors}
                       productionServiceTypes={allProductionServiceTypes}
                       onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined} />
                   );
@@ -7765,6 +8062,7 @@ export default function Jobs() {
                         generatingLinkId={generatingLinkId}
                         onSmartEstimate={j => setGcWizardJob(j)}
                         checklistSummary={checklistSummaries[job.id] ?? null}
+                        subcontractorOptions={subcontractors}
                         productionServiceTypes={allProductionServiceTypes}
                       onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined} />
                     );
@@ -7816,6 +8114,7 @@ export default function Jobs() {
                         onArchiveJob={handleArchiveJob}
                         subsSettled={subPayoutStatusLoaded ? !jobsWithOutstandingSubs.has(job.id) : undefined}
                         checklistSummary={checklistSummaries[job.id] ?? null}
+                        subcontractorOptions={subcontractors}
                         productionServiceTypes={allProductionServiceTypes}
                       onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined} />
                     );
@@ -8130,6 +8429,8 @@ export default function Jobs() {
           )}
         </>
       )}
+       </>
+       )}
 
       {/* Dialogs */}
       {jobFormOpen && (
@@ -8142,6 +8443,17 @@ export default function Jobs() {
           onSaved={() => queryClient.invalidateQueries()}
         />
       )}
+
+       {scheduleChecklistJob && (
+         <JobChecklistPanel
+           job={scheduleChecklistJob}
+           subcontractors={subcontractors.filter(sub => (scheduleChecklistJob.subcontractorIds as number[] | null | undefined)?.includes(sub.id))}
+           onClose={() => {
+             setScheduleChecklistJob(null);
+             queryClient.invalidateQueries({ queryKey: ["checklist-summaries"] });
+           }}
+         />
+       )}
 
       <InvoicePanel
         open={invoiceEditorOpen}

@@ -238,6 +238,9 @@ router.use("/uploads", express.static(path.resolve("uploads")));
 
 router.use("/pdf", pdfRouter);
 router.use("/clients", sectionGuard("clients"), clientsRouter);
+// Keep checklist collection routes before the generic /jobs/:id router so
+// /jobs/schedule-overview and /jobs/checklist-summaries are not parsed as IDs.
+router.use("/jobs", sectionGuard("jobs"), jobChecklistsRouter);
 router.use("/jobs", sectionGuard("jobs"), jobsRouter);
 router.use("/invoices", sectionGuard("invoices"), invoicesRouter);
 router.use("/expenses", sectionGuard("expenses"), expensesRouter);
@@ -292,7 +295,6 @@ router.use("/website", requireOwner, websiteRouter);
 router.use("/admin/errors", requireOwner, adminErrorsRouter);
 router.use("/admin/migrations", requireOwner, adminMigrationsRouter);
 router.use("/checklist-templates", requireOwner, checklistTemplatesRouter);
-router.use("/jobs", sectionGuard("jobs"), jobChecklistsRouter);
 
 // Job-card MFH endpoints (apply/update/reset/snapshot) — usable by anyone with Jobs permission.
 router.use("/mfh", sectionGuard("jobs"), mfhJobRouter);

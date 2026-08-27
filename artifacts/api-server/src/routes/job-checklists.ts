@@ -16,12 +16,15 @@ import {
   jobChecklistSectionNotesTable,
   jobsTable,
   clientsTable,
+  jobSubcontractorsTable,
+  subcontractorsTable,
   settingsTable,
 } from "@workspace/db/schema";
 import { eq, asc, desc, and, inArray, isNull } from "drizzle-orm";
 import { getRequestUser } from "./guards";
 import crypto from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { requestedBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 
 const photoUpload = multer({
   storage: multer.memoryStorage(),
@@ -39,6 +42,26 @@ function toServingUrl(objectPath: string): string {
 }
 
 const router = Router();
+
+function isDateOnly(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function scheduleItemShape(item: typeof jobChecklistItemsTable.$inferSelect, sectionName: string | null, assignedSubcontractorName: string | null) {
+  return {
+    id: item.id,
+    title: item.title,
+    completed: item.completed,
+    skipped: item.skipped,
+    scheduledDate: item.scheduledDate,
+    assignedSubcontractorId: item.assignedSubcontractorId,
+    assignedSubcontractorName,
+    sectionName,
+  };
+}
 
 // ── Helper: recalc parent item's completed from its parts ─────────────────────
 async function recalcItemFromParts(itemId: number): Promise<void> {
@@ -247,6 +270,78 @@ router.get("/checklist-summaries", async (req, res) => {
   }
 });
 
+// ── GET /schedule-overview?from=YYYY-MM-DD&to=YYYY-MM-DD ───────────────────────
+// One read for the Jobs schedule. It intentionally uses job dates and checklist
+// dates only; Route Planner stops are a separate system.
+router.get("/schedule-overview", async (req, res) => {
+  try {
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    if (!isDateOnly(from) || !isDateOnly(to) || from > to) {
+      return res.status(400).json({ error: "from and to must be valid YYYY-MM-DD dates" });
+    }
+
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+
+    const allJobs = await db.select().from(jobsTable);
+    const scopedJobs = allJobs.filter(job => belongsToBusiness(job, scope));
+    if (scopedJobs.length === 0) return res.json({ from, to, jobs: [] });
+
+    const jobIds = scopedJobs.map(job => job.id);
+    const checklists = await db
+      .select({ id: jobChecklistsTable.id, jobId: jobChecklistsTable.jobId })
+      .from(jobChecklistsTable)
+      .where(inArray(jobChecklistsTable.jobId, jobIds));
+    const checklistIds = checklists.map(checklist => checklist.id);
+
+    const scheduledRows = checklistIds.length > 0
+      ? await db
+        .select({
+          item: jobChecklistItemsTable,
+          sectionName: jobChecklistSectionsTable.name,
+          assignedSubcontractorName: subcontractorsTable.name,
+        })
+        .from(jobChecklistItemsTable)
+        .leftJoin(jobChecklistSectionsTable, eq(jobChecklistItemsTable.jobChecklistSectionId, jobChecklistSectionsTable.id))
+        .leftJoin(subcontractorsTable, eq(jobChecklistItemsTable.assignedSubcontractorId, subcontractorsTable.id))
+        .where(inArray(jobChecklistItemsTable.jobChecklistId, checklistIds))
+      : [];
+
+    const checklistJobById = new Map(checklists.map(checklist => [checklist.id, checklist.jobId]));
+    const scheduleByJob = new Map<number, ReturnType<typeof scheduleItemShape>[]>();
+    const unscheduledByJob = new Map<number, ReturnType<typeof scheduleItemShape>[]>();
+    for (const row of scheduledRows) {
+      const jobId = checklistJobById.get(row.item.jobChecklistId);
+      if (!jobId || row.item.skipped) continue;
+      const shaped = scheduleItemShape(row.item, row.sectionName, row.assignedSubcontractorName);
+      if (row.item.scheduledDate && (row.item.scheduledDate < from || row.item.scheduledDate > to)) continue;
+      const target = row.item.scheduledDate ? scheduleByJob : unscheduledByJob;
+      const list = target.get(jobId) ?? [];
+      list.push(shaped);
+      target.set(jobId, list);
+    }
+
+    const jobs = scopedJobs
+      .filter(job => {
+        const overlaps = job.startDate != null && job.startDate <= to && (job.endDate == null || job.endDate >= from);
+        const hasScheduledItems = (scheduleByJob.get(job.id)?.length ?? 0) > 0;
+        const needsScheduling = job.startDate == null && job.endDate == null || (unscheduledByJob.get(job.id)?.length ?? 0) > 0;
+        return overlaps || hasScheduledItems || needsScheduling;
+      })
+      .map(job => ({
+        ...job,
+        checklistItems: scheduleByJob.get(job.id) ?? [],
+        unscheduledChecklistItems: unscheduledByJob.get(job.id) ?? [],
+      }));
+
+    res.json({ from, to, jobs });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load schedule overview" });
+  }
+});
+
 // ── GET /:jobId/checklist ─────────────────────────────────────────────────────
 router.get("/:jobId/checklist/exists", async (req, res) => {
   try {
@@ -440,8 +535,17 @@ router.patch("/:jobId/checklist/items/:itemId", async (req, res) => {
     const itemId = parseInt(req.params.itemId);
     const jobId = parseInt(req.params.jobId);
     const user = getRequestUser(req);
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
 
     // Verify item belongs to this job's checklist
+    const [job] = await db
+      .select()
+      .from(jobsTable)
+      .where(eq(jobsTable.id, jobId))
+      .limit(1);
+    if (!job || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
+
     const [checklist] = await db
       .select()
       .from(jobChecklistsTable)
@@ -454,8 +558,27 @@ router.patch("/:jobId/checklist/items/:itemId", async (req, res) => {
       .where(and(eq(jobChecklistItemsTable.id, itemId), eq(jobChecklistItemsTable.jobChecklistId, checklist.id)));
     if (!item) return res.status(404).json({ error: "Item not found" });
 
-    const { completed, notes } = req.body;
+    const { completed, notes, scheduledDate, assignedSubcontractorId } = req.body;
     const updates: Record<string, unknown> = {};
+
+    if (scheduledDate !== undefined && scheduledDate !== null && !isDateOnly(scheduledDate)) {
+      return res.status(400).json({ error: "scheduledDate must be a valid YYYY-MM-DD date or null" });
+    }
+    if (assignedSubcontractorId !== undefined && assignedSubcontractorId !== null &&
+      (!Number.isInteger(Number(assignedSubcontractorId)) || Number(assignedSubcontractorId) <= 0)) {
+      return res.status(400).json({ error: "assignedSubcontractorId must be a positive integer or null" });
+    }
+    if (assignedSubcontractorId !== undefined && assignedSubcontractorId !== null) {
+      const [assignment] = await db
+        .select({ subcontractorId: jobSubcontractorsTable.subcontractorId })
+        .from(jobSubcontractorsTable)
+        .where(and(
+          eq(jobSubcontractorsTable.jobId, jobId),
+          eq(jobSubcontractorsTable.subcontractorId, Number(assignedSubcontractorId)),
+        ))
+        .limit(1);
+      if (!assignment) return res.status(400).json({ error: "Subcontractor must be assigned to this job" });
+    }
 
     // Guard: if the item has parts, completed is derived from parts and cannot be set directly
     if (completed !== undefined) {
@@ -482,6 +605,8 @@ router.patch("/:jobId/checklist/items/:itemId", async (req, res) => {
       }
     }
     if (notes !== undefined) updates.notes = notes;
+    if (scheduledDate !== undefined) updates.scheduledDate = scheduledDate;
+    if (assignedSubcontractorId !== undefined) updates.assignedSubcontractorId = assignedSubcontractorId === null ? null : Number(assignedSubcontractorId);
 
     await db
       .update(jobChecklistItemsTable)

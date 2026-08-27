@@ -1,5 +1,6 @@
 import { pgTable, serial, text, timestamp, integer, boolean, numeric } from "drizzle-orm/pg-core";
 import { jobsTable } from "./jobs";
+import { subcontractorsTable } from "./subcontractors";
 
 export const checklistTemplatesTable = pgTable("checklist_templates", {
   id: serial("id").primaryKey(),
@@ -63,6 +64,8 @@ export const jobChecklistItemsTable = pgTable("job_checklist_items", {
   skippedAt: timestamp("skipped_at"),
   notes: text("notes"),
   sortOrder: integer("sort_order").notNull().default(0),
+  scheduledDate: text("scheduled_date"),
+  assignedSubcontractorId: integer("assigned_subcontractor_id").references(() => subcontractorsTable.id, { onDelete: "set null" }),
 });
 
 export const jobChecklistItemPhotosTable = pgTable("job_checklist_item_photos", {
