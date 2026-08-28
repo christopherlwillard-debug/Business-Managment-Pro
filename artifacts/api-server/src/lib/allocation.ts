@@ -2,6 +2,7 @@ import { db } from "@workspace/db";
 import {
   invoicesTable,
   expensesTable,
+  jobExpenseAllocationsTable,
   jobSubcontractorsTable,
   subPaymentRecordsTable,
 } from "@workspace/db/schema";
@@ -16,6 +17,27 @@ export interface AllocationSplitPool {
 }
 
 const GROWTH_RESERVE_PCT = 0.05;
+
+export function calculateAllocationSplitPool(input: {
+  revenue: number;
+  directExpenses: number;
+  allocatedExpenses: number;
+  subLaborCost: number;
+}): AllocationSplitPool {
+  const expenses = input.directExpenses + input.allocatedExpenses;
+  const income = Math.max(0, input.revenue - expenses);
+  const afterWorkers = Math.max(0, income - input.subLaborCost);
+  const growthReserve = afterWorkers * GROWTH_RESERVE_PCT;
+  const splitPool = Math.max(0, afterWorkers - growthReserve);
+
+  return {
+    revenue: input.revenue,
+    expenses,
+    subLaborCost: input.subLaborCost,
+    growthReserve,
+    splitPool,
+  };
+}
 
 /**
  * Batch variant — primary implementation, avoids N+1 queries.
@@ -36,7 +58,7 @@ export async function computeAllocationSplitPools(
 ): Promise<Map<number, AllocationSplitPool>> {
   if (jobIds.length === 0) return new Map();
 
-  const [poolInvs, poolExps, poolHours, poolFixedPayments, poolAccruedBonuses] = await Promise.all([
+  const [poolInvs, poolExps, poolAllocatedExps, poolHours, poolFixedPayments, poolAccruedBonuses] = await Promise.all([
     db
       .select({ jobId: invoicesTable.jobId, total: invoicesTable.total })
       .from(invoicesTable)
@@ -55,6 +77,19 @@ export async function computeAllocationSplitPools(
         and(
           inArray(expensesTable.jobId, jobIds),
           isNull(expensesTable.jobSubHoursId),
+          isNull(expensesTable.voidedAt),
+        ),
+      ),
+    db
+      .select({
+        jobId: jobExpenseAllocationsTable.jobId,
+        amount: jobExpenseAllocationsTable.amount,
+      })
+      .from(jobExpenseAllocationsTable)
+      .innerJoin(expensesTable, eq(jobExpenseAllocationsTable.expenseId, expensesTable.id))
+      .where(
+        and(
+          inArray(jobExpenseAllocationsTable.jobId, jobIds),
           isNull(expensesTable.voidedAt),
         ),
       ),
@@ -115,6 +150,13 @@ export async function computeAllocationSplitPools(
   const accruedBonusMap = new Map(
     poolAccruedBonuses.map((r) => [r.jobId, parseFloat(r.total ?? "0")]),
   );
+  const allocatedExpenseMap = new Map<number, number>();
+  for (const row of poolAllocatedExps) {
+    allocatedExpenseMap.set(
+      row.jobId,
+      (allocatedExpenseMap.get(row.jobId) ?? 0) + parseFloat(row.amount ?? "0"),
+    );
+  }
 
   const result = new Map<number, AllocationSplitPool>();
   for (const jobId of jobIds) {
@@ -143,12 +185,12 @@ export async function computeAllocationSplitPools(
       ? fixedPaymentCost
       : (hoursLaborCost > 0 ? 0 : flatSubCost);
     const subLaborCost = hoursLaborCost + nonHoursCost + accruedBonusCost;
-    const income = Math.max(0, revenue - expenses);
-    const afterWorkers = Math.max(0, income - subLaborCost);
-    const growthReserve = afterWorkers * GROWTH_RESERVE_PCT;
-    const splitPool = Math.max(0, afterWorkers - growthReserve);
-
-    result.set(jobId, { revenue, expenses, subLaborCost, growthReserve, splitPool });
+    result.set(jobId, calculateAllocationSplitPool({
+      revenue,
+      directExpenses: expenses,
+      allocatedExpenses: allocatedExpenseMap.get(jobId) ?? 0,
+      subLaborCost,
+    }));
   }
 
   return result;
