@@ -197,32 +197,43 @@ describe("POST /mileage — rate derived from trip date", () => {
   });
 });
 
-// ── GET /mileage/summary — aggregate deduction sums stored per-trip amounts ───
+// ── GET /mileage/summary — date-aware aggregate deduction ─────────────────────
 
 describe("GET /mileage/summary — split-year aggregate deduction", () => {
 
-  it("totalDeduction sums stored deductionAmount fields across H1 and H2 trips", async () => {
+  it("uses raw trip dates and exposes separate periods instead of a blended rate", async () => {
     // Two H1 trips at $0.725 and one H2 trip at $0.760.
-    // If the route multiplied miles × a single rate instead of summing deductionAmount,
-    // the result would be wrong: 300mi × 0.725 = $217.50 or 300mi × 0.760 = $228.
-    // Correct answer: (100 × 0.725) + (100 × 0.725) + (100 × 0.760) = $222.00
+    // Stored snapshots are deliberately stale and must not affect the summary.
     h.selectQueue.push([
-      { id: 1, date: "2026-06-15", miles: "100", classification: "business", ratePerMile: "0.725", deductionAmount: "72.50" },
-      { id: 2, date: "2026-06-30", miles: "100", classification: "business", ratePerMile: "0.725", deductionAmount: "72.50" },
-      { id: 3, date: "2026-07-01", miles: "100", classification: "business", ratePerMile: "0.760", deductionAmount: "76.00" },
+      { id: 1, date: "2026-06-15", miles: "100", classification: "business", ratePerMile: "0.1", deductionAmount: "10.00" },
+      { id: 2, date: "2026-06-30", miles: "100", classification: "business", ratePerMile: "0.1", deductionAmount: "10.00" },
+      { id: 3, date: "2026-07-01", miles: "100", classification: "business", ratePerMile: "0.1", deductionAmount: "10.00" },
     ]);
 
     const res = await request(app).get("/mileage/summary?businessId=1");
     expect(res.status).toBe(200);
 
     expect(res.body.businessMiles).toBeCloseTo(300, 10);
-    // Must equal the sum of stored deductionAmounts
-    expect(res.body.totalDeduction).toBeCloseTo(221.0, 10);  // 72.50+72.50+76.00
-    // Derived blended rate must NOT equal either raw rate
-    expect(res.body.ratePerMile).not.toBeCloseTo(0.725, 3);
-    expect(res.body.ratePerMile).not.toBeCloseTo(0.760, 3);
-    // Blended rate = $221 / 300mi ≈ 0.7367
-    expect(res.body.ratePerMile).toBeCloseTo(221.0 / 300, 5);
+    expect(res.body.totalDeduction).toBeCloseTo(221, 10);
+    expect(res.body.ratePerMile).toBeNull();
+    expect(res.body.ratePeriods).toEqual([
+      {
+        effectiveDate: "2026-01-01",
+        periodStart: "2026-01-01",
+        periodEnd: "2026-06-30",
+        rate: 0.725,
+        miles: 200,
+        deduction: 145,
+      },
+      {
+        effectiveDate: "2026-07-01",
+        periodStart: "2026-07-01",
+        periodEnd: "2026-12-31",
+        rate: 0.76,
+        miles: 100,
+        deduction: 76,
+      },
+    ]);
   });
 
   it("totalDeduction differs from miles × single rate for split-year trips", async () => {
@@ -242,6 +253,8 @@ describe("GET /mileage/summary — split-year aggregate deduction", () => {
     // Must NOT be the single-rate result
     expect(res.body.totalDeduction).not.toBeCloseTo(145.0, 1); // 200mi × $0.725
     expect(res.body.totalDeduction).not.toBeCloseTo(152.0, 1); // 200mi × $0.760
+    expect(res.body.ratePerMile).toBeNull();
+    expect(res.body.ratePeriods).toHaveLength(2);
   });
 
   it("ratePerMile returns null when there are no business trips", async () => {
@@ -254,6 +267,7 @@ describe("GET /mileage/summary — split-year aggregate deduction", () => {
 
     expect(res.body.totalDeduction).toBeCloseTo(0, 10);
     expect(res.body.ratePerMile).toBeNull();
+    expect(res.body.ratePeriods).toEqual([]);
   });
 });
 

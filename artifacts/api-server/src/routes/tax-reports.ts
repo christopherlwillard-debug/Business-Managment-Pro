@@ -6,13 +6,12 @@ import {
   settingsTable, subPaymentRecordsTable, jobSubcontractorsTable,
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, sum, count, ne, isNull, sql, inArray } from "drizzle-orm";
-import { calculateMileageDeduction } from "../lib/irs-rates.js";
+import { summarizeMileageRecords, type MileageRatePeriod } from "../lib/irs-rates.js";
 import { getTaxAssumptions } from "../lib/tax-estimate.js";
 import { calcInvoiceFromStored } from "./invoices.js";
 
 const router = Router();
 
-import { getIrsMileageRate } from "../lib/irs-rates.js";
 import { filterCashReceipts, sumCashReceipts } from "../lib/cash-revenue.js";
 
 const SCHEDULE_C_LINES = {
@@ -99,7 +98,8 @@ interface ScheduleCReport {
   grossProfit: number;
   mileageData: {
     totalBusinessMiles: number;
-    ratePerMile: number;
+    ratePerMile: number | null;
+    ratePeriods: MileageRatePeriod[];
     deduction: number;
     logCount: number;
   };
@@ -336,11 +336,9 @@ router.get("/schedule-c", async (req, res) => {
         )
       );
 
-    const totalBusinessMiles = mileageData.reduce((sumMiles, row) => sumMiles + parseFloat(row.miles as any), 0);
-    const mileageDeduction = mileageData.reduce((total, row) =>
-      total + calculateMileageDeduction(row.miles, row.classification, row.date).deduction, 0);
-    // Derive blended rate from stored per-trip deductionAmounts — reflects 2026 H1/H2 split.
-    const irsMileageRate = totalBusinessMiles > 0 ? mileageDeduction / totalBusinessMiles : getIrsMileageRate(year);
+    const mileageSummary = summarizeMileageRecords(mileageData);
+    const totalBusinessMiles = mileageSummary.totalMiles;
+    const mileageDeduction = mileageSummary.totalDeduction;
 
     // Separate Fuel/Travel + Parking/Tolls expenses (carTruck) from mileage so Line 9 is handled explicitly
     const fuelTravelExpenses = expenses["carTruck"] || 0;
@@ -425,7 +423,10 @@ router.get("/schedule-c", async (req, res) => {
 
     // Line 9 — Car and truck expenses (ALWAYS included, even when $0, for explicit Schedule C accuracy)
     const totalCarTruck = fuelTravelExpenses + mileageDeduction;
-    const line9Description = `Car and truck expenses (${totalBusinessMiles.toFixed(0)} mi \u00d7 $${irsMileageRate.toFixed(2)}/mi)`;
+    const mileageRateDescription = mileageSummary.ratePeriods.length === 1
+      ? `$${mileageSummary.ratePeriods[0].rate.toFixed(3)}/mi`
+      : "applicable IRS rates";
+    const line9Description = `Car and truck expenses (${totalBusinessMiles.toFixed(0)} mi at ${mileageRateDescription})`;
     scheduleLines.push({ line: 9, description: line9Description, amount: totalCarTruck });
     totalExpenses += totalCarTruck;
 
@@ -502,7 +503,8 @@ router.get("/schedule-c", async (req, res) => {
       grossProfit,
       mileageData: {
         totalBusinessMiles,
-        ratePerMile: irsMileageRate,
+        ratePerMile: mileageSummary.ratePerMile,
+        ratePeriods: mileageSummary.ratePeriods,
         deduction: mileageDeduction,
         logCount: mileageLogCount.length,
       },

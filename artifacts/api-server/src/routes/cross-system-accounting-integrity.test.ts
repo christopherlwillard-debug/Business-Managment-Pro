@@ -114,7 +114,14 @@ vi.mock("./guards",             () => ({
   sectionGuard: () => (_req: any, _res: any, next: any) => next(),
   ownerGuard:   () => (_req: any, _res: any, next: any) => next(),
 }));
-vi.mock("../lib/irs-rates.js",  () => ({ getIrsMileageRate: vi.fn().mockReturnValue(0.67) }));
+vi.mock("../lib/irs-rates.js",  () => ({
+  summarizeMileageRecords: (logs: Array<{ miles: number | string; classification: string }>) => ({
+    totalMiles: logs.filter(log => log.classification === "business").reduce((sum, log) => sum + (Number(log.miles) || 0), 0),
+    totalDeduction: 0,
+    ratePerMile: null,
+    ratePeriods: [],
+  }),
+}));
 vi.mock("../lib/allocation.js", () => ({
   computeAllocationSplitPools: vi.fn().mockResolvedValue([]),
   computeSubOwed:              vi.fn().mockReturnValue(0),
@@ -195,7 +202,7 @@ const MATERIALS_EXP = {
   excludeFromNetProfit: false,
 };
 
-const NO_MILEAGE = [{ totalMiles: null, totalDed: null }];
+const NO_MILEAGE: any[] = [];
 
 // Expected waterfall values for a $1 000 revenue, no sub labor
 const EXPECTED_OWNER_ALLOCATED   = 1000 * (1 - 0.05) * 0.50;      // 475.00

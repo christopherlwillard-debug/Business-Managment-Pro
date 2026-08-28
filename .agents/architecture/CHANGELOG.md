@@ -167,3 +167,11 @@ Created the four-document architecture governance system:
 - Added structured place-of-performance and service-area classification to the existing bid opportunity system.
 - Synchronization now classifies local, regional, outside-area, and unknown opportunities without changing capability scoring or deleting historical records.
 - The bid feed defaults to Local + Regional and exposes the classification reason on each card.
+
+## 2026-08-27
+
+### Mileage rate-period enforcement
+
+- Mileage summaries, accounting reports, Schedule C, reserves, and subcontractor portal reports now derive deductions from raw trip date, miles, and classification through the shared effective-date engine.
+- Split-rate periods return separate exact rate buckets; aggregate rate fields are null instead of exposing a weighted or blended IRS rate.
+- Year-End, Profit & Loss, Mileage, portal, and export displays show the applicable rate periods separately while retaining the sum of independently calculated deductions.

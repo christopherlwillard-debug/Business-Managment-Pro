@@ -7,6 +7,15 @@ import { useBusiness } from "@/contexts/BusinessContext";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+interface MileageRatePeriod {
+  effectiveDate: string;
+  periodStart: string;
+  periodEnd: string;
+  rate: number;
+  miles: number;
+  deduction: number;
+}
+
 interface TaxProfile {
   taxElection: string;
   activitySectionTitle: string;
@@ -31,7 +40,13 @@ interface ProfitLossReport {
   operatingExpenses: { label: string; key: string; amount: number }[];
   totalOperatingExpenses: number;
   netOperatingIncome: number;
-  deductions: { mileageDeduction: number; totalMiles: number; mileageRate: number; depreciationDeduction: number };
+  deductions: {
+    mileageDeduction: number;
+    totalMiles: number;
+    mileageRate: number | null;
+    ratePeriods?: MileageRatePeriod[];
+    depreciationDeduction: number;
+  };
   netProfit: number;
   taxProfile?: TaxProfile;
   ownerActivity?: {
@@ -63,6 +78,15 @@ function useProfitLoss(year: number, businessLine?: string) {
 function fmtAmt(n: number) {
   if (n === 0) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
+
+function mileageRateLabel(rate: number | null, periods: MileageRatePeriod[] | undefined) {
+  if (rate != null) return `$${rate.toFixed(3)}/mi`;
+  return periods?.length ? "Multiple IRS rates by date" : "No business-mile rate";
+}
+
+function mileagePeriodLabel(period: MileageRatePeriod) {
+  return `${period.periodStart}–${period.periodEnd} (${period.miles.toFixed(0)} mi × $${period.rate.toFixed(3)}/mi)`;
 }
 
 function PLRow({ label, amount, bold, indent, negative, highlight, separator }: {
@@ -214,7 +238,9 @@ function ProfitLossTab({ year }: { year: number }) {
 
     const opexRows = report.operatingExpenses
       .map(e => row(e.label, e.amount, { indent: true })).join("");
-    const mileLabel = `Mileage Deduction (${report.deductions.totalMiles.toFixed(0)} mi \u00d7 $${report.deductions.mileageRate.toFixed(3)}/mi)`;
+    const mileLabel = report.deductions.ratePeriods?.length
+      ? report.deductions.ratePeriods.map(mileagePeriodLabel).join("<br>")
+      : `Mileage Deduction (${report.deductions.totalMiles.toFixed(0)} mi)`;
     const deprRow = report.deductions.depreciationDeduction > 0
       ? row("Depreciation &amp; Section 179", report.deductions.depreciationDeduction, { indent: true })
       : "";
@@ -313,11 +339,22 @@ function ProfitLossTab({ year }: { year: number }) {
               <PLRow label="Net Operating Income" amount={report.netOperatingIncome} bold highlight separator />
 
               <PLSection title="Other Deductions" />
-              <PLRow
-                label={`Mileage Deduction (${report.deductions.totalMiles.toFixed(0)} mi × $${report.deductions.mileageRate.toFixed(3)}/mi)`}
-                amount={report.deductions.mileageDeduction}
-                indent
-              />
+              {(report.deductions.ratePeriods?.length ?? 0) > 0 ? (
+                report.deductions.ratePeriods!.map(period => (
+                  <PLRow
+                    key={`${period.periodStart}-${period.rate}`}
+                    label={mileagePeriodLabel(period)}
+                    amount={period.deduction}
+                    indent
+                  />
+                ))
+              ) : (
+                <PLRow
+                  label={`Mileage Deduction (${report.deductions.totalMiles.toFixed(0)} mi · ${mileageRateLabel(report.deductions.mileageRate, report.deductions.ratePeriods)})`}
+                  amount={report.deductions.mileageDeduction}
+                  indent
+                />
+              )}
               {report.deductions.depreciationDeduction > 0 && (
                 <PLRow label="Depreciation & Section 179" amount={report.deductions.depreciationDeduction} indent />
               )}

@@ -18,7 +18,15 @@ export interface ScheduleCReport {
   grossProfit: number;
   mileageData: {
     totalBusinessMiles: number;
-    ratePerMile: number;
+    ratePerMile: number | null;
+    ratePeriods: {
+      effectiveDate: string;
+      periodStart: string;
+      periodEnd: string;
+      rate: number;
+      miles: number;
+      deduction: number;
+    }[];
     deduction: number;
     logCount: number;
   };

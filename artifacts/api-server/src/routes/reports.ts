@@ -2,10 +2,10 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable, growthFundDeploymentsTable, recurringExpensesTable, subPaymentRecordsTable } from "@workspace/db/schema";
 import { plaidConnectionsTable } from "@workspace/db";
-import { eq, and, gte, lte, desc, sum, ne, inArray, sql, count, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, desc, ne, inArray, sql, count, isNull } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
-import { calculateMileageDeduction, getIrsMileageRate } from "../lib/irs-rates.js";
+import { summarizeMileageRecords } from "../lib/irs-rates.js";
 import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { filterCashReceipts, sumCashReceipts } from "../lib/cash-revenue.js";
@@ -185,9 +185,11 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const excludedExpenseCount = kpiExpenses.filter(e => e.excludeFromNetProfit).length;
     // Period-consistent mileage deduction used in the profit formula
-    const periodMileageDeduction = allMileage.reduce((s, m) => s + calculateMileageDeduction(m.miles, m.classification, m.date).deduction, 0);
+    const periodMileageSummary = summarizeMileageRecords(allMileage);
     // YTD mileage deduction for the "Tax Deductions" display card (always YTD)
-    const mileageDeduction = ytdMileageLogs.reduce((s, m) => s + calculateMileageDeduction(m.miles, m.classification, m.date).deduction, 0);
+    const ytdMileageSummary = summarizeMileageRecords(ytdMileageLogs);
+    const periodMileageDeduction = periodMileageSummary.totalDeduction;
+    const mileageDeduction = ytdMileageSummary.totalDeduction;
     // Mileage cannot be attributed to a single business line — exclude from filtered net profit
     const mileageForNetProfit = validBl ? 0 : periodMileageDeduction;
     const operationalNetProfit = totalRevenue - (totalExpenses - excludedFromProfitFormula) - mileageForNetProfit;
@@ -201,10 +203,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const ownerDrawTotal = nonMileageExpenses
       .filter(e => OWNER_PAY_CATS.includes(e.category ?? ""))
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    const ytdMiles = ytdMileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
-    // Derive blended rate from stored per-trip deductionAmounts — reflects 2026 H1/H2 split.
-    // `mileageDeduction` (computed above) is already the sum of deductionAmount for ytdMileageLogs.
-    const ytdMileageRate = ytdMiles > 0 ? mileageDeduction / ytdMiles : getIrsMileageRate(now.getFullYear());
+    const ytdMiles = ytdMileageSummary.totalMiles;
+    const ytdMileageRate = ytdMileageSummary.ratePerMile;
 
     // Subcontractor pay metrics — query job_subcontractors directly.
     // "Paid" = you recorded a payment on the job card. Completely independent of
@@ -406,6 +406,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       periodMileageDeduction,
       ytdMiles,
       ytdMileageRate,
+      ratePeriods: ytdMileageSummary.ratePeriods,
+      periodRatePeriods: periodMileageSummary.ratePeriods,
       overdueInvoices,
       operationalNetProfit,
       excludedFromProfit,
@@ -595,8 +597,6 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       return { ...inv, subtotal: String(live.subtotal), taxAmount: String(live.taxAmount), total: String(live.total) };
     });
 
-    const rate = parseFloat(settings[0]?.mileageRate ?? "0.725");
-
     const invoiceGrossRevenue = invoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
     // Cash-basis: count paid revenue only when payment was received in the selected year
     const invoicePaidRevenue = sumCashReceipts(invoices, startDate, endDate);
@@ -628,8 +628,9 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     // subcontractorId == null guard: belt-and-suspenders in case the DB query misses any
     // sub logs (e.g. businessId filter alone wouldn't exclude business_id=NULL sub records).
     const businessMiles = mileageLogs.filter(m => m.classification === "business" && m.subcontractorId == null);
-    const totalMiles = businessMiles.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
-    const mileageDeduction = businessMiles.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+    const mileageSummary = summarizeMileageRecords(businessMiles);
+    const totalMiles = mileageSummary.totalMiles;
+    const mileageDeduction = mileageSummary.totalDeduction;
 
     // Slot order for mock queue: [assets, assetBusinessUse, waterfallPaidInvs, accOwnerContribRows]
     // computeOwnerWaterfall fires its first await synchronously → [waterfallPaidInvs] before the
@@ -1008,7 +1009,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
 
     res.json({
       year,
-      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, businessExpenses, totalMiles, mileageDeduction, mileageRate: totalMiles > 0 ? mileageDeduction / totalMiles : parseFloat(settings[0]?.mileageRate ?? "0.725"), totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance, directJobCosts, overheadCosts, grossMargin },
+      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, businessExpenses, totalMiles, mileageDeduction, mileageRate: mileageSummary.ratePerMile, ratePeriods: mileageSummary.ratePeriods, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance, directJobCosts, overheadCosts, grossMargin },
       incomeByCity,
       estimatedTaxes,
       expensesByCategory,
@@ -1287,7 +1288,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
         .from(expensesTable)
         .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), ne(expensesTable.category, "mileage"), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
       // subcontractorId IS NULL: owner vehicle mileage only — excludes sub-portal tracking logs.
-      db.select({ totalMiles: sum(mileageLogsTable.miles), totalDed: sum(mileageLogsTable.deductionAmount) })
+      db.select({ miles: mileageLogsTable.miles, classification: mileageLogsTable.classification, date: mileageLogsTable.date })
         .from(mileageLogsTable)
         .where(and(eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), mileageWhere)),
       db.select({ amount: otherIncomeTable.amount })
@@ -1446,10 +1447,10 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const totalOperatingExpenses = operatingExpenses.reduce((s, x) => s + x.amount, 0);
     const netOperatingIncome = grossProfit - totalOperatingExpenses;
 
-    const totalMiles = mileRows[0]?.totalMiles ? parseFloat(mileRows[0].totalMiles as string) : 0;
-    const mileageDeduction = mileRows[0]?.totalDed ? parseFloat(mileRows[0].totalDed as string) : 0;
-    // Derive blended rate from stored per-trip deductionAmounts — reflects 2026 H1/H2 split.
-    const mileageRate = totalMiles > 0 ? mileageDeduction / totalMiles : getIrsMileageRate(year);
+    const mileageSummary = summarizeMileageRecords(mileRows);
+    const totalMiles = mileageSummary.totalMiles;
+    const mileageDeduction = mileageSummary.totalDeduction;
+    const mileageRate = mileageSummary.ratePerMile;
 
     // Fetch depreciation, owner contributions, settings, and owner waterfall in parallel.
     // Mock-queue slot order (synchronous chain evaluation order matters):
@@ -1493,7 +1494,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       operatingExpenses,
       totalOperatingExpenses,
       netOperatingIncome,
-      deductions: { mileageDeduction, totalMiles, mileageRate, depreciationDeduction },
+      deductions: { mileageDeduction, totalMiles, mileageRate, ratePeriods: mileageSummary.ratePeriods, depreciationDeduction },
       netProfit,
       taxProfile,
       ownerActivity: {
@@ -1698,10 +1699,10 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     const fixedAllocSubPaymentTotal = fixedAllocSubPayments.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + fixedAllocSubPaymentTotal;
 
-    const totalMiles = mileageLogs.reduce((s, m) => s + parseFloat(m.miles ?? "0"), 0);
-    const mileageDeduction = mileageLogs.reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
-    // Derive blended rate from stored per-trip deductionAmounts — reflects 2026 H1/H2 split.
-    const mileageRate = totalMiles > 0 ? mileageDeduction / totalMiles : getIrsMileageRate(year);
+    const mileageSummary = summarizeMileageRecords(mileageLogs);
+    const totalMiles = mileageSummary.totalMiles;
+    const mileageDeduction = mileageSummary.totalDeduction;
+    const mileageRate = mileageSummary.ratePerMile;
 
     // ── Asset Depreciation for the Year ──────────────────────────────────────
     // Helper: year in which an asset was disposed (sold or retired), or null if still active
@@ -1974,6 +1975,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
         totalExpenses,
         mileageDeduction,
         mileageRate,
+        ratePeriods: mileageSummary.ratePeriods,
         totalMiles,
         totalDepreciation,
         netProfit,
@@ -2009,6 +2011,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       mileage: {
         totalMiles,
         mileageRate,
+        ratePeriods: mileageSummary.ratePeriods,
         deduction: mileageDeduction,
         trips: mileageLogs.length,
       },
@@ -2223,9 +2226,9 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
       .filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""))
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     // subcontractorId == null: owner mileage only — belt-and-suspenders in JS to match DB filter.
-    const businessMileageDeduction = mileageLogs
-      .filter(m => m.classification === "business" && m.subcontractorId == null)
-      .reduce((s, m) => s + parseFloat(m.deductionAmount ?? "0"), 0);
+    const businessMileageDeduction = summarizeMileageRecords(
+      mileageLogs.filter(m => m.subcontractorId == null),
+    ).totalDeduction;
     const depreciationDeduction = await computeDepreciationForYear(year);
     const netProfit = paidRevenue - (totalExpenses - ownerDrawTotal) - businessMileageDeduction - depreciationDeduction;
 

@@ -80,6 +80,7 @@ export * from "./logoutSuccess";
 export * from "./mileageLog";
 export * from "./mileageLogClassification";
 export * from "./mileageLogSource";
+export * from "./mileageRatePeriod";
 export * from "./mileageSummary";
 export * from "./mobileTokenExchangeRequest";
 export * from "./mobileTokenExchangeSuccess";

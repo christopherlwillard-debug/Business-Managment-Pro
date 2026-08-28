@@ -91,7 +91,14 @@ vi.mock("./guards",             () => ({
   sectionGuard: () => (_req: any, _res: any, next: any) => next(),
   ownerGuard:   () => (_req: any, _res: any, next: any) => next(),
 }));
-vi.mock("../lib/irs-rates.js",  () => ({ getIrsMileageRate: vi.fn().mockReturnValue(0.67) }));
+vi.mock("../lib/irs-rates.js",  () => ({
+  summarizeMileageRecords: (logs: Array<{ miles: number | string; classification: string }>) => ({
+    totalMiles: logs.filter(log => log.classification === "business").reduce((sum, log) => sum + (Number(log.miles) || 0), 0),
+    totalDeduction: 0,
+    ratePerMile: null,
+    ratePeriods: [],
+  }),
+}));
 vi.mock("../lib/allocation.js", () => ({
   computeAllocationSplitPools: vi.fn().mockResolvedValue([]),
   computeSubOwed:              vi.fn().mockReturnValue(0),
@@ -150,7 +157,7 @@ const REGULAR_EXP = {
 };
 
 // Empty mileage aggregate (no business trips logged)
-const NO_MILEAGE = [{ totalMiles: null, totalDed: null }];
+const NO_MILEAGE: any[] = [];
 
 /**
  * Push all 12 select slots consumed by GET /profit-loss (no blFilter).

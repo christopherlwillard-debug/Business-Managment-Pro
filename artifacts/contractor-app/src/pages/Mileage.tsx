@@ -358,7 +358,6 @@ export default function Mileage() {
     month: currentMonth, miles: "", tripCount: "", notes: "",
   });
 
-  const rate = parseFloat((settings as any)?.mileageRate ?? "0.725");
   const mileageUnits: string = (settings as any)?.mileageUnits ?? "miles";
   const mileageDefaultClassification: "business" | "personal" =
     (settings as any)?.mileageDefaultClassification === "personal" ? "personal" : "business";
@@ -418,10 +417,11 @@ export default function Mileage() {
     setSessionExpired(false);
 
     const miles = parseFloat(manual.miles);
+    let savedLog: any;
 
     try {
       try {
-        await createMileage.mutateAsync({
+        savedLog = await createMileage.mutateAsync({
           data: {
             date: manual.date,
             miles,
@@ -443,7 +443,9 @@ export default function Mileage() {
       queryClient.invalidateQueries();
       setSavedMsg(
         manual.classification === "business"
-          ? `Trip saved! ${miles.toFixed(2)} mi logged + ${formatCurrency(miles * rate)} expense created.`
+          ? (savedLog.deductionAmount ?? savedLog.calculatedDeduction) != null
+            ? `Trip saved! ${miles.toFixed(2)} mi logged + ${formatCurrency(savedLog.deductionAmount ?? savedLog.calculatedDeduction)} expense created.`
+            : `Trip saved! ${miles.toFixed(2)} mi logged. The IRS mileage expense was created.`
           : `Trip saved. ${miles.toFixed(2)} personal miles logged.`
       );
       setManual({ date: today, startLocation: "", endLocation: "", miles: "", purpose: "", classification: mileageDefaultClassification, jobId: "" });
@@ -469,11 +471,10 @@ export default function Mileage() {
       ? `MileIQ monthly total — ${tripCount} business trips`
       : "MileIQ monthly total";
     const dateStr = lastDayOfMonth(monthlyForm.month);
-    const deduction = miles * rate;
-
+    let savedLog: any;
     try {
       try {
-        await createMileage.mutateAsync({
+        savedLog = await createMileage.mutateAsync({
           data: {
             date: dateStr,
             miles,
@@ -492,7 +493,9 @@ export default function Mileage() {
 
       queryClient.invalidateQueries();
       setSavedMsg(
-        `${getMonthLabel(monthlyForm.month)} logged: ${miles.toFixed(2)} mi → ${formatCurrency(deduction)} deduction.`
+        (savedLog.deductionAmount ?? savedLog.calculatedDeduction) != null
+          ? `${getMonthLabel(monthlyForm.month)} logged: ${miles.toFixed(2)} mi → ${formatCurrency(savedLog.deductionAmount ?? savedLog.calculatedDeduction)} deduction.`
+          : `${getMonthLabel(monthlyForm.month)} logged. The IRS mileage deduction was recorded.`
       );
       setMonthlyForm({ month: currentMonth, miles: "", tripCount: "", notes: "" });
     } finally {
@@ -1143,7 +1146,7 @@ export default function Mileage() {
                 {manual.classification === "business" && manual.miles && parseFloat(manual.miles) > 0 && (
                   <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
                     <span className="font-semibold">Auto-expense:</span>{" "}
-                    <span className="font-bold">{formatCurrency(parseFloat(manual.miles) * rate)}</span> mileage expense will be created automatically.
+                    <span className="font-bold">{formatCurrency(parseFloat(manual.miles) * getIrsRate(manual.date))}</span> estimated mileage expense at ${getIrsRate(manual.date).toFixed(3)}/mi will be created automatically.
                   </div>
                 )}
 
@@ -1220,8 +1223,8 @@ export default function Mileage() {
                   <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 space-y-1">
                     <div className="font-semibold">{getMonthLabel(monthlyForm.month)} estimate:</div>
                     <div className="flex justify-between">
-                      <span>{parseFloat(monthlyForm.miles).toFixed(2)} mi × ${rate.toFixed(3)}/mi</span>
-                      <span className="font-bold">{formatCurrency(parseFloat(monthlyForm.miles) * rate)}</span>
+                      <span>{parseFloat(monthlyForm.miles).toFixed(2)} mi × ${getIrsRate(lastDayOfMonth(monthlyForm.month)).toFixed(3)}/mi</span>
+                      <span className="font-bold">{formatCurrency(parseFloat(monthlyForm.miles) * getIrsRate(lastDayOfMonth(monthlyForm.month)))}</span>
                     </div>
                   </div>
                 )}
@@ -1252,9 +1255,20 @@ export default function Mileage() {
             </div>
             <p className="text-xs text-primary-foreground/50 mt-4 text-right">
               {(summary as any)?.ratePerMile != null
-                ? `$${Number((summary as any).ratePerMile).toFixed(3)}/mile blended from trip dates`
-                : "No business-mile rate yet"}
+                ? `$${Number((summary as any).ratePerMile).toFixed(3)}/mile`
+                : (summary as any)?.ratePeriods?.length
+                  ? "Multiple IRS rates applied by trip date"
+                  : "No business-mile rate yet"}
             </p>
+            {(summary as any)?.ratePeriods?.length > 1 && (
+              <div className="mt-2 space-y-0.5 text-xs text-primary-foreground/70">
+                {(summary as any).ratePeriods.map((period: any) => (
+                  <p key={`${period.periodStart}-${period.rate}`}>
+                    {period.periodStart}–{period.periodEnd}: ${Number(period.rate).toFixed(3)}/mi · {Number(period.miles).toFixed(1)} mi
+                  </p>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

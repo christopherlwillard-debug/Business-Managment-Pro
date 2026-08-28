@@ -47,3 +47,4 @@
 - [Job mileage reimbursement](job-mileage-reimbursement.md) — editable job-card reimbursement stays outside MileIQ, expenses, owner pay, and percentage splits
 - [Award intelligence boundary](award-intelligence-boundary.md) — historical USA Spending awards must stay out of actionable bid APIs, counts, and lifecycle controls
 - [Jobs scheduling boundary](jobs-scheduling-boundary.md) — planning is compact and Jobs-first; only open jobs and actionable incomplete checklist work participate
+- [Orval js-yaml compatibility](orval-js-yaml-compatibility.md) — keep the workspace js-yaml override on secure 4.x; forcing 5.x breaks Orval’s default import

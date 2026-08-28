@@ -2515,10 +2515,31 @@ components:
         totalDeduction:
           type: number
         ratePerMile:
-          type: number
+          type: [number, "null"]
+        ratePeriods:
+          type: array
+          items:
+            $ref: "#/components/schemas/MileageRatePeriod"
         tripCount:
           type: integer
-      required: [totalMiles, businessMiles, personalMiles, totalDeduction, ratePerMile, tripCount]
+      required: [totalMiles, businessMiles, personalMiles, totalDeduction, ratePerMile, ratePeriods, tripCount]
+
+    MileageRatePeriod:
+      type: object
+      properties:
+        effectiveDate:
+          type: string
+        periodStart:
+          type: string
+        periodEnd:
+          type: string
+        rate:
+          type: number
+        miles:
+          type: number
+        deduction:
+          type: number
+      required: [effectiveDate, periodStart, periodEnd, rate, miles, deduction]
 
     Subcontractor:
       type: object

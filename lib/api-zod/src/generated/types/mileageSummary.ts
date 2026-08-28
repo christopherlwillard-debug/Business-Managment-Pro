@@ -5,12 +5,15 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { MileageRatePeriod } from "./mileageRatePeriod";
 
 export interface MileageSummary {
   totalMiles: number;
   businessMiles: number;
   personalMiles: number;
   totalDeduction: number;
-  ratePerMile: number;
+  /** @nullable */
+  ratePerMile: number | null;
+  ratePeriods: MileageRatePeriod[];
   tripCount: number;
 }

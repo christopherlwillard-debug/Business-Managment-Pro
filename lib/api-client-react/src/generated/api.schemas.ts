@@ -568,12 +568,23 @@ export interface CreateMileageLogRequest {
   source?: CreateMileageLogRequestSource;
 }
 
+export interface MileageRatePeriod {
+  effectiveDate: string;
+  periodStart: string;
+  periodEnd: string;
+  rate: number;
+  miles: number;
+  deduction: number;
+}
+
 export interface MileageSummary {
   totalMiles: number;
   businessMiles: number;
   personalMiles: number;
   totalDeduction: number;
-  ratePerMile: number;
+  /** @nullable */
+  ratePerMile: number | null;
+  ratePeriods: MileageRatePeriod[];
   tripCount: number;
 }
 

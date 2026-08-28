@@ -114,6 +114,31 @@ vi.mock("../lib/irs-rates.js",  () => ({
     rate: date >= "2026-07-01" ? 0.760 : date >= "2026-01-01" ? 0.725 : date >= "2025-01-01" ? 0.700 : 0.670,
     deduction: classification === "business" ? Number(miles) * (date >= "2026-07-01" ? 0.760 : date >= "2026-01-01" ? 0.725 : date >= "2025-01-01" ? 0.700 : 0.670) : 0,
   }),
+  summarizeMileageRecords: (logs: Array<{ miles: number | string; classification: string; date: string }>) => {
+    const periods = new Map<string, any>();
+    for (const log of logs) {
+      if (log.classification !== "business") continue;
+      const rate = log.date >= "2026-07-01" ? 0.760 : log.date >= "2026-01-01" ? 0.725 : log.date >= "2025-01-01" ? 0.700 : 0.670;
+      const effectiveDate = rate === 0.760 ? "2026-07-01" : rate === 0.725 ? "2026-01-01" : rate === 0.700 ? "2025-01-01" : "2024-01-01";
+      const year = log.date.slice(0, 4);
+      const key = `${year}:${effectiveDate}`;
+      const period = periods.get(key) ?? {
+        effectiveDate,
+        periodStart: effectiveDate > `${year}-01-01` ? effectiveDate : `${year}-01-01`,
+        periodEnd: effectiveDate === "2026-01-01" ? "2026-06-30" : `${year}-12-31`,
+        rate,
+        miles: 0,
+        deduction: 0,
+      };
+      period.miles += Number(log.miles) || 0;
+      period.deduction += (Number(log.miles) || 0) * rate;
+      periods.set(key, period);
+    }
+    const ratePeriods = [...periods.values()].sort((a, b) => a.periodStart.localeCompare(b.periodStart));
+    const totalMiles = ratePeriods.reduce((sum, period) => sum + period.miles, 0);
+    const totalDeduction = ratePeriods.reduce((sum, period) => sum + period.deduction, 0);
+    return { totalMiles, totalDeduction, ratePerMile: ratePeriods.length === 1 ? ratePeriods[0].rate : null, ratePeriods };
+  },
 }));
 vi.mock("../lib/allocation.js", () => ({
   computeAllocationSplitPools: vi.fn().mockResolvedValue([]),
@@ -248,7 +273,7 @@ describe("getIrsRateForDate — 2026 H1/H2 rate split", () => {
   });
 });
 
-// Shared mileage-log fixtures for blended-rate tests
+// Shared mileage-log fixtures for split-rate tests
 const H1_LOG = {
   id: 101, date: `${YEAR}-06-30`, miles: "100", classification: "business",
   ratePerMile: "0.725", deductionAmount: "72.50", businessId: 1, subcontractorId: null,
@@ -257,9 +282,6 @@ const H2_LOG = {
   id: 102, date: `${YEAR}-07-01`, miles: "100", classification: "business",
   ratePerMile: "0.760", deductionAmount: "76.00", businessId: 1, subcontractorId: null,
 };
-// Blended rate for equal H1+H2 miles: (72.50 + 76.00) / 200 = 0.7425
-const BLENDED_RATE = (72.50 + 76.00) / 200; // 0.7425
-
 // ── 2. /accounting — mileage expense excluded from totalExpenses/netProfit ───
 
 describe("/accounting — mileage-category expense excluded from totalExpenses and netProfit", () => {
@@ -317,17 +339,17 @@ describe("/accounting — mileage-category expense excluded from totalExpenses a
     expect(res.body.summary.netProfit).toBeCloseTo(1000, 10);
   });
 
-  it("summary.mileageRate is a blended rate for split-year trips, not a single period rate", async () => {
+  it("summary keeps the rate null and exposes separate IRS rate periods for split-year trips", async () => {
     pushAccountingSelects([], [H1_LOG, H2_LOG]);
 
     const res = await request(app).get(`/reports/accounting?year=${YEAR}`);
     expect(res.status).toBe(200);
 
-    // 100mi × $0.725 + 100mi × $0.760 = $148.50 deduction over 200 business miles
-    // Blended rate = $148.50 / 200mi = $0.7425 — must NOT equal either raw period rate
-    expect(res.body.summary.mileageRate).toBeCloseTo(BLENDED_RATE, 5);
-    expect(res.body.summary.mileageRate).not.toBeCloseTo(0.725, 3);
-    expect(res.body.summary.mileageRate).not.toBeCloseTo(0.760, 3);
+    expect(res.body.summary.mileageRate).toBeNull();
+    expect(res.body.summary.ratePeriods).toEqual([
+      { effectiveDate: "2026-01-01", periodStart: "2026-01-01", periodEnd: "2026-06-30", rate: 0.725, miles: 100, deduction: 72.5 },
+      { effectiveDate: "2026-07-01", periodStart: "2026-07-01", periodEnd: "2026-12-31", rate: 0.76, miles: 100, deduction: 76 },
+    ]);
     expect(res.body.summary.mileageDeduction).toBeCloseTo(148.5, 5);
   });
 });
@@ -389,19 +411,20 @@ describe("/year-end — mileage-category expense excluded from Schedule C totalE
     expect(res.body.summary.netProfit).toBeCloseTo(1000, 10);
   });
 
-  it("summary.mileageRate and mileage.mileageRate are blended for split-year trips", async () => {
+  it("summary and mileage expose separate IRS rate periods for split-year trips", async () => {
     pushYearEndSelects([], [H1_LOG, H2_LOG]);
 
     const res = await request(app).get(`/reports/year-end?year=${YEAR}`);
     expect(res.status).toBe(200);
 
-    // Blended rate = (72.50 + 76.00) / 200 = 0.7425
-    expect(res.body.summary.mileageRate).toBeCloseTo(BLENDED_RATE, 5);
-    expect(res.body.mileage.mileageRate).toBeCloseTo(BLENDED_RATE, 5);
-    // Must NOT equal either raw period rate
-    expect(res.body.summary.mileageRate).not.toBeCloseTo(0.725, 3);
-    expect(res.body.summary.mileageRate).not.toBeCloseTo(0.760, 3);
-    // Total deduction must equal the sum of stored per-trip amounts
+    expect(res.body.summary.mileageRate).toBeNull();
+    expect(res.body.mileage.mileageRate).toBeNull();
+    const expectedRatePeriods = [
+      { effectiveDate: "2026-01-01", periodStart: "2026-01-01", periodEnd: "2026-06-30", rate: 0.725, miles: 100, deduction: 72.5 },
+      { effectiveDate: "2026-07-01", periodStart: "2026-07-01", periodEnd: "2026-12-31", rate: 0.76, miles: 100, deduction: 76 },
+    ];
+    expect(res.body.summary.ratePeriods).toEqual(expectedRatePeriods);
+    expect(res.body.mileage.ratePeriods).toEqual(expectedRatePeriods);
     expect(res.body.summary.mileageDeduction).toBeCloseTo(148.5, 5);
   });
 });

@@ -1393,7 +1393,17 @@ export const GetMileageSummaryResponse = zod.object({
   businessMiles: zod.number(),
   personalMiles: zod.number(),
   totalDeduction: zod.number(),
-  ratePerMile: zod.number(),
+  ratePerMile: zod.number().nullable(),
+  ratePeriods: zod.array(
+    zod.object({
+      effectiveDate: zod.string(),
+      periodStart: zod.string(),
+      periodEnd: zod.string(),
+      rate: zod.number(),
+      miles: zod.number(),
+      deduction: zod.number(),
+    }),
+  ),
   tripCount: zod.number(),
 });
 

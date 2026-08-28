@@ -11,6 +11,15 @@ import {
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+interface MileageRatePeriod {
+  effectiveDate: string;
+  periodStart: string;
+  periodEnd: string;
+  rate: number;
+  miles: number;
+  deduction: number;
+}
+
 interface YearEndReport {
   year: number;
   generatedAt: string;
@@ -21,7 +30,8 @@ interface YearEndReport {
     totalRevenue: number;
     totalExpenses: number;
     mileageDeduction: number;
-    mileageRate: number;
+    mileageRate: number | null;
+    mileageRatePeriods?: MileageRatePeriod[];
     totalMiles: number;
     totalDepreciation: number;
     netProfit: number;
@@ -39,7 +49,7 @@ interface YearEndReport {
   totalExpenses: number;
   invoices: { invoiceNumber: string | null; issueDate: string; paymentDate: string; clientName: string; total: number; city: string; state: string }[];
   otherIncome: { id: number; date: string; description: string; source: string | null; amount: number; paymentMethod: string | null }[];
-  mileage: { totalMiles: number; mileageRate: number; deduction: number; trips: number };
+  mileage: { totalMiles: number; mileageRate: number | null; deduction: number; trips: number; ratePeriods?: MileageRatePeriod[] };
   depreciation: {
     rows: { id: number; name: string; assetType: string; purchaseDate: string; purchasePrice: number; depreciationMethod: string; usefulLifeYears: number; annualDeduction: number; section179Eligible: boolean; businessUsePct: number; schedule: { year: number; businessUsePct: number; annualDeduction: number; accumulated: number; bookValue: number }[] }[];
     total: number;
@@ -75,6 +85,15 @@ function useYearEndReport(year: number, businessLine?: string) {
 
 function fmtMoney(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function mileageRateLabel(rate: number | null, periods: MileageRatePeriod[] | undefined) {
+  if (rate != null) return `$${rate.toFixed(3)}/mi`;
+  return periods?.length ? "Multiple IRS rates by date" : "No business-mile rate";
+}
+
+function mileagePeriodLabel(period: MileageRatePeriod) {
+  return `${period.periodStart}–${period.periodEnd} · $${period.rate.toFixed(3)}/mi`;
 }
 
 function buildCSVBlob(rows: string[][], title: string): string {
@@ -118,7 +137,11 @@ async function downloadYearEndZip(report: YearEndReport) {
   zip.file(`${year}_Mileage.csv`, buildCSVBlob([
     ["Field", "Value"],
     ["Total Business Miles", report.mileage.totalMiles.toFixed(1)],
-    ["IRS Rate ($/mile)", report.mileage.mileageRate.toFixed(3)],
+    ["IRS Rate ($/mile)", mileageRateLabel(report.mileage.mileageRate, report.mileage.ratePeriods)],
+    ...((report.mileage.ratePeriods ?? []).map(period => [
+      `${period.periodStart}–${period.periodEnd} ($/mile)`,
+      `${period.rate.toFixed(3)}; ${period.miles.toFixed(1)} mi; ${period.deduction.toFixed(2)} deduction`,
+    ])),
     ["Total Deduction", report.mileage.deduction.toFixed(2)],
     ["# Trips Logged", String(report.mileage.trips)],
   ], `${year} Mileage Deduction — ${report.companyName}`));
@@ -226,6 +249,10 @@ function printYearEndReport(report: YearEndReport) {
 
   const isLoss = report.summary.netProfit < 0;
   const netColor = isLoss ? "#dc2626" : "#16a34a";
+  const mileagePeriods = report.mileage.ratePeriods ?? report.summary.mileageRatePeriods ?? [];
+  const mileagePrintRows = mileagePeriods.map(period =>
+    row(mileagePeriodLabel(period), `${fmtN(period.miles)} miles · ${fmt(period.deduction)}`, false, true)
+  ).join("");
 
   win.document.write(`<!DOCTYPE html><html><head><title>${esc(report.companyName)} — ${report.year} Year-End Report</title>
 <style>
@@ -269,7 +296,7 @@ ${row("Gross Receipts (Paid Invoices)", fmt(report.summary.grossReceipts), false
 ${report.summary.otherIncomeTotal > 0 ? row("Other Income", fmt(report.summary.otherIncomeTotal), false, true) : ""}
 ${row("Total Revenue", fmt(report.summary.totalRevenue), true)}
 ${row("Total Expenses", fmt(-report.summary.totalExpenses), false, true)}
-${row(`Mileage Deduction (${report.summary.totalMiles.toFixed(0)} mi @ $${report.summary.mileageRate}/mi)`, fmt(-report.summary.mileageDeduction), false, true)}
+${row("Mileage Deduction", fmt(-report.summary.mileageDeduction), false, true)}
 ${report.summary.totalDepreciation > 0 ? row("Asset Depreciation", fmt(-report.summary.totalDepreciation), false, true) : ""}
 </table>
 <div class="net-profit"><div class="label">${isLoss ? "Net Loss" : "Net Profit"}</div><div class="value">${fmt(Math.abs(report.summary.netProfit))}</div></div>
@@ -302,7 +329,8 @@ ${disposedRows}
 <table>
 <tr><th>Field</th><th class="num">Value</th></tr>
 ${row("Business Miles Logged", `${fmtN(Math.round(report.mileage.totalMiles))} miles`)}
-${row(`IRS Rate (${report.year})`, `$${report.mileage.mileageRate.toFixed(3)}/mile`)}
+${row("IRS Rate", mileageRateLabel(report.mileage.mileageRate, mileagePeriods))}
+${mileagePrintRows}
 ${row("Total Mileage Deduction", fmt(report.mileage.deduction), true)}
 ${row("# Trips Recorded", fmtN(report.mileage.trips))}
 </table>
@@ -677,7 +705,7 @@ export default function YearEndReportTab({ year }: { year: number }) {
           </div>
           <div className="flex justify-between items-center py-1.5 border-b border-border/50">
             <span className="text-sm text-muted-foreground pl-4">
-              Mileage Deduction ({report.summary.totalMiles.toFixed(0)} mi @ ${report.summary.mileageRate}/mi)
+              Mileage Deduction ({report.summary.totalMiles.toFixed(0)} mi)
             </span>
             <span className="text-sm tabular-nums text-red-600 font-medium">({fmtMoney(report.summary.mileageDeduction)})</span>
           </div>
@@ -964,19 +992,34 @@ export default function YearEndReportTab({ year }: { year: number }) {
           <h3 className="font-semibold text-sm text-foreground flex-1">Mileage Deduction</h3>
           {expandedSections.has("mileage") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
         </button>
-        {expandedSections.has("mileage") && <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 divide-x divide-border">
-          {[
-            { label: "Business Miles", value: `${report.mileage.totalMiles.toFixed(1)} mi` },
-            { label: "IRS Rate", value: `$${report.mileage.mileageRate.toFixed(3)}/mi` },
-            { label: "Total Deduction", value: fmtMoney(report.mileage.deduction) },
-            { label: "Trips Logged", value: report.mileage.trips.toLocaleString() },
-          ].map(({ label, value }) => (
-            <div key={label} className="px-4 py-3 space-y-0.5">
-              <div className="text-xs text-muted-foreground">{label}</div>
-              <div className="text-base font-semibold tabular-nums">{value}</div>
+        {expandedSections.has("mileage") && (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 divide-x divide-border">
+              {[
+                { label: "Business Miles", value: `${report.mileage.totalMiles.toFixed(1)} mi` },
+                { label: "IRS Rate", value: mileageRateLabel(report.mileage.mileageRate, report.mileage.ratePeriods) },
+                { label: "Total Deduction", value: fmtMoney(report.mileage.deduction) },
+                { label: "Trips Logged", value: report.mileage.trips.toLocaleString() },
+              ].map(({ label, value }) => (
+                <div key={label} className="px-4 py-3 space-y-0.5">
+                  <div className="text-xs text-muted-foreground">{label}</div>
+                  <div className="text-base font-semibold tabular-nums">{value}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>}
+            {(report.mileage.ratePeriods ?? []).length > 1 && (
+              <div className="border-t border-border px-4 py-3 space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">IRS rate periods</p>
+                {(report.mileage.ratePeriods ?? []).map(period => (
+                  <div key={`${period.periodStart}-${period.rate}`} className="flex justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">{mileagePeriodLabel(period)}</span>
+                    <span className="font-medium tabular-nums">{period.miles.toFixed(1)} mi · {fmtMoney(period.deduction)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* 1099 Subcontractors */}

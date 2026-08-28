@@ -1622,8 +1622,20 @@ function MileageImportSummary({ expense }: { expense: any }) {
   const monthTrips = trips.filter(
     (t: any) => t.classification === "business" && (t.date ?? "").slice(0, 7) === month
   );
-  const totalMiles = monthTrips.reduce((s: number, t: any) => s + (t.miles ?? 0), 0);
-  const rate = monthTrips[0]?.ratePerMile ?? 0;
+  const totalMiles = monthTrips.reduce((s: number, t: any) => s + Number(t.miles ?? 0), 0);
+  const ratePeriods = monthTrips.reduce((periods: Map<string, { rate: number; start: string; end: string; trips: number }>, trip: any) => {
+    const rate = trip.calculatedRate ?? trip.ratePerMile;
+    if (rate == null) return periods;
+    const key = String(rate);
+    const existing = periods.get(key);
+    periods.set(key, {
+      rate: Number(rate),
+      start: existing ? (existing.start < trip.date ? existing.start : trip.date) : trip.date,
+      end: existing ? (existing.end > trip.date ? existing.end : trip.date) : trip.date,
+      trips: (existing?.trips ?? 0) + 1,
+    });
+    return periods;
+  }, new Map<string, { rate: number; start: string; end: string; trips: number }>());
 
   return (
     <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100 space-y-3">
@@ -1641,14 +1653,26 @@ function MileageImportSummary({ expense }: { expense: any }) {
               <p className="text-[10px] text-emerald-600">Business miles</p>
             </div>
             <div className="bg-white/70 rounded-lg px-2 py-2">
-              <p className="text-lg font-bold text-emerald-700">{rate ? `$${Number(rate).toFixed(3)}` : "—"}</p>
-              <p className="text-[10px] text-emerald-600">IRS rate/mi</p>
+              <p className="text-lg font-bold text-emerald-700">
+                {ratePeriods.size === 1 ? `$${[...ratePeriods.values()][0].rate.toFixed(3)}` : ratePeriods.size > 1 ? "Split" : "—"}
+              </p>
+              <p className="text-[10px] text-emerald-600">{ratePeriods.size > 1 ? "IRS rate periods" : "IRS rate/mi"}</p>
             </div>
             <div className="bg-white/70 rounded-lg px-2 py-2">
               <p className="text-lg font-bold text-emerald-700">{monthTrips.length}</p>
               <p className="text-[10px] text-emerald-600">Trips</p>
             </div>
           </div>
+          {ratePeriods.size > 1 && (
+            <div className="space-y-1 rounded-lg border border-emerald-100 bg-white/70 px-2.5 py-2 text-xs text-emerald-700">
+              {[...ratePeriods.values()].map(period => (
+                <div key={`${period.start}-${period.rate}`} className="flex justify-between gap-2">
+                  <span>{period.start}–{period.end} · ${period.rate.toFixed(3)}/mi</span>
+                  <span className="font-medium">{period.trips} trips</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {monthTrips.length > 0 && (
             <button

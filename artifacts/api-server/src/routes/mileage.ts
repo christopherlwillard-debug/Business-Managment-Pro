@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { mileageLogsTable, mileageImportsTable, jobsTable, settingsTable, expensesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, isNull, inArray, getTableColumns } from "drizzle-orm";
 import { getRequestUserId } from "./guards";
-import { calculateMileageDeduction, getIrsRateForDate } from "../lib/irs-rates.js";
+import { calculateMileageDeduction, getIrsRateForDate, summarizeMileageRecords } from "../lib/irs-rates.js";
 
 const router = Router();
 
@@ -130,22 +130,18 @@ router.get("/summary", async (req, res) => {
       .from(mileageLogsTable)
       .where(and(...baseConditions));
 
-    // Recompute from raw miles, classification, and trip date so reports do not
-    // depend on stale snapshots.
-    const businessLogs = all.filter(m => m.classification === "business");
+    // Recompute from raw miles, classification, and trip date so summaries do
+    // not depend on stale per-trip snapshots or present blended rates.
+    const summary = summarizeMileageRecords(all);
     const personalMiles = all.filter(m => m.classification === "personal").reduce((s, m) => s + parseFloat(m.miles), 0);
-    const businessMiles = businessLogs.reduce((s, m) => s + parseFloat(m.miles), 0);
-    const totalDeduction = businessLogs.reduce((s, m) => s + calculateMileageDeduction(m.miles, m.classification, m.date).deduction, 0);
 
     res.json({
-      totalMiles: businessMiles + personalMiles,
-      businessMiles,
+      totalMiles: summary.totalMiles + personalMiles,
+      businessMiles: summary.totalMiles,
       personalMiles,
-      totalDeduction,
-      // Blended rate derived from stored per-trip deductions — reflects the actual
-      // effective rate across split-year periods (e.g. H1 $0.725 / H2 $0.760 blended).
-      // Returns null when there are no business trips.
-      ratePerMile: businessMiles > 0 ? totalDeduction / businessMiles : null,
+      totalDeduction: summary.totalDeduction,
+      ratePerMile: summary.ratePerMile,
+      ratePeriods: summary.ratePeriods,
       tripCount: all.length,
     });
   } catch (err) {
