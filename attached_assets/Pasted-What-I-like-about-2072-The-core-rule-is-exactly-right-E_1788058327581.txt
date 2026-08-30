@@ -1,0 +1,72 @@
+What I like about #2072
+
+The core rule is exactly right:
+
+Each dollar has one authoritative ledger and appears exactly once in the applicable reports.
+
+That is the principle your accounting system needs.
+
+The important pieces are:
+
+* Owner pay → Owner Capital, never Expenses
+* Subcontractors → legitimate business costs, exactly once
+* Bank transactions → classification shouldn’t create duplicate accounting records
+* Mileage → separate from expenses
+* Tax reserves → separate from business expenses
+* Owner contributions → separate from revenue
+* Voids/reversals instead of deleting history
+* Business and year filtering must be airtight
+* Reports must all derive from consistent source records
+
+One thing I would change
+
+I would not let Replit automatically “repair” production financial data just because a calculation appears wrong.
+
+Your own task actually handles this correctly:
+
+“Do not mutate ambiguous records.”
+
+That’s critical.
+
+I would require the system to produce:
+
+Before → identified source rows → proposed correction → After
+
+and only automatically correct something when the relationship is provable.
+
+And the subcontractor part is especially important
+
+I agree with the distinction:
+
+Subcontractor = expense.
+Owner pay = not expense.
+
+The mistake would be treating both merely as “payments.”
+
+A subcontractor payment affects the business’s profitability. An owner withdrawal is a distribution of business equity/capital.
+
+So the final accounting model should essentially be:
+
+Revenue
+− Operating expenses
+− Subcontractor costs
+= Business profit
+
+while:
+
+Owner withdrawals
+→ Owner Capital / Equity
+
+and do not reduce operating profit.
+
+About the status you pasted
+
+The statements such as:
+
+“All 824 API tests…”
+“The live services are healthy…”
+“The last two live paths are corrected…”
+
+are claims that the Replit agent has already done work. I would not treat those statements as proof by themselves. The important thing is whether the actual code, database behavior, and production reconciliation support those claims.
+
+I would absolutely keep #2072 as the master financial-correction task, but I would not send it anywhere until you explicitly tell me to.
