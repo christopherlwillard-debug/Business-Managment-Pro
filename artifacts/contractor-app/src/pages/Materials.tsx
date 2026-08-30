@@ -28,6 +28,14 @@ import {
 
 const UNIT_OPTIONS = ["ea", "sqft", "lf", "hr", "lb", "bag", "gal", "ton", "cy"];
 
+function materialRequestError(error: unknown, fallback: string): string {
+  if (!(error instanceof Error) || !error.message.trim()) return fallback;
+  const detail = error.message.replace(/^HTTP \d+\s+[^:]+:\s*/i, "").trim();
+  if (/unauthorized/i.test(detail)) return "Your session expired. Log in again, then retry.";
+  if (/owner access|required|forbidden/i.test(detail)) return "Your account does not currently have permission to manage the Price Book.";
+  return detail || fallback;
+}
+
 function emptyMaterialForm(): Partial<Material> {
   return { name: "", description: "", unit: "ea", unitCost: 0, category: "", isActive: true };
 }
@@ -563,7 +571,14 @@ export default function Materials() {
   const [editingList, setEditingList] = useState<MaterialList | null>(null);
   const [deleteListTarget, setDeleteListTarget] = useState<MaterialList | null>(null);
 
-  const { data: materials = [], isLoading: materialsLoading } = useListMaterials({
+  const {
+    data: materials = [],
+    isLoading: materialsLoading,
+    isError: materialsFailed,
+    error: materialsError,
+    refetch: refetchMaterials,
+    isFetching: materialsRefetching,
+  } = useListMaterials({
     search: search || undefined,
     category: categoryFilter || undefined,
     includeInactive: showInactive,
@@ -614,8 +629,8 @@ export default function Materials() {
         });
       }
       setShowMaterialForm(false);
-    } catch {
-      setMaterialFormError("Failed to save. Please try again.");
+    } catch (error) {
+      setMaterialFormError(materialRequestError(error, "Failed to save. Please try again."));
     }
   }
 
@@ -699,6 +714,26 @@ export default function Materials() {
           {materialsLoading ? (
             <div className="flex items-center justify-center h-40">
               <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : materialsFailed ? (
+            <div className="flex flex-col items-center justify-center min-h-48 px-6 py-10 text-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-700">Materials couldn&apos;t load</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  {materialRequestError(materialsError, "The Price Book could not connect. Your saved materials have not been deleted.")}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void refetchMaterials()}
+                disabled={materialsRefetching}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 shadow disabled:opacity-60"
+              >
+                {materialsRefetching ? "Retrying…" : "Retry"}
+              </button>
             </div>
           ) : materials.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 text-gray-400 gap-3">

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { customFetch } from "../custom-fetch";
+import { ApiError, customFetch } from "../custom-fetch";
 
 export interface Material {
   id: number;
@@ -14,6 +14,12 @@ export interface Material {
 
 export type InsertMaterial = Omit<Material, "id" | "createdAt">;
 
+function shouldRetryMaterialRequest(failureCount: number, error: unknown): boolean {
+  if (failureCount >= 2) return false;
+  if (error instanceof ApiError) return error.status >= 500;
+  return true;
+}
+
 export function useListMaterials(opts?: { search?: string; category?: string; includeInactive?: boolean }) {
   const params = new URLSearchParams();
   if (opts?.search) params.append("search", opts.search);
@@ -23,6 +29,10 @@ export function useListMaterials(opts?: { search?: string; category?: string; in
   return useQuery({
     queryKey: ["/api/materials", qs],
     queryFn: () => customFetch<Material[]>(`/api/materials${qs ? `?${qs}` : ""}`, { method: "GET" }),
+    retry: shouldRetryMaterialRequest,
+    retryDelay: attempt => Math.min(750 * 2 ** attempt, 3_000),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -35,6 +45,8 @@ export function useCreateMaterial() {
         body: JSON.stringify(data),
         headers: { "Content-Type": "application/json" },
       }),
+    retry: shouldRetryMaterialRequest,
+    retryDelay: 750,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/materials"] }),
   });
 }
@@ -48,6 +60,8 @@ export function useUpdateMaterial() {
         body: JSON.stringify(data),
         headers: { "Content-Type": "application/json" },
       }),
+    retry: shouldRetryMaterialRequest,
+    retryDelay: 750,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/materials"] }),
   });
 }
