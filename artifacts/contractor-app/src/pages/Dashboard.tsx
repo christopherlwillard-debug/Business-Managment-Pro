@@ -1000,83 +1000,12 @@ export default function Dashboard() {
       {/* ── 9. OWNER PAY ── */}
       <div>
         <SectionHeader title="Owner Pay" />
-        <MyPayCard externalDialogOpen={drawOpen} onExternalDialogChange={setDrawOpen} />
+        <MyPayCard businessId={activeBusiness?.id ?? null} externalDialogOpen={drawOpen} onExternalDialogChange={setDrawOpen} />
       </div>
 
       {/* ── 10. RECENT ACTIVITY ── */}
       <RecentActivityCard onNavigate={navigate} />
 
-    </div>
-  );
-}
-
-function RecordDrawDialog({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(getTodayStr());
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const amt = parseFloat(amount);
-    if (!amt || amt <= 0) { setErr("Enter a valid amount"); return; }
-    setSaving(true);
-    setErr("");
-    try {
-      const res = await fetch(`${BASE}/api/expenses`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: "Owner Draw", amount: amt, category: "Owner Draw", date, excludeFromNetProfit: true }),
-      });
-      if (!res.ok) throw new Error("Failed");
-      onSaved();
-      onClose();
-      setAmount("");
-      setDate(getTodayStr());
-    } catch {
-      setErr("Failed to save. Try again.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40" onClick={onClose}>
-      <div className="bg-card rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-border" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-2 mb-4">
-          <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700"><Wallet className="w-4 h-4" /></div>
-          <h2 className="text-base font-bold text-foreground">Record Owner Draw</h2>
-          <button className="ml-auto text-muted-foreground hover:text-foreground" onClick={onClose}>✕</button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">Amount *</label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">$</span>
-              <input type="number" step="0.01" min="0.01" required autoFocus
-                value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00"
-                className="w-full pl-7 pr-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-emerald-300" />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Date *</label>
-            <input type="date" required value={date} onChange={e => setDate(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-emerald-300" />
-          </div>
-          {err && <p className="text-xs text-destructive">{err}</p>}
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose}
-              className="flex-1 px-4 py-2 rounded-xl text-sm font-medium text-muted-foreground border border-border hover:bg-muted transition-colors">
-              Cancel
-            </button>
-            <button type="submit" disabled={saving}
-              className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 transition-colors">
-              {saving ? "Saving…" : "Record"}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }
@@ -1194,7 +1123,8 @@ function MetricCard({
 // ─── My Pay Card ─────────────────────────────────────────────────────────────
 type PayJob = { jobId: number; jobNumber: number | null; title: string; status: string; ownerPayIncluded: boolean; revenue: number; takeHome: number };
 
-function MyPayCard({ externalDialogOpen, onExternalDialogChange }: {
+function MyPayCard({ businessId, externalDialogOpen, onExternalDialogChange }: {
+  businessId: number | null;
   externalDialogOpen?: boolean;
   onExternalDialogChange?: (open: boolean) => void;
 }) {
@@ -1245,10 +1175,11 @@ function MyPayCard({ externalDialogOpen, onExternalDialogChange }: {
     setSaving(true);
     setErr("");
     try {
-      const res = await fetch(`${BASE}/api/expenses`, {
+      const res = await fetch(`${BASE}/api/owner-capital`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: "Owner Pay", amount: amt, category: "Owner Compensation", date, excludeFromNetProfit: true }),
+        credentials: "include",
+        body: JSON.stringify({ businessId, type: "withdrawal", description: "Owner Pay", amount: amt, date }),
       });
       if (!res.ok) throw new Error("Failed");
       setDialogOpen(false);
@@ -1257,6 +1188,7 @@ function MyPayCard({ externalDialogOpen, onExternalDialogChange }: {
       setErr("");
       qc.invalidateQueries({ queryKey: ["owner-pay-summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["/api/owner-capital"] });
     } catch {
       setErr("Failed to save. Try again.");
     } finally {
@@ -1271,10 +1203,11 @@ function MyPayCard({ externalDialogOpen, onExternalDialogChange }: {
     setEquitySaving(true);
     setEquityErr("");
     try {
-      const res = await fetch(`${BASE}/api/expenses`, {
+      const res = await fetch(`${BASE}/api/owner-capital`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: "Owner Withdrawal", amount: amt, category: "Owner Withdrawal", date: equityDate, excludeFromNetProfit: true }),
+        credentials: "include",
+        body: JSON.stringify({ businessId, type: "withdrawal", description: "Owner Withdrawal", amount: amt, date: equityDate }),
       });
       if (!res.ok) throw new Error("Failed");
       setEquityDialogOpen(false);
@@ -1283,6 +1216,7 @@ function MyPayCard({ externalDialogOpen, onExternalDialogChange }: {
       setEquityErr("");
       qc.invalidateQueries({ queryKey: ["owner-pay-summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["/api/owner-capital"] });
     } catch {
       setEquityErr("Failed to save. Try again.");
     } finally {

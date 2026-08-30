@@ -532,24 +532,43 @@ async function ensureOwnerPayLedgerMigrated(): Promise<void> {
     // ON CONFLICT DO NOTHING on the unique partial index (expense_id IS NOT NULL) makes
     // this fully idempotent — re-running never creates duplicate rows.
     const result = await db.execute(sql`
-      INSERT INTO owner_capital_entries (date, description, amount, source, expense_id, job_id)
+      INSERT INTO owner_capital_entries (business_id, date, description, amount, source, expense_id, job_id)
       SELECT
+        COALESCE(e.business_id, j.business_id),
         e.date,
-        e.description,
-        -(e.amount::numeric),
+        COALESCE(NULLIF(TRIM(e.description), ''), 'Owner Pay'),
+        -ABS(e.amount::numeric),
         'migrated_expense',
         e.id,
         e.job_id
       FROM expenses e
-      WHERE e.category IN ('Owner Draw', 'Owner Compensation', 'Owner Withdrawal')
+      LEFT JOIN jobs j ON j.id = e.job_id
+      WHERE e.category IN ('Owner Draw', 'Owner Compensation', 'Owner Withdrawal', 'Owner Pay')
+        AND e.voided_at IS NULL
         AND e.id NOT IN (
           SELECT expense_id FROM owner_capital_entries WHERE expense_id IS NOT NULL
         )
       ON CONFLICT DO NOTHING
     `);
+    const voidedResult = await db.execute(sql`
+      UPDATE expenses e
+      SET
+        voided_at = COALESCE(e.voided_at, NOW()),
+        void_reason = COALESCE(e.void_reason, 'Migrated to owner capital ledger'),
+        exclude_from_net_profit = true
+      WHERE e.category IN ('Owner Draw', 'Owner Compensation', 'Owner Withdrawal', 'Owner Pay')
+        AND e.voided_at IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM owner_capital_entries oce
+          WHERE oce.expense_id = e.id
+            AND oce.voided_at IS NULL
+        )
+    `);
     const migrated = (result as any).rowCount ?? 0;
-    if (migrated > 0) {
-      console.log(`[startup] ensureOwnerPayLedgerMigrated: backfilled ${migrated} owner-pay expense(s) into owner_capital_entries.`);
+    const voided = (voidedResult as any).rowCount ?? 0;
+    if (migrated > 0 || voided > 0) {
+      console.log(`[startup] ensureOwnerPayLedgerMigrated: backfilled ${migrated} owner-pay expense(s) and voided ${voided} linked legacy expense row(s).`);
     }
   } catch (err) {
     console.error("[startup] ensureOwnerPayLedgerMigrated failed (non-fatal):", err);

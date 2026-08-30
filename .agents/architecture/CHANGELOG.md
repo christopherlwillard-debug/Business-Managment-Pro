@@ -175,3 +175,12 @@ Created the four-document architecture governance system:
 - Mileage summaries, accounting reports, Schedule C, reserves, and subcontractor portal reports now derive deductions from raw trip date, miles, and classification through the shared effective-date engine.
 - Split-rate periods return separate exact rate buckets; aggregate rate fields are null instead of exposing a weighted or blended IRS rate.
 - Year-End, Profit & Loss, Mileage, portal, and export displays show the applicable rate periods separately while retaining the sum of independently calculated deductions.
+
+## 2026-08-30
+
+### Owner-pay ledger enforcement
+
+- New owner pay is recorded only in `owner_capital_entries`; operating-expense and Banking routes reject owner-pay categories.
+- Historical owner-pay expenses are migrated idempotently, retain their source link, and are voided only after a matching active capital entry exists.
+- Owner-capital reads exclude voided entries, validate business/job ownership, and require owner access.
+- Dashboard owner withdrawals now use the canonical owner-capital API, while fixed subcontractor payments remain separate from allocation payouts.

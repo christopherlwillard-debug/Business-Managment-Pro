@@ -75,7 +75,6 @@ const CATEGORIES = [
   "Tools/Equipment",
   "Utilities",
   "Other",
-  "Owner Draw",
 ];
 
 interface PlaidStatus {

@@ -273,6 +273,7 @@ interface BusinessReserveData {
 function TakeHomeDashboard() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { activeBusiness } = useBusiness();
   const currentYear = new Date().getFullYear();
 
   // Full summary including individual withdrawal records for edit/delete
@@ -331,29 +332,36 @@ function TakeHomeDashboard() {
 
     try {
       if (dialog.editId) {
-        // Edit existing expense
-        const expenseId = dialog.editId.replace("exp-", "");
-        const res = await fetch(`${BASE}/api/expenses/${expenseId}`, {
-          method: "PUT",
+        const ownerCapitalId = dialog.editId.replace("owner-", "");
+        if (!dialog.editId.startsWith("owner-")) throw new Error("Legacy owner-pay entries must be migrated before editing");
+        const voidRes = await fetch(`${BASE}/api/owner-capital/${ownerCapitalId}/void`, {
+          method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ amount: amt, date: dialog.date, description: dialog.description, category: "Owner Compensation", excludeFromNetProfit: true }),
+          body: JSON.stringify({ reason: "Replaced by corrected owner-pay entry" }),
+        });
+        if (!voidRes.ok) throw new Error();
+        const res = await fetch(`${BASE}/api/owner-capital`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ businessId: activeBusiness?.id, type: "withdrawal", amount: amt, date: dialog.date, description: dialog.description || "Owner Pay" }),
         });
         if (!res.ok) throw new Error();
         toast({ title: "Entry updated" });
       } else {
-        // New entry
-        const res = await fetch(`${BASE}/api/expenses`, {
+        const res = await fetch(`${BASE}/api/owner-capital`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ description: dialog.description || "Owner Pay", amount: amt, category: "Owner Compensation", date: dialog.date, excludeFromNetProfit: true }),
+          body: JSON.stringify({ businessId: activeBusiness?.id, type: "withdrawal", description: dialog.description || "Owner Pay", amount: amt, date: dialog.date }),
         });
         if (!res.ok) throw new Error();
         toast({ title: "Owner pay recorded", description: `${formatCurrency(amt)} logged` });
       }
       qc.invalidateQueries({ queryKey: ["owner-pay-summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["/api/owner-capital"] });
       closeDialog();
     } catch {
       setDialog(d => ({ ...d, error: "Failed to save. Try again.", saving: false }));
@@ -363,16 +371,26 @@ function TakeHomeDashboard() {
   }
 
   async function handleDelete(w: { id: string; amount: number }) {
-    if (!confirm(`Delete this $${w.amount.toFixed(2)} owner pay entry?`)) return;
-    const expenseId = w.id.replace("exp-", "");
+    if (!confirm(`Void this $${w.amount.toFixed(2)} owner pay entry? The audit history will be preserved.`)) return;
+    if (!w.id.startsWith("owner-")) {
+      toast({ title: "Legacy entry must be migrated before it can be voided", variant: "destructive" });
+      return;
+    }
+    const ownerCapitalId = w.id.replace("owner-", "");
     try {
-      const res = await fetch(`${BASE}/api/expenses/${expenseId}`, { method: "DELETE", credentials: "include" });
+      const res = await fetch(`${BASE}/api/owner-capital/${ownerCapitalId}/void`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Voided from Owner Pay dashboard" }),
+      });
       if (!res.ok) throw new Error();
       qc.invalidateQueries({ queryKey: ["owner-pay-summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      toast({ title: "Entry deleted" });
+      qc.invalidateQueries({ queryKey: ["/api/owner-capital"] });
+      toast({ title: "Entry voided" });
     } catch {
-      toast({ title: "Failed to delete", variant: "destructive" });
+      toast({ title: "Failed to void", variant: "destructive" });
     }
   }
 

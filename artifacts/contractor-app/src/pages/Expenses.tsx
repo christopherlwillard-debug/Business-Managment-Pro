@@ -46,7 +46,6 @@ const CATEGORIES = [
   "Other Travel",
   "Utilities",
   "Other",
-  "Owner Draw",
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {

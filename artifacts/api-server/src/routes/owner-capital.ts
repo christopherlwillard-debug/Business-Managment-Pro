@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { ownerCapitalEntriesTable, settingsTable } from "@workspace/db/schema";
+import { businessesTable, jobsTable, ownerCapitalEntriesTable, settingsTable } from "@workspace/db/schema";
 import { eq, desc, and, isNull } from "drizzle-orm";
+import { ownerGuard } from "./guards.js";
 
 const router = Router();
+router.use(ownerGuard());
 
 /**
  * Sign convention for owner_capital_entries.amount:
@@ -32,13 +34,32 @@ router.get("/", async (req, res) => {
   try {
     const rawBid = req.query.businessId;
     const businessId = rawBid != null && String(rawBid) !== "" ? parseInt(String(rawBid)) : null;
+    if (rawBid != null && (!Number.isFinite(businessId) || businessId == null)) {
+      return res.status(400).json({ error: "Invalid business id" });
+    }
+    if (businessId != null) {
+      const [business] = await db.select({ id: businessesTable.id }).from(businessesTable)
+        .where(eq(businessesTable.id, businessId)).limit(1);
+      if (!business) return res.status(404).json({ error: "Business not found" });
+    }
 
     // Optional job filter — used by the job Pay Breakdown tab to show only
     // owner pay entries recorded from that specific job.
+    const conditions = [];
     const rawJid = req.query.jobId;
     const jobId = rawJid != null && String(rawJid) !== "" ? parseInt(String(rawJid)) : null;
+    if (rawJid != null && (!Number.isFinite(jobId) || jobId == null)) {
+      return res.status(400).json({ error: "Invalid job id" });
+    }
+    if (jobId != null) {
+      const [job] = await db.select({ businessId: jobsTable.businessId }).from(jobsTable)
+        .where(eq(jobsTable.id, jobId)).limit(1);
+      if (!job || (businessId != null && job.businessId !== businessId)) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+      if (job.businessId != null) conditions.push(eq(ownerCapitalEntriesTable.businessId, job.businessId));
+    }
 
-    const conditions = [];
     if (businessId != null && Number.isFinite(businessId)) {
       conditions.push(eq(ownerCapitalEntriesTable.businessId, businessId));
     }
@@ -46,11 +67,8 @@ router.get("/", async (req, res) => {
       conditions.push(eq(ownerCapitalEntriesTable.jobId, jobId));
     }
 
-    const whereClause = conditions.length > 0
-      ? conditions.length === 1 ? conditions[0] : and(...conditions as [any, any])
-      : undefined;
-
     conditions.push(isNull(ownerCapitalEntriesTable.voidedAt));
+    const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions as [any, any]);
     const entries = await db
       .select()
       .from(ownerCapitalEntriesTable)
@@ -98,13 +116,28 @@ router.post("/", async (req, res) => {
       res.status(400).json({ error: "Invalid amount" });
       return;
     }
-    const parsedBusinessId = businessId != null && !isNaN(parseInt(String(businessId)))
+    let parsedBusinessId = businessId != null && !isNaN(parseInt(String(businessId)))
       ? parseInt(String(businessId))
       : null;
     // Optional job link — set when recording pay from a job's Pay Breakdown tab
     const parsedJobId = jobId != null && !isNaN(parseInt(String(jobId)))
       ? parseInt(String(jobId))
       : null;
+    if (parsedJobId != null) {
+      const [job] = await db.select({ businessId: jobsTable.businessId }).from(jobsTable)
+        .where(eq(jobsTable.id, parsedJobId)).limit(1);
+      if (!job || job.businessId == null || (parsedBusinessId != null && job.businessId !== parsedBusinessId)) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+      parsedBusinessId = job.businessId;
+    }
+    if (parsedBusinessId == null) {
+      res.status(400).json({ error: "A valid business is required" });
+      return;
+    }
+    const [business] = await db.select({ id: businessesTable.id }).from(businessesTable)
+      .where(eq(businessesTable.id, parsedBusinessId)).limit(1);
+    if (!business) return res.status(404).json({ error: "Business not found" });
 
     // ── Canonical sign convention (enforced server-side) ────────────────────────
     // amount > 0 = capital contribution (owner puts money IN)

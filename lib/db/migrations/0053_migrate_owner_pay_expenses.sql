@@ -17,7 +17,8 @@ SELECT
   COALESCE(e.created_at, NOW())
 FROM expenses e
 LEFT JOIN jobs j ON j.id = e.job_id
-WHERE e.category IN ('Owner Draw', 'Owner Compensation', 'Owner Withdrawal')
+WHERE e.category IN ('Owner Draw', 'Owner Compensation', 'Owner Withdrawal', 'Owner Pay')
+  AND e.voided_at IS NULL
   AND NOT EXISTS (
     SELECT 1
     FROM owner_capital_entries oce
@@ -28,6 +29,13 @@ WHERE e.category IN ('Owner Draw', 'Owner Compensation', 'Owner Withdrawal')
 -- effect so they cannot appear as operating expenses.
 UPDATE expenses e
 SET voided_at = COALESCE(e.voided_at, NOW()),
-    void_reason = COALESCE(e.void_reason, 'Migrated to owner_capital_entries as owner pay')
-WHERE e.category IN ('Owner Draw', 'Owner Compensation', 'Owner Withdrawal')
-  AND e.voided_at IS NULL;
+    void_reason = COALESCE(e.void_reason, 'Migrated to owner_capital_entries as owner pay'),
+    exclude_from_net_profit = true
+WHERE e.category IN ('Owner Draw', 'Owner Compensation', 'Owner Withdrawal', 'Owner Pay')
+  AND e.voided_at IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM owner_capital_entries oce
+    WHERE oce.expense_id = e.id
+      AND oce.voided_at IS NULL
+  );

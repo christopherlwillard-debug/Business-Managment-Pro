@@ -2593,6 +2593,9 @@ router.post("/:id/record-owner-draw", async (req, res) => {
       businessId: jobsTable.businessId,
       businessLine: jobsTable.businessLine,
     }).from(jobsTable).where(eq(jobsTable.id, jobId));
+    if (!job || job.businessId == null) {
+      return res.status(404).json({ error: "Job not found or has no business owner" });
+    }
     const today = new Date().toISOString().split("T")[0];
     const description = String(req.body.description ?? `Owner Draw — Job ${jobId}`);
 
@@ -2611,7 +2614,7 @@ router.post("/:id/record-owner-draw", async (req, res) => {
     // Owner pay is an equity withdrawal, not an operating expense. Keep the
     // canonical negative sign so all Owner Pay surfaces use one ledger.
     const [entry] = await db.insert(ownerCapitalEntriesTable).values({
-      businessId: job?.businessId ?? null,
+      businessId: job.businessId,
       jobId,
       date: today,
       description,

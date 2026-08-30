@@ -199,10 +199,12 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // Negative owner_capital_entries are "Return of Capital" — they already
     // reduce netCapitalInvested in the frontend ledger and must NOT be added
     // to ownerDrawTotal, which would deduct them a second time from equity.
-    const OWNER_PAY_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
-    const ownerDrawTotal = nonMileageExpenses
-      .filter(e => OWNER_PAY_CATS.includes(e.category ?? ""))
-      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const ownerDrawTotal = kpiOwnerCapital
+      .filter(e => !validBl || e.businessId === mileageBusinessId)
+      .reduce((sum, e) => {
+        const amount = parseFloat(e.amount ?? "0");
+        return sum + (amount < 0 ? Math.abs(amount) : 0);
+      }, 0);
     const ytdMiles = ytdMileageSummary.totalMiles;
     const ytdMileageRate = ytdMileageSummary.ratePerMile;
 
@@ -261,7 +263,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const undrawnBalance = operationalNetProfit - ownerDrawTotal - subContractorRemaining;
 
     // Profit by business line breakdown — always computed from full (unfiltered) data
-    const OWNER_DRAW_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
+    const OWNER_DRAW_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal", "Owner Pay"];
     const allBusinesses = await db.select({ slug: businessesTable.slug, name: businessesTable.name }).from(businessesTable).orderBy(businessesTable.id);
 
     // Group KPI-period sub payments by business line for the per-BL breakdown.
@@ -619,12 +621,9 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     );
     const accFixedAllocSubPaymentTotal = accFixedAllocSubPayments.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + accFixedAllocSubPaymentTotal;
-    // Owner distributions are personal — not tax-deductible. Exclude from net profit.
-    // Covers legacy "Owner Draw", current "Owner Compensation", and "Owner Withdrawal".
-    const ownerDrawTotal = nonMileageExpenses
-      .filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""))
-      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-
+    const legacyOwnerDrawTotal = nonMileageExpenses
+      .filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal", "Owner Pay"].includes(e.category ?? ""))
+      .reduce((sum, e) => sum + parseFloat(e.amount ?? "0"), 0);
     // subcontractorId == null guard: belt-and-suspenders in case the DB query misses any
     // sub logs (e.g. businessId filter alone wouldn't exclude business_id=NULL sub records).
     const businessMiles = mileageLogs.filter(m => m.classification === "business" && m.subcontractorId == null);
@@ -639,10 +638,22 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       Promise.all(subs.map(async s => ({ ...s, _ytd: await computeYtd(s.id, year, blFilter) }))),
       computeDepreciationForYear(year),
       computeOwnerWaterfall(year, blFilter),
-      db.select({ amount: ownerCapitalEntriesTable.amount })
+      db.select({ amount: ownerCapitalEntriesTable.amount, businessId: ownerCapitalEntriesTable.businessId })
         .from(ownerCapitalEntriesTable)
-        .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate), isNull(ownerCapitalEntriesTable.voidedAt))),
+        .where(and(
+          gte(ownerCapitalEntriesTable.date, startDate),
+          lte(ownerCapitalEntriesTable.date, endDate),
+          isNull(ownerCapitalEntriesTable.voidedAt),
+          mileageBusinessId != null ? eq(ownerCapitalEntriesTable.businessId, mileageBusinessId) : undefined,
+        )),
     ]);
+    const canonicalOwnerDrawTotal = accOwnerContribRows.reduce((sum, row) => {
+      const amount = parseFloat(row.amount ?? "0");
+      return sum + (amount < 0 ? Math.abs(amount) : 0);
+    }, 0);
+    // Canonical ledger wins. The fallback keeps still-active pre-migration rows readable
+    // without adding them on top of a matching owner-capital withdrawal.
+    const ownerDrawTotal = canonicalOwnerDrawTotal > 0 ? canonicalOwnerDrawTotal : legacyOwnerDrawTotal;
     // Sign convention: positive entries = capital contributions (cash into business).
     const accOwnerContributionsTotal = (accOwnerContribRows as { amount: string | null }[]).reduce((s, r) => {
       const amt = parseFloat(r.amount ?? "0");
@@ -650,7 +661,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     }, 0);
     const totalSubPayments = subsWithYtdAcc.reduce((acc, s) => acc + s._ytd, 0);
     // Net profit excludes owner draws and deducts depreciation — matches P&L and Year-End Report
-    const netProfit = paidRevenue - (totalExpenses - ownerDrawTotal) - mileageDeduction - depreciationDeduction;
+    const netProfit = paidRevenue - (totalExpenses - legacyOwnerDrawTotal) - mileageDeduction - depreciationDeduction;
     const undrawnBalance = netProfit - ownerDrawTotal;
 
     // Income by city — estOccTax replaces taxCollected (Willard never charges sales tax)
@@ -762,7 +773,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     }
     const expensesByCategory = Array.from(catMap.values()).sort((a, b) => b.amount - a.amount);
     // Business expenses = total non-mileage expenses minus owner draws
-    const businessExpenses = totalExpenses - ownerDrawTotal;
+    const businessExpenses = totalExpenses - legacyOwnerDrawTotal;
 
     // Direct Job Costs vs Overhead split.
     // Direct = expenses linked to a specific job (jobId set); Overhead = not linked to any job.
@@ -1413,11 +1424,11 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     // Owner distributions are excluded: they are equity distributions, not deductible expenses.
     // Covers "Owner Draw" (legacy), "Owner Compensation" (current), "Owner Withdrawal" (equity).
     const buckets: Record<string, number> = {};
-    let ownerDrawTotal = 0;
+    let legacyOwnerDrawTotal = 0;
     for (const e of plExpRows) {
       const cat = e.category || "Other";
-      if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(cat)) {
-        ownerDrawTotal += parseFloat(e.amount ?? "0");
+      if (["Owner Draw", "Owner Compensation", "Owner Withdrawal", "Owner Pay"].includes(cat)) {
+        legacyOwnerDrawTotal += parseFloat(e.amount ?? "0");
         continue;
       }
       const key = PL_CATEGORY_MAP[cat] ?? "other";
@@ -1463,7 +1474,12 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       computeDepreciationForYear(year),
       db.select({ amount: ownerCapitalEntriesTable.amount })
         .from(ownerCapitalEntriesTable)
-        .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate), isNull(ownerCapitalEntriesTable.voidedAt))),
+        .where(and(
+          gte(ownerCapitalEntriesTable.date, startDate),
+          lte(ownerCapitalEntriesTable.date, endDate),
+          isNull(ownerCapitalEntriesTable.voidedAt),
+          mileageBusinessId != null ? eq(ownerCapitalEntriesTable.businessId, mileageBusinessId) : undefined,
+        )),
       db.select({ federalTaxElection: settingsTable.federalTaxElection })
         .from(settingsTable)
         .limit(1),
@@ -1474,6 +1490,11 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       const amt = parseFloat(r.amount ?? "0");
       return s + (amt > 0 ? amt : 0);
     }, 0);
+    const canonicalOwnerDrawTotal = ownerContribRows.reduce((sum, row) => {
+      const amount = parseFloat(row.amount ?? "0");
+      return sum + (amount < 0 ? Math.abs(amount) : 0);
+    }, 0);
+    const ownerDrawTotal = canonicalOwnerDrawTotal > 0 ? canonicalOwnerDrawTotal : legacyOwnerDrawTotal;
     const netProfit = netOperatingIncome - mileageDeduction - depreciationDeduction;
     const taxProfile = getTaxProfile(settingsRows[0]?.federalTaxElection);
 
@@ -1944,15 +1965,16 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
 
     // ── Owner Activity ──────────────────────────────────────────────────────────
     // Owner draws are excluded from nonMileageExpenses; compute from raw expenses array.
-    const OWNER_CATS_YE = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
-    const yeOwnerDrawTotal = expenses
-      .filter(e => OWNER_CATS_YE.includes(e.category ?? ""))
-      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     // Fetch contributions + waterfall in parallel (adds slots after all existing year-end queries).
     const [yeOwnerContribRows, yeWaterfall] = await Promise.all([
       db.select({ amount: ownerCapitalEntriesTable.amount })
         .from(ownerCapitalEntriesTable)
-        .where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, endDate), isNull(ownerCapitalEntriesTable.voidedAt))),
+        .where(and(
+          gte(ownerCapitalEntriesTable.date, startDate),
+          lte(ownerCapitalEntriesTable.date, endDate),
+          isNull(ownerCapitalEntriesTable.voidedAt),
+          mileageBusinessId != null ? eq(ownerCapitalEntriesTable.businessId, mileageBusinessId) : undefined,
+        )),
       computeOwnerWaterfall(year, blFilter),
     ]);
     // Sign convention: positive entries = capital contributions (cash in).
@@ -1960,6 +1982,14 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       const amt = parseFloat(r.amount ?? "0");
       return s + (amt > 0 ? amt : 0);
     }, 0);
+    const canonicalYeOwnerDrawTotal = yeOwnerContribRows.reduce((sum, row) => {
+      const amount = parseFloat(row.amount ?? "0");
+      return sum + (amount < 0 ? Math.abs(amount) : 0);
+    }, 0);
+    const legacyYeOwnerDrawTotal = expenses
+      .filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal", "Owner Pay"].includes(e.category ?? ""))
+      .reduce((sum, e) => sum + parseFloat(e.amount ?? "0"), 0);
+    const yeOwnerDrawTotal = canonicalYeOwnerDrawTotal > 0 ? canonicalYeOwnerDrawTotal : legacyYeOwnerDrawTotal;
     const yeOwnerCashTaken = yeOwnerDrawTotal;
     const yeOwnerRetained = Math.max(0, yeWaterfall.ownerAllocated - yeWaterfall.ownerTaxReserve - yeOwnerCashTaken);
     const yeOwnerOverWithdrawal = Math.max(0, yeOwnerCashTaken - (yeWaterfall.ownerAllocated - yeWaterfall.ownerTaxReserve));
@@ -2222,15 +2252,12 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     // dual-write). Add them separately so the reserve net-profit matches the accounting route.
     const brSubPayTotal = brSubPayRows.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + brSubPayTotal;
-    const ownerDrawTotal = nonMileageExpenses
-      .filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""))
-      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     // subcontractorId == null: owner mileage only — belt-and-suspenders in JS to match DB filter.
     const businessMileageDeduction = summarizeMileageRecords(
       mileageLogs.filter(m => m.subcontractorId == null),
     ).totalDeduction;
     const depreciationDeduction = await computeDepreciationForYear(year);
-    const netProfit = paidRevenue - (totalExpenses - ownerDrawTotal) - businessMileageDeduction - depreciationDeduction;
+    const netProfit = paidRevenue - totalExpenses - businessMileageDeduction - depreciationDeduction;
 
     // Owensboro gross for OCC tax — invoices + other income rows with city = owensboro
     const owensboroGross = invoices

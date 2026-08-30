@@ -544,7 +544,7 @@ router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) =
   const VALID_CATEGORIES = [
     "Materials", "Advertising", "Fuel/Travel", "Travel/Lodging", "Meals", "Parking/Tolls",
     "Subcontractor", "Insurance", "Professional Services", "Office/Admin", "Rent/Lease",
-    "Repairs/Maintenance", "Tools/Equipment", "Utilities", "Other", "Owner Draw",
+    "Repairs/Maintenance", "Tools/Equipment", "Utilities", "Other",
   ];
   const VALID_BUSINESS_LINES = ["", "general_contracting", "asphalt_sealing"];
 

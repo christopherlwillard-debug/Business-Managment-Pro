@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { expensesTable, jobExpenseAllocationsTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable, businessTripsTable, ownerCapitalEntriesTable } from "@workspace/db/schema";
+import { expensesTable, jobExpenseAllocationsTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable, businessTripsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, sql, isNull, or, desc, getTableColumns } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
@@ -12,6 +12,11 @@ import { settingsTable } from "@workspace/db/schema";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
+const OWNER_PAY_CATEGORIES = new Set(["owner draw", "owner compensation", "owner withdrawal", "owner pay"]);
+
+function isOwnerPayCategory(category: unknown): boolean {
+  return typeof category === "string" && OWNER_PAY_CATEGORIES.has(category.trim().toLowerCase());
+}
 
 router.param("id", (req, res, next, rawId) => {
   void (async () => {
@@ -390,16 +395,16 @@ router.post("/", async (req, res) => {
       if (biz) resolvedBusinessId = biz.id;
     }
 
-    // Owner distributions (draws, compensation, withdrawals) are equity events for a
-    // single-member LLC — never deductible business expenses. Enforce server-side so
-    // no client path can accidentally store them as deductible expenses.
-    const OWNER_DIST_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
-    const isOwnerDist = OWNER_DIST_CATS.includes(category);
+    if (isOwnerPayCategory(category)) {
+      return res.status(400).json({
+        error: "Owner pay is an equity withdrawal, not an operating expense. Record it in Owner Capital.",
+      });
+    }
 
     const [expense] = await db.insert(expensesTable).values({
       description, amount: parsedAmount.toString(), category, date,
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes: resolvedNotes,
-      excludeFromNetProfit: isOwnerDist ? true : (excludeFromNetProfit === true),
+      excludeFromNetProfit: excludeFromNetProfit === true,
       countsTowardJobProfit: countsTowardJobProfit === false ? false : true,
       businessLine: resolvedBusinessLine,
       businessId: resolvedBusinessId,
@@ -419,22 +424,6 @@ router.post("/", async (req, res) => {
 
     if (expense.category?.toLowerCase() === "subcontractor" && expense.jobId && expense.subcontractorId) {
       await syncJobSubPayment(expense.jobId, expense.subcontractorId);
-    }
-
-    // Dual-write to canonical owner-withdrawal ledger for any owner-category expense.
-    // My Pay reads exclusively from owner_capital_entries (WHERE amount < 0) so every
-    // owner draw or compensation expense must be mirrored there for accurate totals.
-    // amount is stored as negative (withdrawal convention). expenseId links both rows.
-    if (isOwnerDist) {
-      const bankingSource = req.body._source === "banking";
-      await db.insert(ownerCapitalEntriesTable).values({
-        date,
-        description: String(description ?? ""),
-        amount: String(-amount),
-        source: bankingSource ? "banking" : "accounting_overview",
-        expenseId: expense.id,
-        jobId: (req.body.jobId ? parseInt(String(req.body.jobId)) : null) ?? null,
-      }).onConflictDoNothing();
     }
 
     // Attempt auto-link to a bank transaction (fire-and-forget — never delays response)
@@ -513,10 +502,12 @@ router.put("/:id", async (req, res) => {
 
     const validBusinessLines = ["general_contracting", "asphalt_sealing"];
 
-    // Owner distribution categories are always excluded from net profit — enforce on every edit
-    const OWNER_DIST_CATS_PUT = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
     const effectiveCat = category !== undefined ? category : (before.category ?? "");
-    const isOwnerDistCat = OWNER_DIST_CATS_PUT.includes(effectiveCat);
+    if (isOwnerPayCategory(effectiveCat)) {
+      return res.status(400).json({
+        error: "Owner pay is managed in Owner Capital. Legacy owner-pay expenses must be migrated and voided, not edited.",
+      });
+    }
 
     const isMealCategory = (category ?? before.category)?.toLowerCase() === "meals";
     // Recompute meal split whenever mealTotal or amount (for meal category) changes
@@ -539,8 +530,7 @@ router.put("/:id", async (req, res) => {
       ...(subcontractorId !== undefined && { subcontractorId: subcontractorId || null }),
       ...(receiptUrl !== undefined && { receiptUrl }),
       ...(notes !== undefined && { notes }),
-      // Owner distributions always excluded — server enforces regardless of client value
-      excludeFromNetProfit: isOwnerDistCat ? true : (excludeFromNetProfit !== undefined ? excludeFromNetProfit === true : (before.excludeFromNetProfit ?? false)),
+      excludeFromNetProfit: excludeFromNetProfit !== undefined ? excludeFromNetProfit === true : (before.excludeFromNetProfit ?? false),
       ...(countsTowardJobProfit !== undefined && { countsTowardJobProfit: countsTowardJobProfit === false ? false : true }),
       ...(businessLine !== undefined && { businessLine: validBusinessLines.includes(businessLine) ? businessLine : null }),
       ...(businessId !== undefined && { businessId: businessId ? parseInt(String(businessId)) : null }),
