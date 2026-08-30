@@ -26,10 +26,10 @@ interface TaxProfile {
 
 const DEFAULT_TAX_PROFILE: TaxProfile = {
   taxElection: "sole_prop",
-  activitySectionTitle: "Owner Activity",
-  contributionLabel: "Owner Contributions",
-  distributionLabel: "Owner Draws",
-  activityDisclaimer: "Owner draws and owner contributions affect owner equity only. They are not business income or business expenses and do not change net profit.",
+  activitySectionTitle: "Owner Withdrawals",
+  contributionLabel: "Historical owner contributions",
+  distributionLabel: "Owner Withdrawals",
+  activityDisclaimer: "Owner withdrawals reduce business cash only. They are not revenue, business expenses, job costs, profit deductions, or tax deductions.",
 };
 
 interface ProfitLossReport {
@@ -133,7 +133,6 @@ function OwnerActivityCard({
 }) {
   const [open, setOpen] = useState(true);
   const fmt = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
-  const isOverdrawn = ownerActivity.ownerOverWithdrawal > 0;
   return (
     <div className="border border-border rounded-2xl overflow-hidden shadow-sm">
       <button
@@ -144,60 +143,11 @@ function OwnerActivityCard({
           <div className="bg-muted text-muted-foreground text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">
             {taxProfile.activitySectionTitle} (Informational)
           </div>
-          {isOverdrawn && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide bg-red-100 text-red-700">
-              Over-Withdrawal
-            </span>
-          )}
         </div>
         <span className="text-xs text-muted-foreground">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
-        <div className="px-6 py-4 space-y-1">
-          {/* Waterfall breakdown */}
-          {ownerActivity.ownerAllocated > 0 && (
-            <>
-              <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mt-1 mb-2">Owner Pay Waterfall (Cash-Basis)</div>
-              <div className="flex items-center justify-between py-2 border-b border-border/30">
-                <span className="text-sm pl-6 text-muted-foreground">Owner Allocated (50% of net after growth)</span>
-                <span className="tabular-nums text-sm font-medium text-emerald-700">{fmt(ownerActivity.ownerAllocated)}</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-border/30">
-                <span className="text-sm pl-6 text-muted-foreground">− Tax Reserve (25% of allocation)</span>
-                <span className="tabular-nums text-sm font-medium text-amber-700">−{fmt(ownerActivity.ownerTaxReserve)}</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-border/30">
-                <span className="text-sm pl-6 text-muted-foreground">= Owner Take-Home Budget</span>
-                <span className="tabular-nums text-sm font-bold text-foreground">{fmt(ownerActivity.ownerAllocated - ownerActivity.ownerTaxReserve)}</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-border/30">
-                <span className="text-sm pl-6 text-muted-foreground">− Cash Taken ({taxProfile.distributionLabel})</span>
-                <span className="tabular-nums text-sm font-medium text-foreground">−{fmt(ownerActivity.ownerCashTaken)}</span>
-              </div>
-              <div className={`flex items-center justify-between py-2.5 px-3 rounded-xl mt-1 border ${isOverdrawn ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"}`}>
-                <div>
-                  <span className={`text-xs font-bold uppercase tracking-wide ${isOverdrawn ? "text-red-700" : "text-emerald-700"}`}>
-                    {isOverdrawn ? "Over-Withdrawal" : "Retained / Undrawn"}
-                  </span>
-                  {isOverdrawn && (
-                    <p className="text-[10px] text-red-600 mt-0.5">Draws exceed the owner take-home budget for this year.</p>
-                  )}
-                </div>
-                <span className={`tabular-nums text-sm font-bold ${isOverdrawn ? "text-red-700" : "text-emerald-700"}`}>
-                  {isOverdrawn ? `−${fmt(ownerActivity.ownerOverWithdrawal)}` : fmt(ownerActivity.ownerRetained)}
-                </span>
-              </div>
-              <div className="border-t border-border/40 mt-3 pt-3" />
-            </>
-          )}
-
-          {/* Contributions & draws */}
-          <div className="flex items-center justify-between py-2 border-b border-border/30">
-            <span className="text-sm pl-6 text-muted-foreground">{taxProfile.contributionLabel}</span>
-            <span className="tabular-nums text-sm font-medium text-foreground">
-              {ownerActivity.ownerContributionsTotal === 0 ? "—" : fmt(ownerActivity.ownerContributionsTotal)}
-            </span>
-          </div>
+         <div className="px-6 py-4 space-y-1">
           <div className="flex items-center justify-between py-2 border-b border-border/30">
             <span className="text-sm pl-6 text-muted-foreground">{taxProfile.distributionLabel}</span>
             <span className="tabular-nums text-sm font-medium text-foreground">
@@ -248,19 +198,12 @@ function ProfitLossTab({ year }: { year: number }) {
 
     const oa = report.ownerActivity;
     const oaFmt = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
-    const ownerWaterfallHtml = oa && oa.ownerAllocated > 0 ? `
+    const ownerWaterfallHtml = oa && oa.ownerDrawTotal > 0 ? `
       <div style="margin-top:24px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
-        <div style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:8px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#475569">Owner Activity (Informational — does not affect net profit)</div>
+        <div style="background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:8px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#475569">Owner Withdrawals (Informational)</div>
         <div style="padding:10px 14px;font-size:12px">
-          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="padding-left:16px;color:#64748b">Owner Allocated (50% of net after 5% growth fund)</span><span style="color:#16a34a;font-weight:600">${oaFmt(oa.ownerAllocated)}</span></div>
-          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="padding-left:16px;color:#64748b">− Tax Reserve (25% of allocation)</span><span style="color:#d97706;font-weight:600">−${oaFmt(oa.ownerTaxReserve)}</span></div>
-          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9;font-weight:700"><span style="padding-left:16px">= Take-Home Budget</span><span>${oaFmt(oa.ownerAllocated - oa.ownerTaxReserve)}</span></div>
-          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="padding-left:16px;color:#64748b">− Cash Taken (Owner Draws)</span><span style="font-weight:600">−${oaFmt(oa.ownerCashTaken)}</span></div>
-          ${oa.ownerOverWithdrawal > 0
-            ? `<div style="display:flex;justify-content:space-between;padding:7px 10px;margin-top:4px;background:#fef2f2;border-radius:6px;border:1px solid #fca5a5;font-weight:700;color:#dc2626"><span>⚠ Over-Withdrawal</span><span>−${oaFmt(oa.ownerOverWithdrawal)}</span></div>`
-            : `<div style="display:flex;justify-content:space-between;padding:7px 10px;margin-top:4px;background:#f0fdf4;border-radius:6px;border:1px solid #86efac;font-weight:700;color:#16a34a"><span>= Retained / Undrawn</span><span>${oaFmt(oa.ownerRetained)}</span></div>`}
-          <div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid #f1f5f9;margin-top:8px"><span style="padding-left:16px;color:#64748b">Owner Contributions</span><span>${oa.ownerContributionsTotal > 0 ? oaFmt(oa.ownerContributionsTotal) : "—"}</span></div>
-          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="padding-left:16px;color:#64748b">Owner Draws (actual)</span><span>${oa.ownerDrawTotal > 0 ? oaFmt(oa.ownerDrawTotal) : "—"}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f5f9"><span style="padding-left:16px;color:#64748b">Withdrawn during the year</span><span style="font-weight:600">${oaFmt(oa.ownerDrawTotal)}</span></div>
+          <p style="color:#64748b;font-size:10px">Reduces business cash only; not revenue, an expense, a profit deduction, or a tax deduction.</p>
         </div>
       </div>` : "";
 

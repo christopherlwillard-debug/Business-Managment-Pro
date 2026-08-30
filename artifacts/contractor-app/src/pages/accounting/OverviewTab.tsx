@@ -268,8 +268,8 @@ interface BusinessReserveData {
 }
 
 // ─── Take-Home Dashboard ─────────────────────────────────────────────────────
-// Reads from owner-pay-summary (the My Pay ledger) so it always matches the
-// My Pay card on the Dashboard — one source of truth, no duplicate calculations.
+// Reads from the owner withdrawal ledger so it always matches the Dashboard —
+// one source of truth, no duplicate calculations.
 function TakeHomeDashboard() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -282,10 +282,11 @@ function TakeHomeDashboard() {
     totalWithdrawn: number;
     remaining: number;
     monthlyPaid: { month: string; paid: number }[];
-    withdrawals: { id: string; date: string | null; amount: number; description: string }[];
+    withdrawals: { id: string; businessId: number | null; date: string | null; amount: number; description: string }[];
   }>({
-    queryKey: ["owner-pay-summary"],
-    queryFn: () => fetch(`${BASE}/api/reports/owner-pay-summary`, { credentials: "include" }).then(r => r.json()),
+    queryKey: ["owner-pay-summary", activeBusiness?.id],
+    queryFn: () => fetch(`${BASE}/api/reports/owner-pay-summary?businessId=${activeBusiness!.id}`, { credentials: "include" }).then(r => r.json()),
+    enabled: activeBusiness?.id != null,
   });
 
   // Dialog state — used for both new entries and edits
@@ -295,9 +296,10 @@ function TakeHomeDashboard() {
     amount: string;
     date: string;
     description: string;
+    businessId: number | null;
     saving: boolean;
     error: string;
-  }>({ open: false, editId: null, amount: "", date: "", description: "", saving: false, error: "" });
+  }>({ open: false, editId: null, amount: "", date: "", description: "", businessId: null, saving: false, error: "" });
 
   // Month that's expanded to show individual entries (YYYY-MM key)
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
@@ -305,16 +307,17 @@ function TakeHomeDashboard() {
   function openNew() {
     const today = new Date();
     const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-    setDialog({ open: true, editId: null, amount: "", date: defaultDate, description: "Owner Pay", saving: false, error: "" });
+    setDialog({ open: true, editId: null, amount: "", date: defaultDate, description: "Owner Withdrawal", businessId: activeBusiness?.id ?? null, saving: false, error: "" });
   }
 
-  function openEdit(w: { id: string; date: string | null; amount: number; description: string }) {
+  function openEdit(w: { id: string; businessId: number | null; date: string | null; amount: number; description: string }) {
     setDialog({
       open: true,
       editId: w.id,
       amount: String(w.amount),
       date: w.date ?? new Date().toISOString().slice(0, 10),
-      description: w.description ?? "Owner Pay",
+      description: w.description ?? "Owner Withdrawal",
+      businessId: w.businessId,
       saving: false,
       error: "",
     });
@@ -345,7 +348,7 @@ function TakeHomeDashboard() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ businessId: activeBusiness?.id, type: "withdrawal", amount: amt, date: dialog.date, description: dialog.description || "Owner Pay" }),
+          body: JSON.stringify({ businessId: dialog.businessId, type: "withdrawal", amount: amt, date: dialog.date, description: dialog.description || "Owner Withdrawal" }),
         });
         if (!res.ok) throw new Error();
         toast({ title: "Entry updated" });
@@ -354,12 +357,12 @@ function TakeHomeDashboard() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ businessId: activeBusiness?.id, type: "withdrawal", description: dialog.description || "Owner Pay", amount: amt, date: dialog.date }),
+          body: JSON.stringify({ businessId: dialog.businessId, type: "withdrawal", description: dialog.description || "Owner Withdrawal", amount: amt, date: dialog.date }),
         });
         if (!res.ok) throw new Error();
-        toast({ title: "Owner pay recorded", description: `${formatCurrency(amt)} logged` });
+        toast({ title: "Owner withdrawal recorded", description: `${formatCurrency(amt)} logged` });
       }
-      qc.invalidateQueries({ queryKey: ["owner-pay-summary"] });
+      qc.invalidateQueries({ queryKey: ["owner-pay-summary", activeBusiness?.id] });
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
       qc.invalidateQueries({ queryKey: ["/api/owner-capital"] });
       closeDialog();
@@ -371,7 +374,7 @@ function TakeHomeDashboard() {
   }
 
   async function handleDelete(w: { id: string; amount: number }) {
-    if (!confirm(`Void this $${w.amount.toFixed(2)} owner pay entry? The audit history will be preserved.`)) return;
+    if (!confirm(`Void this $${w.amount.toFixed(2)} owner withdrawal? The audit history will be preserved.`)) return;
     if (!w.id.startsWith("owner-")) {
       toast({ title: "Legacy entry must be migrated before it can be voided", variant: "destructive" });
       return;
@@ -382,10 +385,10 @@ function TakeHomeDashboard() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: "Voided from Owner Pay dashboard" }),
+        body: JSON.stringify({ reason: "Voided from Owner Withdrawals dashboard" }),
       });
       if (!res.ok) throw new Error();
-      qc.invalidateQueries({ queryKey: ["owner-pay-summary"] });
+      qc.invalidateQueries({ queryKey: ["owner-pay-summary", activeBusiness?.id] });
       qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
       qc.invalidateQueries({ queryKey: ["/api/owner-capital"] });
       toast({ title: "Entry voided" });
@@ -444,14 +447,14 @@ function TakeHomeDashboard() {
         <div className="px-5 py-3 bg-emerald-700 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Wallet className="w-4 h-4 text-emerald-200 flex-shrink-0" />
-            <span className="font-bold text-sm text-white">Owner Pay Dashboard</span>
-            <span className="hidden sm:inline text-[10px] text-emerald-200">Actual payments from the business to you</span>
+            <span className="font-bold text-sm text-white">Owner Withdrawals</span>
+            <span className="hidden sm:inline text-[10px] text-emerald-200">Actual money withdrawn from the business</span>
           </div>
           <button
             onClick={openNew}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-semibold rounded-lg transition-colors"
           >
-            <Plus className="w-3.5 h-3.5" /> Record Pay
+            <Plus className="w-3.5 h-3.5" /> Record Withdrawal
           </button>
         </div>
 
@@ -566,14 +569,14 @@ function TakeHomeDashboard() {
             <div className="flex items-center gap-2 mb-1">
               <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700"><Wallet className="w-4 h-4" /></div>
               <h2 className="text-base font-bold text-foreground">
-                {dialog.editId ? "Edit Pay Entry" : "Record Owner Pay"}
+                {dialog.editId ? "Edit Owner Withdrawal" : "Record Owner Withdrawal"}
               </h2>
               <button className="ml-auto text-muted-foreground hover:text-foreground" onClick={closeDialog}>
                 <X className="w-4 h-4" />
               </button>
             </div>
             <p className="text-xs text-muted-foreground mb-4 ml-10">
-              {dialog.editId ? "Update this payment entry." : "Log a payment you took from the business."}
+              {dialog.editId ? "Update this withdrawal." : "Log money withdrawn from the business."}
             </p>
 
             <form onSubmit={handleSave} className="space-y-3">
@@ -605,7 +608,7 @@ function TakeHomeDashboard() {
                   type="text"
                   value={dialog.description}
                   onChange={e => setDialog(d => ({ ...d, description: e.target.value }))}
-                  placeholder="Owner Pay"
+                  placeholder="Owner Withdrawal"
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
@@ -1184,6 +1187,7 @@ function BusinessReserveDashboard() {
 
 function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; setActiveTab: (tab: AccountingTab) => void }) {
   const { activeBusiness, businesses } = useBusiness();
+  const { toast } = useToast();
   const [, navigate] = useLocation();
   const s = data?.summary ?? {};
   const netProfit = s.netProfit ?? 0;
@@ -1210,38 +1214,9 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
     }
     return null;
   });
-  // ── Owner Capital Recovery ──────────────────────────────────────────────────
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const capitalBizId = activeBusiness?.id ?? null;
-  const { data: capitalEntries = [], isLoading: capitalLoading } = useQuery<{ id: number; businessId: number | null; date: string; description: string; amount: number; createdAt: string }[]>({
-    queryKey: ["owner-capital", capitalBizId],
-    queryFn: () => fetch(`${BASE}/api/owner-capital${capitalBizId != null ? `?businessId=${capitalBizId}` : ""}`).then(r => r.ok ? r.json() : []),
-  });
   const { data: allSubsForSplit = [] } = useQuery<any[]>({
     queryKey: ["subcontractors"],
     queryFn: () => fetch(`${BASE}/api/subcontractors`).then(r => r.ok ? r.json() : []),
-  });
-  const [capitalForm, setCapitalForm] = useState<{ date: string; description: string; amount: string; type: "injection" | "withdrawal" } | null>(null);
-  const [capitalSaving, setCapitalSaving] = useState(false);
-  const createCapitalEntry = useMutation({
-    mutationFn: async (payload: { date: string; description: string; amount: number; businessId: number | null; type?: string }) => {
-      const res = await fetch(`${BASE}/api/owner-capital`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error("Failed to save entry");
-      return res.json();
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-capital", capitalBizId] }),
-  });
-  const deleteCapitalEntry = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await fetch(`${BASE}/api/owner-capital/${id}`, { method: "DELETE" });
-      if (!res.ok && res.status !== 204) throw new Error("Failed to delete");
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["owner-capital", capitalBizId] }),
   });
 
 
@@ -1324,300 +1299,28 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
 
       <BusinessOverview s={s} year={year} netProfit={netProfit} otherIncomeTotal={otherIncomeTotal} />
 
-      {/* ── Owner Capital Recovery ── */}
-      {(() => {
-        const ownerDraws = s.ownerDrawTotal ?? 0;
-        const totalInjected = capitalEntries.filter(e => e.amount > 0).reduce((acc, e) => acc + e.amount, 0);
-        const totalWithdrawn = capitalEntries.filter(e => e.amount < 0).reduce((acc, e) => acc + Math.abs(e.amount), 0);
-        const netCapitalInvested = totalInjected - totalWithdrawn;
-        const totalEquity = netCapitalInvested + netProfit;
-        const businessOwesYou = totalEquity - ownerDraws;
-        return (
-          <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-violet-600 flex-shrink-0" />
-                <span className="font-semibold text-sm text-foreground">Owner Capital — {year}</span>
-              </div>
-              <button
-                onClick={() => setCapitalForm({ date: new Date().toISOString().split("T")[0], description: "", amount: "", type: "injection" })}
-                className="flex items-center gap-1 text-xs bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-violet-700 transition-colors"
-              >
-                <Plus className="w-3 h-3" />
-                Add Entry
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-
-              {/* Ledger */}
-              {capitalLoading ? (
-                <div className="h-12 rounded-xl bg-muted/40 animate-pulse" />
-              ) : capitalEntries.length === 0 ? (
-                <div className="text-center py-4 text-sm text-muted-foreground">
-                  No entries yet.{" "}
-                  <button
-                    onClick={() => setCapitalForm({ date: new Date().toISOString().split("T")[0], description: "", amount: "", type: "injection" })}
-                    className="font-semibold text-violet-600 hover:underline"
-                  >Add Entry</button>{" "}
-                  to log your first capital contribution.
-                </div>
-              ) : (
-                <div className="rounded-xl border border-border overflow-hidden">
-                  <div className="bg-muted/30 px-4 py-2 grid grid-cols-[90px_1fr_80px_28px] gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">
-                    <span>Date</span>
-                    <span>Description</span>
-                    <span className="text-right">Amount</span>
-                    <span />
-                  </div>
-                  <div className="divide-y divide-border/50">
-                    {[...capitalEntries].sort((a, b) => b.date.localeCompare(a.date)).map(entry => (
-                      <div key={entry.id} className="px-4 py-2.5 grid grid-cols-[90px_1fr_80px_28px] gap-2 items-center">
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(entry.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" })}
-                        </span>
-                        <span className="text-xs text-foreground truncate">{entry.description}</span>
-                        <span className={`text-xs font-bold text-right ${entry.amount >= 0 ? "text-emerald-700" : "text-red-600"}`}>
-                          {entry.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(entry.amount))}
-                        </span>
-                        <button
-                          onClick={() => { if (confirm("Delete this entry?")) deleteCapitalEntry.mutate(entry.id); }}
-                          className="text-muted-foreground hover:text-red-600 transition-colors justify-self-end"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Equity summary — step by step */}
-              <div className="border-t border-border pt-4 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">Total Injected</p>
-                    <p className="text-[10px] text-muted-foreground">Money you've put into the business</p>
-                  </div>
-                  <span className="text-sm font-bold text-emerald-700">+{formatCurrency(totalInjected)}</span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">− Total Withdrawn</p>
-                    <p className="text-[10px] text-muted-foreground">Capital returned to you (not operating draws)</p>
-                  </div>
-                  <span className="text-sm font-bold text-foreground">−{formatCurrency(totalWithdrawn)}</span>
-                </div>
-
-                <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-violet-50 border border-violet-200">
-                  <div>
-                    <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">= Net Capital Invested</p>
-                    <p className="text-[10px] text-violet-600">Your skin in the game</p>
-                  </div>
-                  <span className="text-sm font-bold text-violet-700">{formatCurrency(netCapitalInvested)}</span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">
-                      {netProfit >= 0 ? "+ Business Net Profit (YTD)" : "− Business Net Loss (YTD)"}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">Revenue minus all business expenses</p>
-                  </div>
-                  <span className={`text-sm font-bold ${netProfit >= 0 ? "text-emerald-700" : "text-red-600"}`}>
-                    {netProfit >= 0 ? `+${formatCurrency(netProfit)}` : `−${formatCurrency(Math.abs(netProfit))}`}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-blue-50 border border-blue-200">
-                  <div>
-                    <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">= Owner Equity</p>
-                    <p className="text-[10px] text-blue-600">Net capital + profit earned</p>
-                  </div>
-                  <span className="text-sm font-bold text-blue-700">{formatCurrency(totalEquity)}</span>
-                </div>
-
-                {/* Owner pays summary — single line linking up to Owner Pay Dashboard */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">− Owner Pays &amp; Draws (YTD)</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      Distributions taken this year —{" "}
-                      <button
-                        onClick={() => document.getElementById("owner-pay-dashboard")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                        className="text-violet-600 hover:underline font-semibold"
-                      >
-                        View pays ↑
-                      </button>
-                    </p>
-                  </div>
-                  <span className="text-sm font-bold text-foreground">−{formatCurrency(ownerDraws)}</span>
-                </div>
-
-                <div className="border-t border-border" />
-
-                <div className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 ${businessOwesYou >= 0 ? "border-violet-300 bg-violet-50" : "border-red-300 bg-red-50"}`}>
-                  <div>
-                    <p className={`text-xs font-bold uppercase tracking-wide ${businessOwesYou >= 0 ? "text-violet-700" : "text-red-700"}`}>
-                      {businessOwesYou >= 0 ? "= Remaining Owner Equity" : "= Still in the Hole"}
-                    </p>
-                    <p className={`text-[10px] mt-0.5 ${businessOwesYou >= 0 ? "text-violet-600" : "text-red-500"}`}>
-                      {businessOwesYou >= 0
-                        ? "Owner equity after distributions taken"
-                        : "Business hasn't earned back your investment yet"}
-                    </p>
-                  </div>
-                  <span className={`text-xl font-black ${businessOwesYou >= 0 ? "text-violet-700" : "text-red-600"}`}>{formatCurrency(Math.abs(businessOwesYou))}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ── Owner Pay Waterfall ── */}
+      {/* ── Owner Withdrawals ── */}
       {(() => {
         const oa = data?.ownerActivity as { ownerAllocated: number; ownerTaxReserve: number; ownerCashTaken: number; ownerRetained: number; ownerOverWithdrawal: number; ownerDrawTotal: number; ownerContributionsTotal: number } | undefined;
-        if (!oa || (oa.ownerAllocated <= 0 && oa.ownerDrawTotal <= 0 && oa.ownerContributionsTotal <= 0)) return null;
-        const isOverdrawn = oa.ownerOverWithdrawal > 0;
+        if (!oa || oa.ownerDrawTotal <= 0) return null;
         return (
           <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
             <div className="px-5 py-3 bg-muted/40 border-b border-border flex items-center gap-2">
-              <div className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide bg-violet-100 text-violet-700">Owner Pay Waterfall</div>
+              <div className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide bg-violet-100 text-violet-700">Owner Withdrawals</div>
               <span className="text-xs text-muted-foreground ml-1 flex-1">Informational — cash-basis {year}</span>
-              {isOverdrawn && <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-700 uppercase tracking-wide">Over-Withdrawal</span>}
             </div>
-            <div className="p-5 space-y-1">
-              {[
-                { label: "Owner Allocated (50% after 5% growth fund)", value: oa.ownerAllocated, cls: "text-emerald-700" },
-                { label: "− Tax Reserve (25% of allocation)", value: -oa.ownerTaxReserve, cls: "text-amber-700" },
-                { label: "= Take-Home Budget", value: oa.ownerAllocated - oa.ownerTaxReserve, cls: "text-foreground font-bold" },
-                { label: "− Cash Taken (Owner Draws)", value: -oa.ownerCashTaken, cls: "text-foreground" },
-              ].map(({ label, value, cls }) => (
-                <div key={label} className="flex items-center justify-between py-1.5 border-b border-border/40">
-                  <span className="text-sm pl-4 text-muted-foreground">{label}</span>
-                  <span className={`tabular-nums text-sm font-medium ${cls}`}>{formatCurrency(value)}</span>
-                </div>
-              ))}
-              <div className={`flex items-center justify-between py-2.5 px-4 mt-2 rounded-xl border ${isOverdrawn ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"}`}>
-                <span className={`text-xs font-bold uppercase tracking-wide ${isOverdrawn ? "text-red-700" : "text-emerald-700"}`}>
-                  {isOverdrawn ? "⚠ Over-Withdrawal" : "= Retained / Undrawn"}
-                </span>
-                <span className={`tabular-nums text-sm font-bold ${isOverdrawn ? "text-red-700" : "text-emerald-700"}`}>
-                  {formatCurrency(isOverdrawn ? -oa.ownerOverWithdrawal : oa.ownerRetained)}
-                </span>
+            <div className="p-5">
+              <div className="flex items-center justify-between py-2.5 px-4 rounded-xl border border-violet-200 bg-violet-50">
+                <span className="text-sm font-semibold text-violet-800">Withdrawn this year</span>
+                <span className="tabular-nums text-lg font-bold text-violet-800">{formatCurrency(oa.ownerDrawTotal)}</span>
               </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                Owner withdrawals reduce business cash, but are not revenue, business expenses, job costs, profit deductions, or tax deductions.
+              </p>
             </div>
           </div>
         );
       })()}
-
-      {/* ── Add Capital Entry Dialog ── */}
-      {capitalForm && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) setCapitalForm(null); }}>
-          <div className="bg-background rounded-2xl shadow-2xl w-full max-w-sm border border-border">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-              <h3 className="font-bold text-base">Add Capital Entry</h3>
-              <button onClick={() => setCapitalForm(null)} className="text-muted-foreground hover:text-foreground">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!capitalForm) return;
-                setCapitalSaving(true);
-                try {
-                  const raw = parseFloat(capitalForm.amount);
-                  if (isNaN(raw) || raw <= 0) { toast({ title: "Invalid amount", variant: "destructive" }); return; }
-                  const finalAmount = capitalForm.type === "withdrawal" ? -raw : raw;
-                  await createCapitalEntry.mutateAsync({ date: capitalForm.date, description: capitalForm.description.trim(), amount: finalAmount, businessId: capitalBizId, type: capitalForm.type });
-                  setCapitalForm(null);
-                } catch {
-                  toast({ title: "Error", description: "Could not save entry.", variant: "destructive" });
-                } finally {
-                  setCapitalSaving(false);
-                }
-              }}
-              className="p-5 space-y-4"
-            >
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCapitalForm(f => f ? { ...f, type: "injection" } : f)}
-                  className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${capitalForm.type === "injection" ? "bg-emerald-600 text-white border-emerald-600" : "bg-muted text-muted-foreground border-border hover:bg-muted/80"}`}
-                >
-                  + Put In
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCapitalForm(f => f ? { ...f, type: "withdrawal" } : f)}
-                  className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${capitalForm.type === "withdrawal" ? "bg-red-600 text-white border-red-600" : "bg-muted text-muted-foreground border-border hover:bg-muted/80"}`}
-                >
-                  − Take Out
-                </button>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1 text-muted-foreground uppercase tracking-wide">Date</label>
-                <input
-                  type="date"
-                  required
-                  value={capitalForm.date}
-                  onChange={e => setCapitalForm(f => f ? { ...f, date: e.target.value } : f)}
-                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-violet-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1 text-muted-foreground uppercase tracking-wide">Description</label>
-                <input
-                  type="text"
-                  required
-                  placeholder={capitalForm.type === "injection" ? "e.g. Put in from personal checking" : "e.g. Returned to personal savings"}
-                  value={capitalForm.description}
-                  onChange={e => setCapitalForm(f => f ? { ...f, description: e.target.value } : f)}
-                  className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-violet-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1 text-muted-foreground uppercase tracking-wide">Amount</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                  <input
-                    type="number"
-                    required
-                    min="0.01"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={capitalForm.amount}
-                    onChange={e => setCapitalForm(f => f ? { ...f, amount: e.target.value } : f)}
-                    className="w-full pl-7 pr-3 py-2 rounded-xl border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-violet-400"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setCapitalForm(null)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-border text-muted-foreground hover:bg-muted transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={capitalSaving}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                >
-                  {capitalSaving ? "Saving…" : "Save Entry"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ── Direct Job Costs vs Overhead ── */}
       {(() => {
@@ -1826,7 +1529,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
                   </div>
                 )}
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  "Paid out" to you is your owner draw total. "Paid out" to each member is their YTD subcontractor payment total for {year}.
+                  "Paid out" to you is your owner withdrawal total. "Paid out" to each member is their YTD subcontractor payment total for {year}.
                 </p>
               </div>
             )}

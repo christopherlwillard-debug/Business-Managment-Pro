@@ -10,6 +10,7 @@ import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
 import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/productionBilling.js";
 import { z } from "zod/v4";
 import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
 
 const router = Router();
 
@@ -649,13 +650,13 @@ router.get("/:id/profit", async (req, res) => {
     );
     const mileageReimbursementApplied = !hasActualFuelExpense;
     // Owner-pay category set: "Owner Draw", "Owner Compensation", "Owner Withdrawal" are all equity withdrawals.
-    // record-owner-draw writes "Owner Compensation"; admin migrations may also leave "Owner Draw".
-    const OWNER_PAY_CATEGORIES = new Set(["Owner Draw", "Owner Compensation", "Owner Withdrawal"]);
+    // record-owner-draw writes the canonical owner withdrawal ledger; legacy
+    // expense rows may still use "Owner Compensation" or "Owner Draw".
     for (const allocation of allocationRows) {
       jobExpenses += parseFloat(allocation.amount ?? "0");
     }
     for (const exp of expRows) {
-      if (OWNER_PAY_CATEGORIES.has(exp.category ?? "")) {
+      if (isOwnerWithdrawalExpenseCategory(exp.category)) {
         ownerDrawTaken += parseFloat(exp.amount ?? "0");
         continue;
       }
@@ -699,7 +700,7 @@ router.get("/:id/profit", async (req, res) => {
 
     // Actual fuel cost — sum of Fuel/Travel expenses that count toward job profit
     const actualFuelCost = expRows
-      .filter(e => e.category === "Fuel/Travel" && e.countsTowardJobProfit !== false && !OWNER_PAY_CATEGORIES.has(e.category ?? ""))
+      .filter(e => e.category === "Fuel/Travel" && e.countsTowardJobProfit !== false && !isOwnerWithdrawalExpenseCategory(e.category))
       .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
 
     // Net profit uses grossInvoiced (accrual view) — shows job profitability the moment
@@ -891,10 +892,9 @@ router.get("/:id/expenses", async (req, res) => {
     // - Skip subcontractor-linked payroll rows (payroll has its own ledger)
     // - Skip Subcontractor category (goes into sub labor/allocation buckets)
     // - Skip countsTowardJobProfit=false rows (those are audit/travel trail, not job expenses)
-    const OWNER_PAY_CATS = new Set(["Owner Draw", "Owner Compensation", "Owner Withdrawal"]);
     const items = rows
       .filter(r =>
-        !OWNER_PAY_CATS.has(r.category ?? "") &&
+        !isOwnerWithdrawalExpenseCategory(r.category) &&
         r.subcontractorId == null &&
         r.category !== "Subcontractor" &&
         r.countsTowardJobProfit !== false
@@ -1085,7 +1085,7 @@ router.get("/profit-summary", async (req, res) => {
       if (exp.jobId == null) continue;
       const r = result[exp.jobId];
       if (!r) continue;
-      if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(exp.category ?? "")) continue;
+      if (isOwnerWithdrawalExpenseCategory(exp.category)) continue;
        // Payroll-linked expense rows are legacy duplicate bookkeeping. Payroll
        // belongs to sub_payment_records/job_subcontractors, never Job Costs.
        if (exp.subcontractorId != null) {
@@ -2597,9 +2597,9 @@ router.post("/:id/record-owner-draw", async (req, res) => {
       return res.status(404).json({ error: "Job not found or has no business owner" });
     }
     const today = new Date().toISOString().split("T")[0];
-    const description = String(req.body.description ?? `Owner Draw — Job ${jobId}`);
+    const description = String(req.body.description ?? `Owner Withdrawal — Job ${jobId}`);
 
-    // Idempotency: owner pay is one ledger event, so check the owner-pay ledger
+    // Idempotency: an owner withdrawal is one ledger event, so check the ledger
     // rather than the operating-expense table.
     const [existing] = await db.select({ id: ownerCapitalEntriesTable.id })
       .from(ownerCapitalEntriesTable)
@@ -2611,8 +2611,8 @@ router.post("/:id/record-owner-draw", async (req, res) => {
       ));
     if (existing) return res.json({ ok: true, ownerCapitalId: existing.id, alreadyExists: true });
 
-    // Owner pay is an equity withdrawal, not an operating expense. Keep the
-    // canonical negative sign so all Owner Pay surfaces use one ledger.
+    // Owner withdrawals are not operating expenses. Keep the canonical negative
+    // sign so all owner-withdrawal surfaces use one ledger.
     const [entry] = await db.insert(ownerCapitalEntriesTable).values({
       businessId: job.businessId,
       jobId,
@@ -2625,7 +2625,7 @@ router.post("/:id/record-owner-draw", async (req, res) => {
     res.status(201).json({ ok: true, ownerCapitalId: entry.id });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to record owner draw" });
+    res.status(500).json({ error: "Failed to record owner withdrawal" });
   }
 });
 

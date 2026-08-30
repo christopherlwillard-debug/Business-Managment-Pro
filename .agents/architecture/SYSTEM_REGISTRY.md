@@ -15,15 +15,15 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ---
 
-## Owner Pay
+## Owner Withdrawals
 
 - **Table:** `owner_capital_entries`
 - **Schema:** `lib/db/src/schema/owner-capital.ts`
 - **API:** `artifacts/api-server/src/routes/owner-capital.ts`
-- **UI:** `artifacts/contractor-app/src/pages/Accounting.tsx` → Owner Pay Dashboard
+- **UI:** Accounting, Dashboard, Jobs, and Job Payroll → Owner Withdrawals
 - **Reports:** Yes — `artifacts/api-server/src/routes/reports.ts` (ownerCapitalEntriesTable)
-- **Source of truth:** `owner_capital_entries`. Job-linked payments carry a nullable `job_id`. The job Pay Breakdown tab filters by `job_id`; the Accounting page shows all entries.
-- **Rule:** Every owner pay record lives here. No other table may store owner withdrawals. (ADR-001)
+- **Source of truth:** `owner_capital_entries`. Job-linked withdrawals carry a nullable `job_id`. Historical positive contribution rows remain preserved internally.
+- **Rule:** New user-created owner transactions are withdrawals only, stored as canonical negative rows. No expense or parallel ledger may store them. (ADR-001, ADR-014)
 
 ---
 

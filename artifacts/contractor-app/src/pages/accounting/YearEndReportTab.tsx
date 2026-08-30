@@ -369,19 +369,12 @@ ${report.otherIncome.length > 0 ? `
 ${otherIncomeRows}
 </table>` : ""}
 
-${report.ownerActivity && (report.ownerActivity.ownerAllocated > 0 || report.ownerActivity.ownerDrawTotal > 0 || report.ownerActivity.ownerContributionsTotal > 0) ? `
-<h2>Owner Pay Waterfall (Informational)</h2>
-<p style="font-size:10px;color:#64748b;margin:-4px 0 8px">Does not affect net profit. Based on cash-basis paid revenue for ${report.year}.</p>
+${report.ownerActivity && report.ownerActivity.ownerDrawTotal > 0 ? `
+<h2>Owner Withdrawals (Informational)</h2>
+<p style="font-size:10px;color:#64748b;margin:-4px 0 8px">Reduces business cash only. Does not affect revenue, expenses, net profit, job profit, or tax deductions.</p>
 <table>
 <tr><th>Component</th><th class="num">Amount</th></tr>
-${row("Owner Allocated (50% of net after 5% growth fund)", fmt(report.ownerActivity.ownerAllocated), false, true)}
-${row("− Tax Reserve (25% of allocation)", fmt(-report.ownerActivity.ownerTaxReserve), false, true)}
-${row("= Take-Home Budget", fmt(report.ownerActivity.ownerAllocated - report.ownerActivity.ownerTaxReserve), true)}
-${row("− Cash Taken (Owner Draws)", fmt(-report.ownerActivity.ownerCashTaken), false, true)}
-${report.ownerActivity.ownerOverWithdrawal > 0
-  ? `<tr><td style="font-weight:700;color:#dc2626;padding:7px 8px;background:#fef2f2">⚠ Over-Withdrawal</td><td class="num" style="font-weight:700;color:#dc2626;background:#fef2f2">−${fmt(report.ownerActivity.ownerOverWithdrawal)}</td></tr>`
-  : `<tr><td style="font-weight:700;color:#16a34a;padding:7px 8px;background:#f0fdf4">= Retained / Undrawn</td><td class="num" style="font-weight:700;color:#16a34a;background:#f0fdf4">${fmt(report.ownerActivity.ownerRetained)}</td></tr>`}
-${report.ownerActivity.ownerContributionsTotal > 0 ? row("Owner Contributions (capital)", fmt(report.ownerActivity.ownerContributionsTotal), false, true) : ""}
+${row("Withdrawn during the year", fmt(report.ownerActivity.ownerDrawTotal), true)}
 </table>` : ""}
 
 <div class="footer">${esc(report.companyName)} &bull; Tax Year ${report.year} &bull; Cash-Basis Accounting &bull; Prepared by BuildPro &bull; For CPA Use</div>
@@ -1154,37 +1147,20 @@ export default function YearEndReportTab({ year }: { year: number }) {
         </div>}
       </div>
 
-      {/* Owner Pay Waterfall — informational, outside P&L */}
-      {report.ownerActivity && (report.ownerActivity.ownerAllocated > 0 || report.ownerActivity.ownerDrawTotal > 0 || report.ownerActivity.ownerContributionsTotal > 0) && (
+      {/* Owner withdrawals — informational, outside P&L */}
+      {report.ownerActivity && report.ownerActivity.ownerDrawTotal > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
             <DollarSign className="w-4 h-4 text-violet-600" />
-            <h3 className="font-semibold text-sm text-foreground flex-1">Owner Pay Waterfall</h3>
+            <h3 className="font-semibold text-sm text-foreground flex-1">Owner Withdrawals</h3>
             <span className="text-xs text-muted-foreground">Informational — does not affect net profit</span>
-            {report.ownerActivity.ownerOverWithdrawal > 0 && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-700 uppercase tracking-wide">Over-Withdrawal</span>
-            )}
           </div>
           <div className="p-4 space-y-1">
-            {[
-              { label: "Owner Allocated (50% of net after 5% growth fund)", value: report.ownerActivity.ownerAllocated, color: "text-emerald-700" },
-              { label: "− Tax Reserve (25% of allocation)", value: -report.ownerActivity.ownerTaxReserve, color: "text-amber-700" },
-              { label: "= Take-Home Budget", value: report.ownerActivity.ownerAllocated - report.ownerActivity.ownerTaxReserve, color: "text-foreground", bold: true },
-              { label: "− Cash Taken (Owner Draws)", value: -report.ownerActivity.ownerCashTaken, color: "text-foreground" },
-            ].map(({ label, value, color, bold }) => (
-              <div key={label} className="flex justify-between py-1.5 border-b border-border/50">
-                <span className={`text-sm pl-4 ${bold ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{label}</span>
-                <span className={`text-sm tabular-nums font-medium ${color} ${bold ? "font-bold" : ""}`}>{fmtMoney(value)}</span>
-              </div>
-            ))}
-            <div className={`flex justify-between py-3 px-4 mt-2 rounded-lg font-bold text-sm ${report.ownerActivity.ownerOverWithdrawal > 0 ? "bg-red-50 border border-red-200 text-red-700" : "bg-emerald-50 border border-emerald-200 text-emerald-700"}`}>
-              <span>{report.ownerActivity.ownerOverWithdrawal > 0 ? "⚠ Over-Withdrawal" : "= Retained / Undrawn"}</span>
-              <span className="tabular-nums">{fmtMoney(report.ownerActivity.ownerOverWithdrawal > 0 ? -report.ownerActivity.ownerOverWithdrawal : report.ownerActivity.ownerRetained)}</span>
+            <div className="flex justify-between py-3 px-4 rounded-lg font-bold text-sm bg-violet-50 border border-violet-200 text-violet-800">
+              <span>Withdrawn during the year</span>
+              <span className="tabular-nums">{fmtMoney(report.ownerActivity.ownerDrawTotal)}</span>
             </div>
-            <div className="flex justify-between py-1.5 border-t border-border mt-3">
-              <span className="text-sm text-muted-foreground pl-4">Owner Contributions (capital)</span>
-              <span className="text-sm tabular-nums font-medium">{report.ownerActivity.ownerContributionsTotal > 0 ? fmtMoney(report.ownerActivity.ownerContributionsTotal) : "—"}</span>
-            </div>
+            <p className="text-xs text-muted-foreground pt-2">Reduces business cash only; not revenue, an expense, job cost, profit deduction, or tax deduction.</p>
           </div>
         </div>
       )}

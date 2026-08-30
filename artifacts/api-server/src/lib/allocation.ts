@@ -1,4 +1,5 @@
 import { db } from "@workspace/db";
+import { isOwnerWithdrawalExpenseCategory } from "./owner-withdrawals.js";
 import {
   invoicesTable,
   expensesTable,
@@ -169,7 +170,7 @@ export async function computeAllocationSplitPools(
     for (const exp of poolExps.filter((e) => e.jobId === jobId)) {
       // Payroll-linked expense rows are legacy duplicates, not operating costs.
       if (exp.subcontractorId != null) continue;
-       if (["Owner Draw", "Owner Compensation", "Owner Withdrawal", "Owner Pay"].includes(exp.category ?? "")) continue;
+       if (isOwnerWithdrawalExpenseCategory(exp.category)) continue;
       if (exp.countsTowardJobProfit === false) continue;
       if (exp.category === "Subcontractor") {
         flatSubCost += parseFloat(exp.amount ?? "0");

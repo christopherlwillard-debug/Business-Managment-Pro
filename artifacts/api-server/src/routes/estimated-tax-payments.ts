@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
 import { db, estimatedTaxPaymentsTable, invoicesTable, expensesTable, mileageLogsTable, otherIncomeTable, settingsTable } from "@workspace/db";
 import { eq, and, gte, lte, sum } from "drizzle-orm";
 import { wrapAsync } from "./guards";
@@ -107,9 +108,8 @@ async function computeTaxData(year: number, ytd = false): Promise<YearTaxData> {
   const paidRevenue = invoicesResult.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
   const otherIncomeSum = otherIncomeResult[0]?.total ? parseFloat(otherIncomeResult[0].total as string) : 0;
   // Exclude mileage (tracked separately) and owner distributions (equity draws, not deductible expenses).
-  const OWNER_DRAW_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
   const totalExpenses = expensesResult
-    .filter(e => e.category !== "mileage" && !OWNER_DRAW_CATS.includes(e.category ?? ""))
+    .filter(e => e.category !== "mileage" && !isOwnerWithdrawalExpenseCategory(e.category))
     .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
   const mileageDeduction = mileageResult.reduce((total, row) =>
     total + calculateMileageDeduction(row.miles, row.classification, row.date).deduction, 0);

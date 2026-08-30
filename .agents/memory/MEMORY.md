@@ -48,3 +48,4 @@
 - [Award intelligence boundary](award-intelligence-boundary.md) — historical USA Spending awards must stay out of actionable bid APIs, counts, and lifecycle controls
 - [Jobs scheduling boundary](jobs-scheduling-boundary.md) — planning is compact and Jobs-first; only open jobs and actionable incomplete checklist work participate
 - [Orval js-yaml compatibility](orval-js-yaml-compatibility.md) — keep the workspace js-yaml override on secure 4.x; forcing 5.x breaks Orval’s default import
+- [Owner withdrawals model](owner-withdrawals-model.md) — Owner Withdrawals is the only user-facing owner-money concept; historical contributions remain internal in the same ledger

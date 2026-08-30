@@ -184,12 +184,12 @@ const WATERFALL_INVOICE = {
   issueDate: `${YEAR}-06-01`,
 };
 
-// $200 owner draw — excluded from netProfit but counts as ownerCashTaken
+// $200 legacy Owner Pay row — excluded from netProfit but counts as ownerCashTaken
 const OWNER_DRAW_EXP = {
   id: 10,
-  category: "Owner Draw",
+  category: "Owner Pay",
   amount: "200.00",
-  description: "Owner draw",
+  description: "Historical owner withdrawal",
   excludeFromNetProfit: false,
 };
 

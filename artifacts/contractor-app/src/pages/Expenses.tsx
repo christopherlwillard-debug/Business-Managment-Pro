@@ -70,7 +70,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   "Other Travel":          "Other Travel",
   "Utilities":             "Utilities",
   "Other":                 "Other",
-  "Owner Draw":            "Owner Draw (personal distribution)",
+  "Owner Pay":             "Owner Withdrawal (historical owner entry)",
+  "Owner Draw":            "Owner Withdrawal (historical owner entry)",
+  "Owner Compensation":    "Owner Withdrawal (historical owner entry)",
+  "Owner Withdrawal":     "Owner Withdrawal",
 };
 
 export const SCHEDULE_C_LINES: Record<string, string> = {
@@ -3444,21 +3447,21 @@ export default function Expenses() {
                                       onChange={e => setEditingRow(r => r && ({ ...r, notes: e.target.value }))}
                                       className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400"
                                       placeholder="Notes" />
-                                    <label className={`flex items-center gap-1.5 mt-1 ${["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? "opacity-80" : "cursor-pointer"}`}>
+                                    <label className={`flex items-center gap-1.5 mt-1 ${["Owner Pay", "Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? "opacity-80" : "cursor-pointer"}`}>
                                       <input
                                         type="checkbox"
                                         checked={editingRow!.excludeFromNetProfit}
                                         onChange={e => {
-                                          if (!["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "")) {
+                                          if (!["Owner Pay", "Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "")) {
                                             setEditingRow(r => r && ({ ...r, excludeFromNetProfit: e.target.checked }));
                                           }
                                         }}
-                                        disabled={["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "")}
+                                        disabled={["Owner Pay", "Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "")}
                                         className="w-3 h-3 accent-amber-500"
                                       />
                                       <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                                         <EyeOff className="w-2.5 h-2.5" />
-                                        {["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? "Owner Distribution" : "Write-off"}
+                                        {["Owner Pay", "Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? "Owner Withdrawal" : "Write-off"}
                                       </span>
                                     </label>
                                     <div className="flex items-center gap-0.5 mt-1">
@@ -3540,7 +3543,7 @@ export default function Expenses() {
                                     {exp.excludeFromNetProfit && (
                                       <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-amber-200 flex-shrink-0">
                                         <EyeOff className="w-2.5 h-2.5" />
-                                        {["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(exp.category ?? "") ? "Owner Distribution" : "Write-off"}
+                                        {["Owner Pay", "Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(exp.category ?? "") ? "Owner Withdrawal" : "Write-off"}
                                       </span>
                                     )}
                                     {exp.countsTowardJobProfit === false && (
@@ -4361,20 +4364,20 @@ export default function Expenses() {
                   ))}
                 </div>
               </div>
-              <label className={`flex items-center gap-3 py-1 ${["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? "opacity-80" : "cursor-pointer"}`}>
+              <label className={`flex items-center gap-3 py-1 ${["Owner Pay", "Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? "opacity-80" : "cursor-pointer"}`}>
                 <input type="checkbox" checked={editingRow!.excludeFromNetProfit}
                   onChange={e => {
-                    if (!["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "")) {
+                    if (!["Owner Pay", "Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "")) {
                       setEditingRow(r => r && ({ ...r, excludeFromNetProfit: e.target.checked }));
                     }
                   }}
-                  disabled={["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "")}
+                  disabled={["Owner Pay", "Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "")}
                   className="w-4 h-4 accent-amber-500 flex-shrink-0" />
                 <div>
-                  {["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? (
+                  {["Owner Pay", "Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? (
                     <>
-                      <p className="text-sm font-medium flex items-center gap-1.5"><EyeOff className="w-3.5 h-3.5" /> Owner Distribution</p>
-                      <p className="text-xs text-muted-foreground">Owner withdrawals are equity transactions — never a deductible business expense</p>
+                      <p className="text-sm font-medium flex items-center gap-1.5"><EyeOff className="w-3.5 h-3.5" /> Owner Withdrawal</p>
+                      <p className="text-xs text-muted-foreground">Owner withdrawals reduce business cash but are never deductible business expenses</p>
                     </>
                   ) : (
                     <>

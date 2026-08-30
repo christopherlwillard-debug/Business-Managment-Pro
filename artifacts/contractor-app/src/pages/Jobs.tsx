@@ -1414,7 +1414,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const [reimbursementStatus, setReimbursementStatus] = useState<"owed" | "paid">("owed");
   const [reimbursementSaving, setReimbursementSaving] = useState(false);
 
-  // Owner pay ledger — reads from owner_capital_entries filtered by jobId.
+  // Owner withdrawal ledger — reads from owner_capital_entries filtered by jobId.
   // This is the SAME ledger as the Accounting page; entries recorded here
   // automatically appear under "Taken Out" on the Accounting page (ADR-001).
   type OwnerPayEntry = { id: number; jobId: number | null; date: string; description: string; amount: number };
@@ -1441,7 +1441,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     if (isNaN(amt) || amt <= 0) return;
     setDistSaving(true);
     try {
-      const description = distNotes.trim() || `Owner Pay — ${job.title || `Job ${job.id}`}`;
+    const description = distNotes.trim() || `Owner Withdrawal — ${job.title || `Job ${job.id}`}`;
       const res = await fetch(`${BASE}/api/owner-capital`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -1455,9 +1455,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       setDistFormOpen(false);
       setDistAmount("");
       setDistNotes("");
-      toast({ title: "Owner pay recorded", description: `${formatCurrency(amt)} logged` });
+    toast({ title: "Owner withdrawal recorded", description: `${formatCurrency(amt)} logged` });
     } catch (err) {
-      toast({ title: "Failed to record owner pay", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+      toast({ title: "Failed to record owner withdrawal", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
       setDistSaving(false);
     }
@@ -1474,9 +1474,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
         throw new Error((err as any)?.error ?? `Server error ${res.status}`);
       }
       setDistributions(prev => prev.filter(d => d.id !== distId));
-      toast({ title: "Owner pay removed" });
+      toast({ title: "Owner withdrawal removed" });
     } catch (err) {
-      toast({ title: "Failed to remove owner pay", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+      toast({ title: "Failed to remove owner withdrawal", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
       setDeletingDistId(null);
     }
@@ -1739,7 +1739,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     allocationWarning: allocWarning,
   } = waterfall;
   // A reimbursement paid to the business owner is money owed back for a
-  // personal out-of-pocket cost, not profit-based owner pay. Keep it outside
+  // personal out-of-pocket cost, not a profit-based owner withdrawal. Keep it outside
   // the split and tax reserve, and show only the outstanding amount in the
   // settlement total.
   const ownerReimbursement = !mileageIncluded || profit?.mileageReimbursementApplied === false
@@ -2187,7 +2187,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                 </div>
               </div>
 
-              {/* ── Owner Pay Ledger ────────────────────────────────────────── */}
+              {/* ── Owner Withdrawal Ledger ─────────────────────────────────── */}
               {/* Reads from owner_capital_entries filtered by jobId — the same   */}
               {/* ledger as the Accounting page. Entries recorded here appear      */}
               {/* automatically under "Taken Out" on the Accounting page (ADR-001) */}
@@ -2199,13 +2199,13 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                   <div className="rounded-xl border border-violet-200 bg-violet-50/40 overflow-hidden">
                     <div className="px-4 pt-3 pb-2 border-b border-violet-200/60 flex items-center justify-between">
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Owner Pay</p>
-                        <p className="text-[10px] text-violet-600/80 mt-0.5">Tracks how much of your recommended take-home you've transferred · syncs with Accounting page</p>
+                         <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Owner Withdrawals</p>
+                         <p className="text-[10px] text-violet-600/80 mt-0.5">Tracks money withdrawn from the business · syncs with Accounting</p>
                       </div>
                     </div>
                     <div className="px-4 py-3 space-y-3">
                       {distributions.length === 0 && !distFormOpen && (
-                        <p className="text-xs text-muted-foreground text-center py-1">No owner pay recorded for this job yet</p>
+                         <p className="text-xs text-muted-foreground text-center py-1">No owner withdrawals recorded for this job yet</p>
                       )}
                       {distributions.map(d => (
                         <div key={d.id} className="flex items-center gap-2 py-1.5 border-b border-violet-100 last:border-0">
@@ -2294,7 +2294,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                           }}
                           className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-violet-300 text-violet-700 text-xs font-semibold hover:bg-violet-100/60 transition-colors"
                         >
-                          <Plus className="w-3.5 h-3.5" /> Record Owner Pay
+                           <Plus className="w-3.5 h-3.5" /> Record Owner Withdrawal
                         </button>
                       )}
                     </div>

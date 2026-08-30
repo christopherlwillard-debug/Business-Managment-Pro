@@ -99,7 +99,7 @@ describe("GET /jobs/:id/expenses", () => {
         {
           id: 2,
           date: "2026-08-02",
-          category: "Owner Draw",
+          category: "Owner Pay",
           description: "Owner withdrawal",
           amount: "500.00",
           countsTowardJobProfit: true,

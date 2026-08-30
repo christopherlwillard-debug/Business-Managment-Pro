@@ -10,6 +10,10 @@ import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { filterCashReceipts, sumCashReceipts } from "../lib/cash-revenue.js";
 import { calcInvoiceFromStored } from "./invoices.js";
+import {
+  OWNER_WITHDRAWAL_EXPENSE_CATEGORIES,
+  isOwnerWithdrawalExpenseCategory,
+} from "../lib/owner-withdrawals.js";
 
 const router = Router();
 
@@ -263,7 +267,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const undrawnBalance = operationalNetProfit - ownerDrawTotal - subContractorRemaining;
 
     // Profit by business line breakdown — always computed from full (unfiltered) data
-    const OWNER_DRAW_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal", "Owner Pay"];
+    const OWNER_DRAW_CATS = OWNER_WITHDRAWAL_EXPENSE_CATEGORIES;
     const allBusinesses = await db.select({ slug: businessesTable.slug, name: businessesTable.name }).from(businessesTable).orderBy(businessesTable.id);
 
     // Group KPI-period sub payments by business line for the per-BL breakdown.
@@ -291,14 +295,14 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const blSubPayTotal = subPayByBl.get(bl) ?? 0;
       const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + blSubPayTotal;
-      const blOwnerDrawTotal = blExpenses.filter(e => OWNER_DRAW_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const blOwnerDrawTotal = blExpenses.filter(e => isOwnerWithdrawalExpenseCategory(e.category)).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       // Union of owner-draw categories and the excludeFromNetProfit flag.
       // Each expense is excluded at most once even if both conditions apply,
       // preserving the Expense-UI "exclude from net profit" semantics for
       // non-owner expenses while also catching owner draws that predate the flag.
       // Sub payments (blSubPayTotal) are always business costs — never excluded.
       const blExcludedTotal = blExpenses
-        .filter(e => OWNER_DRAW_CATS.includes(e.category ?? "") || !!e.excludeFromNetProfit)
+        .filter(e => isOwnerWithdrawalExpenseCategory(e.category) || !!e.excludeFromNetProfit)
         .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       return {
         businessLine: bl,
@@ -329,8 +333,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       .reduce((s, [, v]) => s + v, 0);
     const unattribExpenseTotal = unattribExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + unattribSubPay;
     // Match the attribution logic: union of owner-category OR excludeFromNetProfit flag
-    const unattribOwnerTotal = unattribExpenses.filter(e => OWNER_DRAW_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-    const unattribExcluded = unattribExpenses.filter(e => OWNER_DRAW_CATS.includes(e.category ?? "") || !!e.excludeFromNetProfit).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const unattribOwnerTotal = unattribExpenses.filter(e => isOwnerWithdrawalExpenseCategory(e.category)).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+    const unattribExcluded = unattribExpenses.filter(e => isOwnerWithdrawalExpenseCategory(e.category) || !!e.excludeFromNetProfit).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     if (unattribRevenue > 0 || unattribExpenseTotal > 0) {
       byBusinessLine.push({
         businessLine: "unattributed",
@@ -380,11 +384,11 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       // Exclude mileage (sourced from mileage_logs), owner distributions (equity, not business costs),
       // and outstanding cost-bookings (cash not yet paid) so the monthly chart matches the
       // top-line net profit formula. Add fixed/allocation sub payments for this month.
-      const MONTHLY_OWNER_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
+      const MONTHLY_OWNER_CATS = OWNER_WITHDRAWAL_EXPENSE_CATEGORIES;
       const mo_subPay = subPayByMonth.get(monthStr) ?? 0;
       const mo_expenses = monthlyExp.filter(e =>
         e.category !== "mileage" &&
-        !MONTHLY_OWNER_CATS.includes(e.category ?? "") &&
+        !isOwnerWithdrawalExpenseCategory(e.category) &&
         !(e.description ?? "").endsWith("(outstanding)") &&
         !e.isWageAdvance
       ).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + mo_subPay;
@@ -622,7 +626,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const accFixedAllocSubPaymentTotal = accFixedAllocSubPayments.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + accFixedAllocSubPaymentTotal;
     const legacyOwnerDrawTotal = nonMileageExpenses
-      .filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal", "Owner Pay"].includes(e.category ?? ""))
+      .filter(e => isOwnerWithdrawalExpenseCategory(e.category))
       .reduce((sum, e) => sum + parseFloat(e.amount ?? "0"), 0);
     // subcontractorId == null guard: belt-and-suspenders in case the DB query misses any
     // sub logs (e.g. businessId filter alone wouldn't exclude business_id=NULL sub records).
@@ -757,7 +761,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     // category chart agrees with totalExpenses.
     const catMap = new Map<string, { category: string; amount: number; count: number }>();
     for (const e of nonMileageExpenses) {
-      if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? "")) continue;
+      if (isOwnerWithdrawalExpenseCategory(e.category)) continue;
       const cat = e.category || "Uncategorized";
       const existing = catMap.get(cat) ?? { category: cat, amount: 0, count: 0 };
       existing.amount += parseFloat(e.amount ?? "0");
@@ -790,9 +794,9 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       }
       return Array.from(map.values()).sort((a, b) => b.amount - a.amount);
     };
-    const OWNER_CATS_ACC = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
-    const directJobExpenses = nonMileageExpenses.filter(e => e.jobId != null && !OWNER_CATS_ACC.includes(e.category ?? ""));
-    const overheadExpenses  = nonMileageExpenses.filter(e => e.jobId == null  && !OWNER_CATS_ACC.includes(e.category ?? ""));
+    const OWNER_CATS_ACC = OWNER_WITHDRAWAL_EXPENSE_CATEGORIES;
+    const directJobExpenses = nonMileageExpenses.filter(e => e.jobId != null && !isOwnerWithdrawalExpenseCategory(e.category));
+    const overheadExpenses  = nonMileageExpenses.filter(e => e.jobId == null  && !isOwnerWithdrawalExpenseCategory(e.category));
     // Sub payments go to directJobCosts (they're always tied to a job).
     // Include them in the Subcontractor slice of directJobCostsByCategory.
     const directJobCosts = directJobExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + accFixedAllocSubPaymentTotal;
@@ -834,7 +838,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       const monthPaidInvs    = invoices.filter(i => i.status === "paid" && filterCashReceipts([i], `${ms}-01`, `${ms}-${lastDay}`).length > 0);
       const monthNonPaidInvs = invoices.filter(i => i.status !== "paid" && (i.issueDate ?? "").startsWith(ms));
       // Owner distributions excluded — they are equity events, not business costs
-      const monthExp = nonMileageExpenses.filter(e => e.date.startsWith(ms) && !OWNER_CATS_ACC.includes(e.category ?? ""));
+      const monthExp = nonMileageExpenses.filter(e => e.date.startsWith(ms) && !isOwnerWithdrawalExpenseCategory(e.category));
       const monthSubPay = accSubPayByMonth.get(ms) ?? 0;
       const monthOther = otherIncomeRows.filter(o => o.date.startsWith(ms));
       const invGross = [...monthPaidInvs, ...monthNonPaidInvs].reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
@@ -860,7 +864,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const allBusinesses = await db.select({ slug: businessesTable.slug, name: businessesTable.name }).from(businessesTable).orderBy(businessesTable.id);
     // Owner distributions are equity events for a single-member LLC, never business costs.
     // Exclude from every business-line expense/profit calculation.
-    const ACCT_OWNER_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
+    const ACCT_OWNER_CATS = OWNER_WITHDRAWAL_EXPENSE_CATEGORIES;
     const knownBlSlugs = new Set(allBusinesses.map(b => b.slug));
     // Group accFixedAllocSubPayments by business line for byBusinessLine breakdown.
     const accSubPayByBl = new Map<string, number>();
@@ -878,7 +882,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       const invoiceGross = blInvoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const invoicePaid = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const otherSum = blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
-      const blOwnerTotal = blExpenses.filter(e => ACCT_OWNER_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const blOwnerTotal = blExpenses.filter(e => isOwnerWithdrawalExpenseCategory(e.category)).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       const blSubPayTotal = accSubPayByBl.get(bl) ?? 0;
       const expSum = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + blSubPayTotal;
       const businessExpSum = expSum - blOwnerTotal;
@@ -903,7 +907,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       const invoiceGross = blInvoices.reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const invoicePaid = blInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
       const otherSum = blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
-      const blOwnerTotal = blExpenses.filter(e => ACCT_OWNER_CATS.includes(e.category ?? "")).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
+      const blOwnerTotal = blExpenses.filter(e => isOwnerWithdrawalExpenseCategory(e.category)).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       const untaggedSubPay = Array.from(accSubPayByBl.entries())
         .filter(([bl]) => bl === "untagged" || !knownBlSlugs.has(bl))
         .reduce((s, [, v]) => s + v, 0);
@@ -924,7 +928,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     }
 
     const ownerDrawRows = nonMileageExpenses
-      .filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? ""))
+      .filter(e => isOwnerWithdrawalExpenseCategory(e.category))
       .map(e => ({ id: e.id, date: e.date, amount: parseFloat(e.amount ?? "0"), description: e.description, notes: e.notes ?? null, vendor: e.vendor ?? null }))
       .sort((a, b) => b.date.localeCompare(a.date));
 
@@ -1051,13 +1055,13 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
 });
 
 // ─── Shared: Tax Profile Config ───────────────────────────────────────────────
-// Drives Owner Activity card labels and accounting disclaimers.
+// Drives the Owner Withdrawals card label and accounting disclaimer.
 // All tax-treatment rules live here — never branch on election name elsewhere.
 export interface TaxProfile {
   taxElection: string;
-  activitySectionTitle: string;  // "Owner Activity" | "Member Activity" | "Shareholder Activity"
-  contributionLabel: string;     // "Owner Contributions" | "Member Contributions" | "Capital Contributions"
-  distributionLabel: string;     // "Owner Draws" | "Member Draws" | "Shareholder Distributions"
+  activitySectionTitle: string;
+  contributionLabel: string;     // retained for response compatibility only
+  distributionLabel: string;
   activityDisclaimer: string;
 }
 
@@ -1066,34 +1070,34 @@ export function getTaxProfile(taxElection: string | null | undefined): TaxProfil
     case "partnership":
       return {
         taxElection: "partnership",
-        activitySectionTitle: "Member Activity",
-        contributionLabel: "Member Contributions",
-        distributionLabel: "Member Draws",
-        activityDisclaimer: "Member draws and contributions affect member equity only. They are not business income or deductible expenses and do not change the partnership's net profit.",
+        activitySectionTitle: "Owner Withdrawals",
+        contributionLabel: "Historical owner contributions",
+        distributionLabel: "Owner Withdrawals",
+        activityDisclaimer: "Owner withdrawals reduce business cash only. They are not income, business expenses, job costs, profit deductions, or tax deductions.",
       };
     case "s_corp":
       return {
         taxElection: "s_corp",
-        activitySectionTitle: "Shareholder Activity",
-        contributionLabel: "Capital Contributions",
-        distributionLabel: "Shareholder Distributions",
-        activityDisclaimer: "Shareholder distributions and capital contributions affect equity only, not net profit. Note: S Corporation officer salaries are deductible business expenses — ensure they are recorded in Expenses.",
+        activitySectionTitle: "Owner Withdrawals",
+        contributionLabel: "Historical owner contributions",
+        distributionLabel: "Owner Withdrawals",
+        activityDisclaimer: "Owner withdrawals reduce business cash only. They are not income, business expenses, job costs, profit deductions, or tax deductions. Officer salaries remain a separate payroll or expense workflow.",
       };
     case "c_corp":
       return {
         taxElection: "c_corp",
-        activitySectionTitle: "Shareholder Activity",
-        contributionLabel: "Capital Contributions",
-        distributionLabel: "Dividends / Distributions",
-        activityDisclaimer: "Dividends and capital contributions affect equity only, not net profit. Note: C Corporation officer salaries are deductible business expenses — ensure they are recorded in Expenses.",
+        activitySectionTitle: "Owner Withdrawals",
+        contributionLabel: "Historical owner contributions",
+        distributionLabel: "Owner Withdrawals",
+        activityDisclaimer: "Owner withdrawals reduce business cash only. They are not income, business expenses, job costs, profit deductions, or tax deductions. Officer salaries remain a separate payroll or expense workflow.",
       };
     default: // sole_prop
       return {
         taxElection: "sole_prop",
-        activitySectionTitle: "Owner Activity",
-        contributionLabel: "Owner Contributions",
-        distributionLabel: "Owner Draws",
-        activityDisclaimer: "Owner draws and owner contributions affect owner equity only. They are not business income or business expenses and do not change net profit.",
+        activitySectionTitle: "Owner Withdrawals",
+        contributionLabel: "Historical owner contributions",
+        distributionLabel: "Owner Withdrawals",
+        activityDisclaimer: "Owner withdrawals reduce business cash only. They are not income, business expenses, job costs, profit deductions, or tax deductions.",
       };
   }
 }
@@ -1427,7 +1431,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     let legacyOwnerDrawTotal = 0;
     for (const e of plExpRows) {
       const cat = e.category || "Other";
-      if (["Owner Draw", "Owner Compensation", "Owner Withdrawal", "Owner Pay"].includes(cat)) {
+      if (isOwnerWithdrawalExpenseCategory(cat)) {
         legacyOwnerDrawTotal += parseFloat(e.amount ?? "0");
         continue;
       }
@@ -1707,7 +1711,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     // already fully captured in jsh auto-expense accruals — counting them would double the cost.
     const nonMileageExpenses = expenses.filter(e =>
       e.category !== "mileage" &&
-      !["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? "") &&
+      !isOwnerWithdrawalExpenseCategory(e.category) &&
       !isOutstandingCostBooking(e) &&
       !e.isWageAdvance
     );
@@ -1860,7 +1864,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     }>();
     for (const e of nonMileageExpenses) {
       // Owner distributions are personal — never a Schedule C deduction.
-      if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(e.category ?? "")) continue;
+      if (isOwnerWithdrawalExpenseCategory(e.category)) continue;
       const cat = (e.category ?? "other").toLowerCase();
       const line = SCHED_C_MAP[cat] ?? "Line 27a – Other";
       const existing = catMap.get(line) ?? { schedCLine: line, amount: 0, count: 0, items: [] };
@@ -1987,7 +1991,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       return sum + (amount < 0 ? Math.abs(amount) : 0);
     }, 0);
     const legacyYeOwnerDrawTotal = expenses
-      .filter(e => ["Owner Draw", "Owner Compensation", "Owner Withdrawal", "Owner Pay"].includes(e.category ?? ""))
+      .filter(e => isOwnerWithdrawalExpenseCategory(e.category))
       .reduce((sum, e) => sum + parseFloat(e.amount ?? "0"), 0);
     const yeOwnerDrawTotal = canonicalYeOwnerDrawTotal > 0 ? canonicalYeOwnerDrawTotal : legacyYeOwnerDrawTotal;
     const yeOwnerCashTaken = yeOwnerDrawTotal;
@@ -2373,26 +2377,30 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
   try {
     const GROWTH_PCT = 0.05;
     const TAX_PCT    = 0.25;
+    const businessId = Number.parseInt(String(req.query.businessId ?? ""), 10);
+    if (!Number.isFinite(businessId)) {
+      return res.status(400).json({ error: "A valid business id is required" });
+    }
 
-    // All jobs (every job gets a row in the breakdown so user can toggle them)
+    // Every query in this summary is scoped to one business. Mixing businesses
+    // here can both misstate totals and cause an edited withdrawal to be moved.
     const allJobs = await db.select({
       id: jobsTable.id,
       title: jobsTable.title,
       jobNumber: jobsTable.jobNumber,
       status: jobsTable.status,
       ownerPayIncluded: jobsTable.ownerPayIncluded,
-    }).from(jobsTable).orderBy(desc(jobsTable.jobNumber), desc(jobsTable.id));
+    }).from(jobsTable)
+      .where(eq(jobsTable.businessId, businessId))
+      .orderBy(desc(jobsTable.jobNumber), desc(jobsTable.id));
 
     const jobIds = allJobs.map(j => j.id);
-    if (jobIds.length === 0) {
-      return res.json({ totalEarned: 0, totalWithdrawn: 0, remaining: 0, jobs: [], withdrawals: [] });
-    }
 
     // Revenue per job — ALL invoices (any status) so every job shows a number
-    const invoiceRows = await db.select({
+    const invoiceRows = jobIds.length > 0 ? await db.select({
       jobId: invoicesTable.jobId,
       total: invoicesTable.total,
-    }).from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds));
+    }).from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)) : [];
 
     const revenueByJob = new Map<number, number>();
     for (const row of invoiceRows) {
@@ -2401,28 +2409,28 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
     }
 
     // Hourly sub labor cost per job
-    const hoursCostRows = await db.select({
+    const hoursCostRows = jobIds.length > 0 ? await db.select({
       jobId: jobSubHoursTable.jobId,
       cost: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
-    }).from(jobSubHoursTable).where(inArray(jobSubHoursTable.jobId, jobIds)).groupBy(jobSubHoursTable.jobId);
+    }).from(jobSubHoursTable).where(inArray(jobSubHoursTable.jobId, jobIds)).groupBy(jobSubHoursTable.jobId) : [];
     const hoursCostByJob = new Map(hoursCostRows.map(r => [r.jobId, parseFloat(r.cost ?? "0")]));
 
     // Fixed sub costs per job
-    const fixedSubRows = await db.select({
+    const fixedSubRows = jobIds.length > 0 ? await db.select({
       jobId: jobSubcontractorsTable.jobId,
       cost: sql<string>`COALESCE(SUM(COALESCE(${jobSubcontractorsTable.fixedAmount}, 0)), 0)`,
     }).from(jobSubcontractorsTable)
       .where(and(inArray(jobSubcontractorsTable.jobId, jobIds), eq(jobSubcontractorsTable.compensationType, "fixed")))
-      .groupBy(jobSubcontractorsTable.jobId);
+      .groupBy(jobSubcontractorsTable.jobId) : [];
     const fixedCostByJob = new Map(fixedSubRows.map(r => [r.jobId, parseFloat(r.cost ?? "0")]));
 
     // Allocation sub percentages per job
-    const allocRows = await db.select({
+    const allocRows = jobIds.length > 0 ? await db.select({
       jobId: jobSubcontractorsTable.jobId,
       totalAllocPct: sql<string>`COALESCE(SUM(COALESCE(${jobSubcontractorsTable.allocationPct}, 0)), 0)`,
     }).from(jobSubcontractorsTable)
       .where(and(inArray(jobSubcontractorsTable.jobId, jobIds), eq(jobSubcontractorsTable.compensationType, "allocation")))
-      .groupBy(jobSubcontractorsTable.jobId);
+      .groupBy(jobSubcontractorsTable.jobId) : [];
     const allocPctByJob = new Map(allocRows.map(r => [r.jobId, parseFloat(r.totalAllocPct ?? "0")]));
 
     // Per-job take-home — same formula as Pay Breakdown panel
@@ -2461,19 +2469,25 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
         amount: ownerCapitalEntriesTable.amount,
         description: ownerCapitalEntriesTable.description,
         source: ownerCapitalEntriesTable.source,
+        businessId: ownerCapitalEntriesTable.businessId,
         jobId: ownerCapitalEntriesTable.jobId,
         expenseId: ownerCapitalEntriesTable.expenseId,
       })
       .from(ownerCapitalEntriesTable)
-      .where(and(sql`${ownerCapitalEntriesTable.amount} < 0`, isNull(ownerCapitalEntriesTable.voidedAt)))
+      .where(and(
+        sql`${ownerCapitalEntriesTable.amount} < 0`,
+        isNull(ownerCapitalEntriesTable.voidedAt),
+        eq(ownerCapitalEntriesTable.businessId, businessId),
+      ))
       .orderBy(desc(ownerCapitalEntriesTable.date));
 
     const withdrawals = withdrawalRows.map(r => ({
       id: `owner-${r.id}`,
       date: r.date,
       amount: Math.abs(parseFloat(r.amount as string)),
-      description: r.description ?? "Owner Pay",
-      source: r.source ?? "Owner Pay",
+      description: r.description ?? "Owner Withdrawal",
+      source: r.source ?? "Owner Withdrawal",
+      businessId: r.businessId,
       jobId: r.jobId ?? null,
       expenseId: r.expenseId ?? null,
     }));
@@ -2514,7 +2528,7 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
     });
   } catch (err) {
     console.error("[owner-pay-summary]", err);
-    res.status(500).json({ error: "Failed to compute owner pay summary" });
+    res.status(500).json({ error: "Failed to compute owner withdrawal summary" });
   }
 });
 

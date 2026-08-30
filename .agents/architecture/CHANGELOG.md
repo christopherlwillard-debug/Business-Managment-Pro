@@ -184,3 +184,10 @@ Created the four-document architecture governance system:
 - Historical owner-pay expenses are migrated idempotently, retain their source link, and are voided only after a matching active capital entry exists.
 - Owner-capital reads exclude voided entries, validate business/job ownership, and require owner access.
 - Dashboard owner withdrawals now use the canonical owner-capital API, while fixed subcontractor payments remain separate from allocation payouts.
+
+### Owner Withdrawals naming standard
+
+- Standardized normal user-facing owner-money workflows on “Owner Withdrawals.”
+- New owner transactions create one canonical negative `owner_capital_entries` row and never an expense row.
+- Removed contribution/capital creation controls and the duplicate equity-withdrawal dialog while preserving historical positive ledger records.
+- Profit & Loss and year-end reports show withdrawals as an informational cash summary outside operating profit and tax deductions.

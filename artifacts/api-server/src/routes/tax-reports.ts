@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
 import { db } from "@workspace/db";
 import {
   invoicesTable, expensesTable, mileageLogsTable,
@@ -271,8 +272,9 @@ router.get("/schedule-c", async (req, res) => {
       const category = exp.category || "other";
 
       // Owner distributions are personal — never Schedule C deductions.
-      // Covers all three variants so none appear in expensesByCategory or deductible totals.
-      if (["Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(category)) continue;
+      // Covers current and legacy variants so none appear in expensesByCategory
+      // or deductible totals.
+      if (isOwnerWithdrawalExpenseCategory(category)) continue;
 
       expensesByCategory[category] = {
         amount: (expensesByCategory[category]?.amount || 0) + amount,

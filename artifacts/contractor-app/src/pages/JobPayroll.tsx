@@ -1220,11 +1220,11 @@ export default function JobPayroll() {
     try {
       const r = await fetch(`${BASE}/api/jobs/${jobId}/record-owner-draw`, {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ amount: ownerTakeHome, description: `Owner Pay — ${job?.title ?? `Job #${jobId}`}` }),
+        body: JSON.stringify({ amount: ownerTakeHome, description: `Owner Withdrawal — ${job?.title ?? `Job #${jobId}`}` }),
       });
       if (!r.ok) throw new Error();
-      toast({ title: "Owner pay recorded", description: `$${fmt(ownerTakeHome)} logged` });
-    } catch { toast({ title: "Failed to record owner pay", variant: "destructive" }); }
+      toast({ title: "Owner withdrawal recorded", description: `$${fmt(ownerTakeHome)} logged` });
+    } catch { toast({ title: "Failed to record owner withdrawal", variant: "destructive" }); }
     finally { setRecordingDraw(false); }
   }
 
@@ -1346,11 +1346,11 @@ export default function JobPayroll() {
             ))
           )}
 
-          {/* ── Owner Draw ── */}
+           {/* ── Owner Withdrawal ── */}
           {ownerTakeHome > 0.01 && (
             <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
               <div className="px-5 pt-4 pb-3">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-2">Owner Pay</p>
+                 <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-2">Owner Withdrawal</p>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Your take-home after {taxReservePct}% tax reserve</p>
@@ -1365,7 +1365,7 @@ export default function JobPayroll() {
                   className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl border-2 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-sm font-bold transition-colors disabled:opacity-50"
                 >
                   <DollarSign className="w-4 h-4" />
-                  {recordingDraw ? "Recording…" : `Record Owner Pay — $${fmt(ownerTakeHome)}`}
+                   {recordingDraw ? "Recording…" : `Record Owner Withdrawal — $${fmt(ownerTakeHome)}`}
                 </button>
               </div>
             </div>

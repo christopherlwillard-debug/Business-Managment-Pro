@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { businessesTable, jobsTable, ownerCapitalEntriesTable, settingsTable } from "@workspace/db/schema";
+import { businessesTable, jobsTable, ownerCapitalEntriesTable } from "@workspace/db/schema";
 import { eq, desc, and, isNull } from "drizzle-orm";
 import { ownerGuard } from "./guards.js";
 
@@ -44,7 +44,7 @@ router.get("/", async (req, res) => {
     }
 
     // Optional job filter — used by the job Pay Breakdown tab to show only
-    // owner pay entries recorded from that specific job.
+    // owner withdrawal entries recorded from that specific job.
     const conditions = [];
     const rawJid = req.query.jobId;
     const jobId = rawJid != null && String(rawJid) !== "" ? parseInt(String(rawJid)) : null;
@@ -75,24 +75,6 @@ router.get("/", async (req, res) => {
       .where(whereClause)
       .orderBy(desc(ownerCapitalEntriesTable.date), desc(ownerCapitalEntriesTable.createdAt));
 
-    // Only run the legacy one-time seed for the full business ledger (no jobId filter).
-    // Never seed for job-scoped requests — an empty result there just means no pay
-    // has been recorded for that job yet, which is the normal starting state.
-    if (entries.length === 0 && jobId == null) {
-      const [settings] = await db.select().from(settingsTable).limit(1);
-      const legacy = parseFloat((settings?.calculatorDefaults as any)?.ownerPersonalInvestment ?? "0") || 0;
-      if (legacy > 0) {
-        const [migrated] = await db.insert(ownerCapitalEntriesTable).values({
-          businessId: businessId ?? null,
-          date: new Date().toISOString().split("T")[0],
-          description: "Initial investment (migrated from previous records)",
-          amount: String(legacy),
-        }).returning();
-        res.json([formatEntry(migrated)]);
-        return;
-      }
-    }
-
     res.json(entries.map(formatEntry));
   } catch (err) {
     console.error(err);
@@ -112,8 +94,8 @@ router.post("/", async (req, res) => {
       return;
     }
     const rawAmount = parseFloat(String(amount));
-    if (amount == null || isNaN(rawAmount)) {
-      res.status(400).json({ error: "Invalid amount" });
+    if (amount == null || !Number.isFinite(rawAmount) || rawAmount <= 0) {
+      res.status(400).json({ error: "Amount must be greater than zero" });
       return;
     }
     let parsedBusinessId = businessId != null && !isNaN(parseInt(String(businessId)))
@@ -139,32 +121,22 @@ router.post("/", async (req, res) => {
       .where(eq(businessesTable.id, parsedBusinessId)).limit(1);
     if (!business) return res.status(404).json({ error: "Business not found" });
 
-    // ── Canonical sign convention (enforced server-side) ────────────────────────
-    // amount > 0 = capital contribution (owner puts money IN)
-    // amount < 0 = withdrawal / distribution (owner takes money OUT)
-    //
-    // Derive source and normalized amount from the caller context:
-    //   • jobId present → Job Financials panel → always a withdrawal (negative)
-    //   • type = 'withdrawal' → Capital Entry Take Out → negative
-    //   • type = 'injection' → Capital Entry Put In → positive
-    //   • legacy: accept signed amount as-is, infer source from sign
+     // New user-facing transactions are withdrawals only. Historical positive
+     // contribution rows remain readable in this ledger, but callers may not
+     // create new contributions or use the old signed-amount fallback.
     let normalizedAmount: number;
     let resolvedSource: string;
 
     if (parsedJobId != null) {
-      // Job Financials: always a withdrawal regardless of sign sent by client
       normalizedAmount = -Math.abs(rawAmount);
       resolvedSource = "job_financials";
     } else if (type === "withdrawal") {
       normalizedAmount = -Math.abs(rawAmount);
       resolvedSource = "capital_entry_withdrawal";
-    } else if (type === "injection") {
-      normalizedAmount = Math.abs(rawAmount);
-      resolvedSource = "capital_entry_injection";
     } else {
-      // Legacy path: client sends signed amount, infer direction from sign
-      normalizedAmount = rawAmount;
-      resolvedSource = rawAmount < 0 ? "capital_entry_withdrawal" : "capital_entry_injection";
+       return res.status(400).json({
+         error: "Only owner withdrawals can be created. Historical contributions remain available for reporting.",
+       });
     }
 
     const [entry] = await db.insert(ownerCapitalEntriesTable).values({

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { isOwnerWithdrawalExpenseCategoryInsensitive } from "../lib/owner-withdrawals.js";
 import { db } from "@workspace/db";
 import { expensesTable, jobExpenseAllocationsTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable, businessTripsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, sql, isNull, or, desc, getTableColumns } from "drizzle-orm";
@@ -12,10 +13,8 @@ import { settingsTable } from "@workspace/db/schema";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
-const OWNER_PAY_CATEGORIES = new Set(["owner draw", "owner compensation", "owner withdrawal", "owner pay"]);
-
 function isOwnerPayCategory(category: unknown): boolean {
-  return typeof category === "string" && OWNER_PAY_CATEGORIES.has(category.trim().toLowerCase());
+  return typeof category === "string" && isOwnerWithdrawalExpenseCategoryInsensitive(category);
 }
 
 router.param("id", (req, res, next, rawId) => {
@@ -397,7 +396,7 @@ router.post("/", async (req, res) => {
 
     if (isOwnerPayCategory(category)) {
       return res.status(400).json({
-        error: "Owner pay is an equity withdrawal, not an operating expense. Record it in Owner Capital.",
+        error: "Owner withdrawals are not operating expenses. Record them through Owner Withdrawals.",
       });
     }
 
@@ -505,7 +504,7 @@ router.put("/:id", async (req, res) => {
     const effectiveCat = category !== undefined ? category : (before.category ?? "");
     if (isOwnerPayCategory(effectiveCat)) {
       return res.status(400).json({
-        error: "Owner pay is managed in Owner Capital. Legacy owner-pay expenses must be migrated and voided, not edited.",
+        error: "Owner withdrawals are managed in their own ledger. Historical owner expense rows must be migrated and voided, not edited.",
       });
     }
 

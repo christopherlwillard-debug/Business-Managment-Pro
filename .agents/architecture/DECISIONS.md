@@ -245,3 +245,22 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-08-24
+
+---
+
+## ADR-014
+
+**Title:** Owner Withdrawals is the only user-facing owner-money workflow
+
+**Decision:** Use “Owner Withdrawals” throughout normal UI and accept only new withdrawals in the existing `owner_capital_entries` ledger. Preserve historical positive contribution records internally, but do not expose contribution, capital, compensation, draw, or equity creation workflows.
+
+**Reason:** A single plain-language concept prevents owner cash transfers from being mistaken for revenue, operating expenses, job costs, profit deductions, or tax deductions while preserving one authoritative audit ledger.
+
+**Rejected Alternatives:**
+- A new owner-withdrawal table or API
+- Continuing separate owner-pay and equity-withdrawal dialogs
+- Creating owner withdrawals as expense rows
+- Deleting or rewriting historical contribution records
+
+**Status:** Accepted
+**Date:** 2026-08-29

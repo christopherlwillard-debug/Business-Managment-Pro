@@ -14,9 +14,11 @@ import {
   jobStartPhotosTable,
   expensesTable,
   subPaymentRecordsTable,
+  ownerCapitalEntriesTable,
 } from "@workspace/db/schema";
-import { eq, asc, lte, ne, and, isNotNull, desc, inArray, isNull, not } from "drizzle-orm";
+import { eq, asc, lte, ne, and, isNotNull, desc, inArray, isNull, not, lt } from "drizzle-orm";
 import { wrapAsync } from "./guards";
+import { OWNER_WITHDRAWAL_EXPENSE_CATEGORIES } from "../lib/owner-withdrawals.js";
 
 const router = Router();
 
@@ -181,12 +183,20 @@ router.get("/continue-working", wrapAsync(async (req, res) => {
 }));
 
 // ─── Recent Activity Feed ──────────────────────────────────────────────────────
-// Aggregates the last 10 events across expenses, invoices, sub payments, owner pay.
+// Aggregates the last 10 events across expenses, invoices, sub payments, and
+// canonical owner withdrawals.
 router.get("/recent-activity", wrapAsync(async (req, res) => {
-  const OWNER_CATS = ["Owner Draw", "Owner Compensation", "Owner Withdrawal"];
+  const OWNER_CATS = OWNER_WITHDRAWAL_EXPENSE_CATEGORIES;
+  const rawBusinessId = req.query.businessId;
+  const businessId = rawBusinessId != null && String(rawBusinessId) !== ""
+    ? Number.parseInt(String(rawBusinessId), 10)
+    : null;
+  if (rawBusinessId != null && (!Number.isFinite(businessId) || businessId == null)) {
+    return res.status(400).json({ error: "Invalid business id" });
+  }
 
   const [expenses, invoicesRows, subPays, ownerPay] = await Promise.all([
-    // Regular expenses (not owner pay, not auto-generated sub hours)
+    // Regular expenses (not owner withdrawals, not auto-generated sub hours)
     db.select({
       id: expensesTable.id,
       description: expensesTable.description,
@@ -198,6 +208,7 @@ router.get("/recent-activity", wrapAsync(async (req, res) => {
       .where(and(
         not(inArray(expensesTable.category, [...OWNER_CATS, "mileage"])),
         isNull(expensesTable.jobSubHoursId),
+        businessId != null ? eq(expensesTable.businessId, businessId) : undefined,
       ))
       .orderBy(desc(expensesTable.createdAt))
       .limit(10),
@@ -213,6 +224,7 @@ router.get("/recent-activity", wrapAsync(async (req, res) => {
     })
       .from(invoicesTable)
       .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
+      .where(businessId != null ? eq(invoicesTable.businessId, businessId) : undefined)
       .orderBy(desc(invoicesTable.createdAt))
       .limit(10),
 
@@ -227,18 +239,24 @@ router.get("/recent-activity", wrapAsync(async (req, res) => {
       .from(subPaymentRecordsTable)
       .leftJoin(subcontractorsTable, eq(subPaymentRecordsTable.subcontractorId, subcontractorsTable.id))
       .leftJoin(jobsTable, eq(subPaymentRecordsTable.jobId, jobsTable.id))
+      .where(businessId != null ? eq(jobsTable.businessId, businessId) : undefined)
       .orderBy(desc(subPaymentRecordsTable.createdAt))
       .limit(5),
 
-    // Recent owner pay
+    // Recent owner withdrawals. The canonical ledger is authoritative; legacy
+    // owner-category expenses are excluded above so an event cannot appear twice.
     db.select({
-      id: expensesTable.id,
-      amount: expensesTable.amount,
-      createdAt: expensesTable.createdAt,
+      id: ownerCapitalEntriesTable.id,
+      amount: ownerCapitalEntriesTable.amount,
+      createdAt: ownerCapitalEntriesTable.createdAt,
     })
-      .from(expensesTable)
-      .where(inArray(expensesTable.category, OWNER_CATS))
-      .orderBy(desc(expensesTable.createdAt))
+      .from(ownerCapitalEntriesTable)
+      .where(and(
+        lt(ownerCapitalEntriesTable.amount, "0"),
+        isNull(ownerCapitalEntriesTable.voidedAt),
+        businessId != null ? eq(ownerCapitalEntriesTable.businessId, businessId) : undefined,
+      ))
+      .orderBy(desc(ownerCapitalEntriesTable.createdAt))
       .limit(5),
   ]);
 
@@ -286,8 +304,8 @@ router.get("/recent-activity", wrapAsync(async (req, res) => {
     ...ownerPay.map(p => ({
       type: "owner_pay",
       icon: "wallet",
-      description: "Owner pay recorded",
-      amount: parseFloat(p.amount ?? "0"),
+      description: "Owner withdrawal recorded",
+      amount: Math.abs(parseFloat(p.amount ?? "0")),
       date: p.createdAt.toISOString(),
       relativeTime: relTime(p.createdAt),
       linkPath: "/accounting",

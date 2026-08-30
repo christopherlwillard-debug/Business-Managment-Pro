@@ -1,7 +1,7 @@
 // Profit & Loss report — owner-draw exclusion regression tests
 //
-// Guards that all three owner-pay category names (Owner Draw, Owner Compensation,
-// Owner Withdrawal) are absent from deductible expense totals and net profit on
+// Guards that all historical owner-withdrawal category names (including the
+// oldest Owner Pay value) are absent from expense totals and net profit on
 // GET /reports/profit-loss.
 //
 // /profit-loss is a third, independent calculation path from /year-end and
@@ -258,13 +258,26 @@ describe("P&L report — owner-draw exclusion from operating expenses and net pr
     expect(res.body.ownerActivity.ownerDrawTotal).toBeCloseTo(300, 10);
   });
 
+  it("'Owner Pay' is excluded from totalOperatingExpenses and netProfit", async () => {
+    const LEGACY_OWNER_PAY = { id: 23, category: "Owner Pay", amount: "275.00", excludeFromNetProfit: false };
+    pushPLSelects([LEGACY_OWNER_PAY, REGULAR_EXP]);
+
+    const res = await request(app).get(`/reports/profit-loss?year=${YEAR}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.totalOperatingExpenses).toBeCloseTo(100, 10);
+    expect(res.body.netProfit).toBeCloseTo(900, 10);
+    expect(res.body.ownerActivity.ownerDrawTotal).toBeCloseTo(275, 10);
+  });
+
   // ── 4. All three names absent from operatingExpenses array ───────────────
 
-  it("all three owner-pay categories are absent from operatingExpenses entries", async () => {
+  it("all historical owner-withdrawal categories are absent from operatingExpenses entries", async () => {
     const draws = [
       { id: 20, category: "Owner Draw",         amount: "500.00", excludeFromNetProfit: false },
       { id: 21, category: "Owner Compensation",  amount: "400.00", excludeFromNetProfit: false },
       { id: 22, category: "Owner Withdrawal",    amount: "300.00", excludeFromNetProfit: false },
+      { id: 23, category: "Owner Pay",           amount: "275.00", excludeFromNetProfit: false },
     ];
     pushPLSelects([...draws, REGULAR_EXP]);
 
@@ -282,8 +295,8 @@ describe("P&L report — owner-draw exclusion from operating expenses and net pr
     expect(res.body.totalOperatingExpenses).toBeCloseTo(100, 10);
     expect(res.body.netProfit).toBeCloseTo(900, 10);
 
-    // Combined ownerDrawTotal = $1 200
-    expect(res.body.ownerActivity.ownerDrawTotal).toBeCloseTo(1200, 10);
+    // Combined ownerDrawTotal = $1,475
+    expect(res.body.ownerActivity.ownerDrawTotal).toBeCloseTo(1475, 10);
   });
 
   // ── 5. Regular expenses are not over-excluded ─────────────────────────────
