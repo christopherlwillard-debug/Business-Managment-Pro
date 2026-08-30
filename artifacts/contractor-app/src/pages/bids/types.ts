@@ -144,8 +144,7 @@ export interface BidOpportunity {
   relevanceReason?:        string | null;
 }
 
-// ── Industrial Qualification Analysis ────────────────────────────────────────
-
+export type NaicsMatch = "exact" | "related" | "none";
 export type ReadinessVerdict = "ready" | "almost_ready" | "not_a_fit" | "needs_review";
 export type QualRequirementTag = "REQUIRED" | "RECOMMENDED" | "UNKNOWN";
 export type QualMeetStatus = "yes" | "no" | "verify" | "unknown";
@@ -257,3 +256,17 @@ export const PIPELINE_STAGES: Array<{ value: BidStage; label: string; color: str
   { value: "lost",      label: "Lost",      color: "text-red-700 dark:text-red-300",         bg: "bg-red-50 dark:bg-red-900/20",         dotColor: "bg-red-400" },
   { value: "no_bid",    label: "No Bid",    color: "text-muted-foreground",                  bg: "bg-muted/40",                          dotColor: "bg-muted-foreground/40" },
 ];
+
+/** Compare a bid code with the business's configured primary NAICS codes. */
+export function getNaicsMatch(
+  bidCode: string | null | undefined,
+  primaryCodes: string[] | null | undefined,
+): NaicsMatch {
+  const bid = bidCode?.trim();
+  const codes = (primaryCodes ?? [])
+    .map((code) => code.trim())
+    .filter((code) => /^\d{6}$/.test(code));
+  if (!bid || !/^\d{6}$/.test(bid) || codes.length === 0) return "none";
+  if (codes.includes(bid)) return "exact";
+  return codes.some((code) => code.slice(0, 3) === bid.slice(0, 3)) ? "related" : "none";
+}

@@ -308,7 +308,23 @@ router.get("/settings", async (req, res) => {
       .where(eq(bidBusinessSettingsTable.businessId, bizId))
       .then((rows) => rows[0] ?? null);
 
-    res.json(settings ?? {
+    const capabilityRows = await db
+      .select({ naicsCodes: bidCapabilityProfilesTable.naicsCodes })
+      .from(bidCapabilityProfilesTable)
+      .where(and(
+        eq(bidCapabilityProfilesTable.businessId, bizId),
+        eq(bidCapabilityProfilesTable.active, true),
+      ));
+    const primaryNaicsCodes = [...new Set(
+      capabilityRows.flatMap((row) => Array.isArray(row.naicsCodes) ? row.naicsCodes : [])
+        .map((code) => String(code).trim())
+        .filter(Boolean),
+    )];
+
+    res.json(settings ? {
+      ...settings,
+      primaryNaicsCodes,
+    } : {
       businessId: bizId,
       profileStatus: "active",
       isSmallBusiness: true,
@@ -316,6 +332,7 @@ router.get("/settings", async (req, res) => {
       isVosb: false,
       isHubzone: false,
       is8a: false,
+      primaryNaicsCodes,
     });
   } catch (err) {
     console.error("[bids] GET /bids/settings error:", err);

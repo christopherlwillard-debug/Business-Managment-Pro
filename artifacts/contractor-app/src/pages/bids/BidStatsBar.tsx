@@ -1,6 +1,6 @@
-import { Shield, Clock, FileText, TrendingUp, Send, Pencil } from "lucide-react";
+import { Shield, Clock, FileText, TrendingUp, Send, Pencil, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { BidOpportunity } from "./types";
+import { getNaicsMatch, type BidOpportunity } from "./types";
 
 function daysUntil(dateStr: string | null): number | null {
   if (!dateStr) return null;
@@ -12,10 +12,12 @@ function daysUntil(dateStr: string | null): number | null {
 
 interface Props {
   bids: BidOpportunity[];
+  primaryNaicsCodes?: string[];
 }
 
-export default function BidStatsBar({ bids }: Props) {
+export default function BidStatsBar({ bids, primaryNaicsCodes = [] }: Props) {
   const activeBids = bids.filter((b) => b.stage !== "no_bid");
+  const naicsMatchCount = activeBids.filter((b) => getNaicsMatch(b.naicsCode, primaryNaicsCodes) !== "none").length;
 
   const sdvosbEligible = activeBids.filter((b) => {
     const s = b.aiSummary;
@@ -64,11 +66,18 @@ export default function BidStatsBar({ bids }: Props) {
       color: bidding > 0 ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground",
       bg:    bidding > 0 ? "bg-orange-50 dark:bg-orange-900/20" : "bg-muted/40",
     },
+    {
+      label: "NAICS Match",
+      value: naicsMatchCount,
+      icon: Target,
+      color: naicsMatchCount > 0 ? "text-violet-600 dark:text-violet-400" : "text-muted-foreground",
+      bg:    naicsMatchCount > 0 ? "bg-violet-50 dark:bg-violet-900/20" : "bg-muted/40",
+    },
   ];
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 md:gap-3">
         {tiles.map(({ label, value, icon: Icon, color, bg }) => (
           <div
             key={label}

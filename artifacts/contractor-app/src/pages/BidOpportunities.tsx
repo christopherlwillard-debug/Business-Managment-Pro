@@ -23,37 +23,14 @@ import AwardsPanel from "./bids/AwardsPanel";
 import BidEducationPanel from "./bids/BidEducationPanel";
 import BidQualificationPanel from "./bids/BidQualificationPanel";
 import type { BidFilter, SourceFilter, CapabilityFilter, GeographyFilter, QualityFilter } from "./bids/BidFilterBar";
-import type { QuickLink, AiSummary, BidOpportunity, BidStage, EducationSummary, BidSourceConnection, IndustrialQualSummary } from "./bids/types";
+import { getNaicsMatch, type QuickLink, type AiSummary, type BidOpportunity, type BidStage, type EducationSummary, type BidSourceConnection, type IndustrialQualSummary } from "./bids/types";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const VIEW_KEY = "bid-view-preference";
-
-// NAICS codes associated with each business type — used to flag "Similar to your work" awards.
-// Keep in sync with the naicsCodes arrays in bid_capability_profiles / bidCapabilitySeeds.ts.
-const BUSINESS_NAICS: Record<string, string[]> = {
-  asphalt_sealing: ["237310"],
-  general_contracting: [
-    // general_contracting capability
-    "236115", "236116", "236118",
-    "238110", "238140", "238160", "238170",
-    "238310", "238320", "238350", "238390", "238990",
-    // flooring capability (adds 238330, 238340)
-    "238330", "238340",
-    // mh_finishing capability (adds 238220)
-    "238220",
-    // site_work capability
-    "238910", "237990", "237110",
-    // waste_hauling capability
-    "562111", "562119", "562910",
-    // industrial_maintenance capability
-    "811310", "332312", "332313", "332410", "332420",
-    "238190", "238290",
-  ],
-};
-
 interface BidSettings {
   isSdvosb?: boolean;
+  primaryNaicsCodes?: string[];
   samLastSuccessAt?: string | null;
   samLastError?: string | null;
   localLastSuccessAt?: string | null;
@@ -462,7 +439,7 @@ export default function BidOpportunities() {
         : pipelineBids;
   const scoreRejectedBids = pipelineBids.filter((b) => b.stage === "score_rejected");
 
-  const profileNaicsCodes = BUSINESS_NAICS[activeBusiness?.type ?? ""] ?? [];
+  const profileNaicsCodes = bidSettings?.primaryNaicsCodes ?? [];
 
   // ── Capability category filter — outermost lens ───────────────────────────
   // Private opportunities (source="private") always appear in the industrial_maintenance view
@@ -586,9 +563,9 @@ export default function BidOpportunities() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
             {bidsToRender.map((bid) => {
-              const bizType = activeBusiness?.type ?? activeBusiness?.slug ?? "";
-              const naicsPool = BUSINESS_NAICS[bizType] ?? Object.values(BUSINESS_NAICS).flat();
-              const naicsMatch = bid.naicsCode ? naicsPool.includes(bid.naicsCode) : undefined;
+              const naicsMatch = bid.naicsCode
+                ? getNaicsMatch(bid.naicsCode, profileNaicsCodes)
+                : undefined;
               return (
               <BidCard
                 key={bid.id}
@@ -720,7 +697,7 @@ export default function BidOpportunities() {
       </div>
 
       {/* ── Stats bar ──────────────────────────────────────────────────────── */}
-      <BidStatsBar bids={pipelineBids} />
+      <BidStatsBar bids={pipelineBids} primaryNaicsCodes={profileNaicsCodes} />
 
       {/* ── Quick Links ─────────────────────────────────────────────────────── */}
       <QuickLinksPanel

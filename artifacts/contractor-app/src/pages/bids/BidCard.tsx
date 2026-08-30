@@ -4,7 +4,7 @@ import {
   Eye, Lock, BadgeCheck, Zap, AlertTriangle, AlertCircle, Wrench, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AiSummary, BidOpportunity, BidStage, SetAsideType, RecommendationLevel, OfficialSourceStatus } from "./types";
+import type { AiSummary, BidOpportunity, BidStage, SetAsideType, RecommendationLevel, OfficialSourceStatus, NaicsMatch } from "./types";
 import { PIPELINE_STAGES } from "./types";
 
 function daysUntil(dateStr: string | null): number | null {
@@ -285,8 +285,8 @@ interface Props {
   /** Show business relevance chips (only meaningful in multi-business context). */
   multipleBusinesses?:   boolean;
   relevantBusinessNames?: string[];
-  /** Whether the bid's NAICS code matches the owner's capability profiles. */
-  naicsMatch?:           boolean;
+  /** How closely the bid's NAICS code matches the business's primary codes. */
+  naicsMatch?:           NaicsMatch;
 }
 
 export default function BidCard({
@@ -478,16 +478,23 @@ export default function BidCard({
       {/* ── Meta row: NAICS · deadline · fit indicator ── */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         {bid.naicsCode && (
-          <span className={cn("text-xs", naicsMatch ? "text-emerald-700 dark:text-emerald-400 font-semibold" : "text-muted-foreground")}>
+          <span className={cn(
+            "text-xs",
+            naicsMatch === "exact" ? "text-emerald-700 dark:text-emerald-400 font-semibold"
+              : naicsMatch === "related" ? "text-blue-700 dark:text-blue-400 font-semibold"
+              : "text-muted-foreground"
+          )}>
             NAICS {bid.naicsCode}
             {naicsMatch !== undefined && (
               <span className={cn(
                 "ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full",
-                naicsMatch
+                naicsMatch === "exact"
                   ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                  : naicsMatch === "related"
+                  ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                   : "bg-slate-100 text-slate-500 dark:bg-slate-800/30 dark:text-slate-400"
               )}>
-                {naicsMatch ? "✓ Match" : "No match"}
+                {naicsMatch === "exact" ? "Exact" : naicsMatch === "related" ? "Related" : "—"}
               </span>
             )}
           </span>
