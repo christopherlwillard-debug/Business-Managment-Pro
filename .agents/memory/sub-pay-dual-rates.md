@@ -6,6 +6,12 @@ description: Schema and flow for work/travel split rates, performance bonus, and
 ## The Rule
 When recording pay for an hourly sub, the client should send `workHours + workRate` (and optionally `travelHours + travelRate`, `bonusAmount`, `advanceAmount`). The server computes `netPaid = (wH×wR) + (tH×tR) + bonus - advance` and stores it as `amount`. Do not send `amount` when using breakdown mode.
 
+An applied advance is prior cash, not a second expense. Gross settled pay is therefore `amount + advanceAmount`; every paid/balance/status/report calculation must use that gross value exactly once. Clear the saved advance draft in the same transaction that records the payment so a later installment cannot reapply it. Advance expense rows remain audit documentation and do not add to aggregate expense totals.
+
+**Why:** Net-only totals made a fully settled worker appear partially paid, while counting the documentation expense added the same advance twice.
+
+**How to apply:** Use active, non-reversed payroll ledger rows for settled totals. Fall back to legacy cached manual pay only when no active ledger row exists.
+
 ## Schema additions (via ensureSubPayDualRateColumns startup migration)
 - `sub_payment_records`: `work_hours`, `work_rate`, `travel_hours`, `travel_rate`, `bonus_amount`, `bonus_note`, `advance_amount`, `advance_note`, `net_paid`
 - `subcontractors`: `travel_pay_rate` — profile-level default travel rate

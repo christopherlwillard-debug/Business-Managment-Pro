@@ -147,7 +147,7 @@ export async function recomputeSubPaid(jobId: number): Promise<boolean> {
     ), 0)`,
     // Authoritative ledger total — avoids relying on potentially-stale amountPaid column
     ledgerPaid: sql<string>`COALESCE((
-      SELECT SUM(spr.amount) FROM sub_payment_records spr
+      SELECT SUM(spr.amount + COALESCE(spr.advance_amount, 0)) FROM sub_payment_records spr
       WHERE spr.job_id = ${jobId}
         AND spr.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
         AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
@@ -590,7 +590,7 @@ router.get("/:id/profit", async (req, res) => {
       // subs as profit split, not labor) keeps its inputs unchanged.
       db.select({
         compType: jobSubcontractorsTable.compensationType,
-        total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), 0)`,
+        total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)), 0)`,
       })
         .from(subPaymentRecordsTable)
         .innerJoin(jobSubcontractorsTable, and(
@@ -1982,13 +1982,22 @@ router.get("/:id/sub-payments", async (req, res) => {
         subcontractorId: jobSubcontractorsTable.subcontractorId,
         subName: subcontractorsTable.name,
         amountOwedOverride: jobSubcontractorsTable.amountOwed,
-        amountPaid: sql<string>`COALESCE((
-          SELECT SUM(spr.amount)
-          FROM sub_payment_records spr
-          WHERE spr.job_id = ${id}
-            AND spr.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
-            AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
-        ), 0)`,
+        amountPaid: sql<string>`CASE
+          WHEN EXISTS (
+            SELECT 1 FROM sub_payment_records spr
+            WHERE spr.job_id = ${id}
+              AND spr.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+              AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+          )
+          THEN COALESCE((
+            SELECT SUM(spr.amount + COALESCE(spr.advance_amount, 0))
+            FROM sub_payment_records spr
+            WHERE spr.job_id = ${id}
+              AND spr.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+              AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+          ), 0)
+          ELSE COALESCE(${jobSubcontractorsTable.amountPaid}, 0)
+        END`,
         paidDate: jobSubcontractorsTable.paidDate,
         paidNotes: jobSubcontractorsTable.paidNotes,
         payRate: subcontractorsTable.payRate,
@@ -2200,7 +2209,7 @@ router.delete("/:id/sub-payments/:paymentId", async (req, res) => {
 
     // Re-aggregate remaining paid total for this sub on this job
     const [remaining] = await db
-      .select({ total: sql<string>`COALESCE(SUM(amount), '0')` })
+      .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)), '0')` })
       .from(subPaymentRecordsTable)
       .where(and(
         eq(subPaymentRecordsTable.jobId, jobId),
@@ -2329,6 +2338,7 @@ router.post("/:id/advances", async (req, res) => {
         jobId,
         subcontractorId: subId,
         businessLine: job?.businessLine ?? null,
+        isWageAdvance: true,
       }).returning({ id: expensesTable.id });
       expenseId = expense.id;
       await db.update(subAdvancesTable).set({ expenseId }).where(eq(subAdvancesTable.id, row.id));
@@ -2550,12 +2560,17 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         agreedOwed != null && effectivePaid < agreedOwed - 0.005 ? "partial" :
         agreedOwed != null && effectivePaid > agreedOwed + 0.005 ? "overpaid" : "paid";
 
-      // 5. Update cached columns — amount_paid is now derived from the ledger SUM
+      // 5. Update cached columns — amount_paid includes both the net payment and
+      // any earlier advance applied by this ledger row. The advance was real cash
+      // already paid, so omitting it makes fully-settled jobs display as partially paid.
       await tx.update(jobSubcontractorsTable).set({
         paymentStatus: newStatus,
         paidAt: newPaidAt,
         lastPaidAt: today,
-        amountPaid: newAccumulated.toFixed(2),
+        amountPaid: effectivePaid.toFixed(2),
+        // An advance is applied once to this payment. Clearing the draft prevents
+        // a later installment from applying the same prior cash payout again.
+        accruedAdvancement: null,
         ...(lockAmountOwed !== undefined ? { amountOwed: lockAmountOwed } : {}),
       }).where(and(
         eq(jobSubcontractorsTable.jobId, jobId),
@@ -2776,7 +2791,7 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
 
     // Ledger subquery — authoritative total paid per sub from sub_payment_records
     const ledgerSubquery = (jobId: number) => sql<string>`COALESCE((
-      SELECT SUM(spr.amount) FROM sub_payment_records spr
+      SELECT SUM(spr.amount + COALESCE(spr.advance_amount, 0)) FROM sub_payment_records spr
       WHERE spr.job_id = ${jobId}
         AND spr.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
         AND (spr.is_reversal IS NULL OR spr.is_reversal = false)

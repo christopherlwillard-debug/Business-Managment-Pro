@@ -41,7 +41,7 @@ export async function computeYtd(subcontractorId: number, year: number, business
   // sub_payment_records: pay-worker payments (new path). Exclude reversals.
   // Filter by businessLine when provided so cross-entity totals aren't combined.
   const [sprRow] = await db
-    .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), 0)` })
+    .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)), 0)` })
     .from(subPaymentRecordsTable)
     .where(
       and(
@@ -130,7 +130,7 @@ router.get("/1099-report", async (req, res) => {
 async function computeAllTimePaid(subcontractorId: number): Promise<number> {
   // sub_payment_records: pay-worker payments (new path). Exclude reversals.
   const [sprRow] = await db
-    .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), 0)` })
+    .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)), 0)` })
     .from(subPaymentRecordsTable)
     .where(
       and(
@@ -550,7 +550,22 @@ router.get("/:id/payment-history", async (req, res) => {
         amountOwedOverride: jobSubcontractorsTable.amountOwed,
         fixedAmount: jobSubcontractorsTable.fixedAmount,
         allocationPct: jobSubcontractorsTable.allocationPct,
-        amountPaid: jobSubcontractorsTable.amountPaid,
+        amountPaid: sql<string>`CASE
+          WHEN EXISTS (
+            SELECT 1 FROM sub_payment_records spr
+            WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
+              AND spr.subcontractor_id = ${subId}
+              AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+          )
+          THEN COALESCE((
+            SELECT SUM(spr.amount + COALESCE(spr.advance_amount, 0))
+            FROM sub_payment_records spr
+            WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
+              AND spr.subcontractor_id = ${subId}
+              AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+          ), 0)
+          ELSE COALESCE(${jobSubcontractorsTable.amountPaid}, 0)
+        END`,
         paidDate: jobSubcontractorsTable.paidDate,
         paidNotes: jobSubcontractorsTable.paidNotes,
         paymentStatus: jobSubcontractorsTable.paymentStatus,

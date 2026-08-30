@@ -104,7 +104,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       // No business-line filter at DB level so the result powers both KPI (filtered in JS) and byBusinessLine.
       // Hourly subs already have auto-expense records (jobSubHoursId IS NOT NULL) — exclude them
       // to avoid double-counting with the expensesTable rows.
-      db.select({ amount: subPaymentRecordsTable.amount, paymentDate: subPaymentRecordsTable.paymentDate, businessLine: subPaymentRecordsTable.businessLine })
+      db.select({ amount: sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)`, paymentDate: subPaymentRecordsTable.paymentDate, businessLine: subPaymentRecordsTable.businessLine })
         .from(subPaymentRecordsTable)
         .innerJoin(jobSubcontractorsTable, and(
           eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
@@ -574,7 +574,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       // via compensationType filter to avoid double-counting with the expensesTable rows.
       // paymentDate and jobId are fetched to power monthlyIncome and directJobCosts breakdowns.
       db.select({
-        amount:      subPaymentRecordsTable.amount,
+        amount:      sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)`,
         businessLine: subPaymentRecordsTable.businessLine,
         paymentDate: subPaymentRecordsTable.paymentDate,
         jobId:       subPaymentRecordsTable.jobId,
@@ -1312,7 +1312,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       // Fixed/allocation sub payments — cash-basis cash out. Hourly subs already have
       // auto-expense records (jobSubHoursId IS NOT NULL), so we only add fixed/allocation here
       // to avoid double-counting.
-      db.select({ amount: subPaymentRecordsTable.amount })
+      db.select({ amount: sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)` })
         .from(subPaymentRecordsTable)
         .innerJoin(jobSubcontractorsTable, and(
           eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
@@ -1652,7 +1652,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       db.select({
         id: subPaymentRecordsTable.id,
         jobId: subPaymentRecordsTable.jobId,
-        amount: subPaymentRecordsTable.amount,
+        amount: sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)`,
         paymentDate: subPaymentRecordsTable.paymentDate,
         description: subPaymentRecordsTable.description,
         subcontractorId: subPaymentRecordsTable.subcontractorId,
@@ -2207,7 +2207,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
       // Fixed/allocation sub payments — authoritative cash-basis cost that accounting uses but
       // the reserve route was previously omitting, causing Reserve to show $9,628.47 higher
       // net profit than Accounting and generating phantom SE tax on an accounting loss.
-      db.select({ amount: subPaymentRecordsTable.amount })
+      db.select({ amount: sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)` })
         .from(subPaymentRecordsTable)
         .innerJoin(jobSubcontractorsTable, and(
           eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),

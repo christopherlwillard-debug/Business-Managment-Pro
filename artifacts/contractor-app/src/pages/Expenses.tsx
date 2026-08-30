@@ -2792,6 +2792,20 @@ export default function Expenses() {
     });
   }, [yearExpenses, searchQuery]);
 
+  // Wage advances remain visible as audit documentation, but the subcontractor's
+  // full labor cost is already represented by payroll/hour records. Counting the
+  // documentation row in these totals would add the same dollars twice.
+  const accountingYearExpenses = useMemo(
+    () => filteredYearExpenses.filter(e => !(e as any).isWageAdvance),
+    [filteredYearExpenses],
+  );
+  const advanceDocumentationTotal = useMemo(
+    () => filteredYearExpenses
+      .filter(e => (e as any).isWageAdvance)
+      .reduce((sum, e) => sum + parseFloat(String(e.amount ?? "0")), 0),
+    [filteredYearExpenses],
+  );
+
   const monthlyGroups = useMemo(() => {
     const groups: Record<string, typeof filteredYearExpenses> = {};
     filteredYearExpenses.forEach(e => {
@@ -2806,7 +2820,9 @@ export default function Expenses() {
       return {
         key: mk,
         expenses: [...groups[mk]].sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "")),
-        total: groups[mk].reduce((s, e) => s + parseFloat(String(e.amount ?? "0")), 0),
+        total: groups[mk]
+          .filter(e => !(e as any).isWageAdvance)
+          .reduce((s, e) => s + parseFloat(String(e.amount ?? "0")), 0),
         label: new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("en-US", {
           month: "long", year: "numeric",
         }),
@@ -2814,7 +2830,7 @@ export default function Expenses() {
     });
   }, [filteredYearExpenses]);
 
-  const yearTotal = filteredYearExpenses.reduce((s, e) => s + parseFloat(String(e.amount ?? "0")), 0);
+  const yearTotal = accountingYearExpenses.reduce((s, e) => s + parseFloat(String(e.amount ?? "0")), 0);
 
   function jumpToTemplate(id: number) {
     setHighlightedTemplateId(id);
@@ -3251,11 +3267,19 @@ export default function Expenses() {
             </span>
             <span className="text-muted-foreground">·</span>
             <span className="font-bold text-foreground">{formatCurrency(yearTotal)} total</span>
-            {filteredYearExpenses.some(e => e.category !== "mileage") && (
+            {accountingYearExpenses.some(e => e.category !== "mileage") && (
               <>
                 <span className="text-muted-foreground">·</span>
                 <span className="text-muted-foreground text-xs">
-                  {formatCurrency(filteredYearExpenses.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(String(e.amount ?? "0")), 0))} excl. mileage
+                  {formatCurrency(accountingYearExpenses.filter(e => e.category !== "mileage").reduce((s, e) => s + parseFloat(String(e.amount ?? "0")), 0))} excl. mileage
+                </span>
+              </>
+            )}
+            {advanceDocumentationTotal > 0 && (
+              <>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-muted-foreground text-xs">
+                  {formatCurrency(advanceDocumentationTotal)} advance documentation not added twice
                 </span>
               </>
             )}

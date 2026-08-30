@@ -112,8 +112,7 @@ function WorkerPayCard({
 
   const owed = computeSubOwed(p, splitPool) ?? p.computedOwed ?? 0;
   const paid    = p.amountPaid ?? 0;
-  const appliedAdvances = (p.paymentHistory ?? []).reduce((s, h) => s + (h.advanceAmount ?? 0), 0);
-  const balance = Math.max(0, owed - paid - appliedAdvances);
+  const balance = Math.max(0, owed - paid);
   const isFullyPaid = p.paymentStatus === "paid" || p.paymentStatus === "overpaid";
   const isOvpd      = p.paymentStatus === "overpaid";
   const isPartial   = p.paymentStatus === "partial";
