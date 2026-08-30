@@ -130,6 +130,34 @@ function formatJobLabel(j: any): string {
   return parts.length ? `${j.title} — ${parts.join(" · ")}` : j.title;
 }
 
+const CLOSED_JOB_STATUSES = new Set(["closed", "completed", "cancelled"]);
+
+function getExpenseJobOptions(jobs: any[] | undefined, expenseDate: string, currentJobId?: string | number | null): any[] {
+  return (jobs ?? []).filter(job => {
+    const status = String(job.status ?? "").toLowerCase();
+    if (!CLOSED_JOB_STATUSES.has(status)) return true;
+
+    // Preserve an existing historical link while editing. Other closed jobs
+    // are available only when the expense date falls within the job dates.
+    if (currentJobId != null && String(job.id) === String(currentJobId)) return true;
+    if (!expenseDate || !job.closedAt) return false;
+    if (job.startDate && expenseDate < job.startDate) return false;
+    return expenseDate <= job.closedAt;
+  });
+}
+
+function isClosedJob(job: any): boolean {
+  return CLOSED_JOB_STATUSES.has(String(job?.status ?? "").toLowerCase());
+}
+
+function formatExpenseJobOptionLabel(job: any, currentJobId?: string | number | null): string {
+  if (!isClosedJob(job)) return formatJobLabel(job);
+  const suffix = currentJobId != null && String(job.id) === String(currentJobId)
+    ? " — Closed (current assignment)"
+    : " — Closed (historical date)";
+  return `${formatJobLabel(job)}${suffix}`;
+}
+
 const FREQUENCY_LABELS: Record<RecurringExpenseFrequency, string> = {
   weekly:    "Weekly",
   biweekly:  "Bi-weekly",
@@ -2637,6 +2665,7 @@ export default function Expenses() {
       } else {
         setPrefillAmount(pa ?? "");
         setPrefillDate(pd ?? "");
+        setFormExpenseDate(pd ?? localDateString());
         setPrefillDesc(pDesc ?? "");
         setPrefillKey(k => k + 1);
         setIsDialogOpen(true);
@@ -2656,6 +2685,7 @@ export default function Expenses() {
   const [excludeFromNetProfit, setExcludeFromNetProfit] = useState(false);
   const [countsTowardJobProfit, setCountsTowardJobProfit] = useState(true);
   const [formJobId, setFormJobId] = useState("");
+  const [formExpenseDate, setFormExpenseDate] = useState(localDateString());
   const [businessLine, setBusinessLine]               = useState<string | undefined>(
     activeBusiness?.slug ?? undefined
   );
@@ -2855,6 +2885,7 @@ export default function Expenses() {
     setMealNumPeople("");
     setPrefillAmount("");
     setPrefillDate("");
+    setFormExpenseDate(localDateString());
     setPrefillDesc("");
     setPrefillNotes("");
     setDialogMode("manual");
@@ -2906,6 +2937,7 @@ export default function Expenses() {
       // Pre-fill form with AI-extracted values
       setPrefillAmount(data.amount != null ? String(data.amount) : "");
       setPrefillDate(data.date || localDateString());
+      setFormExpenseDate(data.date || localDateString());
       setPrefillDesc(data.description || "");
       setPrefillNotes(data.notes || "");
       if (data.vendor) setVendor(data.vendor);
@@ -2927,6 +2959,7 @@ export default function Expenses() {
       }
       setPrefillAmount("");
       setPrefillDate("");
+      setFormExpenseDate(localDateString());
       setPrefillDesc("");
       setPrefillNotes("");
       setPrefillKey(k => k + 1);
@@ -2960,6 +2993,7 @@ export default function Expenses() {
     setTaxAmount("");
     setPrefillAmount("");
     setPrefillDate("");
+    setFormExpenseDate(localDateString());
     setPrefillDesc("");
     setPrefillKey(k => k + 1);
   }
@@ -3458,14 +3492,8 @@ export default function Expenses() {
                                       onChange={e => setEditingRow(r => r && ({ ...r, jobId: e.target.value }))}
                                       className="w-full px-2 py-1 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-amber-400 mt-1">
                                       <option value="">— No job —</option>
-                                      {(jobs ?? []).filter((j: any) => j.status !== "completed" && j.status !== "cancelled")
-                                        .map((j: any) => <option key={j.id} value={String(j.id)}>{formatJobLabel(j)}</option>)}
-                                      {(jobs ?? []).some((j: any) => j.status === "completed" || j.status === "cancelled") && (
-                                        <optgroup label="Closed">
-                                          {(jobs ?? []).filter((j: any) => j.status === "completed" || j.status === "cancelled")
-                                            .map((j: any) => <option key={j.id} value={String(j.id)}>{formatJobLabel(j)}</option>)}
-                                        </optgroup>
-                                      )}
+                                      {getExpenseJobOptions(jobs, editingRow!.date, editingRow!.jobId)
+                                        .map((j: any) => <option key={j.id} value={String(j.id)}>{formatExpenseJobOptionLabel(j, editingRow!.jobId)}</option>)}
                                     </select>
                                     <input type="text" value={editingRow!.notes}
                                       onChange={e => setEditingRow(r => r && ({ ...r, notes: e.target.value }))}
@@ -3904,7 +3932,8 @@ export default function Expenses() {
               <div>
                 <label className="block text-sm font-medium mb-1">Date *</label>
                 <input
-                  name="date" type="date" required defaultValue={prefillDate || localDateString()}
+                   name="date" type="date" required defaultValue={prefillDate || localDateString()}
+                   onChange={e => setFormExpenseDate(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
                 />
               </div>
@@ -3955,7 +3984,8 @@ export default function Expenses() {
                 else if (!newJobId) setCountsTowardJobProfit(true);
               }} className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none">
                 <option value="">— None (Overhead) —</option>
-                {jobs?.map(j => <option key={j.id} value={j.id}>{formatJobLabel(j)}</option>)}
+                 {getExpenseJobOptions(jobs, formExpenseDate)
+                   .map(j => <option key={j.id} value={j.id}>{formatExpenseJobOptionLabel(j)}</option>)}
               </select>
             </div>
 
@@ -4354,14 +4384,8 @@ export default function Expenses() {
                   onChange={e => setEditingRow(r => r && ({ ...r, jobId: e.target.value }))}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background outline-none">
                   <option value="">— No job linked —</option>
-                  {(jobs ?? []).filter((j: any) => j.status !== "completed" && j.status !== "cancelled")
-                    .map((j: any) => <option key={j.id} value={String(j.id)}>{formatJobLabel(j)}</option>)}
-                  {(jobs ?? []).some((j: any) => j.status === "completed" || j.status === "cancelled") && (
-                    <optgroup label="Closed">
-                      {(jobs ?? []).filter((j: any) => j.status === "completed" || j.status === "cancelled")
-                        .map((j: any) => <option key={j.id} value={String(j.id)}>{formatJobLabel(j)}</option>)}
-                    </optgroup>
-                  )}
+                  {getExpenseJobOptions(jobs, editingRow!.date, editingRow!.jobId)
+                    .map((j: any) => <option key={j.id} value={String(j.id)}>{formatExpenseJobOptionLabel(j, editingRow!.jobId)}</option>)}
                 </select>
               </div>
               <div>
