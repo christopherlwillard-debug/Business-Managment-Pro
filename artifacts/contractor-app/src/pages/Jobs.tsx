@@ -5932,10 +5932,9 @@ function JobFormDialog({
     const client = clients.find(candidate => String(candidate.id) === clientId);
     if (!client || (!client.address && !client.city && !client.state)) return;
 
-    // This is intentionally a one-time default. A partially filled or existing
-    // lot address belongs to the job and must not be overwritten.
+    // Lot-model work is performed at the client's address. Selecting Lot Model
+    // or changing the client intentionally replaces the job-site location.
     setFormState(current => {
-      if (current.address.trim() || current.city.trim()) return current;
       return {
         ...current,
         address: client.address ?? "",
@@ -5944,6 +5943,24 @@ function JobFormDialog({
       };
     });
   }
+
+  // Existing lot-model jobs can open with the client and placement already
+  // selected, so there is no button click to trigger the address fill. Keep
+  // this effect dependent on the actual client address fields so it also runs
+  // when the client list finishes loading.
+  const selectedClient = clients.find(candidate => String(candidate.id) === form.clientId);
+  useEffect(() => {
+    if (!open) return;
+    fillLotAddressFromClient(form.clientId);
+  }, [
+    open,
+    form.clientId,
+    selectedWorkflow,
+    mfhConstructionType,
+    selectedClient?.address,
+    selectedClient?.city,
+    selectedClient?.state,
+  ]);
 
   function showFormError(msg: string) {
     setError(msg);
