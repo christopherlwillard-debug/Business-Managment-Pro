@@ -897,6 +897,12 @@ export const ListInvoicesResponseItem = zod.object({
   stripePaidAt: zod.string().nullish(),
   squarePaymentLinkUrl: zod.string().nullish(),
   stripePaymentLinkUrl: zod.string().nullish(),
+  remindersSentAt: zod.array(zod.string()).optional(),
+  acceptedAt: zod.string().nullish(),
+  sentAt: zod.string().nullish(),
+  sentMethod: zod.string().nullish(),
+  voidedAt: zod.string().nullish(),
+  voidReason: zod.string().nullish(),
   createdAt: zod.string(),
 });
 export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem);
@@ -907,15 +913,17 @@ export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem);
 export const CreateInvoiceBody = zod.object({
   clientId: zod.number().nullish(),
   jobId: zod.number().nullish(),
-  status: zod.enum([
-    "draft",
-    "sent",
-    "paid",
-    "overdue",
-    "cancelled",
-    "partiallyPaid",
-    "approved",
-  ]),
+  status: zod
+    .enum([
+      "draft",
+      "sent",
+      "paid",
+      "overdue",
+      "cancelled",
+      "partiallyPaid",
+      "approved",
+    ])
+    .optional(),
   issueDate: zod.string(),
   dueDate: zod.string().nullish(),
   taxRate: zod.number().nullish(),
@@ -1015,6 +1023,12 @@ export const GetInvoiceResponse = zod.object({
   stripePaidAt: zod.string().nullish(),
   squarePaymentLinkUrl: zod.string().nullish(),
   stripePaymentLinkUrl: zod.string().nullish(),
+  remindersSentAt: zod.array(zod.string()).optional(),
+  acceptedAt: zod.string().nullish(),
+  sentAt: zod.string().nullish(),
+  sentMethod: zod.string().nullish(),
+  voidedAt: zod.string().nullish(),
+  voidReason: zod.string().nullish(),
   createdAt: zod.string(),
 });
 
@@ -1028,15 +1042,17 @@ export const UpdateInvoiceParams = zod.object({
 export const UpdateInvoiceBody = zod.object({
   clientId: zod.number().nullish(),
   jobId: zod.number().nullish(),
-  status: zod.enum([
-    "draft",
-    "sent",
-    "paid",
-    "overdue",
-    "cancelled",
-    "partiallyPaid",
-    "approved",
-  ]),
+  status: zod
+    .enum([
+      "draft",
+      "sent",
+      "paid",
+      "overdue",
+      "cancelled",
+      "partiallyPaid",
+      "approved",
+    ])
+    .optional(),
   issueDate: zod.string(),
   dueDate: zod.string().nullish(),
   taxRate: zod.number().nullish(),
@@ -1129,6 +1145,12 @@ export const UpdateInvoiceResponse = zod.object({
   stripePaidAt: zod.string().nullish(),
   squarePaymentLinkUrl: zod.string().nullish(),
   stripePaymentLinkUrl: zod.string().nullish(),
+  remindersSentAt: zod.array(zod.string()).optional(),
+  acceptedAt: zod.string().nullish(),
+  sentAt: zod.string().nullish(),
+  sentMethod: zod.string().nullish(),
+  voidedAt: zod.string().nullish(),
+  voidReason: zod.string().nullish(),
   createdAt: zod.string(),
 });
 
@@ -1213,6 +1235,12 @@ export const UpdateInvoiceStatusResponse = zod.object({
   stripePaidAt: zod.string().nullish(),
   squarePaymentLinkUrl: zod.string().nullish(),
   stripePaymentLinkUrl: zod.string().nullish(),
+  remindersSentAt: zod.array(zod.string()).optional(),
+  acceptedAt: zod.string().nullish(),
+  sentAt: zod.string().nullish(),
+  sentMethod: zod.string().nullish(),
+  voidedAt: zod.string().nullish(),
+  voidReason: zod.string().nullish(),
   createdAt: zod.string(),
 });
 
@@ -1286,6 +1314,114 @@ export const VoidInvoiceResponse = zod.object({
   stripePaidAt: zod.string().nullish(),
   squarePaymentLinkUrl: zod.string().nullish(),
   stripePaymentLinkUrl: zod.string().nullish(),
+  remindersSentAt: zod.array(zod.string()).optional(),
+  acceptedAt: zod.string().nullish(),
+  sentAt: zod.string().nullish(),
+  sentMethod: zod.string().nullish(),
+  voidedAt: zod.string().nullish(),
+  voidReason: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary List chronological invoice communication and delivery events
+ */
+export const ListInvoiceCommunicationsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListInvoiceCommunicationsResponseItem = zod.object({
+  id: zod.number(),
+  invoiceId: zod.number(),
+  businessId: zod.number().nullish(),
+  eventType: zod.enum([
+    "initial_invoice",
+    "resend_invoice",
+    "manual_reminder",
+    "automatic_reminder",
+    "payment_link_email",
+    "payment_receipt",
+  ]),
+  channel: zod.string(),
+  provider: zod.string(),
+  status: zod.enum(["pending", "accepted", "failed", "unknown"]),
+  recipient: zod.string().nullish(),
+  subject: zod.string().nullish(),
+  requestedAt: zod.string(),
+  completedAt: zod.string().nullish(),
+  source: zod.string(),
+  actorUserId: zod.string().nullish(),
+  actorName: zod.string().nullish(),
+  providerMessageId: zod.string().nullish(),
+  providerThreadId: zod.string().nullish(),
+  errorCode: zod.string().nullish(),
+  errorMessage: zod.string().nullish(),
+  metadata: zod.record(zod.string(), zod.unknown()).nullish(),
+  idempotencyKey: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListInvoiceCommunicationsResponse = zod.array(
+  ListInvoiceCommunicationsResponseItem,
+);
+
+/**
+ * @summary Create a pending browser invoice communication attempt
+ */
+export const PrepareInvoiceCommunicationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const PrepareInvoiceCommunicationBody = zod.object({
+  eventType: zod.enum(["initial_invoice", "resend_invoice"]).optional(),
+  recipient: zod.string().nullish(),
+  subject: zod.string().nullish(),
+  metadata: zod.record(zod.string(), zod.unknown()).nullish(),
+});
+
+/**
+ * @summary Finalize a pending invoice communication attempt
+ */
+export const FinalizeInvoiceCommunicationParams = zod.object({
+  id: zod.coerce.number(),
+  eventId: zod.coerce.number(),
+});
+
+export const FinalizeInvoiceCommunicationBody = zod.object({
+  status: zod.enum(["accepted", "failed", "unknown"]),
+  providerMessageId: zod.string().nullish(),
+  providerThreadId: zod.string().nullish(),
+  errorCode: zod.string().nullish(),
+  errorMessage: zod.string().nullish(),
+});
+
+export const FinalizeInvoiceCommunicationResponse = zod.object({
+  id: zod.number(),
+  invoiceId: zod.number(),
+  businessId: zod.number().nullish(),
+  eventType: zod.enum([
+    "initial_invoice",
+    "resend_invoice",
+    "manual_reminder",
+    "automatic_reminder",
+    "payment_link_email",
+    "payment_receipt",
+  ]),
+  channel: zod.string(),
+  provider: zod.string(),
+  status: zod.enum(["pending", "accepted", "failed", "unknown"]),
+  recipient: zod.string().nullish(),
+  subject: zod.string().nullish(),
+  requestedAt: zod.string(),
+  completedAt: zod.string().nullish(),
+  source: zod.string(),
+  actorUserId: zod.string().nullish(),
+  actorName: zod.string().nullish(),
+  providerMessageId: zod.string().nullish(),
+  providerThreadId: zod.string().nullish(),
+  errorCode: zod.string().nullish(),
+  errorMessage: zod.string().nullish(),
+  metadata: zod.record(zod.string(), zod.unknown()).nullish(),
+  idempotencyKey: zod.string().nullish(),
   createdAt: zod.string(),
 });
 
@@ -2540,6 +2676,12 @@ export const GetDashboardStatsResponse = zod.object({
       stripePaidAt: zod.string().nullish(),
       squarePaymentLinkUrl: zod.string().nullish(),
       stripePaymentLinkUrl: zod.string().nullish(),
+      remindersSentAt: zod.array(zod.string()).optional(),
+      acceptedAt: zod.string().nullish(),
+      sentAt: zod.string().nullish(),
+      sentMethod: zod.string().nullish(),
+      voidedAt: zod.string().nullish(),
+      voidReason: zod.string().nullish(),
       createdAt: zod.string(),
     }),
   ),

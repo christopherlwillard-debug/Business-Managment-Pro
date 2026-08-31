@@ -22,7 +22,6 @@ import {
   Paperclip, CreditCard, Copy, ExternalLink, Bell, Search, Send, Mail,
 } from "lucide-react";
 import { InvoicePanel } from "@/components/InvoicePanel";
-import { InvoiceDeliveryHistory } from "@/components/InvoiceDeliveryHistory";
 
 const STATUS_COLORS: Record<string, string> = {
   paid:          "bg-emerald-100 text-emerald-700",
@@ -187,6 +186,11 @@ export default function Invoices() {
       const res = await fetch(`${base}/api/invoices/${invoiceId}/send-reminder`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send reminder");
+      if (data.uncertain) {
+        queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+        toast({ title: "Reminder sent, history not finalized", description: data.warning, variant: "destructive" });
+        return;
+      }
       toast({ title: "Reminder sent!", description: `Reminder email sent for invoice ${invoiceNumber}.` });
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
       if (paymentLinkResult?.invoiceId === invoiceId) {
@@ -207,7 +211,6 @@ export default function Invoices() {
   const [voidTarget,   setVoidTarget]   = useState<any | null>(null);
   const [voiding,      setVoiding]      = useState(false);
   const [showVoided,   setShowVoided]   = useState(false);
-  const [reminderHistoryInvoiceId, setReminderHistoryInvoiceId] = useState<number | null>(null);
 
   useEffect(() => {
     const openId = searchParams.get("openInvoice");
@@ -510,6 +513,7 @@ export default function Invoices() {
                       ? inv.remindersSentAt.filter((timestamp: unknown): timestamp is string => typeof timestamp === "string")
                       : [];
                     const hasInitialEmail = Boolean(inv.sentAt);
+                    const lastReminderAt = remindersSentAt.at(-1);
                     return (
                     <tr key={inv.id}
                       onClick={() => setViewInvoice(inv)}
@@ -529,19 +533,19 @@ export default function Invoices() {
                           {hasInitialEmail && (
                             <span
                               className="flex items-center text-[10px] text-blue-600"
-                              title={`Payment link email sent ${new Date(inv.sentAt).toLocaleString()}`}
-                              aria-label={`Payment link email sent ${new Date(inv.sentAt).toLocaleString()}`}
+                              title={`Initial invoice communication accepted ${new Date(inv.sentAt).toLocaleString()}`}
+                              aria-label={`Initial invoice communication accepted ${new Date(inv.sentAt).toLocaleString()}`}
                             >
                               <Mail className="w-3 h-3" />
                             </span>
                           )}
-                          <InvoiceDeliveryHistory
-                            invoiceNumber={inv.invoiceNumber}
-                            remindersSentAt={remindersSentAt}
-                            isOpen={reminderHistoryInvoiceId === inv.id}
-                            onToggle={() => setReminderHistoryInvoiceId(current => current === inv.id ? null : inv.id)}
-                          />
                         </div>
+                        {(hasInitialEmail || lastReminderAt) && (
+                          <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] font-normal text-muted-foreground">
+                            {hasInitialEmail && <span>Sent {new Date(inv.sentAt).toLocaleDateString()}</span>}
+                            {lastReminderAt && <span>Last reminder {new Date(lastReminderAt).toLocaleDateString()}</span>}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">{formatDate(inv.issueDate)}</td>
                       <td className="px-6 py-4">
@@ -616,7 +620,7 @@ export default function Invoices() {
                                   onClick={() => handleSendReminder(inv.id, inv.invoiceNumber)}
                                   disabled={sendingReminderId === inv.id}
                                   className="text-muted-foreground hover:text-blue-600 transition-colors disabled:opacity-40"
-                                  title="Resend invoice email"
+                                  title="Send reminder"
                                 >
                                   {sendingReminderId === inv.id
                                     ? <span className="text-xs animate-pulse">…</span>

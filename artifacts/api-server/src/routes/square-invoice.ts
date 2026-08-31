@@ -4,6 +4,7 @@ import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspac
 import { eq, getTableColumns } from "drizzle-orm";
 import { createSquarePaymentLink, deleteSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendInvoiceEmail } from "../lib/invoiceEmail";
+import { sendAndRecordInvoiceCommunication } from "../lib/invoiceCommunication";
 import { assignInvoiceNumberIfNeeded } from "./invoices";
 
 const router = Router();
@@ -114,14 +115,29 @@ router.post("/:id/payment-link", async (req, res) => {
     } else {
       try {
         const invWithLink = { ...updated, squarePaymentLinkUrl: url } as any;
-        await sendInvoiceEmail(
-          invWithLink,
-          settings ?? {},
-          inv.clientEmail,
-          `Your Invoice ${displayNumber} from ${companyName} — Payment Link`,
-          `Hi ${inv.clientName || "there"},\n\nYour invoice ${displayNumber} is ready. Please use the button below to pay securely online.\n\nThank you for your business!`,
+        const emailResult = await sendAndRecordInvoiceCommunication(
+          {
+            invoiceId: id,
+            eventType: "payment_link_email",
+            channel: "email",
+            provider: "pending",
+            recipient: inv.clientEmail,
+            subject: `Your Invoice ${displayNumber} from ${companyName} — Payment Link`,
+            source: "automatic",
+            metadata: { paymentLinkUrl: url },
+          },
+          () => sendInvoiceEmail(
+            invWithLink,
+            settings ?? {},
+            inv.clientEmail!,
+            `Your Invoice ${displayNumber} from ${companyName} — Payment Link`,
+            `Hi ${inv.clientName || "there"},\n\nYour invoice ${displayNumber} is ready. Please use the button below to pay securely online.\n\nThank you for your business!`,
+          ),
         );
-        emailSent = true;
+        emailSent = emailResult.finalized;
+        if (!emailResult.finalized) {
+          emailWarning = "Payment link was created and the provider accepted the email, but delivery history could not be finalized. Check the invoice timeline before retrying.";
+        }
       } catch (emailErr: unknown) {
         const msg = emailErr instanceof Error ? emailErr.message : "Unknown error";
         emailWarning = `Payment link created but email failed: ${msg}`;

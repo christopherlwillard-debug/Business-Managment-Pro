@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import { sendEmail } from "./sendEmail.js";
+import { sendEmail, type EmailSendResult } from "./sendEmail.js";
 import { launchBrowser } from "./launchBrowser.js";
 
 export interface InvoiceEmailInv {
@@ -182,7 +182,7 @@ export async function sendInvoiceEmail(
   subject: string,
   message?: string,
   extraAttachments?: ExtraAttachment[],
-): Promise<void> {
+): Promise<EmailSendResult> {
   const photoAttachments = (extraAttachments ?? []).filter(a => a.mimeType.startsWith("image/"));
   let photoSummary: string | undefined;
   if (photoAttachments.length > 0) {
@@ -221,7 +221,7 @@ export async function sendInvoiceEmail(
       attachments.push({ filename: extra.filename, content: extra.buffer, contentType: extra.mimeType });
     }
 
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: `"${settings.companyName || "BuildPro"}" <${settings.companyEmail || settings.smtpUser}>`,
       to,
       subject,
@@ -229,13 +229,17 @@ export async function sendInvoiceEmail(
       text,
       attachments,
     });
+    return {
+      provider: "smtp",
+      messageId: info.messageId ?? null,
+    };
   } else {
     // Gmail integration only supports a single attachment; bundle all PDFs
     // by sending separate calls if there are extras, or use the first one.
     // For simplicity: if there are extra attachments, send the invoice PDF first
     // then append extras as additional sendEmail calls with the same thread context.
     // Better approach: encode multiple parts via a helper that supports multipart/mixed with N attachments.
-    await sendEmailWithAttachments({
+    return sendEmailWithAttachments({
       to,
       subject,
       html,
@@ -260,23 +264,21 @@ async function sendEmailWithAttachments(opts: {
   html: string;
   text: string;
   attachments: MultiAttachment[];
-}): Promise<void> {
+}): Promise<EmailSendResult> {
   const { to, subject, html, text, attachments } = opts;
 
   if (attachments.length === 0) {
-    await sendEmail({ to, subject, html, text });
-    return;
+    return sendEmail({ to, subject, html, text });
   }
 
   // Use the first attachment via sendEmail's single-attachment path,
   // then build a raw multipart/mixed message manually for multiple attachments.
   if (attachments.length === 1) {
     const a = attachments[0];
-    await sendEmail({
+    return sendEmail({
       to, subject, html, text,
       attachment: { filename: a.filename, mimeType: a.mimeType, base64Data: a.buffer.toString("base64") },
     });
-    return;
   }
 
   // Multiple attachments: build a raw RFC 2822 multipart/mixed message
@@ -345,4 +347,13 @@ async function sendEmailWithAttachments(opts: {
     const body = await response.text();
     throw new Error(`Gmail send failed (${response.status}): ${body}`);
   }
+  const result = await response.json().catch(() => ({})) as {
+    id?: string;
+    threadId?: string;
+  };
+  return {
+    provider: "gmail",
+    messageId: result.id ?? null,
+    threadId: result.threadId ?? null,
+  };
 }

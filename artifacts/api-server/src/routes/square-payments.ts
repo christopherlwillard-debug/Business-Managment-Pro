@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { invoicesTable, settingsTable, squarePaymentsTable } from "@workspace/db/schema";
 import { eq, desc, and, ne } from "drizzle-orm";
 import { sendEmail, escapeHtml } from "../lib/sendEmail";
+import { sendAndRecordInvoiceCommunication } from "../lib/invoiceCommunication";
 
 const router = Router();
 
@@ -112,11 +113,34 @@ router.post("/square/record-payment", async (req, res) => {
 <p>Thank you for your business!<br/><strong>${escapeHtml(companyName)}</strong></p>
 `;
 
-        await sendEmail({
-          to: customerEmail,
-          subject: `Receipt from ${companyName} — ${amount}`,
-          html,
-        });
+        if (invoiceId) {
+          const receiptResult = await sendAndRecordInvoiceCommunication(
+            {
+              invoiceId,
+              eventType: "payment_receipt",
+              channel: "email",
+              provider: "pending",
+              recipient: customerEmail,
+              subject: `Receipt from ${companyName} — ${amount}`,
+              source: "automatic",
+              metadata: { squarePaymentId, amountCents },
+            },
+            () => sendEmail({
+              to: customerEmail,
+              subject: `Receipt from ${companyName} — ${amount}`,
+              html,
+            }),
+          );
+          if (!receiptResult.finalized) {
+            console.warn("Square receipt sent but invoice communication history could not be finalized:", receiptResult.finalizationError);
+          }
+        } else {
+          await sendEmail({
+            to: customerEmail,
+            subject: `Receipt from ${companyName} — ${amount}`,
+            html,
+          });
+        }
       } catch (emailErr) {
         console.error("Failed to send Square receipt email:", emailErr);
       }

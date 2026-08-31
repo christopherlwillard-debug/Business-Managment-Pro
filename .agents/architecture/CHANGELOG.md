@@ -199,3 +199,11 @@ Created the four-document architecture governance system:
 - Added canonical job planning fields and the `job_readiness_conditions` audit-history table for internal, business-scoped blockers.
 - Job list scoping now uses canonical `business_id`, using `business_line` only for null-owned legacy rows.
 - Checklist progress now uses one fractional calculation across detailed, summary, public, and subcontractor views; production scope updates the applied checklist evidence in place.
+
+## 2026-08-31
+
+### Invoice communication history
+
+- Added the append-only `invoice_communication_events` table and compatibility-safe backfill from legacy invoice send/reminder fields.
+- Added pending/finalized communication APIs and provider/message metadata for server email, browser Gmail, reminders, payment-link emails, and payment receipts.
+- Added the invoice detail communication timeline and compact sent/reminder summaries without changing accounting, payment, invoice lifecycle, Jobs, or Route Planner behavior.

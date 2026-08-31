@@ -1,60 +1,50 @@
-import { describe, expect, it, vi } from "vitest";
-import { Children, createElement, isValidElement, type ReactElement } from "react";
+import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { InvoiceDeliveryHistory } from "./InvoiceDeliveryHistory";
+import type { InvoiceCommunicationEvent } from "@workspace/api-client-react";
 
-const timestamps = ["2026-08-24T10:30:00.000Z", "2026-08-25T11:45:00.000Z"];
-
-function getButton(element: ReactElement) {
-  const button = Children.toArray(element.props.children)[0];
-  if (!isValidElement(button)) throw new Error("Expected reminder button");
-  return button;
-}
-
-function indicator(props: {
-  invoiceNumber?: string;
-  remindersSentAt: string[];
-  isOpen: boolean;
-  onToggle: () => void;
-}) {
-  return createElement(InvoiceDeliveryHistory, props);
-}
+const event: InvoiceCommunicationEvent = {
+  id: 1,
+  invoiceId: 42,
+  eventType: "initial_invoice",
+  channel: "gmail",
+  provider: "gmail",
+  status: "accepted",
+  requestedAt: "2026-08-24T10:30:00.000Z",
+  completedAt: "2026-08-24T10:30:01.000Z",
+  source: "user",
+  recipient: "client@example.com",
+  subject: "Invoice INV-100",
+  providerMessageId: "gmail-message-1",
+  createdAt: "2026-08-24T10:30:00.000Z",
+};
 
 describe("InvoiceDeliveryHistory", () => {
-  it("renders the reminder count and timestamps without rendering anything for empty history", () => {
-    const openMarkup = renderToStaticMarkup(InvoiceDeliveryHistory({
+  it("renders a chronological event timeline with provider metadata", () => {
+    const markup = renderToStaticMarkup(InvoiceDeliveryHistory({
       invoiceNumber: "INV-100",
-      remindersSentAt: timestamps,
-      isOpen: true,
-      onToggle: () => {},
-    })!);
-    const compactMarkup = renderToStaticMarkup(InvoiceDeliveryHistory({
-      invoiceNumber: "INV-101",
-      remindersSentAt: [],
-      isOpen: false,
-      onToggle: () => {},
-    })!);
+      events: [event],
+    }));
 
-    expect(openMarkup).toContain('aria-label="2 reminders sent"');
-    expect(openMarkup).toContain("Reminder history");
-    expect(openMarkup).toContain("INV-100");
-    expect(compactMarkup).toBe("");
+    expect(markup).toContain("Communication &amp; delivery");
+    expect(markup).toContain("Invoice sent");
+    expect(markup).toContain("Accepted by provider");
+    expect(markup).toContain("client@example.com");
+    expect(markup).toContain("gmail-message-1");
   });
 
-  it("stops row navigation and toggles history when the bell is clicked", () => {
-    const onToggle = vi.fn();
-    const element = InvoiceDeliveryHistory({
-      invoiceNumber: "INV-100",
-      remindersSentAt: timestamps,
-      isOpen: false,
-      onToggle,
-    })!;
-    const button = getButton(element);
-    const stopPropagation = vi.fn();
+  it("renders loading and empty states safely", () => {
+    const loadingMarkup = renderToStaticMarkup(InvoiceDeliveryHistory({
+      invoiceNumber: "INV-101",
+      events: [],
+      isLoading: true,
+    }));
+    const emptyMarkup = renderToStaticMarkup(InvoiceDeliveryHistory({
+      invoiceNumber: "INV-102",
+      events: [],
+    }));
 
-    button.props.onClick({ stopPropagation });
-
-    expect(stopPropagation).toHaveBeenCalledOnce();
-    expect(onToggle).toHaveBeenCalledOnce();
+    expect(loadingMarkup).toContain("Loading history");
+    expect(emptyMarkup).toContain("No invoice communications recorded yet.");
   });
 });

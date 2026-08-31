@@ -52,6 +52,18 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ---
 
+## Job Expense Allocations
+
+- **Table:** `job_expense_allocations`
+- **Schema:** `lib/db/src/schema/job-expense-allocations.ts`
+- **API:** `artifacts/api-server/src/routes/jobs.ts`, `expenses.ts`
+- **UI:** Jobs financial views and expense allocation controls
+- **Reports:** Derived job-cost attribution only; the source expense remains the accounting ledger row.
+- **Source of truth:** `expenses` owns the transaction; this table owns a business-scoped distribution of an existing expense across jobs.
+- **Rule:** Never treat an allocation as a second expense or duplicate it in cash-basis reports.
+
+---
+
 ## Mileage
 
 - **Tables:** `mileage_logs`, `mileage_imports`
@@ -108,7 +120,9 @@ Before implementing any financial, schema, or business logic feature — consult
 - **UI:** `artifacts/contractor-app/src/pages/Invoices.tsx`
 - **Reports:** Yes — revenue, collected, outstanding calculations in reports.ts
 - **Source of truth:** `invoices` for invoice revenue, plus `other_income` for explicitly recorded non-invoice cash receipts. Each report must apply the source’s approved accounting treatment exactly once.
+- **Communication history:** `invoice_communication_events` records append-only invoice delivery attempts and provider outcomes; it has no accounting or payment authority.
 - **Rule:** Invoice revenue and non-invoice cash receipts must not be duplicated. Job profit includes only `other_income` rows explicitly linked to that job; unmatched rows remain aggregate/tax revenue only.
+- **Communication rule:** Preserve `sentAt`, `sentMethod`, and `remindersSentAt` for compatibility, but use the communication event timeline for complete history. Provider acceptance is not inbox delivery.
 
 ---
 

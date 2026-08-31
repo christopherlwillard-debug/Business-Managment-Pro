@@ -45,6 +45,12 @@ export interface Invoice {
   stripePaidAt?: string | null;
   squarePaymentLinkUrl?: string | null;
   stripePaymentLinkUrl?: string | null;
+  remindersSentAt?: string[];
+  acceptedAt?: string | null;
+  sentAt?: string | null;
+  sentMethod?: string | null;
+  voidedAt?: string | null;
+  voidReason?: string | null;
   createdAt: string;
   [key: string]: unknown;
 }

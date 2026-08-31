@@ -3,6 +3,8 @@ import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, ne } from "drizzle-orm";
 import { sendInvoiceEmail } from "../lib/invoiceEmail";
+import { sendAndRecordInvoiceCommunication } from "../lib/invoiceCommunication";
+import { reminderEligibilityError, reminderMessage } from "../lib/invoiceReminderPolicy";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -20,6 +22,7 @@ async function processInvoiceReminders() {
     const invoices = await db
       .select({
         id: invoicesTable.id,
+        status: invoicesTable.status,
         invoiceNumber: invoicesTable.invoiceNumber,
         issueDate: invoicesTable.issueDate,
         dueDate: invoicesTable.dueDate,
@@ -37,6 +40,7 @@ async function processInvoiceReminders() {
         createdAt: invoicesTable.createdAt,
         clientName: clientsTable.name,
         clientEmail: clientsTable.email,
+        reminderOptOut: clientsTable.reminderOptOut,
       })
       .from(invoicesTable)
       .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
@@ -45,7 +49,6 @@ async function processInvoiceReminders() {
           ne(invoicesTable.status, "paid"),
           ne(invoicesTable.status, "cancelled"),
           ne(invoicesTable.status, "draft"),
-          eq(clientsTable.reminderOptOut, false),
         )
       );
 
@@ -56,8 +59,16 @@ async function processInvoiceReminders() {
 
     for (const inv of invoices) {
       if (!inv.clientEmail) continue;
-      if (!inv.invoiceNumber) {
-        console.warn(`[invoice-reminders] Skipping invoice id=${inv.id} — no invoice number (draft not yet issued)`);
+      const eligibilityError = reminderEligibilityError({
+        status: inv.status,
+        invoiceNumber: inv.invoiceNumber,
+        clientEmail: inv.clientEmail,
+        reminderOptOut: inv.reminderOptOut,
+      });
+      if (eligibilityError) {
+        if (eligibilityError !== "This client has opted out of invoice reminders.") {
+          console.warn(`[invoice-reminders] Skipping invoice id=${inv.id}: ${eligibilityError}`);
+        }
         continue;
       }
 
@@ -113,29 +124,36 @@ async function processInvoiceReminders() {
         const subject = `Reminder: Invoice ${inv.invoiceNumber ?? "N/A"} — Payment Due (${companyName})`;
 
         // Template branching: Square link = "Pay Now" button; everything else = plain contact reminder
-        const hasSquareLink = !!inv.squarePaymentLinkUrl;
-        const totalDisplay = `$${parseFloat(inv.total ?? "0").toFixed(2)}`;
-
-        let message: string;
-        if (hasSquareLink) {
-          message = `Hi ${inv.clientName || "there"},\n\nThis is a friendly reminder that invoice ${inv.invoiceNumber} (${totalDisplay}) is still outstanding. Please use the button below to pay securely online.\n\nThank you for your business!`;
-        } else {
-          const contactLines: string[] = [];
-          if (companyPhone) contactLines.push(`Phone: ${companyPhone}`);
-          if (companyEmail) contactLines.push(`Email: ${companyEmail}`);
-          const contactBlock = contactLines.length > 0 ? `\n\n${contactLines.join("\n")}` : "";
-          message = `Hi ${inv.clientName || "there"},\n\nThis is a friendly reminder that invoice ${inv.invoiceNumber} issued on ${inv.issueDate} for ${totalDisplay} is still outstanding. Please contact us to arrange payment.${contactBlock}\n\nThank you for your business!`;
-        }
+        const hasPaymentLink = Boolean(inv.squarePaymentLinkUrl || inv.stripePaymentLinkUrl);
+        const message = reminderMessage(inv, companyName, companyPhone, companyEmail, hasPaymentLink);
 
         // For non-Square invoices, null out any Stripe link so the email template
         // does not render a "Pay Now" button — plain reminder only.
-        const invForEmail = hasSquareLink
+        const invForEmail = hasPaymentLink
           ? { ...inv, invoiceNumber: inv.invoiceNumber ?? "" }
           : { ...inv, invoiceNumber: inv.invoiceNumber ?? "", squarePaymentLinkUrl: null, stripePaymentLinkUrl: null };
 
-        await sendInvoiceEmail(invForEmail, settings, inv.clientEmail, subject, message);
+        const deliveryResult = await sendAndRecordInvoiceCommunication(
+          {
+            invoiceId: inv.id,
+            eventType: "automatic_reminder",
+            channel: "email",
+            provider: "pending",
+            recipient: inv.clientEmail,
+            subject,
+            source: "automatic",
+            metadata: { hasPaymentLink, reminderNumber: reminderNum },
+          },
+          () => sendInvoiceEmail(invForEmail, settings, inv.clientEmail!, subject, message),
+        );
+        if (!deliveryResult.finalized) {
+          console.error(`[invoice-reminders] Provider accepted invoice ${inv.invoiceNumber}, but event finalization failed: ${deliveryResult.finalizationError}`);
+          continue;
+        }
 
-        const newTimestamp = new Date().toISOString();
+        const newTimestamp = deliveryResult.event.completedAt instanceof Date
+          ? deliveryResult.event.completedAt.toISOString()
+          : new Date().toISOString();
         const updatedReminders = [...remindersSentAt, newTimestamp];
 
         await db
@@ -143,7 +161,7 @@ async function processInvoiceReminders() {
           .set({ remindersSentAt: updatedReminders })
           .where(eq(invoicesTable.id, inv.id));
 
-        console.log(`[invoice-reminders] Reminder #${reminderNum} sent for invoice ${inv.invoiceNumber} to ${inv.clientEmail} (squareLink=${hasSquareLink}, anchor=${inv.dueDate ? "dueDate" : "createdAt"})`);
+        console.log(`[invoice-reminders] Reminder #${reminderNum} sent for invoice ${inv.invoiceNumber} to ${inv.clientEmail} (paymentLink=${hasPaymentLink}, anchor=${inv.dueDate ? "dueDate" : "createdAt"})`);
       } catch (err) {
         console.error(`[invoice-reminders] Failed to send reminder for invoice ${inv.invoiceNumber}:`, err);
       }

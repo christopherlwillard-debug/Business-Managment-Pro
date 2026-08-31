@@ -606,6 +606,80 @@ paths:
               schema:
                 $ref: "#/components/schemas/Invoice"
 
+  /invoices/{id}/communications:
+    get:
+      operationId: listInvoiceCommunications
+      tags: [invoices]
+      summary: List chronological invoice communication and delivery events
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice communication events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InvoiceCommunicationEvent"
+    post:
+      operationId: prepareInvoiceCommunication
+      tags: [invoices]
+      summary: Create a pending browser invoice communication attempt
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareInvoiceCommunicationRequest"
+      responses:
+        "201":
+          description: Pending communication event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceCommunicationEvent"
+
+  /invoices/{id}/communications/{eventId}/finalize:
+    post:
+      operationId: finalizeInvoiceCommunication
+      tags: [invoices]
+      summary: Finalize a pending invoice communication attempt
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinalizeInvoiceCommunicationRequest"
+      responses:
+        "200":
+          description: Finalized communication event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceCommunicationEvent"
+
   /invoices/tax-report:
     get:
       operationId: getInvoiceTaxReport
@@ -2247,9 +2321,72 @@ components:
         stripePaidAt: { type: string, nullable: true }
         squarePaymentLinkUrl: { type: string, nullable: true }
         stripePaymentLinkUrl: { type: string, nullable: true }
+        remindersSentAt:
+          type: array
+          items: { type: string }
+        acceptedAt: { type: string, nullable: true }
+        sentAt: { type: string, nullable: true }
+        sentMethod: { type: string, nullable: true }
+        voidedAt: { type: string, nullable: true }
+        voidReason: { type: string, nullable: true }
         createdAt:
           type: string
       required: [id, invoiceNumber, status, issueDate, subtotal, total, createdAt]
+
+    InvoiceCommunicationEvent:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: integer }
+        invoiceId: { type: integer }
+        businessId: { type: integer, nullable: true }
+        eventType:
+          type: string
+          enum: [initial_invoice, resend_invoice, manual_reminder, automatic_reminder, payment_link_email, payment_receipt]
+        channel: { type: string }
+        provider: { type: string }
+        status:
+          type: string
+          enum: [pending, accepted, failed, unknown]
+        recipient: { type: string, nullable: true }
+        subject: { type: string, nullable: true }
+        requestedAt: { type: string }
+        completedAt: { type: string, nullable: true }
+        source: { type: string }
+        actorUserId: { type: string, nullable: true }
+        actorName: { type: string, nullable: true }
+        providerMessageId: { type: string, nullable: true }
+        providerThreadId: { type: string, nullable: true }
+        errorCode: { type: string, nullable: true }
+        errorMessage: { type: string, nullable: true }
+        metadata: { type: object, nullable: true, additionalProperties: true }
+        idempotencyKey: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, invoiceId, eventType, channel, provider, status, requestedAt, source, createdAt]
+
+    PrepareInvoiceCommunicationRequest:
+      type: object
+      additionalProperties: true
+      properties:
+        eventType:
+          type: string
+          enum: [initial_invoice, resend_invoice]
+        recipient: { type: string, nullable: true }
+        subject: { type: string, nullable: true }
+        metadata: { type: object, nullable: true, additionalProperties: true }
+
+    FinalizeInvoiceCommunicationRequest:
+      type: object
+      additionalProperties: true
+      properties:
+        status:
+          type: string
+          enum: [accepted, failed, unknown]
+        providerMessageId: { type: string, nullable: true }
+        providerThreadId: { type: string, nullable: true }
+        errorCode: { type: string, nullable: true }
+        errorMessage: { type: string, nullable: true }
+      required: [status]
 
     InvoiceAttachment:
       type: object
@@ -2335,7 +2472,7 @@ components:
           nullable: true
           items:
             $ref: "#/components/schemas/InvoiceAttachment"
-      required: [issueDate, status]
+      required: [issueDate]
 
     TaxReportRow:
       type: object

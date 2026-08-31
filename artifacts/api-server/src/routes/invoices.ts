@@ -4,17 +4,33 @@ import path from "path";
 import fs from "fs";
 import sharp from "sharp";
 import { launchBrowser } from "../lib/launchBrowser.js";
-import { sendInvoiceEmail, type InvoiceEmailSettings } from "../lib/invoiceEmail";
+import { sendInvoiceEmail, type ExtraAttachment, type InvoiceEmailSettings } from "../lib/invoiceEmail";
 import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
 import { generateMaterialsPdfBuffer } from "../lib/generateMaterialsPdf.js";
 import { db } from "@workspace/db";
-import { invoicesTable, clientsTable, jobsTable, settingsTable, businessesTable, type Business } from "@workspace/db/schema";
+import {
+  invoicesTable,
+  clientsTable,
+  jobsTable,
+  settingsTable,
+  businessesTable,
+  invoiceCommunicationEventsTable,
+  type Business,
+} from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, inArray, ne, getTableColumns, sql } from "drizzle-orm";
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { syncMaterialsToJobInvoice } from "./material-lists.js";
 import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
 import { calculateInvoiceTotals } from "@workspace/api-zod";
+import {
+  createPendingInvoiceCommunication,
+  finalizeInvoiceCommunication,
+  sendAndRecordInvoiceCommunication,
+  updateCompatibilitySentFields,
+  type InvoiceCommunicationType,
+} from "../lib/invoiceCommunication";
+import { reminderEligibilityError, reminderMessage } from "../lib/invoiceReminderPolicy";
 
 const router = Router();
 
@@ -130,6 +146,7 @@ const invoiceSelect = {
   clientState: clientsTable.state,
   clientZip: clientsTable.zip,
   clientNotes: clientsTable.notes,
+  reminderOptOut: clientsTable.reminderOptOut,
   jobTitle: jobsTable.title,
   jobCity: jobsTable.city,
   jobState: jobsTable.state,
@@ -519,14 +536,127 @@ router.post("/:id/mark-sent", async (req, res) => {
     if (current.status !== "approved" && current.status !== "sent") {
       return res.status(400).json({ error: `Invoice must be in Approved or Sent status to mark as sent.` });
     }
-    await db.update(invoicesTable)
-      .set({ status: "sent", sentAt: new Date(), sentMethod: "manual" })
-      .where(eq(invoicesTable.id, id));
+    const user = (req as any).user as { id?: string; firstName?: string; lastName?: string } | undefined;
+    const actorName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || null;
+    await markInvoiceAsSentWithHistory(id, {
+      channel: "manual",
+      provider: "manual",
+      actorUserId: user?.id ?? null,
+      actorName,
+    });
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     res.json(fmt(withJoins));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to mark invoice as sent" });
+  }
+});
+
+async function markInvoiceAsSentWithHistory(
+  invoiceId: number,
+  actor: { channel: string; provider: string; actorUserId?: string | null; actorName?: string | null },
+) {
+  const event = await createPendingInvoiceCommunication({
+    invoiceId,
+    eventType: "initial_invoice",
+    channel: actor.channel,
+    provider: actor.provider,
+    source: "user",
+    actorUserId: actor.actorUserId,
+    actorName: actor.actorName,
+  });
+  await db.update(invoiceCommunicationEventsTable)
+    .set({
+      status: "accepted",
+      provider: actor.provider,
+      completedAt: new Date(),
+    })
+    .where(and(
+      eq(invoiceCommunicationEventsTable.id, event.id),
+      eq(invoiceCommunicationEventsTable.invoiceId, invoiceId),
+    ));
+  await updateCompatibilitySentFields(invoiceId, actor.provider === "manual" ? "manual" : actor.channel);
+}
+
+router.get("/:id/communications", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid invoice id" });
+    const [invoice] = await db.select({ id: invoicesTable.id }).from(invoicesTable).where(eq(invoicesTable.id, id));
+    if (!invoice) return res.status(404).json({ error: "Invoice not found" });
+    const events = await db.select().from(invoiceCommunicationEventsTable)
+      .where(eq(invoiceCommunicationEventsTable.invoiceId, id))
+      .orderBy(invoiceCommunicationEventsTable.requestedAt);
+    res.json(events);
+  } catch (err) {
+    console.error("Invoice communication history error:", err);
+    res.status(500).json({ error: "Failed to load invoice communication history" });
+  }
+});
+
+router.post("/:id/communications/prepare", async (req, res) => {
+  try {
+    const invoiceId = Number(req.params.id);
+    if (!Number.isInteger(invoiceId)) return res.status(400).json({ error: "Invalid invoice id" });
+    const [invoice] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, invoiceId));
+    if (!invoice) return res.status(404).json({ error: "Invoice not found" });
+    const eventType = (req.body?.eventType ?? (invoice.sentAt ? "resend_invoice" : "initial_invoice")) as InvoiceCommunicationType;
+    if (!["initial_invoice", "resend_invoice"].includes(eventType)) {
+      return res.status(400).json({ error: "Browser email attempts must be an initial invoice or resend event." });
+    }
+    const user = (req as any).user as { id?: string; firstName?: string; lastName?: string } | undefined;
+    const event = await createPendingInvoiceCommunication({
+      invoiceId,
+      eventType,
+      channel: "gmail",
+      provider: "gmail",
+      recipient: typeof req.body?.recipient === "string" ? req.body.recipient : null,
+      subject: typeof req.body?.subject === "string" ? req.body.subject : null,
+      source: "user",
+      actorUserId: user?.id ?? null,
+      actorName: [user?.firstName, user?.lastName].filter(Boolean).join(" ") || null,
+      metadata: typeof req.body?.metadata === "object" && req.body.metadata ? req.body.metadata : {},
+    });
+    res.status(201).json(event);
+  } catch (err) {
+    console.error("Prepare invoice communication error:", err);
+    res.status(500).json({ error: "Failed to prepare invoice communication" });
+  }
+});
+
+router.post("/:id/communications/:eventId/finalize", async (req, res) => {
+  try {
+    const invoiceId = Number(req.params.id);
+    const eventId = Number(req.params.eventId);
+    if (!Number.isInteger(invoiceId) || !Number.isInteger(eventId)) {
+      return res.status(400).json({ error: "Invalid invoice or communication id" });
+    }
+    const status = req.body?.status as "accepted" | "failed" | "unknown";
+    if (!["accepted", "failed", "unknown"].includes(status)) {
+      return res.status(400).json({ error: "Communication status must be accepted, failed, or unknown." });
+    }
+    const [existing] = await db.select().from(invoiceCommunicationEventsTable)
+      .where(and(
+        eq(invoiceCommunicationEventsTable.id, eventId),
+        eq(invoiceCommunicationEventsTable.invoiceId, invoiceId),
+      ));
+    if (!existing) return res.status(404).json({ error: "Invoice communication event not found" });
+    if (existing.status !== "pending") return res.json(existing);
+    const event = await finalizeInvoiceCommunication(eventId, invoiceId, {
+      status,
+      provider: existing.provider,
+      providerMessageId: typeof req.body?.providerMessageId === "string" ? req.body.providerMessageId : null,
+      providerThreadId: typeof req.body?.providerThreadId === "string" ? req.body.providerThreadId : null,
+      errorCode: typeof req.body?.errorCode === "string" ? req.body.errorCode : null,
+      errorMessage: typeof req.body?.errorMessage === "string" ? req.body.errorMessage : null,
+    });
+    if (status === "accepted" && ["initial_invoice", "resend_invoice"].includes(existing.eventType)) {
+      await updateCompatibilitySentFields(invoiceId, existing.channel === "gmail" ? "gmail" : existing.provider);
+    }
+    res.json(event);
+  } catch (err) {
+    console.error("Finalize invoice communication error:", err);
+    res.status(500).json({ error: "Failed to finalize invoice communication" });
   }
 });
 
@@ -724,7 +854,7 @@ router.post("/:id/send", async (req, res) => {
     const subjectLine = subject || `Invoice ${invForEmail.invoiceNumber} from ${companyName}`;
 
     // If this invoice is linked to a job that has a checklist, optionally attach it
-    const extraAttachments = [];
+    const extraAttachments: ExtraAttachment[] = [];
     if (attachChecklist && invForEmail.jobId) {
       try {
         const checklistPdf = await generateChecklistPdfBuffer(invForEmail.jobId as number);
@@ -841,22 +971,48 @@ router.post("/:id/send", async (req, res) => {
       }
     }
 
-    await sendInvoiceEmail(
-      fmt(invForEmail),
-      mergedSettings,
-      to,
-      subjectLine,
-      message,
-      extraAttachments.length ? extraAttachments : undefined,
+    const user = (req as any).user as { id?: string; firstName?: string; lastName?: string } | undefined;
+    const actorName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || null;
+    const eventType: InvoiceCommunicationType = invForEmail.sentAt ? "resend_invoice" : "initial_invoice";
+    const deliveryResult = await sendAndRecordInvoiceCommunication(
+      {
+        invoiceId: id,
+        eventType,
+        channel: "email",
+        provider: "pending",
+        recipient: to,
+        subject: subjectLine,
+        source: "user",
+        actorUserId: user?.id ?? null,
+        actorName,
+        metadata: {
+          attachChecklist: Boolean(attachChecklist),
+          attachmentCount: extraAttachments.length,
+        },
+      },
+      () => sendInvoiceEmail(
+        fmt(invForEmail),
+        mergedSettings,
+        to,
+        subjectLine,
+        message,
+        extraAttachments.length ? extraAttachments : undefined,
+      ),
     );
 
-    const now = new Date();
-    await db.update(invoicesTable)
-      .set({ status: "sent", sentAt: now, sentMethod: "email" })
-      .where(eq(invoicesTable.id, id));
+    if (!deliveryResult.finalized) {
+      return res.status(202).json({
+        success: false,
+        uncertain: true,
+        eventId: deliveryResult.event.id,
+        warning: "The email provider accepted the message, but the delivery history could not be finalized. Check the invoice timeline before retrying.",
+      });
+    }
+
+    await updateCompatibilitySentFields(id, deliveryResult.delivery.provider === "smtp" ? "email" : "gmail");
 
     const [updated] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
-    res.json({ success: true, invoice: fmt(updated) });
+    res.json({ success: true, eventId: deliveryResult.event.id, invoice: fmt(updated) });
   } catch (err: any) {
     console.error("Email send error:", err);
     res.status(500).json({ error: err.message || "Failed to send email" });
@@ -875,13 +1031,13 @@ router.post("/:id/send-reminder", async (req, res) => {
     ]);
 
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
-    if (inv.status === "paid") return res.status(400).json({ error: "Invoice is already paid" });
-
-    const paymentLink = inv.squarePaymentLinkUrl;
-    if (!paymentLink) return res.status(400).json({ error: "Invoice has no Square payment link. Generate one first." });
-
-    const clientEmail = inv.clientEmail as string | null;
-    if (!clientEmail) return res.status(400).json({ error: "Client has no email address on file." });
+    const eligibilityError = reminderEligibilityError({
+      status: inv.status,
+      invoiceNumber: inv.invoiceNumber,
+      clientEmail: inv.clientEmail,
+      reminderOptOut: inv.reminderOptOut,
+    });
+    if (eligibilityError) return res.status(400).json({ error: eligibilityError });
 
     // Resolve business profile by the invoice's businessLine slug (if any)
     const bizRows2: Business[] = inv.businessLine
@@ -903,18 +1059,46 @@ router.post("/:id/send-reminder", async (req, res) => {
 
     const companyName = mergedSettings.companyName ?? "BuildPro";
     const subject = `Reminder: Invoice ${inv.invoiceNumber} — Payment Due (${companyName})`;
-    const message = `Hi ${inv.clientName || "there"},\n\nThis is a friendly reminder that invoice ${inv.invoiceNumber} is still outstanding. Please use the button below to pay securely online.\n\nThank you for your business!`;
+    const hasPaymentLink = Boolean(inv.squarePaymentLinkUrl || inv.stripePaymentLinkUrl);
+    const message = reminderMessage(inv, companyName, mergedSettings.companyPhone, mergedSettings.companyEmail, hasPaymentLink);
+    const invForEmail = hasPaymentLink
+      ? inv
+      : { ...inv, squarePaymentLinkUrl: null, stripePaymentLinkUrl: null };
+    const user = (req as any).user as { id?: string; firstName?: string; lastName?: string } | undefined;
+    const deliveryResult = await sendAndRecordInvoiceCommunication(
+      {
+        invoiceId: id,
+        eventType: "manual_reminder",
+        channel: "email",
+        provider: "pending",
+        recipient: inv.clientEmail,
+        subject,
+        source: "user",
+        actorUserId: user?.id ?? null,
+        actorName: [user?.firstName, user?.lastName].filter(Boolean).join(" ") || null,
+        metadata: { hasPaymentLink },
+      },
+      () => sendInvoiceEmail(fmt(invForEmail), mergedSettings, inv.clientEmail!, subject, message),
+    );
+    if (!deliveryResult.finalized) {
+      return res.status(202).json({
+        success: false,
+        uncertain: true,
+        eventId: deliveryResult.event.id,
+        warning: "The reminder provider accepted the message, but the delivery history could not be finalized. Check the invoice timeline before retrying.",
+      });
+    }
 
-    await sendInvoiceEmail(fmt(inv), mergedSettings, clientEmail, subject, message);
-
-    const now = new Date().toISOString();
+    const sentAt = deliveryResult.event.completedAt instanceof Date
+      ? deliveryResult.event.completedAt.toISOString()
+      : new Date().toISOString();
     const current = Array.isArray(inv.remindersSentAt) ? (inv.remindersSentAt as string[]) : [];
-    const updated = [...current, now];
+    const updated = [...current, sentAt];
 
     await db.update(invoicesTable).set({ remindersSentAt: updated }).where(eq(invoicesTable.id, id));
 
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
-    res.json({ success: true, sentAt: now, invoice: fmt(withJoins) });
+    res.json({ success: true, eventId: deliveryResult.event.id, sentAt, invoice: fmt(withJoins) });
   } catch (err: any) {
     console.error("Send reminder error:", err);
     res.status(500).json({ error: err.message || "Failed to send reminder" });

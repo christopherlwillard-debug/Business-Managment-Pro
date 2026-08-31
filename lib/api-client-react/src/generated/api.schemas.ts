@@ -444,7 +444,102 @@ export interface Invoice {
   stripePaidAt?: string | null;
   squarePaymentLinkUrl?: string | null;
   stripePaymentLinkUrl?: string | null;
+  remindersSentAt?: string[];
+  acceptedAt?: string | null;
+  sentAt?: string | null;
+  sentMethod?: string | null;
+  voidedAt?: string | null;
+  voidReason?: string | null;
   createdAt: string;
+  [key: string]: unknown;
+}
+
+export type InvoiceCommunicationEventEventType =
+  (typeof InvoiceCommunicationEventEventType)[keyof typeof InvoiceCommunicationEventEventType];
+
+export const InvoiceCommunicationEventEventType = {
+  initial_invoice: "initial_invoice",
+  resend_invoice: "resend_invoice",
+  manual_reminder: "manual_reminder",
+  automatic_reminder: "automatic_reminder",
+  payment_link_email: "payment_link_email",
+  payment_receipt: "payment_receipt",
+} as const;
+
+export type InvoiceCommunicationEventStatus =
+  (typeof InvoiceCommunicationEventStatus)[keyof typeof InvoiceCommunicationEventStatus];
+
+export const InvoiceCommunicationEventStatus = {
+  pending: "pending",
+  accepted: "accepted",
+  failed: "failed",
+  unknown: "unknown",
+} as const;
+
+export type InvoiceCommunicationEventMetadata = {
+  [key: string]: unknown;
+} | null;
+
+export interface InvoiceCommunicationEvent {
+  id: number;
+  invoiceId: number;
+  businessId?: number | null;
+  eventType: InvoiceCommunicationEventEventType;
+  channel: string;
+  provider: string;
+  status: InvoiceCommunicationEventStatus;
+  recipient?: string | null;
+  subject?: string | null;
+  requestedAt: string;
+  completedAt?: string | null;
+  source: string;
+  actorUserId?: string | null;
+  actorName?: string | null;
+  providerMessageId?: string | null;
+  providerThreadId?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  metadata?: InvoiceCommunicationEventMetadata;
+  idempotencyKey?: string | null;
+  createdAt: string;
+  [key: string]: unknown;
+}
+
+export type PrepareInvoiceCommunicationRequestEventType =
+  (typeof PrepareInvoiceCommunicationRequestEventType)[keyof typeof PrepareInvoiceCommunicationRequestEventType];
+
+export const PrepareInvoiceCommunicationRequestEventType = {
+  initial_invoice: "initial_invoice",
+  resend_invoice: "resend_invoice",
+} as const;
+
+export type PrepareInvoiceCommunicationRequestMetadata = {
+  [key: string]: unknown;
+} | null;
+
+export interface PrepareInvoiceCommunicationRequest {
+  eventType?: PrepareInvoiceCommunicationRequestEventType;
+  recipient?: string | null;
+  subject?: string | null;
+  metadata?: PrepareInvoiceCommunicationRequestMetadata;
+  [key: string]: unknown;
+}
+
+export type FinalizeInvoiceCommunicationRequestStatus =
+  (typeof FinalizeInvoiceCommunicationRequestStatus)[keyof typeof FinalizeInvoiceCommunicationRequestStatus];
+
+export const FinalizeInvoiceCommunicationRequestStatus = {
+  accepted: "accepted",
+  failed: "failed",
+  unknown: "unknown",
+} as const;
+
+export interface FinalizeInvoiceCommunicationRequest {
+  status: FinalizeInvoiceCommunicationRequestStatus;
+  providerMessageId?: string | null;
+  providerThreadId?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
   [key: string]: unknown;
 }
 
@@ -470,7 +565,7 @@ export type CreateInvoiceRequestLineItemsItem = {
 export interface CreateInvoiceRequest {
   clientId?: number | null;
   jobId?: number | null;
-  status: CreateInvoiceRequestStatus;
+  status?: CreateInvoiceRequestStatus;
   issueDate: string;
   dueDate?: string | null;
   taxRate?: number | null;

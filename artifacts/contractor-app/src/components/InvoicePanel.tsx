@@ -3,6 +3,7 @@ import {
   useCreateInvoice, useUpdateInvoice, useCreateClient, useListClients,
   useListJobs, useGetSettings,
   useCreateInvoicePaymentLink, useDeleteInvoicePaymentLink,
+  useListInvoiceCommunications,
   Invoice, InvoiceDraft, AppSettings, Client, CreateInvoiceRequest, InvoiceAttachment,
 } from "@workspace/api-client-react";
 import { calculateInvoiceTotals } from "@workspace/api-zod";
@@ -15,6 +16,7 @@ import { buildInvoiceHtml } from "@/lib/printInvoice";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useBusiness } from "@/contexts/BusinessContext";
+import { InvoiceDeliveryHistory } from "@/components/InvoiceDeliveryHistory";
 import {
   Building2, MapPin, Check, X, Plus, Trash2, Printer,
   Send, Mail, CreditCard, Copy, Eye, ChevronDown, ChevronUp, Paperclip, Upload,
@@ -75,6 +77,12 @@ export function InvoicePanel({
 
   const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
   const effectiveExistingInvoice = existingInvoice ?? savedInvoice ?? null;
+  const communicationHistory = useListInvoiceCommunications(effectiveExistingInvoice?.id ?? 0, {
+    query: {
+      queryKey: [`/api/invoices/${effectiveExistingInvoice?.id ?? 0}/communications`],
+      enabled: Boolean(open && effectiveExistingInvoice?.id),
+    },
+  });
 
   const s = settings as AppSettings | undefined;
   const prefix = s?.invoicePrefix ?? "INV-2026-";
@@ -704,10 +712,32 @@ export function InvoicePanel({
         } catch { /* non-fatal — skip attachment if fetch fails */ }
       }
 
-      await sendViaGmail({
+      const gmailSubjectLine = gmailSubject.trim() || `Invoice ${effectiveExistingInvoice.invoiceNumber}`;
+      const eventType = effectiveExistingInvoice.sentAt ? "resend_invoice" : "initial_invoice";
+      const prepareResponse = await fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/communications/prepare`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          eventType,
+          recipient: gmailTo.trim(),
+          subject: gmailSubjectLine,
+          metadata: {
+            attachmentCount: (pdfBase64 ? 1 : 0) + (checklistBase64 ? 1 : 0) + (materialsBase64 ? 1 : 0) + photoAttachments.length + extraEmailFiles.length,
+          },
+        }),
+      });
+      if (!prepareResponse.ok) {
+        const prepareError = await prepareResponse.json().catch(() => ({}));
+        throw new Error(prepareError.error ?? "Could not prepare invoice delivery history.");
+      }
+      const pendingEvent = await prepareResponse.json() as { id: number };
+      let gmailResult: { provider: "gmail"; messageId?: string | null; threadId?: string | null };
+      try {
+        gmailResult = await sendViaGmail({
         token,
         to: gmailTo.trim(),
-        subject: gmailSubject.trim() || `Invoice ${effectiveExistingInvoice.invoiceNumber}`,
+        subject: gmailSubjectLine,
         html,
         text: gmailMessage.trim() || `Please see invoice ${effectiveExistingInvoice.invoiceNumber} attached. Total due: $${total.toFixed(2)}`,
         pdfBase64,
@@ -718,22 +748,46 @@ export function InvoicePanel({
           ...photoAttachments,
           ...extraEmailFiles,
         ],
+        });
+      } catch (sendError) {
+        await fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${pendingEvent.id}/finalize`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            status: "failed",
+            errorMessage: sendError instanceof Error ? sendError.message : String(sendError),
+          }),
+        }).catch(() => {});
+        throw sendError;
+      }
+
+      const finalizeResponse = await fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${pendingEvent.id}/finalize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          status: "accepted",
+          providerMessageId: gmailResult.messageId ?? null,
+          providerThreadId: gmailResult.threadId ?? null,
+        }),
       });
+      if (!finalizeResponse.ok) {
+        toast({
+          title: "Invoice sent, history not finalized",
+          description: `Gmail accepted the message for ${gmailTo.trim()}, but the delivery record could not be completed. Check the invoice timeline before retrying.`,
+          variant: "destructive",
+        });
+        return;
+      }
       setGmailSent(true);
       setExtraEmailFiles([]);
       toast({
         title: "Invoice sent via Gmail",
         description: pdfBase64
-          ? `Delivered to ${gmailTo.trim()} with PDF attached`
-          : `Delivered to ${gmailTo.trim()} (HTML format — PDF unavailable)`,
+          ? `Accepted by Gmail for ${gmailTo.trim()} with PDF attached`
+          : `Accepted by Gmail for ${gmailTo.trim()} (HTML format — PDF unavailable)`,
       });
-      // Advance invoice status to "sent"
-      if (effectiveExistingInvoice?.id) {
-        fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/mark-sent`, {
-          method: "POST",
-          credentials: "include",
-        }).catch(() => {});
-      }
       setTimeout(() => { setShowGmailCompose(false); setGmailSent(false); setGmailPreview(false); }, 2000);
     } catch (err: any) {
       toast({ title: "Gmail send failed", description: err?.message ?? "An error occurred.", variant: "destructive" });
@@ -1683,6 +1737,14 @@ export function InvoicePanel({
 
           </div>
         </div>
+
+        {isEdit && effectiveExistingInvoice && (
+          <InvoiceDeliveryHistory
+            invoiceNumber={effectiveExistingInvoice.invoiceNumber}
+            events={communicationHistory.data ?? []}
+            isLoading={communicationHistory.isLoading}
+          />
+        )}
 
       </div>
     </div>

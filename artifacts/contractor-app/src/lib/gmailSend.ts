@@ -34,7 +34,13 @@ export interface GmailSendOptions {
   extraAttachments?: GmailAttachment[];
 }
 
-export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
+export interface GmailSendResult {
+  provider: "gmail";
+  messageId?: string | null;
+  threadId?: string | null;
+}
+
+export async function sendViaGmail(opts: GmailSendOptions): Promise<GmailSendResult> {
   const { token, to, subject, html, text, pdfBase64, pdfFilename, extraAttachments = [] } = opts;
 
   // Base64-encode the HTML body so that = characters in data URIs (logo) are
@@ -140,6 +146,15 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<void> {
       errBody?.error?.message ?? `Gmail API error ${resp.status}`
     );
   }
+  const result = await resp.json().catch(() => ({})) as {
+    id?: string;
+    threadId?: string;
+  };
+  return {
+    provider: "gmail",
+    messageId: result.id ?? null,
+    threadId: result.threadId ?? null,
+  };
 }
 
 function esc(s: string | null | undefined): string {

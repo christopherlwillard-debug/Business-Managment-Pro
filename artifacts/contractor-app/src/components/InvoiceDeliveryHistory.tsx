@@ -1,59 +1,127 @@
-import { Bell } from "lucide-react";
-import * as React from "react";
+import {
+  AlertCircle,
+  Bell,
+  CheckCircle2,
+  Clock3,
+  CreditCard,
+  Link2,
+  Mail,
+  ReceiptText,
+  Send,
+} from "lucide-react";
+import type { InvoiceCommunicationEvent } from "@workspace/api-client-react";
 
 interface InvoiceDeliveryHistoryProps {
   invoiceNumber?: string | null;
-  remindersSentAt: string[];
-  isOpen: boolean;
-  onToggle: () => void;
+  events: InvoiceCommunicationEvent[];
+  isLoading?: boolean;
+}
+
+const EVENT_LABELS: Record<string, string> = {
+  initial_invoice: "Invoice sent",
+  resend_invoice: "Invoice resent",
+  manual_reminder: "Manual reminder sent",
+  automatic_reminder: "Automatic reminder sent",
+  payment_link_email: "Payment link emailed",
+  payment_receipt: "Payment receipt emailed",
+};
+
+function eventLabel(event: InvoiceCommunicationEvent) {
+  return EVENT_LABELS[event.eventType] ?? "Invoice communication";
+}
+
+function statusIcon(status: InvoiceCommunicationEvent["status"]) {
+  if (status === "accepted") return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />;
+  if (status === "failed") return <AlertCircle className="h-3.5 w-3.5 text-red-600" />;
+  if (status === "unknown") return <AlertCircle className="h-3.5 w-3.5 text-amber-600" />;
+  return <Clock3 className="h-3.5 w-3.5 text-blue-600" />;
+}
+
+function eventIcon(eventType: string) {
+  if (eventType.includes("reminder")) return <Bell className="h-3.5 w-3.5" />;
+  if (eventType === "payment_link_email") return <Link2 className="h-3.5 w-3.5" />;
+  if (eventType === "payment_receipt") return <ReceiptText className="h-3.5 w-3.5" />;
+  return <Mail className="h-3.5 w-3.5" />;
+}
+
+function statusText(status: InvoiceCommunicationEvent["status"]) {
+  if (status === "accepted") return "Accepted by provider";
+  if (status === "failed") return "Failed";
+  if (status === "unknown") return "Uncertain";
+  return "Pending";
+}
+
+function statusClass(status: InvoiceCommunicationEvent["status"]) {
+  if (status === "accepted") return "bg-emerald-50 text-emerald-700";
+  if (status === "failed") return "bg-red-50 text-red-700";
+  if (status === "unknown") return "bg-amber-50 text-amber-700";
+  return "bg-blue-50 text-blue-700";
 }
 
 export function InvoiceDeliveryHistory({
   invoiceNumber,
-  remindersSentAt,
-  isOpen,
-  onToggle,
+  events,
+  isLoading = false,
 }: InvoiceDeliveryHistoryProps) {
-  if (remindersSentAt.length === 0) return null;
-
   return (
-    <span className="relative">
-      <button
-        type="button"
-        onClick={event => {
-          event.stopPropagation();
-          onToggle();
-        }}
-        className="inline-flex items-center gap-0.5 rounded px-1 text-[10px] font-semibold text-blue-600 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
-        aria-label={`${remindersSentAt.length} reminder${remindersSentAt.length > 1 ? "s" : ""} sent`}
-        title={`${remindersSentAt.length} reminder${remindersSentAt.length > 1 ? "s" : ""} sent`}
-      >
-        <Bell className="w-3 h-3" />
-        {remindersSentAt.length}
-      </button>
-      {isOpen && (
-        <div
-          role="dialog"
-          aria-label={`Reminder history for invoice ${invoiceNumber ?? "draft"}`}
-          className="absolute left-0 top-full z-30 mt-2 w-56 rounded-xl border border-border bg-card p-3 text-left shadow-xl"
-          onClick={event => event.stopPropagation()}
-        >
-          <p className="mb-1.5 text-[11px] font-semibold text-foreground">Reminder history</p>
-          <div className="space-y-1">
-            {remindersSentAt.map((timestamp, index) => (
-              <p key={`${timestamp}-${index}`} className="text-[11px] font-normal text-muted-foreground">
-                {new Date(timestamp).toLocaleString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}
-              </p>
-            ))}
-          </div>
+    <section className="border-t border-gray-100 px-5 py-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h3 className="flex items-center gap-1.5 text-sm font-bold text-gray-800">
+            <Send className="h-3.5 w-3.5 text-blue-600" />
+            Communication &amp; delivery
+          </h3>
+          <p className="mt-0.5 text-[11px] text-gray-400">
+            {invoiceNumber ? `Invoice ${invoiceNumber}` : "Invoice history"}
+          </p>
+        </div>
+        {events.length > 0 && (
+          <span className="text-[11px] font-medium text-gray-400">
+            {events.length} event{events.length === 1 ? "" : "s"}
+          </span>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-3 text-xs text-gray-400">
+          <Clock3 className="h-3.5 w-3.5 animate-pulse" /> Loading history…
+        </div>
+      ) : events.length === 0 ? (
+        <p className="py-2 text-xs text-gray-400">No invoice communications recorded yet.</p>
+      ) : (
+        <div className="relative space-y-3 pl-1">
+          <div className="absolute bottom-2 left-[8px] top-2 w-px bg-gray-200" aria-hidden="true" />
+          {events.map(event => (
+            <div className="relative flex gap-2.5" key={event.id}>
+              <div className="relative z-10 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500">
+                {eventIcon(event.eventType)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <p className="text-xs font-semibold text-gray-700">{eventLabel(event)}</p>
+                  <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${statusClass(event.status)}`}>
+                    {statusIcon(event.status)}
+                    {statusText(event.status)}
+                  </span>
+                </div>
+                <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-gray-400">
+                  <span>{new Date(event.requestedAt).toLocaleString()}</span>
+                  <span>{event.channel}{event.provider ? ` · ${event.provider}` : ""}</span>
+                  {event.recipient && <span className="truncate">{event.recipient}</span>}
+                </div>
+                {event.errorMessage && (
+                  <p className="mt-1 text-[11px] text-red-600">{event.errorMessage}</p>
+                )}
+                {event.providerMessageId && (
+                  <p className="mt-1 truncate font-mono text-[10px] text-gray-400" title={event.providerMessageId}>
+                    Message ID: {event.providerMessageId}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
-    </span>
+    </section>
   );
 }

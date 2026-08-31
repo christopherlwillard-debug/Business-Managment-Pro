@@ -38,7 +38,13 @@ export interface SendEmailOptions {
   attachment?: EmailAttachment;
 }
 
-export async function sendEmail(opts: SendEmailOptions): Promise<void> {
+export interface EmailSendResult {
+  provider: "gmail" | "smtp";
+  messageId?: string | null;
+  threadId?: string | null;
+}
+
+export async function sendEmail(opts: SendEmailOptions): Promise<EmailSendResult> {
   const { to, subject, html, text, attachment } = opts;
 
   const safeToHeader = sanitizeHeader(to);
@@ -122,6 +128,16 @@ export async function sendEmail(opts: SendEmailOptions): Promise<void> {
     const body = await response.text();
     throw new Error(`Gmail send failed (${response.status}): ${body}`);
   }
+
+  const result = await response.json().catch(() => ({})) as {
+    id?: string;
+    threadId?: string;
+  };
+  return {
+    provider: "gmail",
+    messageId: result.id ?? null,
+    threadId: result.threadId ?? null,
+  };
 }
 
 export { escapeHtml };

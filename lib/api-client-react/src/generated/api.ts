@@ -38,6 +38,7 @@ import type {
   ErrorEnvelope,
   Estimate,
   Expense,
+  FinalizeInvoiceCommunicationRequest,
   Get1099ReportParams,
   GetDashboardStatsParams,
   GetInvoiceTaxReportParams,
@@ -45,6 +46,7 @@ import type {
   HandleBrowserLoginCallbackParams,
   HealthStatus,
   Invoice,
+  InvoiceCommunicationEvent,
   InvoiceDraft,
   Job,
   JobReadinessCondition,
@@ -68,6 +70,7 @@ import type {
   PortalVerifyPin200,
   PortalVerifyPin401,
   PortalVerifyPinBody,
+  PrepareInvoiceCommunicationRequest,
   ProductionScopeSectionInput,
   RecurringExpense,
   ResetPortalPin200,
@@ -2620,6 +2623,304 @@ export const useVoidInvoice = <
   TContext
 > => {
   return useMutation(getVoidInvoiceMutationOptions(options));
+};
+
+/**
+ * @summary List chronological invoice communication and delivery events
+ */
+export const getListInvoiceCommunicationsUrl = (id: number) => {
+  return `/api/invoices/${id}/communications`;
+};
+
+export const listInvoiceCommunications = async (
+  id: number,
+  options?: RequestInit,
+): Promise<InvoiceCommunicationEvent[]> => {
+  return customFetch<InvoiceCommunicationEvent[]>(
+    getListInvoiceCommunicationsUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListInvoiceCommunicationsQueryKey = (id: number) => {
+  return [`/api/invoices/${id}/communications`] as const;
+};
+
+export const getListInvoiceCommunicationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listInvoiceCommunications>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInvoiceCommunications>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListInvoiceCommunicationsQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listInvoiceCommunications>>
+  > = ({ signal }) =>
+    listInvoiceCommunications(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listInvoiceCommunications>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListInvoiceCommunicationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listInvoiceCommunications>>
+>;
+export type ListInvoiceCommunicationsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List chronological invoice communication and delivery events
+ */
+
+export function useListInvoiceCommunications<
+  TData = Awaited<ReturnType<typeof listInvoiceCommunications>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInvoiceCommunications>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListInvoiceCommunicationsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a pending browser invoice communication attempt
+ */
+export const getPrepareInvoiceCommunicationUrl = (id: number) => {
+  return `/api/invoices/${id}/communications`;
+};
+
+export const prepareInvoiceCommunication = async (
+  id: number,
+  prepareInvoiceCommunicationRequest: PrepareInvoiceCommunicationRequest,
+  options?: RequestInit,
+): Promise<InvoiceCommunicationEvent> => {
+  return customFetch<InvoiceCommunicationEvent>(
+    getPrepareInvoiceCommunicationUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(prepareInvoiceCommunicationRequest),
+    },
+  );
+};
+
+export const getPrepareInvoiceCommunicationMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof prepareInvoiceCommunication>>,
+    TError,
+    { id: number; data: BodyType<PrepareInvoiceCommunicationRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof prepareInvoiceCommunication>>,
+  TError,
+  { id: number; data: BodyType<PrepareInvoiceCommunicationRequest> },
+  TContext
+> => {
+  const mutationKey = ["prepareInvoiceCommunication"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof prepareInvoiceCommunication>>,
+    { id: number; data: BodyType<PrepareInvoiceCommunicationRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return prepareInvoiceCommunication(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PrepareInvoiceCommunicationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof prepareInvoiceCommunication>>
+>;
+export type PrepareInvoiceCommunicationMutationBody =
+  BodyType<PrepareInvoiceCommunicationRequest>;
+export type PrepareInvoiceCommunicationMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a pending browser invoice communication attempt
+ */
+export const usePrepareInvoiceCommunication = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof prepareInvoiceCommunication>>,
+    TError,
+    { id: number; data: BodyType<PrepareInvoiceCommunicationRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof prepareInvoiceCommunication>>,
+  TError,
+  { id: number; data: BodyType<PrepareInvoiceCommunicationRequest> },
+  TContext
+> => {
+  return useMutation(getPrepareInvoiceCommunicationMutationOptions(options));
+};
+
+/**
+ * @summary Finalize a pending invoice communication attempt
+ */
+export const getFinalizeInvoiceCommunicationUrl = (
+  id: number,
+  eventId: number,
+) => {
+  return `/api/invoices/${id}/communications/${eventId}/finalize`;
+};
+
+export const finalizeInvoiceCommunication = async (
+  id: number,
+  eventId: number,
+  finalizeInvoiceCommunicationRequest: FinalizeInvoiceCommunicationRequest,
+  options?: RequestInit,
+): Promise<InvoiceCommunicationEvent> => {
+  return customFetch<InvoiceCommunicationEvent>(
+    getFinalizeInvoiceCommunicationUrl(id, eventId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(finalizeInvoiceCommunicationRequest),
+    },
+  );
+};
+
+export const getFinalizeInvoiceCommunicationMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof finalizeInvoiceCommunication>>,
+    TError,
+    {
+      id: number;
+      eventId: number;
+      data: BodyType<FinalizeInvoiceCommunicationRequest>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof finalizeInvoiceCommunication>>,
+  TError,
+  {
+    id: number;
+    eventId: number;
+    data: BodyType<FinalizeInvoiceCommunicationRequest>;
+  },
+  TContext
+> => {
+  const mutationKey = ["finalizeInvoiceCommunication"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof finalizeInvoiceCommunication>>,
+    {
+      id: number;
+      eventId: number;
+      data: BodyType<FinalizeInvoiceCommunicationRequest>;
+    }
+  > = (props) => {
+    const { id, eventId, data } = props ?? {};
+
+    return finalizeInvoiceCommunication(id, eventId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type FinalizeInvoiceCommunicationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof finalizeInvoiceCommunication>>
+>;
+export type FinalizeInvoiceCommunicationMutationBody =
+  BodyType<FinalizeInvoiceCommunicationRequest>;
+export type FinalizeInvoiceCommunicationMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Finalize a pending invoice communication attempt
+ */
+export const useFinalizeInvoiceCommunication = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof finalizeInvoiceCommunication>>,
+    TError,
+    {
+      id: number;
+      eventId: number;
+      data: BodyType<FinalizeInvoiceCommunicationRequest>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof finalizeInvoiceCommunication>>,
+  TError,
+  {
+    id: number;
+    eventId: number;
+    data: BodyType<FinalizeInvoiceCommunicationRequest>;
+  },
+  TContext
+> => {
+  return useMutation(getFinalizeInvoiceCommunicationMutationOptions(options));
 };
 
 /**

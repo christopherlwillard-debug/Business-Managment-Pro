@@ -12,7 +12,7 @@ import type { InvoiceAttachment } from "./invoiceAttachment";
 export interface CreateInvoiceRequest {
   clientId?: number | null;
   jobId?: number | null;
-  status: CreateInvoiceRequestStatus;
+  status?: CreateInvoiceRequestStatus;
   issueDate: string;
   dueDate?: string | null;
   taxRate?: number | null;
