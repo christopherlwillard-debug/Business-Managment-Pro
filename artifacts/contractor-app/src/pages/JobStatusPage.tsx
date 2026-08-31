@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, CheckCircle2, Minus, Square, AlertCircle, HardHat } from "lucide-react";
@@ -300,6 +300,15 @@ export default function JobStatusPage() {
   });
 
   const [lightbox, setLightbox] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!data) return;
+    const locationTitle = [data.dealerName, data.location].filter(Boolean).join(" — ");
+    document.title = locationTitle || data.templateName || "Checklist";
+    return () => {
+      document.title = "BuildPro — Contractor Business Management";
+    };
+  }, [data]);
 
   if (summaryLoading) {
     return (

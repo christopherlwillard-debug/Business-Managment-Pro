@@ -18,10 +18,70 @@ import {
 import { eq, asc, inArray, and, isNotNull, ne } from "drizzle-orm";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { calculateChecklistProgress } from "../lib/checklist-progress.js";
+import { buildChecklistShareTitle, escapeHtml } from "../lib/checklistSharePreview.js";
 
 const objStorage = new ObjectStorageService();
 
 const router = Router();
+
+// Link unfurlers (including Messages/iMessage) read metadata from the initial
+// HTML response and generally do not execute the SPA. This lightweight wrapper
+// provides a checklist-specific title, then sends a human visitor to the normal
+// interactive status page.
+router.get("/status/:token/share", async (req, res) => {
+  try {
+    const { token } = req.params;
+    const [row] = await db
+      .select({
+        templateName: jobChecklistsTable.templateName,
+        shareEnabled: jobChecklistsTable.shareEnabled,
+        locationName: jobsTable.locationName,
+        address: jobsTable.address,
+        city: jobsTable.city,
+        state: jobsTable.state,
+      })
+      .from(jobChecklistsTable)
+      .innerJoin(jobsTable, eq(jobChecklistsTable.jobId, jobsTable.id))
+      .where(eq(jobChecklistsTable.shareToken, token));
+
+    if (!row) return res.status(404).send("Link not found");
+    if (!row.shareEnabled) return res.status(410).send("Link not available");
+
+    const title = buildChecklistShareTitle(row);
+    const description = `${row.templateName || "Checklist"} progress from BuildPro.`;
+    const protocol = req.get("x-forwarded-proto")?.split(",")[0]?.trim() || req.protocol;
+    const targetUrl = `${protocol}://${req.get("host")}/status/${encodeURIComponent(token)}`;
+    const safeTitle = escapeHtml(title);
+    const safeDescription = escapeHtml(description);
+    const safeTargetUrl = escapeHtml(targetUrl);
+
+    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+    res.type("html").send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${safeTitle}</title>
+    <meta name="description" content="${safeDescription}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="${safeTitle}">
+    <meta property="og:description" content="${safeDescription}">
+    <meta property="og:url" content="${safeTargetUrl}">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="${safeTitle}">
+    <meta name="twitter:description" content="${safeDescription}">
+    <meta http-equiv="refresh" content="0;url=${safeTargetUrl}">
+  </head>
+  <body>
+    <p>Opening <a href="${safeTargetUrl}">${safeTitle}</a>…</p>
+    <script>window.location.replace(${JSON.stringify(targetUrl)});</script>
+  </body>
+</html>`);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to load checklist link");
+  }
+});
 
 router.get("/business-logo", async (req, res) => {
   try {

@@ -963,7 +963,7 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
 
   function copyStatusLink() {
     if (!checklist) return;
-    const url = `${window.location.origin}${BASE}/status/${checklist.shareToken}`;
+    const url = `${window.location.origin}${BASE}/api/public/status/${checklist.shareToken}/share`;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -1096,7 +1096,7 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                   {checklist.shareEnabled && (
                     <div className="flex items-center gap-2 bg-muted/30 border border-border/60 rounded-xl px-3 py-2">
                       <span className="flex-1 text-[11px] text-muted-foreground font-mono truncate">
-                        {`${window.location.origin}${BASE}/status/${checklist.shareToken}`}
+                        {`${window.location.origin}${BASE}/api/public/status/${checklist.shareToken}/share`}
                       </span>
                       <button
                         onClick={copyStatusLink}
