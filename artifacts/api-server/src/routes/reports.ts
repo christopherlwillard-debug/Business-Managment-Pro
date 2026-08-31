@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable, growthFundDeploymentsTable, recurringExpensesTable, subPaymentRecordsTable } from "@workspace/db/schema";
 import { plaidConnectionsTable } from "@workspace/db";
-import { eq, and, gte, lte, desc, ne, inArray, sql, count, isNull } from "drizzle-orm";
+import { eq, and, or, gte, lte, desc, ne, inArray, sql, count, isNull } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
 import { summarizeMileageRecords } from "../lib/irs-rates.js";
@@ -2382,6 +2382,24 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
       return res.status(400).json({ error: "A valid business id is required" });
     }
 
+    const [business] = await db.select({
+      id: businessesTable.id,
+      slug: businessesTable.slug,
+    }).from(businessesTable)
+      .where(eq(businessesTable.id, businessId))
+      .limit(1);
+    if (!business) {
+      return res.status(404).json({ error: "Business not found" });
+    }
+
+    // Canonical ownership is business_id. Older jobs were intentionally kept
+    // recoverable with business_line only, so include that compatibility path
+    // when the slug proves the job belongs to this business.
+    const jobBusinessScope = or(
+      eq(jobsTable.businessId, businessId),
+      and(isNull(jobsTable.businessId), eq(jobsTable.businessLine, business.slug)),
+    );
+
     // Every query in this summary is scoped to one business. Mixing businesses
     // here can both misstate totals and cause an edited withdrawal to be moved.
     const allJobs = await db.select({
@@ -2391,7 +2409,7 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
       status: jobsTable.status,
       ownerPayIncluded: jobsTable.ownerPayIncluded,
     }).from(jobsTable)
-      .where(eq(jobsTable.businessId, businessId))
+      .where(jobBusinessScope)
       .orderBy(desc(jobsTable.jobNumber), desc(jobsTable.id));
 
     const jobIds = allJobs.map(j => j.id);
@@ -2446,7 +2464,10 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
       const ownerPct      = totalAllocPct > 0 ? Math.max(0, 100 - totalAllocPct) : 100;
       const ownerShare    = toSplit * (ownerPct / 100);
       const takeHome      = ownerShare * (1 - TAX_PCT);
-      if (job.ownerPayIncluded) totalEarned += takeHome;
+      // All jobs in the resolved business scope count automatically. The old
+      // owner_pay_included flag powered a confusing UI toggle and must not hide
+      // earned job pay from the summary.
+      totalEarned += takeHome;
       return {
         jobId:            job.id,
         jobNumber:        job.jobNumber,
@@ -2474,10 +2495,23 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
         expenseId: ownerCapitalEntriesTable.expenseId,
       })
       .from(ownerCapitalEntriesTable)
+      .leftJoin(jobsTable, eq(ownerCapitalEntriesTable.jobId, jobsTable.id))
+      .leftJoin(expensesTable, eq(ownerCapitalEntriesTable.expenseId, expensesTable.id))
       .where(and(
         sql`${ownerCapitalEntriesTable.amount} < 0`,
         isNull(ownerCapitalEntriesTable.voidedAt),
-        eq(ownerCapitalEntriesTable.businessId, businessId),
+        or(
+          eq(ownerCapitalEntriesTable.businessId, businessId),
+          and(
+            isNull(ownerCapitalEntriesTable.businessId),
+            or(
+              eq(jobsTable.businessId, businessId),
+              and(isNull(jobsTable.businessId), eq(jobsTable.businessLine, business.slug)),
+              eq(expensesTable.businessId, businessId),
+              and(isNull(expensesTable.businessId), eq(expensesTable.businessLine, business.slug)),
+            ),
+          ),
+        ),
       ))
       .orderBy(desc(ownerCapitalEntriesTable.date));
 

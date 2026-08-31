@@ -1121,9 +1121,7 @@ function MetricCard({
   );
 }
 
-// ─── My Pay Card ─────────────────────────────────────────────────────────────
-type PayJob = { jobId: number; jobNumber: number | null; title: string; status: string; ownerPayIncluded: boolean; revenue: number; takeHome: number };
-
+// ─── Owner Withdrawals Card ───────────────────────────────────────────────────
 function MyPayCard({ businessId, externalDialogOpen, onExternalDialogChange }: {
   businessId: number | null;
   externalDialogOpen?: boolean;
@@ -1140,29 +1138,11 @@ function MyPayCard({ businessId, externalDialogOpen, onExternalDialogChange }: {
   const [date, setDate] = useState(getTodayStr());
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-  // Optimistic toggle state: jobId → override value while saving
-  const [toggling, setToggling] = useState<Record<number, boolean>>({});
-  const [jobsOpen, setJobsOpen] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ["owner-pay-summary", businessId],
     queryFn: () => fetch(`${BASE}/api/reports/owner-pay-summary?businessId=${businessId}`, { credentials: "include" }).then(r => r.json()),
     enabled: businessId != null,
   });
-
-  async function handleToggle(job: PayJob) {
-    const newVal = !job.ownerPayIncluded;
-    setToggling(prev => ({ ...prev, [job.jobId]: true }));
-    try {
-      await fetch(`${BASE}/api/jobs/${job.jobId}/owner-pay-included`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ included: newVal }),
-      });
-      qc.invalidateQueries({ queryKey: ["owner-pay-summary", businessId] });
-    } finally {
-      setToggling(prev => { const n = { ...prev }; delete n[job.jobId]; return n; });
-    }
-  }
 
   async function handleWithdraw(e: React.FormEvent) {
     e.preventDefault();
@@ -1197,9 +1177,6 @@ function MyPayCard({ businessId, externalDialogOpen, onExternalDialogChange }: {
   const totalEarned    = data?.totalEarned    ?? 0;
   const totalWithdrawn = data?.totalWithdrawn ?? 0;
   const remaining      = data?.remaining      ?? 0;
-  const jobs: PayJob[] = data?.jobs ?? [];
-  const withdrawals: Array<{ id: string; date: string; amount: number; description: string }> = data?.withdrawals ?? [];
-  void withdrawals;
 
   return (
     <>
@@ -1229,7 +1206,7 @@ function MyPayCard({ businessId, externalDialogOpen, onExternalDialogChange }: {
             <div className="bg-muted/40 rounded-xl p-3">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Earned</p>
               <p className="text-lg font-bold text-foreground">{formatCurrency(totalEarned)}</p>
-              <p className="text-[10px] text-muted-foreground">from selected jobs</p>
+              <p className="text-[10px] text-muted-foreground">from completed and active jobs</p>
             </div>
             <div className="bg-muted/40 rounded-xl p-3">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Taken Out</p>
@@ -1242,66 +1219,6 @@ function MyPayCard({ businessId, externalDialogOpen, onExternalDialogChange }: {
               <p className={cn("text-[10px]", remaining > 0.01 ? "text-emerald-600/70" : "text-muted-foreground")}>still owed</p>
             </div>
           </div>
-
-          {/* Per-job breakdown — accordion */}
-          {jobs.length > 0 && (
-            <div className="border border-border/60 rounded-xl overflow-hidden">
-              {/* Accordion header — always visible */}
-              <button
-                onClick={() => setJobsOpen(o => !o)}
-                className="w-full px-3 py-2 bg-muted/30 flex items-center justify-between hover:bg-muted/50 transition-colors"
-              >
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {jobs.length} Job{jobs.length !== 1 ? "s" : ""}
-                </p>
-                <div className="flex items-center gap-2">
-                  {!jobsOpen && (
-                    <p className="text-[10px] text-muted-foreground">
-                      {jobs.filter(j => j.ownerPayIncluded).length} included
-                    </p>
-                  )}
-                  <svg className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform", jobsOpen && "rotate-180")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-              </button>
-
-              {/* Collapsible job rows */}
-              {jobsOpen && jobs.map((job, i) => {
-                const isIncluded = job.ownerPayIncluded;
-                const isSaving   = !!toggling[job.jobId];
-                return (
-                  <div key={job.jobId} className={cn("flex items-center gap-3 px-3 py-2.5 transition-colors border-t border-border/40", isIncluded ? "bg-card" : "bg-muted/20")}>
-                    {/* Toggle */}
-                    <button
-                      disabled={isSaving}
-                      onClick={() => handleToggle(job)}
-                      className={cn(
-                        "relative w-9 h-5 rounded-full transition-colors shrink-0 disabled:opacity-50",
-                        isIncluded ? "bg-emerald-500" : "bg-border"
-                      )}
-                      aria-label={isIncluded ? "Exclude from My Pay" : "Include in My Pay"}
-                    >
-                      <span className={cn("absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all", isIncluded ? "left-[18px]" : "left-0.5")} />
-                    </button>
-
-                    {/* Job info */}
-                    <div className="flex-1 min-w-0">
-                      <p className={cn("text-xs font-semibold truncate", isIncluded ? "text-foreground" : "text-muted-foreground")}>
-                        {job.jobNumber ? `#${job.jobNumber} · ` : ""}{job.title}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground capitalize">{job.status}</p>
-                    </div>
-
-                    {/* Take-home */}
-                    <p className={cn("text-xs font-bold shrink-0", isIncluded ? "text-emerald-700" : "text-muted-foreground line-through")}>
-                      {job.takeHome > 0 ? formatCurrency(job.takeHome) : "—"}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
 
           {/* View Full History link */}
           <div className="mt-3 pt-3 border-t border-border/60 flex items-center justify-end">
