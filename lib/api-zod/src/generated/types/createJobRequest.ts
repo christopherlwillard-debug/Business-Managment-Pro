@@ -5,17 +5,25 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateJobRequestPermitChecklist } from "./createJobRequestPermitChecklist";
+import type { CreateJobRequestPlanningState } from "./createJobRequestPlanningState";
+import type { CreateJobRequestPriority } from "./createJobRequestPriority";
+import type { CreateJobRequestResourceDemand } from "./createJobRequestResourceDemand";
 import type { CreateJobRequestStatus } from "./createJobRequestStatus";
 import type { PhaseItem } from "./phaseItem";
 import type { ServiceBilling } from "./serviceBilling";
 
 export interface CreateJobRequest {
-  title: string;
+  title?: string;
   description?: string | null;
   clientId?: number | null;
   subcontractorIds?: number[];
   status?: CreateJobRequestStatus;
   jobType?: string | null;
+  homeModel?: string | null;
+  mfhManufacturerId?: number | null;
+  mfhModelId?: number | null;
+  mfhModelYear?: number | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
@@ -24,9 +32,20 @@ export interface CreateJobRequest {
   endDate?: string | null;
   notes?: string | null;
   businessLine?: string | null;
+  workflow?: string | null;
+  planningState?: CreateJobRequestPlanningState;
+  priority?: CreateJobRequestPriority;
+  resourceDemand?: CreateJobRequestResourceDemand;
+  queuePosition?: number | null;
   subPaid?: boolean;
   sqFt?: number | null;
   coats?: number | null;
   phases?: PhaseItem[] | null;
   serviceBilling?: ServiceBilling | null;
+  mfhConstructionType?: string | null;
+  mhProductionServices?: number[] | null;
+  manHours?: number | null;
+  permitChecklist?: CreateJobRequestPermitChecklist;
+  includeMileageInJobCosts?: boolean;
+  [key: string]: unknown;
 }

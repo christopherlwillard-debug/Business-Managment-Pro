@@ -23,4 +23,5 @@ export interface MileageLog {
   notes?: string | null;
   source: MileageLogSource;
   createdAt: string;
+  [key: string]: unknown;
 }

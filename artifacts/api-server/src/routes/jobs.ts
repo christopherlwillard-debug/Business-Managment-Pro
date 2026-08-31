@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, type ServiceBilling } from "@workspace/db/schema";
-import { eq, and, count, inArray, sql, isNull, desc } from "drizzle-orm";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, jobReadinessConditionsTable, type ServiceBilling } from "@workspace/db/schema";
+import { eq, and, count, inArray, sql, isNull, desc, or } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
 import { syncMaterialsToJobInvoice } from "./material-lists";
@@ -9,8 +9,9 @@ import { computeAllocationSplitPool, computeSubOwed } from "../lib/allocation.js
 import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
 import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/productionBilling.js";
 import { z } from "zod/v4";
-import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { requestedBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
+import { getRequestUser } from "./guards";
 
 const router = Router();
 
@@ -269,6 +270,10 @@ type JobRow = {
   businessLine: string | null;
   businessId: number | null;
   workflow: string | null;
+  planningState: string;
+  priority: string;
+  resourceDemand: string;
+  queuePosition: number | null;
   subPaid: boolean;
   sqFt: number | null;
   coats: number | null;
@@ -327,6 +332,10 @@ async function getJobWithSubs(jobId: number) {
       businessLine: jobsTable.businessLine,
       businessId: jobsTable.businessId,
       workflow: jobsTable.workflow,
+       planningState: jobsTable.planningState,
+       priority: jobsTable.priority,
+       resourceDemand: jobsTable.resourceDemand,
+       queuePosition: jobsTable.queuePosition,
       subPaid: jobsTable.subPaid,
       sqFt: jobsTable.sqFt,
       coats: jobsTable.coats,
@@ -418,6 +427,14 @@ router.get("/", async (req, res) => {
   try {
     const { status, clientId } = req.query;
     const conditions = [];
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+    if (scope) {
+      conditions.push(or(
+        eq(jobsTable.businessId, scope.id),
+        and(isNull(jobsTable.businessId), eq(jobsTable.businessLine, scope.slug)),
+      ));
+    }
     if (status) conditions.push(eq(jobsTable.status, status as string));
     if (clientId) conditions.push(eq(jobsTable.clientId, parseInt(clientId as string)));
 
@@ -442,6 +459,10 @@ router.get("/", async (req, res) => {
         businessLine: jobsTable.businessLine,
         businessId: jobsTable.businessId,
         workflow: jobsTable.workflow,
+         planningState: jobsTable.planningState,
+         priority: jobsTable.priority,
+         resourceDemand: jobsTable.resourceDemand,
+         queuePosition: jobsTable.queuePosition,
         subPaid: jobsTable.subPaid,
         sqFt: jobsTable.sqFt,
         coats: jobsTable.coats,
@@ -482,7 +503,13 @@ router.get("/", async (req, res) => {
       }
     }
 
-    res.json(Array.from(jobMap.values()).map((j) => formatJob(j as any)));
+    const formatted = Array.from(jobMap.values()).map((j) => formatJob(j as any));
+    const activeConditions = formatted.length ? await db.select().from(jobReadinessConditionsTable)
+      .where(and(inArray(jobReadinessConditionsTable.jobId, formatted.map(job => job.id)), isNull(jobReadinessConditionsTable.clearedAt)))
+      .orderBy(desc(jobReadinessConditionsTable.createdAt)) : [];
+    const activeByJob = new Map<number, typeof activeConditions[number]>();
+    for (const condition of activeConditions) if (!activeByJob.has(condition.jobId)) activeByJob.set(condition.jobId, condition);
+    res.json(formatted.map(job => ({ ...job, activeReadinessCondition: activeByJob.get(job.id) ?? null })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch jobs" });
@@ -491,12 +518,16 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, includeMileageInJobCosts = true } = req.body;
+    const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, includeMileageInJobCosts = true, planningState = "ready", priority = "normal", resourceDemand = "standard", queuePosition = null } = req.body;
     const scope = await requestedBusiness(req);
     if (!title) return res.status(400).json({ error: "Title is required" });
     if (typeof includeMileageInJobCosts !== "boolean") return res.status(400).json({ error: "includeMileageInJobCosts must be a boolean" });
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
+    if (!["ready", "scheduled", "waiting", "queue"].includes(planningState)) return res.status(400).json({ error: "Invalid planningState" });
+    if (!["urgent", "high", "normal", "low"].includes(priority)) return res.status(400).json({ error: "Invalid priority" });
+    if (!["standard", "large_crew", "all_hands"].includes(resourceDemand)) return res.status(400).json({ error: "Invalid resourceDemand" });
+    if (queuePosition != null && (!Number.isInteger(Number(queuePosition)) || Number(queuePosition) < 0)) return res.status(400).json({ error: "queuePosition must be a non-negative integer or null" });
 
     let parsedPhases;
     try { parsedPhases = parsePhases(phases); } catch (e: unknown) { return res.status(400).json({ error: e instanceof Error ? e.message : "Invalid phases" }); }
@@ -520,6 +551,7 @@ router.post("/", async (req, res) => {
       notes,
       businessLine: businessLine || null,
       businessId: scope?.id ?? null,
+       planningState, priority, resourceDemand, queuePosition: queuePosition == null ? null : Number(queuePosition),
       workflow: workflow || null,
       sqFt: sqFt != null ? parseInt(sqFt) : null,
       coats: coats != null ? parseInt(coats) : null,
@@ -1756,6 +1788,78 @@ router.get("/closed/export", async (req, res) => {
   }
 });
 
+router.get("/:id/readiness", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!job || !scope || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
+    const conditions = await db.select().from(jobReadinessConditionsTable)
+      .where(and(eq(jobReadinessConditionsTable.jobId, id), eq(jobReadinessConditionsTable.businessId, scope.id)))
+      .orderBy(desc(jobReadinessConditionsTable.createdAt));
+    res.json(conditions);
+  } catch (err) {
+    (req as typeof req & { log: { error: (data: unknown, message: string) => void } }).log.error({ err }, "Failed to load job readiness conditions");
+    res.status(500).json({ error: "Failed to load readiness conditions" });
+  }
+});
+
+router.post("/:id/readiness", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!job || !scope || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
+    const reason = req.body?.reason;
+    if (!["electricity", "water", "materials", "inspection", "crew", "access", "other"].includes(reason)) return res.status(400).json({ error: "Invalid readiness reason" });
+    const expectedDate = req.body?.expectedDate ?? null;
+    if (expectedDate != null && (typeof expectedDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(expectedDate))) return res.status(400).json({ error: "expectedDate must be YYYY-MM-DD or null" });
+    const user = getRequestUser(req);
+    const [condition] = await db.insert(jobReadinessConditionsTable).values({
+      jobId: id, businessId: scope.id, reason,
+      detail: typeof req.body?.detail === "string" ? req.body.detail.trim() || null : null,
+      expectedDate,
+      createdByUserId: user?.id ?? null,
+      createdByName: [user?.firstName, user?.lastName].filter(Boolean).join(" ") || null,
+    }).returning();
+    await db.update(jobsTable).set({ planningState: "waiting" }).where(eq(jobsTable.id, id));
+    res.status(201).json(condition);
+  } catch (err) {
+    (req as typeof req & { log: { error: (data: unknown, message: string) => void } }).log.error({ err }, "Failed to create job readiness condition");
+    res.status(500).json({ error: "Failed to create readiness condition" });
+  }
+});
+
+router.post("/:id/readiness/:conditionId/clear", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const conditionId = Number(req.params.conditionId);
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!job || !scope || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
+    const [condition] = await db.select().from(jobReadinessConditionsTable).where(and(
+      eq(jobReadinessConditionsTable.id, conditionId), eq(jobReadinessConditionsTable.jobId, id),
+      eq(jobReadinessConditionsTable.businessId, scope.id), isNull(jobReadinessConditionsTable.clearedAt),
+    )).limit(1);
+    if (!condition) return res.status(404).json({ error: "Active readiness condition not found" });
+    const user = getRequestUser(req);
+    const [cleared] = await db.update(jobReadinessConditionsTable).set({
+      clearedAt: new Date(), clearedByUserId: user?.id ?? null,
+      clearedByName: [user?.firstName, user?.lastName].filter(Boolean).join(" ") || null,
+    }).where(eq(jobReadinessConditionsTable.id, conditionId)).returning();
+    const [remaining] = await db.select({ id: jobReadinessConditionsTable.id }).from(jobReadinessConditionsTable)
+      .where(and(eq(jobReadinessConditionsTable.jobId, id), isNull(jobReadinessConditionsTable.clearedAt))).limit(1);
+    if (!remaining && !job.startDate) await db.update(jobsTable).set({ planningState: "ready" }).where(eq(jobsTable.id, id));
+    res.json(cleared);
+  } catch (err) {
+    (req as typeof req & { log: { error: (data: unknown, message: string) => void } }).log.error({ err }, "Failed to clear job readiness condition");
+    res.status(500).json({ error: "Failed to clear readiness condition" });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -1767,7 +1871,10 @@ router.get("/:id", async (req, res) => {
     }
     const job = await getJobWithSubs(id);
     if (!job) return res.status(404).json({ error: "Job not found" });
-    res.json(job);
+     const [activeReadinessCondition] = await db.select().from(jobReadinessConditionsTable)
+       .where(and(eq(jobReadinessConditionsTable.jobId, id), isNull(jobReadinessConditionsTable.clearedAt)))
+       .orderBy(desc(jobReadinessConditionsTable.createdAt)).limit(1);
+     res.json({ ...job, activeReadinessCondition: activeReadinessCondition ?? null });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch job" });
@@ -1778,10 +1885,14 @@ router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
-    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, daysOnJob, includeMileageInJobCosts } = req.body;
+    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, daysOnJob, includeMileageInJobCosts, planningState, priority, resourceDemand, queuePosition } = req.body;
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
     if ("includeMileageInJobCosts" in req.body && typeof includeMileageInJobCosts !== "boolean") return res.status(400).json({ error: "includeMileageInJobCosts must be a boolean" });
+    if ("planningState" in req.body && !["ready", "scheduled", "waiting", "queue"].includes(planningState)) return res.status(400).json({ error: "Invalid planningState" });
+    if ("priority" in req.body && !["urgent", "high", "normal", "low"].includes(priority)) return res.status(400).json({ error: "Invalid priority" });
+    if ("resourceDemand" in req.body && !["standard", "large_crew", "all_hands"].includes(resourceDemand)) return res.status(400).json({ error: "Invalid resourceDemand" });
+    if ("queuePosition" in req.body && queuePosition != null && (!Number.isInteger(Number(queuePosition)) || Number(queuePosition) < 0)) return res.status(400).json({ error: "queuePosition must be a non-negative integer or null" });
 
     let mfhSelection: Awaited<ReturnType<typeof validateMfhSelection>> | null = null;
     if ("mfhManufacturerId" in req.body || "mfhModelId" in req.body) {
@@ -1829,6 +1940,10 @@ router.put("/:id", async (req, res) => {
       }
     }
     if ("workflow" in req.body) updates.workflow = workflow || null;
+    if ("planningState" in req.body) updates.planningState = planningState;
+    if ("priority" in req.body) updates.priority = priority;
+    if ("resourceDemand" in req.body) updates.resourceDemand = resourceDemand;
+    if ("queuePosition" in req.body) updates.queuePosition = queuePosition == null ? null : Number(queuePosition);
     if ("subPaid" in req.body) updates.subPaid = subPaid === true;
     if ("sqFt" in req.body) updates.sqFt = sqFt != null ? parseInt(sqFt) : null;
     if ("coats" in req.body) updates.coats = coats != null ? parseInt(coats) : null;

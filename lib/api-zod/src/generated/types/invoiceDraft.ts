@@ -21,5 +21,7 @@ export interface InvoiceDraft {
   locationName?: string | null;
   city?: string | null;
   state?: string | null;
+  businessLine?: string | null;
   lineItems: DraftLineItem[];
+  [key: string]: unknown;
 }

@@ -18,5 +18,10 @@ export interface Expense {
   receiptUrl?: string | null;
   notes?: string | null;
   recurringExpenseId?: number | null;
+  businessLine?: string | null;
+  countsTowardJobProfit?: boolean | null;
+  excludeFromNetProfit?: boolean | null;
+  legacyPayrollDuplicate?: boolean | null;
   createdAt: string;
+  [key: string]: unknown;
 }

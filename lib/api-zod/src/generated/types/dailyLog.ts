@@ -10,6 +10,8 @@ export interface DailyLog {
   id: number;
   jobId?: number | null;
   jobTitle?: string | null;
+  materialListId?: number | null;
+  authorName?: string | null;
   date: string;
   weather?: string | null;
   crewCount?: number | null;
@@ -20,4 +22,5 @@ export interface DailyLog {
   notes?: string | null;
   photoUrls: string[];
   createdAt: string;
+  [key: string]: unknown;
 }

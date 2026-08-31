@@ -21,6 +21,13 @@ export interface Estimate {
   total: number;
   jobType?: string | null;
   notes?: string | null;
+  businessLine?: string | null;
+  jobId?: number | null;
+  depositPaidAt?: string | null;
+  depositPaidAmount?: number | null;
+  squarePaymentLinkUrl?: string | null;
+  stripePaymentLinkUrl?: string | null;
   lineItems?: EstimateLineItem[];
   createdAt: string;
+  [key: string]: unknown;
 }

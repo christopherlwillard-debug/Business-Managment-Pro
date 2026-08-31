@@ -264,3 +264,21 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-08-29
+
+---
+
+## ADR-015
+
+**Title:** Job readiness blockers are internal planning history, separate from customer checklist delays
+
+**Decision:** `job_readiness_conditions` records business-scoped operational blockers and their create/clear audit identities. Customer-facing delay history remains in `job_checklist_status_log`; production scope continues to update the applied checklist records rather than creating another progress model.
+
+**Reason:** Readiness is a scheduling concern that may not be appropriate for the customer portal. The existing checklist log represents customer-facing execution status, so combining them would expose or distort distinct operational facts.
+
+**Rejected Alternatives:**
+- Storing readiness blockers in customer-facing checklist delay logs
+- Adding a second production-progress table
+- Deleting cleared blockers
+
+**Status:** Accepted
+**Date:** 2026-08-30

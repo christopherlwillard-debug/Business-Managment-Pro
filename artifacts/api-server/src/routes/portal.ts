@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { sectionGuard } from "./guards";
 import { db } from "@workspace/db";
-import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, vendorsTable, generated1099sTable, paymentsTable, dailyLogsTable, materialListsTable, subPaymentRecordsTable, jobChecklistsTable, jobChecklistSectionsTable, jobChecklistItemsTable } from "@workspace/db/schema";
+import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, vendorsTable, generated1099sTable, paymentsTable, dailyLogsTable, materialListsTable, subPaymentRecordsTable, jobChecklistsTable, jobChecklistSectionsTable, jobChecklistItemsTable, jobChecklistItemPartsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, or, inArray, sql, asc } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -11,6 +11,7 @@ import fs from "fs";
 import { computeYtd } from "./subcontractors";
 import { parseReceiptFile } from "./receipt-parser";
 import { calculateMileageDeduction, summarizeMileageRecords } from "../lib/irs-rates.js";
+import { calculateChecklistProgress } from "../lib/checklist-progress.js";
 
 const portalUploadsDir = path.resolve("uploads");
 if (!fs.existsSync(portalUploadsDir)) fs.mkdirSync(portalUploadsDir, { recursive: true });
@@ -1190,16 +1191,17 @@ tokenRouter.get("/jobs/:jobId/checklist", async (req, res) => {
       const section = sections.find(s => s.id === i.jobChecklistSectionId);
       return section?.active && !i.skipped;
     });
-    const completedItems = activeItems.filter(i => i.completed);
-    const overallPct = activeItems.length === 0
-      ? 0
-      : Math.round((completedItems.length / activeItems.length) * 100);
+    const parts = items.length
+      ? await db.select({ jobChecklistItemId: jobChecklistItemPartsTable.jobChecklistItemId, completed: jobChecklistItemPartsTable.completed })
+        .from(jobChecklistItemPartsTable).where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, items.map(item => item.id)))
+      : [];
+    const progress = calculateChecklistProgress(activeItems, parts);
 
     res.json({
       ...checklist,
-      overallPercent: overallPct,
-      totalItems: activeItems.length,
-      completedItems: completedItems.length,
+       overallPercent: progress.overallPercent,
+       totalItems: progress.totalItems,
+       completedItems: progress.completedItems,
       sections: sections.map(s => ({
         ...s,
         items: items.filter(i => i.jobChecklistSectionId === s.id),
@@ -1264,9 +1266,11 @@ tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId", async (req, res) => {
       .where(eq(jobChecklistItemsTable.jobChecklistSectionId, item.jobChecklistSectionId));
 
     const active = sectionItems.filter(i => !i.skipped);
-    const done = active.filter(i => (i.id === itemId ? !!completed : i.completed));
-    const pct = active.length === 0 ? 0 : Math.round((done.length / active.length) * 100);
-    const allDone = active.length > 0 && done.length === active.length;
+    const sectionParts = active.length ? await db.select().from(jobChecklistItemPartsTable)
+      .where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, active.map(i => i.id))) : [];
+    const progress = calculateChecklistProgress(active, sectionParts);
+    const pct = progress.overallPercent;
+    const allDone = active.length > 0 && progress.weightedComplete >= active.length;
 
     await db.update(jobChecklistSectionsTable)
       .set({ percentComplete: String(pct), completedAt: allDone ? new Date() : null })
@@ -1323,9 +1327,11 @@ tokenRouter.patch("/jobs/:jobId/checklist/items/:itemId/skip", async (req, res) 
       .where(eq(jobChecklistItemsTable.jobChecklistSectionId, item.jobChecklistSectionId));
 
     const active = sectionItems.filter(i => (i.id === itemId ? !skipped : !i.skipped));
-    const done = active.filter(i => i.completed);
-    const pct = active.length === 0 ? 0 : Math.round((done.length / active.length) * 100);
-    const allDone = active.length > 0 && done.length === active.length;
+    const sectionParts = active.length ? await db.select().from(jobChecklistItemPartsTable)
+      .where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, active.map(i => i.id))) : [];
+    const progress = calculateChecklistProgress(active, sectionParts);
+    const pct = progress.overallPercent;
+    const allDone = active.length > 0 && progress.weightedComplete >= active.length;
 
     await db.update(jobChecklistSectionsTable)
       .set({ percentComplete: String(pct), completedAt: allDone ? new Date() : null })

@@ -316,6 +316,87 @@ paths:
               schema:
                 $ref: "#/components/schemas/InvoiceDraft"
 
+  /jobs/{id}/readiness:
+    get:
+      operationId: listJobReadinessConditions
+      tags: [jobs]
+      summary: List a job's internal readiness condition history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Readiness condition history
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/JobReadinessCondition' }
+    post:
+      operationId: createJobReadinessCondition
+      tags: [jobs]
+      summary: Add an internal readiness blocker
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobReadinessConditionInput' }
+      responses:
+        '201':
+          description: Blocker created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobReadinessCondition' }
+  /jobs/{id}/readiness/{conditionId}/clear:
+    post:
+      operationId: clearJobReadinessCondition
+      tags: [jobs]
+      summary: Clear an internal readiness blocker without deleting history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: conditionId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Cleared blocker
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobReadinessCondition' }
+  /jobs/{jobId}/checklist/sections/{sectionId}/complete:
+    post:
+      operationId: completeProductionScopeSection
+      tags: [jobs]
+      summary: Complete or reopen an applied production checklist section
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: sectionId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductionScopeSectionInput' }
+      responses:
+        '200':
+          description: Applied checklist updated
+
   /jobs/{id}:
     get:
       operationId: getJob
@@ -855,6 +936,10 @@ paths:
       tags: [mileage]
       summary: List mileage logs
       parameters:
+        - name: businessId
+          in: query
+          schema:
+            type: integer
         - name: startDate
           in: query
           schema:
@@ -938,6 +1023,10 @@ paths:
       tags: [mileage]
       summary: Get mileage summary and deduction total
       parameters:
+        - name: businessId
+          in: query
+          schema:
+            type: integer
         - name: startDate
           in: query
           schema:
@@ -1646,6 +1735,7 @@ components:
 
     Client:
       type: object
+      additionalProperties: true
       properties:
         id:
           type: integer
@@ -1672,6 +1762,9 @@ components:
         notes:
           type: string
           nullable: true
+        businessLine: { type: string, nullable: true }
+        nextServiceDate: { type: string, nullable: true }
+        squareCustomerId: { type: string, nullable: true }
         reminderOptOut:
           type: boolean
         mileageSurchargeEnabled:
@@ -1688,6 +1781,7 @@ components:
 
     CreateClientRequest:
       type: object
+      additionalProperties: true
       properties:
         name:
           type: string
@@ -1712,6 +1806,9 @@ components:
         notes:
           type: string
           nullable: true
+        businessLine: { type: string, nullable: true }
+        nextServiceDate: { type: string, nullable: true }
+        serviceIntervalMonths: { type: integer, nullable: true }
         reminderOptOut:
           type: boolean
         mileageSurchargeEnabled:
@@ -1726,6 +1823,7 @@ components:
 
     Job:
       type: object
+      additionalProperties: true
       properties:
         id:
           type: integer
@@ -1750,7 +1848,7 @@ components:
             type: string
         status:
           type: string
-          enum: [scheduled, in_progress, awaiting_approval, completed, invoiced, cancelled]
+          enum: [scheduled, in_progress, awaiting_approval, completed, invoiced, cancelled, closed]
         jobType:
           type: string
           nullable: true
@@ -1778,8 +1876,23 @@ components:
         businessLine:
           type: string
           nullable: true
+        businessId: { type: integer, nullable: true }
+        workflow: { type: string, nullable: true }
+        planningState:
+          type: string
+          enum: [ready, scheduled, waiting, queue]
+        priority:
+          type: string
+          enum: [urgent, high, normal, low]
+        resourceDemand:
+          type: string
+          enum: [standard, large_crew, all_hands]
+        queuePosition:
+          type: integer
+          nullable: true
         subPaid:
           type: boolean
+        includeMileageInJobCosts: { type: boolean }
         sqFt:
           type: integer
           nullable: true
@@ -1794,6 +1907,18 @@ components:
         serviceBilling:
           $ref: "#/components/schemas/ServiceBilling"
           nullable: true
+        permitChecklist: { type: object, nullable: true, additionalProperties: true }
+        mfhManufacturerId: { type: integer, nullable: true }
+        mfhModelId: { type: integer, nullable: true }
+        mfhManufacturerName: { type: string, nullable: true }
+        mfhModelName: { type: string, nullable: true }
+        mfhModelYear: { type: integer, nullable: true }
+        mfhConstructionType: { type: string, nullable: true }
+        mhProductionServices: { type: array, nullable: true, items: { type: integer } }
+        manHours: { type: number, nullable: true }
+        homeModel: { type: string, nullable: true }
+        jobNumber: { type: string, nullable: true }
+        closedAt: { type: string, nullable: true }
         createdAt:
           type: string
       required: [id, title, status, createdAt]
@@ -1832,6 +1957,7 @@ components:
 
     ServiceBilling:
       type: object
+      additionalProperties: true
       properties:
         profileId:
           type: integer
@@ -1860,6 +1986,7 @@ components:
         fuelEstimate:
           type: number
           nullable: true
+        workType: { type: string, nullable: true }
       required: [techCount, repairHours, driveHours, mileage, parts]
 
     PhaseItem:
@@ -1873,6 +2000,7 @@ components:
 
     CreateJobRequest:
       type: object
+      additionalProperties: true
       properties:
         title:
           type: string
@@ -1888,10 +2016,14 @@ components:
             type: integer
         status:
           type: string
-          enum: [scheduled, in_progress, awaiting_approval, completed, invoiced, cancelled]
+          enum: [scheduled, in_progress, awaiting_approval, completed, invoiced, cancelled, closed]
         jobType:
           type: string
           nullable: true
+        homeModel: { type: string, nullable: true }
+        mfhManufacturerId: { type: integer, nullable: true }
+        mfhModelId: { type: integer, nullable: true }
+        mfhModelYear: { type: integer, nullable: true }
         address:
           type: string
           nullable: true
@@ -1916,6 +2048,19 @@ components:
         businessLine:
           type: string
           nullable: true
+        workflow: { type: string, nullable: true }
+        planningState:
+          type: string
+          enum: [ready, scheduled, waiting, queue]
+        priority:
+          type: string
+          enum: [urgent, high, normal, low]
+        resourceDemand:
+          type: string
+          enum: [standard, large_crew, all_hands]
+        queuePosition:
+          type: integer
+          nullable: true
         subPaid:
           type: boolean
         sqFt:
@@ -1932,7 +2077,39 @@ components:
         serviceBilling:
           $ref: "#/components/schemas/ServiceBilling"
           nullable: true
-      required: [title]
+        mfhConstructionType: { type: string, nullable: true }
+        mhProductionServices: { type: array, nullable: true, items: { type: integer } }
+        manHours: { type: number, nullable: true }
+        permitChecklist: { type: object, nullable: true, additionalProperties: true }
+        includeMileageInJobCosts: { type: boolean }
+
+    JobReadinessCondition:
+      type: object
+      required: [id, jobId, businessId, reason, createdAt]
+      properties:
+        id: { type: integer }
+        jobId: { type: integer }
+        businessId: { type: integer }
+        reason: { type: string, enum: [electricity, water, materials, inspection, crew, access, other] }
+        detail: { type: string, nullable: true }
+        expectedDate: { type: string, format: date, nullable: true }
+        createdAt: { type: string, format: date-time }
+        createdByUserId: { type: string, nullable: true }
+        createdByName: { type: string, nullable: true }
+        clearedAt: { type: string, format: date-time, nullable: true }
+        clearedByUserId: { type: string, nullable: true }
+        clearedByName: { type: string, nullable: true }
+    JobReadinessConditionInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, enum: [electricity, water, materials, inspection, crew, access, other] }
+        detail: { type: string }
+        expectedDate: { type: string, format: date }
+    ProductionScopeSectionInput:
+      type: object
+      properties:
+        complete: { type: boolean }
 
     DraftLineItem:
       type: object
@@ -1947,6 +2124,7 @@ components:
 
     InvoiceDraft:
       type: object
+      additionalProperties: true
       properties:
         clientId:
           type: integer
@@ -1985,6 +2163,7 @@ components:
         state:
           type: string
           nullable: true
+        businessLine: { type: string, nullable: true }
         lineItems:
           type: array
           items:
@@ -1993,6 +2172,7 @@ components:
 
     Invoice:
       type: object
+      additionalProperties: true
       properties:
         id:
           type: integer
@@ -2016,9 +2196,20 @@ components:
         jobState:
           type: string
           nullable: true
+        city: { type: string, nullable: true }
+        state: { type: string, nullable: true }
+        locationName: { type: string, nullable: true }
+        clientEmail: { type: string, nullable: true }
+        clientPhone: { type: string, nullable: true }
+        clientAddress: { type: string, nullable: true }
+        clientCity: { type: string, nullable: true }
+        clientState: { type: string, nullable: true }
+        clientZip: { type: string, nullable: true }
+        clientNotes: { type: string, nullable: true }
+        businessLine: { type: string, nullable: true }
         status:
           type: string
-          enum: [draft, sent, paid, overdue, cancelled]
+          enum: [draft, sent, paid, overdue, cancelled, partiallyPaid, approved]
         issueDate:
           type: string
         dueDate:
@@ -2052,6 +2243,10 @@ components:
           items:
             $ref: "#/components/schemas/InvoiceAttachment"
           nullable: true
+        squarePaidAt: { type: string, nullable: true }
+        stripePaidAt: { type: string, nullable: true }
+        squarePaymentLinkUrl: { type: string, nullable: true }
+        stripePaymentLinkUrl: { type: string, nullable: true }
         createdAt:
           type: string
       required: [id, invoiceNumber, status, issueDate, subtotal, total, createdAt]
@@ -2089,6 +2284,7 @@ components:
 
     CreateInvoiceRequest:
       type: object
+      additionalProperties: true
       properties:
         clientId:
           type: integer
@@ -2098,7 +2294,7 @@ components:
           nullable: true
         status:
           type: string
-          enum: [draft, sent, paid, overdue, cancelled]
+          enum: [draft, sent, paid, overdue, cancelled, partiallyPaid, approved]
         issueDate:
           type: string
         dueDate:
@@ -2176,6 +2372,7 @@ components:
 
     Expense:
       type: object
+      additionalProperties: true
       properties:
         id:
           type: integer
@@ -2205,12 +2402,17 @@ components:
         recurringExpenseId:
           type: integer
           nullable: true
+        businessLine: { type: string, nullable: true }
+        countsTowardJobProfit: { type: boolean, nullable: true }
+        excludeFromNetProfit: { type: boolean, nullable: true }
+        legacyPayrollDuplicate: { type: boolean, nullable: true }
         createdAt:
           type: string
       required: [id, description, amount, category, date, createdAt]
 
     CreateExpenseRequest:
       type: object
+      additionalProperties: true
       properties:
         description:
           type: string
@@ -2226,6 +2428,7 @@ components:
         jobId:
           type: integer
           nullable: true
+        subcontractorId: { type: integer, nullable: true }
         receiptUrl:
           type: string
           nullable: true
@@ -2432,6 +2635,7 @@ components:
 
     MileageLog:
       type: object
+      additionalProperties: true
       properties:
         id:
           type: integer
@@ -2474,6 +2678,7 @@ components:
 
     CreateMileageLogRequest:
       type: object
+      additionalProperties: true
       properties:
         date:
           type: string
@@ -2643,6 +2848,7 @@ components:
 
     Estimate:
       type: object
+      additionalProperties: true
       properties:
         id:
           type: integer
@@ -2676,6 +2882,12 @@ components:
         notes:
           type: string
           nullable: true
+        businessLine: { type: string, nullable: true }
+        jobId: { type: integer, nullable: true }
+        depositPaidAt: { type: string, nullable: true }
+        depositPaidAmount: { type: number, nullable: true }
+        squarePaymentLinkUrl: { type: string, nullable: true }
+        stripePaymentLinkUrl: { type: string, nullable: true }
         lineItems:
           type: array
           items:
@@ -2706,6 +2918,7 @@ components:
 
     CreateEstimateRequest:
       type: object
+      additionalProperties: true
       properties:
         title:
           type: string
@@ -2730,6 +2943,7 @@ components:
         notes:
           type: string
           nullable: true
+        businessLine: { type: string, nullable: true }
         lineItems:
           type: array
           items:
@@ -2751,6 +2965,7 @@ components:
 
     DailyLog:
       type: object
+      additionalProperties: true
       properties:
         id:
           type: integer
@@ -2760,6 +2975,8 @@ components:
         jobTitle:
           type: string
           nullable: true
+        materialListId: { type: integer, nullable: true }
+        authorName: { type: string, nullable: true }
         date:
           type: string
         weather:
@@ -2793,10 +3010,12 @@ components:
 
     CreateDailyLogRequest:
       type: object
+      additionalProperties: true
       properties:
         jobId:
           type: integer
           nullable: true
+        materialListId: { type: integer, nullable: true }
         date:
           type: string
         weather:
@@ -2828,6 +3047,7 @@ components:
 
     AppSettings:
       type: object
+      additionalProperties: true
       properties:
         companyName:
           type: string
@@ -2853,6 +3073,8 @@ components:
         logoUrl:
           type: string
           nullable: true
+        dbaLogoUrl: { type: string, nullable: true }
+        calculatorDefaults: { type: object, nullable: true, additionalProperties: true }
         defaultTaxRate:
           type: number
           nullable: true
@@ -3139,6 +3361,7 @@ components:
 
     Prospect:
       type: object
+      additionalProperties: true
       properties:
         id:
           type: integer
@@ -3153,6 +3376,12 @@ components:
         zip:
           type: string
           nullable: true
+        companyName: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        companyAddress: { type: string, nullable: true }
+        companyCity: { type: string, nullable: true }
+        companyState: { type: string, nullable: true }
+        companyZip: { type: string, nullable: true }
         propertyType:
           $ref: "#/components/schemas/ProspectPropertyType"
         estimatedSqft:

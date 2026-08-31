@@ -54,6 +54,9 @@ import { calculateSurchargeDays, isMileageSurchargeLine, mergeMileageSurchargeLi
 import { isMaterialInvoiceLine } from "@/lib/invoiceLineItems";
 import { calculateJobMargin } from "@/lib/jobMargin";
 import { JobMarginCard } from "@/components/JobMarginCard";
+import { JobPlannerBoard } from "@/components/planner/JobPlannerBoard";
+import { JobPlanningDialog } from "@/components/planner/JobPlanningDialog";
+import { ExtendedJob } from "@/components/planner/types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -88,7 +91,7 @@ type ScheduleItem = {
   sectionName: string | null;
 };
 
-type ScheduleJob = Job & {
+export type ScheduleJob = Job & {
   checklistItems: ScheduleItem[];
   unscheduledChecklistItems: ScheduleItem[];
 };
@@ -7032,6 +7035,7 @@ function DeleteConfirm({
 }
 
 // ─── Main Jobs Page ────────────────────────────────────────────────────────────
+
 export default function Jobs() {
   const { canEdit } = useUserPermissions();
   const canEditJobs = canEdit("jobs");
@@ -7141,6 +7145,9 @@ export default function Jobs() {
   const [productionPricingJob, setProductionPricingJob] = useState<Job | null>(null);
 
   const [gcWizardJob, setGcWizardJob] = useState<Job | null>(null);
+
+  const [viewMode, setViewMode] = useState<"list" | "planner">("planner");
+  const [planningJob, setPlanningJob] = useState<ExtendedJob | null>(null);
 
   const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string; invoiceId: number } | null>(null);
   const [generatingLinkId, setGeneratingLinkId]   = useState<number | null>(null);
@@ -7921,7 +7928,13 @@ export default function Jobs() {
            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Job records</p>
            <h2 className="text-xl font-display font-bold text-foreground">All jobs</h2>
          </div>
-         <span className="text-xs text-muted-foreground">{jobs.length} total</span>
+         <div className="flex items-center gap-2">
+           <div className="flex p-1 bg-muted/40 rounded-xl border border-border">
+             <button onClick={() => setViewMode("planner")} className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${viewMode === "planner" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Planner</button>
+             <button onClick={() => setViewMode("list")} className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${viewMode === "list" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>List</button>
+           </div>
+           <span className="text-xs text-muted-foreground ml-2">{jobs.length} total</span>
+         </div>
        </div>
 
       {/* Loading */}
@@ -8014,9 +8027,21 @@ export default function Jobs() {
         );
       })()}
 
+      {/* Jobs View Mode Wrapper */}
+      {!isLoading && jobs.length > 0 && viewMode === "planner" && (
+        <JobPlannerBoard
+          jobs={jobs}
+          scheduleJobsById={scheduleJobsById}
+          checklistSummaries={checklistSummaries}
+          onOpenJob={openEditJob}
+          onOpenPlanning={job => setPlanningJob(job)}
+          onOpenChecklist={setScheduleChecklistJob}
+        />
+      )}
+
       {/* Jobs grid */}
-      {!isLoading && jobs.length > 0 && (
-        <>
+      {!isLoading && jobs.length > 0 && viewMode === "list" && (
+        <div className="space-y-6">
           {scheduledJobs.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-3">
@@ -8457,10 +8482,14 @@ export default function Jobs() {
               <p>No jobs match "{jobSearch}".</p>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Dialogs */}
+      {planningJob && (
+        <JobPlanningDialog job={planningJob} onClose={() => setPlanningJob(null)} />
+      )}
+
       {jobFormOpen && (
         <JobFormDialog
           open={jobFormOpen}

@@ -7,6 +7,7 @@
  */
 
 export type GetMileageSummaryParams = {
+  businessId?: number;
   startDate?: string;
   endDate?: string;
 };

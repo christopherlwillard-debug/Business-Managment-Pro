@@ -18,6 +18,17 @@ export interface Invoice {
   jobTitle?: string | null;
   jobCity?: string | null;
   jobState?: string | null;
+  city?: string | null;
+  state?: string | null;
+  locationName?: string | null;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  clientAddress?: string | null;
+  clientCity?: string | null;
+  clientState?: string | null;
+  clientZip?: string | null;
+  clientNotes?: string | null;
+  businessLine?: string | null;
   status: InvoiceStatus;
   issueDate: string;
   dueDate?: string | null;
@@ -30,5 +41,10 @@ export interface Invoice {
   terms?: string | null;
   lineItems?: InvoiceLineItem[];
   attachments?: InvoiceAttachment[] | null;
+  squarePaidAt?: string | null;
+  stripePaidAt?: string | null;
+  squarePaymentLinkUrl?: string | null;
+  stripePaymentLinkUrl?: string | null;
   createdAt: string;
+  [key: string]: unknown;
 }

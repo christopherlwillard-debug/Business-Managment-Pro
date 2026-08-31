@@ -17,6 +17,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, asc, inArray, and, isNotNull, ne } from "drizzle-orm";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { calculateChecklistProgress } from "../lib/checklist-progress.js";
 
 const objStorage = new ObjectStorageService();
 
@@ -80,12 +81,12 @@ router.get("/status/:token/summary", async (req, res) => {
       .from(jobChecklistSectionsTable)
       .where(eq(jobChecklistSectionsTable.jobChecklistId, row.checklist.id));
 
+    const parts = items.length
+      ? await db.select({ jobChecklistItemId: jobChecklistItemPartsTable.jobChecklistItemId, completed: jobChecklistItemPartsTable.completed })
+        .from(jobChecklistItemPartsTable).where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, items.map(item => item.id)))
+      : [];
     const activeSectionIds = new Set(sections.filter(s => s.active).map(s => s.id));
-    const activeItems = items.filter(i => activeSectionIds.has(i.jobChecklistSectionId) && !i.skipped);
-    const completedCount = activeItems.filter(i => i.completed).length;
-    const overallPercent = activeItems.length === 0
-      ? 0
-      : Math.round((completedCount / activeItems.length) * 100);
+    const progress = calculateChecklistProgress(items.filter(i => activeSectionIds.has(i.jobChecklistSectionId)), parts);
 
     const [settings] = await db
       .select({ companyName: settingsTable.companyName, logoUrl: settingsTable.logoUrl })
@@ -96,7 +97,7 @@ router.get("/status/:token/summary", async (req, res) => {
     res.json({
       jobTitle: row.jobTitle,
       statusOverride: row.checklist.statusOverride || null,
-      overallPercent,
+       overallPercent: progress.overallPercent,
       companyName: settings?.companyName ?? null,
       logoUrl: settings?.logoUrl ? "/api/public/business-logo" : null,
     });
@@ -219,20 +220,7 @@ router.get("/status/:token", async (req, res) => {
       notesBySection.get(n.jobChecklistSectionId)!.push(n);
     }
 
-    // Fractional overall percent: split items contribute completedParts/totalParts
-    let weightedComplete = 0;
-    for (const item of activeItems) {
-      const itemParts = partsByItemId.get(item.id) ?? [];
-      if (itemParts.length > 0) {
-        weightedComplete += itemParts.filter(p => p.completed).length / itemParts.length;
-      } else {
-        weightedComplete += item.completed ? 1 : 0;
-      }
-    }
-    const overallPercent = activeItems.length === 0
-      ? 0
-      : Math.round((weightedComplete / activeItems.length) * 100);
-    const completedCount = activeItems.filter(i => i.completed).length;
+    const progress = calculateChecklistProgress(activeItems, parts);
 
     const locationParts = [row.jobAddress, row.jobCity, row.jobState].filter(Boolean);
 
@@ -253,9 +241,9 @@ router.get("/status/:token", async (req, res) => {
       updatedAt: row.checklist.updatedAt,
       companyName: detailSettings?.companyName ?? null,
       logoUrl: detailSettings?.logoUrl ? "/api/public/business-logo" : null,
-      overallPercent,
-      totalItems: activeItems.length,
-      completedItems: completedCount,
+       overallPercent: progress.overallPercent,
+       totalItems: progress.totalItems,
+       completedItems: progress.completedItems,
       startPhotos: startPhotos.map(p => ({ id: p.id, createdAt: p.createdAt })),
       startNotes: row.checklist.startNotes || null,
       finishedPhotos: finishedPhotos.map(p => ({ id: p.id, createdAt: p.createdAt })),
@@ -269,17 +257,7 @@ router.get("/status/:token", async (req, res) => {
       })),
       sections: activeSections.map(s => {
         const sectionItems = items.filter(i => i.jobChecklistSectionId === s.id && !i.skipped);
-        const activeCount = sectionItems.length;
-        let sectionWeighted = 0;
-        for (const item of sectionItems) {
-          const itemParts = partsByItemId.get(item.id) ?? [];
-          if (itemParts.length > 0) {
-            sectionWeighted += itemParts.filter(p => p.completed).length / itemParts.length;
-          } else {
-            sectionWeighted += item.completed ? 1 : 0;
-          }
-        }
-        const doneCount = sectionItems.filter(i => i.completed).length;
+        const sectionProgress = calculateChecklistProgress(sectionItems, parts);
         return {
           id: s.id,
           name: s.name,
@@ -291,9 +269,9 @@ router.get("/status/:token", async (req, res) => {
             createdAt: n.createdAt,
           })),
           sortOrder: s.sortOrder,
-          totalItems: activeCount,
-          completedItems: doneCount,
-          percentComplete: activeCount === 0 ? 0 : Math.round((sectionWeighted / activeCount) * 100),
+           totalItems: sectionProgress.totalItems,
+           completedItems: sectionProgress.completedItems,
+           percentComplete: sectionProgress.overallPercent,
           items: items.filter(i => i.jobChecklistSectionId === s.id).map(i => {
             const itemParts = partsByItemId.get(i.id) ?? [];
             return {

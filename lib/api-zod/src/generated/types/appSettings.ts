@@ -5,6 +5,7 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { AppSettingsCalculatorDefaults } from "./appSettingsCalculatorDefaults";
 import type { AppSettingsInvoiceLogoPosition } from "./appSettingsInvoiceLogoPosition";
 import type { AppSettingsInvoiceLogoSize } from "./appSettingsInvoiceLogoSize";
 
@@ -17,6 +18,8 @@ export interface AppSettings {
   companyPhone?: string | null;
   companyEmail?: string | null;
   logoUrl?: string | null;
+  dbaLogoUrl?: string | null;
+  calculatorDefaults?: AppSettingsCalculatorDefaults;
   defaultTaxRate?: number | null;
   defaultPaymentTerms?: string | null;
   lateFeePercent?: number | null;
@@ -30,4 +33,5 @@ export interface AppSettings {
   invoiceLogoPosition?: AppSettingsInvoiceLogoPosition;
   ownerSplitPct?: number | null;
   taxReservePct?: number | null;
+  [key: string]: unknown;
 }

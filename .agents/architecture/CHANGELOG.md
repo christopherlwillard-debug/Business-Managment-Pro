@@ -191,3 +191,11 @@ Created the four-document architecture governance system:
 - New owner transactions create one canonical negative `owner_capital_entries` row and never an expense row.
 - Removed contribution/capital creation controls and the duplicate equity-withdrawal dialog while preserving historical positive ledger records.
 - Profit & Loss and year-end reports show withdrawals as an informational cash summary outside operating profit and tax deductions.
+
+## 2026-08-30
+
+### Jobs planning and readiness
+
+- Added canonical job planning fields and the `job_readiness_conditions` audit-history table for internal, business-scoped blockers.
+- Job list scoping now uses canonical `business_id`, using `business_line` only for null-owned legacy rows.
+- Checklist progress now uses one fractional calculation across detailed, summary, public, and subcontractor views; production scope updates the applied checklist evidence in place.

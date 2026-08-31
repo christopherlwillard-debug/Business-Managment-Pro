@@ -111,6 +111,9 @@ export const ListClientsResponseItem = zod.object({
   state: zod.string().nullish(),
   zip: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  nextServiceDate: zod.string().nullish(),
+  squareCustomerId: zod.string().nullish(),
   reminderOptOut: zod.boolean().optional(),
   mileageSurchargeEnabled: zod.boolean().optional(),
   mileageSurchargeTriggerMiles: zod.number().nullish(),
@@ -131,6 +134,9 @@ export const CreateClientBody = zod.object({
   state: zod.string().nullish(),
   zip: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  nextServiceDate: zod.string().nullish(),
+  serviceIntervalMonths: zod.number().nullish(),
   reminderOptOut: zod.boolean().optional(),
   mileageSurchargeEnabled: zod.boolean().optional(),
   mileageSurchargeTriggerMiles: zod.number().nullish(),
@@ -154,6 +160,9 @@ export const GetClientResponse = zod.object({
   state: zod.string().nullish(),
   zip: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  nextServiceDate: zod.string().nullish(),
+  squareCustomerId: zod.string().nullish(),
   reminderOptOut: zod.boolean().optional(),
   mileageSurchargeEnabled: zod.boolean().optional(),
   mileageSurchargeTriggerMiles: zod.number().nullish(),
@@ -177,6 +186,9 @@ export const UpdateClientBody = zod.object({
   state: zod.string().nullish(),
   zip: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  nextServiceDate: zod.string().nullish(),
+  serviceIntervalMonths: zod.number().nullish(),
   reminderOptOut: zod.boolean().optional(),
   mileageSurchargeEnabled: zod.boolean().optional(),
   mileageSurchargeTriggerMiles: zod.number().nullish(),
@@ -193,6 +205,9 @@ export const UpdateClientResponse = zod.object({
   state: zod.string().nullish(),
   zip: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  nextServiceDate: zod.string().nullish(),
+  squareCustomerId: zod.string().nullish(),
   reminderOptOut: zod.boolean().optional(),
   mileageSurchargeEnabled: zod.boolean().optional(),
   mileageSurchargeTriggerMiles: zod.number().nullish(),
@@ -230,6 +245,7 @@ export const ListJobsResponseItem = zod.object({
     "completed",
     "invoiced",
     "cancelled",
+    "closed",
   ]),
   jobType: zod.string().nullish(),
   address: zod.string().nullish(),
@@ -240,7 +256,16 @@ export const ListJobsResponseItem = zod.object({
   endDate: zod.string().nullish(),
   notes: zod.string().nullish(),
   businessLine: zod.string().nullish(),
+  businessId: zod.number().nullish(),
+  workflow: zod.string().nullish(),
+  planningState: zod
+    .enum(["ready", "scheduled", "waiting", "queue"])
+    .optional(),
+  priority: zod.enum(["urgent", "high", "normal", "low"]).optional(),
+  resourceDemand: zod.enum(["standard", "large_crew", "all_hands"]).optional(),
+  queuePosition: zod.number().nullish(),
   subPaid: zod.boolean().optional(),
+  includeMileageInJobCosts: zod.boolean().optional(),
   sqFt: zod.number().nullish(),
   coats: zod.number().nullish(),
   phases: zod
@@ -278,8 +303,21 @@ export const ListJobsResponseItem = zod.object({
         .nullish(),
       internalLaborRate: zod.number().nullish(),
       fuelEstimate: zod.number().nullish(),
+      workType: zod.string().nullish(),
     })
     .nullish(),
+  permitChecklist: zod.record(zod.string(), zod.unknown()).nullish(),
+  mfhManufacturerId: zod.number().nullish(),
+  mfhModelId: zod.number().nullish(),
+  mfhManufacturerName: zod.string().nullish(),
+  mfhModelName: zod.string().nullish(),
+  mfhModelYear: zod.number().nullish(),
+  mfhConstructionType: zod.string().nullish(),
+  mhProductionServices: zod.array(zod.number()).nullish(),
+  manHours: zod.number().nullish(),
+  homeModel: zod.string().nullish(),
+  jobNumber: zod.string().nullish(),
+  closedAt: zod.string().nullish(),
   createdAt: zod.string(),
 });
 export const ListJobsResponse = zod.array(ListJobsResponseItem);
@@ -288,7 +326,7 @@ export const ListJobsResponse = zod.array(ListJobsResponseItem);
  * @summary Create a job
  */
 export const CreateJobBody = zod.object({
-  title: zod.string(),
+  title: zod.string().optional(),
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
   subcontractorIds: zod.array(zod.number()).optional(),
@@ -300,9 +338,14 @@ export const CreateJobBody = zod.object({
       "completed",
       "invoiced",
       "cancelled",
+      "closed",
     ])
     .optional(),
   jobType: zod.string().nullish(),
+  homeModel: zod.string().nullish(),
+  mfhManufacturerId: zod.number().nullish(),
+  mfhModelId: zod.number().nullish(),
+  mfhModelYear: zod.number().nullish(),
   address: zod.string().nullish(),
   city: zod.string().nullish(),
   state: zod.string().nullish(),
@@ -311,6 +354,13 @@ export const CreateJobBody = zod.object({
   endDate: zod.string().nullish(),
   notes: zod.string().nullish(),
   businessLine: zod.string().nullish(),
+  workflow: zod.string().nullish(),
+  planningState: zod
+    .enum(["ready", "scheduled", "waiting", "queue"])
+    .optional(),
+  priority: zod.enum(["urgent", "high", "normal", "low"]).optional(),
+  resourceDemand: zod.enum(["standard", "large_crew", "all_hands"]).optional(),
+  queuePosition: zod.number().nullish(),
   subPaid: zod.boolean().optional(),
   sqFt: zod.number().nullish(),
   coats: zod.number().nullish(),
@@ -349,8 +399,14 @@ export const CreateJobBody = zod.object({
         .nullish(),
       internalLaborRate: zod.number().nullish(),
       fuelEstimate: zod.number().nullish(),
+      workType: zod.string().nullish(),
     })
     .nullish(),
+  mfhConstructionType: zod.string().nullish(),
+  mhProductionServices: zod.array(zod.number()).nullish(),
+  manHours: zod.number().nullish(),
+  permitChecklist: zod.record(zod.string(), zod.unknown()).nullish(),
+  includeMileageInJobCosts: zod.boolean().optional(),
 });
 
 /**
@@ -374,6 +430,7 @@ export const GetJobInvoiceDraftResponse = zod.object({
   locationName: zod.string().nullish(),
   city: zod.string().nullish(),
   state: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
   lineItems: zod.array(
     zod.object({
       description: zod.string(),
@@ -381,6 +438,103 @@ export const GetJobInvoiceDraftResponse = zod.object({
       unitPrice: zod.number(),
     }),
   ),
+});
+
+/**
+ * @summary List a job's internal readiness condition history
+ */
+export const ListJobReadinessConditionsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListJobReadinessConditionsResponseItem = zod.object({
+  id: zod.number(),
+  jobId: zod.number(),
+  businessId: zod.number(),
+  reason: zod.enum([
+    "electricity",
+    "water",
+    "materials",
+    "inspection",
+    "crew",
+    "access",
+    "other",
+  ]),
+  detail: zod.string().nullish(),
+  expectedDate: zod.date().nullish(),
+  createdAt: zod.date(),
+  createdByUserId: zod.string().nullish(),
+  createdByName: zod.string().nullish(),
+  clearedAt: zod.date().nullish(),
+  clearedByUserId: zod.string().nullish(),
+  clearedByName: zod.string().nullish(),
+});
+export const ListJobReadinessConditionsResponse = zod.array(
+  ListJobReadinessConditionsResponseItem,
+);
+
+/**
+ * @summary Add an internal readiness blocker
+ */
+export const CreateJobReadinessConditionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateJobReadinessConditionBody = zod.object({
+  reason: zod.enum([
+    "electricity",
+    "water",
+    "materials",
+    "inspection",
+    "crew",
+    "access",
+    "other",
+  ]),
+  detail: zod.string().optional(),
+  expectedDate: zod.date().optional(),
+});
+
+/**
+ * @summary Clear an internal readiness blocker without deleting history
+ */
+export const ClearJobReadinessConditionParams = zod.object({
+  id: zod.coerce.number(),
+  conditionId: zod.coerce.number(),
+});
+
+export const ClearJobReadinessConditionResponse = zod.object({
+  id: zod.number(),
+  jobId: zod.number(),
+  businessId: zod.number(),
+  reason: zod.enum([
+    "electricity",
+    "water",
+    "materials",
+    "inspection",
+    "crew",
+    "access",
+    "other",
+  ]),
+  detail: zod.string().nullish(),
+  expectedDate: zod.date().nullish(),
+  createdAt: zod.date(),
+  createdByUserId: zod.string().nullish(),
+  createdByName: zod.string().nullish(),
+  clearedAt: zod.date().nullish(),
+  clearedByUserId: zod.string().nullish(),
+  clearedByName: zod.string().nullish(),
+});
+
+/**
+ * @summary Complete or reopen an applied production checklist section
+ */
+export const CompleteProductionScopeSectionParams = zod.object({
+  jobId: zod.coerce.number(),
+  sectionId: zod.coerce.number(),
+});
+
+export const CompleteProductionScopeSectionBody = zod.object({
+  complete: zod.boolean().optional(),
 });
 
 /**
@@ -405,6 +559,7 @@ export const GetJobResponse = zod.object({
     "completed",
     "invoiced",
     "cancelled",
+    "closed",
   ]),
   jobType: zod.string().nullish(),
   address: zod.string().nullish(),
@@ -415,7 +570,16 @@ export const GetJobResponse = zod.object({
   endDate: zod.string().nullish(),
   notes: zod.string().nullish(),
   businessLine: zod.string().nullish(),
+  businessId: zod.number().nullish(),
+  workflow: zod.string().nullish(),
+  planningState: zod
+    .enum(["ready", "scheduled", "waiting", "queue"])
+    .optional(),
+  priority: zod.enum(["urgent", "high", "normal", "low"]).optional(),
+  resourceDemand: zod.enum(["standard", "large_crew", "all_hands"]).optional(),
+  queuePosition: zod.number().nullish(),
   subPaid: zod.boolean().optional(),
+  includeMileageInJobCosts: zod.boolean().optional(),
   sqFt: zod.number().nullish(),
   coats: zod.number().nullish(),
   phases: zod
@@ -453,8 +617,21 @@ export const GetJobResponse = zod.object({
         .nullish(),
       internalLaborRate: zod.number().nullish(),
       fuelEstimate: zod.number().nullish(),
+      workType: zod.string().nullish(),
     })
     .nullish(),
+  permitChecklist: zod.record(zod.string(), zod.unknown()).nullish(),
+  mfhManufacturerId: zod.number().nullish(),
+  mfhModelId: zod.number().nullish(),
+  mfhManufacturerName: zod.string().nullish(),
+  mfhModelName: zod.string().nullish(),
+  mfhModelYear: zod.number().nullish(),
+  mfhConstructionType: zod.string().nullish(),
+  mhProductionServices: zod.array(zod.number()).nullish(),
+  manHours: zod.number().nullish(),
+  homeModel: zod.string().nullish(),
+  jobNumber: zod.string().nullish(),
+  closedAt: zod.string().nullish(),
   createdAt: zod.string(),
 });
 
@@ -466,7 +643,7 @@ export const UpdateJobParams = zod.object({
 });
 
 export const UpdateJobBody = zod.object({
-  title: zod.string(),
+  title: zod.string().optional(),
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
   subcontractorIds: zod.array(zod.number()).optional(),
@@ -478,9 +655,14 @@ export const UpdateJobBody = zod.object({
       "completed",
       "invoiced",
       "cancelled",
+      "closed",
     ])
     .optional(),
   jobType: zod.string().nullish(),
+  homeModel: zod.string().nullish(),
+  mfhManufacturerId: zod.number().nullish(),
+  mfhModelId: zod.number().nullish(),
+  mfhModelYear: zod.number().nullish(),
   address: zod.string().nullish(),
   city: zod.string().nullish(),
   state: zod.string().nullish(),
@@ -489,6 +671,13 @@ export const UpdateJobBody = zod.object({
   endDate: zod.string().nullish(),
   notes: zod.string().nullish(),
   businessLine: zod.string().nullish(),
+  workflow: zod.string().nullish(),
+  planningState: zod
+    .enum(["ready", "scheduled", "waiting", "queue"])
+    .optional(),
+  priority: zod.enum(["urgent", "high", "normal", "low"]).optional(),
+  resourceDemand: zod.enum(["standard", "large_crew", "all_hands"]).optional(),
+  queuePosition: zod.number().nullish(),
   subPaid: zod.boolean().optional(),
   sqFt: zod.number().nullish(),
   coats: zod.number().nullish(),
@@ -527,8 +716,14 @@ export const UpdateJobBody = zod.object({
         .nullish(),
       internalLaborRate: zod.number().nullish(),
       fuelEstimate: zod.number().nullish(),
+      workType: zod.string().nullish(),
     })
     .nullish(),
+  mfhConstructionType: zod.string().nullish(),
+  mhProductionServices: zod.array(zod.number()).nullish(),
+  manHours: zod.number().nullish(),
+  permitChecklist: zod.record(zod.string(), zod.unknown()).nullish(),
+  includeMileageInJobCosts: zod.boolean().optional(),
 });
 
 export const UpdateJobResponse = zod.object({
@@ -546,6 +741,7 @@ export const UpdateJobResponse = zod.object({
     "completed",
     "invoiced",
     "cancelled",
+    "closed",
   ]),
   jobType: zod.string().nullish(),
   address: zod.string().nullish(),
@@ -556,7 +752,16 @@ export const UpdateJobResponse = zod.object({
   endDate: zod.string().nullish(),
   notes: zod.string().nullish(),
   businessLine: zod.string().nullish(),
+  businessId: zod.number().nullish(),
+  workflow: zod.string().nullish(),
+  planningState: zod
+    .enum(["ready", "scheduled", "waiting", "queue"])
+    .optional(),
+  priority: zod.enum(["urgent", "high", "normal", "low"]).optional(),
+  resourceDemand: zod.enum(["standard", "large_crew", "all_hands"]).optional(),
+  queuePosition: zod.number().nullish(),
   subPaid: zod.boolean().optional(),
+  includeMileageInJobCosts: zod.boolean().optional(),
   sqFt: zod.number().nullish(),
   coats: zod.number().nullish(),
   phases: zod
@@ -594,8 +799,21 @@ export const UpdateJobResponse = zod.object({
         .nullish(),
       internalLaborRate: zod.number().nullish(),
       fuelEstimate: zod.number().nullish(),
+      workType: zod.string().nullish(),
     })
     .nullish(),
+  permitChecklist: zod.record(zod.string(), zod.unknown()).nullish(),
+  mfhManufacturerId: zod.number().nullish(),
+  mfhModelId: zod.number().nullish(),
+  mfhManufacturerName: zod.string().nullish(),
+  mfhModelName: zod.string().nullish(),
+  mfhModelYear: zod.number().nullish(),
+  mfhConstructionType: zod.string().nullish(),
+  mhProductionServices: zod.array(zod.number()).nullish(),
+  manHours: zod.number().nullish(),
+  homeModel: zod.string().nullish(),
+  jobNumber: zod.string().nullish(),
+  closedAt: zod.string().nullish(),
   createdAt: zod.string(),
 });
 
@@ -625,7 +843,26 @@ export const ListInvoicesResponseItem = zod.object({
   jobTitle: zod.string().nullish(),
   jobCity: zod.string().nullish(),
   jobState: zod.string().nullish(),
-  status: zod.enum(["draft", "sent", "paid", "overdue", "cancelled"]),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
+  locationName: zod.string().nullish(),
+  clientEmail: zod.string().nullish(),
+  clientPhone: zod.string().nullish(),
+  clientAddress: zod.string().nullish(),
+  clientCity: zod.string().nullish(),
+  clientState: zod.string().nullish(),
+  clientZip: zod.string().nullish(),
+  clientNotes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  status: zod.enum([
+    "draft",
+    "sent",
+    "paid",
+    "overdue",
+    "cancelled",
+    "partiallyPaid",
+    "approved",
+  ]),
   issueDate: zod.string(),
   dueDate: zod.string().nullish(),
   subtotal: zod.number(),
@@ -656,6 +893,10 @@ export const ListInvoicesResponseItem = zod.object({
       }),
     )
     .nullish(),
+  squarePaidAt: zod.string().nullish(),
+  stripePaidAt: zod.string().nullish(),
+  squarePaymentLinkUrl: zod.string().nullish(),
+  stripePaymentLinkUrl: zod.string().nullish(),
   createdAt: zod.string(),
 });
 export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem);
@@ -666,7 +907,15 @@ export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem);
 export const CreateInvoiceBody = zod.object({
   clientId: zod.number().nullish(),
   jobId: zod.number().nullish(),
-  status: zod.enum(["draft", "sent", "paid", "overdue", "cancelled"]),
+  status: zod.enum([
+    "draft",
+    "sent",
+    "paid",
+    "overdue",
+    "cancelled",
+    "partiallyPaid",
+    "approved",
+  ]),
   issueDate: zod.string(),
   dueDate: zod.string().nullish(),
   taxRate: zod.number().nullish(),
@@ -712,7 +961,26 @@ export const GetInvoiceResponse = zod.object({
   jobTitle: zod.string().nullish(),
   jobCity: zod.string().nullish(),
   jobState: zod.string().nullish(),
-  status: zod.enum(["draft", "sent", "paid", "overdue", "cancelled"]),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
+  locationName: zod.string().nullish(),
+  clientEmail: zod.string().nullish(),
+  clientPhone: zod.string().nullish(),
+  clientAddress: zod.string().nullish(),
+  clientCity: zod.string().nullish(),
+  clientState: zod.string().nullish(),
+  clientZip: zod.string().nullish(),
+  clientNotes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  status: zod.enum([
+    "draft",
+    "sent",
+    "paid",
+    "overdue",
+    "cancelled",
+    "partiallyPaid",
+    "approved",
+  ]),
   issueDate: zod.string(),
   dueDate: zod.string().nullish(),
   subtotal: zod.number(),
@@ -743,6 +1011,10 @@ export const GetInvoiceResponse = zod.object({
       }),
     )
     .nullish(),
+  squarePaidAt: zod.string().nullish(),
+  stripePaidAt: zod.string().nullish(),
+  squarePaymentLinkUrl: zod.string().nullish(),
+  stripePaymentLinkUrl: zod.string().nullish(),
   createdAt: zod.string(),
 });
 
@@ -756,7 +1028,15 @@ export const UpdateInvoiceParams = zod.object({
 export const UpdateInvoiceBody = zod.object({
   clientId: zod.number().nullish(),
   jobId: zod.number().nullish(),
-  status: zod.enum(["draft", "sent", "paid", "overdue", "cancelled"]),
+  status: zod.enum([
+    "draft",
+    "sent",
+    "paid",
+    "overdue",
+    "cancelled",
+    "partiallyPaid",
+    "approved",
+  ]),
   issueDate: zod.string(),
   dueDate: zod.string().nullish(),
   taxRate: zod.number().nullish(),
@@ -795,7 +1075,26 @@ export const UpdateInvoiceResponse = zod.object({
   jobTitle: zod.string().nullish(),
   jobCity: zod.string().nullish(),
   jobState: zod.string().nullish(),
-  status: zod.enum(["draft", "sent", "paid", "overdue", "cancelled"]),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
+  locationName: zod.string().nullish(),
+  clientEmail: zod.string().nullish(),
+  clientPhone: zod.string().nullish(),
+  clientAddress: zod.string().nullish(),
+  clientCity: zod.string().nullish(),
+  clientState: zod.string().nullish(),
+  clientZip: zod.string().nullish(),
+  clientNotes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  status: zod.enum([
+    "draft",
+    "sent",
+    "paid",
+    "overdue",
+    "cancelled",
+    "partiallyPaid",
+    "approved",
+  ]),
   issueDate: zod.string(),
   dueDate: zod.string().nullish(),
   subtotal: zod.number(),
@@ -826,6 +1125,10 @@ export const UpdateInvoiceResponse = zod.object({
       }),
     )
     .nullish(),
+  squarePaidAt: zod.string().nullish(),
+  stripePaidAt: zod.string().nullish(),
+  squarePaymentLinkUrl: zod.string().nullish(),
+  stripePaymentLinkUrl: zod.string().nullish(),
   createdAt: zod.string(),
 });
 
@@ -856,7 +1159,26 @@ export const UpdateInvoiceStatusResponse = zod.object({
   jobTitle: zod.string().nullish(),
   jobCity: zod.string().nullish(),
   jobState: zod.string().nullish(),
-  status: zod.enum(["draft", "sent", "paid", "overdue", "cancelled"]),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
+  locationName: zod.string().nullish(),
+  clientEmail: zod.string().nullish(),
+  clientPhone: zod.string().nullish(),
+  clientAddress: zod.string().nullish(),
+  clientCity: zod.string().nullish(),
+  clientState: zod.string().nullish(),
+  clientZip: zod.string().nullish(),
+  clientNotes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  status: zod.enum([
+    "draft",
+    "sent",
+    "paid",
+    "overdue",
+    "cancelled",
+    "partiallyPaid",
+    "approved",
+  ]),
   issueDate: zod.string(),
   dueDate: zod.string().nullish(),
   subtotal: zod.number(),
@@ -887,6 +1209,10 @@ export const UpdateInvoiceStatusResponse = zod.object({
       }),
     )
     .nullish(),
+  squarePaidAt: zod.string().nullish(),
+  stripePaidAt: zod.string().nullish(),
+  squarePaymentLinkUrl: zod.string().nullish(),
+  stripePaymentLinkUrl: zod.string().nullish(),
   createdAt: zod.string(),
 });
 
@@ -906,7 +1232,26 @@ export const VoidInvoiceResponse = zod.object({
   jobTitle: zod.string().nullish(),
   jobCity: zod.string().nullish(),
   jobState: zod.string().nullish(),
-  status: zod.enum(["draft", "sent", "paid", "overdue", "cancelled"]),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
+  locationName: zod.string().nullish(),
+  clientEmail: zod.string().nullish(),
+  clientPhone: zod.string().nullish(),
+  clientAddress: zod.string().nullish(),
+  clientCity: zod.string().nullish(),
+  clientState: zod.string().nullish(),
+  clientZip: zod.string().nullish(),
+  clientNotes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  status: zod.enum([
+    "draft",
+    "sent",
+    "paid",
+    "overdue",
+    "cancelled",
+    "partiallyPaid",
+    "approved",
+  ]),
   issueDate: zod.string(),
   dueDate: zod.string().nullish(),
   subtotal: zod.number(),
@@ -937,6 +1282,10 @@ export const VoidInvoiceResponse = zod.object({
       }),
     )
     .nullish(),
+  squarePaidAt: zod.string().nullish(),
+  stripePaidAt: zod.string().nullish(),
+  squarePaymentLinkUrl: zod.string().nullish(),
+  stripePaymentLinkUrl: zod.string().nullish(),
   createdAt: zod.string(),
 });
 
@@ -987,6 +1336,10 @@ export const ListExpensesResponseItem = zod.object({
   receiptUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
   recurringExpenseId: zod.number().nullish(),
+  businessLine: zod.string().nullish(),
+  countsTowardJobProfit: zod.boolean().nullish(),
+  excludeFromNetProfit: zod.boolean().nullish(),
+  legacyPayrollDuplicate: zod.boolean().nullish(),
   createdAt: zod.string(),
 });
 export const ListExpensesResponse = zod.array(ListExpensesResponseItem);
@@ -1001,6 +1354,7 @@ export const CreateExpenseBody = zod.object({
   date: zod.string(),
   vendor: zod.string().nullish(),
   jobId: zod.number().nullish(),
+  subcontractorId: zod.number().nullish(),
   receiptUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
 });
@@ -1024,6 +1378,10 @@ export const GetExpenseResponse = zod.object({
   receiptUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
   recurringExpenseId: zod.number().nullish(),
+  businessLine: zod.string().nullish(),
+  countsTowardJobProfit: zod.boolean().nullish(),
+  excludeFromNetProfit: zod.boolean().nullish(),
+  legacyPayrollDuplicate: zod.boolean().nullish(),
   createdAt: zod.string(),
 });
 
@@ -1041,6 +1399,7 @@ export const UpdateExpenseBody = zod.object({
   date: zod.string(),
   vendor: zod.string().nullish(),
   jobId: zod.number().nullish(),
+  subcontractorId: zod.number().nullish(),
   receiptUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
 });
@@ -1057,6 +1416,10 @@ export const UpdateExpenseResponse = zod.object({
   receiptUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
   recurringExpenseId: zod.number().nullish(),
+  businessLine: zod.string().nullish(),
+  countsTowardJobProfit: zod.boolean().nullish(),
+  excludeFromNetProfit: zod.boolean().nullish(),
+  legacyPayrollDuplicate: zod.boolean().nullish(),
   createdAt: zod.string(),
 });
 
@@ -1090,6 +1453,10 @@ export const UploadExpenseReceiptResponse = zod.object({
   receiptUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
   recurringExpenseId: zod.number().nullish(),
+  businessLine: zod.string().nullish(),
+  countsTowardJobProfit: zod.boolean().nullish(),
+  excludeFromNetProfit: zod.boolean().nullish(),
+  legacyPayrollDuplicate: zod.boolean().nullish(),
   createdAt: zod.string(),
 });
 
@@ -1291,6 +1658,7 @@ export const DeleteRecurringExpenseParams = zod.object({
  * @summary List mileage logs
  */
 export const ListMileageLogsQueryParams = zod.object({
+  businessId: zod.coerce.number().optional(),
   startDate: zod.coerce.string().optional(),
   endDate: zod.coerce.string().optional(),
   classified: zod.coerce.boolean().optional(),
@@ -1384,6 +1752,7 @@ export const DeleteMileageLogParams = zod.object({
  * @summary Get mileage summary and deduction total
  */
 export const GetMileageSummaryQueryParams = zod.object({
+  businessId: zod.coerce.number().optional(),
   startDate: zod.coerce.string().optional(),
   endDate: zod.coerce.string().optional(),
 });
@@ -1619,6 +1988,12 @@ export const ListEstimatesResponseItem = zod.object({
   total: zod.number(),
   jobType: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  jobId: zod.number().nullish(),
+  depositPaidAt: zod.string().nullish(),
+  depositPaidAmount: zod.number().nullish(),
+  squarePaymentLinkUrl: zod.string().nullish(),
+  stripePaymentLinkUrl: zod.string().nullish(),
   lineItems: zod
     .array(
       zod.object({
@@ -1648,6 +2023,7 @@ export const CreateEstimateBody = zod.object({
   contingencyPercent: zod.number().nullish(),
   jobType: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
   lineItems: zod
     .array(
       zod.object({
@@ -1681,6 +2057,12 @@ export const GetEstimateResponse = zod.object({
   total: zod.number(),
   jobType: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  jobId: zod.number().nullish(),
+  depositPaidAt: zod.string().nullish(),
+  depositPaidAmount: zod.number().nullish(),
+  squarePaymentLinkUrl: zod.string().nullish(),
+  stripePaymentLinkUrl: zod.string().nullish(),
   lineItems: zod
     .array(
       zod.object({
@@ -1713,6 +2095,7 @@ export const UpdateEstimateBody = zod.object({
   contingencyPercent: zod.number().nullish(),
   jobType: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
   lineItems: zod
     .array(
       zod.object({
@@ -1739,6 +2122,12 @@ export const UpdateEstimateResponse = zod.object({
   total: zod.number(),
   jobType: zod.string().nullish(),
   notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  jobId: zod.number().nullish(),
+  depositPaidAt: zod.string().nullish(),
+  depositPaidAmount: zod.number().nullish(),
+  squarePaymentLinkUrl: zod.string().nullish(),
+  stripePaymentLinkUrl: zod.string().nullish(),
   lineItems: zod
     .array(
       zod.object({
@@ -1782,6 +2171,8 @@ export const ListDailyLogsResponseItem = zod.object({
   id: zod.number(),
   jobId: zod.number().nullish(),
   jobTitle: zod.string().nullish(),
+  materialListId: zod.number().nullish(),
+  authorName: zod.string().nullish(),
   date: zod.string(),
   weather: zod.string().nullish(),
   crewCount: zod.number().nullish(),
@@ -1800,6 +2191,7 @@ export const ListDailyLogsResponse = zod.array(ListDailyLogsResponseItem);
  */
 export const CreateDailyLogBody = zod.object({
   jobId: zod.number().nullish(),
+  materialListId: zod.number().nullish(),
   date: zod.string(),
   weather: zod.string().nullish(),
   crewCount: zod.number().nullish(),
@@ -1822,6 +2214,8 @@ export const GetDailyLogResponse = zod.object({
   id: zod.number(),
   jobId: zod.number().nullish(),
   jobTitle: zod.string().nullish(),
+  materialListId: zod.number().nullish(),
+  authorName: zod.string().nullish(),
   date: zod.string(),
   weather: zod.string().nullish(),
   crewCount: zod.number().nullish(),
@@ -1843,6 +2237,7 @@ export const UpdateDailyLogParams = zod.object({
 
 export const UpdateDailyLogBody = zod.object({
   jobId: zod.number().nullish(),
+  materialListId: zod.number().nullish(),
   date: zod.string(),
   weather: zod.string().nullish(),
   crewCount: zod.number().nullish(),
@@ -1858,6 +2253,8 @@ export const UpdateDailyLogResponse = zod.object({
   id: zod.number(),
   jobId: zod.number().nullish(),
   jobTitle: zod.string().nullish(),
+  materialListId: zod.number().nullish(),
+  authorName: zod.string().nullish(),
   date: zod.string(),
   weather: zod.string().nullish(),
   crewCount: zod.number().nullish(),
@@ -1889,6 +2286,8 @@ export const GetSettingsResponse = zod.object({
   companyPhone: zod.string().nullish(),
   companyEmail: zod.string().nullish(),
   logoUrl: zod.string().nullish(),
+  dbaLogoUrl: zod.string().nullish(),
+  calculatorDefaults: zod.record(zod.string(), zod.unknown()).nullish(),
   defaultTaxRate: zod.number().nullish(),
   defaultPaymentTerms: zod.string().nullish(),
   lateFeePercent: zod.number().nullish(),
@@ -1918,6 +2317,8 @@ export const UpdateSettingsBody = zod.object({
   companyPhone: zod.string().nullish(),
   companyEmail: zod.string().nullish(),
   logoUrl: zod.string().nullish(),
+  dbaLogoUrl: zod.string().nullish(),
+  calculatorDefaults: zod.record(zod.string(), zod.unknown()).nullish(),
   defaultTaxRate: zod.number().nullish(),
   defaultPaymentTerms: zod.string().nullish(),
   lateFeePercent: zod.number().nullish(),
@@ -1944,6 +2345,8 @@ export const UpdateSettingsResponse = zod.object({
   companyPhone: zod.string().nullish(),
   companyEmail: zod.string().nullish(),
   logoUrl: zod.string().nullish(),
+  dbaLogoUrl: zod.string().nullish(),
+  calculatorDefaults: zod.record(zod.string(), zod.unknown()).nullish(),
   defaultTaxRate: zod.number().nullish(),
   defaultPaymentTerms: zod.string().nullish(),
   lateFeePercent: zod.number().nullish(),
@@ -1995,6 +2398,7 @@ export const GetDashboardStatsResponse = zod.object({
         "completed",
         "invoiced",
         "cancelled",
+        "closed",
       ]),
       jobType: zod.string().nullish(),
       address: zod.string().nullish(),
@@ -2005,7 +2409,18 @@ export const GetDashboardStatsResponse = zod.object({
       endDate: zod.string().nullish(),
       notes: zod.string().nullish(),
       businessLine: zod.string().nullish(),
+      businessId: zod.number().nullish(),
+      workflow: zod.string().nullish(),
+      planningState: zod
+        .enum(["ready", "scheduled", "waiting", "queue"])
+        .optional(),
+      priority: zod.enum(["urgent", "high", "normal", "low"]).optional(),
+      resourceDemand: zod
+        .enum(["standard", "large_crew", "all_hands"])
+        .optional(),
+      queuePosition: zod.number().nullish(),
       subPaid: zod.boolean().optional(),
+      includeMileageInJobCosts: zod.boolean().optional(),
       sqFt: zod.number().nullish(),
       coats: zod.number().nullish(),
       phases: zod
@@ -2043,8 +2458,21 @@ export const GetDashboardStatsResponse = zod.object({
             .nullish(),
           internalLaborRate: zod.number().nullish(),
           fuelEstimate: zod.number().nullish(),
+          workType: zod.string().nullish(),
         })
         .nullish(),
+      permitChecklist: zod.record(zod.string(), zod.unknown()).nullish(),
+      mfhManufacturerId: zod.number().nullish(),
+      mfhModelId: zod.number().nullish(),
+      mfhManufacturerName: zod.string().nullish(),
+      mfhModelName: zod.string().nullish(),
+      mfhModelYear: zod.number().nullish(),
+      mfhConstructionType: zod.string().nullish(),
+      mhProductionServices: zod.array(zod.number()).nullish(),
+      manHours: zod.number().nullish(),
+      homeModel: zod.string().nullish(),
+      jobNumber: zod.string().nullish(),
+      closedAt: zod.string().nullish(),
       createdAt: zod.string(),
     }),
   ),
@@ -2058,7 +2486,26 @@ export const GetDashboardStatsResponse = zod.object({
       jobTitle: zod.string().nullish(),
       jobCity: zod.string().nullish(),
       jobState: zod.string().nullish(),
-      status: zod.enum(["draft", "sent", "paid", "overdue", "cancelled"]),
+      city: zod.string().nullish(),
+      state: zod.string().nullish(),
+      locationName: zod.string().nullish(),
+      clientEmail: zod.string().nullish(),
+      clientPhone: zod.string().nullish(),
+      clientAddress: zod.string().nullish(),
+      clientCity: zod.string().nullish(),
+      clientState: zod.string().nullish(),
+      clientZip: zod.string().nullish(),
+      clientNotes: zod.string().nullish(),
+      businessLine: zod.string().nullish(),
+      status: zod.enum([
+        "draft",
+        "sent",
+        "paid",
+        "overdue",
+        "cancelled",
+        "partiallyPaid",
+        "approved",
+      ]),
       issueDate: zod.string(),
       dueDate: zod.string().nullish(),
       subtotal: zod.number(),
@@ -2089,6 +2536,10 @@ export const GetDashboardStatsResponse = zod.object({
           }),
         )
         .nullish(),
+      squarePaidAt: zod.string().nullish(),
+      stripePaidAt: zod.string().nullish(),
+      squarePaymentLinkUrl: zod.string().nullish(),
+      stripePaymentLinkUrl: zod.string().nullish(),
       createdAt: zod.string(),
     }),
   ),

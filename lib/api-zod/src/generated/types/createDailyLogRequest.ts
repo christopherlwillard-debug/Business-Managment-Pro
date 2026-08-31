@@ -8,6 +8,7 @@
 
 export interface CreateDailyLogRequest {
   jobId?: number | null;
+  materialListId?: number | null;
   date: string;
   weather?: string | null;
   crewCount?: number | null;
@@ -17,4 +18,5 @@ export interface CreateDailyLogRequest {
   hoursWorked?: number | null;
   notes?: string | null;
   photoUrls?: string[];
+  [key: string]: unknown;
 }

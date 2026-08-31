@@ -15,8 +15,12 @@ export interface CreateClientRequest {
   state?: string | null;
   zip?: string | null;
   notes?: string | null;
+  businessLine?: string | null;
+  nextServiceDate?: string | null;
+  serviceIntervalMonths?: number | null;
   reminderOptOut?: boolean;
   mileageSurchargeEnabled?: boolean;
   mileageSurchargeTriggerMiles?: number | null;
   mileageSurchargeDailyRate?: number | null;
+  [key: string]: unknown;
 }

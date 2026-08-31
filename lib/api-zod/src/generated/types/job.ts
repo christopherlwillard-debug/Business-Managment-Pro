@@ -5,6 +5,10 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { JobPermitChecklist } from "./jobPermitChecklist";
+import type { JobPlanningState } from "./jobPlanningState";
+import type { JobPriority } from "./jobPriority";
+import type { JobResourceDemand } from "./jobResourceDemand";
 import type { JobStatus } from "./jobStatus";
 import type { PhaseItem } from "./phaseItem";
 import type { ServiceBilling } from "./serviceBilling";
@@ -28,10 +32,29 @@ export interface Job {
   notes?: string | null;
   businessLine?: string | null;
   businessId?: number | null;
+  workflow?: string | null;
+  planningState?: JobPlanningState;
+  priority?: JobPriority;
+  resourceDemand?: JobResourceDemand;
+  queuePosition?: number | null;
   subPaid?: boolean;
+  includeMileageInJobCosts?: boolean;
   sqFt?: number | null;
   coats?: number | null;
   phases?: PhaseItem[] | null;
   serviceBilling?: ServiceBilling | null;
+  permitChecklist?: JobPermitChecklist;
+  mfhManufacturerId?: number | null;
+  mfhModelId?: number | null;
+  mfhManufacturerName?: string | null;
+  mfhModelName?: string | null;
+  mfhModelYear?: number | null;
+  mfhConstructionType?: string | null;
+  mhProductionServices?: number[] | null;
+  manHours?: number | null;
+  homeModel?: string | null;
+  jobNumber?: string | null;
+  closedAt?: string | null;
   createdAt: string;
+  [key: string]: unknown;
 }

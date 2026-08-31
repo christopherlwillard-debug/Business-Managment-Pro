@@ -19,4 +19,6 @@ export interface ServiceBilling {
   rateSnapshot?: ServiceBillingRateSnapshot | null;
   internalLaborRate?: number | null;
   fuelEstimate?: number | null;
+  workType?: string | null;
+  [key: string]: unknown;
 }

@@ -69,6 +69,7 @@ export interface Client {
   mileageSurchargeTriggerMiles?: number | null;
   mileageSurchargeDailyRate?: number | null;
   createdAt: string;
+  [key: string]: unknown;
 }
 
 export interface CreateClientRequest {
@@ -87,6 +88,7 @@ export interface CreateClientRequest {
   mileageSurchargeEnabled?: boolean;
   mileageSurchargeTriggerMiles?: number | null;
   mileageSurchargeDailyRate?: number | null;
+  [key: string]: unknown;
 }
 
 export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
@@ -100,6 +102,36 @@ export const JobStatus = {
   cancelled: "cancelled",
   closed: "closed",
 } as const;
+
+export type JobPlanningState =
+  (typeof JobPlanningState)[keyof typeof JobPlanningState];
+
+export const JobPlanningState = {
+  ready: "ready",
+  scheduled: "scheduled",
+  waiting: "waiting",
+  queue: "queue",
+} as const;
+
+export type JobPriority = (typeof JobPriority)[keyof typeof JobPriority];
+
+export const JobPriority = {
+  urgent: "urgent",
+  high: "high",
+  normal: "normal",
+  low: "low",
+} as const;
+
+export type JobResourceDemand =
+  (typeof JobResourceDemand)[keyof typeof JobResourceDemand];
+
+export const JobResourceDemand = {
+  standard: "standard",
+  large_crew: "large_crew",
+  all_hands: "all_hands",
+} as const;
+
+export type JobPermitChecklist = { [key: string]: unknown } | null;
 
 export interface PhaseItem {
   name: string;
@@ -122,7 +154,6 @@ export interface ServiceBillingRateSnapshot {
 }
 
 export interface ServiceBilling {
-  [key: string]: any;
   profileId?: number | null;
   profileName?: string | null;
   techCount: number;
@@ -134,10 +165,10 @@ export interface ServiceBilling {
   internalLaborRate?: number | null;
   fuelEstimate?: number | null;
   workType?: string | null;
+  [key: string]: unknown;
 }
 
 export interface Job {
-  [key: string]: any;
   id: number;
   title: string;
   description?: string | null;
@@ -157,13 +188,17 @@ export interface Job {
   businessLine?: string | null;
   businessId?: number | null;
   workflow?: string | null;
+  planningState?: JobPlanningState;
+  priority?: JobPriority;
+  resourceDemand?: JobResourceDemand;
+  queuePosition?: number | null;
   subPaid?: boolean;
   includeMileageInJobCosts?: boolean;
   sqFt?: number | null;
   coats?: number | null;
   phases?: PhaseItem[] | null;
   serviceBilling?: ServiceBilling | null;
-  permitChecklist?: Record<string, unknown> | null;
+  permitChecklist?: JobPermitChecklist;
   mfhManufacturerId?: number | null;
   mfhModelId?: number | null;
   mfhManufacturerName?: string | null;
@@ -176,6 +211,7 @@ export interface Job {
   jobNumber?: string | null;
   closedAt?: string | null;
   createdAt: string;
+  [key: string]: unknown;
 }
 
 export type CreateJobRequestStatus =
@@ -191,8 +227,38 @@ export const CreateJobRequestStatus = {
   closed: "closed",
 } as const;
 
+export type CreateJobRequestPlanningState =
+  (typeof CreateJobRequestPlanningState)[keyof typeof CreateJobRequestPlanningState];
+
+export const CreateJobRequestPlanningState = {
+  ready: "ready",
+  scheduled: "scheduled",
+  waiting: "waiting",
+  queue: "queue",
+} as const;
+
+export type CreateJobRequestPriority =
+  (typeof CreateJobRequestPriority)[keyof typeof CreateJobRequestPriority];
+
+export const CreateJobRequestPriority = {
+  urgent: "urgent",
+  high: "high",
+  normal: "normal",
+  low: "low",
+} as const;
+
+export type CreateJobRequestResourceDemand =
+  (typeof CreateJobRequestResourceDemand)[keyof typeof CreateJobRequestResourceDemand];
+
+export const CreateJobRequestResourceDemand = {
+  standard: "standard",
+  large_crew: "large_crew",
+  all_hands: "all_hands",
+} as const;
+
+export type CreateJobRequestPermitChecklist = { [key: string]: unknown } | null;
+
 export interface CreateJobRequest {
-  [key: string]: any;
   title?: string;
   description?: string | null;
   clientId?: number | null;
@@ -212,6 +278,10 @@ export interface CreateJobRequest {
   notes?: string | null;
   businessLine?: string | null;
   workflow?: string | null;
+  planningState?: CreateJobRequestPlanningState;
+  priority?: CreateJobRequestPriority;
+  resourceDemand?: CreateJobRequestResourceDemand;
+  queuePosition?: number | null;
   subPaid?: boolean;
   sqFt?: number | null;
   coats?: number | null;
@@ -220,8 +290,60 @@ export interface CreateJobRequest {
   mfhConstructionType?: string | null;
   mhProductionServices?: number[] | null;
   manHours?: number | null;
-  permitChecklist?: Record<string, unknown> | null;
+  permitChecklist?: CreateJobRequestPermitChecklist;
   includeMileageInJobCosts?: boolean;
+  [key: string]: unknown;
+}
+
+export type JobReadinessConditionReason =
+  (typeof JobReadinessConditionReason)[keyof typeof JobReadinessConditionReason];
+
+export const JobReadinessConditionReason = {
+  electricity: "electricity",
+  water: "water",
+  materials: "materials",
+  inspection: "inspection",
+  crew: "crew",
+  access: "access",
+  other: "other",
+} as const;
+
+export interface JobReadinessCondition {
+  id: number;
+  jobId: number;
+  businessId: number;
+  reason: JobReadinessConditionReason;
+  detail?: string | null;
+  expectedDate?: string | null;
+  createdAt: string;
+  createdByUserId?: string | null;
+  createdByName?: string | null;
+  clearedAt?: string | null;
+  clearedByUserId?: string | null;
+  clearedByName?: string | null;
+}
+
+export type JobReadinessConditionInputReason =
+  (typeof JobReadinessConditionInputReason)[keyof typeof JobReadinessConditionInputReason];
+
+export const JobReadinessConditionInputReason = {
+  electricity: "electricity",
+  water: "water",
+  materials: "materials",
+  inspection: "inspection",
+  crew: "crew",
+  access: "access",
+  other: "other",
+} as const;
+
+export interface JobReadinessConditionInput {
+  reason: JobReadinessConditionInputReason;
+  detail?: string;
+  expectedDate?: string;
+}
+
+export interface ProductionScopeSectionInput {
+  complete?: boolean;
 }
 
 export interface DraftLineItem {
@@ -246,6 +368,7 @@ export interface InvoiceDraft {
   state?: string | null;
   businessLine?: string | null;
   lineItems: DraftLineItem[];
+  [key: string]: unknown;
 }
 
 export type InvoiceStatus = (typeof InvoiceStatus)[keyof typeof InvoiceStatus];
@@ -286,7 +409,6 @@ export interface InvoiceAttachment {
 }
 
 export interface Invoice {
-  [key: string]: any;
   id: number;
   invoiceNumber: string;
   clientId?: number | null;
@@ -295,6 +417,17 @@ export interface Invoice {
   jobTitle?: string | null;
   jobCity?: string | null;
   jobState?: string | null;
+  city?: string | null;
+  state?: string | null;
+  locationName?: string | null;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  clientAddress?: string | null;
+  clientCity?: string | null;
+  clientState?: string | null;
+  clientZip?: string | null;
+  clientNotes?: string | null;
+  businessLine?: string | null;
   status: InvoiceStatus;
   issueDate: string;
   dueDate?: string | null;
@@ -307,7 +440,12 @@ export interface Invoice {
   terms?: string | null;
   lineItems?: InvoiceLineItem[];
   attachments?: InvoiceAttachment[] | null;
+  squarePaidAt?: string | null;
+  stripePaidAt?: string | null;
+  squarePaymentLinkUrl?: string | null;
+  stripePaymentLinkUrl?: string | null;
   createdAt: string;
+  [key: string]: unknown;
 }
 
 export type CreateInvoiceRequestStatus =
@@ -319,6 +457,8 @@ export const CreateInvoiceRequestStatus = {
   paid: "paid",
   overdue: "overdue",
   cancelled: "cancelled",
+  partiallyPaid: "partiallyPaid",
+  approved: "approved",
 } as const;
 
 export type CreateInvoiceRequestLineItemsItem = {
@@ -328,7 +468,6 @@ export type CreateInvoiceRequestLineItemsItem = {
 };
 
 export interface CreateInvoiceRequest {
-  [key: string]: any;
   clientId?: number | null;
   jobId?: number | null;
   status: CreateInvoiceRequestStatus;
@@ -342,6 +481,7 @@ export interface CreateInvoiceRequest {
   state?: string | null;
   lineItems?: CreateInvoiceRequestLineItemsItem[];
   attachments?: InvoiceAttachment[] | null;
+  [key: string]: unknown;
 }
 
 export interface TaxReportRow {
@@ -359,7 +499,6 @@ export interface TaxReportRow {
 }
 
 export interface Expense {
-  [key: string]: any;
   id: number;
   description: string;
   amount: number;
@@ -371,19 +510,25 @@ export interface Expense {
   receiptUrl?: string | null;
   notes?: string | null;
   recurringExpenseId?: number | null;
+  businessLine?: string | null;
+  countsTowardJobProfit?: boolean | null;
+  excludeFromNetProfit?: boolean | null;
+  legacyPayrollDuplicate?: boolean | null;
   createdAt: string;
+  [key: string]: unknown;
 }
 
 export interface CreateExpenseRequest {
-  [key: string]: any;
   description: string;
   amount: number;
   category: string;
   date: string;
   vendor?: string | null;
   jobId?: number | null;
+  subcontractorId?: number | null;
   receiptUrl?: string | null;
   notes?: string | null;
+  [key: string]: unknown;
 }
 
 export interface ClientBillingProfile {
@@ -521,7 +666,6 @@ export const MileageLogSource = {
 } as const;
 
 export interface MileageLog {
-  [key: string]: any;
   id: number;
   date: string;
   startLocation?: string | null;
@@ -536,6 +680,7 @@ export interface MileageLog {
   notes?: string | null;
   source: MileageLogSource;
   createdAt: string;
+  [key: string]: unknown;
 }
 
 export type CreateMileageLogRequestClassification =
@@ -556,7 +701,6 @@ export const CreateMileageLogRequestSource = {
 } as const;
 
 export interface CreateMileageLogRequest {
-  [key: string]: any;
   date: string;
   startLocation?: string | null;
   endLocation?: string | null;
@@ -566,6 +710,7 @@ export interface CreateMileageLogRequest {
   classification: CreateMileageLogRequestClassification;
   notes?: string | null;
   source?: CreateMileageLogRequestSource;
+  [key: string]: unknown;
 }
 
 export interface MileageRatePeriod {
@@ -651,7 +796,6 @@ export interface EstimateLineItem {
 }
 
 export interface Estimate {
-  [key: string]: any;
   id: number;
   title: string;
   clientId?: number | null;
@@ -664,8 +808,15 @@ export interface Estimate {
   total: number;
   jobType?: string | null;
   notes?: string | null;
+  businessLine?: string | null;
+  jobId?: number | null;
+  depositPaidAt?: string | null;
+  depositPaidAmount?: number | null;
+  squarePaymentLinkUrl?: string | null;
+  stripePaymentLinkUrl?: string | null;
   lineItems?: EstimateLineItem[];
   createdAt: string;
+  [key: string]: unknown;
 }
 
 export type CreateEstimateRequestStatus =
@@ -687,7 +838,6 @@ export type CreateEstimateRequestLineItemsItem = {
 };
 
 export interface CreateEstimateRequest {
-  [key: string]: any;
   title: string;
   clientId?: number | null;
   template?: string | null;
@@ -696,14 +846,17 @@ export interface CreateEstimateRequest {
   contingencyPercent?: number | null;
   jobType?: string | null;
   notes?: string | null;
+  businessLine?: string | null;
   lineItems?: CreateEstimateRequestLineItemsItem[];
+  [key: string]: unknown;
 }
 
 export interface DailyLog {
-  [key: string]: any;
   id: number;
   jobId?: number | null;
   jobTitle?: string | null;
+  materialListId?: number | null;
+  authorName?: string | null;
   date: string;
   weather?: string | null;
   crewCount?: number | null;
@@ -714,11 +867,12 @@ export interface DailyLog {
   notes?: string | null;
   photoUrls: string[];
   createdAt: string;
+  [key: string]: unknown;
 }
 
 export interface CreateDailyLogRequest {
-  [key: string]: any;
   jobId?: number | null;
+  materialListId?: number | null;
   date: string;
   weather?: string | null;
   crewCount?: number | null;
@@ -728,7 +882,10 @@ export interface CreateDailyLogRequest {
   hoursWorked?: number | null;
   notes?: string | null;
   photoUrls?: string[];
+  [key: string]: unknown;
 }
+
+export type AppSettingsCalculatorDefaults = { [key: string]: unknown } | null;
 
 export type AppSettingsInvoiceLogoSize =
   | (typeof AppSettingsInvoiceLogoSize)[keyof typeof AppSettingsInvoiceLogoSize]
@@ -751,7 +908,6 @@ export const AppSettingsInvoiceLogoPosition = {
 } as const;
 
 export interface AppSettings {
-  [key: string]: any;
   companyName?: string | null;
   companyAddress?: string | null;
   companyCity?: string | null;
@@ -760,6 +916,8 @@ export interface AppSettings {
   companyPhone?: string | null;
   companyEmail?: string | null;
   logoUrl?: string | null;
+  dbaLogoUrl?: string | null;
+  calculatorDefaults?: AppSettingsCalculatorDefaults;
   defaultTaxRate?: number | null;
   defaultPaymentTerms?: string | null;
   lateFeePercent?: number | null;
@@ -773,6 +931,7 @@ export interface AppSettings {
   invoiceLogoPosition?: AppSettingsInvoiceLogoPosition;
   ownerSplitPct?: number | null;
   taxReservePct?: number | null;
+  [key: string]: unknown;
 }
 
 export type DashboardStatsMonthlyRevenueItem = {
@@ -930,12 +1089,17 @@ export const ProspectPropertyType = {
 } as const;
 
 export interface Prospect {
-  [key: string]: any;
   id: number;
   address: string;
   city?: string | null;
   state?: string | null;
   zip?: string | null;
+  companyName?: string | null;
+  website?: string | null;
+  companyAddress?: string | null;
+  companyCity?: string | null;
+  companyState?: string | null;
+  companyZip?: string | null;
   propertyType: ProspectPropertyType;
   estimatedSqft?: number | null;
   measuredSqFt?: number | null;
@@ -962,6 +1126,7 @@ export interface Prospect {
   clientId?: number | null;
   createdAt: string;
   updatedAt: string;
+  [key: string]: unknown;
 }
 
 export interface CreateProspectRequest {

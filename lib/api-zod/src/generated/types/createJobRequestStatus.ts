@@ -16,4 +16,5 @@ export const CreateJobRequestStatus = {
   completed: "completed",
   invoiced: "invoiced",
   cancelled: "cancelled",
+  closed: "closed",
 } as const;

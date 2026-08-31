@@ -9,6 +9,13 @@ export {
   UploadFileBody,
 } from "./generated/api";
 export { calculateInvoiceTotals, roundCurrency } from "./invoice-calculations";
-export type { InvoiceCalculationLine, InvoiceTotals } from "./invoice-calculations";
-export { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "./website-seo";
+export type {
+  InvoiceCalculationLine,
+  InvoiceTotals,
+} from "./invoice-calculations";
+export {
+  SEO_LIMITS,
+  isAbsoluteHttpUrl,
+  validateSeoMetadata,
+} from "./website-seo";
 export type { SeoValidationErrors } from "./website-seo";

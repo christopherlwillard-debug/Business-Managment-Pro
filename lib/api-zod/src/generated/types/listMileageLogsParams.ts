@@ -7,6 +7,7 @@
  */
 
 export type ListMileageLogsParams = {
+  businessId?: number;
   startDate?: string;
   endDate?: string;
   classified?: boolean;

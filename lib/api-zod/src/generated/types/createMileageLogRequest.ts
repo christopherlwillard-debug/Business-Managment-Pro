@@ -18,4 +18,5 @@ export interface CreateMileageLogRequest {
   classification: CreateMileageLogRequestClassification;
   notes?: string | null;
   source?: CreateMileageLogRequestSource;
+  [key: string]: unknown;
 }

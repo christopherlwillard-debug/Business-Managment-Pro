@@ -47,6 +47,8 @@ import type {
   Invoice,
   InvoiceDraft,
   Job,
+  JobReadinessCondition,
+  JobReadinessConditionInput,
   ListClientBillingProfilesParams,
   ListDailyLogsParams,
   ListExpensesParams,
@@ -66,6 +68,7 @@ import type {
   PortalVerifyPin200,
   PortalVerifyPin401,
   PortalVerifyPinBody,
+  ProductionScopeSectionInput,
   RecurringExpense,
   ResetPortalPin200,
   Subcontractor,
@@ -1369,6 +1372,400 @@ export function useGetJobInvoiceDraft<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary List a job's internal readiness condition history
+ */
+export const getListJobReadinessConditionsUrl = (id: number) => {
+  return `/api/jobs/${id}/readiness`;
+};
+
+export const listJobReadinessConditions = async (
+  id: number,
+  options?: RequestInit,
+): Promise<JobReadinessCondition[]> => {
+  return customFetch<JobReadinessCondition[]>(
+    getListJobReadinessConditionsUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListJobReadinessConditionsQueryKey = (id: number) => {
+  return [`/api/jobs/${id}/readiness`] as const;
+};
+
+export const getListJobReadinessConditionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listJobReadinessConditions>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listJobReadinessConditions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListJobReadinessConditionsQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listJobReadinessConditions>>
+  > = ({ signal }) =>
+    listJobReadinessConditions(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listJobReadinessConditions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListJobReadinessConditionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listJobReadinessConditions>>
+>;
+export type ListJobReadinessConditionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List a job's internal readiness condition history
+ */
+
+export function useListJobReadinessConditions<
+  TData = Awaited<ReturnType<typeof listJobReadinessConditions>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listJobReadinessConditions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListJobReadinessConditionsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add an internal readiness blocker
+ */
+export const getCreateJobReadinessConditionUrl = (id: number) => {
+  return `/api/jobs/${id}/readiness`;
+};
+
+export const createJobReadinessCondition = async (
+  id: number,
+  jobReadinessConditionInput: JobReadinessConditionInput,
+  options?: RequestInit,
+): Promise<JobReadinessCondition> => {
+  return customFetch<JobReadinessCondition>(
+    getCreateJobReadinessConditionUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(jobReadinessConditionInput),
+    },
+  );
+};
+
+export const getCreateJobReadinessConditionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createJobReadinessCondition>>,
+    TError,
+    { id: number; data: BodyType<JobReadinessConditionInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createJobReadinessCondition>>,
+  TError,
+  { id: number; data: BodyType<JobReadinessConditionInput> },
+  TContext
+> => {
+  const mutationKey = ["createJobReadinessCondition"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createJobReadinessCondition>>,
+    { id: number; data: BodyType<JobReadinessConditionInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createJobReadinessCondition(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateJobReadinessConditionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createJobReadinessCondition>>
+>;
+export type CreateJobReadinessConditionMutationBody =
+  BodyType<JobReadinessConditionInput>;
+export type CreateJobReadinessConditionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Add an internal readiness blocker
+ */
+export const useCreateJobReadinessCondition = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createJobReadinessCondition>>,
+    TError,
+    { id: number; data: BodyType<JobReadinessConditionInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createJobReadinessCondition>>,
+  TError,
+  { id: number; data: BodyType<JobReadinessConditionInput> },
+  TContext
+> => {
+  return useMutation(getCreateJobReadinessConditionMutationOptions(options));
+};
+
+/**
+ * @summary Clear an internal readiness blocker without deleting history
+ */
+export const getClearJobReadinessConditionUrl = (
+  id: number,
+  conditionId: number,
+) => {
+  return `/api/jobs/${id}/readiness/${conditionId}/clear`;
+};
+
+export const clearJobReadinessCondition = async (
+  id: number,
+  conditionId: number,
+  options?: RequestInit,
+): Promise<JobReadinessCondition> => {
+  return customFetch<JobReadinessCondition>(
+    getClearJobReadinessConditionUrl(id, conditionId),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getClearJobReadinessConditionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearJobReadinessCondition>>,
+    TError,
+    { id: number; conditionId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof clearJobReadinessCondition>>,
+  TError,
+  { id: number; conditionId: number },
+  TContext
+> => {
+  const mutationKey = ["clearJobReadinessCondition"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof clearJobReadinessCondition>>,
+    { id: number; conditionId: number }
+  > = (props) => {
+    const { id, conditionId } = props ?? {};
+
+    return clearJobReadinessCondition(id, conditionId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClearJobReadinessConditionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof clearJobReadinessCondition>>
+>;
+
+export type ClearJobReadinessConditionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Clear an internal readiness blocker without deleting history
+ */
+export const useClearJobReadinessCondition = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearJobReadinessCondition>>,
+    TError,
+    { id: number; conditionId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof clearJobReadinessCondition>>,
+  TError,
+  { id: number; conditionId: number },
+  TContext
+> => {
+  return useMutation(getClearJobReadinessConditionMutationOptions(options));
+};
+
+/**
+ * @summary Complete or reopen an applied production checklist section
+ */
+export const getCompleteProductionScopeSectionUrl = (
+  jobId: number,
+  sectionId: number,
+) => {
+  return `/api/jobs/${jobId}/checklist/sections/${sectionId}/complete`;
+};
+
+export const completeProductionScopeSection = async (
+  jobId: number,
+  sectionId: number,
+  productionScopeSectionInput?: ProductionScopeSectionInput,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(
+    getCompleteProductionScopeSectionUrl(jobId, sectionId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(productionScopeSectionInput),
+    },
+  );
+};
+
+export const getCompleteProductionScopeSectionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeProductionScopeSection>>,
+    TError,
+    {
+      jobId: number;
+      sectionId: number;
+      data: BodyType<ProductionScopeSectionInput>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof completeProductionScopeSection>>,
+  TError,
+  {
+    jobId: number;
+    sectionId: number;
+    data: BodyType<ProductionScopeSectionInput>;
+  },
+  TContext
+> => {
+  const mutationKey = ["completeProductionScopeSection"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof completeProductionScopeSection>>,
+    {
+      jobId: number;
+      sectionId: number;
+      data: BodyType<ProductionScopeSectionInput>;
+    }
+  > = (props) => {
+    const { jobId, sectionId, data } = props ?? {};
+
+    return completeProductionScopeSection(
+      jobId,
+      sectionId,
+      data,
+      requestOptions,
+    );
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CompleteProductionScopeSectionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof completeProductionScopeSection>>
+>;
+export type CompleteProductionScopeSectionMutationBody =
+  BodyType<ProductionScopeSectionInput>;
+export type CompleteProductionScopeSectionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Complete or reopen an applied production checklist section
+ */
+export const useCompleteProductionScopeSection = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeProductionScopeSection>>,
+    TError,
+    {
+      jobId: number;
+      sectionId: number;
+      data: BodyType<ProductionScopeSectionInput>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof completeProductionScopeSection>>,
+  TError,
+  {
+    jobId: number;
+    sectionId: number;
+    data: BodyType<ProductionScopeSectionInput>;
+  },
+  TContext
+> => {
+  return useMutation(getCompleteProductionScopeSectionMutationOptions(options));
+};
 
 /**
  * @summary Get a job

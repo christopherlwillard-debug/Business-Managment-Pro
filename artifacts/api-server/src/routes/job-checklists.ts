@@ -25,6 +25,7 @@ import { getRequestUser } from "./guards";
 import crypto from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { requestedBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
+import { calculateChecklistProgress } from "../lib/checklist-progress.js";
 
 const photoUpload = multer({
   storage: multer.memoryStorage(),
@@ -112,18 +113,9 @@ async function recalcSection(sectionId: number, checklistId: number) {
     sectionPartsByItemId.get(p.jobChecklistItemId)!.push(p);
   }
 
-  let weightedComplete = 0;
-  for (const item of active) {
-    const itemParts = sectionPartsByItemId.get(item.id) ?? [];
-    if (itemParts.length > 0) {
-      weightedComplete += itemParts.filter(p => p.completed).length / itemParts.length;
-    } else {
-      weightedComplete += item.completed ? 1 : 0;
-    }
-  }
-
-  const pct = Math.round((weightedComplete / active.length) * 100);
-  const allCompleted = weightedComplete >= active.length;
+  const progress = calculateChecklistProgress(active, sectionParts);
+  const pct = progress.overallPercent;
+  const allCompleted = progress.weightedComplete >= active.length;
 
   await db
     .update(jobChecklistSectionsTable)
@@ -193,24 +185,13 @@ export async function buildChecklistResponse(checklistId: number) {
     return section?.active && !i.skipped;
   });
 
-  // Compute overall percent with fractional contribution from split items
-  let weightedComplete = 0;
-  for (const item of activeItems) {
-    const itemParts = partsByItemId.get(item.id) ?? [];
-    if (itemParts.length > 0) {
-      weightedComplete += itemParts.filter(p => p.completed).length / itemParts.length;
-    } else {
-      weightedComplete += item.completed ? 1 : 0;
-    }
-  }
-  const overallPct = activeItems.length === 0 ? 0 : Math.round((weightedComplete / activeItems.length) * 100);
-  const fullyCompletedItems = activeItems.filter(i => i.completed).length;
+  const progress = calculateChecklistProgress(activeItems, parts);
 
   return {
     ...checklist,
-    overallPercent: overallPct,
-    totalItems: activeItems.length,
-    completedItems: fullyCompletedItems,
+    overallPercent: progress.overallPercent,
+    totalItems: progress.totalItems,
+    completedItems: progress.completedItems,
     finishedPhotos: finishedPhotos.map(p => ({ id: p.id, url: toServingUrl(p.objectPath), createdAt: p.createdAt })),
     startPhotos: startPhotos.map(p => ({ id: p.id, url: toServingUrl(p.objectPath), createdAt: p.createdAt })),
     statusLog,
@@ -253,14 +234,19 @@ router.get("/checklist-summaries", async (req, res) => {
     ]);
 
     const activeSectionIds = new Set(sections.filter(s => s.active).map(s => s.id));
+    const parts = items.length
+      ? await db.select({
+        jobChecklistItemId: jobChecklistItemPartsTable.jobChecklistItemId,
+        completed: jobChecklistItemPartsTable.completed,
+      }).from(jobChecklistItemPartsTable)
+        .where(inArray(jobChecklistItemPartsTable.jobChecklistItemId, items.map(item => item.id)))
+      : [];
 
     const result: Record<number, { completedItems: number; totalItems: number; overallPercent: number }> = {};
     for (const cl of checklists) {
       const activeItems = items.filter(i => i.jobChecklistId === cl.id && activeSectionIds.has(i.jobChecklistSectionId) && !i.skipped);
-      const completedItems = activeItems.filter(i => i.completed).length;
-      const totalItems = activeItems.length;
-      const overallPercent = totalItems === 0 ? 0 : Math.round((completedItems / totalItems) * 100);
-      result[cl.jobId] = { completedItems, totalItems, overallPercent };
+      const progress = calculateChecklistProgress(activeItems, parts);
+      result[cl.jobId] = progress;
     }
 
     res.json(result);
@@ -485,6 +471,44 @@ router.delete("/:jobId/checklist", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete checklist" });
+  }
+});
+
+// ── POST /:jobId/checklist/sections/:sectionId/complete — production scope ───
+// Completes/reopens the applied checklist records in place; evidence remains intact.
+router.post("/:jobId/checklist/sections/:sectionId/complete", async (req, res) => {
+  try {
+    const jobId = Number(req.params.jobId);
+    const sectionId = Number(req.params.sectionId);
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+    if (!job || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
+    const [checklist] = await db.select().from(jobChecklistsTable).where(eq(jobChecklistsTable.jobId, jobId)).limit(1);
+    const [section] = checklist ? await db.select().from(jobChecklistSectionsTable).where(and(
+      eq(jobChecklistSectionsTable.id, sectionId), eq(jobChecklistSectionsTable.jobChecklistId, checklist.id),
+    )).limit(1) : [];
+    if (!checklist || !section) return res.status(404).json({ error: "Section not found" });
+    const complete = req.body?.complete !== false;
+    const user = getRequestUser(req);
+    const actorName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || null;
+    await db.update(jobChecklistItemsTable).set({
+      completed: complete,
+      completedAt: complete ? new Date() : null,
+      completedByUserId: complete ? user?.id ?? null : null,
+      completedByName: complete ? actorName : null,
+    }).where(and(eq(jobChecklistItemsTable.jobChecklistSectionId, sectionId), eq(jobChecklistItemsTable.skipped, false)));
+    await recalcSection(sectionId, checklist.id);
+    await db.insert(jobChecklistStatusLogTable).values({
+      jobChecklistId: checklist.id,
+      status: `Production scope section "${section.name}" ${complete ? "completed" : "reopened"}${actorName ? ` by ${actorName}` : ""}`,
+      endedAt: new Date(),
+      durationMin: 0,
+    });
+    res.json(await buildChecklistResponse(checklist.id));
+  } catch (err) {
+    (req as typeof req & { log: { error: (data: unknown, message: string) => void } }).log.error({ err }, "Failed to update production scope section");
+    res.status(500).json({ error: "Failed to update production scope section" });
   }
 });
 

@@ -17,5 +17,7 @@ export interface CreateEstimateRequest {
   contingencyPercent?: number | null;
   jobType?: string | null;
   notes?: string | null;
+  businessLine?: string | null;
   lineItems?: CreateEstimateRequestLineItemsItem[];
+  [key: string]: unknown;
 }

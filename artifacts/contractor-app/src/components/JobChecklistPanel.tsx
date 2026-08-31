@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  ArrowLeft, X, ClipboardCheck, Plus, Check, Minus, ChevronDown, ChevronUp,
+  ArrowLeft, X, ClipboardCheck, Plus, Check, CheckCircle, Minus, ChevronDown, ChevronUp,
   Share2, ExternalLink, AlertCircle, Loader2, Copy, ToggleLeft, ToggleRight, Trash2,
   MessageSquare, FileDown, Mail, Camera, Pencil, Clock, PauseCircle, Calendar,
 } from "lucide-react";
@@ -69,6 +69,9 @@ interface ChecklistSection {
   percentComplete: string;
   sortOrder: number;
   items: ChecklistItem[];
+  completed?: boolean;
+  completedAt?: string | null;
+  completedByName?: string | null;
 }
 
 interface JobChecklist {
@@ -371,6 +374,23 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
       setChecklist(updated);
     } catch {
       toast({ title: "Failed to update section", variant: "destructive" });
+    }
+  }
+
+  async function toggleSectionComplete(section: ChecklistSection) {
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/sections/${section.id}/complete${checklistScopeQuery(job)}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ complete: !section.completed }),
+      });
+      if (!r.ok) throw new Error();
+      const updated = await r.json();
+      setChecklist(updated);
+      toast({ title: !section.completed ? "Section marked complete" : "Section reopened" });
+    } catch {
+      toast({ title: "Section status was not saved", description: "Please try again.", variant: "destructive" });
     }
   }
 
@@ -1171,6 +1191,16 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                             />
                           </div>
                         </button>
+                        {canEdit("jobs") && section.active && (
+                          <button
+                            onClick={() => toggleSectionComplete(section)}
+                            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold transition-colors shrink-0 border ${section.completed ? "bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600" : "bg-background text-muted-foreground border-border hover:bg-muted"}`}
+                            title={section.completed ? "Reopen section" : "Mark section complete"}
+                          >
+                            <CheckCircle className="w-3 h-3" />
+                            {section.completed ? "Done" : "Complete Section"}
+                          </button>
+                        )}
                         {canEdit("jobs") && (
                           <button
                             onClick={() => toggleSectionActive(section)}
