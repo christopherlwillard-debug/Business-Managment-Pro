@@ -41,7 +41,7 @@ import {
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
   Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench, Navigation, Fuel, Truck,
-  CalendarDays, ChevronLeft, ChevronRight, ListTodo,
+  CalendarDays, ChevronLeft, ChevronRight, ListTodo, Settings2,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 import { JobChecklistPanel } from "@/components/JobChecklistPanel";
@@ -54,7 +54,6 @@ import { calculateSurchargeDays, isMileageSurchargeLine, mergeMileageSurchargeLi
 import { isMaterialInvoiceLine } from "@/lib/invoiceLineItems";
 import { calculateJobMargin } from "@/lib/jobMargin";
 import { JobMarginCard } from "@/components/JobMarginCard";
-import { JobPlannerBoard } from "@/components/planner/JobPlannerBoard";
 import { JobPlanningDialog } from "@/components/planner/JobPlanningDialog";
 import { ExtendedJob } from "@/components/planner/types";
 
@@ -116,16 +115,29 @@ function formatScheduleDate(date: string): string {
   return scheduleDate(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function startOfScheduleWeek(date: Date): Date {
+  const result = new Date(date);
+  const day = result.getDay();
+  result.setDate(result.getDate() - (day === 0 ? 6 : day - 1));
+  return result;
+}
+
+function formatScheduleMonth(date: string): string {
+  return scheduleDate(date).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
 function ScheduleOverview({
   businessId,
   onOpenChecklist,
   onOpenJob,
+  onOpenPlanning,
   onLoaded,
   refreshKey,
 }: {
   businessId?: number;
   onOpenChecklist: (job: Job) => void;
   onOpenJob: (job: Job) => void;
+  onOpenPlanning: (job: ScheduleJob) => void;
   onLoaded: (jobs: ScheduleJob[]) => void;
   refreshKey: number;
 }) {
@@ -133,9 +145,10 @@ function ScheduleOverview({
   const [schedule, setSchedule] = useState<{ jobs: ScheduleJob[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [expanded, setExpanded] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
-  const requestEnd = addScheduleDays(today, 60);
+  const [view, setView] = useState<"week" | "month" | "agenda">("week");
+  const [cursor, setCursor] = useState(today);
+  const requestEnd = addScheduleDays(today, 180);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -165,96 +178,225 @@ function ScheduleOverview({
   }, [businessId, today, requestEnd, retryKey, refreshKey]);
 
   const scheduleJobs = schedule?.jobs ?? [];
-  const activeInWindow = scheduleJobs.filter(job =>
-    job.startDate != null && job.startDate <= requestEnd && (job.endDate == null || job.endDate >= today),
-  );
-  const scheduledItemsInWindow = scheduleJobs.flatMap(job =>
-    job.checklistItems
-      .filter(item => item.scheduledDate != null && item.scheduledDate >= today && item.scheduledDate <= requestEnd)
-      .map(item => ({ job, item })),
-  );
-  const needsJobDates = scheduleJobs.filter(job => !job.startDate && !job.endDate);
-  const horizonDays = Array.from({ length: 61 }, (_, index) => addScheduleDays(today, index));
-  const dayRows = horizonDays.map(date => {
-    const events: Array<{ key: string; job: ScheduleJob; item?: ScheduleItem; label: string }> = [];
+  const plannerEvents = useMemo(() => {
+    const events: Array<{ key: string; date: string; job: ScheduleJob; item?: ScheduleItem; label: string }> = [];
     for (const job of scheduleJobs) {
-      if (job.startDate === date) events.push({ key: `start-${job.id}`, job, label: "Job starts" });
-      if (job.endDate === date && job.endDate !== job.startDate) events.push({ key: `end-${job.id}`, job, label: "Job ends" });
-      for (const item of job.checklistItems.filter(value => value.scheduledDate === date)) {
-        events.push({ key: `item-${item.id}`, job, item, label: item.title });
+      if (job.startDate && job.startDate >= today && job.startDate <= requestEnd) {
+        events.push({ key: `start-${job.id}`, date: job.startDate, job, label: "Starts" });
+      }
+      if (job.endDate && job.endDate >= today && job.endDate <= requestEnd && job.endDate !== job.startDate) {
+        events.push({ key: `end-${job.id}`, date: job.endDate, job, label: "Ends" });
+      }
+      for (const item of job.checklistItems) {
+        if (item.scheduledDate && item.scheduledDate >= today && item.scheduledDate <= requestEnd) {
+          events.push({ key: `item-${item.id}`, date: item.scheduledDate, job, item, label: item.title });
+        }
       }
     }
-    return { date, events };
-  }).filter(row => row.events.length > 0);
+    return events.sort((a, b) => a.date.localeCompare(b.date) || a.job.title.localeCompare(b.job.title));
+  }, [scheduleJobs, today, requestEnd]);
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, typeof plannerEvents>();
+    for (const event of plannerEvents) {
+      const events = map.get(event.date) ?? [];
+      events.push(event);
+      map.set(event.date, events);
+    }
+    return map;
+  }, [plannerEvents]);
+
+  const needsJobDates = scheduleJobs.filter(job => !job.startDate && !job.endDate);
+  const waitingJobs = scheduleJobs.filter(job => job.planningState === "waiting");
+  const queueJobs = scheduleJobs.filter(job => job.planningState === "queue");
+
+  const weekDates = useMemo(() => {
+    const start = startOfScheduleWeek(scheduleDate(cursor));
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(date.getDate() + index);
+      return scheduleDateString(date);
+    });
+  }, [cursor]);
+
+  const monthDates = useMemo(() => {
+    const monthStart = scheduleDate(`${cursor.slice(0, 7)}-01`);
+    const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+    const gridStart = startOfScheduleWeek(monthStart);
+    const gridEnd = new Date(startOfScheduleWeek(monthEnd));
+    gridEnd.setDate(gridEnd.getDate() + 6);
+    const dates: string[] = [];
+    for (const date = new Date(gridStart); date <= gridEnd; date.setDate(date.getDate() + 1)) {
+      dates.push(scheduleDateString(new Date(date)));
+    }
+    return dates;
+  }, [cursor]);
+
+  const agendaDates = useMemo(() => {
+    const dates = Array.from(new Set(plannerEvents
+      .filter(event => event.date >= cursor)
+      .map(event => event.date)));
+    return dates.slice(0, 30);
+  }, [plannerEvents, cursor]);
+
+  function shiftPlanner(amount: number) {
+    const date = scheduleDate(cursor);
+    if (view === "week") date.setDate(date.getDate() + amount * 7);
+    else if (view === "month") date.setMonth(date.getMonth() + amount);
+    else date.setDate(date.getDate() + amount * 30);
+    setCursor(scheduleDateString(date));
+  }
+
+  function openEvent(event: (typeof plannerEvents)[number]) {
+    if (event.item) onOpenChecklist(event.job);
+    else onOpenJob(event.job);
+  }
+
+  function renderEvent(event: (typeof plannerEvents)[number], compact = false) {
+    return (
+      <div key={event.key} className={`group flex items-stretch rounded-lg border border-border bg-background overflow-hidden hover:border-amber-300 hover:shadow-sm transition-all ${compact ? "text-[10px]" : ""}`}>
+        <button type="button" onClick={() => openEvent(event)} className="min-w-0 flex-1 px-2.5 py-2 text-left">
+          <span className="block truncate font-bold text-foreground">{event.job.title}</span>
+          <span className="block truncate text-muted-foreground">
+            {event.label}{event.item?.assignedSubcontractorName ? ` · ${event.item.assignedSubcontractorName}` : ""}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onOpenPlanning(event.job)}
+          className="px-2 text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground group-hover:opacity-100 transition-opacity"
+          aria-label={`Open planning settings for ${event.job.title}`}
+          title="Planning settings"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <section className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded(value => !value)}
-        className="w-full min-h-14 px-3 sm:px-4 py-3 flex items-center gap-3 text-left hover:bg-muted/20 transition-colors"
-        aria-expanded={expanded}
-      >
-        <span className="w-9 h-9 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
-          <CalendarDays className="w-4 h-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-bold text-foreground">Upcoming work</span>
-          <span className="block text-xs text-muted-foreground truncate">
-            {loading ? "Loading active schedule…" : error ? "Schedule unavailable" : `${scheduleJobs.length} open job${scheduleJobs.length === 1 ? "" : "s"} · ${activeInWindow.length} dated in the next 60 days · ${scheduledItemsInWindow.length} scheduled item${scheduledItemsInWindow.length === 1 ? "" : "s"}`}
-          </span>
-        </span>
-        {!loading && !error && needsJobDates.length > 0 && (
-          <span className="hidden sm:inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800">
-            {needsJobDates.length} need job dates
-          </span>
-        )}
-        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
-      </button>
-
-      {expanded && (
-        <div className="border-t border-border px-3 sm:px-4 py-3">
-          {error ? (
-            <div className="flex items-center justify-between gap-3 text-xs text-red-700">
-              <span>Could not load upcoming work.</span>
-              <button type="button" onClick={() => setRetryKey(key => key + 1)} className="font-bold underline">Retry</button>
+    <section className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+      <div className="px-4 sm:px-5 py-4 border-b border-border">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+              <CalendarDays className="w-5 h-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg font-display font-bold text-foreground">Planner</h2>
+              <p className="text-xs text-muted-foreground truncate">
+                {loading ? "Loading scheduled work…" : error ? "Schedule unavailable" : "Forward schedule for jobs with real dates"}
+              </p>
             </div>
-          ) : dayRows.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No job starts, endings, or scheduled checklist work in the next 60 days.</p>
+          </div>
+          <div className="flex items-center gap-2 self-start lg:self-auto">
+            <div className="flex items-center rounded-lg border border-border bg-muted/30 p-1">
+              {(["week", "month", "agenda"] as const).map(option => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setView(option)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold capitalize transition-colors ${view === option ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setCursor(today)} className="hidden sm:inline-flex px-3 py-2 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:bg-muted/50 hover:text-foreground">
+              Today
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 sm:px-5 py-3 flex items-center justify-between gap-3">
+        <button type="button" onClick={() => shiftPlanner(-1)} className="p-2 rounded-lg border border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground" aria-label="Previous period">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <div className="text-sm font-bold text-foreground">
+          {view === "month"
+            ? formatScheduleMonth(cursor)
+            : view === "week"
+              ? `${formatScheduleDate(weekDates[0])} – ${formatScheduleDate(weekDates[6])}`
+              : `From ${formatScheduleDate(cursor)}`}
+        </div>
+        <button type="button" onClick={() => shiftPlanner(1)} className="p-2 rounded-lg border border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground" aria-label="Next period">
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="px-4 sm:px-5 pb-4">
+        {error ? (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+            <span>Could not load the schedule.</span>
+            <button type="button" onClick={() => setRetryKey(key => key + 1)} className="font-bold underline">Retry</button>
+          </div>
+        ) : loading ? (
+          <div className="h-48 rounded-xl border border-dashed border-border bg-muted/10 flex items-center justify-center text-xs text-muted-foreground">
+            Loading scheduled work…
+          </div>
+        ) : view === "agenda" ? (
+          agendaDates.length === 0 ? (
+            <div className="h-40 rounded-xl border border-dashed border-border bg-muted/10 flex items-center justify-center text-xs text-muted-foreground">
+              No dated work from this point forward.
+            </div>
           ) : (
-            <div className="space-y-2">
-              {dayRows.map(row => (
-                <div key={row.date} className="flex items-start gap-3">
-                  <div className="w-14 shrink-0 pt-1">
-                    <p className="text-[10px] font-bold uppercase text-muted-foreground">{row.date === today ? "Today" : scheduleDate(row.date).toLocaleDateString("en-US", { weekday: "short" })}</p>
-                    <p className="text-xs font-semibold text-foreground">{formatScheduleDate(row.date)}</p>
+            <div className="space-y-3">
+              {agendaDates.map(date => (
+                <div key={date} className="grid grid-cols-[76px_minmax(0,1fr)] gap-3 items-start">
+                  <div className="pt-2">
+                    <p className={`text-[10px] font-bold uppercase ${date === today ? "text-amber-700" : "text-muted-foreground"}`}>{date === today ? "Today" : scheduleDate(date).toLocaleDateString("en-US", { weekday: "short" })}</p>
+                    <p className="text-xs font-semibold text-foreground">{formatScheduleDate(date)}</p>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 min-w-0">
-                    {row.events.slice(0, 4).map(event => (
-                      <button
-                        type="button"
-                        key={event.key}
-                        onClick={() => event.item ? onOpenChecklist(event.job) : onOpenJob(event.job)}
-                        className="max-w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-left hover:border-amber-300 hover:bg-amber-50 transition-colors"
-                      >
-                        <span className="block text-[11px] font-bold text-foreground truncate">{event.job.title}</span>
-                        <span className="block text-[10px] text-muted-foreground truncate">
-                          {event.label}{event.item?.assignedSubcontractorName ? ` · ${event.item.assignedSubcontractorName}` : ""}
-                        </span>
-                      </button>
-                    ))}
-                    {row.events.length > 4 && <span className="self-center text-[10px] text-muted-foreground">+{row.events.length - 4} more</span>}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {(eventsByDate.get(date) ?? []).map(event => renderEvent(event))}
                   </div>
                 </div>
               ))}
             </div>
-          )}
-          {needsJobDates.length > 0 && (
-            <p className="mt-3 pt-3 border-t border-border text-[11px] text-amber-800">
-              <span className="font-bold">{needsJobDates.length} active job{needsJobDates.length === 1 ? "" : "s"} need start/end dates.</span>
-              {" "}Checklist items are scheduled only when you choose a date for them.
-            </p>
-          )}
+          )
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <div className="min-w-[700px]">
+              <div className="grid grid-cols-7 bg-muted/20 border-b border-border">
+                {(view === "week" ? weekDates : monthDates.slice(0, 7)).map(date => (
+                  <div key={date} className="px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-muted-foreground border-r border-border last:border-r-0">
+                    {scheduleDate(date).toLocaleDateString("en-US", { weekday: "short" })}
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7">
+                {(view === "week" ? weekDates : monthDates).map(date => {
+                  const dateEvents = eventsByDate.get(date) ?? [];
+                  const isOutsideMonth = view === "month" && date.slice(0, 7) !== cursor.slice(0, 7);
+                  return (
+                    <div key={date} className={`min-h-[116px] border-r border-b border-border last:border-r-0 p-1.5 ${isOutsideMonth ? "bg-muted/10" : "bg-background"}`}>
+                      <div className={`flex items-center justify-between mb-1 px-1 text-[11px] font-bold ${date === today ? "text-amber-700" : isOutsideMonth ? "text-muted-foreground/50" : "text-muted-foreground"}`}>
+                        <span>{scheduleDate(date).getDate()}</span>
+                        {date === today && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] text-amber-800">Today</span>}
+                      </div>
+                      <div className="space-y-1">
+                        {dateEvents.slice(0, view === "month" ? 3 : 5).map(event => renderEvent(event, view === "month"))}
+                        {dateEvents.length > (view === "month" ? 3 : 5) && (
+                          <p className="px-1 text-[10px] font-semibold text-muted-foreground">+{dateEvents.length - (view === "month" ? 3 : 5)} more</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {!loading && !error && (
+        <div className="border-t border-border bg-muted/10 px-4 sm:px-5 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
+          <span className="font-bold text-foreground">Unscheduled support</span>
+          <span className="text-amber-800">{needsJobDates.length} without job dates</span>
+          <span className="text-amber-800">{waitingJobs.length} waiting</span>
+          <span className="text-muted-foreground">{queueJobs.length} in queue</span>
+          <span className="text-muted-foreground">No dates are invented for unscheduled work.</span>
         </div>
       )}
     </section>
@@ -7146,7 +7288,6 @@ export default function Jobs() {
 
   const [gcWizardJob, setGcWizardJob] = useState<Job | null>(null);
 
-  const [viewMode, setViewMode] = useState<"list" | "planner">("planner");
   const [planningJob, setPlanningJob] = useState<ExtendedJob | null>(null);
 
   const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string; invoiceId: number } | null>(null);
@@ -7919,6 +8060,7 @@ export default function Jobs() {
          businessId={activeBusiness?.id}
          onOpenChecklist={setScheduleChecklistJob}
          onOpenJob={openEditJob}
+          onOpenPlanning={job => setPlanningJob(job)}
          onLoaded={loadedJobs => setScheduleJobsById(new Map(loadedJobs.map(job => [job.id, job])))}
          refreshKey={scheduleRefreshKey}
        />
@@ -7928,13 +8070,7 @@ export default function Jobs() {
            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Job records</p>
            <h2 className="text-xl font-display font-bold text-foreground">All jobs</h2>
          </div>
-         <div className="flex items-center gap-2">
-           <div className="flex p-1 bg-muted/40 rounded-xl border border-border">
-             <button onClick={() => setViewMode("planner")} className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${viewMode === "planner" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Planner</button>
-             <button onClick={() => setViewMode("list")} className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${viewMode === "list" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>List</button>
-           </div>
-           <span className="text-xs text-muted-foreground ml-2">{jobs.length} total</span>
-         </div>
+          <span className="text-xs text-muted-foreground">{jobs.length} total</span>
        </div>
 
       {/* Loading */}
@@ -8027,20 +8163,8 @@ export default function Jobs() {
         );
       })()}
 
-      {/* Jobs View Mode Wrapper */}
-      {!isLoading && jobs.length > 0 && viewMode === "planner" && (
-        <JobPlannerBoard
-          jobs={jobs}
-          scheduleJobsById={scheduleJobsById}
-          checklistSummaries={checklistSummaries}
-          onOpenJob={openEditJob}
-          onOpenPlanning={job => setPlanningJob(job)}
-          onOpenChecklist={setScheduleChecklistJob}
-        />
-      )}
-
       {/* Jobs grid */}
-      {!isLoading && jobs.length > 0 && viewMode === "list" && (
+      {!isLoading && jobs.length > 0 && (
         <div className="space-y-6">
           {scheduledJobs.length > 0 && (
             <div>
