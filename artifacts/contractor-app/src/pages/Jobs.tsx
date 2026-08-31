@@ -126,11 +126,25 @@ function formatScheduleMonth(date: string): string {
   return scheduleDate(date).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
+function getPlannerStage(job: ScheduleJob, item?: ScheduleItem): string | null {
+  if (item?.sectionName) return item.sectionName;
+  const nextSection = job.checklistItems.find(value => !value.completed && !value.skipped && value.sectionName);
+  if (nextSection?.sectionName) return nextSection.sectionName;
+  const workflow = getJobWorkflow(job);
+  return workflow ? JOB_WORKFLOWS[workflow].label : null;
+}
+
+function formatResourceDemand(value: string | null | undefined): string | null {
+  if (!value || value === "standard") return null;
+  return value === "large_crew" ? "Large crew" : "All hands";
+}
+
 function ScheduleOverview({
   businessId,
   onOpenChecklist,
   onOpenJob,
   onOpenPlanning,
+  checklistSummaries,
   onLoaded,
   refreshKey,
 }: {
@@ -138,6 +152,7 @@ function ScheduleOverview({
   onOpenChecklist: (job: Job) => void;
   onOpenJob: (job: Job) => void;
   onOpenPlanning: (job: ScheduleJob) => void;
+  checklistSummaries: Record<number, { overallPercent?: number }>;
   onLoaded: (jobs: ScheduleJob[]) => void;
   refreshKey: number;
 }) {
@@ -148,6 +163,7 @@ function ScheduleOverview({
   const [retryKey, setRetryKey] = useState(0);
   const [view, setView] = useState<"week" | "month" | "agenda">("week");
   const [cursor, setCursor] = useState(today);
+  const [selectedDate, setSelectedDate] = useState(today);
   const requestEnd = addScheduleDays(today, 180);
 
   useEffect(() => {
@@ -244,7 +260,9 @@ function ScheduleOverview({
     if (view === "week") date.setDate(date.getDate() + amount * 7);
     else if (view === "month") date.setMonth(date.getMonth() + amount);
     else date.setDate(date.getDate() + amount * 30);
-    setCursor(scheduleDateString(date));
+    const nextCursor = scheduleDateString(date);
+    setCursor(nextCursor);
+    if (view === "month") setSelectedDate(`${nextCursor.slice(0, 7)}-01`);
   }
 
   function openEvent(event: (typeof plannerEvents)[number]) {
@@ -253,6 +271,10 @@ function ScheduleOverview({
   }
 
   function renderEvent(event: (typeof plannerEvents)[number], compact = false) {
+    const progress = checklistSummaries[event.job.id]?.overallPercent;
+    const stage = getPlannerStage(event.job, event.item);
+    const priority = event.job.priority === "urgent" || event.job.priority === "high" ? event.job.priority : null;
+    const resourceDemand = formatResourceDemand(event.job.resourceDemand);
     return (
       <div key={event.key} className={`group flex items-stretch rounded-lg border border-border bg-background overflow-hidden hover:border-amber-300 hover:shadow-sm transition-all ${compact ? "text-[10px]" : ""}`}>
         <button type="button" onClick={() => openEvent(event)} className="min-w-0 flex-1 px-2.5 py-2 text-left">
@@ -260,6 +282,17 @@ function ScheduleOverview({
           <span className="block truncate text-muted-foreground">
             {event.label}{event.item?.assignedSubcontractorName ? ` · ${event.item.assignedSubcontractorName}` : ""}
           </span>
+          {(stage || progress != null) && (
+            <span className="block truncate text-[10px] font-semibold text-foreground/70">
+              {stage ?? "Progress"}{progress != null ? ` · ${Math.round(progress)}%` : ""}
+            </span>
+          )}
+          {(priority || resourceDemand) && (
+            <span className="mt-1 flex flex-wrap gap-1">
+              {priority && <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${priority === "urgent" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"}`}>{priority}</span>}
+              {resourceDemand && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">{resourceDemand}</span>}
+            </span>
+          )}
         </button>
         <button
           type="button"
@@ -302,7 +335,7 @@ function ScheduleOverview({
                 </button>
               ))}
             </div>
-            <button type="button" onClick={() => setCursor(today)} className="hidden sm:inline-flex px-3 py-2 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:bg-muted/50 hover:text-foreground">
+            <button type="button" onClick={() => { setCursor(today); setSelectedDate(today); }} className="hidden sm:inline-flex px-3 py-2 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:bg-muted/50 hover:text-foreground">
               Today
             </button>
           </div>
@@ -355,48 +388,115 @@ function ScheduleOverview({
               ))}
             </div>
           )
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-border">
-            <div className="min-w-[700px]">
-              <div className="grid grid-cols-7 bg-muted/20 border-b border-border">
-                {(view === "week" ? weekDates : monthDates.slice(0, 7)).map(date => (
-                  <div key={date} className="px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-muted-foreground border-r border-border last:border-r-0">
-                    {scheduleDate(date).toLocaleDateString("en-US", { weekday: "short" })}
+        ) : view === "week" ? (
+          <>
+            <div className="md:hidden space-y-2">
+              {weekDates.map(date => {
+                const dateEvents = eventsByDate.get(date) ?? [];
+                return (
+                  <div key={date} className={`rounded-xl border p-3 ${date === today ? "border-amber-200 bg-amber-50/40" : "border-border bg-background"}`}>
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <div>
+                        <p className={`text-[10px] font-bold uppercase ${date === today ? "text-amber-700" : "text-muted-foreground"}`}>{date === today ? "Today" : scheduleDate(date).toLocaleDateString("en-US", { weekday: "short" })}</p>
+                        <p className="text-sm font-bold text-foreground">{formatScheduleDate(date)}</p>
+                      </div>
+                      {dateEvents.length > 0 && <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-bold text-muted-foreground">{dateEvents.length} item{dateEvents.length === 1 ? "" : "s"}</span>}
+                    </div>
+                    {dateEvents.length > 0 ? (
+                      <div className="space-y-1.5">{dateEvents.map(event => renderEvent(event))}</div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No scheduled work</p>
+                    )}
                   </div>
+                );
+              })}
+            </div>
+            <div className="hidden md:block overflow-x-auto rounded-xl border border-border">
+              <div className="min-w-[700px]">
+                <div className="grid grid-cols-7 bg-muted/20 border-b border-border">
+                  {weekDates.map(date => (
+                    <div key={date} className="px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-muted-foreground border-r border-border last:border-r-0">
+                      {scheduleDate(date).toLocaleDateString("en-US", { weekday: "short" })}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7">
+                  {weekDates.map(date => {
+                    const dateEvents = eventsByDate.get(date) ?? [];
+                    return (
+                      <div key={date} className={`min-h-[150px] border-r border-b border-border last:border-r-0 p-1.5 ${date === today ? "bg-amber-50/30" : "bg-background"}`}>
+                        <div className={`flex items-center justify-between mb-1 px-1 text-[11px] font-bold ${date === today ? "text-amber-700" : "text-muted-foreground"}`}>
+                          <span>{scheduleDate(date).getDate()}</span>
+                          {date === today && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] text-amber-800">Today</span>}
+                        </div>
+                        <div className="space-y-1">{dateEvents.slice(0, 4).map(event => renderEvent(event))}</div>
+                        {dateEvents.length > 4 && <p className="px-1 mt-1 text-[10px] font-semibold text-muted-foreground">+{dateEvents.length - 4} more</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="grid grid-cols-7 bg-muted/20 border-b border-border">
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => (
+                  <div key={day} className="px-1 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-muted-foreground border-r border-border last:border-r-0">{day}</div>
                 ))}
               </div>
               <div className="grid grid-cols-7">
-                {(view === "week" ? weekDates : monthDates).map(date => {
+                {monthDates.map(date => {
                   const dateEvents = eventsByDate.get(date) ?? [];
-                  const isOutsideMonth = view === "month" && date.slice(0, 7) !== cursor.slice(0, 7);
+                  const isOutsideMonth = date.slice(0, 7) !== cursor.slice(0, 7);
+                  const isSelected = date === selectedDate;
                   return (
-                    <div key={date} className={`min-h-[116px] border-r border-b border-border last:border-r-0 p-1.5 ${isOutsideMonth ? "bg-muted/10" : "bg-background"}`}>
-                      <div className={`flex items-center justify-between mb-1 px-1 text-[11px] font-bold ${date === today ? "text-amber-700" : isOutsideMonth ? "text-muted-foreground/50" : "text-muted-foreground"}`}>
+                    <button
+                      type="button"
+                      key={date}
+                      onClick={() => setSelectedDate(date)}
+                      className={`min-w-0 min-h-[64px] sm:min-h-[78px] border-r border-b border-border p-1.5 text-left transition-colors ${isOutsideMonth ? "bg-muted/10 text-muted-foreground/50" : "bg-background"} ${isSelected ? "ring-2 ring-inset ring-amber-400 bg-amber-50/40" : "hover:bg-muted/30"}`}
+                      aria-label={`${formatScheduleDate(date)}${dateEvents.length ? `, ${dateEvents.length} scheduled item${dateEvents.length === 1 ? "" : "s"}` : ""}`}
+                    >
+                      <span className={`flex items-center justify-between text-[11px] font-bold ${date === today ? "text-amber-700" : ""}`}>
                         <span>{scheduleDate(date).getDate()}</span>
-                        {date === today && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] text-amber-800">Today</span>}
-                      </div>
-                      <div className="space-y-1">
-                        {dateEvents.slice(0, view === "month" ? 3 : 5).map(event => renderEvent(event, view === "month"))}
-                        {dateEvents.length > (view === "month" ? 3 : 5) && (
-                          <p className="px-1 text-[10px] font-semibold text-muted-foreground">+{dateEvents.length - (view === "month" ? 3 : 5)} more</p>
-                        )}
-                      </div>
-                    </div>
+                        {dateEvents.length > 0 && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] text-amber-800">{dateEvents.length}</span>}
+                      </span>
+                      <span className="mt-2 flex gap-1">
+                        {dateEvents.slice(0, 4).map(event => <span key={event.key} className={`h-1.5 w-1.5 rounded-full ${event.item ? "bg-blue-500" : "bg-emerald-500"}`} title={event.job.title} />)}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
             </div>
-          </div>
+            <div className="mt-3 rounded-xl border border-border bg-muted/10 p-3">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div>
+                  <p className="text-[10px] font-bold uppercase text-muted-foreground">{selectedDate === today ? "Today" : scheduleDate(selectedDate).toLocaleDateString("en-US", { weekday: "long" })}</p>
+                  <p className="text-sm font-bold text-foreground">{formatScheduleDate(selectedDate)}</p>
+                </div>
+                <span className="text-[10px] font-semibold text-muted-foreground">{(eventsByDate.get(selectedDate) ?? []).length} scheduled</span>
+              </div>
+              {(eventsByDate.get(selectedDate) ?? []).length > 0 ? (
+                <div className="space-y-1.5">{(eventsByDate.get(selectedDate) ?? []).map(event => renderEvent(event))}</div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No scheduled work on this date.</p>
+              )}
+            </div>
+          </>
         )}
       </div>
 
       {!loading && !error && (
         <div className="border-t border-border bg-muted/10 px-4 sm:px-5 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
           <span className="font-bold text-foreground">Unscheduled support</span>
-          <span className="text-amber-800">{needsJobDates.length} without job dates</span>
-          <span className="text-amber-800">{waitingJobs.length} waiting</span>
-          <span className="text-muted-foreground">{queueJobs.length} in queue</span>
-          <span className="text-muted-foreground">No dates are invented for unscheduled work.</span>
+          {needsJobDates.length > 0 && <span className="text-amber-800">{needsJobDates.length} unscheduled / lot-model</span>}
+          {queueJobs.length > 0 && <span className="text-muted-foreground">{queueJobs.length} queued</span>}
+          {waitingJobs.length > 0 && <span className="text-amber-800">{waitingJobs.length} waiting</span>}
+          {needsJobDates.length === 0 && queueJobs.length === 0 && waitingJobs.length === 0 && <span className="text-muted-foreground">All visible work has dates.</span>}
+          {(needsJobDates.length > 0 || queueJobs.length > 0 || waitingJobs.length > 0) && <span className="text-muted-foreground">Dates appear only when scheduled.</span>}
         </div>
       )}
     </section>
@@ -8061,6 +8161,7 @@ export default function Jobs() {
          onOpenChecklist={setScheduleChecklistJob}
          onOpenJob={openEditJob}
           onOpenPlanning={job => setPlanningJob(job)}
+          checklistSummaries={checklistSummaries}
          onLoaded={loadedJobs => setScheduleJobsById(new Map(loadedJobs.map(job => [job.id, job])))}
          refreshKey={scheduleRefreshKey}
        />
