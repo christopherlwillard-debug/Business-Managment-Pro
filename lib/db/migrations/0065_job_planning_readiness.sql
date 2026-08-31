@@ -4,11 +4,11 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS resource_demand text NOT NULL DEFAULT 
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS queue_position integer;
 
 ALTER TABLE jobs ADD CONSTRAINT jobs_planning_state_check
-  CHECK (planning_state IN ('ready', 'scheduled', 'waiting', 'queue')) NOT VALID;
+  CHECK (planning_state IN ('ready', 'scheduled', 'waiting', 'queue'));
 ALTER TABLE jobs ADD CONSTRAINT jobs_priority_check
-  CHECK (priority IN ('urgent', 'high', 'normal', 'low')) NOT VALID;
+  CHECK (priority IN ('urgent', 'high', 'normal', 'low'));
 ALTER TABLE jobs ADD CONSTRAINT jobs_resource_demand_check
-  CHECK (resource_demand IN ('standard', 'large_crew', 'all_hands')) NOT VALID;
+  CHECK (resource_demand IN ('standard', 'large_crew', 'all_hands'));
 
 CREATE TABLE IF NOT EXISTS job_readiness_conditions (
   id serial PRIMARY KEY,

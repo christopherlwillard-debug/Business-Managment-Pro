@@ -1,48 +1,18 @@
 ---
 name: Prod schema via Publish
-description: How production schema changes work — publish can wipe columns added via raw SQL; the correct fix is startup-time ADD COLUMN IF NOT EXISTS in index.ts.
+description: Production schema changes must flow from the development schema through Publish, never application startup or custom production DDL.
 ---
 
 # Production Schema Changes — Correct Pattern
 
-## The Problem
-When Replit Publish runs, Drizzle-kit push compares the schema and can prompt the user about mismatches. If the user clicks through the warning, columns added via one-time `ALTER TABLE` (migration endpoints or curl) are wiped on the next publish. This happened with `accepted_at`, `sent_at`, `sent_method` on the invoices table — added via migration endpoint → confirmed present → disappeared after next publish because the user accepted the Drizzle warning.
+Production schema is managed by Replit Publish, which diffs the development and production databases and validates the resulting SQL before applying it.
 
-## The Correct Fix
+**Rule:** Make schema changes in the Drizzle source of truth, synchronize and verify the development database, inspect the development-to-production diff, and then ask the user to retry Publish.
 
-**For any column that production keeps losing after publish: add it to the server startup in `artifacts/api-server/src/index.ts`.**
+**Why:** Deployment hooks, migration endpoints, direct production DDL, and startup-time self-healing create a third migration path that can drift from Publish and damage production.
 
-Add an `ADD COLUMN IF NOT EXISTS` in the `start()` function, before `app.listen`. This runs on every server boot (dev and prod), so the column is always present regardless of what Drizzle does during publish.
+**How to apply:** Use production queries only for read-only diagnosis. Apply safe schema corrections to development through normal database permissions. Ask before destructive development changes.
 
-```ts
-async function ensureMyColumns(): Promise<void> {
-  try {
-    await db.execute(sql`
-      ALTER TABLE my_table
-        ADD COLUMN IF NOT EXISTS my_col TEXT;
-    `);
-    console.log("[startup] my_col ensured.");
-  } catch (err) {
-    console.error("[startup] ensureMyColumns failed (non-fatal):", err);
-  }
-}
+## Unvalidated CHECK constraint diff quirk
 
-async function start() {
-  await ensureMyColumns();
-  // ... rest of startup
-}
-```
-
-**Why this works:** `ADD COLUMN IF NOT EXISTS` is fully idempotent. If the column already exists it's a no-op. If Drizzle wiped it during publish, the server adds it back within milliseconds of boot, before any request is served.
-
-## Also do these steps
-1. Ensure the column is in `lib/db/src/schema/<table>.ts` (source of truth for types).
-2. Add to `scripts/post-merge.sh` for dev DB consistency after task merges.
-3. For the current live production instance (before next publish), still curl the admin migration endpoint to apply immediately — don't wait for a publish cycle.
-
-## push-force truncation warning
-`pnpm --filter @workspace/db run push-force` (drizzle-kit push --force) can prompt to truncate `invoices` when adding a unique constraint. Never run it blindly — use targeted `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` instead.
-
-## Production URL
-`https://willardsgc.com` (additional: `https://business-managment-pro.replit.app`)
-Trigger migration endpoints via: `curl -X POST <url>/api/admin/migrations/<endpoint> -H "x-migration-key: $MIGRATION_KEY"`
+If a development constraint has `convalidated = false`, Publish may serialize its introspected `NOT VALID` definition incorrectly. First confirm all rows satisfy the constraint, represent the constraint in Drizzle schema, validate it in development, and recompute the diff. A validated constraint should generate ordinary `ADD CONSTRAINT ... CHECK (...)` SQL.
