@@ -56,6 +56,7 @@ import { calculateJobMargin } from "@/lib/jobMargin";
 import { JobMarginCard } from "@/components/JobMarginCard";
 import { JobPlanningDialog } from "@/components/planner/JobPlanningDialog";
 import { ExtendedJob } from "@/components/planner/types";
+import { JobsPlanner } from "@/components/planner/JobsPlanner";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -8156,8 +8157,9 @@ export default function Jobs() {
         </div>
       </div>
 
-       <ScheduleOverview
+        <JobsPlanner
          businessId={activeBusiness?.id}
+          allJobs={jobs}
          onOpenChecklist={setScheduleChecklistJob}
          onOpenJob={openEditJob}
           onOpenPlanning={job => setPlanningJob(job)}
