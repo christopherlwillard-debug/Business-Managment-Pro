@@ -252,7 +252,7 @@ const DEFAULT_SETTINGS = {
   ownerSplitPct: "50",
   taxReservePct: "25",
   growthReservePct: "5",
-  plStepOrder: '["growth","labor","expenses"]',
+  plStepOrder: '["expenses","growth","labor"]',
   // Tax Profile defaults: single-member LLC taxed as sole proprietorship
   federalTaxElection: "sole_prop",
   taxElectionEffectiveDate: null,
@@ -324,7 +324,9 @@ function format(s: any) {
     ownerSplitPct: s.ownerSplitPct != null ? parseFloat(String(s.ownerSplitPct)) : 50,
     taxReservePct: s.taxReservePct != null ? parseFloat(String(s.taxReservePct)) : 25,
     growthReservePct: s.growthReservePct != null ? parseFloat(String(s.growthReservePct)) : 5,
-    plStepOrder: s.plStepOrder ?? '["growth","labor","expenses"]',
+    plStepOrder: !s.plStepOrder || s.plStepOrder === '["growth","labor","expenses"]'
+      ? '["expenses","growth","labor"]'
+      : s.plStepOrder,
     // Tax Profile
     federalTaxElection: s.federalTaxElection ?? "sole_prop",
     taxElectionEffectiveDate: s.taxElectionEffectiveDate ?? null,

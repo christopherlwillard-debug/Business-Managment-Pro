@@ -7,6 +7,7 @@ describe("calculateJobFinancialWaterfall", () => {
     jobExpenses: 1123.81,
     mileageReimbursementCost: 199.60,
     subLaborCost: 2327.07,
+    growthReservePct: 5,
     ownerSplitPct: 50,
     taxReservePct: 25,
   };
@@ -17,8 +18,8 @@ describe("calculateJobFinancialWaterfall", () => {
     expect(result.allocationWarning).toBe(false);
     expect(result.totalAllocPct).toBe(50);
     expect(result.ownerPct).toBe(50);
-    expect(result.toSplit).toBeCloseTo(1661.57, 2);
-    expect(result.ownerTakeHome).toBeCloseTo(623.09, 2);
+    expect(result.toSplit).toBeCloseTo(1545.22, 2);
+    expect(result.ownerTakeHome).toBeCloseTo(579.46, 2);
   });
 
   it("warns only when team allocations exceed the available split", () => {
@@ -35,7 +36,7 @@ describe("calculateJobFinancialWaterfall", () => {
       allocationPcts: [50],
     });
 
-    expect(withMileage.toSplit).toBeCloseTo(1661.57, 2);
+    expect(withMileage.toSplit).toBeCloseTo(1545.22, 2);
     expect(withoutMileage.toSplit).toBeCloseTo(withMileage.toSplit, 2);
   });
 
@@ -44,7 +45,7 @@ describe("calculateJobFinancialWaterfall", () => {
 
     expect(result.jobIncome).toBeCloseTo(3876.49, 2);
     expect(result.splitIncome).toBeCloseTo(4076.09, 2);
-    expect(result.toSplit).toBeCloseTo(1661.57, 2);
+    expect(result.toSplit).toBeCloseTo(1545.22, 2);
   });
 
   it("uses the same pool when the close-job path includes team allocations", () => {
@@ -52,7 +53,7 @@ describe("calculateJobFinancialWaterfall", () => {
     const closeJob = calculateJobFinancialWaterfall({ ...base, allocationPcts: [50], hourlyFixedCost: base.subLaborCost });
 
     expect(closeJob.toSplit).toBeCloseTo(panel.toSplit, 2);
-    expect(closeJob.toSplit * 0.5).toBeCloseTo(830.78, 2);
+    expect(closeJob.toSplit * 0.5).toBeCloseTo(772.61, 2);
   });
 
   it("uses the agreed hourly payout when the worker has an amount override", () => {
@@ -64,6 +65,16 @@ describe("calculateJobFinancialWaterfall", () => {
     });
 
     expect(result.hourlyWorkers).toBe(800);
-    expect(result.toSplit).toBeCloseTo(3112.29, 2);
+    expect(result.toSplit).toBeCloseTo(3072.29, 2);
+  });
+
+  it("calculates the configured growth reserve from gross revenue", () => {
+    const result = calculateJobFinancialWaterfall({
+      ...base,
+      growthReservePct: 15,
+      allocationPcts: [],
+    });
+
+    expect(result.growthReserve).toBeCloseTo(611.41, 2);
   });
 });

@@ -207,3 +207,12 @@ Created the four-document architecture governance system:
 - Added the append-only `invoice_communication_events` table and compatibility-safe backfill from legacy invoice send/reminder fields.
 - Added pending/finalized communication APIs and provider/message metadata for server email, browser Gmail, reminders, payment-link emails, and payment receipts.
 - Added the invoice detail communication timeline and compact sent/reminder summaries without changing accounting, payment, invoice lifecycle, Jobs, or Route Planner behavior.
+
+## 2026-09-01
+
+### Growth reserve waterfall alignment
+
+- Job Financials, Job Payroll, and percentage-based subcontractor allocations now read the configured Growth Reserve percentage instead of using a hidden 5% constant.
+- Standardized the job waterfall as revenue, job expenses, Growth Reserve, hourly/fixed subcontractor labor, split pool, owner share, then tax reserve.
+- Growth Reserve is calculated from the amount remaining after split-eligible job expenses; job mileage reimbursement remains outside the percentage split pool.
+- Legacy default display order is normalized to expenses, Growth Reserve, then subcontractor labor.

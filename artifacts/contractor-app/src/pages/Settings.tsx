@@ -1877,7 +1877,7 @@ export default function Settings() {
     taxReservePct: "25",
     growthReservePct: "5",
   });
-  const [plStepOrder, setPlStepOrder] = useState<string[]>(["growth", "labor", "expenses"]);
+  const [plStepOrder, setPlStepOrder] = useState<string[]>(["expenses", "growth", "labor"]);
   const [smtpPass, setSmtpPass] = useState("");
   const [smtpConfigured, setSmtpConfigured] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("unsupported");
@@ -2695,7 +2695,7 @@ export default function Settings() {
                 {/* Growth Reserve % */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Growth Reserve %</label>
-                  <p className="text-xs text-muted-foreground">Percentage of revenue set aside for business reinvestment before the owner/sub split.</p>
+                  <p className="text-xs text-muted-foreground">Percentage of the amount remaining after job expenses, set aside before hourly labor and the owner/sub split.</p>
                   <div className="flex items-center gap-3">
                     <input
                       type="number"
@@ -2706,7 +2706,7 @@ export default function Settings() {
                       onChange={e => setF("growthReservePct", e.target.value)}
                       className={inp + " w-24"}
                     />
-                    <span className="text-sm text-muted-foreground">{form.growthReservePct || "0"}% of gross revenue</span>
+                    <span className="text-sm text-muted-foreground">{form.growthReservePct || "0"}% after job expenses</span>
                   </div>
                 </div>
 
@@ -2769,7 +2769,7 @@ export default function Settings() {
                 {/* Reorderable steps */}
                 {plStepOrder.map((key, idx) => {
                   const stepMeta: Record<string, { label: string; desc: string }> = {
-                    growth:   { label: "Growth Reserve", desc: `${form.growthReservePct || "0"}% of revenue` },
+                    growth:   { label: "Growth Reserve", desc: `${form.growthReservePct || "0"}% after job expenses` },
                     labor:    { label: "Sub Labor",       desc: "Subcontractor pay (hourly + fixed)" },
                     expenses: { label: "Job Costs", desc: "Direct costs tied to the job — supplies, fuel, permits, dump fees, and other expenses" },
                   };

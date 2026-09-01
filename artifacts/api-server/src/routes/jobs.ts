@@ -864,6 +864,12 @@ router.get("/:id/profit", async (req, res) => {
     netProfit = grossInvoiced - jobExpenses - subLaborCost - allocPaid;
     if (estimatedFuelCost != null) operationalProfit = netProfit;
 
+    const [financialSettings] = await db.select({
+      growthReservePct: settingsTable.growthReservePct,
+      ownerSplitPct: settingsTable.ownerSplitPct,
+      taxReservePct: settingsTable.taxReservePct,
+    }).from(settingsTable).limit(1);
+
     res.json({
       grossInvoiced, collected, otherIncomeRevenue, jobExpenses, auditTrailTotal, tripTravelTotal, tripMealsDeductible,
       subLaborCost, allocPaid, totalSubHours,
@@ -880,6 +886,9 @@ router.get("/:id/profit", async (req, res) => {
       fuelStatus,
       operationalProfit,
       fuelBreakdown,
+      growthReservePct: financialSettings?.growthReservePct != null ? parseFloat(String(financialSettings.growthReservePct)) : 5,
+      ownerSplitPct: financialSettings?.ownerSplitPct != null ? parseFloat(String(financialSettings.ownerSplitPct)) : 50,
+      taxReservePct: financialSettings?.taxReservePct != null ? parseFloat(String(financialSettings.taxReservePct)) : 25,
     });
   } catch (err) {
     console.error(err);

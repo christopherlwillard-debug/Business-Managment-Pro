@@ -49,15 +49,16 @@ describe("calculateAllocationSplitPool", () => {
       directExpenses: 101.21,
       allocatedExpenses: 23,
       subLaborCost: 800,
+      growthReservePct: 5,
     });
 
     expect(result.expenses).toBeCloseTo(124.21, 2);
-    expect(result.splitPool).toBeCloseTo(3872.29, 2);
+    expect(result.splitPool).toBeCloseTo(3832.29, 2);
     expect(computeSubOwed({
       compensationType: "allocation",
       amountOwed: null,
       fixedAmount: null,
       allocationPct: "50",
-    }, result.splitPool)).toBeCloseTo(1936.14, 2);
+    }, result.splitPool)).toBeCloseTo(1916.14, 2);
   });
 });

@@ -5,6 +5,7 @@ export type JobFinancialWaterfallInput = {
   subLaborCost: number;
   hourlyFixedCost?: number;
   allocationPcts: number[];
+  growthReservePct: number;
   ownerSplitPct: number;
   taxReservePct: number;
 };
@@ -20,9 +21,12 @@ export function calculateJobFinancialWaterfall(input: JobFinancialWaterfallInput
   // amount (including fixed workers). Do not let a historical hours×rate total
   // override a saved job-level payout.
   const hourlyWorkers = Math.max(0, input.hourlyFixedCost ?? input.subLaborCost);
-  const afterWorkers = Math.max(0, splitIncome - hourlyWorkers);
-  const growthReserve = afterWorkers * 0.05;
-  const toSplit = Math.max(0, afterWorkers - growthReserve);
+  // Agreed waterfall: revenue → expenses → growth reserve → hourly labor → split.
+  // Reimbursements remain outside the split pool, per ADR-011.
+  const growthReserve = splitIncome * (Math.max(0, input.growthReservePct) / 100);
+  const afterGrowth = Math.max(0, splitIncome - growthReserve);
+  const afterWorkers = Math.max(0, afterGrowth - hourlyWorkers);
+  const toSplit = afterWorkers;
   const totalAllocPct = input.allocationPcts.reduce((sum, pct) => sum + pct, 0);
   const hasAllocations = input.allocationPcts.length > 0;
   const ownerPct = hasAllocations ? Math.max(0, 100 - totalAllocPct) : input.ownerSplitPct;
@@ -34,6 +38,7 @@ export function calculateJobFinancialWaterfall(input: JobFinancialWaterfallInput
     splitEligibleExpenses,
     jobIncome: reportedJobIncome,
     splitIncome,
+    afterGrowth,
     hourlyWorkers,
     afterWorkers,
     growthReserve,

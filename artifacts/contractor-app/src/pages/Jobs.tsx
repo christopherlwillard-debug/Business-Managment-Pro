@@ -1461,6 +1461,9 @@ type JobProfit = {
   actualFuelCost?: number | null;
   fuelStatus?: "ok" | "missing_address" | "geocoding_failed" | "error";
   operationalProfit?: number | null;
+  growthReservePct?: number;
+  ownerSplitPct?: number;
+  taxReservePct?: number;
   fuelBreakdown?: {
     onewayMiles: number; roundTripMiles: number; daysOnJob: number;
     totalMiles: number; fuelGallons: number; mpg: number; fuelPrice: number;
@@ -1787,6 +1790,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
 
   const [ownerSplitPct, setOwnerSplitPct] = useState(50);
   const [taxReservePct, setTaxReservePct] = useState(25);
+  const [growthReservePct, setGrowthReservePct] = useState(5);
   const [useCollected, setUseCollected] = useState(false);
 
   const { toast } = useToast();
@@ -1926,6 +1930,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       splitSettingsLoaded.current = true;
       if (settingsData.ownerSplitPct != null) setOwnerSplitPct(settingsData.ownerSplitPct);
       if (settingsData.taxReservePct != null) setTaxReservePct(settingsData.taxReservePct);
+      if (settingsData.growthReservePct != null) setGrowthReservePct(Number(settingsData.growthReservePct));
     }
   }, [settingsData]);
 
@@ -1976,6 +1981,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     subLaborCost: profit?.subLaborCost ?? 0,
     hourlyFixedCost,
     allocationPcts: pctSubs.map(p => p.allocationPct ?? 0),
+    growthReservePct,
     ownerSplitPct,
     taxReservePct,
   });
@@ -2270,7 +2276,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
               <div className="rounded-xl border border-amber-200 bg-amber-50/30 px-4 py-3 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-amber-700">Growth Reserve</p>
-                  <p className="text-[10px] text-amber-600">5% of Remaining · auto-deducted before split</p>
+                  <p className="text-[10px] text-amber-600">{growthReservePct}% after job expenses · before hourly labor</p>
                 </div>
                 <span className="text-sm font-bold text-amber-600">{formatCurrency(growthReserve)}</span>
               </div>
@@ -2368,9 +2374,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                     </div>
                   )}
                   {jobExpenses > 0 && <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">Job Income</span><span className="text-sm font-bold">${fmt(jobIncome)}</span></div>}
+                  <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Growth Reserve ({growthReservePct}% after expenses)</span><span className="text-sm font-bold text-amber-600">−${fmt(growthReserve)}</span></div>
                   <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Hourly Workers</span><span className="text-sm font-bold text-red-500">−${fmt(hourlyWorkers)}</span></div>
                   {hourlyWorkers > 0 && <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">Remaining</span><span className="text-sm font-bold">${fmt(afterWorkers)}</span></div>}
-                  <div className="flex items-center justify-between px-4 py-3"><span className="text-sm text-foreground">Growth Reserve (5%)</span><span className="text-sm font-bold text-amber-600">−${fmt(growthReserve)}</span></div>
                   <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20"><span className="text-xs font-semibold text-muted-foreground">Split Pool</span><span className="text-sm font-bold">${fmt(toSplit)}</span></div>
                   {pctSubs.length > 0 ? (
                     <>
@@ -5018,7 +5024,8 @@ function JobCard({
           : (profitData.mileageReimbursement?.amount ?? profitData.estimatedFuelCost ?? 0),
         subLaborCost: profitData.subLaborCost ?? 0,
         allocationPcts: [],
-        ownerSplitPct: 50,
+        growthReservePct: profitData.growthReservePct ?? 5,
+        ownerSplitPct: profitData.ownerSplitPct ?? 50,
         taxReservePct: 0,
       }).toSplit
     : 0;
@@ -7791,7 +7798,8 @@ export default function Jobs() {
             allocationPcts: closeSubs
               .filter(sub => sub.compensationType === "allocation")
               .map(sub => sub.allocationPct ?? 0),
-            ownerSplitPct: 50,
+            growthReservePct: profitData.growthReservePct ?? 5,
+            ownerSplitPct: profitData.ownerSplitPct ?? 50,
             taxReservePct: 0,
           }).toSplit
         : 0;

@@ -72,6 +72,10 @@ type JobProfit = {
   allocPaid: number;
   totalSubHours?: number;
   netProfit: number;
+  includeMileageInJobCosts?: boolean;
+  mileageReimbursementApplied?: boolean;
+  mileageReimbursement?: { amount: number } | null;
+  estimatedFuelCost?: number | null;
 };
 
 type Job = {
@@ -1198,9 +1202,14 @@ export default function JobPayroll() {
   const jobExpenses    = profit?.jobExpenses    ?? 0;
   const subLaborCost   = profit?.subLaborCost   ?? 0;
   const jobIncome      = Math.max(0, revenue - jobExpenses);
-  const afterWorkers   = Math.max(0, jobIncome - subLaborCost);
-  const growthReserve  = afterWorkers * (growthReservePct / 100);
-  const toSplit        = Math.max(0, afterWorkers - growthReserve);
+  const mileageReimbursementCost = profit?.includeMileageInJobCosts === false || profit?.mileageReimbursementApplied === false
+    ? 0
+    : (profit?.mileageReimbursement?.amount ?? profit?.estimatedFuelCost ?? 0);
+  const splitIncome    = Math.max(0, revenue - Math.max(0, jobExpenses - mileageReimbursementCost));
+  const growthReserve  = splitIncome * (growthReservePct / 100);
+  const afterGrowth    = Math.max(0, splitIncome - growthReserve);
+  const afterWorkers   = Math.max(0, afterGrowth - subLaborCost);
+  const toSplit        = afterWorkers;
   const ownerShare     = toSplit * (ownerSplitPct / 100);
   const taxReserve     = ownerShare * (taxReservePct / 100);
   const ownerTakeHome  = ownerShare - taxReserve;

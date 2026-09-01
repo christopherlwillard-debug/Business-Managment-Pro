@@ -6,6 +6,7 @@ import {
   jobExpenseAllocationsTable,
   jobSubcontractorsTable,
   subPaymentRecordsTable,
+  settingsTable,
 } from "@workspace/db/schema";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
@@ -17,19 +18,18 @@ export interface AllocationSplitPool {
   splitPool: number;
 }
 
-const GROWTH_RESERVE_PCT = 0.05;
-
 export function calculateAllocationSplitPool(input: {
   revenue: number;
   directExpenses: number;
   allocatedExpenses: number;
   subLaborCost: number;
+  growthReservePct: number;
 }): AllocationSplitPool {
   const expenses = input.directExpenses + input.allocatedExpenses;
   const income = Math.max(0, input.revenue - expenses);
-  const afterWorkers = Math.max(0, income - input.subLaborCost);
-  const growthReserve = afterWorkers * GROWTH_RESERVE_PCT;
-  const splitPool = Math.max(0, afterWorkers - growthReserve);
+  const growthReserve = income * (Math.max(0, input.growthReservePct) / 100);
+  const afterGrowth = Math.max(0, income - growthReserve);
+  const splitPool = Math.max(0, afterGrowth - input.subLaborCost);
 
   return {
     revenue: input.revenue,
@@ -49,7 +49,7 @@ export function calculateAllocationSplitPool(input: {
  *   - subLaborCost (hourly labor + fixed payroll ledger payments + accrued bonuses;
  *     legacy Subcontractor-category expenses are used only when no tracked labor or
  *     fixed payroll exists)
- *   → afterWorkers × 0.95  (5% growth reserve withheld)
+ *   - configured percentage of gross revenue (growth reserve)
  *
  * Callers must filter to `isNull(expensesTable.jobSubHoursId)` already handled
  * internally so auto-linked sub-hour expenses are never double-counted.
@@ -59,7 +59,7 @@ export async function computeAllocationSplitPools(
 ): Promise<Map<number, AllocationSplitPool>> {
   if (jobIds.length === 0) return new Map();
 
-  const [poolInvs, poolExps, poolAllocatedExps, poolHours, poolFixedPayments, poolAccruedBonuses] = await Promise.all([
+  const [poolInvs, poolExps, poolAllocatedExps, poolHours, poolFixedPayments, poolAccruedBonuses, settingsRows] = await Promise.all([
     db
       .select({ jobId: invoicesTable.jobId, total: invoicesTable.total })
       .from(invoicesTable)
@@ -140,7 +140,11 @@ export async function computeAllocationSplitPools(
       .from(jobSubcontractorsTable)
       .where(inArray(jobSubcontractorsTable.jobId, jobIds))
       .groupBy(jobSubcontractorsTable.jobId),
+    db.select({ growthReservePct: settingsTable.growthReservePct }).from(settingsTable).limit(1),
   ]);
+  const growthReservePct = settingsRows[0]?.growthReservePct != null
+    ? parseFloat(String(settingsRows[0].growthReservePct))
+    : 5;
 
   const hoursMap = new Map(
     poolHours.map((r) => [r.jobId, parseFloat(r.total ?? "0")]),
@@ -191,6 +195,7 @@ export async function computeAllocationSplitPools(
       directExpenses: expenses,
       allocatedExpenses: allocatedExpenseMap.get(jobId) ?? 0,
       subLaborCost,
+      growthReservePct,
     }));
   }
 
