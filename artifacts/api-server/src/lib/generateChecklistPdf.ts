@@ -330,15 +330,16 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   const LOGO_GAP = 12;
   const textW = logoBuf ? W - LOGO_W - LOGO_GAP : W;
   const headerStartY = doc.y;
+  const textX = logoBuf ? L + LOGO_W + LOGO_GAP : L;
 
   if (companyName) {
     doc.font("Helvetica").fontSize(7.5).fillColor(LGRAY)
-       .text(companyName.toUpperCase(), L, doc.y, { width: textW });
+       .text(companyName.toUpperCase(), textX, doc.y, { width: textW });
     doc.y += 2;
   }
 
   doc.font("Helvetica-Bold").fontSize(18).fillColor(DARK)
-     .text(jobTitle, L, doc.y, { width: textW });
+     .text(jobTitle, textX, doc.y, { width: textW });
   doc.y += 3;
 
   const metaParts: string[] = [];
@@ -347,14 +348,13 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   if (loc) metaParts.push(loc);
   if (metaParts.length) {
     doc.font("Helvetica").fontSize(9).fillColor(GRAY)
-       .text(metaParts.join("  ·  "), L, doc.y, { width: textW });
+       .text(metaParts.join("  ·  "), textX, doc.y, { width: textW });
     doc.y += 3;
   }
 
   if (logoBuf) {
     try {
-      const logoX = R - LOGO_W;
-      doc.image(logoBuf, logoX, headerStartY, { fit: [LOGO_W, LOGO_H], align: "right", valign: "top" });
+      doc.image(logoBuf, L, headerStartY, { fit: [LOGO_W, LOGO_H], align: "left", valign: "top" });
       // Ensure doc.y is at least below the logo before drawing the rule
       const logoBottom = headerStartY + LOGO_H + 4;
       if (doc.y < logoBottom) doc.y = logoBottom;
