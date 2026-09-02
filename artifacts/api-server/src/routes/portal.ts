@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { sectionGuard } from "./guards";
 import { db } from "@workspace/db";
-import { subcontractorsTable, jobsTable, jobSubcontractorsTable, expensesTable, mileageLogsTable, vendorsTable, generated1099sTable, paymentsTable, dailyLogsTable, materialListsTable, subPaymentRecordsTable, jobChecklistsTable, jobChecklistSectionsTable, jobChecklistItemsTable, jobChecklistItemPartsTable } from "@workspace/db/schema";
+import { subcontractorsTable, jobsTable, jobSubcontractorsTable, jobSubHoursTable, expensesTable, mileageLogsTable, vendorsTable, generated1099sTable, paymentsTable, dailyLogsTable, materialListsTable, subPaymentRecordsTable, jobChecklistsTable, jobChecklistSectionsTable, jobChecklistItemsTable, jobChecklistItemPartsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, or, inArray, sql, asc } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -9,6 +9,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { computeYtd } from "./subcontractors";
+import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { parseReceiptFile } from "./receipt-parser";
 import { calculateMileageDeduction, summarizeMileageRecords } from "../lib/irs-rates.js";
 import { calculateChecklistProgress } from "../lib/checklist-progress.js";
@@ -351,6 +352,87 @@ tokenRouter.get("/", async (req, res) => {
       db.select().from(mileageLogsTable).where(eq(mileageLogsTable.subcontractorId, sub.id)),
     ]);
 
+    // Job-level payment history is scoped to this token's subcontractor. The
+    // assignment row supplies compensation details while the payroll ledger
+    // supplies the authoritative paid total.
+    const jobIds = jobs.map(job => job.id);
+    const [paymentRows, hourlyTotals, allocationPools] = jobIds.length > 0
+      ? await Promise.all([
+          db.select({
+            jobId: jobSubcontractorsTable.jobId,
+            compensationType: jobSubcontractorsTable.compensationType,
+            amountOwed: jobSubcontractorsTable.amountOwed,
+            amountPaid: jobSubcontractorsTable.amountPaid,
+            fixedAmount: jobSubcontractorsTable.fixedAmount,
+            allocationPct: jobSubcontractorsTable.allocationPct,
+            paymentStatus: jobSubcontractorsTable.paymentStatus,
+            computedOwed: sql<string>`COALESCE((
+              SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
+              FROM ${jobSubHoursTable} h
+              WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+                AND h.subcontractor_id = ${sub.id}
+            ), 0)`,
+            ledgerPaid: sql<string>`COALESCE((
+              SELECT SUM(spr.amount + COALESCE(spr.advance_amount, 0))
+              FROM ${subPaymentRecordsTable} spr
+              WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
+                AND spr.subcontractor_id = ${sub.id}
+                AND spr.is_reversal IS NOT TRUE
+            ), 0)`,
+          })
+            .from(jobSubcontractorsTable)
+            .where(and(
+              eq(jobSubcontractorsTable.subcontractorId, sub.id),
+              inArray(jobSubcontractorsTable.jobId, jobIds),
+            )),
+          db.select({
+            jobId: jobSubHoursTable.jobId,
+            total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
+          })
+            .from(jobSubHoursTable)
+            .where(and(
+              eq(jobSubHoursTable.subcontractorId, sub.id),
+              inArray(jobSubHoursTable.jobId, jobIds),
+            ))
+            .groupBy(jobSubHoursTable.jobId),
+          computeAllocationSplitPools(jobIds),
+        ])
+      : [[], [], new Map<number, { splitPool: number }>()];
+
+    const paymentRowByJob = new Map(paymentRows.map(row => [row.jobId, row]));
+    const hourlyTotalByJob = new Map(hourlyTotals.map(row => [row.jobId, parseFloat(row.total ?? "0")]));
+    const paymentHistory = jobs.map(job => {
+      const row = paymentRowByJob.get(job.id);
+      const compensationType = row?.compensationType ?? "hourly";
+      const computedOwed = row
+        ? parseFloat(row.computedOwed ?? "0")
+        : hourlyTotalByJob.get(job.id) ?? 0;
+      const amountOwed = row
+        ? computeSubOwed({
+            compensationType,
+            amountOwed: row.amountOwed,
+            fixedAmount: row.fixedAmount,
+            allocationPct: row.allocationPct,
+            computedOwed: row.computedOwed,
+          }, allocationPools.get(job.id)?.splitPool ?? 0)
+        : computedOwed;
+      const amountPaid = row
+        ? Math.max(
+            row.amountPaid != null ? parseFloat(row.amountPaid) : 0,
+            parseFloat(row.ledgerPaid ?? "0"),
+          )
+        : 0;
+
+      return {
+        jobId: job.id,
+        jobTitle: job.title,
+        compensationType,
+        amountOwed,
+        amountPaid,
+        paymentStatus: row?.paymentStatus ?? "unpaid",
+      };
+    });
+
     const totalExpenses = expenses.reduce((s, e) => s + parseFloat(e.amount), 0);
     const businessMileage = mileage.filter(m => m.classification === "business");
     const mileageSummary = summarizeMileageRecords(mileage);
@@ -406,6 +488,7 @@ tokenRouter.get("/", async (req, res) => {
         endDate: j.endDate,
         description: j.description,
       })),
+      paymentHistory,
       stats: {
         ytdPayments,
         ytdPaymentCount,

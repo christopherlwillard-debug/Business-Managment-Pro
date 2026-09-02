@@ -1036,6 +1036,76 @@ function PaymentsTab({ data }: { data: any }) {
           <strong>2026 Rule (OBBBA):</strong> If you receive $2,000 or more in total payments from a single contractor in a tax year, they are required to file a 1099-NEC. All payment types count toward this threshold.
         </p>
       </div>
+      <PaymentHistorySection history={data.paymentHistory} />
+    </div>
+  );
+}
+
+function PaymentHistorySection({ history }: { history?: any[] }) {
+  const entries = history ?? [];
+
+  return (
+    <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+      <div className="px-4 py-4 border-b border-border/60">
+        <div className="flex items-center gap-2">
+          <Briefcase className="w-4 h-4 text-primary" />
+          <h3 className="text-sm font-bold text-foreground">Payment History</h3>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">Your payment status for every assigned job</p>
+      </div>
+      {entries.length === 0 ? (
+        <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+          No assigned jobs yet.
+        </div>
+      ) : (
+        <div className="divide-y divide-border/50">
+          {entries.map((entry: any) => {
+            const status = entry.paymentStatus ?? "unpaid";
+            const statusLabel = status === "paid" || status === "overpaid"
+              ? "Paid"
+              : status === "partial"
+                ? "Partial"
+                : "Unpaid";
+            const statusClass = status === "paid" || status === "overpaid"
+              ? "bg-emerald-100 text-emerald-700"
+              : status === "partial"
+                ? "bg-amber-100 text-amber-700"
+                : "bg-muted text-muted-foreground";
+            const compensationLabel = entry.compensationType === "allocation"
+              ? "Allocation"
+              : entry.compensationType === "fixed"
+                ? "Fixed"
+                : "Hourly";
+
+            return (
+              <div key={entry.jobId} className="px-4 py-3.5 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-semibold text-foreground leading-snug">{entry.jobTitle}</p>
+                  <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full flex-shrink-0 ${statusClass}`}>
+                    {statusLabel}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <p className="text-muted-foreground">Compensation</p>
+                    <p className="font-semibold text-foreground mt-0.5">{compensationLabel}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Amount owed</p>
+                    <p className="font-semibold text-foreground mt-0.5">
+                      {entry.amountOwed == null ? "—" : formatCurrency(entry.amountOwed)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Amount paid</p>
+                    <p className="font-semibold text-emerald-700 mt-0.5">{formatCurrency(entry.amountPaid ?? 0)}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -3067,7 +3137,7 @@ function IncomeEntryRow({ entry }: { entry: any }) {
 // Earnings by Job section across tab navigations within the same browser session.
 let _incomeJobsOpenPref: boolean | null = null;
 
-function IncomeReportTab({ token, subName, ytdPayments }: { token: string; subName: string; ytdPayments?: number }) {
+function IncomeReportTab({ token, subName, ytdPayments, paymentHistory }: { token: string; subName: string; ytdPayments?: number; paymentHistory?: any[] }) {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const years = [currentYear, currentYear - 1, currentYear - 2];
@@ -3163,6 +3233,7 @@ function IncomeReportTab({ token, subName, ytdPayments }: { token: string; subNa
         </div>
       ) : data ? (
         <div className="space-y-4" id="income-report-print">
+          <PaymentHistorySection history={paymentHistory} />
           {/* Report header */}
           <div className="bg-card border border-border rounded-2xl p-5">
             <div className="flex items-start justify-between">
@@ -3486,7 +3557,12 @@ export default function SubcontractorPortal() {
         {activeTab === "dashboard" && <DashboardTab data={data} features={features} setTab={setActiveTab} token={token!} />}
         {activeTab === "payments" && features.includes("payments") && !features.includes("income_report") && <PaymentsTab data={data} />}
         {activeTab === "income_report" && features.includes("income_report") && (
-          <IncomeReportTab token={token!} subName={subcontractor.name} ytdPayments={stats.ytdPayments} />
+          <IncomeReportTab
+            token={token!}
+            subName={subcontractor.name}
+            ytdPayments={stats.ytdPayments}
+            paymentHistory={data.paymentHistory}
+          />
         )}
         {activeTab === "jobs" && features.includes("jobs") && <JobsTab jobs={jobs} token={token!} onJobCompleted={() => { refetch(); qc.invalidateQueries({ queryKey: ["portal", token] }); }} />}
         {activeTab === "w9" && features.includes("w9") && (
