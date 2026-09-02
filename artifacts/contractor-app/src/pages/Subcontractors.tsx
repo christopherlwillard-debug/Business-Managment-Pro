@@ -3,6 +3,7 @@ import { useSearchParams, useLocation } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useQuery } from "@tanstack/react-query";
 import { useListSubcontractors, useCreateSubcontractor, useDeleteSubcontractor } from "@workspace/api-client-react";
+import { buildReimbursementReassignmentNotice } from "@/lib/subcontractorDeletionNotice";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -491,13 +492,8 @@ export default function Subcontractors() {
       };
       refetch();
       const reassignedJobs = result?.reassignedJobs ?? [];
-      if (reassignedJobs.length > 0) {
-        const jobNames = reassignedJobs.map(job => job.jobTitle || `Job #${job.jobId}`);
-        toast({
-          title: "Subcontractor deleted",
-          description: `Mileage reimbursement reassigned to the business owner for: ${jobNames.join(", ")}.`,
-        });
-      }
+      const reassignmentNotice = buildReimbursementReassignmentNotice(reassignedJobs);
+      if (reassignmentNotice) toast(reassignmentNotice);
     } catch (err) {
       console.error(err);
       toast({ title: "Delete failed", description: "Could not delete this subcontractor. Please try again.", variant: "destructive" });
