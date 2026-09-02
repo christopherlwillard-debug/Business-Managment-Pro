@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { invoicesTable, clientsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, ne } from "drizzle-orm";
 import { sendInvoiceEmail } from "../lib/invoiceEmail";
-import { sendAndRecordInvoiceCommunication } from "../lib/invoiceCommunication";
+import { confirmedGmailInvoiceIds, sendAndRecordInvoiceCommunication } from "../lib/invoiceCommunication";
 import { reminderEligibilityError, reminderMessage } from "../lib/invoiceReminderPolicy";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
@@ -52,6 +52,8 @@ async function processInvoiceReminders() {
         )
       );
 
+    const confirmedSendInvoiceIds = await confirmedGmailInvoiceIds(invoices.map(invoice => invoice.id));
+
     const now = Date.now();
     const companyName = settings.companyName ?? "BuildPro";
     const companyPhone = settings.companyPhone ?? "";
@@ -64,6 +66,7 @@ async function processInvoiceReminders() {
         invoiceNumber: inv.invoiceNumber,
         clientEmail: inv.clientEmail,
         reminderOptOut: inv.reminderOptOut,
+        hasConfirmedSend: confirmedSendInvoiceIds.has(inv.id),
       });
       if (eligibilityError) {
         if (eligibilityError !== "This client has opted out of invoice reminders.") {

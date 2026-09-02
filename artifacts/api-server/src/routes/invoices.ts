@@ -26,8 +26,10 @@ import { calculateInvoiceTotals } from "@workspace/api-zod";
 import {
   createPendingInvoiceCommunication,
   finalizeInvoiceCommunication,
+  confirmedGmailInvoiceIds,
   sendAndRecordInvoiceCommunication,
   updateCompatibilitySentFields,
+  verifyGmailSentMessage,
   type InvoiceCommunicationType,
 } from "../lib/invoiceCommunication";
 import { reminderEligibilityError, reminderMessage } from "../lib/invoiceReminderPolicy";
@@ -216,9 +218,9 @@ router.get("/tax-report", async (req, res) => {
 // Valid status transitions — enforced by the PATCH /status endpoint.
 // The accept endpoint (draft → approved) is separate.
 const VALID_TRANSITIONS: Record<string, string[]> = {
-  approved:     ["sent", "cancelled"],
+  approved:     ["cancelled"],
   sent:         ["partiallyPaid", "paid", "overdue", "cancelled"],
-  overdue:      ["sent", "paid", "cancelled"],  // overdue invoices can still be paid or re-sent
+  overdue:      ["paid", "cancelled"],
   partiallyPaid:["paid", "overdue", "cancelled"],
   paid:         [],  // terminal
   cancelled:    [],  // terminal (voided)
@@ -402,7 +404,7 @@ router.put("/:id", async (req, res) => {
     const { clientId, jobId, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName, attachments, businessLine } = req.body;
     // NOTE: `status` is intentionally NOT destructured from req.body.
     // All status transitions must go through the dedicated lifecycle endpoints:
-    //   POST /accept, POST /mark-sent, PATCH /status, POST /void
+    //   POST /accept, confirmed send finalization, PATCH /status, POST /void
     // This prevents bypassing the Draft → Approved → Sent progression.
 
     // Validate line items before any DB work
@@ -524,59 +526,13 @@ router.post("/:id/accept", async (req, res) => {
   }
 });
 
-// ── Mark invoice as sent (manual) ─────────────────────────────────────────────
-router.post("/:id/mark-sent", async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const [current] = await db
-      .select({ status: invoicesTable.status })
-      .from(invoicesTable)
-      .where(eq(invoicesTable.id, id));
-    if (!current) return res.status(404).json({ error: "Invoice not found" });
-    if (current.status !== "approved" && current.status !== "sent") {
-      return res.status(400).json({ error: `Invoice must be in Approved or Sent status to mark as sent.` });
-    }
-    const user = (req as any).user as { id?: string; firstName?: string; lastName?: string } | undefined;
-    const actorName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || null;
-    await markInvoiceAsSentWithHistory(id, {
-      channel: "manual",
-      provider: "manual",
-      actorUserId: user?.id ?? null,
-      actorName,
-    });
-    const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
-    res.json(fmt(withJoins));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to mark invoice as sent" });
-  }
-});
-
-async function markInvoiceAsSentWithHistory(
-  invoiceId: number,
-  actor: { channel: string; provider: string; actorUserId?: string | null; actorName?: string | null },
-) {
-  const event = await createPendingInvoiceCommunication({
-    invoiceId,
-    eventType: "initial_invoice",
-    channel: actor.channel,
-    provider: actor.provider,
-    source: "user",
-    actorUserId: actor.actorUserId,
-    actorName: actor.actorName,
+// Kept as an explicit rejection for compatibility with older clients.
+// SENT is delivery evidence and can only be set by a confirmed provider response.
+router.post("/:id/mark-sent", (_req, res) => {
+  res.status(400).json({
+    error: "Manual Mark Sent is disabled. Send the invoice through Gmail; SENT is applied only after Gmail confirms the message.",
   });
-  await db.update(invoiceCommunicationEventsTable)
-    .set({
-      status: "accepted",
-      provider: actor.provider,
-      completedAt: new Date(),
-    })
-    .where(and(
-      eq(invoiceCommunicationEventsTable.id, event.id),
-      eq(invoiceCommunicationEventsTable.invoiceId, invoiceId),
-    ));
-  await updateCompatibilitySentFields(invoiceId, actor.provider === "manual" ? "manual" : actor.channel);
-}
+});
 
 router.get("/:id/communications", async (req, res) => {
   try {
@@ -600,6 +556,11 @@ router.post("/:id/communications/prepare", async (req, res) => {
     if (!Number.isInteger(invoiceId)) return res.status(400).json({ error: "Invalid invoice id" });
     const [invoice] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, invoiceId));
     if (!invoice) return res.status(404).json({ error: "Invoice not found" });
+    if (!["approved", "sent", "overdue"].includes(invoice.status)) {
+      return res.status(400).json({
+        error: `Invoice cannot be sent in its current state (${invoice.status}).`,
+      });
+    }
     const eventType = (req.body?.eventType ?? (invoice.sentAt ? "resend_invoice" : "initial_invoice")) as InvoiceCommunicationType;
     if (!["initial_invoice", "resend_invoice"].includes(eventType)) {
       return res.status(400).json({ error: "Browser email attempts must be an initial invoice or resend event." });
@@ -642,15 +603,66 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
       ));
     if (!existing) return res.status(404).json({ error: "Invoice communication event not found" });
     if (existing.status !== "pending") return res.json(existing);
+    if (status === "accepted") {
+      const [currentInvoice] = await db
+        .select({ status: invoicesTable.status })
+        .from(invoicesTable)
+        .where(eq(invoicesTable.id, invoiceId));
+      if (!currentInvoice) return res.status(404).json({ error: "Invoice not found" });
+      if (!["approved", "sent", "overdue"].includes(currentInvoice.status)) {
+        return res.status(409).json({
+          error: `Invoice changed to ${currentInvoice.status} before Gmail confirmation; SENT was not applied.`,
+        });
+      }
+    }
+    const providerMessageId = typeof req.body?.providerMessageId === "string"
+      ? req.body.providerMessageId.trim()
+      : "";
+    if (
+      status === "accepted" &&
+      existing.channel === "gmail" &&
+      ["initial_invoice", "resend_invoice"].includes(existing.eventType) &&
+      !providerMessageId
+    ) {
+      return res.status(400).json({
+        error: "Gmail did not return a message ID, so this invoice cannot be marked SENT.",
+      });
+    }
+    if (
+      status === "accepted" &&
+      existing.channel === "gmail" &&
+      ["initial_invoice", "resend_invoice"].includes(existing.eventType)
+    ) {
+      const gmailAccessToken = typeof req.body?.gmailAccessToken === "string"
+        ? req.body.gmailAccessToken
+        : "";
+      const verified = await verifyGmailSentMessage({
+        accessToken: gmailAccessToken,
+        messageId: providerMessageId,
+        deliveryId: String(existing.id),
+        recipient: existing.recipient ?? "",
+        subject: existing.subject ?? "",
+      });
+      if (!verified) {
+        return res.status(400).json({
+          error: "Gmail could not verify this message in the Sent folder, so the invoice remains unsent.",
+        });
+      }
+    }
     const event = await finalizeInvoiceCommunication(eventId, invoiceId, {
       status,
       provider: existing.provider,
-      providerMessageId: typeof req.body?.providerMessageId === "string" ? req.body.providerMessageId : null,
+      providerMessageId: providerMessageId || null,
       providerThreadId: typeof req.body?.providerThreadId === "string" ? req.body.providerThreadId : null,
       errorCode: typeof req.body?.errorCode === "string" ? req.body.errorCode : null,
       errorMessage: typeof req.body?.errorMessage === "string" ? req.body.errorMessage : null,
     });
-    if (status === "accepted" && ["initial_invoice", "resend_invoice"].includes(existing.eventType)) {
+    if (
+      status === "accepted" &&
+      existing.channel === "gmail" &&
+      existing.provider === "gmail" &&
+      ["initial_invoice", "resend_invoice"].includes(existing.eventType)
+    ) {
       await updateCompatibilitySentFields(invoiceId, existing.channel === "gmail" ? "gmail" : existing.provider);
     }
     res.json(event);
@@ -1009,7 +1021,9 @@ router.post("/:id/send", async (req, res) => {
       });
     }
 
-    await updateCompatibilitySentFields(id, deliveryResult.delivery.provider === "smtp" ? "email" : "gmail");
+    if (deliveryResult.delivery.provider === "gmail" && deliveryResult.delivery.messageId) {
+      await updateCompatibilitySentFields(id, "gmail");
+    }
 
     const [updated] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     res.json({ success: true, eventId: deliveryResult.event.id, invoice: fmt(updated) });
@@ -1025,9 +1039,10 @@ router.post("/:id/send-reminder", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid invoice id" });
 
-    const [[inv], [settings]] = await Promise.all([
+    const [[inv], [settings], confirmedInvoiceIds] = await Promise.all([
       buildInvoiceQuery().where(eq(invoicesTable.id, id)),
       db.select().from(settingsTable).limit(1),
+      confirmedGmailInvoiceIds([id]),
     ]);
 
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
@@ -1036,6 +1051,7 @@ router.post("/:id/send-reminder", async (req, res) => {
       invoiceNumber: inv.invoiceNumber,
       clientEmail: inv.clientEmail,
       reminderOptOut: inv.reminderOptOut,
+      hasConfirmedSend: confirmedInvoiceIds.has(id),
     });
     if (eligibilityError) return res.status(400).json({ error: eligibilityError });
 

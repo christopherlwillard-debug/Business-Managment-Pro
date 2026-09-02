@@ -2,7 +2,7 @@
 //
 // These pin the lifecycle rules that guard the contractor billing workflow:
 //   draft → approved (POST /accept)   — assigns invoice number
-//   approved → sent  (POST /mark-sent)
+//   approved → sent  (only after confirmed provider delivery)
 //   sent → paid etc  (PATCH /status)  — VALID_TRANSITIONS enforced
 //   sent → partiallyPaid → paid       (POST /record-payment) — amountPaid accumulates
 //
@@ -459,61 +459,15 @@ describe("POST /:id/accept", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /:id/mark-sent — approved → sent
+// POST /:id/mark-sent — manual SENT is forbidden
 // ─────────────────────────────────────────────────────────────────────────────
 describe("POST /:id/mark-sent", () => {
-  it("transitions an approved invoice to sent", async () => {
-    h.selectQueue.push(
-      [{ status: "approved" }],
-      [fakeInvoice({ status: "sent", invoiceNumber: "INV-1001" })],
-    );
-
-    const res = await request(app).post("/42/mark-sent").send();
-
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe("sent");
-
-    const update = h.updates.find((u: any) => u.status === "sent");
-    expect(update).toBeTruthy();
-    expect(update.sentMethod).toBe("manual");
-    expect(update.sentAt).toBeInstanceOf(Date);
-  });
-
-  it("allows re-marking an already-sent invoice as sent (idempotent)", async () => {
-    h.selectQueue.push(
-      [{ status: "sent" }],
-      [fakeInvoice({ status: "sent" })],
-    );
-
-    const res = await request(app).post("/42/mark-sent").send();
-
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe("sent");
-  });
-
-  it("returns 400 when invoice is still a draft", async () => {
-    h.selectQueue.push([{ status: "draft" }]);
-
+  it("rejects manual status changes so SENT only represents confirmed delivery", async () => {
     const res = await request(app).post("/42/mark-sent").send();
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/approved or sent/i);
-  });
-
-  it("returns 400 when invoice is paid", async () => {
-    h.selectQueue.push([{ status: "paid" }]);
-
-    const res = await request(app).post("/42/mark-sent").send();
-
-    expect(res.status).toBe(400);
-  });
-
-  it("returns 404 when invoice does not exist", async () => {
-    h.selectQueue.push([]);
-
-    const res = await request(app).post("/99/mark-sent").send();
-
-    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/disabled/i);
+    expect(h.updates).toHaveLength(0);
   });
 });
 
@@ -578,6 +532,16 @@ describe("PATCH /:id/status", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/invalid transition/i);
+  });
+
+  it("blocks approved → sent unless a provider send finalizes it", async () => {
+    h.selectQueue.push([{ status: "approved", invoiceNumber: "INV-1001" }]);
+
+    const res = await request(app).patch("/42/status").send({ status: "sent" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid transition/i);
+    expect(h.updates).toHaveLength(0);
   });
 
   it("blocks paid → sent (terminal status — no transitions allowed)", async () => {

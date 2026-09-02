@@ -738,6 +738,7 @@ export function InvoicePanel({
         token,
         to: gmailTo.trim(),
         subject: gmailSubjectLine,
+        deliveryId: String(pendingEvent.id),
         html,
         text: gmailMessage.trim() || `Please see invoice ${effectiveExistingInvoice.invoiceNumber} attached. Total due: $${total.toFixed(2)}`,
         pdfBase64,
@@ -770,6 +771,7 @@ export function InvoicePanel({
           status: "accepted",
           providerMessageId: gmailResult.messageId ?? null,
           providerThreadId: gmailResult.threadId ?? null,
+            gmailAccessToken: token,
         }),
       });
       if (!finalizeResponse.ok) {
@@ -906,29 +908,6 @@ export function InvoicePanel({
                 title="Record a payment received">
                 <Check className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Record Payment</span>
-              </button>
-            )}
-
-            {/* Mark as Sent — for approved invoices not yet sent via Gmail */}
-            {isEdit && !isVoided && effectiveExistingInvoice?.status === "approved" && (
-              <button type="button"
-                onClick={async () => {
-                  try {
-                    const res = await fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/mark-sent`, {
-                      method: "POST",
-                      credentials: "include",
-                    });
-                    if (!res.ok) throw new Error("Failed to mark as sent");
-                    toast({ title: "Invoice marked as sent" });
-                    onSaved?.();
-                  } catch {
-                    toast({ title: "Failed to mark as sent", variant: "destructive" });
-                  }
-                }}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-blue-600 hover:bg-blue-50 transition-colors"
-                title="Mark as sent (if delivered outside Gmail)">
-                <Send className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Mark Sent</span>
               </button>
             )}
 

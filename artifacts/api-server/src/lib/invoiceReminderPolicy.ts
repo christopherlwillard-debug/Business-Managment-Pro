@@ -3,12 +3,14 @@ export interface ReminderEligibleInvoice {
   invoiceNumber?: string | null;
   clientEmail?: string | null;
   reminderOptOut?: boolean | null;
+  hasConfirmedSend?: boolean;
 }
 
 export function reminderEligibilityError(invoice: ReminderEligibleInvoice): string | null {
   if (invoice.status === "paid") return "Invoice is already paid.";
   if (invoice.status === "cancelled") return "A voided invoice cannot receive reminders.";
   if (invoice.status === "draft") return "Draft invoices must be accepted before sending reminders.";
+  if (!invoice.hasConfirmedSend) return "Invoice has not been successfully sent through Gmail.";
   if (invoice.reminderOptOut) return "This client has opted out of invoice reminders.";
   if (!invoice.invoiceNumber) return "Invoice must have an invoice number before sending reminders.";
   if (!invoice.clientEmail) return "Client has no email address on file.";

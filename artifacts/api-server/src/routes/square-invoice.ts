@@ -5,7 +5,6 @@ import { eq, getTableColumns } from "drizzle-orm";
 import { createSquarePaymentLink, deleteSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendInvoiceEmail } from "../lib/invoiceEmail";
 import { sendAndRecordInvoiceCommunication } from "../lib/invoiceCommunication";
-import { assignInvoiceNumberIfNeeded } from "./invoices";
 
 const router = Router();
 
@@ -69,6 +68,9 @@ router.post("/:id/payment-link", async (req, res) => {
 
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
     if (inv.status === "cancelled") return res.status(400).json({ error: "A voided invoice cannot have a payment link created." });
+    if (inv.status === "draft") {
+      return res.status(400).json({ error: "Accept the invoice before creating a payment link." });
+    }
 
     const total = parseFloat(inv.total ?? "0");
     if (total <= 0) return res.status(400).json({ error: "Invoice total must be greater than zero" });
@@ -76,9 +78,6 @@ router.post("/:id/payment-link", async (req, res) => {
     const amountCents = Math.round(total * 100);
     const currency = settings?.currency ?? "USD";
     const companyName = settings?.companyName ?? "BuildPro";
-    // Use existing number if present; for un-numbered drafts use a generic label —
-    // the real number is assigned only after Square link creation succeeds so a
-    // failed API call cannot burn a number on a draft that stays unnumbered.
     const existingNumber = (inv.invoiceNumber as string | null) ?? null;
     const productName = existingNumber
       ? `${companyName}: Invoice ${existingNumber}${inv.clientName ? ` — ${inv.clientName}` : ""}`
@@ -92,19 +91,15 @@ router.post("/:id/payment-link", async (req, res) => {
       customerEmail: inv.clientEmail as string | undefined,
     });
 
-    // Square call succeeded — now assign the invoice number (no-op if already set)
-    const invoiceNumber = await assignInvoiceNumberIfNeeded(id);
-
     await db.update(invoicesTable)
       .set({
         squarePaymentLinkId: linkId,
         squarePaymentLinkUrl: url,
-        status: inv.status === "draft" ? "sent" : inv.status,
       })
       .where(eq(invoicesTable.id, id));
 
     const [updated] = await buildQuery().where(eq(invoicesTable.id, id));
-    const displayNumber = invoiceNumber ?? updated?.invoiceNumber ?? existingNumber;
+    const displayNumber = updated?.invoiceNumber ?? existingNumber;
 
     // Auto-email the payment link to the client
     let emailSent = false;

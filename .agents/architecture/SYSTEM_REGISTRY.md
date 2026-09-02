@@ -122,7 +122,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Source of truth:** `invoices` for invoice revenue, plus `other_income` for explicitly recorded non-invoice cash receipts. Each report must apply the source’s approved accounting treatment exactly once.
 - **Communication history:** `invoice_communication_events` records append-only invoice delivery attempts and provider outcomes; it has no accounting or payment authority.
 - **Rule:** Invoice revenue and non-invoice cash receipts must not be duplicated. Job profit includes only `other_income` rows explicitly linked to that job; unmatched rows remain aggregate/tax revenue only.
-- **Communication rule:** Preserve `sentAt`, `sentMethod`, and `remindersSentAt` for compatibility, but use the communication event timeline for complete history. Provider acceptance is not inbox delivery.
+- **Communication rule:** Preserve `sentAt`, `sentMethod`, and `remindersSentAt` for compatibility, but use the communication event timeline for complete history. SENT and reminder eligibility require a verified Gmail invoice send with a provider message ID; manual status changes and payment-link creation cannot set SENT. Provider acceptance is not inbox delivery.
 
 ---
 

@@ -216,3 +216,12 @@ Created the four-document architecture governance system:
 - Standardized the job waterfall as revenue, job expenses, Growth Reserve, hourly/fixed subcontractor labor, split pool, owner share, then tax reserve.
 - Growth Reserve is calculated from the amount remaining after split-eligible job expenses; job mileage reimbursement remains outside the percentage split pool.
 - Legacy default display order is normalized to expenses, Growth Reserve, then subcontractor labor.
+
+## 2026-09-02
+
+### Invoice SENT and reminder eligibility
+
+- SENT now represents a verified Gmail invoice delivery tied to the prepared communication event.
+- Manual status changes, SMTP sends, and Square payment-link creation no longer set SENT or arm reminders.
+- Automatic and manual reminders require an accepted Gmail invoice event with verified provider evidence.
+- Existing communication events remain append-only; the production audit found one reminder that preceded its invoice send and no invoices currently marked sent without confirmed Gmail evidence.

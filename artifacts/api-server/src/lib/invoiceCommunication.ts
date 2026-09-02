@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   invoiceCommunicationEventsTable,
@@ -86,6 +86,59 @@ export async function listInvoiceCommunications(invoiceId: number) {
     .orderBy(invoiceCommunicationEventsTable.requestedAt);
 }
 
+export async function confirmedGmailInvoiceIds(invoiceIds?: number[]): Promise<Set<number>> {
+  if (invoiceIds && invoiceIds.length === 0) return new Set();
+  const conditions = [
+    inArray(invoiceCommunicationEventsTable.eventType, ["initial_invoice", "resend_invoice"]),
+    eq(invoiceCommunicationEventsTable.status, "accepted"),
+    eq(invoiceCommunicationEventsTable.provider, "gmail"),
+    isNotNull(invoiceCommunicationEventsTable.providerMessageId),
+  ];
+  if (invoiceIds) {
+    conditions.push(inArray(invoiceCommunicationEventsTable.invoiceId, invoiceIds));
+  }
+  const rows = await db
+    .select({ invoiceId: invoiceCommunicationEventsTable.invoiceId })
+    .from(invoiceCommunicationEventsTable)
+    .where(and(...conditions));
+  return new Set(rows.map(row => row.invoiceId));
+}
+
+function normalizedEmail(value: string): string {
+  const match = value.match(/<([^>]+)>/);
+  return (match?.[1] ?? value).trim().toLowerCase();
+}
+
+export async function verifyGmailSentMessage(input: {
+  accessToken: string;
+  messageId: string;
+  deliveryId: string;
+  recipient: string;
+  subject: string;
+}): Promise<boolean> {
+  const { accessToken, messageId, deliveryId, recipient, subject } = input;
+  if (![accessToken, messageId, deliveryId, recipient, subject].every(value => value.trim())) return false;
+  const response = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=metadata&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=X-BuildPro-Delivery-ID&fields=id,labelIds,payload/headers`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!response.ok) return false;
+  const message = await response.json().catch(() => null) as {
+    id?: string;
+    labelIds?: string[];
+    payload?: { headers?: Array<{ name?: string; value?: string }> };
+  } | null;
+  const headers = new Map(
+    (message?.payload?.headers ?? []).map(header => [header.name?.toLowerCase() ?? "", header.value ?? ""]),
+  );
+  return message?.id === messageId
+    && Array.isArray(message.labelIds)
+    && message.labelIds.includes("SENT")
+    && headers.get("x-buildpro-delivery-id") === deliveryId
+    && normalizedEmail(headers.get("to") ?? "") === normalizedEmail(recipient)
+    && (headers.get("subject") ?? "").trim() === subject.trim();
+}
+
 export async function sendAndRecordInvoiceCommunication<T extends ProviderDeliveryResult>(
   context: InvoiceCommunicationContext,
   send: () => Promise<T>,
@@ -149,5 +202,8 @@ export async function updateCompatibilitySentFields(
 ) {
   await db.update(invoicesTable)
     .set({ status: "sent", sentAt: new Date(), sentMethod })
-    .where(eq(invoicesTable.id, invoiceId));
+    .where(and(
+      eq(invoicesTable.id, invoiceId),
+      inArray(invoicesTable.status, ["approved", "sent", "overdue"]),
+    ));
 }

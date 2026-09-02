@@ -27,6 +27,7 @@ export interface GmailSendOptions {
   token: string;
   to: string;
   subject: string;
+  deliveryId?: string;
   html: string;
   text?: string;
   pdfBase64?: string;
@@ -41,7 +42,8 @@ export interface GmailSendResult {
 }
 
 export async function sendViaGmail(opts: GmailSendOptions): Promise<GmailSendResult> {
-  const { token, to, subject, html, text, pdfBase64, pdfFilename, extraAttachments = [] } = opts;
+  const { token, to, subject, deliveryId, html, text, pdfBase64, pdfFilename, extraAttachments = [] } = opts;
+  const deliveryHeader = deliveryId ? [`X-BuildPro-Delivery-ID: ${sanitizeHeader(deliveryId)}`] : [];
 
   // Base64-encode the HTML body so that = characters in data URIs (logo) are
   // not misinterpreted as quoted-printable escape sequences by email clients.
@@ -81,6 +83,7 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<GmailSendRes
     rfcLines = [
       `To: ${sanitizeHeader(to)}`,
       `Subject: ${sanitizeHeader(subject)}`,
+      ...deliveryHeader,
       `MIME-Version: 1.0`,
       `Content-Type: multipart/mixed; boundary="${outer}"`,
       ``,
@@ -110,6 +113,7 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<GmailSendRes
     rfcLines = [
       `To: ${sanitizeHeader(to)}`,
       `Subject: ${sanitizeHeader(subject)}`,
+      ...deliveryHeader,
       `MIME-Version: 1.0`,
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
       ``,

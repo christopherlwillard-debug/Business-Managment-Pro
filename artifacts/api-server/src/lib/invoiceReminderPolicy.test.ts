@@ -6,6 +6,7 @@ const eligible = {
   invoiceNumber: "INV-100",
   clientEmail: "client@example.com",
   reminderOptOut: false,
+  hasConfirmedSend: true,
 };
 
 describe("invoice reminder policy", () => {
@@ -13,6 +14,7 @@ describe("invoice reminder policy", () => {
     ["paid", { status: "paid" }, "Invoice is already paid."],
     ["voided", { status: "cancelled" }, "A voided invoice cannot receive reminders."],
     ["draft", { status: "draft" }, "Draft invoices must be accepted before sending reminders."],
+    ["unconfirmed send", { hasConfirmedSend: false }, "Invoice has not been successfully sent through Gmail."],
     ["opted out", { reminderOptOut: true }, "This client has opted out of invoice reminders."],
     ["unnumbered", { invoiceNumber: null }, "Invoice must have an invoice number before sending reminders."],
     ["missing email", { clientEmail: null }, "Client has no email address on file."],

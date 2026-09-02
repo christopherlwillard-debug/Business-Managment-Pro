@@ -289,7 +289,7 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Title:** Invoice communication history is an append-only delivery-attempt ledger
 
-**Decision:** Record initial sends, resends, reminders, payment-link emails, and payment receipts in `invoice_communication_events`. Each attempt is created as `pending` and finalized as `accepted`, `failed`, or `unknown`; provider metadata and errors remain on the event. Existing invoice sent/reminder fields remain compatibility summaries, not the complete history.
+**Decision:** Record initial sends, resends, reminders, payment-link emails, and payment receipts in `invoice_communication_events`. Each attempt is created as `pending` and finalized as `accepted`, `failed`, or `unknown`; provider metadata and errors remain on the event. Existing invoice sent/reminder fields remain compatibility summaries, not the complete history. SENT and reminder eligibility require a verified Gmail invoice send tied to the prepared delivery event; manual status changes, SMTP sends, and payment-link creation do not qualify.
 
 **Reason:** Invoice financials and lifecycle belong to `invoices`, while delivery history needs multiple recipients, providers, message IDs, attempts, and failures without changing revenue, payment, or job calculations. A pending event also makes uncertain browser/provider outcomes visible instead of silently losing the audit trail.
 
