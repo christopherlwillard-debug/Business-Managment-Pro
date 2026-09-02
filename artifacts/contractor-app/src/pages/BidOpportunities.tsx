@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  RefreshCw, FileSearch, Shield, List, Columns, CheckCircle2, AlertCircle, Building2, Layers2,
+  RefreshCw, FileSearch, Shield, List, Columns, CheckCircle2, AlertCircle, Building2, Layers2, FileDown,
   Plus, RotateCcw, ChevronDown, EyeOff,
 } from "lucide-react";
 import { ToastAction } from "@/components/ui/toast";
@@ -79,6 +79,7 @@ export default function BidOpportunities() {
   const [qualCache,      setQualCache]      = useState<Record<number, IndustrialQualSummary>>({});
   const [addingPrivate,  setAddingPrivate]  = useState(false);
   const [showFiltered,   setShowFiltered]   = useState(false);
+  const [generatingCapabilityStatement, setGeneratingCapabilityStatement] = useState(false);
   const [privateForm, setPrivateForm] = useState({
     companyName:   "",
     description:   "",
@@ -93,6 +94,48 @@ export default function BidOpportunities() {
   function switchView(v: "list" | "pipeline") {
     setView(v);
     localStorage.setItem(VIEW_KEY, v);
+  }
+
+  async function downloadCapabilityStatement() {
+    if (!businessId || !activeBusiness) {
+      toast({
+        title: "Select a business first",
+        description: "Choose one business to generate its capability statement.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setGeneratingCapabilityStatement(true);
+    try {
+      const res = await fetch(
+        `${BASE_URL}/api/pdf/capability-statement?businessId=${businessId}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? "Failed to generate capability statement");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `Capability Statement - ${activeBusiness.name}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast({ title: "Capability statement downloaded" });
+    } catch (err) {
+      toast({
+        title: "Couldn't generate capability statement",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingCapabilityStatement(false);
+    }
   }
 
   // ── Quick Links ──────────────────────────────────────────────────────────
@@ -675,6 +718,23 @@ export default function BidOpportunities() {
               </button>
             </div>
           )}
+
+          {/* Refresh — icon-only on mobile (44px touch target), full label on desktop */}
+          <button
+            onClick={downloadCapabilityStatement}
+            disabled={generatingCapabilityStatement}
+            title={businessId ? "Download capability statement" : "Select a business to generate a capability statement"}
+            className={cn(
+              "flex items-center gap-2 rounded-lg border border-border bg-card text-foreground font-medium",
+              "hover:bg-muted disabled:opacity-60 disabled:cursor-not-allowed transition-colors",
+              "p-2.5 md:px-4 md:py-2 md:text-sm",
+            )}
+          >
+            <FileDown className={cn("w-4 h-4 flex-shrink-0", generatingCapabilityStatement && "animate-pulse")} />
+            <span className="hidden md:inline whitespace-nowrap">
+              {generatingCapabilityStatement ? "Generating…" : "Capability Statement"}
+            </span>
+          </button>
 
           {/* Refresh — icon-only on mobile (44px touch target), full label on desktop */}
           <button

@@ -12,6 +12,7 @@
 - [Sub payment ledger (Phase 2)](sub-payment-ledger.md) — pay-worker no longer dual-writes to expenses (Task #892 removed that); sub_payment_records is the sole ledger; admin-migrations has delete-payworker-expenses endpoint (Drizzle query builder, not raw SQL)
 - [Admin migration key bypass](admin-migration-key.md) — admin/migrations is mounted pre-requireAuth with MIGRATION_KEY env-var intercept; allows curl-triggered one-time ops without browser session
 - [PDF generation: use pdfkit not Puppeteer](pdf-generation.md) — Puppeteer/Chrome is broken in production; use pdfkit (pure Node.js) for all server-side PDF generation
+- [PDFKit footer margins](pdfkit-footer-margins.md) — footer text below the bottom margin can recursively add pages; temporarily zero the margin while drawing
 - [Manual e2e verification](manual-e2e-verification.md) — runTest is stale-blocked; mint a sid row in sessions table + Puppeteer via launchBrowser against localhost:80; script kept in api-server/scripts
 - [MFH production schema baseline](mfh-production-schema.md) — production has manufacturer-based schema (e45b289); Task #1019 Home Series rename was NEVER deployed; always restore from e45b289 not 6e6380d
 - [contractor-app build skips type-check](contractor-app-build-no-typecheck.md) — `vite build` doesn't run tsc; TS errors (e.g. TDZ use-before-declaration) ship & crash at runtime; run the `typecheck` script manually

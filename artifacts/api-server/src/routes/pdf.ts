@@ -1,7 +1,30 @@
 import { Router } from "express";
 import { launchBrowser } from "../lib/launchBrowser.js";
+import { generateCapabilityStatementPdfBuffer } from "../lib/generateCapabilityStatementPdf.js";
 
 const router = Router();
+
+router.get("/capability-statement", async (req, res) => {
+  const businessId = Number(req.query.businessId);
+  if (!Number.isInteger(businessId) || businessId <= 0) {
+    res.status(400).json({ error: "businessId query param is required" });
+    return;
+  }
+
+  try {
+    const result = await generateCapabilityStatementPdfBuffer(businessId);
+    if (!result) {
+      res.status(404).json({ error: "Business not found" });
+      return;
+    }
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+    res.send(result.buffer);
+  } catch (err) {
+    console.error("capability statement PDF error:", err);
+    res.status(500).json({ error: "Failed to generate capability statement" });
+  }
+});
 
 router.post("/render-html", async (req, res) => {
   try {

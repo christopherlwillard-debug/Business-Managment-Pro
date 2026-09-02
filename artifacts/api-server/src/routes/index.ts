@@ -236,6 +236,7 @@ router.use(requireAccess);
 
 router.use("/uploads", express.static(path.resolve("uploads")));
 
+router.use("/pdf/capability-statement", requireOwner);
 router.use("/pdf", pdfRouter);
 router.use("/clients", sectionGuard("clients"), clientsRouter);
 // Keep checklist collection routes before the generic /jobs/:id router so
