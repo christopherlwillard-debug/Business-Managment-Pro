@@ -57,7 +57,6 @@ import { JobMarginCard } from "@/components/JobMarginCard";
 import { JobPlanningDialog } from "@/components/planner/JobPlanningDialog";
 import { ExtendedJob } from "@/components/planner/types";
 import { JobsPlanner } from "@/components/planner/JobsPlanner";
-import { JobsFinancialsView } from "@/components/JobsFinancialsView";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1471,6 +1470,121 @@ type JobProfit = {
     routeProvider?: "osrm" | "haversine";
   } | null;
 };
+
+type JobFinancialSummary = {
+  job: { id: number; jobNumber?: number | null; title: string; status: string; clientName?: string | null };
+  payment: { status: string; amountDue: number | null; invoiceId: number | null };
+  workers: { available: boolean; count: number | null; totalOwed: number | null };
+  subcontractors: { available: boolean; count: number | null; totalOwed: number | null };
+  ownerPay: { supported: boolean; earned: number | null; paid: number | null; remaining: number | null; overpaid: number };
+  state: "needs_action" | "waiting_on_payment" | "ready_to_close";
+  blockers: string[];
+  warnings: string[];
+};
+
+type JobFinancialSummaryResponse = {
+  jobs: JobFinancialSummary[];
+  dataStatus: "complete" | "partial";
+};
+
+function paymentStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    paid: "Paid",
+    partiallyPaid: "Partially paid",
+    sent: "Invoice sent",
+    approved: "Approved",
+    overdue: "Overdue",
+    draft: "Draft",
+    not_invoiced: "Not invoiced",
+  };
+  return labels[status] ?? status;
+}
+
+function paymentAmount(value: number | null | undefined) {
+  return value == null ? "Unavailable" : formatCurrency(value);
+}
+
+function JobPaymentSummary({
+  summary,
+  status,
+}: {
+  summary?: JobFinancialSummary;
+  status: "loading" | "ready" | "error";
+}) {
+  if (status === "loading") {
+    return (
+      <div className="mt-3 rounded-xl border border-border/60 bg-muted/20 p-3" aria-label="Loading payment summary">
+        <div className="mb-2 h-3 w-28 animate-pulse rounded bg-muted" />
+        <div className="grid grid-cols-2 gap-2">
+          {[1, 2, 3, 4].map(key => <div key={key} className="h-11 animate-pulse rounded-lg bg-muted" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "error" || !summary) {
+    return (
+      <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2.5 text-xs text-amber-800">
+        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+        <span>Payment information unavailable</span>
+      </div>
+    );
+  }
+
+  const metrics = [
+    {
+      label: "Customer",
+      value: paymentStatusLabel(summary.payment.status),
+      detail: summary.payment.amountDue != null && summary.payment.amountDue > 0
+        ? `${paymentAmount(summary.payment.amountDue)} due`
+        : summary.payment.status === "paid" ? "No balance due" : "No balance shown",
+      tone: summary.payment.status === "paid" ? "text-emerald-700" : "text-foreground",
+    },
+    {
+      label: "Workers",
+      value: summary.workers.totalOwed == null ? "Unavailable" : paymentAmount(summary.workers.totalOwed),
+      detail: "owed",
+      tone: "text-foreground",
+    },
+    {
+      label: "Subcontractors",
+      value: summary.subcontractors.totalOwed == null ? "Unavailable" : paymentAmount(summary.subcontractors.totalOwed),
+      detail: "owed",
+      tone: "text-foreground",
+    },
+    {
+      label: "Owner Pay",
+      value: summary.ownerPay.supported ? paymentAmount(summary.ownerPay.remaining) : "Unavailable",
+      detail: summary.ownerPay.supported
+        ? `${paymentAmount(summary.ownerPay.earned)} earned · ${paymentAmount(summary.ownerPay.paid)} paid`
+        : "Open job for details",
+      tone: summary.ownerPay.overpaid > 0 ? "text-purple-700" : "text-foreground",
+    },
+  ];
+
+  return (
+    <div className="mt-3 rounded-xl border border-border/60 bg-muted/20 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Payment snapshot</span>
+        <span className="text-[10px] text-muted-foreground">Open job for full details</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {metrics.map(metric => (
+          <div key={metric.label} className="min-w-0 rounded-lg bg-background/70 px-2.5 py-2">
+            <span className="block truncate text-[10px] text-muted-foreground">{metric.label}</span>
+            <span className={`block truncate text-xs font-bold ${metric.tone}`}>{metric.value}</span>
+            <span className="block truncate text-[10px] text-muted-foreground">{metric.detail}</span>
+          </div>
+        ))}
+      </div>
+      {summary.ownerPay.overpaid > 0 && (
+        <p className="mt-2 text-[10px] font-semibold text-purple-700">
+          Owner Pay is overpaid by {paymentAmount(summary.ownerPay.overpaid)}.
+        </p>
+      )}
+    </div>
+  );
+}
 
 
 function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
@@ -4918,6 +5032,7 @@ function JobCard({
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
   checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [], scheduleJob, compact = false,
+  paymentSummary, paymentSummaryStatus = "ready", onPaymentSummaryChanged,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -4946,6 +5061,9 @@ function JobCard({
   subcontractorOptions?: Subcontractor[];
   scheduleJob?: ScheduleJob;
   compact?: boolean;
+  paymentSummary?: JobFinancialSummary;
+  paymentSummaryStatus?: "loading" | "ready" | "error";
+  onPaymentSummaryChanged?: () => void;
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -5070,6 +5188,7 @@ function JobCard({
         .then(r => r.ok ? r.json() : []).catch(() => []);
       setUnpaidSubs(updated);
       if (updated.length === 0) setLocalSubPaid(true);
+      onPaymentSummaryChanged?.();
     } catch {
       toast({ title: "Failed to record payment", variant: "destructive" });
     } finally {
@@ -5287,6 +5406,7 @@ function JobCard({
           )}
 
           {/* Invoice status indicator */}
+          {!overviewOnly && (
           <div className="flex items-center gap-1.5 pt-0.5">
             <Receipt className="w-3 h-3 flex-shrink-0" />
             {invoiceSummary ? (
@@ -5319,7 +5439,11 @@ function JobCard({
               <span className="text-muted-foreground/60 italic">Not Invoiced</span>
             )}
           </div>
+          )}
 
+          {!job.status.includes("closed") && (
+            <JobPaymentSummary summary={paymentSummary} status={paymentSummaryStatus} />
+          )}
 
         </div>
 
@@ -5765,7 +5889,7 @@ function JobCard({
             onClick={() => setCompactExpanded(true)}
             className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/20 text-xs font-semibold text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
           >
-            <Eye className="w-3.5 h-3.5" /> Open full job
+            <Eye className="w-3.5 h-3.5" /> Open Job Card
           </button>
         )}
       </Card>
@@ -5783,7 +5907,16 @@ function JobCard({
         />
       )}
       {financialsPanelOpen && (
-        <JobFinancialsPanel job={job} profitData={displayProfit} initialTab={financialsInitialTab} onClose={() => setFinancialsPanelOpen(false)} onSubsPaidChanged={setLocalSubPaid} />
+        <JobFinancialsPanel
+          job={job}
+          profitData={displayProfit}
+          initialTab={financialsInitialTab}
+          onClose={() => setFinancialsPanelOpen(false)}
+          onSubsPaidChanged={allPaid => {
+            setLocalSubPaid(allPaid);
+            onPaymentSummaryChanged?.();
+          }}
+        />
       )}
       <JobAllocationDialog
         job={job}
@@ -5793,6 +5926,7 @@ function JobCard({
           const fresh = await fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" })
             .then(r => r.ok ? r.json() : null).catch(() => null);
           if (fresh) setDisplayProfit(fresh);
+          onPaymentSummaryChanged?.();
         }}
       />
       {phasesPanelOpen && (
@@ -7365,7 +7499,6 @@ export default function Jobs() {
   // Include inactive so archived service names still resolve on existing job cards
   const { data: allProductionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id, true);
   const [jobSearch, setJobSearch]       = useState("");
-  const [jobsView, setJobsView]         = useState<"all" | "financials">("all");
   const [localBLFilter, setLocalBLFilter] = useState<string>("");
   const jobBLFilter = activeBusiness ? activeBusiness.slug : localBLFilter;
   const [needsPayoutFilter, setNeedsPayoutFilter] = useState(false);
@@ -7515,6 +7648,51 @@ export default function Jobs() {
   type InvoiceWithSquare = Invoice & { squarePaidAt?: string | null };
   const [invoiceSummaryMap, setInvoiceSummaryMap] = useState<Map<number, InvoiceWithSquare | null>>(new Map());
   const [invoiceSummaryRefreshKey, setInvoiceSummaryRefreshKey] = useState(0);
+  const [jobFinancialSummaryMap, setJobFinancialSummaryMap] = useState<Map<number, JobFinancialSummary>>(new Map());
+  const [jobFinancialSummaryStatus, setJobFinancialSummaryStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [jobFinancialSummaryRefreshKey, setJobFinancialSummaryRefreshKey] = useState(0);
+
+  const activeFinancialSummaryJobIds = useMemo(
+    () => jobs.filter(job => job.status !== "closed").map(job => job.id),
+    [jobs],
+  );
+
+  useEffect(() => {
+    if (activeFinancialSummaryJobIds.length === 0) {
+      setJobFinancialSummaryMap(new Map());
+      setJobFinancialSummaryStatus("ready");
+      return;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams();
+    if (activeBusiness?.id != null) params.set("businessId", String(activeBusiness.id));
+    setJobFinancialSummaryStatus("loading");
+    fetch(`${BASE}/api/jobs/financials-summary?${params.toString()}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(response => response.ok
+        ? response.json() as Promise<JobFinancialSummaryResponse>
+        : Promise.reject(new Error("Financial summary request failed")))
+      .then(response => {
+        if (controller.signal.aborted) return;
+        setJobFinancialSummaryMap(new Map(response.jobs.map(summary => [summary.job.id, summary])));
+        setJobFinancialSummaryStatus("ready");
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setJobFinancialSummaryMap(new Map());
+        setJobFinancialSummaryStatus("error");
+      });
+
+    return () => controller.abort();
+  }, [activeBusiness?.id, activeFinancialSummaryJobIds.join(","), invoiceSummaryRefreshKey, jobFinancialSummaryRefreshKey]);
+
+  function refreshJobPaymentSummaries() {
+    setInvoiceSummaryRefreshKey(key => key + 1);
+    setJobFinancialSummaryRefreshKey(key => key + 1);
+  }
 
   const searchLower   = jobSearch.toLowerCase().trim();
   const jobMatchesSearch = (j: Job) => {
@@ -7879,6 +8057,7 @@ export default function Jobs() {
       const result = await createPaymentLinkMutation.mutateAsync(invoiceId);
       setPaymentLinkResult({ url: result.paymentLinkUrl, invoiceNumber, invoiceId });
       queryClient.invalidateQueries();
+      refreshJobPaymentSummaries();
       if (result.emailWarning) {
         toast({ title: "Payment link created", description: result.emailWarning, variant: "destructive" });
       } else {
@@ -7925,6 +8104,7 @@ export default function Jobs() {
         description: "The invoice is now official and ready to send.",
       });
       queryClient.invalidateQueries();
+      refreshJobPaymentSummaries();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to accept invoice";
       toast({ title: "Accept failed", description: msg, variant: "destructive" });
@@ -8148,23 +8328,6 @@ export default function Jobs() {
            <p className="text-muted-foreground mt-1">Plan the work, manage job details, and keep billing moving.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
-          <div className="flex w-full sm:w-auto justify-center rounded-xl border border-border bg-muted/40 p-0.5" role="tablist" aria-label="Jobs view">
-            {([
-              ["all", "All Jobs"],
-              ["financials", "Financials"],
-            ] as const).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={jobsView === value}
-                onClick={() => setJobsView(value)}
-                className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${jobsView === value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input
@@ -8184,17 +8347,7 @@ export default function Jobs() {
         </div>
       </div>
 
-      {jobsView === "financials" ? (
-        <JobsFinancialsView
-          businessId={activeBusiness?.id}
-          search={jobSearch}
-          onOpenJob={jobId => {
-            const job = jobs.find(candidate => candidate.id === jobId);
-            if (job) void openEditJob(job);
-          }}
-        />
-      ) : (
-        <>
+      <>
        <JobsPlanner
         businessId={activeBusiness?.id}
          allJobs={jobs}
@@ -8330,6 +8483,9 @@ export default function Jobs() {
                       onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
                       hasSubExpenses={jobsWithOutstandingSubs.has(job.id) || !!job.subPaid}
                       profitData={profitMap.get(job.id) ?? null}
+                      paymentSummary={jobFinancialSummaryMap.get(job.id)}
+                      paymentSummaryStatus={jobFinancialSummaryStatus}
+                      onPaymentSummaryChanged={() => setJobFinancialSummaryRefreshKey(key => key + 1)}
                       onSendPaymentLink={handleGetPaymentLink}
                       onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
                       onAcceptInvoice={handleAcceptInvoice}
@@ -8376,6 +8532,9 @@ export default function Jobs() {
                         onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
                         hasSubExpenses={jobsWithOutstandingSubs.has(job.id) || !!job.subPaid}
                         profitData={profitMap.get(job.id) ?? null}
+                        paymentSummary={jobFinancialSummaryMap.get(job.id)}
+                        paymentSummaryStatus={jobFinancialSummaryStatus}
+                        onPaymentSummaryChanged={() => setJobFinancialSummaryRefreshKey(key => key + 1)}
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
                         onAcceptInvoice={handleAcceptInvoice}
@@ -8426,6 +8585,9 @@ export default function Jobs() {
                         onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
                         hasSubExpenses={jobsWithOutstandingSubs.has(job.id) || !!job.subPaid}
                         profitData={profitMap.get(job.id) ?? null}
+                        paymentSummary={jobFinancialSummaryMap.get(job.id)}
+                        paymentSummaryStatus={jobFinancialSummaryStatus}
+                        onPaymentSummaryChanged={() => setJobFinancialSummaryRefreshKey(key => key + 1)}
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
                         onAcceptInvoice={handleAcceptInvoice}
@@ -8749,8 +8911,7 @@ export default function Jobs() {
           )}
         </div>
        )}
-        </>
-      )}
+      </>
 
       {/* Dialogs */}
       {planningJob && (
@@ -8792,7 +8953,7 @@ export default function Jobs() {
         existingInvoice={selectedExistingInvoice ?? undefined}
         onSaved={() => {
           queryClient.invalidateQueries();
-          setInvoiceSummaryRefreshKey(key => key + 1);
+          refreshJobPaymentSummaries();
         }}
       />
 
@@ -8811,6 +8972,7 @@ export default function Jobs() {
             setSelectedExistingInvoice(invoice as Invoice);
             setInvoiceEditorOpen(true);
             queryClient.invalidateQueries();
+            refreshJobPaymentSummaries();
             if (meta.lockedExisting) {
               toast({
                 title: "New draft created",
