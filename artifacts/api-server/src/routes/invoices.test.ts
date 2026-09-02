@@ -48,7 +48,13 @@ vi.mock("@workspace/db", () => {
     update:  () => ({
       set: (data: any) => {
         h.updates.push(data);
-        return { where: () => Promise.resolve() };
+        return {
+          where: () => {
+            const result = Promise.resolve() as Promise<void> & { returning: () => Promise<any[]> };
+            result.returning = () => Promise.resolve([{ id: 42, ...data }]);
+            return result;
+          },
+        };
       },
     }),
     insert:  () => ({
@@ -89,6 +95,8 @@ const { calcInvoice, calcInvoiceFromStored, fmt } = mod;
 // Grab the spy handle for deleteSquarePaymentLink from the module mock.
 const squareMod = await import("../lib/square.js");
 const deleteSquarePaymentLink = vi.mocked(squareMod.deleteSquarePaymentLink);
+const invoiceEmailMod = await import("../lib/invoiceEmail");
+const sendInvoiceEmail = vi.mocked(invoiceEmailMod.sendInvoiceEmail);
 
 // ── Mount in a minimal Express app ───────────────────────────────────────────
 const app = express();
@@ -159,12 +167,14 @@ beforeEach(() => {
   h.updates.length = 0;
   h.squareConfigured = false;
   deleteSquarePaymentLink.mockClear();
+  sendInvoiceEmail.mockReset();
   h.scenario = "no request";
 });
 
 afterEach(() => {
   h.selectQueue.assertConsumed(h.scenario);
   h.executeQueue.assertConsumed(h.scenario);
+  vi.unstubAllGlobals();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -468,6 +478,175 @@ describe("POST /:id/mark-sent", () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/disabled/i);
     expect(h.updates).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Browser Gmail finalization — adversarial status/evidence checks
+// ─────────────────────────────────────────────────────────────────────────────
+describe("POST /:id/communications/:eventId/finalize", () => {
+  const pendingEvent = (overrides: Record<string, any> = {}) => ({
+    id: 77,
+    invoiceId: 42,
+    eventType: "initial_invoice",
+    channel: "gmail",
+    provider: "gmail",
+    status: "pending",
+    recipient: "client@example.com",
+    subject: "Invoice INV-1001",
+    ...overrides,
+  });
+
+  const verifiedGmailResponse = (overrides: Record<string, any> = {}) => ({
+    ok: true,
+    json: async () => ({
+      id: "gmail-message-1",
+      labelIds: ["SENT"],
+      payload: {
+        headers: [
+          { name: "To", value: "client@example.com" },
+          { name: "Subject", value: "Invoice INV-1001" },
+          { name: "X-BuildPro-Delivery-ID", value: "77" },
+        ],
+      },
+      ...overrides,
+    }),
+  });
+
+  it.each(["failed", "unknown"] as const)(
+    "records a %s attempt even after the invoice becomes paid or voided",
+    async status => {
+      h.selectQueue.push([pendingEvent()]);
+
+      const res = await request(app)
+        .post("/42/communications/77/finalize")
+        .send({ status, errorMessage: "Gmail send did not complete" });
+
+      expect(res.status).toBe(200);
+      expect(h.updates).toContainEqual(expect.objectContaining({ status }));
+      expect(h.updates).not.toContainEqual(expect.objectContaining({ status: "sent" }));
+    },
+  );
+
+  it("does not let a non-Gmail pending event transition the invoice to SENT", async () => {
+    h.selectQueue.push(
+      [pendingEvent({ channel: "email", provider: "smtp" })],
+      [{ status: "approved" }],
+    );
+
+    const res = await request(app)
+      .post("/42/communications/77/finalize")
+      .send({ status: "accepted", providerMessageId: "smtp-message-1" });
+
+    expect(res.status).toBe(200);
+    expect(h.updates).toContainEqual(expect.objectContaining({ status: "accepted" }));
+    expect(h.updates).not.toContainEqual(expect.objectContaining({ status: "sent" }));
+  });
+
+  it.each([
+    ["message id", verifiedGmailResponse({ id: "different-message" })],
+    ["Sent label", verifiedGmailResponse({ labelIds: ["INBOX"] })],
+    ["delivery correlation", verifiedGmailResponse({
+      payload: { headers: [
+        { name: "To", value: "client@example.com" },
+        { name: "Subject", value: "Invoice INV-1001" },
+        { name: "X-BuildPro-Delivery-ID", value: "999" },
+      ] },
+    })],
+    ["recipient", verifiedGmailResponse({
+      payload: { headers: [
+        { name: "To", value: "someone-else@example.com" },
+        { name: "Subject", value: "Invoice INV-1001" },
+        { name: "X-BuildPro-Delivery-ID", value: "77" },
+      ] },
+    })],
+    ["subject", verifiedGmailResponse({
+      payload: { headers: [
+        { name: "To", value: "client@example.com" },
+        { name: "Subject", value: "Unrelated message" },
+        { name: "X-BuildPro-Delivery-ID", value: "77" },
+      ] },
+    })],
+  ])("rejects accepted Gmail evidence with a mismatched %s", async (_field, gmailResponse) => {
+    h.selectQueue.push([pendingEvent()], [{ status: "approved" }]);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(gmailResponse));
+
+    const res = await request(app)
+      .post("/42/communications/77/finalize")
+      .send({
+        status: "accepted",
+        providerMessageId: "gmail-message-1",
+        gmailAccessToken: "gmail-token",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/could not verify/i);
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it("sets SENT only after all Gmail evidence matches the prepared event", async () => {
+    h.selectQueue.push([pendingEvent()], [{ status: "approved" }]);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(verifiedGmailResponse()));
+
+    const res = await request(app)
+      .post("/42/communications/77/finalize")
+      .send({
+        status: "accepted",
+        providerMessageId: "gmail-message-1",
+        providerThreadId: "gmail-thread-1",
+        gmailAccessToken: "gmail-token",
+      });
+
+    expect(res.status).toBe(200);
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "accepted",
+      providerMessageId: "gmail-message-1",
+    }));
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "sent",
+      sentMethod: "gmail",
+    }));
+  });
+});
+
+describe("POST /:id/send-reminder", () => {
+  const reminderInvoice = fakeInvoice({
+    status: "sent",
+    clientEmail: "client@example.com",
+    clientName: "Client",
+    reminderOptOut: false,
+  });
+
+  it("rejects a reminder without confirmed Gmail invoice evidence", async () => {
+    h.selectQueue.push([reminderInvoice], [{}], []);
+
+    const res = await request(app).post("/42/send-reminder").send();
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not been successfully sent through Gmail/i);
+    expect(sendInvoiceEmail).not.toHaveBeenCalled();
+  });
+
+  it("allows a reminder after confirmed Gmail invoice evidence", async () => {
+    h.selectQueue.push(
+      [reminderInvoice],
+      [{}],
+      [{ invoiceId: 42 }],
+      [reminderInvoice],
+    );
+    sendInvoiceEmail.mockResolvedValue({
+      provider: "gmail",
+      messageId: "reminder-message-1",
+    });
+
+    const res = await request(app).post("/42/send-reminder").send();
+
+    expect(res.status).toBe(200);
+    expect(sendInvoiceEmail).toHaveBeenCalledOnce();
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "accepted",
+      providerMessageId: "reminder-message-1",
+    }));
   });
 });
 
