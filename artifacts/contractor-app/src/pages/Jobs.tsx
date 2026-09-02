@@ -1,4 +1,4 @@
-import { useState, useRef, ReactNode, useEffect, useMemo, Fragment } from "react";
+import { useState, useRef, ReactNode, useEffect, useMemo, useReducer, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams, useLocation, Link } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -29,6 +29,11 @@ import { EstimateModal } from "./Estimates";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { computeSubOwed } from "@/lib/allocationUtils";
 import { calculateJobFinancialWaterfall, formatJobFinancialAmount } from "@/lib/jobFinancials";
+import {
+  initialJobPaymentSummaryRefreshState,
+  jobPaymentSummaryRefreshReducer,
+  type JobPaymentSummaryRefreshAction,
+} from "@/lib/jobPaymentSummaryRefresh";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { Card } from "@/components/ui/card";
@@ -7647,10 +7652,14 @@ export default function Jobs() {
 
   type InvoiceWithSquare = Invoice & { squarePaidAt?: string | null };
   const [invoiceSummaryMap, setInvoiceSummaryMap] = useState<Map<number, InvoiceWithSquare | null>>(new Map());
-  const [invoiceSummaryRefreshKey, setInvoiceSummaryRefreshKey] = useState(0);
+  const [paymentSummaryRefresh, dispatchPaymentSummaryRefresh] = useReducer(
+    jobPaymentSummaryRefreshReducer,
+    initialJobPaymentSummaryRefreshState,
+  );
+  const invoiceSummaryRefreshKey = paymentSummaryRefresh.invoiceKey;
   const [jobFinancialSummaryMap, setJobFinancialSummaryMap] = useState<Map<number, JobFinancialSummary>>(new Map());
   const [jobFinancialSummaryStatus, setJobFinancialSummaryStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [jobFinancialSummaryRefreshKey, setJobFinancialSummaryRefreshKey] = useState(0);
+  const jobFinancialSummaryRefreshKey = paymentSummaryRefresh.financialKey;
 
   const activeFinancialSummaryJobIds = useMemo(
     () => jobs.filter(job => job.status !== "closed").map(job => job.id),
@@ -7689,9 +7698,12 @@ export default function Jobs() {
     return () => controller.abort();
   }, [activeBusiness?.id, activeFinancialSummaryJobIds.join(","), invoiceSummaryRefreshKey, jobFinancialSummaryRefreshKey]);
 
-  function refreshJobPaymentSummaries() {
-    setInvoiceSummaryRefreshKey(key => key + 1);
-    setJobFinancialSummaryRefreshKey(key => key + 1);
+  function refreshJobPaymentSummaries(type: Exclude<JobPaymentSummaryRefreshAction["type"], "worker-payment-recorded">) {
+    dispatchPaymentSummaryRefresh({ type });
+  }
+
+  function refreshJobFinancialSummary() {
+    dispatchPaymentSummaryRefresh({ type: "worker-payment-recorded" });
   }
 
   const searchLower   = jobSearch.toLowerCase().trim();
@@ -8057,7 +8069,7 @@ export default function Jobs() {
       const result = await createPaymentLinkMutation.mutateAsync(invoiceId);
       setPaymentLinkResult({ url: result.paymentLinkUrl, invoiceNumber, invoiceId });
       queryClient.invalidateQueries();
-      refreshJobPaymentSummaries();
+      refreshJobPaymentSummaries("payment-link-synced");
       if (result.emailWarning) {
         toast({ title: "Payment link created", description: result.emailWarning, variant: "destructive" });
       } else {
@@ -8104,7 +8116,7 @@ export default function Jobs() {
         description: "The invoice is now official and ready to send.",
       });
       queryClient.invalidateQueries();
-      refreshJobPaymentSummaries();
+      refreshJobPaymentSummaries("invoice-accepted");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to accept invoice";
       toast({ title: "Accept failed", description: msg, variant: "destructive" });
@@ -8485,7 +8497,7 @@ export default function Jobs() {
                       profitData={profitMap.get(job.id) ?? null}
                       paymentSummary={jobFinancialSummaryMap.get(job.id)}
                       paymentSummaryStatus={jobFinancialSummaryStatus}
-                      onPaymentSummaryChanged={() => setJobFinancialSummaryRefreshKey(key => key + 1)}
+                      onPaymentSummaryChanged={refreshJobFinancialSummary}
                       onSendPaymentLink={handleGetPaymentLink}
                       onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
                       onAcceptInvoice={handleAcceptInvoice}
@@ -8534,7 +8546,7 @@ export default function Jobs() {
                         profitData={profitMap.get(job.id) ?? null}
                         paymentSummary={jobFinancialSummaryMap.get(job.id)}
                         paymentSummaryStatus={jobFinancialSummaryStatus}
-                        onPaymentSummaryChanged={() => setJobFinancialSummaryRefreshKey(key => key + 1)}
+                        onPaymentSummaryChanged={refreshJobFinancialSummary}
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
                         onAcceptInvoice={handleAcceptInvoice}
@@ -8587,7 +8599,7 @@ export default function Jobs() {
                         profitData={profitMap.get(job.id) ?? null}
                         paymentSummary={jobFinancialSummaryMap.get(job.id)}
                         paymentSummaryStatus={jobFinancialSummaryStatus}
-                        onPaymentSummaryChanged={() => setJobFinancialSummaryRefreshKey(key => key + 1)}
+                        onPaymentSummaryChanged={refreshJobFinancialSummary}
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
                         onAcceptInvoice={handleAcceptInvoice}
@@ -8953,7 +8965,7 @@ export default function Jobs() {
         existingInvoice={selectedExistingInvoice ?? undefined}
         onSaved={() => {
           queryClient.invalidateQueries();
-          refreshJobPaymentSummaries();
+          refreshJobPaymentSummaries("invoice-saved");
         }}
       />
 
@@ -8972,7 +8984,7 @@ export default function Jobs() {
             setSelectedExistingInvoice(invoice as Invoice);
             setInvoiceEditorOpen(true);
             queryClient.invalidateQueries();
-            refreshJobPaymentSummaries();
+            refreshJobPaymentSummaries("production-pricing-applied");
             if (meta.lockedExisting) {
               toast({
                 title: "New draft created",
