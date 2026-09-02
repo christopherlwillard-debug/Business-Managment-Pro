@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { InvoiceDeliveryHistory } from "./InvoiceDeliveryHistory";
+import {
+  formatInvoiceCommunicationTimestamp,
+  InvoiceDeliveryHistory,
+  sortReminderTimestamps,
+} from "./InvoiceDeliveryHistory";
 import type { InvoiceCommunicationEvent } from "@workspace/api-client-react";
 
 const event: InvoiceCommunicationEvent = {
@@ -46,5 +50,49 @@ describe("InvoiceDeliveryHistory", () => {
 
     expect(loadingMarkup).toContain("Loading history");
     expect(emptyMarkup).toContain("No invoice communications recorded yet.");
+  });
+
+  it("formats reminder history in a configured local timezone", () => {
+    expect(formatInvoiceCommunicationTimestamp(
+      "2026-09-02T01:15:00.000Z",
+      "America/Chicago",
+    )).toBe("Sep 1, 2026, 08:15 PM");
+  });
+
+  it("keeps multiple reminder timestamps ordered and readable", () => {
+    const timestamps = sortReminderTimestamps([
+      "2026-09-02T15:45:00.000Z",
+      "2026-09-01T13:30:00.000Z",
+      "2026-09-02T09:05:00.000Z",
+    ]);
+
+    expect(timestamps).toEqual([
+      "2026-09-01T13:30:00.000Z",
+      "2026-09-02T09:05:00.000Z",
+      "2026-09-02T15:45:00.000Z",
+    ]);
+    expect(timestamps.map(timestamp =>
+      formatInvoiceCommunicationTimestamp(timestamp, "America/Chicago"),
+    )).toEqual([
+      "Sep 1, 2026, 08:30 AM",
+      "Sep 2, 2026, 04:05 AM",
+      "Sep 2, 2026, 10:45 AM",
+    ]);
+  });
+
+  it("renders communication events in chronological order", () => {
+    const laterEvent = {
+      ...event,
+      id: 2,
+      eventType: "manual_reminder",
+      requestedAt: "2026-08-25T10:30:00.000Z",
+      createdAt: "2026-08-25T10:30:00.000Z",
+      providerMessageId: "later-message",
+    } satisfies InvoiceCommunicationEvent;
+    const markup = renderToStaticMarkup(InvoiceDeliveryHistory({
+      events: [laterEvent, event],
+    }));
+
+    expect(markup.indexOf("gmail-message-1")).toBeLessThan(markup.indexOf("later-message"));
   });
 });

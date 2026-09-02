@@ -17,6 +17,33 @@ interface InvoiceDeliveryHistoryProps {
   isLoading?: boolean;
 }
 
+const LOCAL_TIMESTAMP_OPTIONS: Intl.DateTimeFormatOptions = {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+};
+
+export function formatInvoiceCommunicationTimestamp(timestamp: string, timeZone?: string) {
+  return new Date(timestamp).toLocaleString("en-US", {
+    ...LOCAL_TIMESTAMP_OPTIONS,
+    ...(timeZone ? { timeZone } : {}),
+  });
+}
+
+export function sortInvoiceCommunicationEvents(events: InvoiceCommunicationEvent[]) {
+  return [...events].sort(
+    (left, right) => new Date(left.requestedAt).getTime() - new Date(right.requestedAt).getTime(),
+  );
+}
+
+export function sortReminderTimestamps(timestamps: string[]) {
+  return [...timestamps].sort(
+    (left, right) => new Date(left).getTime() - new Date(right).getTime(),
+  );
+}
+
 const EVENT_LABELS: Record<string, string> = {
   initial_invoice: "Invoice sent",
   resend_invoice: "Invoice resent",
@@ -63,6 +90,8 @@ export function InvoiceDeliveryHistory({
   events,
   isLoading = false,
 }: InvoiceDeliveryHistoryProps) {
+  const orderedEvents = sortInvoiceCommunicationEvents(events);
+
   return (
     <section className="border-t border-gray-100 px-5 py-4">
       <div className="mb-3 flex items-center justify-between">
@@ -91,7 +120,7 @@ export function InvoiceDeliveryHistory({
       ) : (
         <div className="relative space-y-3 pl-1">
           <div className="absolute bottom-2 left-[8px] top-2 w-px bg-gray-200" aria-hidden="true" />
-          {events.map(event => (
+          {orderedEvents.map(event => (
             <div className="relative flex gap-2.5" key={event.id}>
               <div className="relative z-10 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500">
                 {eventIcon(event.eventType)}
@@ -105,7 +134,7 @@ export function InvoiceDeliveryHistory({
                   </span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-gray-400">
-                  <span>{new Date(event.requestedAt).toLocaleString()}</span>
+                  <span>{formatInvoiceCommunicationTimestamp(event.requestedAt)}</span>
                   <span>{event.channel}{event.provider ? ` · ${event.provider}` : ""}</span>
                   {event.recipient && <span className="truncate">{event.recipient}</span>}
                 </div>

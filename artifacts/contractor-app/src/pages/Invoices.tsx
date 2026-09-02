@@ -22,6 +22,10 @@ import {
   Paperclip, CreditCard, Copy, ExternalLink, Bell, Search, Send, Mail,
 } from "lucide-react";
 import { InvoicePanel } from "@/components/InvoicePanel";
+import {
+  formatInvoiceCommunicationTimestamp,
+  sortReminderTimestamps,
+} from "@/components/InvoiceDeliveryHistory";
 
 const STATUS_COLORS: Record<string, string> = {
   paid:          "bg-emerald-100 text-emerald-700",
@@ -542,9 +546,11 @@ export default function Invoices() {
                   filteredInvoices.map((inv: any) => {
                     const isVoided = inv.status === "cancelled";
                     const isDraft = !inv.invoiceNumber;
-                    const remindersSentAt = Array.isArray(inv.remindersSentAt)
-                      ? inv.remindersSentAt.filter((timestamp: unknown): timestamp is string => typeof timestamp === "string")
-                      : [];
+                    const remindersSentAt = sortReminderTimestamps(
+                      Array.isArray(inv.remindersSentAt)
+                        ? inv.remindersSentAt.filter((timestamp: unknown): timestamp is string => typeof timestamp === "string")
+                        : [],
+                    );
                     const hasInitialEmail = Boolean(inv.sentAt);
                     const lastReminderAt = remindersSentAt.at(-1);
                     return (
@@ -832,9 +838,9 @@ export default function Invoices() {
                 {(paymentLinkResult.remindersSentAt ?? []).length > 0 && (
                   <div className="bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
                     <p className="text-xs font-medium text-gray-500 mb-1">Reminders sent:</p>
-                    {(paymentLinkResult.remindersSentAt ?? []).map((ts, i) => (
-                      <p key={i} className="text-xs text-gray-600">
-                        {new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    {sortReminderTimestamps(paymentLinkResult.remindersSentAt ?? []).map((ts) => (
+                      <p key={ts} className="text-xs text-gray-600">
+                        {formatInvoiceCommunicationTimestamp(ts)}
                       </p>
                     ))}
                   </div>
