@@ -231,3 +231,9 @@ Created the four-document architecture governance system:
 - The Jobs financial summary now excludes closed jobs defensively at both query and response boundaries.
 - Job-linked Owner Withdrawals reduce remaining Owner Pay without changing earned pay.
 - Unknown worker, subcontractor, or Owner Pay balances remain null and mark the response partial instead of appearing as zero.
+
+### Checklist photo captions
+
+- Extended the existing `job_checklist_item_photos` evidence rows with optional captions rather than creating a separate annotation system.
+- Caption updates are scoped through the photo, checklist item, checklist, and job relationship.
+- Checklist panels and exported PDFs now read the same stored caption alongside each item photo.

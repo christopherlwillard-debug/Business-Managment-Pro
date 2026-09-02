@@ -168,10 +168,15 @@ export async function buildChecklistResponse(checklistId: number) {
       : Promise.resolve([]),
   ]);
 
-  const photosByItemId = new Map<number, Array<{ id: number; url: string; createdAt: Date }>>();
+  const photosByItemId = new Map<number, Array<{ id: number; url: string; caption: string | null; createdAt: Date }>>();
   for (const p of photos) {
     if (!photosByItemId.has(p.jobChecklistItemId)) photosByItemId.set(p.jobChecklistItemId, []);
-    photosByItemId.get(p.jobChecklistItemId)!.push({ id: p.id, url: toServingUrl(p.objectPath), createdAt: p.createdAt });
+    photosByItemId.get(p.jobChecklistItemId)!.push({
+      id: p.id,
+      url: toServingUrl(p.objectPath),
+      caption: p.caption ?? null,
+      createdAt: p.createdAt,
+    });
   }
 
   const partsByItemId = new Map<number, any[]>();
@@ -917,6 +922,62 @@ router.post("/:jobId/checklist/items/:itemId/photos", photoUpload.array("photos"
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to upload photo" });
+  }
+});
+
+// ── PATCH /:jobId/checklist/items/:itemId/photos/:photoId — update caption ─────
+router.patch("/:jobId/checklist/items/:itemId/photos/:photoId", async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.jobId as string, 10);
+    const itemId = parseInt(req.params.itemId as string, 10);
+    const photoId = parseInt(req.params.photoId, 10);
+    if (isNaN(jobId) || isNaN(itemId) || isNaN(photoId)) {
+      return res.status(400).json({ error: "Invalid parameters" });
+    }
+
+    const rawCaption = req.body?.caption;
+    if (rawCaption !== null && typeof rawCaption !== "string") {
+      return res.status(400).json({ error: "caption must be text or null" });
+    }
+    const caption = typeof rawCaption === "string" ? rawCaption.trim() : null;
+    if (caption && caption.length > 500) {
+      return res.status(400).json({ error: "Caption must be 500 characters or fewer" });
+    }
+
+    const [checklist] = await db
+      .select({ id: jobChecklistsTable.id, jobId: jobChecklistsTable.jobId })
+      .from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.jobId, jobId));
+    if (!checklist) return res.status(404).json({ error: "No checklist for this job" });
+
+    const [item] = await db
+      .select({ id: jobChecklistItemsTable.id, jobChecklistId: jobChecklistItemsTable.jobChecklistId })
+      .from(jobChecklistItemsTable)
+      .where(and(eq(jobChecklistItemsTable.id, itemId), eq(jobChecklistItemsTable.jobChecklistId, checklist.id)));
+    if (!item) return res.status(404).json({ error: "Item not found" });
+
+    const [photo] = await db
+      .select({ id: jobChecklistItemPhotosTable.id })
+      .from(jobChecklistItemPhotosTable)
+      .where(and(
+        eq(jobChecklistItemPhotosTable.id, photoId),
+        eq(jobChecklistItemPhotosTable.jobChecklistItemId, itemId),
+      ));
+    if (!photo) return res.status(404).json({ error: "Photo not found" });
+
+    await db
+      .update(jobChecklistItemPhotosTable)
+      .set({ caption: caption || null })
+      .where(eq(jobChecklistItemPhotosTable.id, photoId));
+    await db
+      .update(jobChecklistsTable)
+      .set({ updatedAt: new Date() })
+      .where(eq(jobChecklistsTable.id, checklist.id));
+
+    res.json(await buildChecklistResponse(checklist.id));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to save photo caption" });
   }
 });
 

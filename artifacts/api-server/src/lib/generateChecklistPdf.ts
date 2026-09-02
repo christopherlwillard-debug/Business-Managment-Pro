@@ -139,12 +139,12 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     } catch { /* skip failed photos */ }
   }));
 
-  const photosByItemId = new Map<number, Buffer[]>();
+  const photosByItemId = new Map<number, Array<{ buffer: Buffer; caption: string | null }>>();
   for (const p of rawPhotos) {
     const buf = photoBufById.get(`item-${p.id}`);
     if (!buf) continue;
     if (!photosByItemId.has(p.jobChecklistItemId)) photosByItemId.set(p.jobChecklistItemId, []);
-    photosByItemId.get(p.jobChecklistItemId)!.push(buf);
+    photosByItemId.get(p.jobChecklistItemId)!.push({ buffer: buf, caption: p.caption ?? null });
   }
 
   const finishedPhotoBufs: Buffer[] = rawFinishedPhotos
@@ -271,6 +271,52 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     // Advance past the last partial row
     if (col > 0) {
       doc.y = rowY + photoH + gap;
+    }
+  }
+
+  function drawCaptionedPhotoGrid(
+    photos: Array<{ buffer: Buffer; caption: string | null }>,
+    startX: number,
+    availW: number,
+    photoW: number,
+    photoH: number,
+  ) {
+    if (photos.length === 0) return;
+    const gap = 6;
+    const captionH = photos.some(photo => photo.caption) ? 24 : 0;
+    const perRow = Math.max(1, Math.floor((availW + gap) / (photoW + gap)));
+
+    let col = 0;
+    let rowY = doc.y;
+
+    for (const photo of photos) {
+      if (col === 0) {
+        ensureSpace(photoH + captionH + 6);
+        rowY = doc.y;
+      }
+      const px = startX + col * (photoW + gap);
+      try {
+        doc.image(photo.buffer, px, rowY, { fit: [photoW, photoH], align: "center", valign: "center" });
+        if (photo.caption) {
+          doc.font("Helvetica").fontSize(7).fillColor(GRAY)
+            .text(photo.caption, px, rowY + photoH + 3, {
+              width: photoW,
+              height: captionH - 3,
+              ellipsis: true,
+              lineBreak: false,
+            });
+        }
+      } catch { /* skip unreadable photo */ }
+
+      col++;
+      if (col >= perRow) {
+        col = 0;
+        doc.y = rowY + photoH + captionH + gap;
+      }
+    }
+
+    if (col > 0) {
+      doc.y = rowY + photoH + captionH + gap;
     }
   }
 
@@ -481,7 +527,7 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
       const photos = photosByItemId.get(item.id) ?? [];
       if (photos.length > 0) {
         doc.y += 3;
-        drawPhotoGrid(photos.slice(0, 6), textX, textW, 150, 112);
+        drawCaptionedPhotoGrid(photos.slice(0, 6), textX, textW, 150, 112);
         doc.y += 3;
       }
 

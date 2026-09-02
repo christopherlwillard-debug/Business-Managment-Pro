@@ -13,6 +13,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 interface ChecklistItemPhoto {
   id: number;
   url: string;
+  caption: string | null;
 }
 
 interface ChecklistFinishedPhoto {
@@ -223,6 +224,8 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
   const [savingFinishedNotes, setSavingFinishedNotes] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
   const [deletingPhoto, setDeletingPhoto] = useState<number | null>(null);
+  const [photoCaptionDraft, setPhotoCaptionDraft] = useState<Record<number, string>>({});
+  const [savingPhotoCaption, setSavingPhotoCaption] = useState<number | null>(null);
   const [splittingItem, setSplittingItem] = useState<number | null>(null);
   const [partLabelDraft, setPartLabelDraft] = useState<Record<number, string>>({});
   const [togglingPart, setTogglingPart] = useState<number | null>(null);
@@ -738,6 +741,48 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
       toast({ title: "Failed to upload photo", variant: "destructive" });
     } finally {
       setUploadingPhotoFor(prev => { const next = { ...prev }; delete next[itemId]; return next; });
+    }
+  }
+
+  async function savePhotoCaption(itemId: number, photo: ChecklistItemPhoto) {
+    const draft = photoCaptionDraft[photo.id];
+    if (draft === undefined) return;
+    const caption = draft.trim();
+    if (caption === (photo.caption ?? "")) {
+      setPhotoCaptionDraft(prev => {
+        const next = { ...prev };
+        delete next[photo.id];
+        return next;
+      });
+      return;
+    }
+
+    setSavingPhotoCaption(photo.id);
+    try {
+      const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${itemId}/photos/${photo.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caption: caption || null }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to save caption");
+      }
+      setChecklist(await r.json());
+      setPhotoCaptionDraft(prev => {
+        const next = { ...prev };
+        delete next[photo.id];
+        return next;
+      });
+    } catch (err) {
+      toast({
+        title: "Failed to save caption",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPhotoCaption(null);
     }
   }
 
@@ -1347,23 +1392,43 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                                     {item.photos.length > 0 && (
                                       <div className="flex flex-wrap gap-1.5 mb-1.5">
                                         {item.photos.map(photo => (
-                                          <div key={photo.id} className="relative group">
-                                            <img
-                                              src={`${BASE}${photo.url}`}
-                                              alt="Checklist photo"
-                                              className="w-16 h-12 object-cover rounded-lg border border-border cursor-pointer"
-                                              onClick={() => setLightboxPhoto(`${BASE}${photo.url}`)}
-                                            />
-                                            {canEdit("jobs") && (
-                                              <button
-                                                onClick={() => handlePhotoDelete(item.id, photo.id)}
-                                                disabled={deletingPhoto === photo.id}
-                                                className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center transition-opacity [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100"
-                                              >
-                                                {deletingPhoto === photo.id
-                                                  ? <Loader2 className="w-2 h-2 animate-spin" />
-                                                  : <X className="w-2 h-2" />}
-                                              </button>
+                                          <div key={photo.id} className="w-24 space-y-1">
+                                            <div className="relative group w-16">
+                                              <img
+                                                src={`${BASE}${photo.url}`}
+                                                alt={photo.caption || "Checklist photo"}
+                                                className="w-16 h-12 object-cover rounded-lg border border-border cursor-pointer"
+                                                onClick={() => setLightboxPhoto(`${BASE}${photo.url}`)}
+                                              />
+                                              {canEdit("jobs") && (
+                                                <button
+                                                  onClick={() => handlePhotoDelete(item.id, photo.id)}
+                                                  disabled={deletingPhoto === photo.id}
+                                                  className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center transition-opacity [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100"
+                                                >
+                                                  {deletingPhoto === photo.id
+                                                    ? <Loader2 className="w-2 h-2 animate-spin" />
+                                                    : <X className="w-2 h-2" />}
+                                                </button>
+                                              )}
+                                            </div>
+                                            {canEdit("jobs") ? (
+                                              <input
+                                                type="text"
+                                                maxLength={500}
+                                                value={photoCaptionDraft[photo.id] ?? photo.caption ?? ""}
+                                                onChange={e => setPhotoCaptionDraft(prev => ({ ...prev, [photo.id]: e.target.value }))}
+                                                onBlur={() => { void savePhotoCaption(item.id, photo); }}
+                                                onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                                                placeholder="Add caption…"
+                                                aria-label={`Caption for photo on ${item.title}`}
+                                                className="w-24 rounded border border-transparent bg-transparent px-1 py-0.5 text-[10px] text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-400/60 focus:bg-background focus:outline-none"
+                                              />
+                                            ) : photo.caption ? (
+                                              <p className="w-24 px-1 text-[10px] leading-3 text-muted-foreground break-words">{photo.caption}</p>
+                                            ) : null}
+                                            {savingPhotoCaption === photo.id && (
+                                              <span className="px-1 text-[9px] text-muted-foreground">Saving…</span>
                                             )}
                                           </div>
                                         ))}

@@ -11,7 +11,7 @@ interface PdfItem {
   completedByName: string | null;
   completedAt: string | null;
   notes: string | null;
-  photos?: string[];
+  photos?: Array<string | { url: string; caption?: string | null }>;
   parts?: PdfPart[];
 }
 
@@ -73,7 +73,11 @@ export function buildChecklistPdfHtml(data: ChecklistPdfData): string {
         ? `<div class="item-note">${escHtml(item.notes)}</div>`
         : "";
       const photosHtml = item.photos && item.photos.length > 0
-        ? `<div class="item-photos">${item.photos.map(uri => `<img src="${uri}" class="item-photo" alt="Photo" />`).join("")}</div>`
+        ? `<div class="item-photos">${item.photos.map(photo => {
+            const uri = typeof photo === "string" ? photo : photo.url;
+            const caption = typeof photo === "string" ? null : photo.caption;
+            return `<div class="item-photo-card"><img src="${uri}" class="item-photo" alt="${caption ? escHtml(caption) : "Photo"}" />${caption ? `<div class="item-photo-caption">${escHtml(caption)}</div>` : ""}</div>`;
+          }).join("")}</div>`
         : "";
 
       const partsHtml = item.parts && item.parts.length > 0
@@ -172,7 +176,9 @@ export function buildChecklistPdfHtml(data: ChecklistPdfData): string {
   .item-note { font-size: 8.5pt; color: #555; font-style: italic; margin-top: 2px; }
   .section-note { font-size: 8.5pt; color: #555; font-style: italic; padding: 4px 8px 6px 40px; }
   .item-photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 5px; }
+  .item-photo-card { min-width: 0; }
   .item-photo { width: 100%; height: 80px; object-fit: cover; border-radius: 3px; border: 1px solid #ddd; }
+  .item-photo-caption { font-size: 7.5pt; color: #555; line-height: 1.2; margin-top: 2px; overflow-wrap: anywhere; }
   .item-parts { margin-top: 3px; }
   .part-row { display: flex; align-items: center; gap: 6px; padding: 1px 0 1px 4px; }
   .part-status { font-size: 9.5pt; font-weight: bold; flex-shrink: 0; width: 14px; }

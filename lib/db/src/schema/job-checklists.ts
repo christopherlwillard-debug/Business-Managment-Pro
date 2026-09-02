@@ -72,6 +72,7 @@ export const jobChecklistItemPhotosTable = pgTable("job_checklist_item_photos", 
   id: serial("id").primaryKey(),
   jobChecklistItemId: integer("job_checklist_item_id").notNull().references(() => jobChecklistItemsTable.id, { onDelete: "cascade" }),
   objectPath: text("object_path").notNull(),
+  caption: text("caption"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
