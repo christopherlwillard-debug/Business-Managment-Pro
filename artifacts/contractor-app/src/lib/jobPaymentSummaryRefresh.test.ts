@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { JobMarginCard } from "../components/JobMarginCard";
 import { formatJobFinancialAmount } from "./jobFinancials";
+import { calculateJobMargin } from "./jobMargin";
 import {
   initialJobPaymentSummaryRefreshState,
+  jobProfitSummaryRequestKey,
   jobPaymentSummaryRefreshReducer,
   type JobPaymentSummaryRefreshAction,
 } from "./jobPaymentSummaryRefresh";
@@ -59,5 +64,34 @@ describe("Jobs payment summary refresh", () => {
       amount => `$${amount.toFixed(2)}`,
     ))
       .toBe("Unavailable");
+  });
+
+  it("refreshes the visible margin after collected revenue changes", () => {
+    const profitSnapshots = new Map([
+      [0, { netProfit: 250, collected: 0 }],
+      [1, { netProfit: 250, collected: 500 }],
+    ]);
+    const initialProfit = profitSnapshots.get(initialJobPaymentSummaryRefreshState.financialKey)!;
+    const initialRequestKey = jobProfitSummaryRequestKey(
+      [42],
+      initialJobPaymentSummaryRefreshState.financialKey,
+    );
+
+    expect(calculateJobMargin(initialProfit.netProfit, initialProfit.collected)).toBeNull();
+
+    const next = jobPaymentSummaryRefreshReducer(
+      initialJobPaymentSummaryRefreshState,
+      { type: "payment-link-synced" },
+    );
+    const refreshedProfit = profitSnapshots.get(next.financialKey)!;
+    const refreshedRequestKey = jobProfitSummaryRequestKey([42], next.financialKey);
+    const refreshedMargin = calculateJobMargin(refreshedProfit.netProfit, refreshedProfit.collected);
+    const markup = renderToStaticMarkup(createElement(JobMarginCard, { margin: refreshedMargin }));
+
+    expect(next.financialKey).toBe(1);
+    expect(refreshedRequestKey).not.toBe(initialRequestKey);
+    expect(refreshedMargin).toBe(50);
+    expect(markup).toContain("50%");
+    expect(markup).toContain("emerald");
   });
 });

@@ -15,6 +15,10 @@ export const initialJobPaymentSummaryRefreshState: JobPaymentSummaryRefreshState
   financialKey: 0,
 };
 
+export function jobProfitSummaryRequestKey(jobIds: number[], financialKey: number): string {
+  return `${jobIds.join(",")}:${financialKey}`;
+}
+
 export function jobPaymentSummaryRefreshReducer(
   state: JobPaymentSummaryRefreshState,
   action: JobPaymentSummaryRefreshAction,

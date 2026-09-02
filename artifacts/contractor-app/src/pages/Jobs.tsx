@@ -31,6 +31,7 @@ import { computeSubOwed } from "@/lib/allocationUtils";
 import { calculateJobFinancialWaterfall, formatJobFinancialAmount } from "@/lib/jobFinancials";
 import {
   initialJobPaymentSummaryRefreshState,
+  jobProfitSummaryRequestKey,
   jobPaymentSummaryRefreshReducer,
   type JobPaymentSummaryRefreshAction,
 } from "@/lib/jobPaymentSummaryRefresh";
@@ -1768,6 +1769,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const [subHours, setSubHours] = useState<SubHourEntry[]>([]);
   const [deletingHourId, setDeletingHourId] = useState<number | null>(null);
 
+  useEffect(() => {
+    setProfit(initialProfit ?? null);
+  }, [initialProfit]);
+
   const [fuelExpanded, setFuelExpanded] = useState(false);
 
   // Expense drill-down state
@@ -2125,6 +2130,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const totalOwnerSettlement = ownerTakeHome + outstandingOwnerReimbursement;
   const net = profit?.netProfit ?? 0;
   const isProfit = net > 0;
+  const margin = profit ? calculateJobMargin(net, profit.collected) : null;
   const subLaborCost = profit?.subLaborCost ?? 0;
   const allocPaid = profit?.allocPaid ?? 0;
   const totalSubHours = profit?.totalSubHours ?? 0;
@@ -2198,6 +2204,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                     <p className="text-xs text-muted-foreground text-center py-2 px-4">{formatCurrency(profit.grossInvoiced - profit.collected)} outstanding (not yet collected)</p>
                   )}
                 </div>
+                <JobMarginCard margin={margin} />
                 {/* Estimated Fuel Cost */}
                 {profit?.estimatedFuelCost != null && (() => {
                   const fb = profit.fuelBreakdown;
@@ -7840,6 +7847,10 @@ export default function Jobs() {
 
   // Fetch profit summary for all visible jobs in a single batch request
   const [profitMap, setProfitMap] = useState<Map<number, JobProfit | null>>(new Map());
+  const profitSummaryRequestKey = jobProfitSummaryRequestKey(
+    visibleJobIds,
+    jobFinancialSummaryRefreshKey,
+  );
   useEffect(() => {
     if (visibleJobIds.length === 0) { setProfitMap(new Map()); return; }
     const controller = new AbortController();
@@ -7855,7 +7866,7 @@ export default function Jobs() {
       .catch(() => { if (!controller.signal.aborted) setProfitMap(new Map()); });
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleJobIds.join(",")]);
+  }, [profitSummaryRequestKey]);
 
 
 
