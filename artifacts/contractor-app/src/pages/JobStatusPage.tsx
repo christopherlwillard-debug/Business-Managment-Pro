@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, CheckCircle2, Minus, Square, AlertCircle, HardHat } from "lucide-react";
@@ -270,6 +270,7 @@ function SectionsSkeleton() {
 
 export default function JobStatusPage() {
   const { token } = useParams<{ token: string }>();
+  const previousSummaryPercent = useRef<number | null>(null);
 
   const { data: summary, isLoading: summaryLoading, error: summaryError } = useQuery<StatusSummary>({
     queryKey: ["public-status-summary", token],
@@ -285,7 +286,7 @@ export default function JobStatusPage() {
     refetchInterval: 15_000,
   });
 
-  const { data, isLoading: detailLoading } = useQuery<StatusData>({
+  const { data, isLoading: detailLoading, refetch: refetchDetail } = useQuery<StatusData>({
     queryKey: ["public-status", token],
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/public/status/${token}`);
@@ -298,6 +299,24 @@ export default function JobStatusPage() {
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
+
+  // The summary polls more frequently than the full checklist. If progress
+  // changes, pull the detail response immediately so section counts and item
+  // states do not remain stale until the next scheduled detail poll.
+  useEffect(() => {
+    previousSummaryPercent.current = null;
+  }, [token]);
+
+  useEffect(() => {
+    if (!summary) return;
+    const currentPercent = summary.overallPercent;
+    const previousPercent = previousSummaryPercent.current;
+    previousSummaryPercent.current = currentPercent;
+
+    if (previousPercent !== null && previousPercent !== currentPercent) {
+      void refetchDetail();
+    }
+  }, [summary?.overallPercent, refetchDetail]);
 
   const [lightbox, setLightbox] = useState<string | null>(null);
 
