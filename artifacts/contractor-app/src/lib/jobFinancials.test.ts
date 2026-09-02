@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateJobFinancialWaterfall } from "./jobFinancials";
+import { calculateJobFinancialWaterfall, formatJobFinancialAmount } from "./jobFinancials";
 
 describe("calculateJobFinancialWaterfall", () => {
   const base = {
@@ -76,5 +76,18 @@ describe("calculateJobFinancialWaterfall", () => {
     });
 
     expect(result.growthReserve).toBeCloseTo(611.41, 2);
+  });
+});
+
+describe("formatJobFinancialAmount", () => {
+  const formatter = (amount: number) => `$${amount.toFixed(2)}`;
+
+  it("renders unavailable balances as unavailable instead of zero", () => {
+    expect(formatJobFinancialAmount(null, formatter)).toBe("Unavailable");
+    expect(formatJobFinancialAmount(undefined, formatter)).toBe("Unavailable");
+  });
+
+  it("continues to render a known zero as zero", () => {
+    expect(formatJobFinancialAmount(0, formatter)).toBe("$0.00");
   });
 });

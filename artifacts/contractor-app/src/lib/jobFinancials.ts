@@ -10,6 +10,13 @@ export type JobFinancialWaterfallInput = {
   taxReservePct: number;
 };
 
+export function formatJobFinancialAmount(
+  value: number | null | undefined,
+  formatter: (amount: number) => string,
+): string {
+  return value == null ? "Unavailable" : formatter(value);
+}
+
 export function calculateJobFinancialWaterfall(input: JobFinancialWaterfallInput) {
   const splitEligibleExpenses = Math.max(0, input.jobExpenses - input.mileageReimbursementCost);
   // Job Income is the result after every displayed job cost. Reimbursements

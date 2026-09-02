@@ -225,3 +225,9 @@ Created the four-document architecture governance system:
 - Manual status changes, SMTP sends, and Square payment-link creation no longer set SENT or arm reminders.
 - Automatic and manual reminders require an accepted Gmail invoice event with verified provider evidence.
 - Existing communication events remain append-only; the production audit found one reminder that preceded its invoice send and no invoices currently marked sent without confirmed Gmail evidence.
+
+### Active-job financial visibility
+
+- The Jobs financial summary now excludes closed jobs defensively at both query and response boundaries.
+- Job-linked Owner Withdrawals reduce remaining Owner Pay without changing earned pay.
+- Unknown worker, subcontractor, or Owner Pay balances remain null and mark the response partial instead of appearing as zero.

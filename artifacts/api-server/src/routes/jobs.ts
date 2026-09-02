@@ -1251,7 +1251,7 @@ router.get("/financials-summary", async (req, res) => {
       ) as any);
     }
 
-    const activeJobs = await db
+    const queriedJobs = await db
       .select({
         id: jobsTable.id,
         jobNumber: jobsTable.jobNumber,
@@ -1267,6 +1267,9 @@ router.get("/financials-summary", async (req, res) => {
       .leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id))
       .where(and(...jobConditions))
       .orderBy(desc(jobsTable.createdAt), desc(jobsTable.id));
+    // Keep the response fail-closed even if a future query refactor weakens the
+    // SQL predicate or a test adapter returns rows without evaluating it.
+    const activeJobs = queriedJobs.filter(job => job.status !== "closed");
 
     if (activeJobs.length === 0) {
       return res.json({
@@ -1455,8 +1458,14 @@ router.get("/financials-summary", async (req, res) => {
             ? Number(row.fixedAmount ?? 0)
             : pool ? pool.splitPool * (Number(row.allocationPct ?? 0) / 100) : null,
       ));
-      const workerTotal = workerDetails.reduce((sum: number, row) => sum + (row.balance ?? 0), 0);
-      const subcontractorTotal = subDetails.reduce((sum: number, row) => sum + (row.balance ?? 0), 0);
+      const workersAvailable = workerDetails.every(row => row.amountOwed != null);
+      const subcontractorsAvailable = subDetails.every(row => row.amountOwed != null);
+      const workerTotal = workersAvailable
+        ? workerDetails.reduce((sum: number, row) => sum + (row.balance ?? 0), 0)
+        : null;
+      const subcontractorTotal = subcontractorsAvailable
+        ? subDetails.reduce((sum: number, row) => sum + (row.balance ?? 0), 0)
+        : null;
       const ownerEarned = pool
         ? pool.splitPool * (ownerPct / 100) * (1 - Math.max(0, taxReservePct) / 100)
         : null;
@@ -1467,8 +1476,8 @@ router.get("/financials-summary", async (req, res) => {
       if (workerDetails.some(row => row.amountOwed == null)) workersUnknownJobs++;
       if (subDetails.some(row => row.amountOwed == null)) subcontractorsUnknownJobs++;
       if (ownerEarned == null) ownerPayUnknownJobs++;
-      if (workerDetails.every(row => row.amountOwed != null)) workersOwed += workerTotal;
-      if (subDetails.every(row => row.amountOwed != null)) subcontractorsOwed += subcontractorTotal;
+      if (workerTotal != null) workersOwed += workerTotal;
+      if (subcontractorTotal != null) subcontractorsOwed += subcontractorTotal;
       if (ownerRemaining != null) ownerPayOwed += ownerRemaining;
 
       const internalBlocker =
@@ -1501,13 +1510,13 @@ router.get("/financials-summary", async (req, res) => {
           invoiceId: invoice?.id ?? null,
         },
         workers: {
-          available: true,
+          available: workersAvailable,
           count: workerDetails.length,
           totalOwed: workerTotal,
           details: workerDetails,
         },
         subcontractors: {
-          available: true,
+          available: subcontractorsAvailable,
           count: subDetails.length,
           totalOwed: subcontractorTotal,
           details: subDetails,

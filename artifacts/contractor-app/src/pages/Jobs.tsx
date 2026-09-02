@@ -28,7 +28,7 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { computeSubOwed } from "@/lib/allocationUtils";
-import { calculateJobFinancialWaterfall } from "@/lib/jobFinancials";
+import { calculateJobFinancialWaterfall, formatJobFinancialAmount } from "@/lib/jobFinancials";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { Card } from "@/components/ui/card";
@@ -1501,7 +1501,7 @@ function paymentStatusLabel(status: string) {
 }
 
 function paymentAmount(value: number | null | undefined) {
-  return value == null ? "Unavailable" : formatCurrency(value);
+  return formatJobFinancialAmount(value, formatCurrency);
 }
 
 function JobPaymentSummary({
