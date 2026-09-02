@@ -986,6 +986,42 @@ describe("Mileage expense exclusion from dashboard totals", () => {
     // Regression: 1000 − 250 = 750
     expect(mfhLine.operationalNetProfit).toBeCloseTo(900, 10);
   });
+
+  it("mileage expense is absent from the current month's dashboard expenses bar", async () => {
+    h.strict = true;
+
+    h.selectQueue.push([]); // [0] kpiPaidInvoices
+    h.selectQueue.push([]); // [1] kpiNonPaidInvoices
+    h.selectQueue.push([]); // [2] kpiExpenses
+    h.selectQueue.push([]); // [3] allMileage
+    h.selectQueue.push([]); // [4] kpiOtherIncome
+    h.selectQueue.push([]); // [5] kpiActiveJobs
+    h.selectQueue.push([]); // [6] recentJobsRows
+    h.selectQueue.push([]); // [7] recentInvoicesRows
+    h.selectQueue.push([]); // [8] kpiOwnerCapital
+    h.selectQueue.push([]); // [9] allSubPayments
+    h.selectQueue.push([]); // [10] ytdMileageLogs
+    h.selectQueue.push([]); // [11] subPayRows
+    h.selectQueue.push([]); // [12] allBusinesses
+
+    // First five chart months: paid, non-paid, expenses, other income.
+    for (let i = 0; i < 20; i++) h.selectQueue.push([]);
+
+    // Current month chart slots. Only the $100 Supplies row belongs in expenses.
+    h.selectQueue.push([]); // monthlyPaidInv
+    h.selectQueue.push([]); // monthlyNonPaidInv
+    h.selectQueue.push([DASH_MILEAGE_EXP, DASH_SUPPLY_EXP]); // monthlyExp
+    h.selectQueue.push([]); // monthlyOther
+
+    const res = await request(app).get("/reports/dashboard");
+    expect(res.status).toBe(200);
+
+    const currentMonth = res.body.monthlyRevenue.find(
+      (bucket: any) => bucket.month === CURRENT_MONTH_STR,
+    );
+    expect(currentMonth).toBeDefined();
+    expect(currentMonth.expenses).toBeCloseTo(100, 10);
+  });
 });
 
 // ── Monthly income chart includes fixed/allocation sub payments ───────────────
