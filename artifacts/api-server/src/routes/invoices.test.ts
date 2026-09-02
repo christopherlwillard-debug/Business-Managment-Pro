@@ -607,6 +607,52 @@ describe("POST /:id/communications/:eventId/finalize", () => {
       sentMethod: "gmail",
     }));
   });
+
+  it("idempotently repairs SENT when Gmail history was accepted but the invoice update did not finish", async () => {
+    h.selectQueue.push([pendingEvent({
+      status: "accepted",
+      providerMessageId: "gmail-message-1",
+      providerThreadId: "gmail-thread-1",
+    })]);
+
+    const res = await request(app)
+      .post("/42/communications/77/finalize")
+      .send({
+        status: "accepted",
+        providerMessageId: "gmail-message-1",
+        providerThreadId: "gmail-thread-1",
+        gmailAccessToken: "gmail-token",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("accepted");
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "sent",
+      sentMethod: "gmail",
+    }));
+    expect(h.updates).not.toContainEqual(expect.objectContaining({
+      status: "accepted",
+    }));
+  });
+
+  it("rejects a retry that tries to attach different Gmail evidence to an accepted event", async () => {
+    h.selectQueue.push([pendingEvent({
+      status: "accepted",
+      providerMessageId: "gmail-message-1",
+    })]);
+
+    const res = await request(app)
+      .post("/42/communications/77/finalize")
+      .send({
+        status: "accepted",
+        providerMessageId: "different-message",
+        gmailAccessToken: "gmail-token",
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/different Gmail message/i);
+    expect(h.updates).toHaveLength(0);
+  });
 });
 
 describe("POST /:id/send-reminder", () => {
@@ -720,6 +766,17 @@ describe("PATCH /:id/status", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/invalid transition/i);
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it("explains the required Issue → Gmail flow when a draft tries to jump to SENT", async () => {
+    h.selectQueue.push([{ status: "draft", invoiceNumber: null }]);
+
+    const res = await request(app).patch("/42/status").send({ status: "sent" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/issued first/i);
+    expect(res.body.error).toMatch(/Gmail/i);
     expect(h.updates).toHaveLength(0);
   });
 

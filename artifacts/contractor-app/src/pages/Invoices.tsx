@@ -119,7 +119,7 @@ export default function Invoices() {
   const queryClient = useQueryClient();
   const { activeBusiness, businesses } = useBusiness();
   const [activeTab, setActiveTab] = useState<"all" | "tax">("all");
-  const [filterStatus, setFilterStatus] = useState<"active" | "all" | "approved" | "sent" | "partiallyPaid" | "overdue" | "paid">("active");
+  const [filterStatus, setFilterStatus] = useState<"active" | "all" | "approved" | "sent" | "partiallyPaid" | "overdue" | "paid">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -127,7 +127,7 @@ export default function Invoices() {
   const { toast } = useToast();
   const prevInvoiceStatuses = useRef<Record<number, string>>({});
   const { data: invoices, isLoading: loadingInvoices } = useListInvoices(
-    undefined,
+    { includeDrafts: true } as any,
     { query: { refetchInterval: 15_000 } as any },
   );
 
@@ -159,6 +159,7 @@ export default function Invoices() {
   const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string; invoiceId: number; remindersSentAt?: string[] } | null>(null);
   const [generatingLinkId, setGeneratingLinkId] = useState<number | null>(null);
   const [sendingReminderId, setSendingReminderId] = useState<number | null>(null);
+  const [issuingInvoiceId, setIssuingInvoiceId] = useState<number | null>(null);
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string) {
@@ -246,11 +247,10 @@ export default function Invoices() {
 
   const allInvoices = (invoices as any[]) ?? [];
 
-  // Drafts live only on the job card — never on the Invoices page
   const ACTIVE_STATUSES = new Set(["approved", "sent", "partiallyPaid", "overdue", "paid"]);
 
   const nonVoidedInvoices = useMemo(() =>
-    allInvoices.filter((i: any) => i.status !== "cancelled" && i.status !== "draft"),
+    allInvoices.filter((i: any) => i.status !== "cancelled"),
   [allInvoices]);
 
   const statusCounts = useMemo(() => ({
@@ -265,7 +265,7 @@ export default function Invoices() {
   }), [allInvoices, nonVoidedInvoices]);
 
   const filteredInvoices = useMemo(() => {
-    let list = showVoided ? allInvoices.filter((i: any) => i.status !== "draft") : nonVoidedInvoices;
+    let list = showVoided ? allInvoices : nonVoidedInvoices;
     if (activeBusiness) {
       list = list.filter((inv: any) => inv.businessLine === activeBusiness.slug);
     }
@@ -322,8 +322,41 @@ export default function Invoices() {
 
 
   async function handleStatusChange(id: number, status: string) {
-    await updateStatus.mutateAsync({ id, data: { status: status as any } });
-    queryClient.invalidateQueries();
+    try {
+      await updateStatus.mutateAsync({ id, data: { status: status as any } });
+      await queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+    } catch (err: any) {
+      toast({
+        title: "Invoice status was not changed",
+        description: err?.message ?? "Use the invoice's dedicated action for this status change.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleIssueInvoice(invoice: Invoice) {
+    setIssuingInvoiceId(invoice.id);
+    try {
+      const response = await fetch(`${base}/api/invoices/${invoice.id}/accept`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "Failed to issue invoice.");
+      await queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      toast({
+        title: `Invoice ${result.invoiceNumber ?? ""} issued`,
+        description: "It is now Approved and ready to send through Gmail.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Invoice could not be issued",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIssuingInvoiceId(null);
+    }
   }
 
   async function handleDeleteConfirmed() {
@@ -569,13 +602,17 @@ export default function Invoices() {
                               </span>
                             )}
                           </div>
+                        ) : inv.status === "draft" || inv.status === "approved" ? (
+                          <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold uppercase ${STATUS_COLORS[inv.status]}`}>
+                            {inv.status}
+                          </span>
                         ) : (
                           <select
                             value={inv.status}
                             onChange={e => handleStatusChange(inv.id, e.target.value)}
                             className={`inline-flex px-2 py-1 rounded-md text-xs font-semibold tracking-wide uppercase border-0 cursor-pointer ${STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600"}`}
                           >
-                            {["draft","sent","paid","overdue"].map(st => (
+                            {[inv.status, "partiallyPaid", "overdue", "paid"].filter((st, index, values) => values.indexOf(st) === index).map(st => (
                               <option key={st} value={st}>{st}</option>
                             ))}
                           </select>
@@ -583,6 +620,27 @@ export default function Invoices() {
                       </td>
                       <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-2">
+                          {inv.status === "draft" && (
+                            <button
+                              onClick={() => handleIssueInvoice(inv)}
+                              disabled={issuingInvoiceId === inv.id}
+                              className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                              title="Assign an invoice number and approve it for sending"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              {issuingInvoiceId === inv.id ? "Issuing…" : "Issue Invoice"}
+                            </button>
+                          )}
+                          {inv.status === "approved" && (
+                            <button
+                              onClick={() => setViewInvoice(inv)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                              title="Open this approved invoice to send it through Gmail"
+                            >
+                              <Mail className="w-3.5 h-3.5" />
+                              Send Invoice
+                            </button>
+                          )}
                           <button onClick={() => setViewInvoice(inv)}
                             className="text-muted-foreground hover:text-primary transition-colors" title="View invoice">
                             <Eye className="w-4 h-4" />

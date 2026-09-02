@@ -234,7 +234,8 @@ router.get("/", async (req, res) => {
     if (status) {
       conditions.push(eq(invoicesTable.status, status as string));
     } else if (includeDrafts !== "true") {
-      // Invoices page never shows drafts — they live only on the job card
+      // Most callers omit drafts; the Invoices page explicitly includes them
+      // so users can issue an existing draft from the billing workflow.
       conditions.push(ne(invoicesTable.status, "draft"));
     }
     if (clientId) conditions.push(eq(invoicesTable.clientId, parseInt(clientId as string)));
@@ -566,19 +567,53 @@ router.post("/:id/communications/prepare", async (req, res) => {
       return res.status(400).json({ error: "Browser email attempts must be an initial invoice or resend event." });
     }
     const user = (req as any).user as { id?: string; firstName?: string; lastName?: string } | undefined;
-    const event = await createPendingInvoiceCommunication({
-      invoiceId,
-      eventType,
-      channel: "gmail",
-      provider: "gmail",
-      recipient: typeof req.body?.recipient === "string" ? req.body.recipient : null,
-      subject: typeof req.body?.subject === "string" ? req.body.subject : null,
-      source: "user",
-      actorUserId: user?.id ?? null,
-      actorName: [user?.firstName, user?.lastName].filter(Boolean).join(" ") || null,
-      metadata: typeof req.body?.metadata === "object" && req.body.metadata ? req.body.metadata : {},
+    const prepared = await db.transaction(async tx => {
+      // Serialize prepare attempts per invoice so two tabs cannot both create
+      // a send event before either one becomes visible to the other.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${invoiceId})`);
+      if (invoice.status === "approved" && invoice.acceptedAt) {
+        const [unresolved] = await tx.select().from(invoiceCommunicationEventsTable)
+          .where(and(
+            eq(invoiceCommunicationEventsTable.invoiceId, invoiceId),
+            eq(invoiceCommunicationEventsTable.channel, "gmail"),
+            eq(invoiceCommunicationEventsTable.provider, "gmail"),
+            inArray(invoiceCommunicationEventsTable.eventType, ["initial_invoice", "resend_invoice"]),
+            inArray(invoiceCommunicationEventsTable.status, ["pending", "accepted"]),
+            gte(invoiceCommunicationEventsTable.requestedAt, invoice.acceptedAt),
+          ))
+          .orderBy(desc(invoiceCommunicationEventsTable.requestedAt))
+          .limit(1);
+        if (unresolved) return { unresolved };
+      }
+      const [event] = await tx.insert(invoiceCommunicationEventsTable).values({
+        invoiceId,
+        eventType,
+        channel: "gmail",
+        provider: "gmail",
+        recipient: typeof req.body?.recipient === "string" ? req.body.recipient : null,
+        subject: typeof req.body?.subject === "string" ? req.body.subject : null,
+        source: "user",
+        actorUserId: user?.id ?? null,
+        actorName: [user?.firstName, user?.lastName].filter(Boolean).join(" ") || null,
+        metadata: typeof req.body?.metadata === "object" && req.body.metadata ? req.body.metadata : {},
+        status: "pending",
+      }).returning();
+      if (!event) throw new Error("Unable to create invoice communication event");
+      return { event };
     });
-    res.status(201).json(event);
+    if ("unresolved" in prepared && prepared.unresolved) {
+      const unresolved = prepared.unresolved;
+      return res.status(409).json({
+        error: unresolved.status === "accepted"
+          ? "Email accepted by Gmail — history needs repair before another send."
+          : "A previous Gmail delivery attempt is still pending. Resolve its delivery history before sending again.",
+        repairRequired: unresolved.status === "accepted" && Boolean(unresolved.providerMessageId),
+        eventId: unresolved.id,
+        providerMessageId: unresolved.providerMessageId,
+        providerThreadId: unresolved.providerThreadId,
+      });
+    }
+    res.status(201).json(prepared.event);
   } catch (err) {
     console.error("Prepare invoice communication error:", err);
     res.status(500).json({ error: "Failed to prepare invoice communication" });
@@ -602,7 +637,25 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
         eq(invoiceCommunicationEventsTable.invoiceId, invoiceId),
       ));
     if (!existing) return res.status(404).json({ error: "Invoice communication event not found" });
-    if (existing.status !== "pending") return res.json(existing);
+    const providerMessageId = typeof req.body?.providerMessageId === "string"
+      ? req.body.providerMessageId.trim()
+      : "";
+    if (existing.status !== "pending") {
+      if (
+        existing.status === "accepted" &&
+        existing.channel === "gmail" &&
+        existing.provider === "gmail" &&
+        ["initial_invoice", "resend_invoice"].includes(existing.eventType)
+      ) {
+        if (providerMessageId && existing.providerMessageId && providerMessageId !== existing.providerMessageId) {
+          return res.status(409).json({
+            error: "This delivery event was already finalized with a different Gmail message.",
+          });
+        }
+        await updateCompatibilitySentFields(invoiceId, "gmail");
+      }
+      return res.json(existing);
+    }
     if (status === "accepted") {
       const [currentInvoice] = await db
         .select({ status: invoicesTable.status })
@@ -615,9 +668,6 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
         });
       }
     }
-    const providerMessageId = typeof req.body?.providerMessageId === "string"
-      ? req.body.providerMessageId.trim()
-      : "";
     if (
       status === "accepted" &&
       existing.channel === "gmail" &&
@@ -689,6 +739,13 @@ router.patch("/:id/status", async (req, res) => {
     // Enforce valid state transitions
     const allowed = VALID_TRANSITIONS[current.status] ?? [];
     if (!allowed.includes(status)) {
+      if (status === "sent") {
+        return res.status(400).json({
+          error: current.status === "draft"
+            ? "Invalid transition: Draft invoices must be issued first. Use Issue Invoice, then send the Approved invoice through Gmail."
+            : "Invalid transition: Sent cannot be selected manually. Send the Approved invoice through Gmail; Sent is applied only after Gmail delivery is verified and finalized.",
+        });
+      }
       return res.status(400).json({
         error: `Invalid transition: ${current.status} → ${status}. Use the accept or send endpoints for status changes that require additional processing.`,
       });

@@ -200,10 +200,13 @@ export async function updateCompatibilitySentFields(
   invoiceId: number,
   sentMethod: string,
 ) {
+  // Only the first confirmed delivery moves Approved → Sent. Replays are
+  // intentionally no-ops so they cannot rewrite sentAt or regress an invoice
+  // that has already advanced to overdue, partially paid, or paid.
   await db.update(invoicesTable)
     .set({ status: "sent", sentAt: new Date(), sentMethod })
     .where(and(
       eq(invoicesTable.id, invoiceId),
-      inArray(invoicesTable.status, ["approved", "sent", "overdue"]),
+      eq(invoicesTable.status, "approved"),
     ));
 }
