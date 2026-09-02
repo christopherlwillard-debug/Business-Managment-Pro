@@ -47,6 +47,56 @@ export interface AiSummary {
   bondingRequired?:  boolean;
   capabilityMatch?:  string | null;
   licenseRisk?:      string | null;
+  deepRead?:         DeepRead | null;
+}
+
+export interface DeepReadDeadline {
+  date: string | null;
+  time: string | null;
+  timezone: string | null;
+  raw: string | null;
+}
+
+export interface DeepReadSiteVisit {
+  date: string | null;
+  time: string | null;
+  timezone: string | null;
+  location: string | null;
+}
+
+export interface DeepReadInsurance {
+  generalLiability: string | null;
+  workersCompensation: string | null;
+  auto: string | null;
+  other: string[];
+}
+
+export interface DeepRead {
+  submissionDeadline: DeepReadDeadline;
+  siteVisit: DeepReadSiteVisit | null;
+  insuranceRequirements: DeepReadInsurance;
+  bonding: {
+    required: boolean;
+    amounts: string | null;
+    details: string | null;
+  };
+  prevailingWage: {
+    required: boolean;
+    wageDeterminationNumber: string | null;
+    details: string | null;
+  };
+  smallBusinessSubcontracting: {
+    required: boolean;
+    details: string | null;
+  };
+  evaluationCriteria: string[];
+  pointOfContact: {
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null;
+  awardSlots: number | null;
+  redFlags: string[];
 }
 
 // ── Recommendation engine ─────────────────────────────────────────────────────

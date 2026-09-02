@@ -20,6 +20,8 @@ export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   notes: text("notes"),
   source: text("source").notNull().default("federal"),
   sourceLabel: text("source_label"),
+  // Existing AI summary JSON. Deep solicitation reads are stored under
+  // aiSummary.deepRead so they share the same cache and ownership boundary.
   aiSummary: jsonb("ai_summary"),
   aiSummaryAt: timestamp("ai_summary_at"),
   // Phase 1 — capability-aware engine

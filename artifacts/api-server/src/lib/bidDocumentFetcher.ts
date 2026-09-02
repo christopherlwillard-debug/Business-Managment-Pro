@@ -39,9 +39,9 @@ export interface FetchedDocument {
   source: "pdf" | "html" | "description";
 }
 
-async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+async function extractTextFromPdf(buffer: Buffer, maxChars = 30000): Promise<string> {
   const result = await pdfParse(buffer);
-  return result.text?.slice(0, 30000) ?? "";
+  return result.text?.slice(0, maxChars) ?? "";
 }
 
 const MAX_REDIRECTS = 5;
@@ -84,7 +84,7 @@ async function fetchPdfBuffer(url: string): Promise<Buffer | null> {
   }
 }
 
-async function fetchHtmlText(url: string): Promise<string | null> {
+async function fetchHtmlText(url: string, maxChars = 30000): Promise<string | null> {
   if (!(await isSafeUrl(url))) {
     console.warn("[bid-doc] Blocked unsafe URL for Puppeteer:", url);
     return null;
@@ -105,7 +105,7 @@ async function fetchHtmlText(url: string): Promise<string | null> {
     });
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
     const text = await page.evaluate(() => document.body?.innerText ?? "");
-    return text.slice(0, 30000);
+    return text.slice(0, maxChars);
   } catch {
     return null;
   } finally {
@@ -153,15 +153,16 @@ export async function fetchBidDocument(opts: {
   url: string | null;
   source: string;
   description: string | null;
+  maxChars?: number;
 }): Promise<FetchedDocument> {
-  const { noticeId, url, source, description } = opts;
+  const { noticeId, url, source, description, maxChars = 30000 } = opts;
 
   if (source === "federal" || source === "sam") {
     const attachmentUrl = await fetchSamAttachmentUrl(noticeId);
     if (attachmentUrl) {
       const buf = await fetchPdfBuffer(attachmentUrl);
       if (buf) {
-        const text = await extractTextFromPdf(buf);
+        const text = await extractTextFromPdf(buf, maxChars);
         if (text.length > 100) return { text, source: "pdf" };
       }
     }
@@ -170,11 +171,11 @@ export async function fetchBidDocument(opts: {
   if (url) {
     const buf = await fetchPdfBuffer(url);
     if (buf) {
-      const text = await extractTextFromPdf(buf);
+      const text = await extractTextFromPdf(buf, maxChars);
       if (text.length > 100) return { text, source: "pdf" };
     }
 
-    const html = await fetchHtmlText(url);
+    const html = await fetchHtmlText(url, maxChars);
     if (html && html.length > 100) return { text: html, source: "html" };
   }
 

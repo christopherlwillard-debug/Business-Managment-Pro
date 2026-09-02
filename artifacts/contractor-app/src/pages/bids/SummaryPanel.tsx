@@ -4,11 +4,12 @@ import {
   Briefcase, DollarSign, ShieldCheck, Calendar, ExternalLink,
   Shield, Users, Globe, Award, AlertTriangle, ChevronDown,
   StickyNote, Check, Eye, Minus, HelpCircle, BadgeCheck, Lock,
+  FileSearch, MapPin, Mail, Phone, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
   AiSummary, BidOpportunity, BidStage, SetAsideType,
-  RecommendationFactor, FactorSignal, OfficialSourceStatus,
+  RecommendationFactor, FactorSignal, OfficialSourceStatus, DeepRead,
 } from "./types";
 import { PIPELINE_STAGES } from "./types";
 
@@ -107,6 +108,179 @@ function FactorRow({ factor }: { factor: RecommendationFactor }) {
   );
 }
 
+function DeepReadValue({ value }: { value: string | null | undefined }) {
+  return (
+    <span className={cn(
+      "text-sm",
+      value ? "text-foreground" : "text-muted-foreground/60 italic",
+    )}>
+      {value ?? "Not stated in the solicitation"}
+    </span>
+  );
+}
+
+function DeepReadList({ items }: { items: string[] }) {
+  if (items.length === 0) {
+    return <DeepReadValue value={null} />;
+  }
+  return (
+    <ul className="space-y-1.5">
+      {items.map((item, index) => (
+        <li key={`${item}-${index}`} className="flex items-start gap-2 text-sm text-foreground">
+          <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-muted-foreground/40 flex-shrink-0" />
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
+  const deadline = deepRead.submissionDeadline;
+  const siteVisit = deepRead.siteVisit;
+  const contact = deepRead.pointOfContact;
+  const insurance = deepRead.insuranceRequirements;
+  const insuranceRows = [
+    ["General liability", insurance.generalLiability],
+    ["Workers' compensation", insurance.workersCompensation],
+    ["Commercial auto", insurance.auto],
+  ] as const;
+
+  return (
+    <details className="rounded-xl border border-primary/20 bg-primary/[0.03] overflow-hidden" open>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 hover:bg-primary/[0.04]">
+        <div className="flex items-center gap-2">
+          <FileSearch className="w-4 h-4 text-primary" />
+          <span className="text-sm font-semibold text-foreground">Full Requirements</span>
+        </div>
+        <span className="text-xs text-muted-foreground">AI deep read</span>
+      </summary>
+
+      <div className="border-t border-primary/10 px-4 py-4 space-y-5">
+        <section className="space-y-2">
+          <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <Clock className="w-3.5 h-3.5" />
+            Submission deadline
+          </h4>
+          <div className="pl-5 space-y-1">
+            <DeepReadValue value={deadline.raw} />
+            {!deadline.raw && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div><span className="text-xs text-muted-foreground">Date</span><br /><DeepReadValue value={deadline.date} /></div>
+                <div><span className="text-xs text-muted-foreground">Time</span><br /><DeepReadValue value={deadline.time} /></div>
+                <div><span className="text-xs text-muted-foreground">Timezone</span><br /><DeepReadValue value={deadline.timezone} /></div>
+              </div>
+            )}
+            {deadline.raw && (
+              <p className="text-xs text-muted-foreground">
+                {[deadline.date, deadline.time, deadline.timezone].filter(Boolean).join(" · ") || "Exact components not separately identified"}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <MapPin className="w-3.5 h-3.5" />
+            Site visit
+          </h4>
+          <div className="pl-5 space-y-1">
+            {siteVisit ? (
+              <>
+                <DeepReadValue value={[siteVisit.date, siteVisit.time, siteVisit.timezone].filter(Boolean).join(" · ") || null} />
+                <DeepReadValue value={siteVisit.location} />
+              </>
+            ) : <DeepReadValue value={null} />}
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Insurance
+          </h4>
+          <div className="pl-5 space-y-2">
+            {insuranceRows.map(([label, value]) => (
+              <div key={label} className="grid grid-cols-[9rem_1fr] gap-2 items-start">
+                <span className="text-xs text-muted-foreground">{label}</span>
+                <DeepReadValue value={value} />
+              </div>
+            ))}
+            {insurance.other.length > 0 && (
+              <div className="pt-1"><DeepReadList items={insurance.other} /></div>
+            )}
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bonding</h4>
+            <div className="pl-1 space-y-1">
+              <p className={cn("text-sm font-medium", deepRead.bonding.required ? "text-orange-700 dark:text-orange-300" : "text-foreground")}>
+                {deepRead.bonding.required ? "Required" : "Not identified"}
+              </p>
+              <DeepReadValue value={deepRead.bonding.amounts} />
+              <DeepReadValue value={deepRead.bonding.details} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prevailing wage</h4>
+            <div className="pl-1 space-y-1">
+              <p className={cn("text-sm font-medium", deepRead.prevailingWage.required ? "text-orange-700 dark:text-orange-300" : "text-foreground")}>
+                {deepRead.prevailingWage.required ? "Required" : "Not identified"}
+              </p>
+              <DeepReadValue value={deepRead.prevailingWage.wageDeterminationNumber ? `Wage determination ${deepRead.prevailingWage.wageDeterminationNumber}` : null} />
+              <DeepReadValue value={deepRead.prevailingWage.details} />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Small-business subcontracting</h4>
+          <div className="pl-1 space-y-1">
+            <p className="text-sm font-medium text-foreground">
+              {deepRead.smallBusinessSubcontracting.required ? "Required" : "Not identified"}
+            </p>
+            <DeepReadValue value={deepRead.smallBusinessSubcontracting.details} />
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Evaluation criteria</h4>
+          <DeepReadList items={deepRead.evaluationCriteria} />
+        </section>
+
+        <section className="space-y-2">
+          <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <Users className="w-3.5 h-3.5" />
+            Point of contact
+          </h4>
+          {contact ? (
+            <div className="pl-5 space-y-1">
+              <DeepReadValue value={contact.name} />
+              {contact.email && <a className="flex items-center gap-1.5 text-sm text-primary hover:underline" href={`mailto:${contact.email}`}><Mail className="w-3.5 h-3.5" />{contact.email}</a>}
+              {contact.phone && <a className="flex items-center gap-1.5 text-sm text-primary hover:underline" href={`tel:${contact.phone}`}><Phone className="w-3.5 h-3.5" />{contact.phone}</a>}
+            </div>
+          ) : <div className="pl-5"><DeepReadValue value={null} /></div>}
+        </section>
+
+        <section className="flex items-center justify-between gap-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Award slots</h4>
+          <DeepReadValue value={deepRead.awardSlots === null ? null : String(deepRead.awardSlots)} />
+        </section>
+
+        <section className="space-y-2 rounded-lg border border-red-200 bg-red-50/60 p-3 dark:border-red-900/60 dark:bg-red-950/20">
+          <h4 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Red flags
+          </h4>
+          <DeepReadList items={deepRead.redFlags} />
+        </section>
+      </div>
+    </details>
+  );
+}
+
 // ── Official source UI ────────────────────────────────────────────────────────
 
 const OFFICIAL_SOURCE_CONFIG: Record<Exclude<OfficialSourceStatus, "not_checked">, {
@@ -147,6 +321,8 @@ export default function SummaryPanel({
   onJobChange,
   onRegenerate,
   regenerating,
+  onDeepRead,
+  deepReading,
 }: {
   bid: BidOpportunity;
   summary: AiSummary | null;
@@ -159,6 +335,8 @@ export default function SummaryPanel({
   onJobChange?: (jobId: number | null) => void;
   onRegenerate?: () => void;
   regenerating?: boolean;
+  onDeepRead?: (force?: boolean) => void;
+  deepReading?: boolean;
 }) {
   const [notes, setNotes] = useState(bid.notes ?? "");
   const [savedIndicator, setSavedIndicator] = useState(false);
@@ -238,6 +416,17 @@ export default function SummaryPanel({
               </div>
             )}
           </div>
+          {bid.url && onDeepRead && (
+            <button
+              onClick={() => onDeepRead(Boolean(summary?.deepRead))}
+              disabled={deepReading || loading}
+              title={summary?.deepRead ? "Read the solicitation again after an amendment" : "Extract the full solicitation requirements"}
+              className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+            >
+              <FileSearch className={cn("w-3.5 h-3.5", deepReading && "animate-pulse")} />
+              {deepReading ? "Reading…" : summary?.deepRead ? "Re-read" : "Deep Read"}
+            </button>
+          )}
           {summary && !loading && onRegenerate && (
             <button
               onClick={onRegenerate}
@@ -420,6 +609,8 @@ export default function SummaryPanel({
                   </ul>
                 </div>
               )}
+
+              {summary.deepRead && <DeepReadSection deepRead={summary.deepRead} />}
 
               {/* ── Official source section ──────────────────────────────────── */}
               {bid.officialSourceStatus && bid.officialSourceStatus !== "not_checked" && (() => {

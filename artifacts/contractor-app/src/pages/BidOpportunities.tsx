@@ -72,6 +72,7 @@ export default function BidOpportunities() {
   const [panelLoading, setPanelLoading] = useState(false);
   const [panelError,        setPanelError]        = useState<string | null>(null);
   const [panelRegenerating, setPanelRegenerating] = useState(false);
+  const [panelDeepReading,  setPanelDeepReading]  = useState(false);
   const [summaryCache,   setSummaryCache]   = useState<Record<number, AiSummary>>({});
   const [educatingBid,   setEducatingBid]   = useState<BidOpportunity | null>(null);
   const [educationCache, setEducationCache] = useState<Record<number, EducationSummary>>({});
@@ -461,6 +462,42 @@ export default function BidOpportunities() {
     }
   }
 
+  async function handleDeepRead(force = false) {
+    if (!panelBid || panelDeepReading) return;
+    const effectiveBizId = panelBid.businessId ?? businessId;
+    if (!effectiveBizId) {
+      toast({ title: "Select a business first to read the solicitation", variant: "destructive" });
+      return;
+    }
+
+    setPanelDeepReading(true);
+    setPanelError(null);
+    try {
+      const res = await fetch(`${BASE_URL}/api/bids/${panelBid.id}/deep-read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ businessId: effectiveBizId, force }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? "Failed to read the solicitation");
+      }
+      const data = await res.json() as { summary: AiSummary };
+      setPanelSummary(data.summary);
+      setSummaryCache((prev) => ({ ...prev, [panelBid.id]: data.summary }));
+      queryClient.invalidateQueries({ queryKey: ["bids-unified"] });
+    } catch (err) {
+      toast({
+        title: force ? "Re-read failed" : "Deep read failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setPanelDeepReading(false);
+    }
+  }
+
   // ── USASpending awards (separate source) ─────────────────────────────────
   const isAward = (b: BidOpportunity) => b.source === "usa-spending" || b.opportunityType === "award_intelligence";
   const awards = bids.filter(isAward);
@@ -649,6 +686,8 @@ export default function BidOpportunities() {
           onJobChange={(jobId) => updateJob.mutate({ id: panelBid.id, jobId, bidBusinessId: panelBid.businessId })}
           onRegenerate={handleRegenerate}
           regenerating={panelRegenerating}
+          onDeepRead={handleDeepRead}
+          deepReading={panelDeepReading}
         />
       )}
 
