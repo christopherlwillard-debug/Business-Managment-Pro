@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, jobReadinessConditionsTable, type ServiceBilling } from "@workspace/db/schema";
-import { eq, and, count, inArray, sql, isNull, desc, or } from "drizzle-orm";
+import { eq, and, count, inArray, sql, isNull, desc, or, ne } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
 import { syncMaterialsToJobInvoice } from "./material-lists";
-import { computeAllocationSplitPool, computeSubOwed } from "../lib/allocation.js";
+import { computeAllocationSplitPool, computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
 import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/productionBilling.js";
 import { z } from "zod/v4";
@@ -1232,6 +1232,323 @@ router.get("/profit-summary", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch profit summary" });
+  }
+});
+
+// Active-job financial visibility summary. This composes existing ledgers and
+// calculation services; it does not persist a second financial representation.
+// Keep this before /:id so "financials-summary" is not parsed as an id.
+router.get("/financials-summary", async (req, res) => {
+  try {
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+
+    const jobConditions = [ne(jobsTable.status, "closed")];
+    if (scope) {
+      jobConditions.push(or(
+        eq(jobsTable.businessId, scope.id),
+        and(isNull(jobsTable.businessId), eq(jobsTable.businessLine, scope.slug)),
+      ) as any);
+    }
+
+    const activeJobs = await db
+      .select({
+        id: jobsTable.id,
+        jobNumber: jobsTable.jobNumber,
+        title: jobsTable.title,
+        status: jobsTable.status,
+        clientName: clientsTable.name,
+        clientId: jobsTable.clientId,
+        businessId: jobsTable.businessId,
+        businessLine: jobsTable.businessLine,
+        createdAt: jobsTable.createdAt,
+      })
+      .from(jobsTable)
+      .leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id))
+      .where(and(...jobConditions))
+      .orderBy(desc(jobsTable.createdAt), desc(jobsTable.id));
+
+    if (activeJobs.length === 0) {
+      return res.json({
+        jobs: [],
+        totals: {
+          workersOwed: 0,
+          subcontractorsOwed: 0,
+          ownerPayOwed: 0,
+          activeJobs: 0,
+          ownerPayUnknownJobs: 0,
+          workersUnknownJobs: 0,
+          subcontractorsUnknownJobs: 0,
+        },
+        dataStatus: "complete",
+        warnings: [],
+      });
+    }
+
+    const jobIds = activeJobs.map(job => job.id);
+    const [
+      invoiceRows,
+      assignmentRows,
+      ownerRows,
+      readinessRows,
+      settingsRows,
+      profitPools,
+    ] = await Promise.all([
+      db.select({
+        id: invoicesTable.id,
+        jobId: invoicesTable.jobId,
+        status: invoicesTable.status,
+        total: invoicesTable.total,
+        amountPaid: invoicesTable.amountPaid,
+        createdAt: invoicesTable.createdAt,
+      }).from(invoicesTable)
+        .where(and(inArray(invoicesTable.jobId, jobIds), isNull(invoicesTable.voidedAt)))
+        .orderBy(desc(invoicesTable.createdAt)),
+      db.select({
+        jobId: jobSubcontractorsTable.jobId,
+        subcontractorId: jobSubcontractorsTable.subcontractorId,
+        subName: subcontractorsTable.name,
+        compensationType: jobSubcontractorsTable.compensationType,
+        amountOwed: jobSubcontractorsTable.amountOwed,
+        fixedAmount: jobSubcontractorsTable.fixedAmount,
+        allocationPct: jobSubcontractorsTable.allocationPct,
+        amountPaidColumn: jobSubcontractorsTable.amountPaid,
+        paymentStatus: jobSubcontractorsTable.paymentStatus,
+        computedOwed: sql<string>`COALESCE((
+          SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
+          FROM job_sub_hours h
+          WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+            AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+        ), 0)`,
+        ledgerPaid: sql<string>`COALESCE((
+          SELECT SUM(spr.amount + COALESCE(spr.advance_amount, 0))
+          FROM sub_payment_records spr
+          WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
+            AND spr.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+            AND spr.is_reversal IS NOT TRUE
+        ), 0)`,
+      }).from(jobSubcontractorsTable)
+        .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
+        .where(inArray(jobSubcontractorsTable.jobId, jobIds)),
+      db.select({
+        jobId: ownerCapitalEntriesTable.jobId,
+        amount: ownerCapitalEntriesTable.amount,
+      }).from(ownerCapitalEntriesTable)
+        .where(and(
+          inArray(ownerCapitalEntriesTable.jobId, jobIds),
+          sql`${ownerCapitalEntriesTable.amount} < 0`,
+          isNull(ownerCapitalEntriesTable.voidedAt),
+        )),
+      db.select({
+        jobId: jobReadinessConditionsTable.jobId,
+        reason: jobReadinessConditionsTable.reason,
+        detail: jobReadinessConditionsTable.detail,
+      }).from(jobReadinessConditionsTable)
+        .where(and(inArray(jobReadinessConditionsTable.jobId, jobIds), isNull(jobReadinessConditionsTable.clearedAt))),
+      db.select({
+        ownerSplitPct: settingsTable.ownerSplitPct,
+        taxReservePct: settingsTable.taxReservePct,
+      }).from(settingsTable).limit(1),
+      computeAllocationSplitPools(jobIds),
+    ]);
+
+    const settings = settingsRows[0];
+    const ownerSplitPct = settings?.ownerSplitPct != null ? Number(settings.ownerSplitPct) : 50;
+    const taxReservePct = settings?.taxReservePct != null ? Number(settings.taxReservePct) : 25;
+    const statusRank: Record<string, number> = {
+      paid: 5, partiallyPaid: 4, sent: 3, approved: 2, overdue: 1, draft: 0, cancelled: -1,
+    };
+    type FinancialAssignment = {
+      jobId: number;
+      subcontractorId: number;
+      subName: string | null;
+      compensationType: string | null;
+      amountOwed: string | null;
+      fixedAmount: string | null;
+      allocationPct: string | null;
+      amountPaidColumn: string | null;
+      paymentStatus: string;
+      computedOwed: string;
+      ledgerPaid: string;
+    };
+
+    const invoiceByJob = new Map<number, typeof invoiceRows[number]>();
+    for (const invoice of invoiceRows) {
+      if (invoice.jobId == null) continue;
+      const current = invoiceByJob.get(invoice.jobId);
+      if (!current || (statusRank[invoice.status] ?? -1) > (statusRank[current.status] ?? -1)) {
+        invoiceByJob.set(invoice.jobId, invoice);
+      }
+    }
+
+    const assignmentsByJob = new Map<number, FinancialAssignment[]>();
+    for (const row of assignmentRows as FinancialAssignment[]) {
+      const rows = assignmentsByJob.get(row.jobId) ?? [];
+      rows.push(row);
+      assignmentsByJob.set(row.jobId, rows);
+    }
+    const ownerPaidByJob = new Map<number, number>();
+    for (const row of ownerRows) {
+      if (row.jobId == null) continue;
+      ownerPaidByJob.set(row.jobId, (ownerPaidByJob.get(row.jobId) ?? 0) + Math.abs(Number(row.amount ?? 0)));
+    }
+    const blockersByJob = new Map<number, string[]>();
+    for (const row of readinessRows) {
+      const blockers = blockersByJob.get(row.jobId) ?? [];
+      blockers.push(row.detail || row.reason);
+      blockersByJob.set(row.jobId, blockers);
+    }
+
+    let dataStatus: "complete" | "partial" = "complete";
+    const warnings: string[] = [];
+    let workersOwed = 0;
+    let subcontractorsOwed = 0;
+    let ownerPayOwed = 0;
+    let ownerPayUnknownJobs = 0;
+    let workersUnknownJobs = 0;
+    let subcontractorsUnknownJobs = 0;
+
+    const summaries = activeJobs.map(job => {
+      const invoice = invoiceByJob.get(job.id);
+      const amountDue = invoice
+        ? Math.max(0, Number(invoice.total ?? 0) - Number(invoice.amountPaid ?? (invoice.status === "paid" ? invoice.total : 0)))
+        : null;
+      const paymentSatisfied = invoice?.status === "paid" || (invoice?.status === "partiallyPaid" && amountDue === 0);
+      const assignments = (assignmentsByJob.get(job.id) ?? []).sort((a: FinancialAssignment, b: FinancialAssignment) =>
+        (a.subName ?? "").localeCompare(b.subName ?? "") || a.subcontractorId - b.subcontractorId
+      );
+      const workers = assignments.filter((row: FinancialAssignment) => (row.compensationType ?? "hourly") === "hourly");
+      const subcontractors = assignments.filter((row: FinancialAssignment) => (row.compensationType ?? "hourly") !== "hourly");
+      const makeDetail = (row: FinancialAssignment, owed: number | null) => {
+        const amountPaid = row.ledgerPaid != null
+          ? Number(row.ledgerPaid)
+          : row.amountPaidColumn == null ? 0 : Number(row.amountPaidColumn);
+        const balance = owed == null ? null : Math.max(0, owed - amountPaid);
+        const status = owed == null
+          ? "unavailable"
+          : amountPaid > owed + 0.005 ? "overpaid"
+          : balance != null && balance <= 0.005 ? "paid"
+          : amountPaid > 0 ? "partial" : "unpaid";
+        return {
+          id: row.subcontractorId,
+          name: row.subName ?? `Subcontractor #${row.subcontractorId}`,
+          compensationType: row.compensationType ?? "hourly",
+          amountOwed: owed,
+          amountPaid,
+          balance,
+          status,
+        };
+      };
+      const workerDetails = workers.map((row: FinancialAssignment) => makeDetail(
+        row,
+        row.amountOwed != null ? Number(row.amountOwed) : Number(row.computedOwed ?? 0),
+      ));
+      const pool = profitPools.get(job.id);
+      const allocationRows = subcontractors.filter((row: FinancialAssignment) => row.compensationType === "allocation");
+      const totalAllocationPct = allocationRows.reduce((sum: number, row: FinancialAssignment) => sum + Number(row.allocationPct ?? 0), 0);
+      const ownerPct = allocationRows.length > 0 ? Math.max(0, 100 - totalAllocationPct) : ownerSplitPct;
+      const subDetails = subcontractors.map((row: FinancialAssignment) => makeDetail(
+        row,
+        row.amountOwed != null
+          ? Number(row.amountOwed)
+          : row.compensationType === "fixed"
+            ? Number(row.fixedAmount ?? 0)
+            : pool ? pool.splitPool * (Number(row.allocationPct ?? 0) / 100) : null,
+      ));
+      const workerTotal = workerDetails.reduce((sum: number, row) => sum + (row.balance ?? 0), 0);
+      const subcontractorTotal = subDetails.reduce((sum: number, row) => sum + (row.balance ?? 0), 0);
+      const ownerEarned = pool
+        ? pool.splitPool * (ownerPct / 100) * (1 - Math.max(0, taxReservePct) / 100)
+        : null;
+      const ownerPaid = ownerPaidByJob.get(job.id) ?? 0;
+      const ownerRemaining = ownerEarned == null ? null : Math.max(0, ownerEarned - ownerPaid);
+      const ownerOverpaid = ownerEarned == null ? 0 : Math.max(0, ownerPaid - ownerEarned);
+      const blockers = blockersByJob.get(job.id) ?? [];
+      if (workerDetails.some(row => row.amountOwed == null)) workersUnknownJobs++;
+      if (subDetails.some(row => row.amountOwed == null)) subcontractorsUnknownJobs++;
+      if (ownerEarned == null) ownerPayUnknownJobs++;
+      if (workerDetails.every(row => row.amountOwed != null)) workersOwed += workerTotal;
+      if (subDetails.every(row => row.amountOwed != null)) subcontractorsOwed += subcontractorTotal;
+      if (ownerRemaining != null) ownerPayOwed += ownerRemaining;
+
+      const internalBlocker =
+        workerDetails.some(row => row.balance != null && row.balance > 0.005) ||
+        subDetails.some(row => row.balance != null && row.balance > 0.005) ||
+        ownerRemaining == null ||
+        (ownerRemaining != null && ownerRemaining > 0.005) ||
+        blockers.length > 0 ||
+        workerDetails.some(row => row.amountOwed == null) ||
+        subDetails.some(row => row.amountOwed == null);
+      const state = internalBlocker
+        ? "needs_action"
+        : paymentSatisfied
+          ? "ready_to_close"
+          : "waiting_on_payment";
+      return {
+        job: {
+          id: job.id,
+          jobNumber: job.jobNumber,
+          title: job.title,
+          status: job.status,
+          clientName: job.clientName,
+          clientId: job.clientId,
+          businessId: job.businessId,
+          businessLine: job.businessLine,
+        },
+        payment: {
+          status: invoice?.status ?? "not_invoiced",
+          amountDue,
+          invoiceId: invoice?.id ?? null,
+        },
+        workers: {
+          available: true,
+          count: workerDetails.length,
+          totalOwed: workerTotal,
+          details: workerDetails,
+        },
+        subcontractors: {
+          available: true,
+          count: subDetails.length,
+          totalOwed: subcontractorTotal,
+          details: subDetails,
+        },
+        ownerPay: {
+          supported: ownerEarned != null,
+          earned: ownerEarned,
+          paid: ownerEarned == null ? null : ownerPaid,
+          remaining: ownerRemaining,
+          overpaid: ownerOverpaid,
+        },
+        state,
+        blockers,
+        warnings: ownerEarned == null ? ["Owner Pay is unavailable for this job."] : [],
+      };
+    });
+
+    if (workersUnknownJobs || subcontractorsUnknownJobs || ownerPayUnknownJobs) {
+      dataStatus = "partial";
+      if (workersUnknownJobs) warnings.push(`${workersUnknownJobs} job(s) have unavailable worker balances.`);
+      if (subcontractorsUnknownJobs) warnings.push(`${subcontractorsUnknownJobs} job(s) have unavailable subcontractor balances.`);
+      if (ownerPayUnknownJobs) warnings.push(`${ownerPayUnknownJobs} job(s) have unavailable Owner Pay balances.`);
+    }
+
+    res.json({
+      jobs: summaries,
+      totals: {
+        workersOwed,
+        subcontractorsOwed,
+        ownerPayOwed,
+        activeJobs: summaries.length,
+        ownerPayUnknownJobs,
+        workersUnknownJobs,
+        subcontractorsUnknownJobs,
+      },
+      dataStatus,
+      warnings,
+    });
+  } catch (err) {
+    console.error("[jobs/financials-summary]", err);
+    res.status(500).json({ error: "Failed to fetch active job financials" });
   }
 });
 

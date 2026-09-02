@@ -57,6 +57,7 @@ import { JobMarginCard } from "@/components/JobMarginCard";
 import { JobPlanningDialog } from "@/components/planner/JobPlanningDialog";
 import { ExtendedJob } from "@/components/planner/types";
 import { JobsPlanner } from "@/components/planner/JobsPlanner";
+import { JobsFinancialsView } from "@/components/JobsFinancialsView";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -7364,6 +7365,7 @@ export default function Jobs() {
   // Include inactive so archived service names still resolve on existing job cards
   const { data: allProductionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id, true);
   const [jobSearch, setJobSearch]       = useState("");
+  const [jobsView, setJobsView]         = useState<"all" | "financials">("all");
   const [localBLFilter, setLocalBLFilter] = useState<string>("");
   const jobBLFilter = activeBusiness ? activeBusiness.slug : localBLFilter;
   const [needsPayoutFilter, setNeedsPayoutFilter] = useState(false);
@@ -8145,7 +8147,24 @@ export default function Jobs() {
           <h1 className="text-3xl font-display font-bold text-foreground">Jobs</h1>
            <p className="text-muted-foreground mt-1">Plan the work, manage job details, and keep billing moving.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <div className="flex w-full sm:w-auto justify-center rounded-xl border border-border bg-muted/40 p-0.5" role="tablist" aria-label="Jobs view">
+            {([
+              ["all", "All Jobs"],
+              ["financials", "Financials"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={jobsView === value}
+                onClick={() => setJobsView(value)}
+                className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${jobsView === value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input
@@ -8165,16 +8184,27 @@ export default function Jobs() {
         </div>
       </div>
 
-        <JobsPlanner
-         businessId={activeBusiness?.id}
-          allJobs={jobs}
-         onOpenChecklist={setScheduleChecklistJob}
-         onOpenJob={openEditJob}
-          onOpenPlanning={job => setPlanningJob(job)}
-          checklistSummaries={checklistSummaries}
-         onLoaded={loadedJobs => setScheduleJobsById(new Map(loadedJobs.map(job => [job.id, job])))}
-         refreshKey={scheduleRefreshKey}
-       />
+      {jobsView === "financials" ? (
+        <JobsFinancialsView
+          businessId={activeBusiness?.id}
+          search={jobSearch}
+          onOpenJob={jobId => {
+            const job = jobs.find(candidate => candidate.id === jobId);
+            if (job) void openEditJob(job);
+          }}
+        />
+      ) : (
+        <>
+       <JobsPlanner
+        businessId={activeBusiness?.id}
+         allJobs={jobs}
+        onOpenChecklist={setScheduleChecklistJob}
+        onOpenJob={openEditJob}
+         onOpenPlanning={job => setPlanningJob(job)}
+         checklistSummaries={checklistSummaries}
+        onLoaded={loadedJobs => setScheduleJobsById(new Map(loadedJobs.map(job => [job.id, job])))}
+        refreshKey={scheduleRefreshKey}
+      />
 
        <div className="flex items-center justify-between gap-3 pt-1">
          <div>
@@ -8718,6 +8748,8 @@ export default function Jobs() {
             </div>
           )}
         </div>
+       )}
+        </>
       )}
 
       {/* Dialogs */}
