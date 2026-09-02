@@ -5,6 +5,41 @@ import { eq, and, sql, inArray, ne, gte, lte } from "drizzle-orm";
 
 const router = Router();
 
+type PaymentHistoryJob = {
+  jobId: number;
+  jobTitle: string | null;
+  businessLine: string | null;
+  compensationType: string;
+  totalHours: number;
+  amountOwed: number | null;
+  amountPaid: number;
+  paymentStatus: string;
+  paidDate: string | null;
+  paidAt: string | null;
+};
+
+function csvCell(value: string | number | null | undefined): string {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+export function paymentHistoryToCsv(jobs: PaymentHistoryJob[]): string {
+  const header = ["Job", "Business Line", "Comp Type", "Hours", "Owed", "Paid", "Status", "Paid Date"];
+  const rows = jobs.map(job => [
+    job.jobTitle ?? `Job #${job.jobId}`,
+    job.businessLine ?? "",
+    job.compensationType,
+    job.totalHours.toFixed(2),
+    job.amountOwed != null ? job.amountOwed.toFixed(2) : "",
+    job.amountPaid.toFixed(2),
+    job.paymentStatus,
+    job.paidDate ?? job.paidAt ?? "",
+  ]);
+
+  return [header, ...rows]
+    .map(row => row.map(csvCell).join(","))
+    .join("\r\n") + "\r\n";
+}
+
 function format(s: any, ytdOverride?: number) {
   return {
     ...s,
@@ -643,6 +678,13 @@ router.get("/:id/payment-history", async (req, res) => {
     const allBusinessLines = [...new Set(
       rows.map(r => r.businessLine).filter((bl): bl is string => !!bl)
     )].sort();
+
+    if (req.query.format === "csv") {
+      const filename = `subcontractor-${subId}-payment-history.csv`;
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      return res.send(paymentHistoryToCsv(jobs));
+    }
 
     res.json({ jobs, ytdPaid, totalOwed, totalPaid, balance: totalOwed - totalPaid, allBusinessLines });
   } catch (err) {

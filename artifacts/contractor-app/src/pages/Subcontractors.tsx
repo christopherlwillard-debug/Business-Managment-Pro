@@ -55,6 +55,7 @@ export default function Subcontractors() {
   const [showSettled, setShowSettled] = useState(false);
   const [settleConfirm, setSettleConfirm] = useState<{ id: number; name: string; reopen: boolean } | null>(null);
   const [settlingId, setSettlingId] = useState<number | null>(null);
+  const [exportingHistory, setExportingHistory] = useState(false);
   const [, navigate] = useLocation();
 
   async function handleSettle(id: number, reopen: boolean) {
@@ -147,6 +148,34 @@ export default function Subcontractors() {
     enabled: !!inviteModal && subDetailTab === "history",
     staleTime: 30000,
   });
+
+  async function downloadPaymentHistoryCsv() {
+    if (!inviteModal) return;
+    setExportingHistory(true);
+    try {
+      const params = new URLSearchParams({ format: "csv" });
+      if (historyYear !== "all") params.set("year", String(historyYear));
+      if (historyBusinessLine) params.set("businessLine", historyBusinessLine);
+
+      const res = await fetch(`${BASE}/api/subcontractors/${inviteModal.id}/payment-history?${params}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to export payment history");
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `subcontractor-${inviteModal.id}-payment-history-${historyYear === "all" ? "all-years" : historyYear}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Export failed", description: "Could not download payment history.", variant: "destructive" });
+    } finally {
+      setExportingHistory(false);
+    }
+  }
 
   async function generate1099Pdf(sub: any) {
     setGenerating1099(sub.subcontractorId);
@@ -1200,7 +1229,7 @@ export default function Subcontractors() {
               {subDetailTab === "history" && (
                 <div className="space-y-4">
                   {/* Filters */}
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-2 flex-wrap items-end">
                     <div className="flex-1 min-w-[100px]">
                       <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Year</label>
                       <select
@@ -1227,6 +1256,15 @@ export default function Subcontractors() {
                         ))}
                       </select>
                     </div>
+                    <button
+                      type="button"
+                      onClick={downloadPaymentHistoryCsv}
+                      disabled={exportingHistory || paymentHistoryLoading}
+                      className="flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Download className="w-4 h-4 mr-1.5" />
+                      {exportingHistory ? "Exporting…" : "Export CSV"}
+                    </button>
                   </div>
 
                   {/* YTD Totals */}
