@@ -192,6 +192,8 @@ export interface BidOpportunity {
   relevantBusinessNames?:  string[];
   /** Short explanation of why this bid matched, e.g. "Flooring Installation (NAICS 238330)" */
   relevanceReason?:        string | null;
+  /** Present on hidden-feed rows to explain why the opportunity is recoverable here. */
+  filterReason?:            string | null;
 }
 
 export type NaicsMatch = "exact" | "related" | "none";

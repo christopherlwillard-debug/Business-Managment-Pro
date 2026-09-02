@@ -292,6 +292,19 @@ export default function BidOpportunities() {
     },
   });
 
+  // Separate recovery feed: the server chooses hidden representatives and
+  // excludes award intelligence before it reaches the UI.
+  const { data: hiddenBids = [] } = useQuery<BidOpportunity[]>({
+    queryKey: ["bids-hidden", activeBusiness?.id ?? "all"],
+    queryFn: async () => {
+      const params = new URLSearchParams({ includeHidden: "true" });
+      if (activeBusiness) params.set("scoringBusinessId", String(activeBusiness.id));
+      const res = await fetch(`${BASE_URL}/api/bids/unified?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load filtered bids");
+      return res.json();
+    },
+  });
+
   const { data: jobs = [] } = useQuery<Array<{ id: number; title: string; status?: string | null }>>({
     queryKey: ["bid-jobs", businessId],
     queryFn: async () => {
@@ -321,6 +334,7 @@ export default function BidOpportunities() {
         (prev = []) => prev.map((b) => b.id === updated.id ? { ...b, stage: updated.stage, notes: updated.notes } : b)
       );
       queryClient.invalidateQueries({ queryKey: ["bids-active-count"] });
+      queryClient.invalidateQueries({ queryKey: ["bids-hidden"] });
       if (panelBid?.id === updated.id) setPanelBid((prev) => prev ? { ...prev, stage: updated.stage } : null);
     },
   });
@@ -517,8 +531,6 @@ export default function BidOpportunities() {
       : qualityFilter === "history"
         ? pipelineBids.filter((b) => b.lifecycleState === "expired" || b.lifecycleState === "historical" || b.stage === "no_bid" || b.stage === "score_rejected")
         : pipelineBids;
-  const scoreRejectedBids = pipelineBids.filter((b) => b.stage === "score_rejected");
-
   const profileNaicsCodes = bidSettings?.primaryNaicsCodes ?? [];
 
   // ── Capability category filter — outermost lens ───────────────────────────
@@ -990,8 +1002,8 @@ export default function BidOpportunities() {
         </>
       )}
 
-      {/* ── Filtered / Score-Rejected Bids Panel ────────────────────────── */}
-      {scoreRejectedBids.length > 0 && (
+      {/* ── Filtered / Hidden Bids Panel ─────────────────────────────────── */}
+      {hiddenBids.length > 0 && (
         <div className="mt-4 border border-border/40 rounded-xl overflow-hidden">
           <button
             className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
@@ -999,14 +1011,14 @@ export default function BidOpportunities() {
           >
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <EyeOff className="h-4 w-4" />
-              <span className="font-medium">Filtered Out ({scoreRejectedBids.length})</span>
-              <span className="text-xs hidden sm:inline">— below relevance threshold; tap to review for false positives</span>
+                <span className="font-medium">Filtered Out ({hiddenBids.length})</span>
+                <span className="text-xs hidden sm:inline">— review lower-scored and dismissed opportunities for false positives</span>
             </div>
             <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${showFiltered ? "rotate-180" : ""}`} />
           </button>
           {showFiltered && (
             <div className="divide-y divide-border/30">
-              {scoreRejectedBids.map((bid) => (
+              {hiddenBids.map((bid) => (
                 <div key={bid.id} className="px-4 py-3 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">{bid.title}</p>
@@ -1015,8 +1027,8 @@ export default function BidOpportunities() {
                       {bid.opportunityScore != null && ` · Score ${bid.opportunityScore}/100`}
                       {bid.naicsCode && ` · NAICS ${bid.naicsCode}`}
                     </p>
-                    {bid.notes && (
-                      <p className="text-xs text-muted-foreground/60 mt-0.5 italic">{bid.notes}</p>
+                    {bid.filterReason && (
+                      <p className="text-xs text-muted-foreground/60 mt-0.5 italic">{bid.filterReason}</p>
                     )}
                   </div>
                   <button

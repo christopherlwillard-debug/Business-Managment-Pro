@@ -24,6 +24,7 @@ import { getCredential } from "../lib/credentialManager.js";
 import { CapabilityDefinition, getCapabilitiesForBusinessType } from "../lib/bidCapabilitySeeds.js";
 import { getExistingBusiness } from "../lib/bid-ownership.js";
 import { getBidLifecycleState, isDefaultActiveBid } from "../lib/bidLifecycle.js";
+import { buildBidFilterReason, selectUnifiedCandidateGroup } from "../lib/bidHiddenFeed.js";
 
 type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid";
 const VALID_STAGES: BidStage[] = ["new", "reviewing", "bidding", "submitted", "won", "lost", "no_bid"];
@@ -574,6 +575,7 @@ router.get("/unified", async (req, res) => {
     const { scoringBusinessId } = req.query;
     const rawScoringId = scoringBusinessId ? parseInt(scoringBusinessId as string, 10) : NaN;
     const validScoringId = !isNaN(rawScoringId) ? rawScoringId : null;
+    const includeHidden = String(req.query.includeHidden ?? "") === "true";
     if (validScoringId !== null && !(await requireExistingBusiness(res, validScoringId))) return;
 
     // Load all businesses (single-tenant — no per-user filter needed)
@@ -610,16 +612,22 @@ router.get("/unified", async (req, res) => {
     const unified: Array<Record<string, unknown>> = [];
 
     for (const [, group] of grouped) {
+      // Hidden review uses the hidden row for each business rather than allowing
+      // an active row from another business to become the representative. Award
+      // intelligence is never part of this recovery surface.
+      const candidateGroup = selectUnifiedCandidateGroup(group, includeHidden);
+      if (candidateGroup.length === 0) continue;
+
       // When a specific business is requested, only include bids that business has synced.
       // A bid that never matched that business's keyword/NAICS search doesn't belong in its view —
       // it means the sync engine didn't consider it relevant to that business's capabilities.
-      if (validScoringId && !group.some((r) => r.businessId === validScoringId)) {
+      if (validScoringId && !candidateGroup.some((r) => r.businessId === validScoringId)) {
         continue;
       }
 
       // Representative = highest opportunityScore; newest on tie
-      let rep = group[0];
-      for (const row of group.slice(1)) {
+      let rep = candidateGroup[0];
+      for (const row of candidateGroup.slice(1)) {
         const repScore = rep.opportunityScore ?? -1;
         const rowScore = row.opportunityScore ?? -1;
         if (rowScore > repScore) { rep = row; continue; }
@@ -629,7 +637,7 @@ router.get("/unified", async (req, res) => {
       // Apply scoring-business perspective: use that business's row for isFit/score/stage
       const displayRep = { ...rep };
       if (validScoringId) {
-        const scoringRow = group.find((r) => r.businessId === validScoringId);
+        const scoringRow = candidateGroup.find((r) => r.businessId === validScoringId);
         if (scoringRow) {
           displayRep.id                        = scoringRow.id;
           displayRep.businessId                = scoringRow.businessId;
@@ -659,7 +667,7 @@ router.get("/unified", async (req, res) => {
       }
 
       // Relevant business names (all businesses that have this noticeId)
-      const relevantBusinessNames = group
+      const relevantBusinessNames = candidateGroup
         .map((r) => (r.businessId != null ? (bizNameById.get(r.businessId) ?? null) : null))
         .filter((n): n is string => typeof n === "string");
 
@@ -677,6 +685,7 @@ router.get("/unified", async (req, res) => {
 
       unified.push({
         ...displayRep,
+        filterReason: buildBidFilterReason(displayRep),
         lifecycleState: getBidLifecycleState(displayRep),
         defaultActive: isDefaultActiveBid(displayRep),
         // Never let a stale cached recommendation make incomplete source data

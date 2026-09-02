@@ -649,7 +649,19 @@ async function upsertOpportunities(
       if ((opp as SamOpportunity).naicsMismatch && opp.naicsCode) {
         const sector = opp.naicsCode.slice(0, 2);
         if (NAICS_HARD_REJECT_SECTORS.has(sector)) {
-          console.log(`[bid-sync] NAICS sector hard-reject (${opp.naicsCode}): "${opp.title.slice(0, 60)}"`);
+          // Keep this machine-readable even though these rows are intentionally
+          // not persisted: it gives operators an audit trail for false-positive
+          // suppression without exposing unrelated opportunities as actionable bids.
+          console.log(JSON.stringify({
+            event: "bid_filter_rejected",
+            filter: "naics_sector",
+            reason: "naics_mismatch_in_unrelated_sector",
+            businessId,
+            noticeId: opp.noticeId,
+            naicsCode: opp.naicsCode,
+            source: opp.source ?? defaultSource,
+            title: opp.title.slice(0, 120),
+          }));
           continue;
         }
       }
