@@ -395,7 +395,11 @@ export function JobsPlanner({
   }
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-border bg-card shadow-[0_18px_50px_-32px_rgba(15,23,42,0.55)]">
+    <section
+      className="overflow-hidden rounded-3xl border border-border bg-card shadow-[0_18px_50px_-32px_rgba(15,23,42,0.55)]"
+      data-testid="jobs-planner"
+      data-planner-view={view}
+    >
       <div className="border-b border-border bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-5 py-5 text-white sm:px-7">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex min-w-0 items-start gap-3">
@@ -417,6 +421,7 @@ export function JobsPlanner({
                   key={option}
                   type="button"
                   onClick={() => setView(option)}
+                  data-testid={`planner-view-${option}`}
                   className={`rounded-lg px-3 py-2 text-xs font-bold capitalize transition-colors ${
                     view === option ? "bg-white text-slate-950 shadow-sm" : "text-slate-300 hover:bg-white/10 hover:text-white"
                   }`}
@@ -494,7 +499,14 @@ export function JobsPlanner({
                     }}
                   >
                     {weekEntries.map(({ entry, lane, startIndex, endIndex }) => (
-                      <div key={entry.key} className="min-w-0" style={{ gridColumn: `${startIndex + 1} / ${endIndex + 2}`, gridRow: lane + 1 }}>
+                      <div
+                        key={entry.key}
+                        className="min-w-0"
+                        data-planner-entry-key={entry.key}
+                        data-planner-start={entry.startDate}
+                        data-planner-end={entry.endDate}
+                        style={{ gridColumn: `${startIndex + 1} / ${endIndex + 2}`, gridRow: lane + 1 }}
+                      >
                         {renderEntry(entry)}
                       </div>
                     ))}
@@ -584,7 +596,7 @@ export function JobsPlanner({
 
       {!loading && !error && (
         <div className="grid gap-3 border-t border-border bg-muted/10 p-4 sm:grid-cols-3 sm:p-5">
-          <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4" data-testid="planner-unscheduled">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-amber-800">Unscheduled</p>
@@ -605,7 +617,7 @@ export function JobsPlanner({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-orange-200 bg-orange-50/70 p-4">
+          <div className="rounded-2xl border border-orange-200 bg-orange-50/70 p-4" data-testid="planner-waiting">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-orange-800">Waiting</p>

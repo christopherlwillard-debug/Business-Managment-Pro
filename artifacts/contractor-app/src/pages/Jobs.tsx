@@ -8382,7 +8382,7 @@ export default function Jobs() {
         refreshKey={scheduleRefreshKey}
       />
 
-       <div className="flex items-center justify-between gap-3 pt-1">
+       <div className="flex items-center justify-between gap-3 pt-1" data-testid="job-records-heading">
          <div>
            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Job records</p>
            <h2 className="text-xl font-display font-bold text-foreground">All jobs</h2>
