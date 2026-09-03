@@ -1018,7 +1018,7 @@ router.get("/profit-summary", async (req, res) => {
     const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
 
-    const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows, profitPools] = await Promise.all([
+    const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows, allocationSplitPools] = await Promise.all([
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
       db.select({ jobId: otherIncomeTable.jobId, amount: otherIncomeTable.amount })
@@ -1094,8 +1094,9 @@ router.get("/profit-summary", async (req, res) => {
         .from(jobSubcontractorsTable)
         .where(inArray(jobSubcontractorsTable.jobId, jobIds))
         .groupBy(jobSubcontractorsTable.jobId),
-      // The compact job card must use the exact same split-pool calculation as
-      // the full Job Financials panel and outstanding-payment endpoint.
+      // Keep the compact job-card allocation amount on the same server-owned
+      // split-pool calculation as the full Job Financials panel and
+      // outstanding-payment endpoint.
       computeAllocationSplitPools(jobIds),
     ]);
 
@@ -1121,7 +1122,7 @@ router.get("/profit-summary", async (req, res) => {
     for (const id of jobIds) flatSubCostMap[id] = 0;
 
     const result: Record<number, { grossInvoiced: number; collected: number; otherIncomeRevenue: number; jobExpenses: number; subLaborCost: number; allocPaid: number; totalSubHours: number; manHours: number | null; netProfit: number; splitPool: number; estimatedFuelCost?: number | null; includeMileageInJobCosts: boolean }> = {};
-    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, otherIncomeRevenue: 0, jobExpenses: 0, subLaborCost: 0, allocPaid: 0, totalSubHours: 0, manHours: null, netProfit: 0, splitPool: profitPools.get(id)?.splitPool ?? 0, includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true };
+    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, otherIncomeRevenue: 0, jobExpenses: 0, subLaborCost: 0, allocPaid: 0, totalSubHours: 0, manHours: null, netProfit: 0, splitPool: allocationSplitPools.get(id)?.splitPool ?? 0, includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true };
 
     for (const inv of invRows) {
       if (inv.jobId == null) continue;

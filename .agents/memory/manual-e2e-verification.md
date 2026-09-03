@@ -9,4 +9,4 @@ Authenticated regression helpers must not turn development previews into public 
 
 **Why:** development previews can be reachable by other people, and an unauthenticated owner-session fixture bypasses the application's real access boundary. Intercepting only the expected mutation is also insufficient because future page behavior may add unrelated writes.
 
-**How to apply:** derive test-login proofs from an environment secret without logging it; validate redirect paths against protocol-relative and backslash forms; consume proofs once; intercept fixture reads; deny every unexpected API write; remove the temporary session directly during cleanup.
+**How to apply:** derive test-login proofs from an environment secret without logging it; validate redirect paths against protocol-relative and backslash forms; consume proofs once; intercept fixture reads; deny every unexpected API write; remove the temporary session directly during cleanup. On the Jobs page, scheduled cards use the compact “Open Job Card” flow while completed payment sections render the full card directly; select the smallest matching payment card when titles also appear in the planner.

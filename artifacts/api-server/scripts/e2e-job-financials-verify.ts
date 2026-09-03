@@ -1,10 +1,12 @@
-/* Authenticated browser regression check for the Job Financials mileage waterfall.
+/* Authenticated browser regression check for the Job Financials mileage waterfall
+ * and allocation-pay status transitions.
  *
  * Run:
  *   pnpm --filter @workspace/api-server run verify:job-financials
  *
  * The check creates temporary jobs covering saved reimbursements, estimate-only
- * fuel, and actual Fuel/Travel expenses. It serves the fixture profit responses
+ * fuel, actual Fuel/Travel expenses, and a 50/50 allocation worker moving from
+ * Scheduled to Awaiting Payment to Paid. It serves the fixture profit responses
  * through the real authenticated API requests consumed by the page, blocks
  * unexpected browser writes, and removes every fixture and test session.
  */
@@ -15,9 +17,15 @@ import { db } from "@workspace/db";
 import {
   businessesTable,
   expensesTable,
+  invoicesTable,
   jobMileageReimbursementsTable,
+  jobSubcontractorsTable,
   jobsTable,
+  mileageLogsTable,
+  ownerCapitalEntriesTable,
   sessionsTable,
+  subPaymentRecordsTable,
+  subcontractorsTable,
 } from "@workspace/db/schema";
 import { createTestLoginProof } from "../src/lib/auth";
 import { launchBrowser } from "../src/lib/launchBrowser";
@@ -68,6 +76,7 @@ type ProfitFixture = {
   growthReservePct: number;
   ownerSplitPct: number;
   taxReservePct: number;
+  splitPool?: number;
 };
 
 type JobFixture = {
@@ -75,6 +84,9 @@ type JobFixture = {
   title: string;
   expenseId?: number;
   reimbursementId?: number;
+  invoiceId?: number;
+  subcontractorId?: number;
+  subcontractorName?: string;
   profit: ProfitFixture;
 };
 
@@ -110,6 +122,37 @@ async function clickButtonInJobCard(page: Page, jobTitle: string, buttonText: st
   }, { jobTitle, buttonText });
 }
 
+async function openJobsSection(page: Page, heading: string): Promise<boolean> {
+  return page.evaluate(sectionHeading => {
+    const headingElement = [...document.querySelectorAll("h2")]
+      .find(element => element.textContent?.trim() === sectionHeading);
+    const button = headingElement?.closest("button");
+    if (!button) return false;
+    button.click();
+    return true;
+  }, heading);
+}
+
+async function readCompactSubcontractorAmount(page: Page, jobTitle: string): Promise<string> {
+  return page.evaluate(title => {
+    let best = "";
+    for (const titleElement of [...document.querySelectorAll("*")].filter(
+      element => element.textContent?.trim() === title,
+    )) {
+      let current: HTMLElement | null = titleElement instanceof HTMLElement ? titleElement : null;
+      while (current) {
+        const text = current.textContent?.replace(/\s+/g, " ").trim() ?? "";
+        if (text.includes("Payment snapshot") && text.includes("Subcontractors")
+          && (!best || text.length < best.length)) {
+          best = text;
+        }
+        current = current.parentElement;
+      }
+    }
+    return best;
+  }, jobTitle);
+}
+
 async function readFinancialPanel(page: Page) {
   return page.evaluate(() => {
     const heading = [...document.querySelectorAll("h2")]
@@ -133,6 +176,9 @@ async function main() {
   const jobIds: number[] = [];
   const expenseIds: number[] = [];
   const reimbursementIds: number[] = [];
+  const invoiceIds: number[] = [];
+  const subcontractorIds: number[] = [];
+  const jobSubcontractorJobIds: number[] = [];
   let sessionId: string | undefined;
   const unexpectedWrites: string[] = [];
   const interceptedProfitRequests: string[] = [];
@@ -229,6 +275,83 @@ async function main() {
       return fixture;
     }
 
+    async function createAllocationFixture(): Promise<JobFixture> {
+      const jobTitle = `E2E Split Status ${Date.now()}`;
+      const [subcontractor] = await db.insert(subcontractorsTable).values({
+        name: `E2E Split Worker ${Date.now()}`,
+        trade: "Automated verification",
+        role: "member",
+        notes: "Temporary development-only split-pay status fixture",
+      }).returning({ id: subcontractorsTable.id, name: subcontractorsTable.name });
+      subcontractorIds.push(subcontractor.id);
+
+      const [job] = await db.insert(jobsTable).values({
+        title: jobTitle,
+        status: "scheduled",
+        businessLine: business.slug,
+        businessId: business.id,
+        subcontractorIds: [subcontractor.id],
+        planningState: "ready",
+        priority: "normal",
+        resourceDemand: "standard",
+      }).returning({ id: jobsTable.id });
+      jobIds.push(job.id);
+
+      const [invoice] = await db.insert(invoicesTable).values({
+        invoiceNumber: `E2E-SPLIT-${job.id}`,
+        jobId: job.id,
+        status: "approved",
+        issueDate: new Date().toISOString().slice(0, 10),
+        subtotal: "1000.00",
+        total: "1000.00",
+        amountPaid: "0.00",
+        businessLine: business.slug,
+        businessId: business.id,
+        lineItems: [{ id: 1, description: "Verification work", quantity: 1, unitPrice: 1000, total: 1000 }],
+      }).returning({ id: invoicesTable.id });
+      invoiceIds.push(invoice.id);
+
+      await db.insert(jobSubcontractorsTable).values({
+        jobId: job.id,
+        subcontractorId: subcontractor.id,
+        compensationType: "allocation",
+        allocationPct: "50.00",
+        paymentStatus: "unpaid",
+      });
+      jobSubcontractorJobIds.push(job.id);
+
+      const profit: ProfitFixture = {
+        grossInvoiced: 1000,
+        collected: 0,
+        jobExpenses: 35.56,
+        netProfit: 964.44,
+        mileageReimbursementApplied: false,
+        estimatedFuelCost: 35.56,
+        includeMileageInJobCosts: true,
+        actualFuelCost: null,
+        fuelReconciliation: "estimate_only",
+        subLaborCost: 0,
+        allocPaid: 0,
+        totalSubHours: 0,
+        ownerDrawTaken: 0,
+        growthReservePct: 5,
+        ownerSplitPct: 50,
+        taxReservePct: 25,
+        splitPool: 950,
+      };
+      const fixture = {
+        jobId: job.id,
+        title: jobTitle,
+        invoiceId: invoice.id,
+        subcontractorId: subcontractor.id,
+        subcontractorName: subcontractor.name,
+        profit: { ...profit, mileageReimbursement: null },
+      };
+      fixtureJobs.push(fixture);
+      respondedProfitByJob.set(job.id, fixture.profit);
+      return fixture;
+    }
+
     const reimbursementFixture = await createFixture({
       title: "Grubb",
       reimbursement: {
@@ -307,6 +430,7 @@ async function main() {
         taxReservePct: 25,
       },
     });
+    const allocationFixture = await createAllocationFixture();
 
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 1200 });
@@ -448,6 +572,90 @@ async function main() {
       await page.screenshot({ path: `${SHOTS}/${screenshotName}`, fullPage: true });
     }
 
+    async function readAllocationAmounts(section: "Scheduled" | "Awaiting Payment" | "Paid") {
+      await page.goto(`${BASE}/jobs`, {
+        waitUntil: "networkidle2",
+        timeout: 60_000,
+      });
+      if (section !== "Scheduled") {
+        const opened = await openJobsSection(page, section);
+        record(`Allocation fixture: ${section} section opens`, opened);
+      }
+      const foundTitle = await page.waitForFunction(
+        title => document.body.innerText.includes(title),
+        { timeout: 10_000 },
+        allocationFixture.title,
+      ).then(() => true).catch(() => false);
+      record(
+        `Allocation fixture ${section}: job is visible`,
+        foundTitle,
+        foundTitle ? "" : (await page.evaluate(() => document.body.innerText)).slice(0, 500),
+      );
+      if (!foundTitle) return { compactAmount: "", fullAmount: "" };
+      await new Promise(resolve => setTimeout(resolve, 1_000));
+      const cardText = await readCompactSubcontractorAmount(page, allocationFixture.title);
+      const compactAmount = cardText.match(/Subcontractors\s*\$([0-9,]+\.[0-9]{2})/)?.[1] ?? "";
+      record(
+        `Allocation fixture ${section}: compact payment snapshot is available`,
+        cardText.includes("Payment snapshot"),
+        `amount=${compactAmount || "missing"}`,
+      );
+      const openedCard = section === "Scheduled"
+        ? await clickButtonInJobCard(page, allocationFixture.title, "Open Job Card")
+        : true;
+      record(`Allocation fixture ${section}: compact Job Card opens`, openedCard);
+      const openedPanel = await clickButtonInJobCard(page, allocationFixture.title, "Job P&L");
+      record(`Allocation fixture ${section}: Job Financials opens`, openedPanel);
+      await page.waitForFunction(
+        () => [...document.querySelectorAll("h2")]
+          .some(element => element.textContent?.trim() === "Job Financials"),
+        { timeout: 10_000 },
+      );
+      const panel = await page.evaluate(() => {
+        const heading = [...document.querySelectorAll("h2")]
+          .find(element => element.textContent?.trim() === "Job Financials");
+        return heading?.closest("div.fixed")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+      });
+      const workerName = allocationFixture.subcontractorName?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") ?? "";
+      const fullAmount = panel.match(new RegExp(`${workerName}\\s*\\(50\\.0%\\)\\s*\\$([0-9,]+\\.[0-9]{2})`))?.[1] ?? "";
+      record(
+        `Allocation fixture ${section}: compact and full worker amounts match`,
+        compactAmount === fullAmount && compactAmount === "475.00",
+        `compact=${compactAmount || "missing"}, full=${fullAmount || "missing"}`,
+      );
+      return { compactAmount, fullAmount };
+    }
+
+    const scheduledAmounts = await readAllocationAmounts("Scheduled");
+    await db.update(jobsTable).set({ status: "completed" }).where(eq(jobsTable.id, allocationFixture.jobId));
+    const awaitingAmounts = await readAllocationAmounts("Awaiting Payment");
+    await db.update(invoicesTable).set({
+      status: "paid",
+      amountPaid: "1000.00",
+      lastManualPaidAt: new Date(),
+    }).where(eq(invoicesTable.id, allocationFixture.invoiceId!));
+    allocationFixture.profit.collected = 1000;
+    const paidAmounts = await readAllocationAmounts("Paid");
+    record(
+      "Allocation fixture: worker amount stays stable across status transitions",
+      [scheduledAmounts, awaitingAmounts, paidAmounts]
+        .every(amounts => amounts.compactAmount === "475.00" && amounts.fullAmount === "475.00"),
+    );
+
+    const [forbiddenCounts] = await Promise.all([
+      Promise.all([
+        db.select({ id: expensesTable.id }).from(expensesTable).where(eq(expensesTable.jobId, allocationFixture.jobId)),
+        db.select({ id: mileageLogsTable.id }).from(mileageLogsTable).where(eq(mileageLogsTable.jobId, allocationFixture.jobId)),
+        db.select({ id: subPaymentRecordsTable.id }).from(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.jobId, allocationFixture.jobId)),
+        db.select({ id: ownerCapitalEntriesTable.id }).from(ownerCapitalEntriesTable).where(eq(ownerCapitalEntriesTable.jobId, allocationFixture.jobId)),
+      ]),
+    ]);
+    record(
+      "Allocation fixture: estimate remains job-only with no ledger rows",
+      forbiddenCounts.every(rows => rows.length === 0),
+      `expenses=${forbiddenCounts[0].length}, mileage=${forbiddenCounts[1].length}, payroll=${forbiddenCounts[2].length}, owner=${forbiddenCounts[3].length}`,
+    );
+
     await verifyFixture(
       reimbursementFixture,
       {
@@ -498,8 +706,18 @@ async function main() {
       await db.delete(jobMileageReimbursementsTable)
         .where(eq(jobMileageReimbursementsTable.id, id));
     }
+    for (const jobId of jobSubcontractorJobIds) {
+      await db.delete(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.jobId, jobId));
+      await db.delete(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, jobId));
+    }
+    for (const id of invoiceIds) {
+      await db.delete(invoicesTable).where(eq(invoicesTable.id, id));
+    }
     for (const id of jobIds) {
       await db.delete(jobsTable).where(eq(jobsTable.id, id));
+    }
+    for (const id of subcontractorIds) {
+      await db.delete(subcontractorsTable).where(eq(subcontractorsTable.id, id));
     }
   }
 
