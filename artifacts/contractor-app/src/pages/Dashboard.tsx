@@ -1139,9 +1139,12 @@ function MyPayCard({ businessId, externalDialogOpen, onExternalDialogChange }: {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const { data, isLoading } = useQuery({
-    queryKey: ["owner-pay-summary", businessId],
-    queryFn: () => fetch(`${BASE}/api/reports/owner-pay-summary?businessId=${businessId}`, { credentials: "include" }).then(r => r.json()),
-    enabled: businessId != null,
+    queryKey: ["owner-pay-summary", businessId ?? "all"],
+    queryFn: () => fetch(
+      `${BASE}/api/reports/owner-pay-summary${businessId != null ? `?businessId=${businessId}` : ""}`,
+      { credentials: "include" },
+    ).then(r => r.json()),
+    enabled: true,
   });
 
   async function handleWithdraw(e: React.FormEvent) {
@@ -1162,7 +1165,7 @@ function MyPayCard({ businessId, externalDialogOpen, onExternalDialogChange }: {
       setAmount("");
       setDate(getTodayStr());
       setErr("");
-      qc.invalidateQueries({ queryKey: ["owner-pay-summary", businessId] });
+      qc.invalidateQueries({ queryKey: ["owner-pay-summary", businessId ?? "all"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["/api/owner-capital"] });
     } catch {

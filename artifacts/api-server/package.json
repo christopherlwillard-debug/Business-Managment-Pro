@@ -10,6 +10,7 @@
     "pretest": "tsx ./scripts/check-development-schema.ts",
     "test": "vitest run",
     "verify:close-job": "tsx ./scripts/e2e-close-job-verify.ts",
+    "verify:public-site-seo": "tsx ./scripts/e2e-public-site-seo-verify.ts",
     "postinstall": "node node_modules/puppeteer/install.mjs"
   },
   "dependencies": {

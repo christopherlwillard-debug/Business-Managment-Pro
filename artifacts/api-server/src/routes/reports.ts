@@ -2377,31 +2377,36 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
   try {
     const GROWTH_PCT = 0.05;
     const TAX_PCT    = 0.25;
-    const businessId = Number.parseInt(String(req.query.businessId ?? ""), 10);
-    if (!Number.isFinite(businessId)) {
+    const rawBusinessId = String(req.query.businessId ?? "").trim();
+    const businessId = rawBusinessId ? Number.parseInt(rawBusinessId, 10) : null;
+    if (rawBusinessId && (!Number.isFinite(businessId) || businessId == null)) {
       return res.status(400).json({ error: "A valid business id is required" });
     }
 
-    const [business] = await db.select({
-      id: businessesTable.id,
-      slug: businessesTable.slug,
-    }).from(businessesTable)
-      .where(eq(businessesTable.id, businessId))
-      .limit(1);
-    if (!business) {
+    const [business] = businessId != null
+      ? await db.select({
+          id: businessesTable.id,
+          slug: businessesTable.slug,
+        }).from(businessesTable)
+          .where(eq(businessesTable.id, businessId))
+          .limit(1)
+      : [];
+    if (businessId != null && !business) {
       return res.status(404).json({ error: "Business not found" });
     }
 
     // Canonical ownership is business_id. Older jobs were intentionally kept
     // recoverable with business_line only, so include that compatibility path
     // when the slug proves the job belongs to this business.
-    const jobBusinessScope = or(
-      eq(jobsTable.businessId, businessId),
-      and(isNull(jobsTable.businessId), eq(jobsTable.businessLine, business.slug)),
-    );
+    const jobBusinessScope = business
+      ? or(
+          eq(jobsTable.businessId, business.id),
+          and(isNull(jobsTable.businessId), eq(jobsTable.businessLine, business.slug)),
+        )
+      : undefined;
 
-    // Every query in this summary is scoped to one business. Mixing businesses
-    // here can both misstate totals and cause an edited withdrawal to be moved.
+    // With a selected business, every query is scoped to that business. With
+    // no selector, this is the existing owner-wide dashboard view.
     const allJobs = await db.select({
       id: jobsTable.id,
       title: jobsTable.title,
@@ -2500,18 +2505,20 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
       .where(and(
         sql`${ownerCapitalEntriesTable.amount} < 0`,
         isNull(ownerCapitalEntriesTable.voidedAt),
-        or(
-          eq(ownerCapitalEntriesTable.businessId, businessId),
-          and(
-            isNull(ownerCapitalEntriesTable.businessId),
-            or(
-              eq(jobsTable.businessId, businessId),
-              and(isNull(jobsTable.businessId), eq(jobsTable.businessLine, business.slug)),
-              eq(expensesTable.businessId, businessId),
-              and(isNull(expensesTable.businessId), eq(expensesTable.businessLine, business.slug)),
-            ),
-          ),
-        ),
+        business
+          ? or(
+              eq(ownerCapitalEntriesTable.businessId, business.id),
+              and(
+                isNull(ownerCapitalEntriesTable.businessId),
+                or(
+                  eq(jobsTable.businessId, business.id),
+                  and(isNull(jobsTable.businessId), eq(jobsTable.businessLine, business.slug)),
+                  eq(expensesTable.businessId, business.id),
+                  and(isNull(expensesTable.businessId), eq(expensesTable.businessLine, business.slug)),
+                ),
+              ),
+            )
+          : undefined,
       ))
       .orderBy(desc(ownerCapitalEntriesTable.date));
 
