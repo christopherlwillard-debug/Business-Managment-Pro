@@ -178,6 +178,14 @@ Created the four-document architecture governance system:
 
 ## 2026-08-30
 
+## 2026-09-03
+
+### Invoice delivery-state reconciliation
+
+- Invoice reads now reconcile stale `approved` compatibility fields from a verified Gmail invoice communication event that has a provider message ID.
+- Reconciliation preserves the append-only communication timeline as delivery evidence, uses the event completion time for `sentAt`, and leaves pending or ambiguous attempts unresolved and blocked.
+- Invoice list, detail, job-summary, and legacy send reads now agree on `sent` versus `approved`; no accounting ledger, revenue calculation, or report source changed.
+
 ### Owner-pay ledger enforcement
 
 - New owner pay is recorded only in `owner_capital_entries`; operating-expense and Banking routes reject owner-pay categories.

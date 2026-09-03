@@ -481,6 +481,56 @@ describe("POST /:id/mark-sent", () => {
   });
 });
 
+describe("GET /:id — confirmed Gmail delivery reconciliation", () => {
+  it("repairs an approved invoice when its verified Gmail event was accepted", async () => {
+    const completedAt = new Date("2026-09-02T19:57:42.023Z");
+    h.selectQueue.push(
+      [fakeInvoice({ status: "approved", sentAt: null, sentMethod: null })],
+      [{
+        invoiceId: 42,
+        eventType: "initial_invoice",
+        status: "accepted",
+        provider: "gmail",
+        providerMessageId: "gmail-message-1",
+        completedAt,
+      }],
+    );
+
+    const res = await request(app).get("/42");
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("sent");
+    expect(res.body.sentAt).toBe(completedAt.toISOString());
+    expect(res.body.sentMethod).toBe("gmail");
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "sent",
+      sentAt: completedAt,
+      sentMethod: "gmail",
+    }));
+  });
+
+  it("does not reconcile an invoice from a pending Gmail event", async () => {
+    h.selectQueue.push(
+      [fakeInvoice({ status: "approved" })],
+      [{
+        invoiceId: 42,
+        eventType: "initial_invoice",
+        status: "pending",
+        provider: "gmail",
+        providerMessageId: null,
+        completedAt: null,
+      }],
+    );
+
+    const res = await request(app).get("/42");
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("approved");
+    expect(res.body.sentAt).toBeNull();
+    expect(h.updates).toHaveLength(0);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Browser Gmail finalization — adversarial status/evidence checks
 // ─────────────────────────────────────────────────────────────────────────────

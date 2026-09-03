@@ -28,6 +28,8 @@ import {
   confirmedGmailInvoiceIds,
   sendAndRecordInvoiceCommunication,
   updateCompatibilitySentFields,
+  reconcileConfirmedGmailInvoiceDelivery,
+  reconcileConfirmedGmailInvoiceDeliveries,
   verifyGmailSentMessage,
   type InvoiceCommunicationType,
 } from "../lib/invoiceCommunication";
@@ -169,6 +171,14 @@ export function fmt(inv: any) {
   return formatInvoice(inv, inv.clientName, inv.clientEmail, inv.clientAddress, inv.clientPhone, inv.clientCity, inv.clientState, inv.clientZip, inv.clientNotes, inv.jobTitle, inv.jobCity, inv.jobState);
 }
 
+async function reconcileInvoiceRows(invoices: any[]) {
+  const compatibilityFields = await reconcileConfirmedGmailInvoiceDeliveries(invoices);
+  return invoices.map(invoice => {
+    const fields = compatibilityFields.get(invoice.id);
+    return fields ? { ...invoice, ...fields } : invoice;
+  });
+}
+
 router.get("/tax-report", async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
@@ -252,7 +262,8 @@ router.get("/", async (req, res) => {
       // Sort by the numeric suffix of the invoice number (highest first), drafts by id
       .orderBy(sql`COALESCE(CAST(REGEXP_REPLACE(${invoicesTable.invoiceNumber}, '\\D', '', 'g') AS INTEGER), 0) DESC`, desc(invoicesTable.id));
 
-    res.json(invoices.map(fmt));
+    const reconciledInvoices = await reconcileInvoiceRows(invoices);
+    res.json(reconciledInvoices.map(fmt));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch invoices" });
@@ -351,7 +362,8 @@ router.get("/summaries", async (req, res) => {
     const invoices = await buildInvoiceQuery()
       .where(inArray(invoicesTable.jobId, uniqueJobIds))
       .orderBy(desc(invoicesTable.createdAt));
-    const formatted = invoices.map(fmt);
+    const reconciledInvoices = await reconcileInvoiceRows(invoices);
+    const formatted = reconciledInvoices.map(fmt);
 
     const result: Record<number, ReturnType<typeof fmt> | null> = {};
     for (const jobId of uniqueJobIds) result[jobId] = null;
@@ -385,7 +397,8 @@ router.get("/:id", async (req, res) => {
     const [inv] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
     if (!belongsToBusiness(inv, scope)) return res.status(404).json({ error: "Invoice not found" });
-    res.json(fmt(inv));
+    const [reconciledInvoice] = await reconcileInvoiceRows([inv]);
+    res.json(fmt(reconciledInvoice));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch invoice" });
@@ -575,8 +588,8 @@ router.post("/:id/communications/prepare", async (req, res) => {
       // Serialize prepare attempts per invoice so two tabs cannot both create
       // a send event before either one becomes visible to the other.
       await tx.execute(sql`SELECT pg_advisory_xact_lock(${invoiceId})`);
-      if (invoice.status === "approved" && invoice.acceptedAt) {
-        const [unresolved] = await tx.select().from(invoiceCommunicationEventsTable)
+      if (["approved", "sent", "overdue"].includes(invoice.status) && invoice.acceptedAt) {
+        const unresolvedRows = await tx.select().from(invoiceCommunicationEventsTable)
           .where(and(
             eq(invoiceCommunicationEventsTable.invoiceId, invoiceId),
             eq(invoiceCommunicationEventsTable.channel, "gmail"),
@@ -586,7 +599,12 @@ router.post("/:id/communications/prepare", async (req, res) => {
             gte(invoiceCommunicationEventsTable.requestedAt, invoice.acceptedAt),
           ))
           .orderBy(desc(invoiceCommunicationEventsTable.requestedAt))
-          .limit(1);
+          .limit(10);
+        const unresolved = invoice.status === "approved"
+          ? unresolvedRows[0]
+          : unresolvedRows.find((event: any) =>
+            event.status === "pending" || !event.providerMessageId
+          );
         if (unresolved) return { unresolved };
       }
       const [event] = await tx.insert(invoiceCommunicationEventsTable).values({
@@ -886,10 +904,16 @@ router.post("/:id/send", async (req, res) => {
 
     if (!to) return res.status(400).json({ error: "Recipient email is required" });
 
-    const [[inv], [settings]] = await Promise.all([
+    const [[loadedInvoice], [settings]] = await Promise.all([
       buildInvoiceQuery().where(eq(invoicesTable.id, id)),
       db.select().from(settingsTable).limit(1),
     ]);
+    const sentCompatibilityFields = loadedInvoice
+      ? await reconcileConfirmedGmailInvoiceDelivery(loadedInvoice)
+      : null;
+    const inv = loadedInvoice && sentCompatibilityFields
+      ? { ...loadedInvoice, ...sentCompatibilityFields }
+      : loadedInvoice;
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
     if (inv.status === "draft") {
       return res.status(400).json({ error: "Draft invoices must be accepted (approved) before they can be sent. Use the Accept Invoice button on the job card." });

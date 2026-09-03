@@ -323,7 +323,8 @@ export function InvoicePanel({
   }, [open, effectiveExistingInvoice?.id, savedInvoice?.id, initialData?.jobId]);
 
   useEffect(() => {
-    if (!open || effectiveExistingInvoice?.status !== "approved") return;
+    if (!open || !["approved", "sent", "overdue"].includes(effectiveExistingInvoice?.status ?? "")) return;
+    if (!effectiveExistingInvoice) return;
     const acceptedAt = effectiveExistingInvoice.acceptedAt
       ? new Date(effectiveExistingInvoice.acceptedAt).getTime()
       : 0;
@@ -332,7 +333,7 @@ export function InvoicePanel({
         event.channel === "gmail" &&
         event.provider === "gmail" &&
         ["initial_invoice", "resend_invoice"].includes(event.eventType) &&
-        ["pending", "accepted"].includes(event.status) &&
+        (event.status === "pending" || (event.status === "accepted" && !event.providerMessageId)) &&
         new Date(event.requestedAt).getTime() >= acceptedAt
       )
       .at(-1);
@@ -991,6 +992,15 @@ export function InvoicePanel({
 
   const isPayable = !effectiveExistingInvoice || (effectiveExistingInvoice.status !== "paid" && effectiveExistingInvoice.status !== "cancelled");
   const generatingLink = createPaymentLink.isPending;
+  const hasConfirmedGmailSend = Boolean(communicationHistory.data?.some(event =>
+    ["initial_invoice", "resend_invoice"].includes(event.eventType) &&
+    event.status === "accepted" &&
+    event.provider === "gmail" &&
+    Boolean(event.providerMessageId)
+  ));
+  const invoiceHasBeenSent = effectiveExistingInvoice?.status !== "approved"
+    || Boolean(effectiveExistingInvoice?.sentAt)
+    || hasConfirmedGmailSend;
 
   const { h: logoH, w: logoW } = getLogoDims(logoSize);
   const logoEl = logoDataUri ? (
@@ -1058,7 +1068,7 @@ export function InvoicePanel({
                 title={googleConnected ? "Send via Gmail" : "Connect Google to send via Gmail"}>
                 <Send className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">
-                  {effectiveExistingInvoice?.status === "approved" ? "Send Invoice" : "Resend Invoice"}
+                  {invoiceHasBeenSent ? "Resend Invoice" : "Send Invoice"}
                 </span>
               </button>
             )}

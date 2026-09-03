@@ -87,7 +87,37 @@ export async function listInvoiceCommunications(invoiceId: number) {
 }
 
 export async function confirmedGmailInvoiceIds(invoiceIds?: number[]): Promise<Set<number>> {
-  if (invoiceIds && invoiceIds.length === 0) return new Set();
+  const deliveries = await confirmedGmailInvoiceDeliveries(invoiceIds);
+  return new Set(deliveries.keys());
+}
+
+export interface ConfirmedGmailInvoiceDelivery {
+  invoiceId: number;
+  completedAt: Date | string | null;
+}
+
+function isConfirmedGmailInvoiceEvent(row: {
+  invoiceId: number;
+  eventType: string;
+  status: string;
+  provider: string | null;
+  providerMessageId: string | null;
+}): boolean {
+  return (row.eventType === "initial_invoice" || row.eventType === "resend_invoice")
+    && row.status === "accepted"
+    && row.provider === "gmail"
+    && Boolean(row.providerMessageId);
+}
+
+/**
+ * Return the latest verified Gmail delivery for each invoice.
+ *
+ * Provider acceptance alone is not enough: the event must have a Gmail
+ * provider message ID, which is only recorded after the browser verifies the
+ * message in Gmail's Sent folder.
+ */
+export async function confirmedGmailInvoiceDeliveries(invoiceIds?: number[]): Promise<Map<number, ConfirmedGmailInvoiceDelivery>> {
+  if (invoiceIds && invoiceIds.length === 0) return new Map();
   const query = db
     .select({
       invoiceId: invoiceCommunicationEventsTable.invoiceId,
@@ -95,21 +125,72 @@ export async function confirmedGmailInvoiceIds(invoiceIds?: number[]): Promise<S
       status: invoiceCommunicationEventsTable.status,
       provider: invoiceCommunicationEventsTable.provider,
       providerMessageId: invoiceCommunicationEventsTable.providerMessageId,
+      completedAt: invoiceCommunicationEventsTable.completedAt,
     })
     .from(invoiceCommunicationEventsTable);
   const rows = invoiceIds
     ? await query.where(inArray(invoiceCommunicationEventsTable.invoiceId, invoiceIds))
     : await query;
-  return new Set(
-    rows
-      .filter(row =>
-        (row.eventType === "initial_invoice" || row.eventType === "resend_invoice")
-        && row.status === "accepted"
-        && row.provider === "gmail"
-        && Boolean(row.providerMessageId),
-      )
-      .map(row => row.invoiceId),
-  );
+
+  const deliveries = new Map<number, ConfirmedGmailInvoiceDelivery>();
+  rows
+    .filter(isConfirmedGmailInvoiceEvent)
+    .sort((left, right) => {
+      const leftTime = left.completedAt ? new Date(left.completedAt).getTime() : 0;
+      const rightTime = right.completedAt ? new Date(right.completedAt).getTime() : 0;
+      return rightTime - leftTime;
+    })
+    .forEach(row => {
+      if (!deliveries.has(row.invoiceId)) {
+        deliveries.set(row.invoiceId, {
+          invoiceId: row.invoiceId,
+          completedAt: row.completedAt,
+        });
+      }
+    });
+  return deliveries;
+}
+
+export async function reconcileConfirmedGmailInvoiceDelivery(
+  invoice: { id: number; status: string },
+): Promise<{ status: "sent"; sentAt: Date; sentMethod: "gmail" } | null> {
+  if (invoice.status !== "approved") return null;
+  const [delivery] = [...(await confirmedGmailInvoiceDeliveries([invoice.id])).values()];
+  if (!delivery) return null;
+
+  const sentAt = delivery.completedAt ? new Date(delivery.completedAt) : new Date();
+  const compatibilityFields = { status: "sent" as const, sentAt, sentMethod: "gmail" as const };
+  await db.update(invoicesTable)
+    .set(compatibilityFields)
+    .where(and(
+      eq(invoicesTable.id, invoice.id),
+      eq(invoicesTable.status, "approved"),
+    ));
+  return compatibilityFields;
+}
+
+export async function reconcileConfirmedGmailInvoiceDeliveries(
+  invoices: Array<{ id: number; status: string }>,
+): Promise<Map<number, { status: "sent"; sentAt: Date; sentMethod: "gmail" }>> {
+  const candidates = invoices.filter(invoice => invoice.status === "approved");
+  if (candidates.length === 0) return new Map();
+
+  const deliveries = await confirmedGmailInvoiceDeliveries(candidates.map(invoice => invoice.id));
+  const reconciled = new Map<number, { status: "sent"; sentAt: Date; sentMethod: "gmail" }>();
+  await Promise.all(candidates.map(async invoice => {
+    const delivery = deliveries.get(invoice.id);
+    if (!delivery) return;
+    const sentAt = delivery.completedAt ? new Date(delivery.completedAt) : new Date();
+    const compatibilityFields = { status: "sent" as const, sentAt, sentMethod: "gmail" as const };
+    await db.update(invoicesTable)
+      .set(compatibilityFields)
+      .where(and(
+        eq(invoicesTable.id, invoice.id),
+        eq(invoicesTable.status, "approved"),
+      ));
+    reconciled.set(invoice.id, compatibilityFields);
+  }));
+  return reconciled;
 }
 
 function normalizedEmail(value: string): string {
