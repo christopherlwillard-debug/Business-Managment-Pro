@@ -63,6 +63,7 @@ import { ServiceBillingPanel } from "@/components/ServiceBillingPanel";
 import { calculateSurchargeDays, isMileageSurchargeLine, mergeMileageSurchargeLine } from "@/lib/mileageSurcharge";
 import { isMaterialInvoiceLine } from "@/lib/invoiceLineItems";
 import { calculateJobMargin } from "@/lib/jobMargin";
+import { sumIncludedJobCostDetails } from "@/lib/jobExpenseDisplay";
 import { JobMarginCard } from "@/components/JobMarginCard";
 import { JobPlanningDialog } from "@/components/planner/JobPlanningDialog";
 import { ExtendedJob } from "@/components/planner/types";
@@ -1469,7 +1470,16 @@ type JobProfit = {
   estimatedFuelCost?: number | null;
   includeMileageInJobCosts?: boolean;
   actualFuelCost?: number | null;
-   fuelStatus?: "ok" | "missing_address" | "geocoding_failed" | "workdays_missing" | "error";
+  fuelStatus?: "ok" | "missing_address" | "geocoding_failed" | "workdays_missing" | "error";
+  fuelReconciliation?:
+    | "estimate_only"
+    | "reimbursement_matches_estimate"
+    | "reimbursement_differs_from_estimate"
+    | "reimbursement_without_estimate"
+    | "actual_fuel_expense"
+    | "actual_fuel_expense_replaces_reimbursement"
+    | "excluded_from_job_costs"
+    | "estimate_unavailable";
   operationalProfit?: number | null;
   growthReservePct?: number;
   ownerSplitPct?: number;
@@ -1782,7 +1792,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const [fuelExpanded, setFuelExpanded] = useState(false);
 
   // Expense drill-down state
-  type ExpenseItem = { id: number; date: string | null; category: string | null; description: string | null; amount: number | string; sourceType?: string | null; informational?: boolean };
+  type ExpenseItem = { id: number; date: string | null; category: string | null; description: string | null; amount: number | string; sourceType?: string | null; informational?: boolean; includedInJobCosts?: boolean };
   const [expensesOpen, setExpensesOpen] = useState(false);
   const [expenseItems, setExpenseItems] = useState<ExpenseItem[] | null>(null);
   const [expensesLoading, setExpensesLoading] = useState(false);
@@ -1868,14 +1878,21 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     try {
       const data = await fetch(`${BASE}/api/jobs/${job.id}/expenses`, { credentials: "include" })
         .then(r => r.ok ? r.json() : []);
-      const items: ExpenseItem[] = Array.isArray(data) ? data : [];
+      const items: ExpenseItem[] = (Array.isArray(data) ? data : []).map(item => {
+        // Older responses may contain a previously synthesized estimate row.
+        // Once a reimbursement is authoritative, that estimate is reference
+        // data only and must not inflate the included-cost total.
+        const isEstimateRow = item.sourceType === "Estimated Fuel Cost" || item.category === "Estimated Fuel";
+        return isEstimateRow
+          ? { ...item, informational: true, includedInJobCosts: false }
+          : item;
+      });
       const hasActualFuel = (profit?.actualFuelCost ?? 0) > 0;
       const hasSavedReimbursement = profit?.mileageReimbursement != null;
       const estimatedFuel = profit?.estimatedFuelCost ?? 0;
-      // The profit endpoint includes estimate-only fuel in Job Costs until an
-      // actual fuel expense or editable reimbursement replaces it. Keep that
-      // operational amount visible in the same detail list without creating a
-      // fake accounting expense row.
+      // Keep estimate-only fuel visible for auditability without creating a
+      // fake accounting expense row. The includedInJobCosts flag controls
+      // whether a displayed reference row contributes to the operational total.
       if (estimatedFuel > 0 && profit?.includeMileageInJobCosts !== false && !hasActualFuel && !hasSavedReimbursement) {
         items.push({
           id: -2000000,
@@ -1885,6 +1902,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
           amount: estimatedFuel,
           sourceType: "Estimated Fuel Cost",
           informational: true,
+          includedInJobCosts: true,
         });
       }
       setExpenseItems(items);
@@ -2283,6 +2301,21 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                           An actual Fuel/Travel expense is already linked, so this reimbursement is not added again.
                         </p>
                       )}
+                       {profit.fuelReconciliation === "reimbursement_differs_from_estimate" && profit.mileageReimbursement && profit.estimatedFuelCost != null && (
+                         <p className="text-[10px] text-amber-700 font-semibold mt-1">
+                           Job Costs uses the saved {formatCurrency(profit.mileageReimbursement.amount)} reimbursement once. The current route estimate is {formatCurrency(profit.estimatedFuelCost)} and is reference-only.
+                         </p>
+                       )}
+                       {profit.fuelReconciliation === "reimbursement_matches_estimate" && (
+                         <p className="text-[10px] text-emerald-700 font-semibold mt-1">
+                           This reimbursement matches the current route estimate and is included in Job Costs once.
+                         </p>
+                       )}
+                       {profit.fuelReconciliation === "reimbursement_without_estimate" && (
+                         <p className="text-[10px] text-amber-700 font-semibold mt-1">
+                           Job Costs uses the saved reimbursement. A route estimate is unavailable until actual work dates are recorded.
+                         </p>
+                       )}
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <label className="text-[11px] font-medium text-foreground">
@@ -2496,12 +2529,17 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                                   )}
                                 </div>
                               ))}
-                             <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-t border-border/50">
-                               <span className="text-[11px] font-semibold text-muted-foreground">Shown cost total</span>
+                              <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-t border-border/50">
+                                <span className="text-[11px] font-semibold text-muted-foreground">Included cost total</span>
                                <span className="text-xs font-bold text-red-600 tabular-nums">
-                                 {formatCurrency(expenseItems.reduce((sum, item) => sum + Number(item.amount), 0))}
+                                  {formatCurrency(sumIncludedJobCostDetails(expenseItems))}
                                </span>
                              </div>
+                              {expenseItems.some(item => item.informational && item.includedInJobCosts === false) && (
+                                <p className="px-4 py-2 text-[10px] leading-tight text-amber-700 bg-amber-50/60">
+                                  Replaced estimate amounts are shown for reference and are excluded from this total.
+                                </p>
+                              )}
                             </div>
                           )}
                         </div>
