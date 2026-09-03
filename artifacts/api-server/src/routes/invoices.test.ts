@@ -677,7 +677,13 @@ describe("POST /:id/send-reminder", () => {
     h.selectQueue.push(
       [reminderInvoice],
       [{}],
-      [{ invoiceId: 42 }],
+      [{
+        invoiceId: 42,
+        eventType: "initial_invoice",
+        status: "accepted",
+        provider: "gmail",
+        providerMessageId: "gmail-invoice-message-1",
+      }],
       [reminderInvoice],
     );
     sendInvoiceEmail.mockResolvedValue({

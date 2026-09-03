@@ -1,8 +1,7 @@
-// Real-database concurrency test for POST /:id/accept
+// Real-database concurrency tests for invoice lifecycle endpoints.
 //
-// Proves that the atomic UPDATE … RETURNING pattern in the /accept endpoint
-// prevents two simultaneous accepts from receiving the same invoice number,
-// or skipping a number between them.
+// Proves that database locking protects both invoice number assignment and
+// browser Gmail preparation from simultaneous requests.
 //
 // Unlike the mock-DB unit tests in invoices.test.ts, this file does NOT mock
 // @workspace/db — it connects to the real dev PostgreSQL database so that
@@ -22,7 +21,11 @@ import { vi } from "vitest";
 import request from "supertest";
 import express from "express";
 import { db } from "@workspace/db";
-import { invoicesTable, settingsTable } from "@workspace/db/schema";
+import {
+  invoiceCommunicationEventsTable,
+  invoicesTable,
+  settingsTable,
+} from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 
 // ── Mock only external service dependencies ───────────────────────────────────
@@ -48,6 +51,7 @@ app.use("/", invoiceRouter);
 // ── Test state ────────────────────────────────────────────────────────────────
 let idA: number;
 let idB: number;
+let gmailInvoiceId: number;
 let counterBefore: number;
 
 beforeAll(async () => {
@@ -86,6 +90,24 @@ beforeAll(async () => {
 
   idA = rows[0].id;
   idB = rows[1].id;
+
+  const [gmailInvoice] = await db
+    .insert(invoicesTable)
+    .values({
+      invoiceNumber: null,
+      status: "approved",
+      acceptedAt: new Date(),
+      issueDate: "2099-01-01",
+      subtotal: "3.00",
+      taxRate: null,
+      taxAmount: "0.00",
+      total: "3.00",
+      lineItems: [],
+      attachments: [],
+    })
+    .returning({ id: invoicesTable.id });
+
+  gmailInvoiceId = gmailInvoice.id;
 });
 
 afterAll(async () => {
@@ -99,6 +121,9 @@ afterAll(async () => {
     .update(invoicesTable)
     .set({ status: "cancelled" })
     .where(eq(invoicesTable.id, idB));
+  await db
+    .delete(invoicesTable)
+    .where(eq(invoicesTable.id, gmailInvoiceId));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -143,5 +168,106 @@ describe("POST /:id/accept — concurrent real-DB", () => {
     // The counter must have advanced by exactly 2
     const [settings] = await db.select().from(settingsTable).limit(1);
     expect(settings?.invoiceNextNumber).toBe(counterBefore + 2);
+  });
+});
+
+describe("browser Gmail delivery lifecycle — concurrent real-DB", () => {
+  it("blocks duplicate prepares and repairs interrupted attempts without another send", async () => {
+    const prepareBody = {
+      eventType: "initial_invoice",
+      recipient: "concurrency-test@example.com",
+      subject: "Concurrency test invoice",
+    };
+
+    const [firstPrepare, secondPrepare] = await Promise.all([
+      request(app)
+        .post(`/${gmailInvoiceId}/communications/prepare`)
+        .send(prepareBody),
+      request(app)
+        .post(`/${gmailInvoiceId}/communications/prepare`)
+        .send(prepareBody),
+    ]);
+
+    const created = [firstPrepare, secondPrepare].find(response => response.status === 201);
+    const blocked = [firstPrepare, secondPrepare].find(response => response.status === 409);
+
+    expect(created?.body.id).toEqual(expect.any(Number));
+    expect(blocked?.body.eventId).toBe(created?.body.id);
+
+    let events = await db
+      .select()
+      .from(invoiceCommunicationEventsTable)
+      .where(eq(invoiceCommunicationEventsTable.invoiceId, gmailInvoiceId));
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ id: created?.body.id, status: "pending" });
+
+    const retryAfterClose = await request(app)
+      .post(`/${gmailInvoiceId}/communications/prepare`)
+      .send(prepareBody);
+
+    expect(retryAfterClose.status).toBe(409);
+    expect(retryAfterClose.body.eventId).toBe(created?.body.id);
+
+    const failed = await request(app)
+      .post(`/${gmailInvoiceId}/communications/${created?.body.id}/finalize`)
+      .send({
+        status: "failed",
+        errorCode: "user_confirmed_not_sent",
+        errorMessage: "User checked Gmail Sent and confirmed no message was sent.",
+      });
+
+    expect(failed.status).toBe(200);
+    expect(failed.body.status).toBe("failed");
+
+    const nextPrepare = await request(app)
+      .post(`/${gmailInvoiceId}/communications/prepare`)
+      .send(prepareBody);
+
+    expect(nextPrepare.status).toBe(201);
+    expect(nextPrepare.body.id).not.toBe(created?.body.id);
+
+    await db
+      .update(invoiceCommunicationEventsTable)
+      .set({
+        status: "accepted",
+        providerMessageId: "gmail-concurrency-message",
+        providerThreadId: "gmail-concurrency-thread",
+        completedAt: new Date(),
+      })
+      .where(eq(invoiceCommunicationEventsTable.id, nextPrepare.body.id));
+
+    const repairPrompt = await request(app)
+      .post(`/${gmailInvoiceId}/communications/prepare`)
+      .send(prepareBody);
+
+    expect(repairPrompt.status).toBe(409);
+    expect(repairPrompt.body).toMatchObject({
+      repairRequired: true,
+      eventId: nextPrepare.body.id,
+      providerMessageId: "gmail-concurrency-message",
+    });
+
+    const repaired = await request(app)
+      .post(`/${gmailInvoiceId}/communications/${nextPrepare.body.id}/finalize`)
+      .send({
+        status: "accepted",
+        providerMessageId: "gmail-concurrency-message",
+      });
+
+    expect(repaired.status).toBe(200);
+    expect(repaired.body.id).toBe(nextPrepare.body.id);
+
+    const [invoice] = await db
+      .select({ status: invoicesTable.status, sentMethod: invoicesTable.sentMethod })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, gmailInvoiceId));
+    expect(invoice).toMatchObject({ status: "sent", sentMethod: "gmail" });
+
+    events = await db
+      .select()
+      .from(invoiceCommunicationEventsTable)
+      .where(eq(invoiceCommunicationEventsTable.invoiceId, gmailInvoiceId));
+    expect(events).toHaveLength(2);
+    expect(events.map(event => event.status).sort()).toEqual(["accepted", "failed"]);
   });
 });
