@@ -262,3 +262,11 @@ Created the four-document architecture governance system:
 - Hourly accrual expenses remain deductible, while settled advances remain
   preserved in the expense history and are not counted a second time.
 - No ledger, schema, API ownership, or source-of-truth changes were introduced.
+
+### Actual worked-date fuel estimates
+
+- Per-job fuel estimates now count the distinct union of Daily Log and
+  subcontractor-hour dates.
+- Scheduled start/end dates no longer imply that every calendar day was worked.
+- When no actual work-date evidence exists, the Jobs UI shows the estimate as
+  unavailable and directs the user to record the worked dates.

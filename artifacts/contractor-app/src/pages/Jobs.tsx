@@ -1469,7 +1469,7 @@ type JobProfit = {
   estimatedFuelCost?: number | null;
   includeMileageInJobCosts?: boolean;
   actualFuelCost?: number | null;
-  fuelStatus?: "ok" | "missing_address" | "geocoding_failed" | "error";
+   fuelStatus?: "ok" | "missing_address" | "geocoding_failed" | "workdays_missing" | "error";
   operationalProfit?: number | null;
   growthReservePct?: number;
   ownerSplitPct?: number;
@@ -2375,13 +2375,15 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                   </div>
                 )}
                 {/* Fuel cost unavailable hint */}
-                {profit?.estimatedFuelCost == null && (profit?.fuelStatus === "missing_address" || profit?.fuelStatus === "geocoding_failed") && (
+                {profit?.estimatedFuelCost == null && (profit?.fuelStatus === "missing_address" || profit?.fuelStatus === "geocoding_failed" || profit?.fuelStatus === "workdays_missing") && (
                   <div className="rounded-xl border border-amber-200/50 bg-amber-50/30 px-4 py-3 flex items-center gap-3">
                     <Fuel className="w-5 h-5 text-amber-300 flex-shrink-0" />
                     <p className="text-xs text-amber-700/80">
                       {profit.fuelStatus === "missing_address"
                         ? "Add a shop address in Settings to estimate fuel cost"
-                        : "Couldn't look up this address — check job city/state to see fuel estimate"}
+                        : profit.fuelStatus === "geocoding_failed"
+                          ? "Couldn't look up this address — check job city/state to see fuel estimate"
+                          : "Record actual worked dates in Daily Logs or Sub Hours — start and end dates do not count as workdays"}
                     </p>
                   </div>
                 )}

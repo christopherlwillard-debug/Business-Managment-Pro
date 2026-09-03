@@ -4,6 +4,7 @@ import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, d
 import { eq, and, count, inArray, sql, isNull, desc, or, ne } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
+import { countActualWorkdays } from "../lib/job-workdays.js";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { computeAllocationSplitPool, computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
@@ -745,7 +746,7 @@ router.get("/:id/profit", async (req, res) => {
     // VehicleEngine owns all fuel-cost math — no caller may compute distance/mpg×price directly (Rule 53).
     let estimatedFuelCost: number | null = null;
     let operationalProfit: number | null = null;
-    let fuelStatus: "ok" | "missing_address" | "geocoding_failed" | "error" = "ok";
+     let fuelStatus: "ok" | "missing_address" | "geocoding_failed" | "workdays_missing" | "error" = "ok";
     let fuelBreakdown: {
       onewayMiles: number; roundTripMiles: number; daysOnJob: number;
       totalMiles: number; fuelGallons: number; mpg: number; fuelPrice: number;
@@ -802,49 +803,46 @@ router.get("/:id/profit", async (req, res) => {
         } else if (route.routeStatus === "geocoding_failed") {
           fuelStatus = "geocoding_failed";
         } else if (route.miles != null) {
-          // Workdays: prefer distinct dates logged in job_sub_hours (always present when
-          // subs log time), then fall back to daily_log diary entries, then the job's
-          // calendar span (endDate − startDate + 1). Floor at 1.
-          const [[subHoursDates], [dlDates]] = await Promise.all([
-            db.select({ n: sql<number>`count(distinct date)` })
+           // Workdays come from actual work evidence, not the scheduled calendar span.
+           // A skipped day between startDate and endDate must not create a round trip.
+           const [subHourDateRows, dailyLogDateRows] = await Promise.all([
+             db.select({ date: jobSubHoursTable.date })
               .from(jobSubHoursTable)
               .where(eq(jobSubHoursTable.jobId, id)),
-            db.select({ n: sql<number>`count(distinct date)` })
+             db.select({ date: dailyLogsTable.date })
               .from(dailyLogsTable)
               .where(eq(dailyLogsTable.jobId, id)),
           ]);
-          const subHoursCount = Number(subHoursDates?.n ?? 0);
-          const dlCount = Number(dlDates?.n ?? 0);
-          // Calendar span: inclusive day count from startDate to endDate on the job record.
-          const spanDays =
-            jobRow?.startDate && jobRow?.endDate
-              ? Math.max(1, Math.round(
-                  (new Date(jobRow.endDate).getTime() - new Date(jobRow.startDate).getTime()) / 86400000
-                ) + 1)
-              : 0;
-          const daysOnJob = Math.max(1, subHoursCount || dlCount || spanDays);
+           const daysOnJob = countActualWorkdays(
+             subHourDateRows.map(row => row.date),
+             dailyLogDateRows.map(row => row.date),
+           );
 
-          // VehicleEngine.operatingCost() is the only place fuel math runs (Rule 53).
-          // Formula: totalMiles = (onewayMiles × 2) × daysOnJob; fuelCost = totalMiles / mpg × fuelPrice
-          const vehicleCost = VehicleEngine.operatingCost({
-            onewayMiles: route.miles,
-            daysOnJob,
-            vehicleProfile: { avgMpg: mpg, fuelPricePerGallon: fuelPrice },
-          });
+           if (daysOnJob == null) {
+             fuelStatus = "workdays_missing";
+           } else {
+             // VehicleEngine.operatingCost() is the only place fuel math runs (Rule 53).
+             // Formula: totalMiles = (onewayMiles × 2) × daysOnJob; fuelCost = totalMiles / mpg × fuelPrice
+             const vehicleCost = VehicleEngine.operatingCost({
+               onewayMiles: route.miles,
+               daysOnJob,
+               vehicleProfile: { avgMpg: mpg, fuelPricePerGallon: fuelPrice },
+             });
 
-          estimatedFuelCost = vehicleCost.fuelCost;
-          operationalProfit = null;
-          fuelStatus = "ok";
-          fuelBreakdown = {
-            onewayMiles: route.miles,
-            roundTripMiles: vehicleCost.roundTripMiles,
-            daysOnJob,
-            totalMiles: vehicleCost.totalMiles,
-            fuelGallons: vehicleCost.fuelGallons,
-            mpg,
-            fuelPrice,
-            routeProvider: route.provider,
-          };
+             estimatedFuelCost = vehicleCost.fuelCost;
+             operationalProfit = null;
+             fuelStatus = "ok";
+             fuelBreakdown = {
+               onewayMiles: route.miles,
+               roundTripMiles: vehicleCost.roundTripMiles,
+               daysOnJob,
+               totalMiles: vehicleCost.totalMiles,
+               fuelGallons: vehicleCost.fuelGallons,
+               mpg,
+               fuelPrice,
+               routeProvider: route.provider,
+             };
+           }
         }
       }
     } catch (fuelErr) {
