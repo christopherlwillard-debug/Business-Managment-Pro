@@ -2,6 +2,7 @@ import { db } from "@workspace/db";
 import { isOwnerWithdrawalExpenseCategory } from "./owner-withdrawals.js";
 import {
   invoicesTable,
+  otherIncomeTable,
   expensesTable,
   jobExpenseAllocationsTable,
   jobSubcontractorsTable,
@@ -44,7 +45,7 @@ export function calculateAllocationSplitPool(input: {
  * Batch variant — primary implementation, avoids N+1 queries.
  * Computes the allocation split pool for each jobId using the same formula as
  * GET /:id/profit:
- *   grossInvoiced (ALL invoices, not just paid)
+ *   grossInvoiced (ALL invoices, not just paid) + job-linked other income
  *   - jobExpenses  (non-Owner-Draw, non-Subcontractor category)
  *   - subLaborCost (hourly labor + fixed payroll ledger payments + accrued bonuses;
  *     legacy Subcontractor-category expenses are used only when no tracked labor or
@@ -59,11 +60,15 @@ export async function computeAllocationSplitPools(
 ): Promise<Map<number, AllocationSplitPool>> {
   if (jobIds.length === 0) return new Map();
 
-  const [poolInvs, poolExps, poolAllocatedExps, poolHours, poolFixedPayments, poolAccruedBonuses, settingsRows] = await Promise.all([
+  const [poolInvs, poolOtherIncome, poolExps, poolAllocatedExps, poolHours, poolFixedPayments, poolAccruedBonuses, settingsRows] = await Promise.all([
     db
       .select({ jobId: invoicesTable.jobId, total: invoicesTable.total })
       .from(invoicesTable)
       .where(inArray(invoicesTable.jobId, jobIds)),
+    db
+      .select({ jobId: otherIncomeTable.jobId, amount: otherIncomeTable.amount })
+      .from(otherIncomeTable)
+      .where(and(inArray(otherIncomeTable.jobId, jobIds), isNull(otherIncomeTable.voidedAt))),
     db
       .select({
         jobId: expensesTable.jobId,
@@ -165,9 +170,13 @@ export async function computeAllocationSplitPools(
 
   const result = new Map<number, AllocationSplitPool>();
   for (const jobId of jobIds) {
-    const revenue = poolInvs
+    const invoiceRevenue = poolInvs
       .filter((i) => i.jobId === jobId)
       .reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
+    const otherIncome = poolOtherIncome
+      .filter((income) => income.jobId === jobId)
+      .reduce((s, income) => s + parseFloat(income.amount ?? "0"), 0);
+    const revenue = invoiceRevenue + otherIncome;
 
     let expenses = 0;
     let flatSubCost = 0;

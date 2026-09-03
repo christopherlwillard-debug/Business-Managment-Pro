@@ -274,9 +274,13 @@ Created the four-document architecture governance system:
 ### Job allocation split-pool consistency
 
 - The per-job profit response now exposes the server-calculated allocation split
-  pool used by the compact outstanding-payments route.
+  pool used by the compact outstanding-payments route; the batch profit summary
+  now exposes the same pool to job cards.
 - Job Financials, the subcontractor-hours payment view, and close-job fallback
   calculations prefer that same live pool, preventing status refreshes from
   showing different percentage-pay amounts.
+- Shared pool revenue includes job-linked other income, and the compact fuel
+  estimate uses the union of actual Daily Log and subcontractor-hour work dates
+  instead of assuming one day.
 - Job-only fuel estimates remain outside the accounting ledgers and outside the
   percentage split pool, consistent with ADR-011.

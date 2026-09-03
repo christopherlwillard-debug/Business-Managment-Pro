@@ -1018,7 +1018,7 @@ router.get("/profit-summary", async (req, res) => {
     const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
 
-    const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows] = await Promise.all([
+    const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows, profitPools] = await Promise.all([
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
       db.select({ jobId: otherIncomeTable.jobId, amount: otherIncomeTable.amount })
@@ -1094,6 +1094,9 @@ router.get("/profit-summary", async (req, res) => {
         .from(jobSubcontractorsTable)
         .where(inArray(jobSubcontractorsTable.jobId, jobIds))
         .groupBy(jobSubcontractorsTable.jobId),
+      // The compact job card must use the exact same split-pool calculation as
+      // the full Job Financials panel and outstanding-payment endpoint.
+      computeAllocationSplitPools(jobIds),
     ]);
 
     const hoursMap = new Map(hoursRows.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
@@ -1117,8 +1120,8 @@ router.get("/profit-summary", async (req, res) => {
     const flatSubCostMap: Record<number, number> = {};
     for (const id of jobIds) flatSubCostMap[id] = 0;
 
-    const result: Record<number, { grossInvoiced: number; collected: number; otherIncomeRevenue: number; jobExpenses: number; subLaborCost: number; allocPaid: number; totalSubHours: number; manHours: number | null; netProfit: number; estimatedFuelCost?: number | null; includeMileageInJobCosts: boolean }> = {};
-    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, otherIncomeRevenue: 0, jobExpenses: 0, subLaborCost: 0, allocPaid: 0, totalSubHours: 0, manHours: null, netProfit: 0, includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true };
+    const result: Record<number, { grossInvoiced: number; collected: number; otherIncomeRevenue: number; jobExpenses: number; subLaborCost: number; allocPaid: number; totalSubHours: number; manHours: number | null; netProfit: number; splitPool: number; estimatedFuelCost?: number | null; includeMileageInJobCosts: boolean }> = {};
+    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, otherIncomeRevenue: 0, jobExpenses: 0, subLaborCost: 0, allocPaid: 0, totalSubHours: 0, manHours: null, netProfit: 0, splitPool: profitPools.get(id)?.splitPool ?? 0, includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true };
 
     for (const inv of invRows) {
       if (inv.jobId == null) continue;
@@ -1201,8 +1204,20 @@ router.get("/profit-summary", async (req, res) => {
           id: jobsTable.id,
           address: jobsTable.address,
           city: jobsTable.city,
-           state: jobsTable.state,
-           includeMileageInJobCosts: jobsTable.includeMileageInJobCosts,
+          state: jobsTable.state,
+          includeMileageInJobCosts: jobsTable.includeMileageInJobCosts,
+          workdayCount: sql<number>`(
+            SELECT COUNT(*)::int
+            FROM (
+              SELECT DISTINCT h.date
+              FROM job_sub_hours h
+              WHERE h.job_id = ${jobsTable.id}
+              UNION
+              SELECT DISTINCT d.date
+              FROM daily_logs d
+              WHERE d.job_id = ${jobsTable.id}
+            ) AS work_dates
+          )`,
         }).from(jobsTable).where(inArray(jobsTable.id, jobIds)),
       ]);
 
@@ -1223,9 +1238,11 @@ router.get("/profit-summary", async (req, res) => {
           const cached = RoutingEngine.getCachedRoute({ origin: businessAddr, destination: jobAddr });
           if (!cached || cached.miles == null) continue;
 
+          const daysOnJob = Number(jobRow.workdayCount ?? 0);
+          if (daysOnJob <= 0) continue;
           const vehicleCost = VehicleEngine.operatingCost({
             onewayMiles: cached.miles,
-            daysOnJob: 1, // bulk summary uses 1 day — full panel shows actual logged days
+            daysOnJob,
             vehicleProfile: { avgMpg: mpg, fuelPricePerGallon: fuelPrice },
           });
           result[jobRow.id].estimatedFuelCost = vehicleCost.fuelCost;

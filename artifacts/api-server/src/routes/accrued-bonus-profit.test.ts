@@ -103,7 +103,11 @@ vi.mock("@workspace/db", () => {
 
 // ── Stub sibling modules so jobs.ts can be imported ──────────────────────────
 vi.mock("./material-lists",            () => ({ syncMaterialsToJobInvoice: vi.fn() }));
-vi.mock("../lib/allocation.js",        () => ({ computeAllocationSplitPool: vi.fn(), computeSubOwed: vi.fn() }));
+vi.mock("../lib/allocation.js",        () => ({
+  computeAllocationSplitPool: vi.fn(),
+  computeAllocationSplitPools: vi.fn().mockResolvedValue(new Map()),
+  computeSubOwed: vi.fn(),
+}));
 vi.mock("./invoices",                  () => ({ calcInvoice: vi.fn(), buildInvoiceQuery: vi.fn(), fmt: (v: any) => String(v) }));
 vi.mock("../lib/productionBilling.js", () => ({ buildProductionLineItems: vi.fn(), ensureProductionBillingSeed: vi.fn() }));
 

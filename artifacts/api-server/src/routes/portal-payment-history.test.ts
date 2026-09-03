@@ -261,6 +261,7 @@ describe("GET /portal/:token — payment history privacy", () => {
       [], // this sub's expenses
       [], // this sub's mileage
       [], // allocation pool: invoices
+      [], // allocation pool: other income
       [], // allocation pool: expenses
       [], // allocation pool: allocated expenses
       [], // allocation pool: hourly labor
