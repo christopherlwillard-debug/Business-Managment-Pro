@@ -9,6 +9,7 @@ function resolveChromiumPath(): string {
       console.log(`[launchBrowser] Using PUPPETEER_EXECUTABLE_PATH: ${p}`);
       return p;
     }
+    throw new Error(`PUPPETEER_EXECUTABLE_PATH does not exist: ${p}`);
   }
 
   // Prefer system Chromium installed via Nix — its wrapper script sets up the
@@ -38,8 +39,16 @@ function resolveChromiumPath(): string {
     }
   }
 
-  // Last resort: bundled Puppeteer Chrome (may lack system libs in some envs)
+  // Last resort: the version-matched browser managed by Puppeteer. The
+  // workspace keeps this under PUPPETEER_CACHE_DIR so validation runs do not
+  // depend on a developer's globally installed browser.
   const bundled = puppeteer.executablePath();
+  if (!bundled || !existsSync(bundled)) {
+    throw new Error(
+      `No Chromium runtime is available. Install Puppeteer's managed browser ` +
+      `in PUPPETEER_CACHE_DIR or provide an existing PUPPETEER_EXECUTABLE_PATH.`,
+    );
+  }
   console.log(`[launchBrowser] Falling back to bundled Chrome: ${bundled}`);
   return bundled;
 }

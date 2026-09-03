@@ -1,11 +1,21 @@
 /* Authenticated browser verification for the close-job payout waterfall.
  *
  * Run:
- *   pnpm --filter @workspace/api-server exec tsx scripts/e2e-close-job-verify.ts
+ *   pnpm --filter @workspace/api-server run verify:close-job
  *
  * This creates a temporary development job with a paid invoice, one allocation
  * worker, and a partial payment, drives the real Jobs page, then removes all
  * temporary records.
+ *
+ * Browser/runtime:
+ *   The command uses the shared launchBrowser helper. It prefers an explicit
+ *   PUPPETEER_EXECUTABLE_PATH, then the Nix Chromium wrapper, then Puppeteer's
+ *   version-matched browser from PUPPETEER_CACHE_DIR.
+ *
+ * Target:
+ *   E2E_BASE_URL defaults to the local Replit preview proxy at
+ *   http://localhost:80. Override it only for another local development
+ *   server; production deployments are rejected.
  */
 import { launchBrowser } from "../src/lib/launchBrowser";
 import { db } from "@workspace/db";
@@ -22,12 +32,21 @@ import {
 import { and, eq } from "drizzle-orm";
 import fs from "node:fs";
 
-const BASE = "http://localhost:80";
+const BASE = process.env.E2E_BASE_URL ?? "http://localhost:80";
 const SHOTS = "/tmp/e2e-close-job-shots";
 const SID = `e2e-close-${crypto.randomUUID()}`;
 
 if (process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT) {
   throw new Error("Refusing to run close-job E2E verification against a production deployment");
+}
+
+const baseUrl = new URL(BASE);
+const baseHostname = baseUrl.hostname.replace(/^\[|\]$/g, "");
+if (baseUrl.protocol !== "http:" || !["localhost", "127.0.0.1", "::1"].includes(baseHostname)) {
+  throw new Error(
+    `Refusing to run close-job E2E verification against non-local target ${baseUrl.origin}. ` +
+    "Set E2E_BASE_URL to a local development server.",
+  );
 }
 
 const results: { name: string; pass: boolean; detail?: string }[] = [];
@@ -49,11 +68,16 @@ type CloseJobFixture = {
 type VerificationBusiness = { id: number; slug: string };
 
 const fixtures: CloseJobFixture[] = [];
+type CleanupTarget = {
+  subId?: number;
+  jobId?: number;
+  invoiceId?: number;
+};
+const cleanupTargets: CleanupTarget[] = [];
 
 async function createFixture(business: VerificationBusiness, label: string): Promise<CloseJobFixture> {
-  let subId: number | undefined;
-  let jobId: number | undefined;
-  let invoiceId: number | undefined;
+  const target: CleanupTarget = {};
+  cleanupTargets.push(target);
 
   try {
     const [sub] = await db.insert(subcontractorsTable).values({
@@ -62,7 +86,7 @@ async function createFixture(business: VerificationBusiness, label: string): Pro
       role: "member",
       notes: "Temporary development-only close-job regression fixture",
     }).returning();
-    subId = sub.id;
+    target.subId = sub.id;
 
     const [job] = await db.insert(jobsTable).values({
       title: `E2E ${label} Job ${Date.now()}`,
@@ -70,7 +94,7 @@ async function createFixture(business: VerificationBusiness, label: string): Pro
       businessLine: business.slug,
       businessId: business.id,
     }).returning();
-    jobId = job.id;
+    target.jobId = job.id;
 
     const [invoice] = await db.insert(invoicesTable).values({
       invoiceNumber: `E2E-CLOSE-${job.id}`,
@@ -84,7 +108,7 @@ async function createFixture(business: VerificationBusiness, label: string): Pro
       businessId: business.id,
       lineItems: [{ id: 1, description: "Verification work", quantity: 1, unitPrice: 1000, total: 1000 }],
     }).returning();
-    invoiceId = invoice.id;
+    target.invoiceId = invoice.id;
 
     await db.insert(jobSubcontractorsTable).values({
       jobId: job.id,
@@ -118,27 +142,46 @@ async function createFixture(business: VerificationBusiness, label: string): Pro
     fixtures.push(fixture);
     return fixture;
   } catch (error) {
-    try {
-      if (jobId != null) {
-        await db.delete(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.jobId, jobId));
-        await db.delete(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, jobId));
-      }
-      if (invoiceId != null) await db.delete(invoicesTable).where(eq(invoicesTable.id, invoiceId));
-      if (jobId != null) await db.delete(jobsTable).where(eq(jobsTable.id, jobId));
-      if (subId != null) await db.delete(subcontractorsTable).where(eq(subcontractorsTable.id, subId));
-    } catch {
-      // Preserve the original fixture-creation error; the outer cleanup will retry known fixtures.
-    }
+    // The target remains registered so the outer finally block retries every
+    // cleanup step even if fixture creation failed partway through.
     throw error;
   }
 }
 
-async function cleanupFixture(fixture: CloseJobFixture) {
-  await db.delete(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.jobId, fixture.jobId));
-  await db.delete(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, fixture.jobId));
-  await db.delete(invoicesTable).where(eq(invoicesTable.id, fixture.invoiceId));
-  await db.delete(jobsTable).where(eq(jobsTable.id, fixture.jobId));
-  await db.delete(subcontractorsTable).where(eq(subcontractorsTable.id, fixture.subId));
+async function cleanupTarget(target: CleanupTarget): Promise<string[]> {
+  const failures: string[] = [];
+  const attempt = async (label: string, operation: () => Promise<unknown>) => {
+    try {
+      await operation();
+    } catch (error) {
+      failures.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  if (target.jobId != null) {
+    await attempt("sub_payment_records", () =>
+      db.delete(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.jobId!, target.jobId!)),
+    );
+    await attempt("job_subcontractors", () =>
+      db.delete(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, target.jobId!)),
+    );
+  }
+  if (target.invoiceId != null) {
+    await attempt("invoices", () =>
+      db.delete(invoicesTable).where(eq(invoicesTable.id, target.invoiceId!)),
+    );
+  }
+  if (target.jobId != null) {
+    await attempt("jobs", () =>
+      db.delete(jobsTable).where(eq(jobsTable.id, target.jobId!)),
+    );
+  }
+  if (target.subId != null) {
+    await attempt("subcontractors", () =>
+      db.delete(subcontractorsTable).where(eq(subcontractorsTable.id, target.subId!)),
+    );
+  }
+  return failures;
 }
 
 async function main() {
@@ -179,7 +222,7 @@ async function main() {
     browser = await launchBrowser();
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
-    await page.setCookie({ name: "sid", value: SID, domain: "localhost", path: "/" });
+    await page.setCookie({ name: "sid", value: SID, url: BASE, path: "/" });
     const openCompletionDialog = async (fixture: CloseJobFixture, screenshotName: string) => {
       await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
       await page.waitForFunction(
@@ -380,14 +423,14 @@ async function main() {
      const reloadedOutstandingRow = outstandingAfterReload.outstanding.find(
        (row: { subcontractorId: number }) => row.subcontractorId === keepOutstandingFixture.subId,
      );
-     const reloadedOutstandingBalance = Number(reloadedOutstandingRow?.amountOwed ?? 0)
+      const reloadedOutstandingBalance = Number(reloadedOutstandingRow?.amountOwed ?? 0)
        - Number(reloadedOutstandingRow?.amountPaid ?? 0);
      record(
        "Reload preserves $25.00 paid and $165.00 outstanding in the API",
        reloadedWorker?.paymentStatus === "partial"
          && Math.abs(Number(reloadedWorker?.amountPaid) - 25) < 0.01
          && Math.abs(reloadedOutstandingBalance - 165) < 0.01,
-       `status=${reloadedWorker?.paymentStatus}, paid=${reloadedWorker?.amountPaid}, outstanding=${reloadedOutstandingBalance}`,
+        `reload balance pair: paid=$${Number(reloadedWorker?.amountPaid ?? 0).toFixed(2)}, outstanding=$${reloadedOutstandingBalance.toFixed(2)}`,
      );
      const outstandingLedgerRowsAfterReload = await db.select({
        amount: subPaymentRecordsTable.amount,
@@ -402,31 +445,82 @@ async function main() {
        .map((row) => Number(row.netPaid ?? row.amount))
        .sort((a, b) => a - b);
      record(
-       "Reload creates no additional subcontractor payment record",
+       "Reload preserves the subcontractor ledger-count invariant",
        outstandingLedgerRowsAfterReload.length === outstandingLedgerRows.length
          && outstandingActiveAmountsAfterReload.length === outstandingActiveAmounts.length
          && outstandingActiveAmountsAfterReload.every((amount, index) =>
            Math.abs(amount - outstandingActiveAmounts[index]) < 0.01),
-       `payment rows=${outstandingLedgerRowsAfterReload.length}, active amounts=${outstandingActiveAmountsAfterReload.map((amount) => amount.toFixed(2)).join(", ")}`,
+       `ledger rows: before=${outstandingLedgerRows.length}, after=${outstandingLedgerRowsAfterReload.length}; active rows: before=${outstandingActiveAmounts.length}, after=${outstandingActiveAmountsAfterReload.length}`,
      );
+      console.log(
+        `Reload balance pair: paid=$${Number(reloadedWorker?.amountPaid ?? 0).toFixed(2)}, ` +
+          `outstanding=$${reloadedOutstandingBalance.toFixed(2)}`,
+      );
+      console.log(
+        `Ledger-count invariant: rows ${outstandingLedgerRows.length} → ${outstandingLedgerRowsAfterReload.length}; ` +
+          `active ${outstandingActiveAmounts.length} → ${outstandingActiveAmountsAfterReload.length}`,
+      );
      await page.screenshot({ path: `${SHOTS}/02-keep-outstanding-reloaded.png` });
   } finally {
-    if (browser) await browser.close();
-    for (const fixture of fixtures) await cleanupFixture(fixture);
-    if (sessionCreated) await db.delete(sessionsTable).where(eq(sessionsTable.sid, SID));
+    const cleanupFailures: string[] = [];
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (error) {
+        cleanupFailures.push(`browser: ${error instanceof Error ? error.message : String(error)}`);
+     }
+    }
+    for (const target of cleanupTargets) {
+      cleanupFailures.push(...await cleanupTarget(target));
+    }
+    try {
+      // Delete by the unique test SID even if session insertion did not
+      // return successfully; this makes retries safe after partial failure.
+      await db.delete(sessionsTable).where(eq(sessionsTable.sid, SID));
+    } catch (error) {
+      cleanupFailures.push(`sessions: ${error instanceof Error ? error.message : String(error)}`);
+    }
 
-    const remaining = await Promise.all(fixtures.map(async (fixture) => {
-      const [[job], [sub], [invoice], payments, assignments] = await Promise.all([
-        db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.id, fixture.jobId)),
-        db.select({ id: subcontractorsTable.id }).from(subcontractorsTable).where(eq(subcontractorsTable.id, fixture.subId)),
-        db.select({ id: invoicesTable.id }).from(invoicesTable).where(eq(invoicesTable.id, fixture.invoiceId)),
-        db.select({ id: subPaymentRecordsTable.id }).from(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.jobId, fixture.jobId)),
-        db.select({ subcontractorId: jobSubcontractorsTable.subcontractorId }).from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, fixture.jobId)),
-      ]);
-      return job || sub || invoice || payments.length > 0 || assignments.length > 0;
-    }));
-    const sessionRows = await db.select({ sid: sessionsTable.sid }).from(sessionsTable).where(eq(sessionsTable.sid, SID));
-    record("All temporary records are removed", remaining.every((leftover) => !leftover) && sessionRows.length === 0);
+    try {
+     const remaining = await Promise.all(cleanupTargets.map(async (target) => {
+       const [[job], [sub], [invoice], payments, assignments] = await Promise.all([
+         target.jobId == null
+           ? Promise.resolve([] as { id: number }[])
+           : db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.id, target.jobId)),
+         target.subId == null
+           ? Promise.resolve([] as { id: number }[])
+           : db.select({ id: subcontractorsTable.id }).from(subcontractorsTable).where(eq(subcontractorsTable.id, target.subId)),
+         target.invoiceId == null
+           ? Promise.resolve([] as { id: number }[])
+           : db.select({ id: invoicesTable.id }).from(invoicesTable).where(eq(invoicesTable.id, target.invoiceId)),
+         target.jobId == null
+           ? Promise.resolve([] as { id: number }[])
+           : db.select({ id: subPaymentRecordsTable.id }).from(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.jobId, target.jobId)),
+         target.jobId == null
+           ? Promise.resolve([] as { subcontractorId: number }[])
+           : db.select({ subcontractorId: jobSubcontractorsTable.subcontractorId }).from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, target.jobId)),
+       ]);
+       return job || sub || invoice || payments.length > 0 || assignments.length > 0;
+     }));
+     const sessionRows = await db.select({ sid: sessionsTable.sid }).from(sessionsTable).where(eq(sessionsTable.sid, SID));
+     const cleanupPassed = cleanupFailures.length === 0 && remaining.every((leftover) => !leftover) && sessionRows.length === 0;
+     record(
+       "All temporary jobs, subcontractors, payments, assignments, and session records are removed",
+       cleanupPassed,
+       cleanupFailures.length
+         ? cleanupFailures.join("; ")
+         : `fixtures=${cleanupTargets.length}, sessionRows=${sessionRows.length}`,
+     );
+     if (sessionCreated && !cleanupPassed) {
+       console.error("Close-job verification cleanup did not reach a clean state.");
+     }
+    } catch (error) {
+      record(
+        "All temporary jobs, subcontractors, payments, assignments, and session records are removed",
+        false,
+        `cleanup verification query failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   const failed = results.filter((result) => !result.pass);
