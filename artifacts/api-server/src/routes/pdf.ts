@@ -1,8 +1,42 @@
 import { Router } from "express";
 import { launchBrowser } from "../lib/launchBrowser.js";
-import { generateCapabilityStatementPdfBuffer } from "../lib/generateCapabilityStatementPdf.js";
+import {
+  generateCapabilityStatementPdfBuffer,
+  getCapabilityStatementOptions,
+} from "../lib/generateCapabilityStatementPdf.js";
 
 const router = Router();
+
+function parseIdList(value: unknown): { ids?: number[]; error?: string } {
+  if (value === undefined) return {};
+  const raw = Array.isArray(value) ? value.join(",") : String(value);
+  if (raw.trim() === "") return { ids: [] };
+  const ids = raw.split(",").map((part) => Number(part.trim()));
+  if (ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+    return { error: "selection IDs must be positive integers" };
+  }
+  return { ids: [...new Set(ids)] };
+}
+
+router.get("/capability-statement/options", async (req, res) => {
+  const businessId = Number(req.query.businessId);
+  if (!Number.isInteger(businessId) || businessId <= 0) {
+    res.status(400).json({ error: "businessId query param is required" });
+    return;
+  }
+
+  try {
+    const options = await getCapabilityStatementOptions(businessId);
+    if (!options) {
+      res.status(404).json({ error: "Business not found" });
+      return;
+    }
+    res.json(options);
+  } catch (err) {
+    console.error("capability statement options error:", err);
+    res.status(500).json({ error: "Failed to load capability statement options" });
+  }
+});
 
 router.get("/capability-statement", async (req, res) => {
   const businessId = Number(req.query.businessId);
@@ -11,8 +45,18 @@ router.get("/capability-statement", async (req, res) => {
     return;
   }
 
+  const capabilityProfileIds = parseIdList(req.query.capabilityProfileIds);
+  const pastProjectIds = parseIdList(req.query.pastProjectIds);
+  if (capabilityProfileIds.error || pastProjectIds.error) {
+    res.status(400).json({ error: capabilityProfileIds.error ?? pastProjectIds.error });
+    return;
+  }
+
   try {
-    const result = await generateCapabilityStatementPdfBuffer(businessId);
+    const result = await generateCapabilityStatementPdfBuffer(businessId, {
+      capabilityProfileIds: capabilityProfileIds.ids,
+      pastProjectIds: pastProjectIds.ids,
+    });
     if (!result) {
       res.status(404).json({ error: "Business not found" });
       return;

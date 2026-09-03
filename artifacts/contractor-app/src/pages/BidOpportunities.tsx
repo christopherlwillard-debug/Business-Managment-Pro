@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw, FileSearch, Shield, List, Columns, CheckCircle2, AlertCircle, Building2, Layers2, FileDown,
@@ -8,6 +8,8 @@ import { ToastAction } from "@/components/ui/toast";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
@@ -37,6 +39,21 @@ interface BidSettings {
   localLastError?: string | null;
   awardsLastSuccessAt?: string | null;
   awardsLastError?: string | null;
+}
+
+interface CapabilityStatementOptions {
+  business: { id: number; name: string };
+  capabilityProfiles: Array<{ id: number; name: string; description: string | null }>;
+  pastProjects: Array<{
+    id: number;
+    title: string;
+    description: string | null;
+    jobType: string | null;
+    city: string | null;
+    state: string | null;
+    closedAt: string | null;
+    endDate: string | null;
+  }>;
 }
 
 function relativeTime(iso: string | null | undefined): string {
@@ -81,6 +98,12 @@ export default function BidOpportunities() {
   const [addingPrivate,  setAddingPrivate]  = useState(false);
   const [showFiltered,   setShowFiltered]   = useState(false);
   const [generatingCapabilityStatement, setGeneratingCapabilityStatement] = useState(false);
+  const [capabilityStatementPickerOpen, setCapabilityStatementPickerOpen] = useState(false);
+  const [capabilityStatementOptions, setCapabilityStatementOptions] = useState<CapabilityStatementOptions | null>(null);
+  const [loadingCapabilityStatementOptions, setLoadingCapabilityStatementOptions] = useState(false);
+  const [selectedCapabilityProfileIds, setSelectedCapabilityProfileIds] = useState<number[]>([]);
+  const [selectedPastProjectIds, setSelectedPastProjectIds] = useState<number[]>([]);
+  const capabilityOptionsRequestId = useRef(0);
   const [privateForm, setPrivateForm] = useState({
     companyName:   "",
     description:   "",
@@ -97,7 +120,16 @@ export default function BidOpportunities() {
     localStorage.setItem(VIEW_KEY, v);
   }
 
-  async function downloadCapabilityStatement() {
+  useEffect(() => {
+    capabilityOptionsRequestId.current += 1;
+    setCapabilityStatementPickerOpen(false);
+    setCapabilityStatementOptions(null);
+    setSelectedCapabilityProfileIds([]);
+    setSelectedPastProjectIds([]);
+    setLoadingCapabilityStatementOptions(false);
+  }, [businessId]);
+
+  async function openCapabilityStatementPicker() {
     if (!businessId || !activeBusiness) {
       toast({
         title: "Select a business first",
@@ -107,10 +139,66 @@ export default function BidOpportunities() {
       return;
     }
 
-    setGeneratingCapabilityStatement(true);
+    const requestedBusinessId = businessId;
+    const requestId = capabilityOptionsRequestId.current + 1;
+    capabilityOptionsRequestId.current = requestId;
+    setCapabilityStatementOptions(null);
+    setSelectedCapabilityProfileIds([]);
+    setSelectedPastProjectIds([]);
+    setCapabilityStatementPickerOpen(true);
+    setLoadingCapabilityStatementOptions(true);
     try {
       const res = await fetch(
-        `${BASE_URL}/api/pdf/capability-statement?businessId=${businessId}`,
+        `${BASE_URL}/api/pdf/capability-statement/options?businessId=${businessId}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? "Failed to load capability statement options");
+      }
+      const options = await res.json() as CapabilityStatementOptions;
+      if (requestId !== capabilityOptionsRequestId.current || options.business.id !== requestedBusinessId) {
+        return;
+      }
+      setCapabilityStatementOptions(options);
+      setSelectedCapabilityProfileIds(options.capabilityProfiles.map((profile) => profile.id));
+      setSelectedPastProjectIds(options.pastProjects.map((project) => project.id));
+    } catch (err) {
+      if (requestId !== capabilityOptionsRequestId.current) return;
+      setCapabilityStatementPickerOpen(false);
+      toast({
+        title: "Couldn't load capability statement options",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      if (requestId === capabilityOptionsRequestId.current) {
+        setLoadingCapabilityStatementOptions(false);
+      }
+    }
+  }
+
+  async function downloadCapabilityStatement() {
+    if (!businessId || !activeBusiness || !capabilityStatementOptions) return;
+    if (capabilityStatementOptions.business.id !== businessId) {
+      setCapabilityStatementPickerOpen(false);
+      toast({
+        title: "Business selection changed",
+        description: "Open the Capability Statement again for the selected business.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setGeneratingCapabilityStatement(true);
+    try {
+      const params = new URLSearchParams({
+        businessId: String(businessId),
+        capabilityProfileIds: selectedCapabilityProfileIds.join(","),
+        pastProjectIds: selectedPastProjectIds.join(","),
+      });
+      const res = await fetch(
+        `${BASE_URL}/api/pdf/capability-statement?${params.toString()}`,
         { credentials: "include" },
       );
       if (!res.ok) {
@@ -122,11 +210,12 @@ export default function BidOpportunities() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `Capability Statement - ${activeBusiness.name}.pdf`;
+      anchor.download = `Capability Statement - ${capabilityStatementOptions.business.name}.pdf`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setCapabilityStatementPickerOpen(false);
       toast({ title: "Capability statement downloaded" });
     } catch (err) {
       toast({
@@ -772,8 +861,8 @@ export default function BidOpportunities() {
 
           {/* Refresh — icon-only on mobile (44px touch target), full label on desktop */}
           <button
-            onClick={downloadCapabilityStatement}
-            disabled={generatingCapabilityStatement}
+            onClick={openCapabilityStatementPicker}
+            disabled={generatingCapabilityStatement || loadingCapabilityStatementOptions}
             title={businessId ? "Download capability statement" : "Select a business to generate a capability statement"}
             className={cn(
               "flex items-center gap-2 rounded-lg border border-border bg-card text-foreground font-medium",
@@ -1216,6 +1305,143 @@ export default function BidOpportunities() {
               className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
             >
               {createPrivateBid.isPending ? "Adding…" : "Add Opportunity"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={capabilityStatementPickerOpen}
+        onOpenChange={(open) => {
+          if (!generatingCapabilityStatement) setCapabilityStatementPickerOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Customize Capability Statement</DialogTitle>
+          </DialogHeader>
+
+          {loadingCapabilityStatementOptions ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              Loading your saved capabilities and completed projects…
+            </div>
+          ) : capabilityStatementOptions ? (
+            <div className="space-y-6">
+              <p className="text-sm text-muted-foreground">
+                Choose what to emphasize for this solicitation. Your saved records will not be changed.
+              </p>
+
+              <section className="space-y-3" aria-labelledby="capability-profile-selection-heading">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 id="capability-profile-selection-heading" className="text-sm font-semibold">
+                    Capability Profiles
+                  </h3>
+                  <span className="text-xs text-muted-foreground">
+                    {selectedCapabilityProfileIds.length} of {capabilityStatementOptions.capabilityProfiles.length} selected
+                  </span>
+                </div>
+                {capabilityStatementOptions.capabilityProfiles.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                    No active capability profiles are saved for this business.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {capabilityStatementOptions.capabilityProfiles.map((profile) => (
+                      <Label
+                        key={profile.id}
+                        className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-muted/50"
+                      >
+                        <Checkbox
+                          checked={selectedCapabilityProfileIds.includes(profile.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedCapabilityProfileIds((current) =>
+                              checked
+                                ? [...current, profile.id]
+                                : current.filter((id) => id !== profile.id),
+                            );
+                          }}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-foreground">{profile.name}</span>
+                          {profile.description && (
+                            <span className="mt-1 block text-xs font-normal leading-5 text-muted-foreground">
+                              {profile.description}
+                            </span>
+                          )}
+                        </span>
+                      </Label>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="space-y-3" aria-labelledby="past-project-selection-heading">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 id="past-project-selection-heading" className="text-sm font-semibold">
+                    Completed Projects
+                  </h3>
+                  <span className="text-xs text-muted-foreground">
+                    {selectedPastProjectIds.length} of {capabilityStatementOptions.pastProjects.length} selected
+                  </span>
+                </div>
+                {capabilityStatementOptions.pastProjects.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                    No completed projects are available yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {capabilityStatementOptions.pastProjects.map((project) => {
+                      const metadata = [project.jobType, [project.city, project.state].filter(Boolean).join(", ")]
+                        .filter(Boolean)
+                        .join(" • ");
+                      return (
+                        <Label
+                          key={project.id}
+                          className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-muted/50"
+                        >
+                          <Checkbox
+                            checked={selectedPastProjectIds.includes(project.id)}
+                            onCheckedChange={(checked) => {
+                              setSelectedPastProjectIds((current) =>
+                                checked
+                                  ? [...current, project.id]
+                                  : current.filter((id) => id !== project.id),
+                              );
+                            }}
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-foreground">
+                              {project.title || "Completed project"}
+                            </span>
+                            {metadata && (
+                              <span className="mt-1 block text-xs font-normal text-muted-foreground">{metadata}</span>
+                            )}
+                          </span>
+                        </Label>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+          ) : null}
+
+          <DialogFooter className="gap-2">
+            <button
+              type="button"
+              onClick={() => setCapabilityStatementPickerOpen(false)}
+              disabled={generatingCapabilityStatement}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={downloadCapabilityStatement}
+              disabled={loadingCapabilityStatementOptions || generatingCapabilityStatement || !capabilityStatementOptions}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {generatingCapabilityStatement ? "Generating…" : "Download Statement"}
             </button>
           </DialogFooter>
         </DialogContent>

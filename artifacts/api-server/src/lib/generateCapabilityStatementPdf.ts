@@ -26,6 +26,52 @@ type CapabilityStatementResult = {
   filename: string;
 };
 
+export type CapabilityStatementSelection = {
+  capabilityProfileIds?: number[];
+  pastProjectIds?: number[];
+};
+
+export type CapabilityStatementOptions = {
+  business: { id: number; name: string };
+  capabilityProfiles: Array<{ id: number; name: string; description: string | null }>;
+  pastProjects: Array<{
+    id: number;
+    title: string;
+    description: string | null;
+    jobType: string | null;
+    city: string | null;
+    state: string | null;
+    closedAt: string | Date | null;
+    endDate: string | null;
+  }>;
+};
+
+export function applyCapabilityStatementSelection<
+  Capability extends { id: number },
+  Project extends { id: number },
+>(
+  capabilityProfiles: Capability[],
+  pastProjects: Project[],
+  selection?: CapabilityStatementSelection,
+): { capabilityProfiles: Capability[]; pastProjects: Project[] } {
+  return {
+    capabilityProfiles: selection?.capabilityProfileIds
+      ? capabilityProfiles.filter((profile) => selection.capabilityProfileIds!.includes(profile.id))
+      : capabilityProfiles,
+    pastProjects: selection?.pastProjectIds
+      ? pastProjects.filter((project) => selection.pastProjectIds!.includes(project.id))
+      : pastProjects,
+  };
+}
+
+export function capabilitySectionMode(
+  selectedCapabilityCount: number,
+  selection?: CapabilityStatementSelection,
+): "content" | "placeholder" | "omit" {
+  if (selectedCapabilityCount > 0) return "content";
+  return selection?.capabilityProfileIds === undefined ? "placeholder" : "omit";
+}
+
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -56,6 +102,7 @@ function formatLocation(city: string | null, state: string | null): string {
 
 export async function generateCapabilityStatementPdfBuffer(
   businessId: number,
+  selection?: CapabilityStatementSelection,
 ): Promise<CapabilityStatementResult | null> {
   const today = new Date().toISOString().slice(0, 10);
   const [business] = await db
@@ -107,6 +154,7 @@ export async function generateCapabilityStatementPdfBuffer(
     db
       .select({
         title: jobsTable.title,
+        id: jobsTable.id,
         description: jobsTable.description,
         jobType: jobsTable.jobType,
         city: jobsTable.city,
@@ -129,6 +177,11 @@ export async function generateCapabilityStatementPdfBuffer(
       .orderBy(desc(jobsTable.closedAt), desc(jobsTable.createdAt))
       .limit(8),
   ]);
+
+  const {
+    capabilityProfiles: selectedCapabilityProfiles,
+    pastProjects: selectedPastProjects,
+  } = applyCapabilityStatementSelection(capabilityProfiles, pastProjects, selection);
 
   const doc = new PDFDocument({
     size: "Letter",
@@ -257,22 +310,33 @@ export async function generateCapabilityStatementPdfBuffer(
   }
 
   doc.y = 148;
-  sectionHeading("Core Competencies");
-
   const uniqueCapabilities = new Set<string>();
-  for (const profile of capabilityProfiles) {
+  for (const profile of selectedCapabilityProfiles) {
     const name = cleanText(profile.name);
     if (!name || uniqueCapabilities.has(name.toLowerCase())) continue;
     uniqueCapabilities.add(name.toLowerCase());
     const description = compactDescription(profile.description);
-    bullet(description ? `${name} — ${description}` : name);
   }
-  if (uniqueCapabilities.size === 0) {
+
+  const capabilityMode = capabilitySectionMode(uniqueCapabilities.size, selection);
+  if (capabilityMode !== "omit") {
+    sectionHeading("Core Competencies");
+  }
+  if (capabilityMode === "content") {
+    uniqueCapabilities.clear();
+    for (const profile of selectedCapabilityProfiles) {
+      const name = cleanText(profile.name);
+      if (!name || uniqueCapabilities.has(name.toLowerCase())) continue;
+      uniqueCapabilities.add(name.toLowerCase());
+      const description = compactDescription(profile.description);
+      bullet(description ? `${name} — ${description}` : name);
+    }
+  } else if (capabilityMode === "placeholder") {
     wrapped("Add active capability profiles in Bid Settings to feature your services here.", 9, GRAY);
   }
 
   const naicsCodes = [...new Set(
-    capabilityProfiles.flatMap((profile) => asStringArray(profile.naicsCodes)),
+    selectedCapabilityProfiles.flatMap((profile) => asStringArray(profile.naicsCodes)),
   )];
   if (naicsCodes.length > 0) {
     sectionHeading("NAICS Codes");
@@ -299,9 +363,9 @@ export async function generateCapabilityStatementPdfBuffer(
     for (const line of qualificationLines) bullet(line, { color: TEAL });
   }
 
-  if (pastProjects.length > 0) {
+  if (selectedPastProjects.length > 0) {
     sectionHeading("Selected Past Performance");
-    for (const project of pastProjects) {
+    for (const project of selectedPastProjects) {
       const location = formatLocation(project.city, project.state);
       const metadata = [cleanText(project.jobType), location].filter(Boolean).join("  •  ");
       const title = cleanText(project.title) || "Completed project";
@@ -313,7 +377,7 @@ export async function generateCapabilityStatementPdfBuffer(
     }
   }
 
-  if (qualificationLines.length === 0 && pastProjects.length === 0) {
+  if (qualificationLines.length === 0 && selectedPastProjects.length === 0) {
     sectionHeading("Company Profile");
     wrapped(
       "This statement is generated from the business profile and bid settings currently saved in Willard.",
@@ -333,5 +397,65 @@ export async function generateCapabilityStatementPdfBuffer(
   return {
     buffer: Buffer.concat(chunks),
     filename: `Capability-Statement-${safeFilename(business.name)}.pdf`,
+  };
+}
+
+export async function getCapabilityStatementOptions(
+  businessId: number,
+): Promise<CapabilityStatementOptions | null> {
+  const [business] = await db
+    .select({ id: businessesTable.id, name: businessesTable.name, slug: businessesTable.slug })
+    .from(businessesTable)
+    .where(eq(businessesTable.id, businessId))
+    .limit(1);
+
+  if (!business) return null;
+
+  const [capabilityProfiles, pastProjects] = await Promise.all([
+    db
+      .select({
+        id: bidCapabilityProfilesTable.id,
+        name: bidCapabilityProfilesTable.name,
+        description: bidCapabilityProfilesTable.description,
+      })
+      .from(bidCapabilityProfilesTable)
+      .where(and(
+        eq(bidCapabilityProfilesTable.businessId, businessId),
+        eq(bidCapabilityProfilesTable.active, true),
+      ))
+      .orderBy(
+        asc(bidCapabilityProfilesTable.sortOrder),
+        asc(bidCapabilityProfilesTable.id),
+      ),
+    db
+      .select({
+        id: jobsTable.id,
+        title: jobsTable.title,
+        description: jobsTable.description,
+        jobType: jobsTable.jobType,
+        city: jobsTable.city,
+        state: jobsTable.state,
+        closedAt: jobsTable.closedAt,
+        endDate: jobsTable.endDate,
+      })
+      .from(jobsTable)
+      .where(and(
+        or(
+          eq(jobsTable.businessId, businessId),
+          and(
+            isNull(jobsTable.businessId),
+            eq(jobsTable.businessLine, business.slug),
+          ),
+        ),
+        inArray(jobsTable.status, ["completed", "invoiced", "closed"]),
+      ))
+      .orderBy(desc(jobsTable.closedAt), desc(jobsTable.createdAt))
+      .limit(8),
+  ]);
+
+  return {
+    business: { id: business.id, name: business.name },
+    capabilityProfiles,
+    pastProjects,
   };
 }
