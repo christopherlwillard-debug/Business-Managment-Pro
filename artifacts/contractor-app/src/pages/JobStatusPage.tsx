@@ -3,7 +3,7 @@ import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, CheckCircle2, Minus, Square, AlertCircle, HardHat } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+const BASE = (import.meta.env?.BASE_URL ?? "/").replace(/\/$/, "");
 
 type StatusSummary = {
   jobTitle: string;
@@ -73,6 +73,23 @@ type StatusData = {
   delayLog: DelayLogEntry[];
   sections: StatusSection[];
 };
+
+type SummaryRefreshState = {
+  token: string | undefined;
+  overallPercent: number;
+};
+
+export function getSummaryDetailRefresh(
+  previous: SummaryRefreshState | null,
+  current: SummaryRefreshState,
+): { next: SummaryRefreshState; shouldRefetch: boolean } {
+  return {
+    next: current,
+    shouldRefetch: previous !== null
+      && previous.token === current.token
+      && previous.overallPercent !== current.overallPercent,
+  };
+}
 
 function formatDate(iso: string | null): string {
   if (!iso) return "";
@@ -270,7 +287,7 @@ function SectionsSkeleton() {
 
 export default function JobStatusPage() {
   const { token } = useParams<{ token: string }>();
-  const previousSummaryPercent = useRef<number | null>(null);
+  const previousSummary = useRef<SummaryRefreshState | null>(null);
 
   const { data: summary, isLoading: summaryLoading, error: summaryError } = useQuery<StatusSummary>({
     queryKey: ["public-status-summary", token],
@@ -304,19 +321,17 @@ export default function JobStatusPage() {
   // changes, pull the detail response immediately so section counts and item
   // states do not remain stale until the next scheduled detail poll.
   useEffect(() => {
-    previousSummaryPercent.current = null;
-  }, [token]);
-
-  useEffect(() => {
     if (!summary) return;
-    const currentPercent = summary.overallPercent;
-    const previousPercent = previousSummaryPercent.current;
-    previousSummaryPercent.current = currentPercent;
+    const { next, shouldRefetch } = getSummaryDetailRefresh(
+      previousSummary.current,
+      { token, overallPercent: summary.overallPercent },
+    );
+    previousSummary.current = next;
 
-    if (previousPercent !== null && previousPercent !== currentPercent) {
+    if (shouldRefetch) {
       void refetchDetail();
     }
-  }, [summary?.overallPercent, refetchDetail]);
+  }, [token, summary?.overallPercent, refetchDetail]);
 
   const [lightbox, setLightbox] = useState<string | null>(null);
 
