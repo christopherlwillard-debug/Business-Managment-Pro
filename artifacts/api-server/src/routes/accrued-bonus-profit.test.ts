@@ -140,9 +140,10 @@ afterEach(() => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Push the 7 select results that GET /jobs/:id/profit issues via Promise.all:
+ * Push the select results that GET /jobs/:id/profit issues:
  *   [0] invoices      [1] other income [2] expenses [3] job allocations
- *   [4] spr fixed/alloc rows [5] hours cost [6] hours cnt [7] accrued bonus
+ *   [4] mileage reimbursement [5] spr fixed/alloc rows [6] hours cost
+ *   [7] hours cnt [8] accrued bonus [9-11] fuel inputs [12] settings
  */
 function pushProfitSelects(opts: {
   invoices?:       { total: string; status: string }[];
@@ -163,14 +164,16 @@ function pushProfitSelects(opts: {
   h.selectQueue.push([{ total: opts.hoursLaborCost ?? "0" }]);
   h.selectQueue.push([{ total: opts.totalHours     ?? "0" }]);
   h.selectQueue.push([{ total: opts.accruedBonus   ?? "0" }]);
-  // Fuel estimation performs three additional selects after the profit waterfall.
-  h.selectQueue.push([]); // [7] fuel logs
-  h.selectQueue.push([]); // [8] fuel expenses
-  h.selectQueue.push([]); // [9] job mileage
+  // Fuel estimation performs three additional selects after the profit waterfall,
+  // followed by the financial-settings select used by the waterfall UI.
+  h.selectQueue.push([]); // [9] fuel logs
+  h.selectQueue.push([]); // [10] fuel expenses
+  h.selectQueue.push([]); // [11] job mileage
+  h.selectQueue.push([]); // [12] financial settings
 }
 
 /**
- * Push the 9 select results that GET /jobs/profit-summary issues via Promise.all:
+ * Push the select results that GET /jobs/profit-summary issues via Promise.all:
  *   [0] invoices  [1] other income [2] expenses [3] job allocations
  *   [4] hours cost rows [5] hours count rows [6] manHours [7] spr rows [8] accrued bonus rows
  *
@@ -206,9 +209,9 @@ function pushSummarySelects(opts: {
   h.selectQueue.push(opts.accruedBonus && opts.accruedBonus !== "0"
     ? [{ jobId, total: opts.accruedBonus }] : []);
   // Fuel estimation performs three additional selects after the summary query.
-  h.selectQueue.push([]); // [9] fuel logs
-  h.selectQueue.push([]); // [10] fuel expenses
-  h.selectQueue.push([]); // [11] job mileage
+  h.selectQueue.push([]); // [11] fuel logs
+  h.selectQueue.push([]); // [12] fuel expenses
+  h.selectQueue.push([]); // [13] job mileage
 }
 
 describe("job mileage reimbursement ownership and validation", () => {

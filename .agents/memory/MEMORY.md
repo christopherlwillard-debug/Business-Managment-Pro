@@ -14,6 +14,7 @@
 - [PDF generation: use pdfkit not Puppeteer](pdf-generation.md) — Puppeteer/Chrome is broken in production; use pdfkit (pure Node.js) for all server-side PDF generation
 - [PDFKit footer margins](pdfkit-footer-margins.md) — footer text below the bottom margin can recursively add pages; temporarily zero the margin while drawing
 - [Authenticated browser test safety](manual-e2e-verification.md) — test auth needs a short-lived proof; browser regressions must deny unexpected writes by default
+- [Date-safe test fixtures](date-safe-test-fixtures.md) — current-month date fixtures must not use future days because the environment date can precede them
 - [MFH production schema baseline](mfh-production-schema.md) — production has manufacturer-based schema (e45b289); Task #1019 Home Series rename was NEVER deployed; always restore from e45b289 not 6e6380d
 - [contractor-app build skips type-check](contractor-app-build-no-typecheck.md) — `vite build` doesn't run tsc; TS errors (e.g. TDZ use-before-declaration) ship & crash at runtime; run the `typecheck` script manually
 - [Prod schema via Publish](prod-schema-via-publish.md) — never add a migration endpoint/hook for prod DDL; fix "column does not exist" by applying to dev + re-publish; push-force prompts to truncate invoices, use targeted ALTER instead

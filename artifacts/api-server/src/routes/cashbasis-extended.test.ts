@@ -384,7 +384,7 @@ describe("Dashboard byBusinessLine — sub payment period isolation", () => {
     const CURRENT_MONTH = monthAgo(0);
     const CURRENT_BL_PAYMENT = {
       amount: "350.00",
-      paymentDate: `${CURRENT_MONTH}-10`,
+      paymentDate: `${CURRENT_MONTH}-01`,
       businessLine: "mfh",
     };
 
@@ -799,7 +799,7 @@ describe("Dashboard monthly chart — sub payment in prior chart month", () => {
 
   it("sub payment in current month appears in both KPI totalExpenses and the chart", async () => {
     const CURRENT_MONTH = monthAgo(0);
-    const CURRENT_MONTH_DAY = `${CURRENT_MONTH}-10`;
+    const CURRENT_MONTH_DAY = `${CURRENT_MONTH}-01`;
     const CURRENT_SUB_PAYMENT = {
       amount: "350.00",
       paymentDate: CURRENT_MONTH_DAY,
