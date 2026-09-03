@@ -7,7 +7,7 @@ import { VehicleEngine } from "../lib/vehicle-engine.js";
 import { countActualWorkdays } from "../lib/job-workdays.js";
 import { resolveJobFuelReconciliation, type JobFuelReconciliation } from "../lib/job-fuel-reconciliation.js";
 import { syncMaterialsToJobInvoice } from "./material-lists";
-import { computeAllocationSplitPool, computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
+import { calculateAllocationSplitPool, computeAllocationSplitPool, computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
 import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/productionBilling.js";
 import { z } from "zod/v4";
@@ -881,7 +881,15 @@ router.get("/:id/profit", async (req, res) => {
     // Allocation pay must use the same server-side split pool as the compact
     // job-card outstanding-payments route. The job status is intentionally not
     // an input to this calculation.
-    const allocationSplitPool = (await computeAllocationSplitPool(id))?.splitPool ?? 0;
+    const allocationSplitPool = calculateAllocationSplitPool({
+      revenue: grossInvoiced,
+      directExpenses: jobExpenses,
+      allocatedExpenses: 0,
+      subLaborCost,
+      growthReservePct: financialSettings?.growthReservePct != null
+        ? parseFloat(String(financialSettings.growthReservePct))
+        : 5,
+    }).splitPool;
 
     res.json({
       grossInvoiced, collected, otherIncomeRevenue, jobExpenses, auditTrailTotal, tripTravelTotal, tripMealsDeductible,
@@ -1259,6 +1267,19 @@ router.get("/profit-summary", async (req, res) => {
     } catch (fuelErr) {
       // Fuel enrichment is best-effort — never fail the bulk endpoint
       console.warn("[profit-summary] fuel cache lookup skipped:", fuelErr);
+    }
+
+    // Finalize the pool only after every displayed Job Cost, including a saved
+    // reimbursement or available fuel estimate, has been applied.
+    for (const id of jobIds) {
+      const row = result[id];
+      row.splitPool = calculateAllocationSplitPool({
+        revenue: row.grossInvoiced,
+        directExpenses: row.jobExpenses,
+        allocatedExpenses: 0,
+        subLaborCost: row.subLaborCost,
+        growthReservePct: allocationSplitPools.get(id)?.growthReservePct ?? 5,
+      }).splitPool;
     }
 
     res.json(result);

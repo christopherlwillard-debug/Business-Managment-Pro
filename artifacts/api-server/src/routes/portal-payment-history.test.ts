@@ -264,6 +264,8 @@ describe("GET /portal/:token — payment history privacy", () => {
       [], // allocation pool: other income
       [], // allocation pool: expenses
       [], // allocation pool: allocated expenses
+      [], // allocation pool: saved mileage reimbursements
+      [], // allocation pool: per-job mileage inclusion settings
       [], // allocation pool: hourly labor
       [], // allocation pool: fixed payments
       [], // allocation pool: accrued bonuses

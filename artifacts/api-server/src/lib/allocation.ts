@@ -5,7 +5,9 @@ import {
   otherIncomeTable,
   expensesTable,
   jobExpenseAllocationsTable,
+  jobMileageReimbursementsTable,
   jobSubcontractorsTable,
+  jobsTable,
   subPaymentRecordsTable,
   settingsTable,
 } from "@workspace/db/schema";
@@ -15,6 +17,7 @@ export interface AllocationSplitPool {
   revenue: number;
   expenses: number;
   subLaborCost: number;
+  growthReservePct: number;
   growthReserve: number;
   splitPool: number;
 }
@@ -36,6 +39,7 @@ export function calculateAllocationSplitPool(input: {
     revenue: input.revenue,
     expenses,
     subLaborCost: input.subLaborCost,
+    growthReservePct: Math.max(0, input.growthReservePct),
     growthReserve,
     splitPool,
   };
@@ -50,7 +54,7 @@ export function calculateAllocationSplitPool(input: {
  *   - subLaborCost (hourly labor + fixed payroll ledger payments + accrued bonuses;
  *     legacy Subcontractor-category expenses are used only when no tracked labor or
  *     fixed payroll exists)
- *   - configured percentage of gross revenue (growth reserve)
+ *   - configured percentage of income after all job costs (growth reserve)
  *
  * Callers must filter to `isNull(expensesTable.jobSubHoursId)` already handled
  * internally so auto-linked sub-hour expenses are never double-counted.
@@ -60,7 +64,7 @@ export async function computeAllocationSplitPools(
 ): Promise<Map<number, AllocationSplitPool>> {
   if (jobIds.length === 0) return new Map();
 
-  const [poolInvs, poolOtherIncome, poolExps, poolAllocatedExps, poolHours, poolFixedPayments, poolAccruedBonuses, settingsRows] = await Promise.all([
+  const [poolInvs, poolOtherIncome, poolExps, poolAllocatedExps, poolReimbursements, poolJobs, poolHours, poolFixedPayments, poolAccruedBonuses, settingsRows] = await Promise.all([
     db
       .select({ jobId: invoicesTable.jobId, total: invoicesTable.total })
       .from(invoicesTable)
@@ -99,6 +103,20 @@ export async function computeAllocationSplitPools(
           isNull(expensesTable.voidedAt),
         ),
       ),
+    db
+      .select({
+        jobId: jobMileageReimbursementsTable.jobId,
+        amount: jobMileageReimbursementsTable.amount,
+      })
+      .from(jobMileageReimbursementsTable)
+      .where(inArray(jobMileageReimbursementsTable.jobId, jobIds)),
+    db
+      .select({
+        id: jobsTable.id,
+        includeMileageInJobCosts: jobsTable.includeMileageInJobCosts,
+      })
+      .from(jobsTable)
+      .where(inArray(jobsTable.id, jobIds)),
     db
       .select({
         jobId: jobSubcontractorsTable.jobId,
@@ -167,6 +185,12 @@ export async function computeAllocationSplitPools(
       (allocatedExpenseMap.get(row.jobId) ?? 0) + parseFloat(row.amount ?? "0"),
     );
   }
+  const reimbursementMap = new Map(
+    poolReimbursements.map((row) => [row.jobId, parseFloat(row.amount ?? "0")]),
+  );
+  const includeMileageMap = new Map(
+    poolJobs.map((row) => [row.id, row.includeMileageInJobCosts !== false]),
+  );
 
   const result = new Map<number, AllocationSplitPool>();
   for (const jobId of jobIds) {
@@ -190,6 +214,18 @@ export async function computeAllocationSplitPools(
       } else {
         expenses += parseFloat(exp.amount ?? "0");
       }
+    }
+    const hasActualFuelExpense = poolExps.some((expense) =>
+      expense.jobId === jobId
+      && expense.category === "Fuel/Travel"
+      && expense.countsTowardJobProfit !== false
+    );
+    if (
+      includeMileageMap.get(jobId) !== false
+      && !hasActualFuelExpense
+      && reimbursementMap.has(jobId)
+    ) {
+      expenses += reimbursementMap.get(jobId) ?? 0;
     }
 
     const hoursLaborCost = hoursMap.get(jobId) ?? 0;
@@ -223,6 +259,7 @@ export async function computeAllocationSplitPool(
       revenue: 0,
       expenses: 0,
       subLaborCost: 0,
+      growthReservePct: 5,
       growthReserve: 0,
       splitPool: 0,
     }

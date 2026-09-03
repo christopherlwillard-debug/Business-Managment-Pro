@@ -104,6 +104,25 @@ vi.mock("@workspace/db", () => {
 // ── Stub sibling modules so jobs.ts can be imported ──────────────────────────
 vi.mock("./material-lists",            () => ({ syncMaterialsToJobInvoice: vi.fn() }));
 vi.mock("../lib/allocation.js",        () => ({
+  calculateAllocationSplitPool: (input: {
+    revenue: number;
+    directExpenses: number;
+    allocatedExpenses: number;
+    subLaborCost: number;
+    growthReservePct: number;
+  }) => {
+    const expenses = input.directExpenses + input.allocatedExpenses;
+    const income = Math.max(0, input.revenue - expenses);
+    const growthReserve = income * (Math.max(0, input.growthReservePct) / 100);
+    return {
+      revenue: input.revenue,
+      expenses,
+      subLaborCost: input.subLaborCost,
+      growthReservePct: Math.max(0, input.growthReservePct),
+      growthReserve,
+      splitPool: Math.max(0, income - growthReserve - input.subLaborCost),
+    };
+  },
   computeAllocationSplitPool: vi.fn(),
   computeAllocationSplitPools: vi.fn().mockResolvedValue(new Map()),
   computeSubOwed: vi.fn(),

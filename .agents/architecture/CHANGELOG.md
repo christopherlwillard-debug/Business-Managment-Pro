@@ -282,5 +282,6 @@ Created the four-document architecture governance system:
 - Shared pool revenue includes job-linked other income, and the compact fuel
   estimate uses the union of actual Daily Log and subcontractor-hour work dates
   instead of assuming one day.
-- Job-only fuel estimates remain outside the accounting ledgers and outside the
-  percentage split pool, consistent with ADR-011.
+- Job-only fuel estimates remain outside the accounting ledgers, but when shown
+  in Job Costs they now reduce the percentage split pool. Remaining and Split
+  Pool therefore use the same finalized server waterfall (ADR-017).

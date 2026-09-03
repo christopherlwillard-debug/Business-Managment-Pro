@@ -61,4 +61,24 @@ describe("calculateAllocationSplitPool", () => {
       allocationPct: "50",
     }, result.splitPool)).toBeCloseTo(1916.14, 2);
   });
+
+  it("uses the displayed remaining amount as the split pool", () => {
+    const result = calculateAllocationSplitPool({
+      revenue: 3876.76,
+      directExpenses: 177.80,
+      allocatedExpenses: 0,
+      subLaborCost: 800,
+      growthReservePct: 5,
+    });
+
+    expect(result.expenses).toBeCloseTo(177.80, 2);
+    expect(result.growthReserve).toBeCloseTo(184.95, 2);
+    expect(result.splitPool).toBeCloseTo(2714.01, 2);
+    expect(computeSubOwed({
+      compensationType: "allocation",
+      amountOwed: null,
+      fixedAmount: null,
+      allocationPct: "50",
+    }, result.splitPool)).toBeCloseTo(1357.01, 2);
+  });
 });

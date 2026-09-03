@@ -22,8 +22,8 @@ describe("calculateJobFinancialWaterfall", () => {
     expect(result.allocationWarning).toBe(false);
     expect(result.totalAllocPct).toBe(50);
     expect(result.ownerPct).toBe(50);
-    expect(result.toSplit).toBeCloseTo(1545.22, 2);
-    expect(result.ownerTakeHome).toBeCloseTo(579.46, 2);
+    expect(result.toSplit).toBeCloseTo(1355.60, 2);
+    expect(result.ownerTakeHome).toBeCloseTo(508.35, 2);
   });
 
   it("warns only when team allocations exceed the available split", () => {
@@ -31,7 +31,7 @@ describe("calculateJobFinancialWaterfall", () => {
     expect(calculateJobFinancialWaterfall({ ...base, allocationPcts: [60, 41] }).allocationWarning).toBe(true);
   });
 
-  it("keeps mileage reimbursement outside the percentage split pool", () => {
+  it("deducts mileage reimbursement with every other displayed job cost", () => {
     const withMileage = calculateJobFinancialWaterfall({ ...base, allocationPcts: [50] });
     const withoutMileage = calculateJobFinancialWaterfall({
       ...base,
@@ -40,16 +40,16 @@ describe("calculateJobFinancialWaterfall", () => {
       allocationPcts: [50],
     });
 
-    expect(withMileage.toSplit).toBeCloseTo(1545.22, 2);
-    expect(withoutMileage.toSplit).toBeCloseTo(withMileage.toSplit, 2);
+    expect(withMileage.toSplit).toBeCloseTo(1355.60, 2);
+    expect(withoutMileage.toSplit).toBeCloseTo(1545.22, 2);
   });
 
-  it("reports job income after all costs while keeping reimbursement outside the split pool", () => {
+  it("uses job income after all costs as the split-income base", () => {
     const result = calculateJobFinancialWaterfall({ ...base, allocationPcts: [50] });
 
     expect(result.jobIncome).toBeCloseTo(3876.49, 2);
-    expect(result.splitIncome).toBeCloseTo(4076.09, 2);
-    expect(result.toSplit).toBeCloseTo(1545.22, 2);
+    expect(result.splitIncome).toBeCloseTo(3876.49, 2);
+    expect(result.toSplit).toBeCloseTo(1355.60, 2);
   });
 
   it("uses the same pool when the close-job path includes team allocations", () => {
@@ -57,7 +57,7 @@ describe("calculateJobFinancialWaterfall", () => {
     const closeJob = calculateJobFinancialWaterfall({ ...base, allocationPcts: [50], hourlyFixedCost: base.subLaborCost });
 
     expect(closeJob.toSplit).toBeCloseTo(panel.toSplit, 2);
-    expect(closeJob.toSplit * 0.5).toBeCloseTo(772.61, 2);
+    expect(closeJob.toSplit * 0.5).toBeCloseTo(677.80, 2);
   });
 
   it("uses the agreed hourly payout when the worker has an amount override", () => {
@@ -69,17 +69,38 @@ describe("calculateJobFinancialWaterfall", () => {
     });
 
     expect(result.hourlyWorkers).toBe(800);
-    expect(result.toSplit).toBeCloseTo(3072.29, 2);
+    expect(result.toSplit).toBeCloseTo(2882.67, 2);
   });
 
-  it("calculates the configured growth reserve from gross revenue", () => {
+  it("calculates the configured growth reserve after all job costs", () => {
     const result = calculateJobFinancialWaterfall({
       ...base,
       growthReservePct: 15,
       allocationPcts: [],
     });
 
-    expect(result.growthReserve).toBeCloseTo(611.41, 2);
+    expect(result.growthReserve).toBeCloseTo(581.47, 2);
+  });
+
+  it("matches the Grubb waterfall shown in Job Financials", () => {
+    const result = calculateJobFinancialWaterfall({
+      revenue: 3876.76,
+      jobExpenses: 177.80,
+      mileageReimbursementCost: 177.80,
+      subLaborCost: 800,
+      allocationPcts: [50],
+      growthReservePct: 5,
+      ownerSplitPct: 50,
+      taxReservePct: 25,
+    });
+
+    expect(result.jobIncome).toBeCloseTo(3698.96, 2);
+    expect(result.growthReserve).toBeCloseTo(184.95, 2);
+    expect(result.toSplit).toBeCloseTo(2714.01, 2);
+    expect(result.subShare).toBeCloseTo(1357.01, 2);
+    expect(result.ownerShare).toBeCloseTo(1357.01, 2);
+    expect(result.taxReserve).toBeCloseTo(339.25, 2);
+    expect(result.ownerTakeHome).toBeCloseTo(1017.75, 2);
   });
 });
 

@@ -300,3 +300,21 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-08-31
+
+---
+
+## ADR-017
+
+**Title:** Every displayed Job Cost reduces the percentage split pool
+
+**Decision:** The server-calculated allocation waterfall is revenue minus all displayed Job Costs, then Growth Reserve, then hourly/fixed labor. Saved mileage reimbursements and estimated job fuel included in Job Costs therefore reduce the split pool. All job cards, Job Financials, payment views, and close-job flows consume that server result. This supersedes ADR-011 only where it excluded job mileage reimbursement from the split pool.
+
+**Reason:** Excluding a displayed Job Cost produced two contradictory values in one waterfall: Remaining reflected the cost while Split Pool silently restored it. A financial screen must be arithmetically traceable, and Remaining must equal Split Pool before percentage allocation.
+
+**Rejected Alternatives:**
+- Keeping a separate fuel/mileage-excluded pool
+- Correcting only the displayed number
+- Persisting a second split-pool snapshot
+
+**Status:** Accepted
+**Date:** 2026-09-03

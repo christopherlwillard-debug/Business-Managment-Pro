@@ -26,18 +26,17 @@ export function jobFinancialSummaryDetail(
 }
 
 export function calculateJobFinancialWaterfall(input: JobFinancialWaterfallInput) {
-  const splitEligibleExpenses = Math.max(0, input.jobExpenses - input.mileageReimbursementCost);
-  // Job Income is the result after every displayed job cost. Reimbursements
-  // remain outside the percentage split pool, so the split waterfall uses the
-  // separate splitIncome value below.
+  // Every amount shown under Job Costs reduces the percentage split pool.
+  // mileageReimbursementCost remains in the input contract for callers that
+  // display its breakdown, but it is already included in jobExpenses.
+  const splitEligibleExpenses = Math.max(0, input.jobExpenses);
   const splitIncome = Math.max(0, input.revenue - splitEligibleExpenses);
   const reportedJobIncome = Math.max(0, input.revenue - input.jobExpenses);
   // When payment rows are loaded, hourlyFixedCost is the authoritative agreed
   // amount (including fixed workers). Do not let a historical hours×rate total
   // override a saved job-level payout.
   const hourlyWorkers = Math.max(0, input.hourlyFixedCost ?? input.subLaborCost);
-  // Agreed waterfall: revenue → expenses → growth reserve → hourly labor → split.
-  // Reimbursements remain outside the split pool, per ADR-011.
+  // Agreed waterfall: revenue → all job costs → growth reserve → hourly labor → split.
   const growthReserve = splitIncome * (Math.max(0, input.growthReservePct) / 100);
   const afterGrowth = Math.max(0, splitIncome - growthReserve);
   const afterWorkers = Math.max(0, afterGrowth - hourlyWorkers);
