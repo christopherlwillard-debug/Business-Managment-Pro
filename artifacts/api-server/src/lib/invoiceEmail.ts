@@ -32,6 +32,10 @@ export interface InvoiceEmailSettings {
   smtpUser?: string | null;
   smtpPass?: string | null;
   smtpSecure?: number | null;
+  logoDataUri?: string | null;
+  logoBuffer?: Buffer | null;
+  logoMimeType?: string | null;
+  logoFilename?: string | null;
 }
 
 function fmtCurrency(n: number): string {
@@ -45,7 +49,13 @@ export interface InlineImage {
   photoType?: "before" | "after" | "general";
 }
 
-export function buildInvoiceEmailHtml(inv: InvoiceEmailInv, settings: InvoiceEmailSettings, message?: string, photoSummary?: string): string {
+export function buildInvoiceEmailHtml(
+  inv: InvoiceEmailInv,
+  settings: InvoiceEmailSettings,
+  message?: string,
+  photoSummary?: string,
+  logoSrc = settings.logoDataUri ?? null,
+): string {
   const lineItems: any[] = Array.isArray(inv.lineItems) ? inv.lineItems : [];
 
   const lineRows = lineItems.map(li => `
@@ -73,7 +83,8 @@ export function buildInvoiceEmailHtml(inv: InvoiceEmailInv, settings: InvoiceEma
         <tr><td style="padding:32px 40px;">
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
-              <td><p style="margin:0;font-size:22px;font-weight:800;color:#111;">${settings.companyName || "Your Company"}</p>
+              <td>${logoSrc ? `<img src="${logoSrc}" alt="${settings.companyName || "Company logo"}" style="display:block;max-width:200px;max-height:70px;width:auto;height:auto;margin:0 0 6px;" />` : ""}
+                  <p style="margin:0;font-size:22px;font-weight:800;color:#111;">${settings.companyName || "Your Company"}</p>
                   ${settings.companyAddress ? `<p style="margin:4px 0 0;font-size:12px;color:#888;">${settings.companyAddress}</p>` : ""}
                   ${settings.companyCity || settings.companyState ? `<p style="margin:2px 0 0;font-size:12px;color:#888;">${[settings.companyCity, settings.companyState, settings.companyZip].filter(Boolean).join(", ")}</p>` : ""}
                   ${settings.companyPhone ? `<p style="margin:2px 0 0;font-size:12px;color:#888;">${settings.companyPhone}</p>` : ""}
@@ -195,7 +206,14 @@ export async function sendInvoiceEmail(
     if (otherCount)  parts.push(`${otherCount} photo${otherCount === 1 ? "" : "s"}`);
     photoSummary = parts.join(", ");
   }
-  const html = buildInvoiceEmailHtml(inv, settings, message, photoSummary);
+  const logoContentId = settings.logoBuffer ? "invoice-brand-logo" : null;
+  const html = buildInvoiceEmailHtml(
+    inv,
+    settings,
+    message,
+    photoSummary,
+    logoContentId ? `cid:${logoContentId}` : null,
+  );
   const total = parseFloat(inv.total ?? "0");
   const text = message || `Please find invoice ${inv.invoiceNumber} attached. Total Due: $${total.toFixed(2)}`;
   const safeNum = (inv.invoiceNumber ?? "invoice").replace(/[^a-zA-Z0-9\-_]/g, "_");
@@ -217,6 +235,15 @@ export async function sendInvoiceEmail(
     const attachments: nodemailer.SendMailOptions["attachments"] = pdfBuffer
       ? [{ filename: pdfFilename, content: pdfBuffer, contentType: "application/pdf" }]
       : [];
+    if (settings.logoBuffer && settings.logoMimeType && settings.logoFilename && logoContentId) {
+      attachments.push({
+        filename: settings.logoFilename,
+        content: settings.logoBuffer,
+        contentType: settings.logoMimeType,
+        cid: logoContentId,
+        contentDisposition: "inline",
+      });
+    }
     for (const extra of extraAttachments ?? []) {
       attachments.push({ filename: extra.filename, content: extra.buffer, contentType: extra.mimeType });
     }
@@ -248,6 +275,14 @@ export async function sendInvoiceEmail(
         ...(pdfBuffer ? [{ filename: pdfFilename, mimeType: "application/pdf", buffer: pdfBuffer }] : []),
         ...(extraAttachments ?? []).map(e => ({ filename: e.filename, mimeType: e.mimeType, buffer: e.buffer })),
       ],
+      inlineImages: settings.logoBuffer && settings.logoMimeType && settings.logoFilename && logoContentId
+        ? [{
+            filename: settings.logoFilename,
+            mimeType: settings.logoMimeType,
+            buffer: settings.logoBuffer,
+            contentId: logoContentId,
+          }]
+        : [],
     });
   }
 }
@@ -258,22 +293,27 @@ interface MultiAttachment {
   buffer: Buffer;
 }
 
+interface InlineAttachment extends MultiAttachment {
+  contentId: string;
+}
+
 async function sendEmailWithAttachments(opts: {
   to: string;
   subject: string;
   html: string;
   text: string;
   attachments: MultiAttachment[];
+  inlineImages: InlineAttachment[];
 }): Promise<EmailSendResult> {
-  const { to, subject, html, text, attachments } = opts;
+  const { to, subject, html, text, attachments, inlineImages } = opts;
 
-  if (attachments.length === 0) {
+  if (attachments.length === 0 && inlineImages.length === 0) {
     return sendEmail({ to, subject, html, text });
   }
 
   // Use the first attachment via sendEmail's single-attachment path,
   // then build a raw multipart/mixed message manually for multiple attachments.
-  if (attachments.length === 1) {
+  if (attachments.length === 1 && inlineImages.length === 0) {
     const a = attachments[0];
     return sendEmail({
       to, subject, html, text,
@@ -289,6 +329,7 @@ async function sendEmailWithAttachments(opts: {
   function sanitize(v: string) { return v.replace(/[\r\n]+/g, " ").trim(); }
 
   const altBoundary = `==ALT${Date.now()}==`;
+  const relatedBoundary = `==REL${Date.now()}==`;
   const mixedBoundary = `==MIX${Date.now()}==`;
 
   const lines: string[] = [
@@ -298,6 +339,9 @@ async function sendEmailWithAttachments(opts: {
     `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
     ``,
     `--${mixedBoundary}`,
+    `Content-Type: multipart/related; boundary="${relatedBoundary}"`,
+    ``,
+    `--${relatedBoundary}`,
     `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
     ``,
     `--${altBoundary}`,
@@ -313,6 +357,23 @@ async function sendEmailWithAttachments(opts: {
     `--${altBoundary}--`,
     ``,
   ];
+
+  for (const image of inlineImages) {
+    const safeFilename = sanitize(image.filename);
+    const b64 = image.buffer.toString("base64").match(/.{1,76}/g)?.join("\r\n") ?? image.buffer.toString("base64");
+    lines.push(
+      `--${relatedBoundary}`,
+      `Content-Type: ${sanitize(image.mimeType)}; name="${safeFilename}"`,
+      `Content-Disposition: inline; filename="${safeFilename}"`,
+      `Content-ID: <${sanitize(image.contentId)}>`,
+      `Content-Transfer-Encoding: base64`,
+      ``,
+      b64,
+      ``,
+    );
+  }
+
+  lines.push(`--${relatedBoundary}--`, ``);
 
   for (const a of attachments) {
     const safeFilename = sanitize(a.filename);

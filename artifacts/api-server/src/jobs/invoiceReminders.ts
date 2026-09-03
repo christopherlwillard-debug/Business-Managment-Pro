@@ -1,10 +1,15 @@
 import cron from "node-cron";
 import { db } from "@workspace/db";
-import { invoicesTable, clientsTable, settingsTable } from "@workspace/db/schema";
+import { businessesTable, invoicesTable, clientsTable, settingsTable } from "@workspace/db/schema";
 import { eq, and, ne } from "drizzle-orm";
 import { sendInvoiceEmail } from "../lib/invoiceEmail";
 import { confirmedGmailInvoiceIds, sendAndRecordInvoiceCommunication } from "../lib/invoiceCommunication";
 import { reminderEligibilityError, reminderMessage } from "../lib/invoiceReminderPolicy";
+import {
+  findInvoiceBusiness,
+  invoiceEmailSettingsFromBrand,
+  loadInvoiceBrand,
+} from "../lib/invoiceBranding.js";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -14,6 +19,7 @@ async function processInvoiceReminders() {
     if (!settings) return;
 
     if (!settings.invoiceReminderEnabled) return;
+    const businesses = await db.select().from(businessesTable);
 
     const day1 = settings.invoiceReminderDay1 ?? 7;
     const day2 = settings.invoiceReminderDay2 ?? 14;
@@ -41,6 +47,8 @@ async function processInvoiceReminders() {
         clientName: clientsTable.name,
         clientEmail: clientsTable.email,
         reminderOptOut: clientsTable.reminderOptOut,
+        businessLine: invoicesTable.businessLine,
+        businessId: invoicesTable.businessId,
       })
       .from(invoicesTable)
       .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
@@ -55,10 +63,6 @@ async function processInvoiceReminders() {
     const confirmedSendInvoiceIds = await confirmedGmailInvoiceIds(invoices.map(invoice => invoice.id));
 
     const now = Date.now();
-    const companyName = settings.companyName ?? "BuildPro";
-    const companyPhone = settings.companyPhone ?? "";
-    const companyEmail = settings.companyEmail ?? "";
-
     for (const inv of invoices) {
       if (!inv.clientEmail) continue;
       const eligibilityError = reminderEligibilityError({
@@ -124,11 +128,15 @@ async function processInvoiceReminders() {
 
       try {
         const reminderNum = needsDay2 && !hasDay2Reminder ? 2 : 1;
+        const business = findInvoiceBusiness(businesses, inv.businessLine, inv.businessId);
+        const brand = await loadInvoiceBrand(inv.businessLine, settings, business);
+        const brandedSettings = invoiceEmailSettingsFromBrand(settings, brand);
+        const companyName = brand.displayName;
         const subject = `Reminder: Invoice ${inv.invoiceNumber ?? "N/A"} — Payment Due (${companyName})`;
 
         // Template branching: Square link = "Pay Now" button; everything else = plain contact reminder
         const hasPaymentLink = Boolean(inv.squarePaymentLinkUrl || inv.stripePaymentLinkUrl);
-        const message = reminderMessage(inv, companyName, companyPhone, companyEmail, hasPaymentLink);
+        const message = reminderMessage(inv, companyName, brand.phone, brand.email, hasPaymentLink);
 
         // For non-Square invoices, null out any Stripe link so the email template
         // does not render a "Pay Now" button — plain reminder only.
@@ -147,7 +155,7 @@ async function processInvoiceReminders() {
             source: "automatic",
             metadata: { hasPaymentLink, reminderNumber: reminderNum },
           },
-          () => sendInvoiceEmail(invForEmail, settings, inv.clientEmail!, subject, message),
+          () => sendInvoiceEmail(invForEmail, brandedSettings, inv.clientEmail!, subject, message),
         );
         if (!deliveryResult.finalized) {
           console.error(`[invoice-reminders] Provider accepted invoice ${inv.invoiceNumber}, but event finalization failed: ${deliveryResult.finalizationError}`);

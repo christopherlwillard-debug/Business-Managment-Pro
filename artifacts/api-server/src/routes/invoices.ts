@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import sharp from "sharp";
 import { launchBrowser } from "../lib/launchBrowser.js";
-import { sendInvoiceEmail, type ExtraAttachment, type InvoiceEmailSettings } from "../lib/invoiceEmail";
+import { sendInvoiceEmail, type ExtraAttachment } from "../lib/invoiceEmail";
 import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
 import { generateMaterialsPdfBuffer } from "../lib/generateMaterialsPdf.js";
 import { db } from "@workspace/db";
@@ -15,7 +15,6 @@ import {
   settingsTable,
   businessesTable,
   invoiceCommunicationEventsTable,
-  type Business,
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, inArray, ne, getTableColumns, sql } from "drizzle-orm";
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
@@ -33,6 +32,11 @@ import {
   type InvoiceCommunicationType,
 } from "../lib/invoiceCommunication";
 import { reminderEligibilityError, reminderMessage } from "../lib/invoiceReminderPolicy";
+import {
+  findInvoiceBusiness,
+  invoiceEmailSettingsFromBrand,
+  loadInvoiceBrand,
+} from "../lib/invoiceBranding.js";
 
 const router = Router();
 
@@ -901,23 +905,14 @@ router.post("/:id/send", async (req, res) => {
     const [freshInv] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     const invForEmail = freshInv ?? inv;
 
-    // Resolve business profile by the invoice's businessLine slug (if any)
-    const bizRows: Business[] = invForEmail.businessLine
-      ? await db.select().from(businessesTable).where(eq(businessesTable.slug, invForEmail.businessLine as string)).limit(1)
-      : [];
-    const biz = bizRows[0];
-    const mergedSettings: InvoiceEmailSettings = {
-      ...(settings ?? {}),
-      ...(biz ? {
-        companyName: biz.name || settings?.companyName,
-        companyAddress: biz.address || settings?.companyAddress,
-        companyCity: biz.city || settings?.companyCity,
-        companyState: biz.state || settings?.companyState,
-        companyZip: biz.zip || settings?.companyZip,
-        companyPhone: biz.phone || settings?.companyPhone,
-        companyEmail: biz.email || settings?.companyEmail,
-      } : {}),
-    };
+    const businesses = await db.select().from(businessesTable);
+    const business = findInvoiceBusiness(
+      businesses,
+      invForEmail.businessLine,
+      invForEmail.businessId,
+    );
+    const brand = await loadInvoiceBrand(invForEmail.businessLine, settings, business);
+    const mergedSettings = invoiceEmailSettingsFromBrand(settings, brand);
 
     const companyName = mergedSettings.companyName ?? "BuildPro";
     const subjectLine = subject || `Invoice ${invForEmail.invoiceNumber} from ${companyName}`;
@@ -1112,23 +1107,10 @@ router.post("/:id/send-reminder", async (req, res) => {
     });
     if (eligibilityError) return res.status(400).json({ error: eligibilityError });
 
-    // Resolve business profile by the invoice's businessLine slug (if any)
-    const bizRows2: Business[] = inv.businessLine
-      ? await db.select().from(businessesTable).where(eq(businessesTable.slug, inv.businessLine as string)).limit(1)
-      : [];
-    const biz2 = bizRows2[0];
-    const mergedSettings: InvoiceEmailSettings = {
-      ...(settings ?? {}),
-      ...(biz2 ? {
-        companyName: biz2.name || settings?.companyName,
-        companyAddress: biz2.address || settings?.companyAddress,
-        companyCity: biz2.city || settings?.companyCity,
-        companyState: biz2.state || settings?.companyState,
-        companyZip: biz2.zip || settings?.companyZip,
-        companyPhone: biz2.phone || settings?.companyPhone,
-        companyEmail: biz2.email || settings?.companyEmail,
-      } : {}),
-    };
+    const businesses = await db.select().from(businessesTable);
+    const business = findInvoiceBusiness(businesses, inv.businessLine, inv.businessId);
+    const brand = await loadInvoiceBrand(inv.businessLine, settings, business);
+    const mergedSettings = invoiceEmailSettingsFromBrand(settings, brand);
 
     const companyName = mergedSettings.companyName ?? "BuildPro";
     const subject = `Reminder: Invoice ${inv.invoiceNumber} — Payment Due (${companyName})`;

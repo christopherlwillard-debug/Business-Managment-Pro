@@ -23,6 +23,11 @@ export interface GmailAttachment {
   filename: string;
 }
 
+export interface GmailInlineImage extends GmailAttachment {
+  mimeType: string;
+  contentId: string;
+}
+
 export interface GmailSendOptions {
   token: string;
   to: string;
@@ -33,6 +38,7 @@ export interface GmailSendOptions {
   pdfBase64?: string;
   pdfFilename?: string;
   extraAttachments?: GmailAttachment[];
+  inlineImages?: GmailInlineImage[];
 }
 
 export interface GmailSendResult {
@@ -42,7 +48,10 @@ export interface GmailSendResult {
 }
 
 export async function sendViaGmail(opts: GmailSendOptions): Promise<GmailSendResult> {
-  const { token, to, subject, deliveryId, html, text, pdfBase64, pdfFilename, extraAttachments = [] } = opts;
+  const {
+    token, to, subject, deliveryId, html, text, pdfBase64, pdfFilename,
+    extraAttachments = [], inlineImages = [],
+  } = opts;
   const deliveryHeader = deliveryId ? [`X-BuildPro-Delivery-ID: ${sanitizeHeader(deliveryId)}`] : [];
 
   // Base64-encode the HTML body so that = characters in data URIs (logo) are
@@ -63,9 +72,10 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<GmailSendRes
     ...extraAttachments,
   ];
 
-  if (allAttachments.length > 0) {
+  if (allAttachments.length > 0 || inlineImages.length > 0) {
     const outer = `==BPO${Date.now()}==`;
     const inner = `==BPI${Date.now()}A==`;
+    const related = `==BPR${Date.now()}R==`;
 
     const attachmentParts = allAttachments.map(att => {
       const safe = sanitizeFilename(att.filename);
@@ -88,6 +98,9 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<GmailSendRes
       `Content-Type: multipart/mixed; boundary="${outer}"`,
       ``,
       `--${outer}`,
+      `Content-Type: multipart/related; boundary="${related}"`,
+      ``,
+      `--${related}`,
       `Content-Type: multipart/alternative; boundary="${inner}"`,
       ``,
       `--${inner}`,
@@ -103,6 +116,21 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<GmailSendRes
       encodeBase64Body(html),
       ``,
       `--${inner}--`,
+      ``,
+      ...inlineImages.flatMap(image => {
+        const safe = sanitizeFilename(image.filename);
+        return [
+          `--${related}`,
+          `Content-Type: ${sanitizeHeader(image.mimeType)}; name="${safe}"`,
+          `Content-Disposition: inline; filename="${safe}"`,
+          `Content-ID: <${sanitizeHeader(image.contentId)}>`,
+          `Content-Transfer-Encoding: base64`,
+          ``,
+          chunkBase64(image.base64),
+          ``,
+        ];
+      }),
+      `--${related}--`,
       ``,
       ...attachmentParts.flatMap(p => p.split("\r\n")),
       `--${outer}--`,
@@ -158,6 +186,21 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<GmailSendRes
     provider: "gmail",
     messageId: result.id ?? null,
     threadId: result.threadId ?? null,
+  };
+}
+
+export function dataUriToInlineImage(
+  dataUri: string | null | undefined,
+  contentId = "invoice-brand-logo",
+): GmailInlineImage | null {
+  if (!dataUri) return null;
+  const match = dataUri.match(/^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) return null;
+  return {
+    mimeType: match[1],
+    base64: match[2],
+    filename: match[1] === "image/jpeg" ? "invoice-logo.jpg" : "invoice-logo.png",
+    contentId,
   };
 }
 
@@ -225,17 +268,14 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
   const calculated = calculateInvoiceTotals(opts.lineItems, opts.taxRate);
   const cityLine = [opts.companyCity, opts.companyState, opts.companyZip].filter(Boolean).join(", ");
 
-  const displayCompanyName = opts.dbaName
-    ?? (opts.businessLine === "asphalt_sealing"
-      ? `${opts.companyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
-      : (opts.companyName || ""));
+  const displayCompanyName = opts.companyName || opts.dbaName || "";
 
   const contactLines: string[] = [];
-  // Skip data URIs — embedding them bloats the email past Gmail's 102KB clip threshold.
-  // Only use a hosted URL (http/https). Fall back to company name text instead.
-  const hostedLogoSrc = opts.logoSrc && opts.logoSrc.startsWith("http") ? opts.logoSrc : null;
-  if (hostedLogoSrc) {
-    contactLines.push(`<tr><td style="padding-bottom:6px;"><img src="${esc(hostedLogoSrc)}" alt="${esc(displayCompanyName)}" style="max-height:70px;max-width:200px;width:auto;height:auto;display:block;object-fit:contain;" /></td></tr>`);
+  const safeLogoSrc = opts.logoSrc && /^(?:https?:|cid:|data:image\/(?:png|jpeg);base64,)/.test(opts.logoSrc)
+    ? opts.logoSrc
+    : null;
+  if (safeLogoSrc) {
+    contactLines.push(`<tr><td style="padding-bottom:6px;"><img src="${esc(safeLogoSrc)}" alt="${esc(displayCompanyName)}" style="max-height:70px;max-width:200px;width:auto;height:auto;display:block;object-fit:contain;" /></td></tr>`);
   }
   if (displayCompanyName) {
     contactLines.push(`<tr><td style="font-size:18px;font-weight:800;color:#111827;padding-bottom:4px;">${esc(displayCompanyName)}</td></tr>`);

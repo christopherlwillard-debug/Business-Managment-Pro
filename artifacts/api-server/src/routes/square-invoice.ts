@@ -1,10 +1,15 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
+import { businessesTable, invoicesTable, clientsTable, jobsTable, settingsTable } from "@workspace/db/schema";
 import { eq, getTableColumns } from "drizzle-orm";
 import { createSquarePaymentLink, deleteSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendInvoiceEmail } from "../lib/invoiceEmail";
 import { sendAndRecordInvoiceCommunication } from "../lib/invoiceCommunication";
+import {
+  findInvoiceBusiness,
+  invoiceEmailSettingsFromBrand,
+  loadInvoiceBrand,
+} from "../lib/invoiceBranding.js";
 
 const router = Router();
 
@@ -61,9 +66,10 @@ router.post("/:id/payment-link", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid invoice id" });
 
-    const [[inv], [settings]] = await Promise.all([
+    const [[inv], [settings], businesses] = await Promise.all([
       buildQuery().where(eq(invoicesTable.id, id)),
       db.select().from(settingsTable).limit(1),
+      db.select().from(businessesTable),
     ]);
 
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
@@ -77,7 +83,10 @@ router.post("/:id/payment-link", async (req, res) => {
 
     const amountCents = Math.round(total * 100);
     const currency = settings?.currency ?? "USD";
-    const companyName = settings?.companyName ?? "BuildPro";
+    const business = findInvoiceBusiness(businesses, inv.businessLine, inv.businessId);
+    const brand = await loadInvoiceBrand(inv.businessLine, settings, business);
+    const brandedSettings = invoiceEmailSettingsFromBrand(settings, brand);
+    const companyName = brand.displayName;
     const existingNumber = (inv.invoiceNumber as string | null) ?? null;
     const productName = existingNumber
       ? `${companyName}: Invoice ${existingNumber}${inv.clientName ? ` — ${inv.clientName}` : ""}`
@@ -123,7 +132,7 @@ router.post("/:id/payment-link", async (req, res) => {
           },
           () => sendInvoiceEmail(
             invWithLink,
-            settings ?? {},
+            brandedSettings,
             inv.clientEmail!,
             `Your Invoice ${displayNumber} from ${companyName} — Payment Link`,
             `Hi ${inv.clientName || "there"},\n\nYour invoice ${displayNumber} is ready. Please use the button below to pay securely online.\n\nThank you for your business!`,

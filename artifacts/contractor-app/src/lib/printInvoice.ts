@@ -74,10 +74,7 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
   const { h: logoH, w: logoW } = getLogoDims(settings.logoSize);
   const logoPos = settings.logoPosition ?? "top-left";
 
-  const displayCompanyName = settings.dbaName
-    ?? (inv.businessLine === "asphalt_sealing"
-      ? `${settings.companyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
-      : (settings.companyName ?? null));
+  const displayCompanyName = settings.companyName ?? settings.dbaName ?? null;
 
   const hasContact = !!(displayCompanyName || settings.companyAddress || settings.companyCity ||
     settings.companyState || settings.companyZip || settings.companyPhone || settings.companyEmail);
@@ -89,7 +86,7 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
        </div>`;
 
   const contactLines: string[] = [];
-  if (!settings.logoAbsoluteUrl && displayCompanyName) {
+  if (displayCompanyName) {
     contactLines.push(`<div style="font-weight:700;font-size:15px;color:#1f2937;margin-bottom:4px;">${esc(displayCompanyName)}</div>`);
   }
   if (settings.companyAddress)

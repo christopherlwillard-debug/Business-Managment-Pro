@@ -1,14 +1,13 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { settingsTable, usersTable, vehiclesTable } from "@workspace/db/schema";
+import { businessesTable, settingsTable, usersTable, vehiclesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { getCredential } from "../lib/credentialManager.js";
 import { sendEmail, escapeHtml } from "../lib/sendEmail";
 import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage";
-import fs from "node:fs";
-import path from "node:path";
 import { validateTaxAssumptionConfig } from "../lib/tax-estimate.js";
+import { findInvoiceBusiness, loadInvoiceBrand } from "../lib/invoiceBranding.js";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
@@ -101,8 +100,7 @@ router.post("/dba-logo", logoUpload.single("logo"), async (req, res) => {
 });
 
 // ── Logo data URI (for embedding in emails) ────────────────────────────────────
-// Resolves the company logo from settings and returns it as a base64 data URI.
-// Pass ?businessLine=asphalt_sealing to get the DBA logo instead.
+// Resolves the selected invoice business logo and returns an optimized data URI.
 // Owner-only: logo objects are owner-managed private files.
 router.get("/logo-data-uri", async (req, res) => {
   try {
@@ -115,38 +113,16 @@ router.get("/logo-data-uri", async (req, res) => {
     }
 
     const businessLine = typeof req.query.businessLine === "string" ? req.query.businessLine : null;
-    const rawLogoUrl = (businessLine === "asphalt_sealing" ? (s.dbaLogoUrl ?? s.logoUrl) : s.logoUrl) ?? null;
-    if (!rawLogoUrl) return res.status(404).json({ error: "No logo configured" });
-
-    let dataUri: string | null = null;
-
-    if (rawLogoUrl.startsWith("/objects/")) {
-      // GCS object storage path
-      const file = await objectStorage.getObjectEntityFile(rawLogoUrl);
-      const [buf] = await file.download();
-      const [meta] = await file.getMetadata();
-      const mime = (meta.contentType as string | undefined) ?? "image/png";
-      dataUri = `data:${mime};base64,${(buf as Buffer).toString("base64")}`;
-    } else if (rawLogoUrl.startsWith("/uploads/") || rawLogoUrl.startsWith("/api/uploads/")) {
-      // Local filesystem upload — enforce strict path confinement
-      const relative = rawLogoUrl.startsWith("/api/uploads/")
-        ? rawLogoUrl.slice("/api/uploads/".length)
-        : rawLogoUrl.slice("/uploads/".length);
-      const uploadsRoot = path.resolve("uploads");
-      const filePath = path.resolve(uploadsRoot, relative);
-      if (!filePath.startsWith(uploadsRoot + path.sep) && filePath !== uploadsRoot) {
-        return res.status(400).json({ error: "Invalid logo path" });
-      }
-      if (fs.existsSync(filePath)) {
-        const buf = fs.readFileSync(filePath);
-        const ext = path.extname(filePath).toLowerCase().replace(".", "");
-        const mime = ext === "png" ? "image/png" : (ext === "jpg" || ext === "jpeg") ? "image/jpeg" : "image/png";
-        dataUri = `data:${mime};base64,${buf.toString("base64")}`;
-      }
-    }
-
-    if (!dataUri) return res.status(404).json({ error: "Logo not found" });
-    res.json({ dataUri });
+    const businesses = await db.select().from(businessesTable);
+    const business = findInvoiceBusiness(businesses, businessLine);
+    const brand = await loadInvoiceBrand(businessLine, s, business, objectStorage);
+    if (!brand.logo) return res.status(404).json({ error: "No usable logo configured" });
+    res.json({
+      dataUri: brand.logo.dataUri,
+      mimeType: brand.logo.mimeType,
+      base64: brand.logo.buffer.toString("base64"),
+      filename: brand.logo.filename,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load logo" });

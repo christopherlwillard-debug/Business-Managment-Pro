@@ -6,12 +6,12 @@ import {
   useListInvoiceCommunications,
   Invoice, InvoiceDraft, AppSettings, Client, CreateInvoiceRequest, InvoiceAttachment,
 } from "@workspace/api-client-react";
-import { calculateInvoiceTotals } from "@workspace/api-zod";
+import { calculateInvoiceTotals, resolveInvoiceBrand } from "@workspace/api-zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, localDateString } from "@/lib/utils";
 import { printInvoiceWindow } from "@/lib/printInvoice";
 import { getLogoDims } from "@/lib/invoiceLogoConstants";
-import { sendViaGmail, buildInvoiceEmailHtml } from "@/lib/gmailSend";
+import { sendViaGmail, buildInvoiceEmailHtml, dataUriToInlineImage } from "@/lib/gmailSend";
 import { buildInvoiceHtml } from "@/lib/printInvoice";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -248,22 +248,23 @@ export function InvoicePanel({
 
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-  const selectedBiz = businesses.find(b => b.slug === form.businessLine);
-  const bizSource = activeBusiness ?? selectedBiz ?? null;
-  const baseCompanyName = s?.companyName || "";
-  const companyName = bizSource
-    ? (bizSource.name || baseCompanyName)
-    : (form.businessLine === "asphalt_sealing"
-      ? `${baseCompanyName || "Willard's General Contracting LLC"}, DBA Willard's Asphalt Sealing`
-      : baseCompanyName);
-  const companyEmail = bizSource?.email || s?.companyEmail || "";
-  const companyPhone = bizSource?.phone || s?.companyPhone || "";
-  const companyAddress = bizSource?.address || s?.companyAddress || "";
-  const companyCity = bizSource?.city || s?.companyCity || "";
-  const companyState = bizSource?.state || s?.companyState || "";
-  const companyZip = bizSource?.zip || s?.companyZip || "";
-  const logoUrl: string | null = bizSource?.logoUrl ?? (form.businessLine === "asphalt_sealing"
-    ? (s?.dbaLogoUrl ?? s?.logoUrl) : s?.logoUrl) ?? null;
+  const selectedBiz = businesses.find(b => b.slug === form.businessLine)
+    ?? (activeBusiness?.slug === form.businessLine ? activeBusiness : null);
+  const invoiceBrand = resolveInvoiceBrand(form.businessLine, s, selectedBiz);
+  const companyName = invoiceBrand.displayName;
+  const companyEmail = invoiceBrand.email;
+  const companyPhone = invoiceBrand.phone;
+  const companyAddress = invoiceBrand.address;
+  const companyCity = invoiceBrand.city;
+  const companyState = invoiceBrand.state;
+  const companyZip = invoiceBrand.zip;
+  const logoUrl = invoiceBrand.logoUrl;
+
+  useEffect(() => {
+    if (open && effectiveExistingInvoice && !showGmailCompose) {
+      setGmailSubject(`Invoice ${effectiveExistingInvoice.invoiceNumber} from ${companyName || "us"}`);
+    }
+  }, [open, effectiveExistingInvoice?.id, effectiveExistingInvoice?.invoiceNumber, companyName, showGmailCompose]);
   const logoSize = s?.invoiceLogoSize ?? "medium";
   const logoPos = s?.invoiceLogoPosition ?? "top-left";
 
@@ -615,7 +616,7 @@ export function InvoicePanel({
       let logoForEmail: string | null = logoDataUri;
       if (!logoForEmail && logoUrl) {
         try {
-          const blParam = effectiveExistingInvoice.businessLine ? `?businessLine=${encodeURIComponent(effectiveExistingInvoice.businessLine)}` : "";
+          const blParam = form.businessLine ? `?businessLine=${encodeURIComponent(form.businessLine)}` : "";
           const logoResp = await fetch(`${base}/api/settings/logo-data-uri${blParam}`, { credentials: "include" });
           if (logoResp.ok) {
             const { dataUri } = await logoResp.json();
@@ -626,6 +627,7 @@ export function InvoicePanel({
       const currentLineItems = lineItems
         .filter(l => l.description.trim())
         .map(l => ({ description: l.description, quantity: l.quantity, unitPrice: l.unitPrice }));
+      const inlineLogo = dataUriToInlineImage(logoForEmail);
       const html = buildInvoiceEmailHtml({
         companyName, companyAddress, companyCity, companyState, companyZip, companyPhone, companyEmail,
         invoiceNumber: effectiveExistingInvoice.invoiceNumber,
@@ -653,7 +655,7 @@ export function InvoicePanel({
         notes: form.notes || undefined,
         customMessage: gmailMessage.trim() || undefined,
         paymentLink: payUrl,
-        logoSrc: logoForEmail,
+        logoSrc: inlineLogo ? `cid:${inlineLogo.contentId}` : null,
       });
       const printHtml = buildInvoiceHtml(
         {
@@ -813,6 +815,7 @@ export function InvoicePanel({
           ...photoAttachments,
           ...extraEmailFiles,
         ],
+        inlineImages: inlineLogo ? [inlineLogo] : [],
         });
       } catch (sendError) {
         await fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${pendingEvent.id}/finalize`, {

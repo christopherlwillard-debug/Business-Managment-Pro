@@ -19,3 +19,12 @@ export {
   validateSeoMetadata,
 } from "./website-seo";
 export type { SeoValidationErrors } from "./website-seo";
+export {
+  PRIMARY_BUSINESS_SLUG,
+  resolveInvoiceBrand,
+} from "./invoice-branding";
+export type {
+  InvoiceBrandProfile,
+  InvoiceBrandSettings,
+  ResolvedInvoiceBrand,
+} from "./invoice-branding";
