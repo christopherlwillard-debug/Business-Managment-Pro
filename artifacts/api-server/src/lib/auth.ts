@@ -8,6 +8,7 @@ import type { AuthUser } from "@workspace/api-zod";
 export const ISSUER_URL = process.env.ISSUER_URL ?? "https://replit.com/oidc";
 export const SESSION_COOKIE = "sid";
 export const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
+const TEST_LOGIN_PROOF_TTL = 60_000;
 
 export interface SessionData {
   user: AuthUser;
@@ -17,6 +18,84 @@ export interface SessionData {
 }
 
 let oidcConfig: client.Configuration | null = null;
+
+export function getSafeReturnTo(value: unknown): string {
+  if (
+    typeof value !== "string"
+    || !value.startsWith("/")
+    || value.startsWith("//")
+    || value.includes("\\")
+  ) {
+    return "/";
+  }
+
+  try {
+    const parsed = new URL(value, "http://buildpro.test");
+    if (parsed.origin !== "http://buildpro.test") return "/";
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return "/";
+  }
+}
+
+function getTestLoginSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET is required for development test login");
+  return secret;
+}
+
+function signTestLoginProof(timestamp: string, nonce: string, returnTo: string): string {
+  return crypto
+    .createHmac("sha256", getTestLoginSecret())
+    .update(`${timestamp}.${nonce}.${returnTo}`)
+    .digest("hex");
+}
+
+export function createTestLoginProof(returnTo: string): {
+  timestamp: string;
+  nonce: string;
+  signature: string;
+} {
+  const safeReturnTo = getSafeReturnTo(returnTo);
+  if (safeReturnTo !== returnTo) throw new Error("Unsafe development test return path");
+  const timestamp = String(Date.now());
+  const nonce = crypto.randomBytes(16).toString("hex");
+  return {
+    timestamp,
+    nonce,
+    signature: signTestLoginProof(timestamp, nonce, safeReturnTo),
+  };
+}
+
+export function verifyTestLoginProof(input: {
+  timestamp: unknown;
+  nonce: unknown;
+  signature: unknown;
+  returnTo: string;
+}): boolean {
+  if (
+    typeof input.timestamp !== "string"
+    || typeof input.nonce !== "string"
+    || typeof input.signature !== "string"
+    || !/^\d+$/.test(input.timestamp)
+    || !/^[a-f0-9]{32}$/.test(input.nonce)
+    || !/^[a-f0-9]{64}$/.test(input.signature)
+  ) {
+    return false;
+  }
+
+  const issuedAt = Number(input.timestamp);
+  if (!Number.isSafeInteger(issuedAt) || Math.abs(Date.now() - issuedAt) > TEST_LOGIN_PROOF_TTL) {
+    return false;
+  }
+
+  const expected = Buffer.from(
+    signTestLoginProof(input.timestamp, input.nonce, input.returnTo),
+    "hex",
+  );
+  const actual = Buffer.from(input.signature, "hex");
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
 
 export async function getOidcConfig(): Promise<client.Configuration> {
   if (!oidcConfig) {

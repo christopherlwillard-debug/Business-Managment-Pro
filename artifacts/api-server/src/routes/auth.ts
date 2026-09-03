@@ -12,6 +12,7 @@ import {
   SESSION_COOKIE,
   SESSION_TTL,
   ISSUER_URL,
+  getSafeReturnTo,
   type SessionData,
 } from "../lib/auth";
 
@@ -45,13 +46,6 @@ function setOidcCookie(res: Response, name: string, value: string) {
     path: "/",
     maxAge: OIDC_COOKIE_TTL,
   });
-}
-
-function getSafeReturnTo(value: unknown): string {
-  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
-    return "/";
-  }
-  return value;
 }
 
 async function upsertUser(claims: Record<string, unknown>) {

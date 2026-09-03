@@ -1,6 +1,6 @@
 import express, { Router, type IRouter, type Request, type Response, type NextFunction, type RequestHandler } from "express";
 import path from "path";
-import { db, accessRequestsTable } from "@workspace/db";
+import { db, accessRequestsTable, usersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import healthRouter from "./health";
 import authRouter from "./auth";
@@ -183,6 +183,7 @@ const requireAccess: RequestHandler = wrapAsync(async (req, res, next) => {
 });
 
 const router: IRouter = Router();
+const usedTestLoginNonces = new Set<string>();
 
 router.use(healthRouter);
 router.use(authRouter);
@@ -206,24 +207,57 @@ router.use("/pay", payPublicRouter);
 router.use("/public/site", websitePublicRouter);
 router.use("/integrations/wix", wixIntegrationRouter);
 
-// Development-only: inject a session for a known userId, bypassing OIDC (for automated testing)
-if (process.env.NODE_ENV !== "production") {
+// Development-only: create an approved browser-test session without exposing a
+// reusable credential. A configured test identity is preferred; otherwise the
+// development owner is used as the approved fixture.
+if (process.env.NODE_ENV !== "production" && !process.env.REPLIT_DEPLOYMENT) {
   router.get("/dev-test-login", async (req: Request, res: Response) => {
-    const userId = req.query.userId as string;
-    if (!userId) { res.status(400).json({ error: "userId required" }); return; }
     try {
-      const { db: dbConn, usersTable: ut } = await import("@workspace/db");
-      const { eq: eqFn } = await import("drizzle-orm");
-      const { createSession, SESSION_COOKIE, SESSION_TTL } = await import("../lib/auth");
-      const [user] = await dbConn.select().from(ut).where(eqFn(ut.id, userId)).limit(1);
-      if (!user) { res.status(404).json({ error: "User not found" }); return; }
+      const {
+        createSession,
+        getSafeReturnTo,
+        verifyTestLoginProof,
+        SESSION_COOKIE,
+        SESSION_TTL,
+      } = await import("../lib/auth");
+      const requestedReturnTo = typeof req.query.returnTo === "string" ? req.query.returnTo : "/";
+      const returnTo = getSafeReturnTo(requestedReturnTo);
+      const nonce = typeof req.query.nonce === "string" ? req.query.nonce : "";
+      const validProof = returnTo === requestedReturnTo
+        && !usedTestLoginNonces.has(nonce)
+        && verifyTestLoginProof({
+          timestamp: req.query.timestamp,
+          nonce,
+          signature: req.query.signature,
+          returnTo,
+        });
+      if (!validProof) {
+        res.status(403).json({ error: "Invalid or expired development test login proof" });
+        return;
+      }
+      usedTestLoginNonces.add(nonce);
+
+      const configuredUserId = process.env.BUILDPRO_E2E_USER_ID?.trim();
+      const userId = configuredUserId || await getOwnerId();
+      if (!userId) {
+        res.status(503).json({ error: "No approved development test identity is configured" });
+        return;
+      }
+
+      const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      if (!user) {
+        res.status(503).json({ error: "The approved development test identity does not exist" });
+        return;
+      }
+
       const sid = await createSession({
         user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, profileImageUrl: user.profileImageUrl },
-        access_token: "dev-test-token",
+        access_token: "development-browser-test-session",
         expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
       });
+      res.setHeader("Cache-Control", "no-store");
       res.cookie(SESSION_COOKIE, sid, { httpOnly: true, secure: false, sameSite: "lax", path: "/", maxAge: SESSION_TTL });
-      res.redirect((req.query.returnTo as string) || "/");
+      res.redirect(returnTo);
     } catch (err) {
       console.error("dev-test-login error", err);
       res.status(500).json({ error: "Internal error" });

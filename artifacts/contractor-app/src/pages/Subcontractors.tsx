@@ -834,6 +834,7 @@ export default function Subcontractors() {
                           <button
                             onClick={() => setDeleteConfirm({ id: sub.id, name: sub.name, hasLinkedRecords: !!(sub as any).hasLinkedRecords })}
                             disabled={deletingId === sub.id}
+                            data-testid={`delete-subcontractor-${sub.id}`}
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors mx-auto disabled:opacity-40"
                             title="Delete subcontractor"
                           >
@@ -880,6 +881,7 @@ export default function Subcontractors() {
                 <button
                   onClick={() => handleDelete(deleteConfirm.id)}
                   disabled={deletingId === deleteConfirm.id}
+                  data-testid="confirm-delete-subcontractor"
                   className="flex-1 py-2.5 rounded-xl font-bold bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors text-sm disabled:opacity-60 shadow"
                 >
                   {deletingId === deleteConfirm.id ? "Deleting…" : "Yes, Delete"}
