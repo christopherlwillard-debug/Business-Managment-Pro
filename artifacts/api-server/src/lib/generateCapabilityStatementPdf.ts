@@ -72,6 +72,40 @@ export function capabilitySectionMode(
   return selection?.capabilityProfileIds === undefined ? "placeholder" : "omit";
 }
 
+export function isCapabilityStatementCertificationEligible(
+  certification: {
+    status: string | null;
+    expiresAt: string | Date | null;
+    crewBusinessId: number | null;
+    crewActive: boolean;
+  },
+  businessId: number,
+  today: string,
+): boolean {
+  if (certification.crewBusinessId !== businessId || !certification.crewActive) return false;
+  if (certification.status !== "active" && certification.status !== "expiring_soon") return false;
+  if (!certification.expiresAt) return true;
+  const expirationDate = certification.expiresAt instanceof Date
+    ? certification.expiresAt.toISOString().slice(0, 10)
+    : certification.expiresAt.slice(0, 10);
+  return expirationDate >= today;
+}
+
+export function isCapabilityStatementProjectEligible(
+  project: {
+    businessId: number | null;
+    businessLine: string | null;
+    status: string;
+  },
+  businessId: number,
+  businessSlug: string,
+): boolean {
+  const completed = ["completed", "invoiced", "closed"].includes(project.status);
+  if (!completed) return false;
+  if (project.businessId !== null) return project.businessId === businessId;
+  return project.businessLine === businessSlug;
+}
+
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -136,6 +170,10 @@ export async function generateCapabilityStatementPdfBuffer(
         certificationName: crewCertificationsTable.certificationName,
         issuingBody: crewCertificationsTable.issuingBody,
         certNumber: crewCertificationsTable.certNumber,
+        status: crewCertificationsTable.status,
+        expiresAt: crewCertificationsTable.expiresAt,
+        crewBusinessId: crewMembersTable.businessId,
+        crewActive: crewMembersTable.active,
       })
       .from(crewCertificationsTable)
       .innerJoin(
@@ -162,6 +200,9 @@ export async function generateCapabilityStatementPdfBuffer(
         closedAt: jobsTable.closedAt,
         endDate: jobsTable.endDate,
         createdAt: jobsTable.createdAt,
+        businessId: jobsTable.businessId,
+        businessLine: jobsTable.businessLine,
+        status: jobsTable.status,
       })
       .from(jobsTable)
       .where(and(
@@ -181,7 +222,16 @@ export async function generateCapabilityStatementPdfBuffer(
   const {
     capabilityProfiles: selectedCapabilityProfiles,
     pastProjects: selectedPastProjects,
-  } = applyCapabilityStatementSelection(capabilityProfiles, pastProjects, selection);
+  } = applyCapabilityStatementSelection(
+    capabilityProfiles,
+    pastProjects.filter((project) =>
+      isCapabilityStatementProjectEligible(project, businessId, business.slug),
+    ),
+    selection,
+  );
+  const eligibleCertifications = certifications.filter((certification) =>
+    isCapabilityStatementCertificationEligible(certification, businessId, today),
+  );
 
   const doc = new PDFDocument({
     size: "Letter",
@@ -350,7 +400,7 @@ export async function generateCapabilityStatementPdfBuffer(
   if (bidSettings?.isHubzone) qualificationLines.push("HUBZone");
   if (bidSettings?.is8a) qualificationLines.push("SBA 8(a) Business Development");
   if (cleanText(business.licenseNumber)) qualificationLines.push(`License / registration: ${business.licenseNumber}`);
-  for (const certification of certifications) {
+  for (const certification of eligibleCertifications) {
     const label = [cleanText(certification.certificationName), cleanText(certification.issuingBody)]
       .filter(Boolean)
       .join(" — ");
@@ -437,6 +487,9 @@ export async function getCapabilityStatementOptions(
         state: jobsTable.state,
         closedAt: jobsTable.closedAt,
         endDate: jobsTable.endDate,
+        businessId: jobsTable.businessId,
+        businessLine: jobsTable.businessLine,
+        status: jobsTable.status,
       })
       .from(jobsTable)
       .where(and(
@@ -456,6 +509,8 @@ export async function getCapabilityStatementOptions(
   return {
     business: { id: business.id, name: business.name },
     capabilityProfiles,
-    pastProjects,
+    pastProjects: pastProjects.filter((project) =>
+      isCapabilityStatementProjectEligible(project, businessId, business.slug),
+    ),
   };
 }
