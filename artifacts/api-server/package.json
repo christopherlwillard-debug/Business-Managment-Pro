@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest": "tsx ./scripts/check-development-schema.ts",
     "test": "vitest run",
+    "verify:close-job": "tsx ./scripts/e2e-close-job-verify.ts",
     "postinstall": "node node_modules/puppeteer/install.mjs"
   },
   "dependencies": {
