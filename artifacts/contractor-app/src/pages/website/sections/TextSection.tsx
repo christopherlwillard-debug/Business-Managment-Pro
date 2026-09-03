@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { Bold, Italic, Link2, Underline } from "lucide-react";
+import { Bold, Italic, Link2, List, ListOrdered, Underline } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 
 export interface TextContent {
@@ -41,7 +41,9 @@ const ALIGN_MAP: Record<string, string> = {
   right: "text-right ml-auto",
 };
 
-const RICH_TEXT_TAGS = new Set(["A", "B", "BR", "DIV", "EM", "FONT", "I", "P", "SPAN", "STRONG", "U"]);
+const RICH_TEXT_TAGS = new Set([
+  "A", "B", "BR", "DIV", "EM", "FONT", "I", "LI", "OL", "P", "SPAN", "STRONG", "U", "UL",
+]);
 
 function escapeHtml(value: string): string {
   return value
@@ -116,6 +118,9 @@ export function sanitizeRichText(value: string): string {
       const color = safeColor(element.getAttribute("color") ?? element.style.color ?? "");
       return color ? `<span style="color:${escapeHtml(color)}">${children}</span>` : children;
     }
+
+    if (tag === "UL" || tag === "OL") return `<${tag.toLowerCase()}>${children}</${tag.toLowerCase()}>`;
+    if (tag === "LI") return `<li>${children}</li>`;
 
     // contenteditable commonly represents each body line as a DIV or P.
     // Convert those block boundaries to the same BR representation used by
@@ -315,6 +320,12 @@ function RichTextField({
               <button type="button" title="Underline" aria-label="Underline" onMouseDown={event => { handleToolbarMouseDown(event); runCommand("underline"); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                 <Underline className="h-3.5 w-3.5" />
               </button>
+              <button type="button" title="Bulleted list" aria-label="Bulleted list" onMouseDown={event => { handleToolbarMouseDown(event); runCommand("insertUnorderedList"); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+                <List className="h-3.5 w-3.5" />
+              </button>
+              <button type="button" title="Numbered list" aria-label="Numbered list" onMouseDown={event => { handleToolbarMouseDown(event); runCommand("insertOrderedList"); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+                <ListOrdered className="h-3.5 w-3.5" />
+              </button>
               <label title="Text color" aria-label="Text color" className="relative cursor-pointer rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                 <span className="block h-3.5 w-3.5 rounded-full border border-muted-foreground/60 bg-foreground" />
                 <input
@@ -396,7 +407,7 @@ export function TextSection({ content, settings, isEditing, onChange, blockStyle
           )}
           {content.body && (
             <div
-              className="text-base leading-relaxed whitespace-pre-wrap"
+              className="text-base leading-relaxed whitespace-pre-wrap [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1"
               style={{ color: "var(--theme-text-muted, #374151)" }}
               dangerouslySetInnerHTML={{ __html: sanitizeRichText(content.body) }}
             />

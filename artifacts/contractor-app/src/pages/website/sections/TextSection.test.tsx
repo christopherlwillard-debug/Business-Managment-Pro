@@ -71,6 +71,31 @@ describe("sanitizeRichText", () => {
       '<a href="/contact" target="_blank" rel="noopener noreferrer">Contact</a>',
     );
   });
+
+  it("keeps supported unordered and ordered list structure with readable items", () => {
+    const result = sanitizeRichText(
+      '<ul class="pasted-list"><li><strong>First</strong></li><li>Second</li></ul>' +
+      '<ol style="margin: 0"><li>Third</li><li><em>Fourth</em></li></ol>',
+    );
+
+    expect(result).toContain("<ul><li><strong>First</strong></li><li>Second</li></ul>");
+    expect(result).toContain("<ol><li>Third</li><li><em>Fourth</em></li></ol>");
+    expect(result).not.toContain("class=");
+    expect(result).not.toContain("style=");
+  });
+
+  it("strips unsafe pasted descendants without dropping safe list text", () => {
+    const result = sanitizeRichText(
+      '<ul><li>Keep <script>alert("remove")</script> this</li>' +
+      '<li><img src="tracking.gif">Another <span onclick="alert(1)">item</span></li></ul>',
+    );
+
+    expect(result).toContain("<ul><li>Keep  this</li><li>Another item</li></ul>");
+    expect(result).not.toContain("<script");
+    expect(result).not.toContain("<img");
+    expect(result).not.toContain("onclick");
+    expect(result).not.toContain("alert");
+  });
 });
 
 describe("TextSection public rendering", () => {
@@ -80,7 +105,7 @@ describe("TextSection public rendering", () => {
         content={{
           heading: "<strong>Formatted heading</strong>",
           subheading: "",
-          body: "Line one\nLine two",
+          body: "Line one<br>Line two<ul><li>List item</li></ul>",
         }}
         settings={{ brandColor: "#2563eb" }}
       />,
@@ -88,6 +113,9 @@ describe("TextSection public rendering", () => {
 
     expect(markup).toContain("<strong>Formatted heading</strong>");
     expect(markup).toContain("Line one<br />Line two");
+    expect(markup).toContain("<ul><li>List item</li></ul>");
+    expect(markup).toContain("list-disc");
+    expect(markup).toContain("list-decimal");
     expect(markup).not.toContain("dangerouslySetInnerHTML");
   });
 });
