@@ -18,6 +18,15 @@ import { generate1099NecPdf } from "@/lib/generate1099NecPdf";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+function isValidHistoryDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
 export default function Subcontractors() {
   const { canEdit } = useUserPermissions();
   const { data: subs, isLoading, refetch } = useListSubcontractors();
@@ -50,7 +59,10 @@ export default function Subcontractors() {
   const [revoking1099Id, setRevoking1099Id] = useState<number | null>(null);
   const [revoke1099Error, setRevoke1099Error] = useState<string | null>(null);
   const [subDetailTab, setSubDetailTab] = useState<"portal" | "history">("portal");
+  const [historyDateMode, setHistoryDateMode] = useState<"year" | "range">("year");
   const [historyYear, setHistoryYear] = useState<number | "all">(new Date().getFullYear());
+  const [historyStartDate, setHistoryStartDate] = useState("");
+  const [historyEndDate, setHistoryEndDate] = useState("");
   const [historyBusinessLine, setHistoryBusinessLine] = useState<string>("");
   const [pageTab, setPageTab] = useState<"directory" | "balances">("directory");
   const [showSettled, setShowSettled] = useState(false);
@@ -59,6 +71,16 @@ export default function Subcontractors() {
   const [exportingHistory, setExportingHistory] = useState(false);
   const [exportingAllHistory, setExportingAllHistory] = useState(false);
   const [, navigate] = useLocation();
+
+  const historyDateError = historyDateMode === "range"
+    ? !historyStartDate || !historyEndDate
+      ? "Choose both a start date and an end date."
+      : !isValidHistoryDate(historyStartDate) || !isValidHistoryDate(historyEndDate)
+        ? "Choose valid start and end dates."
+        : historyStartDate > historyEndDate
+          ? "End date must be on or after the start date."
+          : null
+    : null;
 
   async function handleSettle(id: number, reopen: boolean) {
     setSettlingId(id);
@@ -129,10 +151,15 @@ export default function Subcontractors() {
   });
 
   const { data: paymentHistory, isLoading: paymentHistoryLoading } = useQuery({
-    queryKey: ["sub-payment-history", inviteModal?.id, historyYear, historyBusinessLine],
+    queryKey: ["sub-payment-history", inviteModal?.id, historyDateMode, historyYear, historyStartDate, historyEndDate, historyBusinessLine],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (historyYear !== "all") params.set("year", String(historyYear));
+      if (historyDateMode === "range") {
+        params.set("startDate", historyStartDate);
+        params.set("endDate", historyEndDate);
+      } else if (historyYear !== "all") {
+        params.set("year", String(historyYear));
+      }
       if (historyBusinessLine) params.set("businessLine", historyBusinessLine);
       const res = await fetch(`${BASE}/api/subcontractors/${inviteModal!.id}/payment-history?${params}`);
       if (!res.ok) throw new Error("Failed to load payment history");
@@ -147,16 +174,28 @@ export default function Subcontractors() {
         allBusinessLines: string[];
       }>;
     },
-    enabled: !!inviteModal && subDetailTab === "history",
+    enabled: !!inviteModal && subDetailTab === "history" && !historyDateError,
     staleTime: 30000,
   });
 
   async function downloadPaymentHistoryCsv() {
     if (!inviteModal) return;
+    if (historyDateError) {
+      toast({ title: "Choose a valid date range", description: historyDateError, variant: "destructive" });
+      return;
+    }
     setExportingHistory(true);
     try {
       const params = new URLSearchParams({ format: "csv" });
-      if (historyYear !== "all") params.set("year", String(historyYear));
+      const period = historyDateMode === "range"
+        ? `${historyStartDate}-to-${historyEndDate}`
+        : (historyYear === "all" ? "all-years" : String(historyYear));
+      if (historyDateMode === "range") {
+        params.set("startDate", historyStartDate);
+        params.set("endDate", historyEndDate);
+      } else if (historyYear !== "all") {
+        params.set("year", String(historyYear));
+      }
       if (historyBusinessLine) params.set("businessLine", historyBusinessLine);
 
       const res = await fetch(`${BASE}/api/subcontractors/${inviteModal.id}/payment-history?${params}`, {
@@ -168,7 +207,7 @@ export default function Subcontractors() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `subcontractor-${inviteModal.id}-payment-history-${historyYear === "all" ? "all-years" : historyYear}.csv`;
+      a.download = `subcontractor-${inviteModal.id}-payment-history-${period}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -180,10 +219,22 @@ export default function Subcontractors() {
   }
 
   async function downloadAllPaymentHistoryCsv() {
+    if (historyDateError) {
+      toast({ title: "Choose a valid date range", description: historyDateError, variant: "destructive" });
+      return;
+    }
     setExportingAllHistory(true);
     try {
       const params = new URLSearchParams({ format: "csv" });
-      if (historyYear !== "all") params.set("year", String(historyYear));
+      const period = historyDateMode === "range"
+        ? `${historyStartDate}-to-${historyEndDate}`
+        : (historyYear === "all" ? "all-years" : String(historyYear));
+      if (historyDateMode === "range") {
+        params.set("startDate", historyStartDate);
+        params.set("endDate", historyEndDate);
+      } else if (historyYear !== "all") {
+        params.set("year", String(historyYear));
+      }
       if (historyBusinessLine) params.set("businessLine", historyBusinessLine);
 
       const res = await fetch(`${BASE}/api/subcontractors/payment-history/all?${params}`, {
@@ -195,7 +246,7 @@ export default function Subcontractors() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `subcontractors-payment-history-${historyYear === "all" ? "all-years" : historyYear}.csv`;
+      a.download = `subcontractors-payment-history-${period}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -468,7 +519,10 @@ export default function Subcontractors() {
     setPortalError(null);
     setEditingRate(false);
     setSubDetailTab("portal");
+    setHistoryDateMode("year");
     setHistoryYear(new Date().getFullYear());
+    setHistoryStartDate("");
+    setHistoryEndDate("");
     setHistoryBusinessLine("");
     const pr = (sub as any).payRate;
     const tpr = (sub as any).travelPayRate;
@@ -1257,18 +1311,53 @@ export default function Subcontractors() {
                   {/* Filters */}
                   <div className="flex gap-2 flex-wrap items-end">
                     <div className="flex-1 min-w-[100px]">
-                      <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Year</label>
+                      <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Date filter</label>
                       <select
-                        value={historyYear}
-                        onChange={e => setHistoryYear(e.target.value === "all" ? "all" : parseInt(e.target.value))}
+                        value={historyDateMode}
+                        onChange={e => setHistoryDateMode(e.target.value as "year" | "range")}
                         className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none"
                       >
-                        <option value="all">All Years</option>
-                        {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map(y => (
-                          <option key={y} value={y}>{y}</option>
-                        ))}
+                        <option value="year">By year</option>
+                        <option value="range">Exact date range</option>
                       </select>
                     </div>
+                    {historyDateMode === "year" ? (
+                      <div className="flex-1 min-w-[100px]">
+                        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Year</label>
+                        <select
+                          value={historyYear}
+                          onChange={e => setHistoryYear(e.target.value === "all" ? "all" : parseInt(e.target.value))}
+                          className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none"
+                        >
+                          <option value="all">All Years</option>
+                          {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex-1 min-w-[125px]">
+                          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Start date</label>
+                          <input
+                            type="date"
+                            value={historyStartDate}
+                            onChange={e => setHistoryStartDate(e.target.value)}
+                            className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-[125px]">
+                          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">End date</label>
+                          <input
+                            type="date"
+                            value={historyEndDate}
+                            min={historyStartDate || undefined}
+                            onChange={e => setHistoryEndDate(e.target.value)}
+                            className="w-full px-2 py-1.5 text-sm rounded-lg border border-border bg-background outline-none"
+                          />
+                        </div>
+                      </>
+                    )}
                     <div className="flex-1 min-w-[120px]">
                       <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Business Line</label>
                       <select
@@ -1282,10 +1371,15 @@ export default function Subcontractors() {
                         ))}
                       </select>
                     </div>
+                    {historyDateError && (
+                      <p role="alert" className="basis-full text-xs text-destructive flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" /> {historyDateError}
+                      </p>
+                    )}
                     <button
                       type="button"
                       onClick={downloadPaymentHistoryCsv}
-                      disabled={exportingHistory || exportingAllHistory || paymentHistoryLoading}
+                      disabled={!!historyDateError || exportingHistory || exportingAllHistory || paymentHistoryLoading}
                       className="flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Download className="w-4 h-4 mr-1.5" />
@@ -1295,7 +1389,7 @@ export default function Subcontractors() {
                       type="button"
                       title="Export payment history for all subcontractors"
                       onClick={downloadAllPaymentHistoryCsv}
-                      disabled={exportingHistory || exportingAllHistory || paymentHistoryLoading}
+                      disabled={!!historyDateError || exportingHistory || exportingAllHistory || paymentHistoryLoading}
                       className="flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium border border-border bg-background text-foreground hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Users className="w-4 h-4 mr-1.5" />
@@ -1304,10 +1398,12 @@ export default function Subcontractors() {
                   </div>
 
                   {/* YTD Totals */}
-                  {paymentHistory && (
+                  {!historyDateError && paymentHistory && (
                     <div className="grid grid-cols-3 gap-2">
                       <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-center">
-                        <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">YTD Paid</p>
+                        <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">
+                          {historyDateMode === "year" && historyYear !== "all" ? "Paid in year" : "Paid in period"}
+                        </p>
                         <p className="text-sm font-bold text-emerald-800 mt-0.5">{formatCurrency(paymentHistory.ytdPaid)}</p>
                       </div>
                       <div className="bg-muted/50 border border-border rounded-xl px-3 py-2.5 text-center">
@@ -1324,12 +1420,15 @@ export default function Subcontractors() {
                   )}
 
                   {/* Jobs table */}
-                  {paymentHistoryLoading ? (
+                  {historyDateError ? null : paymentHistoryLoading ? (
                     <div className="text-center py-8 text-muted-foreground text-sm animate-pulse">Loading history…</div>
                   ) : !paymentHistory || paymentHistory.jobs.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground text-sm">
                       <History className="w-7 h-7 mx-auto mb-2 opacity-20" />
-                      No jobs found{historyYear !== "all" ? ` for ${historyYear}` : ""}{historyBusinessLine ? ` · ${historyBusinessLine}` : ""}
+                      No jobs found{historyDateMode === "range"
+                        ? historyStartDate && historyEndDate ? ` from ${historyStartDate} to ${historyEndDate}` : ""
+                        : historyYear !== "all" ? ` for ${historyYear}` : ""}
+                      {historyBusinessLine ? ` · ${historyBusinessLine}` : ""}
                     </div>
                   ) : (
                     <div className="border border-border rounded-xl overflow-hidden">
@@ -1386,7 +1485,10 @@ export default function Subcontractors() {
                         </table>
                       </div>
                       <div className="px-3 py-2 bg-muted/30 border-t border-border text-[10px] text-muted-foreground text-right">
-                        {paymentHistory.jobs.length} job{paymentHistory.jobs.length !== 1 ? "s" : ""}{historyYear !== "all" ? ` · ${historyYear}` : " · all time"}
+                        {paymentHistory.jobs.length} job{paymentHistory.jobs.length !== 1 ? "s" : ""}
+                        {historyDateMode === "range"
+                          ? ` · ${historyStartDate} to ${historyEndDate}`
+                          : historyYear !== "all" ? ` · ${historyYear}` : " · all time"}
                       </div>
                     </div>
                   )}

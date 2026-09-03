@@ -54,6 +54,7 @@ type PaymentHistoryJobWithSubcontractor = PaymentHistoryJob & {
   subcontractorId: number;
   subcontractorName: string;
   effectiveYear: number | null;
+  effectiveDate: string | null;
 };
 
 async function loadPaymentHistoryJobs(subcontractorId?: number): Promise<PaymentHistoryJobWithSubcontractor[]> {
@@ -143,18 +144,77 @@ async function loadPaymentHistoryJobs(subcontractorId?: number): Promise<Payment
       paymentStatus: r.paymentStatus ?? "unpaid",
       paidAt: r.paidAt ?? null,
       effectiveYear,
+      effectiveDate,
     };
   });
 }
 
-function filterPaymentHistoryJobs(
+export type PaymentHistoryDateRange = {
+  startDate: string | null;
+  endDate: string | null;
+  error: string | null;
+};
+
+export function paymentHistoryExportFilename(
+  subcontractorId: number | null,
+  year: number | null,
+  dateRange: PaymentHistoryDateRange,
+): string {
+  if (subcontractorId === null) {
+    return dateRange.startDate
+      ? `subcontractors-payment-history-${dateRange.startDate}-to-${dateRange.endDate}.csv`
+      : `subcontractors-payment-history-${year ?? "all-years"}.csv`;
+  }
+  return dateRange.startDate
+    ? `subcontractor-${subcontractorId}-payment-history-${dateRange.startDate}-to-${dateRange.endDate}.csv`
+    : `subcontractor-${subcontractorId}-payment-history.csv`;
+}
+
+function isValidIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
+export function validatePaymentHistoryDateRange(
+  startDateValue: unknown,
+  endDateValue: unknown,
+): PaymentHistoryDateRange {
+  const startDate = typeof startDateValue === "string" ? startDateValue.trim() : "";
+  const endDate = typeof endDateValue === "string" ? endDateValue.trim() : "";
+
+  if (!startDate && !endDate) {
+    return { startDate: null, endDate: null, error: null };
+  }
+  if (!startDate || !endDate) {
+    return { startDate: startDate || null, endDate: endDate || null, error: "Both start and end dates are required." };
+  }
+  if (!isValidIsoDate(startDate) || !isValidIsoDate(endDate)) {
+    return { startDate, endDate, error: "Start and end dates must be valid dates in YYYY-MM-DD format." };
+  }
+  if (startDate > endDate) {
+    return { startDate, endDate, error: "End date must be on or after the start date." };
+  }
+  return { startDate, endDate, error: null };
+}
+
+export function filterPaymentHistoryJobs(
   jobs: PaymentHistoryJobWithSubcontractor[],
   year: number | null,
   businessLine: string | null,
+  startDate: string | null = null,
+  endDate: string | null = null,
 ): PaymentHistoryJobWithSubcontractor[] {
   return jobs
     .filter(job => {
-      if (year !== null && job.effectiveYear !== year) return false;
+      if (startDate && endDate) {
+        if (!job.effectiveDate || job.effectiveDate < startDate || job.effectiveDate > endDate) return false;
+      } else if (year !== null && job.effectiveYear !== year) {
+        return false;
+      }
       if (businessLine && job.businessLine !== businessLine) return false;
       return true;
     })
@@ -695,13 +755,15 @@ router.delete("/:id", async (req, res) => {
 
 router.get("/payment-history/all", async (req, res) => {
   try {
-    const year = req.query.year ? parseInt(req.query.year as string) : null;
+    const dateRange = validatePaymentHistoryDateRange(req.query.startDate, req.query.endDate);
+    if (dateRange.error) return res.status(400).json({ error: dateRange.error });
+    const year = dateRange.startDate ? null : (req.query.year ? parseInt(req.query.year as string) : null);
     const businessLine = req.query.businessLine ? (req.query.businessLine as string) : null;
     const rows = await loadPaymentHistoryJobs();
-    const jobs = filterPaymentHistoryJobs(rows, year, businessLine);
+    const jobs = filterPaymentHistoryJobs(rows, year, businessLine, dateRange.startDate, dateRange.endDate);
 
     if (req.query.format === "csv") {
-      const filename = `subcontractors-payment-history-${year ?? "all-years"}.csv`;
+      const filename = paymentHistoryExportFilename(null, year, dateRange);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       return res.send(paymentHistoryToCsv(jobs, { includeSubcontractor: true }));
@@ -719,12 +781,16 @@ router.get("/:id/payment-history", async (req, res) => {
     const subId = parseInt(req.params.id);
     if (isNaN(subId)) return res.status(400).json({ error: "Invalid id" });
 
-    const year = req.query.year ? parseInt(req.query.year as string) : null;
+    const dateRange = validatePaymentHistoryDateRange(req.query.startDate, req.query.endDate);
+    if (dateRange.error) return res.status(400).json({ error: dateRange.error });
+    const year = dateRange.startDate ? null : (req.query.year ? parseInt(req.query.year as string) : null);
     const businessLine = req.query.businessLine ? (req.query.businessLine as string) : null;
     const allJobs = filterPaymentHistoryJobs(
       await loadPaymentHistoryJobs(subId),
       year,
       businessLine,
+      dateRange.startDate,
+      dateRange.endDate,
     );
     const jobs = allJobs.map(({ subcontractorId: _subcontractorId, subcontractorName: _subcontractorName, ...job }) => job);
 
@@ -739,7 +805,7 @@ router.get("/:id/payment-history", async (req, res) => {
     )].sort();
 
     if (req.query.format === "csv") {
-      const filename = `subcontractor-${subId}-payment-history.csv`;
+      const filename = paymentHistoryExportFilename(subId, year, dateRange);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       return res.send(paymentHistoryToCsv(jobs));
