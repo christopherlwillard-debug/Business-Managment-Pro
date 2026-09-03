@@ -46,6 +46,7 @@
 - [Strict route fixtures](strict-route-fixtures.md) — ordered DB queues must reject exhaustion and assert every queued response is consumed
 - [Invoice token schema sync](invoice-token-schema-sync.md) — pay_token must stay a nullable partial unique index; check duplicates before automated Drizzle pushes
 - [Invoice delivery reconciliation](invoice-delivery-reconciliation.md) — confirmed Gmail events can repair stale invoice lifecycle fields; pending attempts remain blockers
+- [Schedule C wage advances](schedule-c-wage-advances.md) — exclude flagged hourly advances from tax expense totals; retain the source row and include accrual expenses once
 - [Job-only expense allocations](job-expense-allocations.md) — split job costs belong in a derived allocation table; the original expense remains the sole accounting ledger row
 - [Job mileage reimbursement](job-mileage-reimbursement.md) — editable job-card reimbursement stays outside MileIQ, expenses, owner pay, and percentage splits
 - [Award intelligence boundary](award-intelligence-boundary.md) — historical USA Spending awards must stay out of actionable bid APIs, counts, and lifecycle controls

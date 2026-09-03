@@ -8,7 +8,35 @@
 // This prevents double-applying the 50% multiplier (which would
 // understate deductions) and honours any explicit override.
 import { describe, it, expect } from "vitest";
-import { scheduleCMealsTaxAmount } from "./tax-reports.js";
+import { scheduleCExpenseIsIncluded, scheduleCMealsTaxAmount } from "./tax-reports.js";
+
+describe("scheduleCExpenseIsIncluded — hourly wage advances", () => {
+  it("counts hourly accrual expenses once and excludes a settled advance", () => {
+    const expenses = [
+      { id: 1, category: "Subcontractor", amount: "800.00", isWageAdvance: false },
+      { id: 2, category: "Subcontractor", amount: "120.00", isWageAdvance: false },
+      { id: 3, category: "Subcontractor", amount: "160.00", isWageAdvance: true },
+    ];
+
+    const contractLabor = expenses
+      .filter(scheduleCExpenseIsIncluded)
+      .reduce((total, expense) => total + Number(expense.amount), 0);
+
+    expect(contractLabor).toBe(920);
+    expect(contractLabor).not.toBe(1080);
+  });
+
+  it("keeps ordinary and legacy-unflagged expenses included", () => {
+    expect(scheduleCExpenseIsIncluded({ category: "Supplies", isWageAdvance: false })).toBe(true);
+    expect(scheduleCExpenseIsIncluded({ category: "Subcontractor", isWageAdvance: null })).toBe(true);
+    expect(scheduleCExpenseIsIncluded({ category: "Subcontractor" })).toBe(true);
+  });
+
+  it("does not change the preserved source-history treatment for mileage filtering", () => {
+    expect(scheduleCExpenseIsIncluded({ category: "mileage", isWageAdvance: false })).toBe(false);
+    expect(scheduleCExpenseIsIncluded({ category: "Subcontractor", isWageAdvance: true })).toBe(false);
+  });
+});
 
 describe("scheduleCMealsTaxAmount — Line 24b IRS 50% rule", () => {
   // ── Core acceptance criterion ──────────────────────────────────────────────

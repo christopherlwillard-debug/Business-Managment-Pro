@@ -143,6 +143,21 @@ export function scheduleCMealsTaxAmount(
   return rawAmount;
 }
 
+/**
+ * Wage advances are cash pre-payments of hourly labor already represented by
+ * job_sub_hours accrual expenses. They remain valid expense records, but must
+ * not be included in Schedule C deductions a second time.
+ *
+ * Exported for regression tests and kept semantically aligned with the
+ * database-level `IS NOT TRUE` predicate in the Schedule C query below.
+ */
+export function scheduleCExpenseIsIncluded(expense: {
+  category?: string | null;
+  isWageAdvance?: boolean | null;
+}): boolean {
+  return expense.category !== "mileage" && expense.isWageAdvance !== true;
+}
+
 // GET /api/tax-reports/schedule-c?year=2025&businessLine=general_contracting
 router.get("/schedule-c", async (req, res) => {
   try {
@@ -252,6 +267,10 @@ router.get("/schedule-c", async (req, res) => {
           // These are accrual-style bookings — the sub has not been paid. The actual cash payment
           // appears in sub_payment_records and is added to contractLabor below.
           sql`(${expensesTable.description} IS NULL OR ${expensesTable.description} NOT LIKE '%(outstanding)')`,
+           // Wage advances are pre-payments of hourly labor already captured by job-hour
+           // accrual expenses. Keep the source row intact, but exclude it from Schedule C
+           // so contract labor is not counted twice. IS NOT TRUE preserves legacy NULL values.
+           sql`${expensesTable.isWageAdvance} IS NOT TRUE`,
           blWhere(expensesTable.businessLine),
           isNull(expensesTable.voidedAt)
         )

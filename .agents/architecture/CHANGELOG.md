@@ -254,3 +254,11 @@ Created the four-document architecture governance system:
 - Extended the existing `job_checklist_item_photos` evidence rows with optional captions rather than creating a separate annotation system.
 - Caption updates are scoped through the photo, checklist item, checklist, and job relationship.
 - Checklist panels and exported PDFs now read the same stored caption alongside each item photo.
+
+### Schedule C wage-advance reconciliation
+
+- Schedule C now excludes expenses explicitly flagged as hourly wage advances,
+  matching the existing P&L and Business Health treatment.
+- Hourly accrual expenses remain deductible, while settled advances remain
+  preserved in the expense history and are not counted a second time.
+- No ledger, schema, API ownership, or source-of-truth changes were introduced.
