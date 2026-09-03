@@ -88,13 +88,32 @@ describe("invoice branding", () => {
         companyName: "Willard's Asphalt Sealing",
         companyAddress: "200 Sealcoat Road",
         logoDataUri,
+        invoiceLogoPosition: "top-center",
+        invoiceLogoSize: "large",
       },
     );
 
     expect(emailHtml).toContain("Willard's Asphalt Sealing");
     expect(emailHtml).toContain("200 Sealcoat Road");
     expect(emailHtml).toContain(logoDataUri);
+    expect(emailHtml).toContain('data-invoice-brand-position="top-center"');
+    expect(emailHtml).toContain("width:300px");
+    expect(emailHtml).toContain("height:120px");
     expect(emailHtml).not.toContain("Willard's General Contracting LLC");
+  });
+
+  it("keeps a centered business-name header when the logo is unavailable", () => {
+    const emailHtml = buildInvoiceEmailHtml(invoice as any, {
+      companyName: "Willard's General Contracting LLC",
+      companyEmail: "office@example.com",
+      invoiceLogoPosition: "top-center",
+      invoiceLogoSize: "large",
+      logoDataUri: null,
+    });
+
+    expect(emailHtml).toContain('data-invoice-brand-position="top-center"');
+    expect(emailHtml).toContain("Willard's General Contracting LLC");
+    expect(emailHtml).not.toContain("data-invoice-logo=");
   });
 
   it("drops an unreadable logo while preserving the full business name fallback", async () => {

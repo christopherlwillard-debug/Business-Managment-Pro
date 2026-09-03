@@ -50,6 +50,33 @@ describe("invoice brand rendering", () => {
 
     expect(emailHtml).toContain("Willard's General Contracting LLC");
     expect(printHtml).toContain("Willard's General Contracting LLC");
+    expect(printHtml).toContain('data-invoice-brand-fallback="true"');
+  });
+
+  it.each([
+    ["top-left", "large", "300px", "120px"],
+    ["top-center", "large", "300px", "120px"],
+    ["top-right", "small", "120px", "50px"],
+  ])("applies %s/%s consistently to Gmail and printable HTML", (position, size, width, height) => {
+    const emailHtml = buildInvoiceEmailHtml({
+      ...invoice,
+      companyName: "Willard's Asphalt Sealing",
+      logoSrc: logoDataUri,
+      logoPosition: position,
+      logoSize: size,
+    });
+    const printHtml = buildInvoiceBodyHtml(invoice, {
+      companyName: "Willard's Asphalt Sealing",
+      logoAbsoluteUrl: logoDataUri,
+      logoPosition: position,
+      logoSize: size,
+    });
+
+    for (const html of [emailHtml, printHtml]) {
+      expect(html).toContain(`data-invoice-brand-position="${position}"`);
+      expect(html).toContain(`width:${width}`);
+      expect(html).toContain(`height:${height}`);
+    }
   });
 
   it("converts the optimized data URI into a Gmail inline image", () => {

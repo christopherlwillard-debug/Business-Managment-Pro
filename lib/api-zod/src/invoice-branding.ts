@@ -1,5 +1,38 @@
 export const PRIMARY_BUSINESS_SLUG = "general_contracting";
 
+export const INVOICE_LOGO_SIZES = ["small", "medium", "large"] as const;
+export type InvoiceLogoSize = (typeof INVOICE_LOGO_SIZES)[number];
+
+export const INVOICE_LOGO_POSITIONS = ["top-left", "top-center", "top-right"] as const;
+export type InvoiceLogoPosition = (typeof INVOICE_LOGO_POSITIONS)[number];
+
+export interface InvoiceLogoDimensions {
+  width: number;
+  height: number;
+}
+
+export const INVOICE_LOGO_DIMENSIONS: Record<InvoiceLogoSize, InvoiceLogoDimensions> = {
+  small: { width: 120, height: 50 },
+  medium: { width: 200, height: 75 },
+  large: { width: 300, height: 120 },
+};
+
+export function normalizeInvoiceLogoSize(value: string | null | undefined): InvoiceLogoSize {
+  return INVOICE_LOGO_SIZES.includes(value as InvoiceLogoSize)
+    ? value as InvoiceLogoSize
+    : "medium";
+}
+
+export function normalizeInvoiceLogoPosition(value: string | null | undefined): InvoiceLogoPosition {
+  return INVOICE_LOGO_POSITIONS.includes(value as InvoiceLogoPosition)
+    ? value as InvoiceLogoPosition
+    : "top-left";
+}
+
+export function getInvoiceLogoDimensions(value: string | null | undefined): InvoiceLogoDimensions {
+  return INVOICE_LOGO_DIMENSIONS[normalizeInvoiceLogoSize(value)];
+}
+
 export interface InvoiceBrandProfile {
   slug?: string | null;
   type?: string | null;
@@ -23,6 +56,8 @@ export interface InvoiceBrandSettings {
   companyEmail?: string | null;
   logoUrl?: string | null;
   dbaLogoUrl?: string | null;
+  invoiceLogoPosition?: string | null;
+  invoiceLogoSize?: string | null;
 }
 
 export interface ResolvedInvoiceBrand {

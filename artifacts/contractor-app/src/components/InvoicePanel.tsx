@@ -6,7 +6,11 @@ import {
   useListInvoiceCommunications,
   Invoice, InvoiceDraft, AppSettings, Client, CreateInvoiceRequest, InvoiceAttachment,
 } from "@workspace/api-client-react";
-import { calculateInvoiceTotals, resolveInvoiceBrand } from "@workspace/api-zod";
+import {
+  calculateInvoiceTotals,
+  normalizeInvoiceLogoPosition,
+  resolveInvoiceBrand,
+} from "@workspace/api-zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, localDateString } from "@/lib/utils";
 import { printInvoiceWindow } from "@/lib/printInvoice";
@@ -266,7 +270,7 @@ export function InvoicePanel({
     }
   }, [open, effectiveExistingInvoice?.id, effectiveExistingInvoice?.invoiceNumber, companyName, showGmailCompose]);
   const logoSize = s?.invoiceLogoSize ?? "medium";
-  const logoPos = s?.invoiceLogoPosition ?? "top-left";
+  const logoPos = normalizeInvoiceLogoPosition(s?.invoiceLogoPosition);
 
   useEffect(() => {
     if (open) {
@@ -656,6 +660,8 @@ export function InvoicePanel({
         customMessage: gmailMessage.trim() || undefined,
         paymentLink: payUrl,
         logoSrc: inlineLogo ? `cid:${inlineLogo.contentId}` : null,
+        logoSize,
+        logoPosition: logoPos,
       });
       const printHtml = buildInvoiceHtml(
         {
@@ -988,14 +994,36 @@ export function InvoicePanel({
 
   const { h: logoH, w: logoW } = getLogoDims(logoSize);
   const logoEl = logoDataUri ? (
-    <div className="flex-shrink-0" style={{ width: logoW, height: logoH }}>
-      <img src={logoDataUri} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-    </div>
-  ) : logoUrl ? (
-    <div className="flex-shrink-0 rounded-lg bg-amber-50 flex items-center justify-center" style={{ width: 44, height: 44 }}>
-      <Building2 className="w-5 h-5 text-amber-400" />
+    <div className="flex-shrink-0 max-w-full" style={{ width: logoW, height: logoH }}>
+      <img
+        src={logoDataUri}
+        alt={`${companyName} logo`}
+        style={{ width: "100%", height: "100%", objectFit: "contain" }}
+        onError={() => setLogoDataUri(null)}
+      />
     </div>
   ) : null;
+  const companyContact = (
+    <div className={`text-xs text-gray-400 space-y-0.5 ${logoEl ? "mt-2" : ""}`}>
+      <p className="text-base font-extrabold text-gray-900 leading-tight">{companyName}</p>
+      {companyAddress && <p>{companyAddress}</p>}
+      {(companyCity || companyState || companyZip) && <p>{[companyCity, companyState, companyZip].filter(Boolean).join(", ")}</p>}
+      {companyPhone && <p>{companyPhone}</p>}
+      {companyEmail && <p>{companyEmail}</p>}
+    </div>
+  );
+  const brandBlock = (
+    <div className={`flex flex-col min-w-0 max-w-full ${
+      logoPos === "top-center"
+        ? "items-center text-center"
+        : logoPos === "top-right"
+          ? "items-end text-right"
+          : "items-start text-left"
+    }`}>
+      {logoEl}
+      {companyContact}
+    </div>
+  );
 
   return (
     <>
@@ -1403,6 +1431,8 @@ export function InvoicePanel({
                         customMessage: gmailMessage.trim() || undefined,
                         paymentLink: payUrl,
                         logoSrc: logoDataUri,
+                        logoSize,
+                        logoPosition: logoPos,
                       }) : ""}
                       style={{ width: "100%", height: "320px", border: "none", display: "block" }} />
                   </div>
@@ -1559,37 +1589,12 @@ export function InvoicePanel({
               <div className="p-5 sm:p-7 space-y-6">
 
                 {/* ── Header: company info + invoice meta ── */}
-                <div className="flex justify-between items-start gap-4">
-                  {/* Left: logo + company */}
-                  <div className="flex-1 min-w-0">
-                    {logoPos === "top-center" ? (
-                      <div className="flex flex-col items-center text-center gap-1 mb-1">
-                        {logoEl}
-                        {!logoEl && <p className="text-base font-extrabold text-gray-900 leading-tight">{companyName}</p>}
-                      </div>
-                    ) : logoPos === "top-right" ? (
-                      !logoEl && <p className="text-base font-extrabold text-gray-900 leading-tight mb-1">{companyName}</p>
-                    ) : (
-                      <div className="flex items-center gap-2 mb-1">
-                        {logoEl}
-                        {!logoEl && <p className="text-base font-extrabold text-gray-900 leading-tight">{companyName}</p>}
-                      </div>
-                    )}
-                    <div className="text-xs text-gray-400 space-y-0.5">
-                      {companyAddress && <p>{companyAddress}</p>}
-                      {(companyCity || companyState || companyZip) && <p>{[companyCity, companyState, companyZip].filter(Boolean).join(", ")}</p>}
-                      {companyPhone && <p>{companyPhone}</p>}
-                      {companyEmail && <p>{companyEmail}</p>}
-                    </div>
-                  </div>
+                <div className={logoPos === "top-center" ? "space-y-4" : "flex justify-between items-start gap-6"}>
+                  {logoPos === "top-left" && <div className="flex-1 min-w-0">{brandBlock}</div>}
+                  {logoPos === "top-center" && <div className="flex justify-center">{brandBlock}</div>}
 
-                  {/* Right: invoice number + editable date/terms/status */}
-                  {logoPos === "top-right" && (
-                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                      {logoEl}
-                    </div>
-                  )}
-                  <div className="text-right flex-shrink-0 space-y-1">
+                  {/* Invoice number + editable date/terms/status */}
+                  <div className={`${logoPos === "top-right" ? "text-left" : "text-right"} flex-shrink-0 space-y-1 ${logoPos === "top-center" ? "ml-auto w-fit" : ""}`}>
                     <p className="text-2xl font-black tracking-widest text-gray-200 uppercase leading-none">Invoice</p>
                     <p className="text-xs font-bold text-amber-500">{previewNumber}</p>
                     <div className="space-y-1 pt-1">
@@ -1626,6 +1631,7 @@ export function InvoicePanel({
                       </div>
                     </div>
                   </div>
+                  {logoPos === "top-right" && <div className="flex-1 min-w-0">{brandBlock}</div>}
                 </div>
 
                 {/* ── Bill To + Work Location ── */}

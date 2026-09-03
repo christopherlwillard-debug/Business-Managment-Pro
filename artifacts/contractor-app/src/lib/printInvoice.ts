@@ -1,5 +1,5 @@
 import { getLogoDims } from "./invoiceLogoConstants";
-import { calculateInvoiceTotals } from "@workspace/api-zod";
+import { calculateInvoiceTotals, normalizeInvoiceLogoPosition } from "@workspace/api-zod";
 
 export interface PrintableInvoice {
   invoiceNumber: string;
@@ -72,7 +72,7 @@ export const INVOICE_PRINT_STYLES = `
 
 export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableSettings): string {
   const { h: logoH, w: logoW } = getLogoDims(settings.logoSize);
-  const logoPos = settings.logoPosition ?? "top-left";
+  const logoPos = normalizeInvoiceLogoPosition(settings.logoPosition);
 
   const displayCompanyName = settings.companyName ?? settings.dbaName ?? null;
 
@@ -80,10 +80,8 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
     settings.companyState || settings.companyZip || settings.companyPhone || settings.companyEmail);
 
   const logoHtml = settings.logoAbsoluteUrl
-    ? `<div style="width:${logoW}px;height:${logoH}px;flex-shrink:0;"><img src="${esc(settings.logoAbsoluteUrl)}" alt="Logo" style="width:100%;height:100%;object-fit:contain;display:block;" /></div>`
-    : `<div style="width:48px;height:48px;background:#fef3c7;border-radius:8px;display:flex;align-items:center;justify-content:center;">
-         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
-       </div>`;
+    ? `<div data-invoice-logo="${logoPos}" style="width:${logoW}px;height:${logoH}px;max-width:100%;flex-shrink:0;"><img src="${esc(settings.logoAbsoluteUrl)}" alt="${esc(displayCompanyName || "Company logo")}" style="width:100%;height:100%;object-fit:contain;display:block;" onerror="this.parentElement.style.display='none'" /></div>`
+    : "";
 
   const contactLines: string[] = [];
   if (displayCompanyName) {
@@ -96,7 +94,7 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
   if (settings.companyPhone) contactLines.push(`<div>${esc(settings.companyPhone)}</div>`);
   if (settings.companyEmail) contactLines.push(`<div>${esc(settings.companyEmail)}</div>`);
   const contactHtml = hasContact
-    ? `<div style="font-size:11px;color:#6b7280;margin-top:8px;line-height:1.6;">${contactLines.join("")}</div>`
+    ? `<div data-invoice-brand-fallback="${settings.logoAbsoluteUrl ? "false" : "true"}" style="font-size:11px;color:#6b7280;${logoHtml ? "margin-top:8px;" : ""}line-height:1.6;">${contactLines.join("")}</div>`
     : "";
 
   const invoiceDetailsHtml = `
@@ -116,25 +114,24 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
   let headerHtml = "";
   if (logoPos === "top-center") {
     headerHtml = `
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
-        <div style="width:64px;flex-shrink:0;"></div>
-        <div style="display:flex;flex-direction:column;align-items:center;text-align:center;">
+      <div data-invoice-brand-position="top-center">
+        <div style="display:flex;flex-direction:column;align-items:center;text-align:center;margin:0 auto 18px;">
           ${logoHtml}${contactHtml}
         </div>
-        ${invoiceDetailsHtml}
+        <div style="display:flex;justify-content:flex-end;">${invoiceDetailsHtml}</div>
       </div>`;
   } else if (logoPos === "top-right") {
     headerHtml = `
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+      <div data-invoice-brand-position="top-right" style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
         ${invoiceDetailsHtml}
-        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;text-align:right;">
           ${logoHtml}
-          <div style="text-align:right;">${contactHtml}</div>
+          ${contactHtml}
         </div>
       </div>`;
   } else {
     headerHtml = `
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+      <div data-invoice-brand-position="top-left" style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
         <div style="display:flex;flex-direction:column;">
           ${logoHtml}${contactHtml}
         </div>

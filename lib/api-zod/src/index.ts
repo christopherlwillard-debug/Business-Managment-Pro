@@ -20,11 +20,20 @@ export {
 } from "./website-seo";
 export type { SeoValidationErrors } from "./website-seo";
 export {
+  getInvoiceLogoDimensions,
+  INVOICE_LOGO_DIMENSIONS,
+  INVOICE_LOGO_POSITIONS,
+  INVOICE_LOGO_SIZES,
+  normalizeInvoiceLogoPosition,
+  normalizeInvoiceLogoSize,
   PRIMARY_BUSINESS_SLUG,
   resolveInvoiceBrand,
 } from "./invoice-branding";
 export type {
   InvoiceBrandProfile,
   InvoiceBrandSettings,
+  InvoiceLogoDimensions,
+  InvoiceLogoPosition,
+  InvoiceLogoSize,
   ResolvedInvoiceBrand,
 } from "./invoice-branding";

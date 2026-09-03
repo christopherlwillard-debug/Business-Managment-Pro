@@ -20,6 +20,7 @@ import { FEATURE_OPTIONS } from "@/lib/featureOptions";
 import { HomeLibraryModal } from "@/components/MfhPanel";
 import { SignaturePad } from "@/components/SignaturePad";
 import { ProductionBillingSection } from "@/components/ProductionBillingSection";
+import { getInvoiceLogoDimensions } from "@workspace/api-zod";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -75,9 +76,9 @@ const LOGO_POSITIONS = [
 ];
 
 const LOGO_SIZES = [
-  { key: "small", label: "Small", px: 64 },
-  { key: "medium", label: "Medium", px: 100 },
-  { key: "large", label: "Large", px: 160 },
+  { key: "small", label: "Small" },
+  { key: "medium", label: "Medium" },
+  { key: "large", label: "Large" },
 ];
 
 const TABS = [
@@ -635,21 +636,20 @@ function InvoiceLogoPreview({
 }: {
   logoUrl: string | null; position: string; size: string; companyName: string;
 }) {
-  const px = LOGO_SIZES.find(s => s.key === size)?.px ?? 100;
-  const imgStyle = { height: px, width: "auto", maxWidth: px * 2.5, objectFit: "contain" as const };
+  const { width, height } = getInvoiceLogoDimensions(size);
+  const scale = 0.42;
+  const imgStyle = { width: width * scale, height: height * scale, maxWidth: "100%", objectFit: "contain" as const };
   const [previewImgError, setPreviewImgError] = useState(false);
+
+  useEffect(() => setPreviewImgError(false), [logoUrl]);
 
   const logoEl = logoUrl && !previewImgError
     ? <img src={`${BASE}${logoUrl}`} style={imgStyle} alt="Logo" className="rounded" onError={() => setPreviewImgError(true)} />
-    : (
-      <div style={{ width: px, height: px }} className="rounded bg-amber-100 flex items-center justify-center">
-        <Building2 className="text-amber-500" style={{ width: px * 0.4, height: px * 0.4 }} />
-      </div>
-    );
+    : null;
 
   const nameCol = (
-    <div className="min-w-0">
-      <p className="text-[10px] font-bold text-gray-900 truncate">{companyName || "Your Company"}</p>
+    <div className={`min-w-0 ${position === "top-center" ? "text-center" : position === "top-right" ? "text-right" : "text-left"}`}>
+      <p className="text-[10px] font-bold text-gray-900">{companyName || "Your Company"}</p>
       <p className="text-[8px] text-gray-400">Lexington, KY 40501</p>
     </div>
   );
@@ -665,13 +665,13 @@ function InvoiceLogoPreview({
           </div>
         ) : position === "top-right" ? (
           <div className="flex justify-between items-start mb-2">
-            {nameCol}
-            {logoEl}
+            <p className="text-[12px] font-black tracking-widest text-gray-200">INVOICE</p>
+            <div className="flex flex-col items-end gap-1">{logoEl}{nameCol}</div>
           </div>
         ) : (
-          <div className="flex items-start gap-2 mb-2">
-            {logoEl}
-            {nameCol}
+          <div className="flex justify-between items-start gap-2 mb-2">
+            <div className="flex flex-col items-start gap-1">{logoEl}{nameCol}</div>
+            <p className="text-[12px] font-black tracking-widest text-gray-200">INVOICE</p>
           </div>
         )}
         {/* Fake invoice content lines */}
@@ -2464,8 +2464,8 @@ export default function Settings() {
                             active ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"
                           }`}
                         >
-                          <div className={`rounded bg-primary/20 flex items-center justify-center ${active ? "bg-primary/20" : "bg-muted"}`} style={{ width: sz.px * 0.4, height: sz.px * 0.4 }}>
-                            <ImagePlus className={`${active ? "text-primary" : "text-muted-foreground"}`} style={{ width: sz.px * 0.2, height: sz.px * 0.2 }} />
+                          <div className={`rounded bg-primary/20 flex items-center justify-center ${active ? "bg-primary/20" : "bg-muted"}`} style={{ width: getInvoiceLogoDimensions(sz.key).width * 0.2, height: getInvoiceLogoDimensions(sz.key).height * 0.2 }}>
+                            <ImagePlus className={`${active ? "text-primary" : "text-muted-foreground"}`} style={{ width: 18, height: 18 }} />
                           </div>
                           <span className={`text-xs font-semibold ${active ? "text-primary" : "text-muted-foreground"}`}>{sz.label}</span>
                         </button>

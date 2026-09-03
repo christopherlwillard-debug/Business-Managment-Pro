@@ -1,4 +1,8 @@
 import nodemailer from "nodemailer";
+import {
+  getInvoiceLogoDimensions,
+  normalizeInvoiceLogoPosition,
+} from "@workspace/api-zod";
 import { sendEmail, type EmailSendResult } from "./sendEmail.js";
 import { launchBrowser } from "./launchBrowser.js";
 
@@ -36,6 +40,8 @@ export interface InvoiceEmailSettings {
   logoBuffer?: Buffer | null;
   logoMimeType?: string | null;
   logoFilename?: string | null;
+  invoiceLogoSize?: string | null;
+  invoiceLogoPosition?: string | null;
 }
 
 function fmtCurrency(n: number): string {
@@ -71,6 +77,18 @@ export function buildInvoiceEmailHtml(
   const total = parseFloat(inv.total ?? "0");
   const taxRate = inv.taxRate ? parseFloat(inv.taxRate) : 0;
   const paymentLink = inv.squarePaymentLinkUrl ?? inv.stripePaymentLinkUrl ?? null;
+  const logoPosition = normalizeInvoiceLogoPosition(settings.invoiceLogoPosition);
+  const logoDimensions = getInvoiceLogoDimensions(settings.invoiceLogoSize);
+  const contactAlign = logoPosition === "top-center" ? "center" : logoPosition === "top-right" ? "right" : "left";
+  const brandBlock = `
+    <table data-invoice-brand-position="${logoPosition}" cellpadding="0" cellspacing="0" style="${logoPosition === "top-center" ? "margin:0 auto;" : logoPosition === "top-right" ? "margin-left:auto;" : ""}">
+      ${logoSrc ? `<tr><td align="${contactAlign}" style="padding-bottom:6px;"><img data-invoice-logo="${logoPosition}" src="${logoSrc}" alt="${settings.companyName || "Company logo"}" style="display:block;width:${logoDimensions.width}px;height:${logoDimensions.height}px;max-width:100%;object-fit:contain;${logoPosition === "top-center" ? "margin:0 auto;" : logoPosition === "top-right" ? "margin-left:auto;" : ""}" /></td></tr>` : ""}
+      <tr><td align="${contactAlign}"><p style="margin:0;font-size:22px;font-weight:800;color:#111;">${settings.companyName || "Your Company"}</p></td></tr>
+      ${settings.companyAddress ? `<tr><td align="${contactAlign}"><p style="margin:4px 0 0;font-size:12px;color:#888;">${settings.companyAddress}</p></td></tr>` : ""}
+      ${settings.companyCity || settings.companyState ? `<tr><td align="${contactAlign}"><p style="margin:2px 0 0;font-size:12px;color:#888;">${[settings.companyCity, settings.companyState, settings.companyZip].filter(Boolean).join(", ")}</p></td></tr>` : ""}
+      ${settings.companyPhone ? `<tr><td align="${contactAlign}"><p style="margin:2px 0 0;font-size:12px;color:#888;">${settings.companyPhone}</p></td></tr>` : ""}
+      ${settings.companyEmail ? `<tr><td align="${contactAlign}"><p style="margin:2px 0 0;font-size:12px;color:#888;">${settings.companyEmail}</p></td></tr>` : ""}
+    </table>`;
 
   return `<!DOCTYPE html>
 <html>
@@ -81,20 +99,17 @@ export function buildInvoiceEmailHtml(
       <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
         <tr><td style="background:linear-gradient(90deg,#f59e0b,#fbbf24);height:6px;"></td></tr>
         <tr><td style="padding:32px 40px;">
+          ${logoPosition === "top-center" ? `<div style="text-align:center;margin-bottom:18px;">${brandBlock}</div>` : ""}
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
-              <td>${logoSrc ? `<img src="${logoSrc}" alt="${settings.companyName || "Company logo"}" style="display:block;max-width:200px;max-height:70px;width:auto;height:auto;margin:0 0 6px;" />` : ""}
-                  <p style="margin:0;font-size:22px;font-weight:800;color:#111;">${settings.companyName || "Your Company"}</p>
-                  ${settings.companyAddress ? `<p style="margin:4px 0 0;font-size:12px;color:#888;">${settings.companyAddress}</p>` : ""}
-                  ${settings.companyCity || settings.companyState ? `<p style="margin:2px 0 0;font-size:12px;color:#888;">${[settings.companyCity, settings.companyState, settings.companyZip].filter(Boolean).join(", ")}</p>` : ""}
-                  ${settings.companyPhone ? `<p style="margin:2px 0 0;font-size:12px;color:#888;">${settings.companyPhone}</p>` : ""}
-              </td>
-              <td align="right">
+              ${logoPosition !== "top-right" ? `<td>${logoPosition === "top-left" ? brandBlock : ""}</td>` : ""}
+              <td align="${logoPosition === "top-right" ? "left" : "right"}">
                 <p style="margin:0;font-size:28px;font-weight:900;color:#e5e7eb;letter-spacing:4px;">INVOICE</p>
                 <p style="margin:0;font-size:14px;font-weight:700;color:#f59e0b;">${inv.invoiceNumber}</p>
                 ${inv.issueDate ? `<p style="margin:4px 0 0;font-size:12px;color:#888;">Date: ${inv.issueDate}</p>` : ""}
                 ${inv.dueDate ? `<p style="margin:2px 0 0;font-size:12px;color:#888;">Due: ${inv.dueDate}</p>` : ""}
               </td>
+              ${logoPosition === "top-right" ? `<td>${brandBlock}</td>` : ""}
             </tr>
           </table>
         </td></tr>
