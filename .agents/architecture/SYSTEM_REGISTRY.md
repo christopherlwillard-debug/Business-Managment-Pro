@@ -372,7 +372,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **UI:** `BidOpportunities.tsx`, `bids/*`, `Grants.tsx`, `grants/*`
 - **Reports:** Pipeline, qualification, and grant activity are operational; awards do not become revenue until an approved invoice/other-income transaction exists.
 - **Source of truth:** opportunity tables own imported and scored opportunities; source catalog/connection tables own source configuration and sync status.
-- **Rule:** External source data is a prospecting cache, not a contract or revenue ledger. Preserve source IDs and sync timestamps.
+- **Rule:** External source data is a prospecting cache, not a contract or revenue ledger. Preserve source IDs and sync timestamps. AI deep-read evidence is stored inside the existing `ai_summary` JSON as sanitized, short-lived audit context; it does not create a parallel source record.
 
 ## Job Checklists / Field Evidence
 

@@ -112,6 +112,14 @@ interface DeepReadSiteVisit {
   location: string | null;
 }
 
+type DeepReadEvidenceStatus = "confirmed" | "ambiguous" | "missing";
+
+interface DeepReadEvidence {
+  status: DeepReadEvidenceStatus;
+  source: string | null;
+  excerpt: string | null;
+}
+
 interface DeepReadInsurance {
   generalLiability: string | null;
   workersCompensation: string | null;
@@ -142,6 +150,24 @@ interface DeepReadContact {
   phone: string | null;
 }
 
+interface DeepReadEvidenceMap {
+  submissionDeadline: DeepReadEvidence;
+  siteVisit: DeepReadEvidence;
+  insuranceRequirements: {
+    generalLiability: DeepReadEvidence;
+    workersCompensation: DeepReadEvidence;
+    auto: DeepReadEvidence;
+    other: DeepReadEvidence[];
+  };
+  bonding: DeepReadEvidence;
+  prevailingWage: DeepReadEvidence;
+  smallBusinessSubcontracting: DeepReadEvidence;
+  evaluationCriteria: DeepReadEvidence[];
+  pointOfContact: DeepReadEvidence;
+  awardSlots: DeepReadEvidence;
+  redFlags: DeepReadEvidence[];
+}
+
 interface DeepRead {
   submissionDeadline: DeepReadDeadline;
   siteVisit: DeepReadSiteVisit | null;
@@ -153,6 +179,7 @@ interface DeepRead {
   pointOfContact: DeepReadContact | null;
   awardSlots: number | null;
   redFlags: string[];
+  evidence: DeepReadEvidenceMap;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -173,6 +200,24 @@ function sanitizeDeepRead(rawValue: unknown): DeepRead | null {
         .map((item) => item.trim())
       : [];
   const toBool = (value: unknown): boolean => value === true;
+  const rawEvidence = asRecord(raw.evidence);
+  const validEvidenceStatuses: DeepReadEvidenceStatus[] = ["confirmed", "ambiguous", "missing"];
+  const toEvidence = (value: unknown): DeepReadEvidence => {
+    const item = asRecord(value);
+    const source = toStr(item?.source)?.slice(0, 160) ?? null;
+    const excerpt = toStr(item?.excerpt)?.slice(0, 360) ?? null;
+    const requestedStatus = item?.status as DeepReadEvidenceStatus;
+    const status = validEvidenceStatuses.includes(requestedStatus) ? requestedStatus : "missing";
+    return {
+      status: status === "confirmed" && !source && !excerpt ? "missing" : status,
+      source,
+      excerpt,
+    };
+  };
+  const toEvidenceArray = (value: unknown, length: number): DeepReadEvidence[] => {
+    const items = Array.isArray(value) ? value : [];
+    return Array.from({ length }, (_, index) => toEvidence(items[index]));
+  };
   const rawDeadline = asRecord(raw.submissionDeadline);
   const rawSiteVisit = asRecord(raw.siteVisit);
   const rawInsurance = asRecord(raw.insuranceRequirements);
@@ -180,8 +225,9 @@ function sanitizeDeepRead(rawValue: unknown): DeepRead | null {
   const rawWage = asRecord(raw.prevailingWage);
   const rawSubcontracting = asRecord(raw.smallBusinessSubcontracting);
   const rawContact = asRecord(raw.pointOfContact);
+  const rawEvidenceInsurance = asRecord(rawEvidence?.insuranceRequirements);
 
-  return {
+  const result: DeepRead = {
     submissionDeadline: {
       date: toStr(rawDeadline?.date),
       time: toStr(rawDeadline?.time),
@@ -224,7 +270,25 @@ function sanitizeDeepRead(rawValue: unknown): DeepRead | null {
       ? raw.awardSlots
       : null,
     redFlags: toStrArr(raw.redFlags),
+    evidence: {
+      submissionDeadline: toEvidence(rawEvidence?.submissionDeadline),
+      siteVisit: toEvidence(rawEvidence?.siteVisit),
+      insuranceRequirements: {
+        generalLiability: toEvidence(rawEvidenceInsurance?.generalLiability),
+        workersCompensation: toEvidence(rawEvidenceInsurance?.workersCompensation),
+        auto: toEvidence(rawEvidenceInsurance?.auto),
+        other: toEvidenceArray(rawEvidenceInsurance?.other, toStrArr(rawInsurance?.other).length),
+      },
+      bonding: toEvidence(rawEvidence?.bonding),
+      prevailingWage: toEvidence(rawEvidence?.prevailingWage),
+      smallBusinessSubcontracting: toEvidence(rawEvidence?.smallBusinessSubcontracting),
+      evaluationCriteria: toEvidenceArray(rawEvidence?.evaluationCriteria, toStrArr(raw.evaluationCriteria).length),
+      pointOfContact: toEvidence(rawEvidence?.pointOfContact),
+      awardSlots: toEvidence(rawEvidence?.awardSlots),
+      redFlags: toEvidenceArray(rawEvidence?.redFlags, toStrArr(raw.redFlags).length),
+    },
   };
+  return result;
 }
 
 function sanitizeSummary(raw: Record<string, unknown>): AiSummary {
@@ -336,8 +400,31 @@ Return ONLY valid JSON with exactly this shape:
     "phone": "phone or null"
   } or null,
   "awardSlots": integer or null,
-  "redFlags": ["clauses that could create material cost, schedule, eligibility, liability, or compliance risk"]
+  "redFlags": ["clauses that could create material cost, schedule, eligibility, liability, or compliance risk"],
+  "evidence": {
+    "submissionDeadline": {"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"},
+    "siteVisit": {"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"},
+    "insuranceRequirements": {
+      "generalLiability": {"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"},
+      "workersCompensation": {"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"},
+      "auto": {"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"},
+      "other": [{"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"}]
+    },
+    "bonding": {"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"},
+    "prevailingWage": {"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"},
+    "smallBusinessSubcontracting": {"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"},
+    "evaluationCriteria": [{"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"}],
+    "pointOfContact": {"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"},
+    "awardSlots": {"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"},
+    "redFlags": [{"status": "confirmed|ambiguous|missing", "source": "section or heading, or null", "excerpt": "short exact quote, max 240 characters, or null"}]
 }
+
+EVIDENCE RULES:
+- Add one evidence item for every extracted finding, in the same order as the related list.
+- Use status "confirmed" only when the solicitation directly supports the finding.
+- Use "ambiguous" when the wording is incomplete, conflicting, or requires interpretation; the UI will ask for manual verification.
+- Use "missing" when the document does not contain supporting evidence; use null source and excerpt.
+- Keep excerpts exact, concise, and self-contained. Never invent a section name or quote.
 
 SOLICITATION DOCUMENT:
 ${doc.text}`;
@@ -1234,7 +1321,7 @@ router.post("/:id/deep-read", async (req, res) => {
 
     const completion = await openai.chat.completions.create({
       model: BUILDPRO_AI_MINI_MODEL,
-      max_completion_tokens: 3072,
+      max_completion_tokens: 4096,
       messages: [{ role: "user", content: prompt }],
     });
 

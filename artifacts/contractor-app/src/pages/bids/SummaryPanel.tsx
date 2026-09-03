@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import type {
   AiSummary, BidOpportunity, BidStage, SetAsideType,
   RecommendationFactor, FactorSignal, OfficialSourceStatus, DeepRead,
+  DeepReadEvidence,
 } from "./types";
 import { PIPELINE_STAGES } from "./types";
 
@@ -108,27 +109,76 @@ function FactorRow({ factor }: { factor: RecommendationFactor }) {
   );
 }
 
-function DeepReadValue({ value }: { value: string | null | undefined }) {
+function DeepReadEvidenceBlock({ evidence }: { evidence?: DeepReadEvidence }) {
+  if (!evidence || evidence.status !== "confirmed") {
+    return (
+      <div className="flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50/70 px-2.5 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+        <span>
+          <span className="font-semibold">
+            {evidence?.status === "ambiguous" ? "Manual verification recommended" : "Manual verification needed"}
+          </span>
+          {evidence?.source && <span> · {evidence.source}</span>}
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <span className={cn(
-      "text-sm",
-      value ? "text-foreground" : "text-muted-foreground/60 italic",
-    )}>
-      {value ?? "Not stated in the solicitation"}
-    </span>
+    <div className="rounded-md border border-border/70 bg-muted/30 px-2.5 py-2 text-xs">
+      <p className="font-medium text-muted-foreground">
+        Source{evidence.source ? ` · ${evidence.source}` : ""}
+      </p>
+      {evidence.excerpt ? (
+        <p className="mt-0.5 leading-relaxed text-foreground/80">“{evidence.excerpt}”</p>
+      ) : (
+        <p className="mt-0.5 text-amber-700 dark:text-amber-300">Manual verification needed — no excerpt was returned.</p>
+      )}
+    </div>
   );
 }
 
-function DeepReadList({ items }: { items: string[] }) {
+function DeepReadValue({
+  value,
+  evidence,
+}: {
+  value: string | null | undefined;
+  evidence?: DeepReadEvidence;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <span className={cn(
+        "text-sm",
+        value ? "text-foreground" : "text-muted-foreground/60 italic",
+      )}>
+        {value ?? "Not stated in the solicitation"}
+      </span>
+      {evidence && <DeepReadEvidenceBlock evidence={evidence} />}
+    </div>
+  );
+}
+
+function DeepReadList({
+  items,
+  evidence,
+}: {
+  items: string[];
+  evidence?: DeepReadEvidence[];
+}) {
   if (items.length === 0) {
-    return <DeepReadValue value={null} />;
+    return <DeepReadValue value={null} evidence={evidence?.[0]} />;
   }
   return (
     <ul className="space-y-1.5">
       {items.map((item, index) => (
-        <li key={`${item}-${index}`} className="flex items-start gap-2 text-sm text-foreground">
-          <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-muted-foreground/40 flex-shrink-0" />
-          <span>{item}</span>
+        <li key={`${item}-${index}`} className="space-y-1.5 text-sm text-foreground">
+          <div className="flex items-start gap-2">
+            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-muted-foreground/40 flex-shrink-0" />
+            <span>{item}</span>
+          </div>
+          <div className="pl-3.5">
+            <DeepReadEvidenceBlock evidence={evidence?.[index]} />
+          </div>
         </li>
       ))}
     </ul>
@@ -141,9 +191,9 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
   const contact = deepRead.pointOfContact;
   const insurance = deepRead.insuranceRequirements;
   const insuranceRows = [
-    ["General liability", insurance.generalLiability],
-    ["Workers' compensation", insurance.workersCompensation],
-    ["Commercial auto", insurance.auto],
+    ["General liability", insurance.generalLiability, deepRead.evidence?.insuranceRequirements.generalLiability],
+    ["Workers' compensation", insurance.workersCompensation, deepRead.evidence?.insuranceRequirements.workersCompensation],
+    ["Commercial auto", insurance.auto, deepRead.evidence?.insuranceRequirements.auto],
   ] as const;
 
   return (
@@ -163,7 +213,7 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
             Submission deadline
           </h4>
           <div className="pl-5 space-y-1">
-            <DeepReadValue value={deadline.raw} />
+            <DeepReadValue value={deadline.raw} evidence={deepRead.evidence?.submissionDeadline} />
             {!deadline.raw && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div><span className="text-xs text-muted-foreground">Date</span><br /><DeepReadValue value={deadline.date} /></div>
@@ -189,8 +239,9 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
               <>
                 <DeepReadValue value={[siteVisit.date, siteVisit.time, siteVisit.timezone].filter(Boolean).join(" · ") || null} />
                 <DeepReadValue value={siteVisit.location} />
+                <DeepReadEvidenceBlock evidence={deepRead.evidence?.siteVisit} />
               </>
-            ) : <DeepReadValue value={null} />}
+            ) : <DeepReadValue value={null} evidence={deepRead.evidence?.siteVisit} />}
           </div>
         </section>
 
@@ -200,14 +251,14 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
             Insurance
           </h4>
           <div className="pl-5 space-y-2">
-            {insuranceRows.map(([label, value]) => (
+            {insuranceRows.map(([label, value, evidence]) => (
               <div key={label} className="grid grid-cols-[9rem_1fr] gap-2 items-start">
                 <span className="text-xs text-muted-foreground">{label}</span>
-                <DeepReadValue value={value} />
+                <DeepReadValue value={value} evidence={evidence} />
               </div>
             ))}
             {insurance.other.length > 0 && (
-              <div className="pt-1"><DeepReadList items={insurance.other} /></div>
+              <div className="pt-1"><DeepReadList items={insurance.other} evidence={deepRead.evidence?.insuranceRequirements.other} /></div>
             )}
           </div>
         </section>
@@ -221,6 +272,7 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
               </p>
               <DeepReadValue value={deepRead.bonding.amounts} />
               <DeepReadValue value={deepRead.bonding.details} />
+              <DeepReadEvidenceBlock evidence={deepRead.evidence?.bonding} />
             </div>
           </div>
           <div className="space-y-2">
@@ -231,6 +283,7 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
               </p>
               <DeepReadValue value={deepRead.prevailingWage.wageDeterminationNumber ? `Wage determination ${deepRead.prevailingWage.wageDeterminationNumber}` : null} />
               <DeepReadValue value={deepRead.prevailingWage.details} />
+              <DeepReadEvidenceBlock evidence={deepRead.evidence?.prevailingWage} />
             </div>
           </div>
         </section>
@@ -242,12 +295,13 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
               {deepRead.smallBusinessSubcontracting.required ? "Required" : "Not identified"}
             </p>
             <DeepReadValue value={deepRead.smallBusinessSubcontracting.details} />
+            <DeepReadEvidenceBlock evidence={deepRead.evidence?.smallBusinessSubcontracting} />
           </div>
         </section>
 
         <section className="space-y-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Evaluation criteria</h4>
-          <DeepReadList items={deepRead.evaluationCriteria} />
+          <DeepReadList items={deepRead.evaluationCriteria} evidence={deepRead.evidence?.evaluationCriteria} />
         </section>
 
         <section className="space-y-2">
@@ -260,13 +314,14 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
               <DeepReadValue value={contact.name} />
               {contact.email && <a className="flex items-center gap-1.5 text-sm text-primary hover:underline" href={`mailto:${contact.email}`}><Mail className="w-3.5 h-3.5" />{contact.email}</a>}
               {contact.phone && <a className="flex items-center gap-1.5 text-sm text-primary hover:underline" href={`tel:${contact.phone}`}><Phone className="w-3.5 h-3.5" />{contact.phone}</a>}
+              <DeepReadEvidenceBlock evidence={deepRead.evidence?.pointOfContact} />
             </div>
-          ) : <div className="pl-5"><DeepReadValue value={null} /></div>}
+          ) : <div className="pl-5"><DeepReadValue value={null} evidence={deepRead.evidence?.pointOfContact} /></div>}
         </section>
 
-        <section className="flex items-center justify-between gap-3">
+        <section className="space-y-1">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Award slots</h4>
-          <DeepReadValue value={deepRead.awardSlots === null ? null : String(deepRead.awardSlots)} />
+          <DeepReadValue value={deepRead.awardSlots === null ? null : String(deepRead.awardSlots)} evidence={deepRead.evidence?.awardSlots} />
         </section>
 
         <section className="space-y-2 rounded-lg border border-red-200 bg-red-50/60 p-3 dark:border-red-900/60 dark:bg-red-950/20">
@@ -274,7 +329,7 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
             <AlertTriangle className="w-3.5 h-3.5" />
             Red flags
           </h4>
-          <DeepReadList items={deepRead.redFlags} />
+          <DeepReadList items={deepRead.redFlags} evidence={deepRead.evidence?.redFlags} />
         </section>
       </div>
     </details>

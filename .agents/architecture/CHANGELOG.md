@@ -233,6 +233,14 @@ Created the four-document architecture governance system:
 - Unknown worker, subcontractor, or Owner Pay balances remain null and mark the response partial instead of appearing as zero.
 - Unavailable balances now name the authoritative missing pay input beside each affected job summary, while valid zero balances remain numeric zero.
 
+## 2026-09-03
+
+### Bid deep-read evidence
+
+- Deep-read AI output now carries sanitized evidence alongside each extracted requirement, including a source heading, short excerpt, and confirmed/ambiguous/missing status.
+- Full Requirements preserves the extracted values and displays their supporting evidence inline, with explicit manual-verification messaging when the solicitation does not provide clear support.
+- Evidence remains part of the existing `bid_opportunities.ai_summary` JSON; no new table, endpoint, or parallel source record was introduced.
+
 ### Checklist photo captions
 
 - Extended the existing `job_checklist_item_photos` evidence rows with optional captions rather than creating a separate annotation system.

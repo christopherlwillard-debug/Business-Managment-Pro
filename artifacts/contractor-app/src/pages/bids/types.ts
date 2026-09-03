@@ -64,11 +64,37 @@ export interface DeepReadSiteVisit {
   location: string | null;
 }
 
+export type DeepReadEvidenceStatus = "confirmed" | "ambiguous" | "missing";
+
+export interface DeepReadEvidence {
+  status: DeepReadEvidenceStatus;
+  source: string | null;
+  excerpt: string | null;
+}
+
 export interface DeepReadInsurance {
   generalLiability: string | null;
   workersCompensation: string | null;
   auto: string | null;
   other: string[];
+}
+
+export interface DeepReadEvidenceMap {
+  submissionDeadline: DeepReadEvidence;
+  siteVisit: DeepReadEvidence;
+  insuranceRequirements: {
+    generalLiability: DeepReadEvidence;
+    workersCompensation: DeepReadEvidence;
+    auto: DeepReadEvidence;
+    other: DeepReadEvidence[];
+  };
+  bonding: DeepReadEvidence;
+  prevailingWage: DeepReadEvidence;
+  smallBusinessSubcontracting: DeepReadEvidence;
+  evaluationCriteria: DeepReadEvidence[];
+  pointOfContact: DeepReadEvidence;
+  awardSlots: DeepReadEvidence;
+  redFlags: DeepReadEvidence[];
 }
 
 export interface DeepRead {
@@ -97,6 +123,8 @@ export interface DeepRead {
   } | null;
   awardSlots: number | null;
   redFlags: string[];
+  /** Optional for legacy cached deep reads generated before evidence was added. */
+  evidence?: DeepReadEvidenceMap;
 }
 
 // ── Recommendation engine ─────────────────────────────────────────────────────
