@@ -52,3 +52,4 @@
 - [Orval js-yaml compatibility](orval-js-yaml-compatibility.md) — keep the workspace js-yaml override on secure 4.x; forcing 5.x breaks Orval’s default import
 - [Owner withdrawals model](owner-withdrawals-model.md) — Owner Withdrawals is the only user-facing owner-money concept; historical contributions remain internal in the same ledger
 - [Growth Reserve waterfall](growth-reserve-waterfall.md) — calculate after split-eligible job expenses, before hourly labor and split; tax comes from owner share
+- [Rich-text test runtime](rich-text-test-runtime.md) — sanitizer tests need a DOM-backed Vitest environment because Node does not provide DOMParser
