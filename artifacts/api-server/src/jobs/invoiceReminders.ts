@@ -13,7 +13,7 @@ import {
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
-async function processInvoiceReminders() {
+export async function processInvoiceReminders() {
   try {
     const [settings] = await db.select().from(settingsTable).limit(1);
     if (!settings) return;

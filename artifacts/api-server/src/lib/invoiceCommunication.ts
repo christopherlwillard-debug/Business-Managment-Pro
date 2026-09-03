@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   invoiceCommunicationEventsTable,
@@ -88,20 +88,28 @@ export async function listInvoiceCommunications(invoiceId: number) {
 
 export async function confirmedGmailInvoiceIds(invoiceIds?: number[]): Promise<Set<number>> {
   if (invoiceIds && invoiceIds.length === 0) return new Set();
-  const conditions = [
-    inArray(invoiceCommunicationEventsTable.eventType, ["initial_invoice", "resend_invoice"]),
-    eq(invoiceCommunicationEventsTable.status, "accepted"),
-    eq(invoiceCommunicationEventsTable.provider, "gmail"),
-    isNotNull(invoiceCommunicationEventsTable.providerMessageId),
-  ];
-  if (invoiceIds) {
-    conditions.push(inArray(invoiceCommunicationEventsTable.invoiceId, invoiceIds));
-  }
-  const rows = await db
-    .select({ invoiceId: invoiceCommunicationEventsTable.invoiceId })
-    .from(invoiceCommunicationEventsTable)
-    .where(and(...conditions));
-  return new Set(rows.map(row => row.invoiceId));
+  const query = db
+    .select({
+      invoiceId: invoiceCommunicationEventsTable.invoiceId,
+      eventType: invoiceCommunicationEventsTable.eventType,
+      status: invoiceCommunicationEventsTable.status,
+      provider: invoiceCommunicationEventsTable.provider,
+      providerMessageId: invoiceCommunicationEventsTable.providerMessageId,
+    })
+    .from(invoiceCommunicationEventsTable);
+  const rows = invoiceIds
+    ? await query.where(inArray(invoiceCommunicationEventsTable.invoiceId, invoiceIds))
+    : await query;
+  return new Set(
+    rows
+      .filter(row =>
+        (row.eventType === "initial_invoice" || row.eventType === "resend_invoice")
+        && row.status === "accepted"
+        && row.provider === "gmail"
+        && Boolean(row.providerMessageId),
+      )
+      .map(row => row.invoiceId),
+  );
 }
 
 function normalizedEmail(value: string): string {
