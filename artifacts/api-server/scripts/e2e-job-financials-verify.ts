@@ -3,18 +3,18 @@
  * Run:
  *   pnpm --filter @workspace/api-server run verify:job-financials
  *
- * The check creates a temporary "Grubb" job with a saved reimbursement, serves
- * the differing current fuel estimate through the real authenticated API
- * response consumed by the page, and removes the fixture and test session in
- * all exit paths.
+ * The check creates temporary jobs covering saved reimbursements, estimate-only
+ * fuel, and actual Fuel/Travel expenses. It serves the fixture profit responses
+ * through the real authenticated API requests consumed by the page, blocks
+ * unexpected browser writes, and removes every fixture and test session.
  */
 import fs from "node:fs";
-import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import type { Page } from "puppeteer";
 import { db } from "@workspace/db";
 import {
   businessesTable,
+  expensesTable,
   jobMileageReimbursementsTable,
   jobsTable,
   sessionsTable,
@@ -36,6 +36,10 @@ function record(name: string, pass: boolean, detail = "") {
   console.log(`${pass ? "PASS" : "FAIL"}: ${name}${detail ? ` — ${detail}` : ""}`);
 }
 
+function money(value: number): string {
+  return value.toFixed(2);
+}
+
 type ProfitFixture = {
   grossInvoiced: number;
   collected: number;
@@ -44,16 +48,19 @@ type ProfitFixture = {
   mileageReimbursement: {
     id: number;
     amount: number;
-    estimatedAmount: number;
+    estimatedAmount: number | null;
     recipientType: "owner";
     recipientName: string;
     status: "owed";
-  };
-  mileageReimbursementApplied: true;
-  estimatedFuelCost: number;
+  } | null;
+  mileageReimbursementApplied: boolean;
+  estimatedFuelCost: number | null;
   includeMileageInJobCosts: true;
-  actualFuelCost: null;
-  fuelReconciliation: "reimbursement_differs_from_estimate";
+  actualFuelCost: number | null;
+  fuelReconciliation:
+    | "estimate_only"
+    | "reimbursement_differs_from_estimate"
+    | "actual_fuel_expense_replaces_reimbursement";
   subLaborCost: number;
   allocPaid: number;
   totalSubHours: number;
@@ -61,6 +68,14 @@ type ProfitFixture = {
   growthReservePct: number;
   ownerSplitPct: number;
   taxReservePct: number;
+};
+
+type JobFixture = {
+  jobId: number;
+  title: string;
+  expenseId?: number;
+  reimbursementId?: number;
+  profit: ProfitFixture;
 };
 
 async function clickButtonContaining(page: Page, text: string): Promise<boolean> {
@@ -95,15 +110,33 @@ async function clickButtonInJobCard(page: Page, jobTitle: string, buttonText: st
   }, { jobTitle, buttonText });
 }
 
+async function readFinancialPanel(page: Page) {
+  return page.evaluate(() => {
+    const heading = [...document.querySelectorAll("h2")]
+      .find(element => element.textContent?.trim() === "Job Financials");
+    const panel = heading?.closest("div.fixed");
+    const text = panel?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    const totalLabel = [...document.querySelectorAll("span")]
+      .find(element => element.textContent?.trim() === "Included cost total");
+    const expenseList = totalLabel?.parentElement?.parentElement;
+    const categories = [...(expenseList?.children ?? [])]
+      .filter(element => !element.textContent?.includes("Included cost total"))
+      .map(element => element.querySelector("span")?.textContent?.trim() ?? "");
+    return { text, categories };
+  });
+}
+
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
 
-  let jobId: number | undefined;
-  let reimbursementId: number | undefined;
+  const fixtureJobs: JobFixture[] = [];
+  const jobIds: number[] = [];
+  const expenseIds: number[] = [];
+  const reimbursementIds: number[] = [];
   let sessionId: string | undefined;
-  let profitFixture: ProfitFixture | undefined;
   const unexpectedWrites: string[] = [];
   const interceptedProfitRequests: string[] = [];
+  const respondedProfitByJob = new Map<number, ProfitFixture>();
   const browser = await launchBrowser();
 
   try {
@@ -114,55 +147,166 @@ async function main() {
       .limit(1);
     if (!business) throw new Error("No development business is available for the browser fixture");
 
-    const [job] = await db.insert(jobsTable).values({
-      title: `Grubb`,
-      status: "scheduled",
-      businessLine: business.slug,
-      businessId: business.id,
-      planningState: "ready",
-      priority: "normal",
-      resourceDemand: "standard",
-    }).returning({ id: jobsTable.id });
-    jobId = job.id;
+    async function createFixture(input: {
+      title: string;
+      reimbursement?: {
+        amount: string;
+        estimatedAmount: string;
+      };
+      expense?: {
+        amount: string;
+        category: string;
+        description: string;
+      };
+      profit: Omit<ProfitFixture, "mileageReimbursement">;
+    }): Promise<JobFixture> {
+      const [job] = await db.insert(jobsTable).values({
+        title: input.title,
+        status: "scheduled",
+        businessLine: business.slug,
+        businessId: business.id,
+        planningState: "ready",
+        priority: "normal",
+        resourceDemand: "standard",
+      }).returning({ id: jobsTable.id });
+      jobIds.push(job.id);
 
-    const [reimbursement] = await db.insert(jobMileageReimbursementsTable).values({
-      jobId: job.id,
-      businessId: business.id,
-      amount: "177.80",
-      estimatedAmount: "35.56",
-      recipientType: "owner",
-      recipientName: "Business owner",
-      status: "owed",
-      notes: "Temporary browser verification fixture",
-    }).returning({ id: jobMileageReimbursementsTable.id });
-    reimbursementId = reimbursement.id;
+      let reimbursementId: number | undefined;
+      let expenseId: number | undefined;
+      let mileageReimbursement: ProfitFixture["mileageReimbursement"] = null;
 
-    profitFixture = {
-      grossInvoiced: 1000,
-      collected: 1000,
-      jobExpenses: 177.8,
-      netProfit: 822.2,
-      mileageReimbursement: {
-        id: reimbursement.id,
-        amount: 177.8,
-        estimatedAmount: 35.56,
-        recipientType: "owner",
-        recipientName: "Business owner",
-        status: "owed",
+      if (input.reimbursement) {
+        const [reimbursement] = await db.insert(jobMileageReimbursementsTable).values({
+          jobId: job.id,
+          businessId: business.id,
+          amount: input.reimbursement.amount,
+          estimatedAmount: input.reimbursement.estimatedAmount,
+          recipientType: "owner",
+          recipientName: "Business owner",
+          status: "owed",
+          notes: "Temporary browser verification fixture",
+        }).returning({ id: jobMileageReimbursementsTable.id });
+        reimbursementId = reimbursement.id;
+        reimbursementIds.push(reimbursement.id);
+        mileageReimbursement = {
+          id: reimbursement.id,
+          amount: Number(input.reimbursement.amount),
+          estimatedAmount: Number(input.reimbursement.estimatedAmount),
+          recipientType: "owner",
+          recipientName: "Business owner",
+          status: "owed",
+        };
+      }
+
+      if (input.expense) {
+        const [expense] = await db.insert(expensesTable).values({
+          description: input.expense.description,
+          amount: input.expense.amount,
+          category: input.expense.category,
+          date: "2026-08-31",
+          jobId: job.id,
+          businessLine: business.slug,
+          businessId: business.id,
+          countsTowardJobProfit: true,
+        }).returning({ id: expensesTable.id });
+        expenseId = expense.id;
+        expenseIds.push(expense.id);
+      }
+
+      const profit: ProfitFixture = {
+        ...input.profit,
+        mileageReimbursement,
+      };
+      const fixture = {
+        jobId: job.id,
+        title: input.title,
+        expenseId,
+        reimbursementId,
+        profit,
+      };
+      fixtureJobs.push(fixture);
+      respondedProfitByJob.set(job.id, profit);
+      return fixture;
+    }
+
+    const reimbursementFixture = await createFixture({
+      title: "Grubb",
+      reimbursement: {
+        amount: "177.80",
+        estimatedAmount: "35.56",
       },
-      mileageReimbursementApplied: true,
-      estimatedFuelCost: 35.56,
-      includeMileageInJobCosts: true,
-      actualFuelCost: null,
-      fuelReconciliation: "reimbursement_differs_from_estimate",
-      subLaborCost: 0,
-      allocPaid: 0,
-      totalSubHours: 0,
-      ownerDrawTaken: 0,
-      growthReservePct: 5,
-      ownerSplitPct: 50,
-      taxReservePct: 25,
-    };
+      profit: {
+        grossInvoiced: 1000,
+        collected: 1000,
+        jobExpenses: 177.8,
+        netProfit: 822.2,
+        mileageReimbursementApplied: true,
+        estimatedFuelCost: 35.56,
+        includeMileageInJobCosts: true,
+        actualFuelCost: null,
+        fuelReconciliation: "reimbursement_differs_from_estimate",
+        subLaborCost: 0,
+        allocPaid: 0,
+        totalSubHours: 0,
+        ownerDrawTaken: 0,
+        growthReservePct: 5,
+        ownerSplitPct: 50,
+        taxReservePct: 25,
+      },
+    });
+
+    const estimateFixture = await createFixture({
+      title: "E2E Estimate Only",
+      profit: {
+        grossInvoiced: 1000,
+        collected: 1000,
+        jobExpenses: 35.56,
+        netProfit: 964.44,
+        mileageReimbursementApplied: true,
+        estimatedFuelCost: 35.56,
+        includeMileageInJobCosts: true,
+        actualFuelCost: null,
+        fuelReconciliation: "estimate_only",
+        subLaborCost: 0,
+        allocPaid: 0,
+        totalSubHours: 0,
+        ownerDrawTaken: 0,
+        growthReservePct: 5,
+        ownerSplitPct: 50,
+        taxReservePct: 25,
+      },
+    });
+
+    const actualFixture = await createFixture({
+      title: "E2E Actual Fuel",
+      reimbursement: {
+        amount: "177.80",
+        estimatedAmount: "35.56",
+      },
+      expense: {
+        amount: "52.00",
+        category: "Fuel/Travel",
+        description: "Temporary actual Fuel/Travel fixture",
+      },
+      profit: {
+        grossInvoiced: 1000,
+        collected: 1000,
+        jobExpenses: 52,
+        netProfit: 948,
+        mileageReimbursementApplied: false,
+        estimatedFuelCost: 35.56,
+        includeMileageInJobCosts: true,
+        actualFuelCost: 52,
+        fuelReconciliation: "actual_fuel_expense_replaces_reimbursement",
+        subLaborCost: 0,
+        allocPaid: 0,
+        totalSubHours: 0,
+        ownerDrawTaken: 0,
+        growthReservePct: 5,
+        ownerSplitPct: 50,
+        taxReservePct: 25,
+      },
+    });
 
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 1200 });
@@ -177,18 +321,19 @@ async function main() {
       }
 
       const url = new URL(request.url());
-      const isProfitRequest =
-        url.pathname.endsWith(`/api/jobs/${job.id}/profit`)
-        || url.pathname.endsWith("/api/jobs/profit-summary");
-      if (!isProfitRequest) {
+      const jobProfitMatch = url.pathname.match(/\/api\/jobs\/(\d+)\/profit$/);
+      const isSummaryRequest = url.pathname.endsWith("/api/jobs/profit-summary");
+      if (!jobProfitMatch && !isSummaryRequest) {
         void request.continue();
         return;
       }
 
       interceptedProfitRequests.push(request.url());
-      const body = url.pathname.endsWith("/profit-summary")
-        ? JSON.stringify({ [job.id]: profitFixture })
-        : JSON.stringify(profitFixture);
+      const body = isSummaryRequest
+        ? JSON.stringify(Object.fromEntries(
+            fixtureJobs.map(fixture => [fixture.jobId, fixture.profit]),
+          ))
+        : JSON.stringify(respondedProfitByJob.get(Number(jobProfitMatch?.[1])));
       void request.respond({
         status: 200,
         contentType: "application/json",
@@ -211,88 +356,150 @@ async function main() {
     await page.waitForFunction(
       title => document.body.innerText.includes(title),
       { timeout: 30_000 },
-      "Grubb",
+      reimbursementFixture.title,
     );
     record(
-      "Authenticated Jobs page loads the Grubb fixture",
+      "Authenticated Jobs page loads the temporary fixtures",
       page.url().endsWith("/jobs") && (await page.title()).length > 0,
       page.url(),
     );
-    await page.screenshot({ path: `${SHOTS}/01-grubb-jobs.png`, fullPage: true });
+    await page.screenshot({ path: `${SHOTS}/01-job-financials-fixtures.png`, fullPage: true });
 
-    const expandedJobCard = await clickButtonInJobCard(page, "Grubb", "Open Job Card");
-    record("Grubb job card opens", expandedJobCard);
-    record(
-      "Profit summary API response reaches the browser",
-      interceptedProfitRequests.some(url => url.includes("/api/jobs/profit-summary")),
-    );
-    const clickedPnl = await clickButtonInJobCard(page, "Grubb", "Job P&L");
-    record("Grubb Job Financials panel opens", clickedPnl);
-    await page.waitForFunction(
-      () => [...document.querySelectorAll("h2")].some(element => element.textContent?.trim() === "Job Financials"),
-      { timeout: 10_000 },
+    async function verifyFixture(
+      fixture: JobFixture,
+      checks: {
+        name: string;
+        requiredCategories: string[];
+        forbiddenCategories: string[];
+        requiredText?: string;
+        forbiddenText?: string;
+      },
+      screenshotName: string,
+    ) {
+      await page.goto(`${BASE}/jobs`, {
+        waitUntil: "networkidle2",
+        timeout: 60_000,
+      });
+      await page.waitForFunction(
+        title => document.body.innerText.includes(title),
+        { timeout: 30_000 },
+        fixture.title,
+      );
+
+      const expandedJobCard = await clickButtonInJobCard(page, fixture.title, "Open Job Card");
+      record(`${checks.name}: job card opens`, expandedJobCard);
+      const clickedPnl = await clickButtonInJobCard(page, fixture.title, "Job P&L");
+      record(`${checks.name}: Job Financials panel opens`, clickedPnl);
+      await page.waitForFunction(
+        () => [...document.querySelectorAll("h2")]
+          .some(element => element.textContent?.trim() === "Job Financials"),
+        { timeout: 10_000 },
+      );
+      record(
+        `${checks.name}: per-job profit API response reaches the browser`,
+        interceptedProfitRequests.some(url => url.includes(`/api/jobs/${fixture.jobId}/profit`)),
+      );
+
+      const clickedExpenses = await clickButtonContaining(page, "Expense details");
+      record(`${checks.name}: expense details open`, clickedExpenses);
+      await page.waitForFunction(
+        () => document.body.innerText.includes("Included cost total"),
+        { timeout: 10_000 },
+      );
+
+      const panel = await readFinancialPanel(page);
+      const includedTotal = panel.text.match(/Included cost total\s*\$([0-9,]+\.[0-9]{2})/)?.[1] ?? "";
+      const jobCosts = panel.text.match(/Job Costs\s*−?\$([0-9,]+\.[0-9]{2})/)?.[1] ?? "";
+      const apiProfit = respondedProfitByJob.get(fixture.jobId);
+      const expectedJobCosts = apiProfit ? money(apiProfit.jobExpenses) : "";
+      const missingCategories = checks.requiredCategories
+        .filter(category => !panel.categories.includes(category));
+      const presentForbiddenCategories = checks.forbiddenCategories
+        .filter(category => panel.categories.includes(category));
+
+      record(
+        `${checks.name}: Included cost total matches API value`,
+        includedTotal === expectedJobCosts,
+        `api=${expectedJobCosts || "missing"}, included=${includedTotal || "missing"}`,
+      );
+      record(
+        `${checks.name}: Job Costs matches API value`,
+        jobCosts === expectedJobCosts,
+        `api=${expectedJobCosts || "missing"}, jobCosts=${jobCosts || "missing"}`,
+      );
+      record(
+        `${checks.name}: expense sources are not duplicated`,
+        missingCategories.length === 0 && presentForbiddenCategories.length === 0,
+        `categories=${panel.categories.join(", ") || "none"}`,
+      );
+      if (checks.requiredText) {
+        record(
+          `${checks.name}: expected reconciliation text is visible`,
+          panel.text.includes(checks.requiredText),
+        );
+      }
+      if (checks.forbiddenText) {
+        record(
+          `${checks.name}: reimbursement is not added again`,
+          !panel.text.includes(checks.forbiddenText),
+          `forbidden=${checks.forbiddenText}`,
+        );
+      }
+      await page.screenshot({ path: `${SHOTS}/${screenshotName}`, fullPage: true });
+    }
+
+    await verifyFixture(
+      reimbursementFixture,
+      {
+        name: "Saved reimbursement",
+        requiredCategories: ["Mileage Reimbursement"],
+        forbiddenCategories: ["Estimated Fuel", "Fuel/Travel"],
+        requiredText: "current route estimate is $35.56 and is reference-only",
+      },
+      "02-saved-reimbursement.png",
     );
 
-    const clickedExpenses = await clickButtonContaining(page, "Expense details");
-    record("Job Costs expense details open", clickedExpenses);
-    await page.waitForFunction(
-      () => document.body.innerText.includes("Included cost total"),
-      { timeout: 10_000 },
+    await verifyFixture(
+      estimateFixture,
+      {
+        name: "Estimate-only fuel",
+        requiredCategories: ["Estimated Fuel"],
+        forbiddenCategories: ["Mileage Reimbursement", "Fuel/Travel"],
+        requiredText: "Estimate only — not in accounting reports",
+      },
+      "03-estimate-only.png",
     );
 
-    const panelText = await page.evaluate(() => {
-      const heading = [...document.querySelectorAll("h2")]
-        .find(element => element.textContent?.trim() === "Job Financials");
-      return heading?.closest("div.fixed")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
-    });
-    const normalizedPanelText = panelText.replace(/\s+/g, " ");
-    const includedTotal = normalizedPanelText.match(/Included cost total\s*\$([0-9,]+\.[0-9]{2})/)?.[1] ?? "";
-    const jobCosts = normalizedPanelText.match(/Job Costs\s*−?\$([0-9,]+\.[0-9]{2})/)?.[1] ?? "";
-    const expenseCategories = await page.evaluate(() => {
-      const totalLabel = [...document.querySelectorAll("span")]
-        .find(element => element.textContent?.trim() === "Included cost total");
-      const expenseList = totalLabel?.parentElement?.parentElement;
-      return [...(expenseList?.children ?? [])]
-        .filter(element => !element.textContent?.includes("Included cost total"))
-        .map(element => element.querySelector("span")?.textContent?.trim() ?? "");
-    });
-    const includedMileageRows = expenseCategories.filter(category => category === "Mileage Reimbursement").length;
+    await verifyFixture(
+      actualFixture,
+      {
+        name: "Actual Fuel/Travel expense",
+        requiredCategories: ["Fuel/Travel"],
+        forbiddenCategories: ["Mileage Reimbursement", "Estimated Fuel"],
+        forbiddenText: "$229.80",
+      },
+      "04-actual-fuel-replaces-reimbursement.png",
+    );
 
-    record(
-      "Saved reimbursement is the sole included mileage cost",
-      includedMileageRows === 1
-        && includedTotal === "177.80",
-      `includedMileageRows=${includedMileageRows}, included=${includedTotal || "missing"}`,
-    );
-    record(
-      "Current fuel estimate is visibly reference-only",
-      normalizedPanelText.includes("current route estimate is $35.56 and is reference-only"),
-    );
-    record(
-      "Included cost total matches Job Costs without double-counting",
-      includedTotal === "177.80"
-        && jobCosts === "177.80"
-        && !normalizedPanelText.includes("$213.36"),
-      `jobCosts=${jobCosts || "missing"}, included=${includedTotal || "missing"}`,
-    );
     record(
       "Authenticated browser made no unexpected writes",
       unexpectedWrites.length === 0,
       unexpectedWrites.join("; "),
     );
-
-    await page.screenshot({ path: `${SHOTS}/02-grubb-job-financials.png`, fullPage: true });
   } finally {
     await browser.close();
     if (sessionId) {
       await db.delete(sessionsTable).where(eq(sessionsTable.sid, sessionId));
     }
-    if (reimbursementId) {
-      await db.delete(jobMileageReimbursementsTable)
-        .where(eq(jobMileageReimbursementsTable.id, reimbursementId));
+    for (const id of expenseIds) {
+      await db.delete(expensesTable).where(eq(expensesTable.id, id));
     }
-    if (jobId) {
-      await db.delete(jobsTable).where(eq(jobsTable.id, jobId));
+    for (const id of reimbursementIds) {
+      await db.delete(jobMileageReimbursementsTable)
+        .where(eq(jobMileageReimbursementsTable.id, id));
+    }
+    for (const id of jobIds) {
+      await db.delete(jobsTable).where(eq(jobsTable.id, id));
     }
   }
 
