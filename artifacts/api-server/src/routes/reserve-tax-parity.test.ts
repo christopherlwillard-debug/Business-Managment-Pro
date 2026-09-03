@@ -1022,6 +1022,107 @@ describe("Mileage expense exclusion from dashboard totals", () => {
     expect(currentMonth).toBeDefined();
     expect(currentMonth.expenses).toBeCloseTo(100, 10);
   });
+
+  it("monthlyRevenue expenses include only operating costs and fixed/allocation sub payments", async () => {
+    h.strict = true;
+
+    const DASH_OWNER_WITHDRAWAL = {
+      id: 103,
+      date: `${CURRENT_MONTH_STR}-01`,
+      amount: "200.00",
+      category: "Owner Withdrawal",
+      businessLine: null,
+      jobId: null,
+      excludeFromNetProfit: false,
+      description: "Owner withdrawal",
+      isWageAdvance: false,
+    };
+    const DASH_OUTSTANDING_COST = {
+      id: 104,
+      date: `${CURRENT_MONTH_STR}-01`,
+      amount: "300.00",
+      category: "Subcontractor",
+      businessLine: null,
+      jobId: null,
+      excludeFromNetProfit: false,
+      description: "Sub payment (outstanding)",
+      isWageAdvance: false,
+    };
+    const DASH_WAGE_ADVANCE = {
+      id: 105,
+      date: `${CURRENT_MONTH_STR}-01`,
+      amount: "400.00",
+      category: "Subcontractor",
+      businessLine: null,
+      jobId: null,
+      excludeFromNetProfit: false,
+      description: "Hourly wage advance",
+      isWageAdvance: true,
+    };
+    const DASH_FIXED_SUB_PAY = {
+      amount: "350.00",
+      paymentDate: `${CURRENT_MONTH_STR}-15`,
+      businessLine: null,
+      compensationType: "fixed",
+    };
+    const DASH_ALLOCATION_SUB_PAY = {
+      amount: "125.00",
+      paymentDate: `${CURRENT_MONTH_STR}-20`,
+      businessLine: null,
+      compensationType: "allocation",
+    };
+
+    h.selectQueue.push([]); // [0] kpiPaidInvoices
+    h.selectQueue.push([]); // [1] kpiNonPaidInvoices
+    h.selectQueue.push([
+      DASH_MILEAGE_EXP,
+      DASH_OWNER_WITHDRAWAL,
+      DASH_OUTSTANDING_COST,
+      DASH_WAGE_ADVANCE,
+      DASH_SUPPLY_EXP,
+    ]); // [2] kpiExpenses
+    h.selectQueue.push([]); // [3] allMileage
+    h.selectQueue.push([]); // [4] kpiOtherIncome
+    h.selectQueue.push([]); // [5] kpiActiveJobs
+    h.selectQueue.push([]); // [6] recentJobsRows
+    h.selectQueue.push([]); // [7] recentInvoicesRows
+    h.selectQueue.push([]); // [8] kpiOwnerCapital
+    h.selectQueue.push([
+      DASH_FIXED_SUB_PAY,
+      DASH_ALLOCATION_SUB_PAY,
+    ]); // [9] allSubPayments
+    h.selectQueue.push([]); // [10] ytdMileageLogs
+    h.selectQueue.push([]); // [11] subPayRows
+    h.selectQueue.push([]); // [12] allBusinesses
+
+    // Queue every month × query slot so a query-order or loop-bound regression
+    // fails instead of silently falling back to an empty response. Put the
+    // mixed fixture into the current month's monthlyExp slot.
+    for (let i = 0; i < 20; i++) h.selectQueue.push([]);
+    h.selectQueue.push([]); // monthlyPaidInv
+    h.selectQueue.push([]); // monthlyNonPaidInv
+    h.selectQueue.push([
+      DASH_MILEAGE_EXP,
+      DASH_OWNER_WITHDRAWAL,
+      DASH_OUTSTANDING_COST,
+      DASH_WAGE_ADVANCE,
+      DASH_SUPPLY_EXP,
+    ]); // monthlyExp
+    h.selectQueue.push([]); // monthlyOther
+
+    const res = await request(app).get("/reports/dashboard");
+    expect(res.status).toBe(200);
+
+    const currentMonth = res.body.monthlyRevenue.find(
+      (bucket: any) => bucket.month === CURRENT_MONTH_STR,
+    );
+    expect(currentMonth).toBeDefined();
+
+    // Only Supplies ($100) plus fixed/allocation payments ($350 + $125)
+    // belong in the expense bar. Mileage, owner withdrawals, outstanding
+    // bookings, and wage advances must all stay out.
+    expect(currentMonth.expenses).toBeCloseTo(575, 10);
+  });
 });
 
 // ── Monthly income chart includes fixed/allocation sub payments ───────────────
