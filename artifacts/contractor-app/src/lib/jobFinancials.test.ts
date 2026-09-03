@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { calculateJobFinancialWaterfall, formatJobFinancialAmount } from "./jobFinancials";
+import {
+  calculateJobFinancialWaterfall,
+  formatJobFinancialAmount,
+  jobFinancialSummaryDetail,
+} from "./jobFinancials";
 
 describe("calculateJobFinancialWaterfall", () => {
   const base = {
@@ -85,6 +89,13 @@ describe("formatJobFinancialAmount", () => {
   it("renders unavailable balances as unavailable instead of zero", () => {
     expect(formatJobFinancialAmount(null, formatter)).toBe("Unavailable");
     expect(formatJobFinancialAmount(undefined, formatter)).toBe("Unavailable");
+  });
+
+  it("uses only the server-provided unavailable reason in payment summaries", () => {
+    expect(jobFinancialSummaryDetail(null, "Profit pool is unavailable.", "owed"))
+      .toBe("Profit pool is unavailable.");
+    expect(jobFinancialSummaryDetail(null, null, "owed")).toBeNull();
+    expect(jobFinancialSummaryDetail(0, null, "owed")).toBe("owed");
   });
 
   it("continues to render a known zero as zero", () => {

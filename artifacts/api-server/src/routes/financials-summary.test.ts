@@ -82,8 +82,21 @@ describe("GET /jobs/financials-summary", () => {
       ],
       [
         {
+          jobId: 1, subcontractorId: 10, subName: "Known Zero Worker", compensationType: "hourly",
+          amountOwed: "0", fixedAmount: null, allocationPct: null, hourlyRate: null,
+          hourCount: "0", missingRateHours: "0", amountPaidColumn: null,
+          paymentStatus: "unpaid", computedOwed: "0", ledgerPaid: "0",
+        },
+        {
+          jobId: 2, subcontractorId: 19, subName: "Missing Hourly Inputs", compensationType: "hourly",
+          amountOwed: null, fixedAmount: null, allocationPct: null, hourlyRate: null,
+          hourCount: "0", missingRateHours: "0", amountPaidColumn: null,
+          paymentStatus: "unpaid", computedOwed: "0", ledgerPaid: "0",
+        },
+        {
           jobId: 2, subcontractorId: 20, subName: "Allocation Sub", compensationType: "allocation",
-          amountOwed: null, fixedAmount: null, allocationPct: "50", amountPaidColumn: null,
+          amountOwed: null, fixedAmount: null, allocationPct: null, hourlyRate: null,
+          hourCount: "0", missingRateHours: "0", amountPaidColumn: null,
           paymentStatus: "unpaid", computedOwed: "0", ledgerPaid: "0",
         },
       ],
@@ -105,22 +118,86 @@ describe("GET /jobs/financials-summary", () => {
     expect(known.ownerPay.earned).toBe(375);
     expect(known.ownerPay.paid).toBe(100);
     expect(known.ownerPay.remaining).toBe(275);
+    expect(known.workers.available).toBe(true);
+    expect(known.workers.totalOwed).toBe(0);
+    expect(known.workers.unavailableReason).toBeNull();
 
     const partial = response.body.jobs.find((row: any) => row.job.id === 2);
+    expect(partial.workers.available).toBe(false);
+    expect(partial.workers.totalOwed).toBeNull();
+    expect(partial.workers.unavailableReason).toMatch(/agreed amount.*hours.*rate/i);
+    expect(partial.workers.details[0].unavailableReason).toMatch(/agreed amount.*hours.*rate/i);
     expect(partial.subcontractors.available).toBe(false);
     expect(partial.subcontractors.totalOwed).toBeNull();
     expect(partial.subcontractors.details[0].amountOwed).toBeNull();
     expect(partial.subcontractors.details[0].balance).toBeNull();
+    expect(partial.subcontractors.unavailableReason).toMatch(/profit pool/i);
+    expect(partial.subcontractors.unavailableReason).toMatch(/allocation percentage/i);
     expect(partial.ownerPay.supported).toBe(false);
     expect(partial.ownerPay.remaining).toBeNull();
+    expect(partial.ownerPay.unavailableReason).toMatch(/profit pool/i);
+    expect(partial.ownerPay.unavailableReason).toMatch(/allocation percentage/i);
 
     expect(response.body.totals.ownerPayOwed).toBe(275);
     expect(response.body.totals.ownerPayUnknownJobs).toBe(1);
+    expect(response.body.totals.workersUnknownJobs).toBe(1);
     expect(response.body.totals.subcontractorsUnknownJobs).toBe(1);
     expect(response.body.dataStatus).toBe("partial");
     expect(response.body.warnings).toEqual(expect.arrayContaining([
       expect.stringMatching(/unavailable subcontractor balances/i),
       expect.stringMatching(/unavailable Owner Pay balances/i),
     ]));
+  });
+
+  it("names each missing worker, fixed-pay, and allocation input without replacing it with zero", async () => {
+    fixture.poolMap = new Map([[4, { splitPool: 800 }]]);
+    fixture.selectQueue.push(
+      [
+        { id: 4, jobNumber: 104, title: "Missing pay inputs", status: "in_progress", clientName: "D", clientId: 4, businessId: 1, businessLine: null },
+      ],
+      [],
+      [
+        {
+          jobId: 4, subcontractorId: 41, subName: "Missing Rate", compensationType: "hourly",
+          amountOwed: null, fixedAmount: null, allocationPct: null, hourlyRate: "25",
+          hourCount: "1", missingRateHours: "1", amountPaidColumn: null,
+          paymentStatus: "unpaid", computedOwed: "0", ledgerPaid: "0",
+        },
+        {
+          jobId: 4, subcontractorId: 42, subName: "Missing Fixed Amount", compensationType: "fixed",
+          amountOwed: null, fixedAmount: null, allocationPct: null, hourlyRate: null,
+          hourCount: "0", missingRateHours: "0", amountPaidColumn: null,
+          paymentStatus: "unpaid", computedOwed: "0", ledgerPaid: "0",
+        },
+        {
+          jobId: 4, subcontractorId: 43, subName: "Missing Allocation", compensationType: "allocation",
+          amountOwed: null, fixedAmount: null, allocationPct: null, hourlyRate: null,
+          hourCount: "0", missingRateHours: "0", amountPaidColumn: null,
+          paymentStatus: "unpaid", computedOwed: "0", ledgerPaid: "0",
+        },
+      ],
+      [],
+      [],
+      [{ ownerSplitPct: "50", taxReservePct: "25" }],
+    );
+
+    const response = await request(app).get("/jobs/financials-summary");
+
+    expect(response.status).toBe(200);
+    const summary = response.body.jobs[0];
+    expect(summary.workers.totalOwed).toBeNull();
+    expect(summary.workers.details[0].balance).toBeNull();
+    expect(summary.workers.details[0].unavailableReason).toMatch(/hourly rate.*logged hours/i);
+
+    expect(summary.subcontractors.totalOwed).toBeNull();
+    expect(summary.subcontractors.details.find((row: any) => row.id === 42).unavailableReason)
+      .toMatch(/agreed fixed amount/i);
+    expect(summary.subcontractors.details.find((row: any) => row.id === 43).unavailableReason)
+      .toMatch(/allocation percentage/i);
+    expect(summary.subcontractors.unavailableReason).toMatch(/agreed fixed amount/i);
+    expect(summary.subcontractors.unavailableReason).toMatch(/allocation percentage/i);
+
+    expect(summary.ownerPay.remaining).toBeNull();
+    expect(summary.ownerPay.unavailableReason).toMatch(/allocation percentage/i);
   });
 });

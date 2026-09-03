@@ -231,6 +231,7 @@ Created the four-document architecture governance system:
 - The Jobs financial summary now excludes closed jobs defensively at both query and response boundaries.
 - Job-linked Owner Withdrawals reduce remaining Owner Pay without changing earned pay.
 - Unknown worker, subcontractor, or Owner Pay balances remain null and mark the response partial instead of appearing as zero.
+- Unavailable balances now name the authoritative missing pay input beside each affected job summary, while valid zero balances remain numeric zero.
 
 ### Checklist photo captions
 

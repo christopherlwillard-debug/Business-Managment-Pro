@@ -17,6 +17,14 @@ export function formatJobFinancialAmount(
   return value == null ? "Unavailable" : formatter(value);
 }
 
+export function jobFinancialSummaryDetail(
+  value: number | null | undefined,
+  unavailableReason: string | null | undefined,
+  availableDetail: string,
+): string | null {
+  return value == null ? unavailableReason ?? null : availableDetail;
+}
+
 export function calculateJobFinancialWaterfall(input: JobFinancialWaterfallInput) {
   const splitEligibleExpenses = Math.max(0, input.jobExpenses - input.mileageReimbursementCost);
   // Job Income is the result after every displayed job cost. Reimbursements

@@ -28,7 +28,11 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
 import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { computeSubOwed } from "@/lib/allocationUtils";
-import { calculateJobFinancialWaterfall, formatJobFinancialAmount } from "@/lib/jobFinancials";
+import {
+  calculateJobFinancialWaterfall,
+  formatJobFinancialAmount,
+  jobFinancialSummaryDetail,
+} from "@/lib/jobFinancials";
 import {
   initialJobPaymentSummaryRefreshState,
   jobProfitSummaryRequestKey,
@@ -1480,9 +1484,9 @@ type JobProfit = {
 type JobFinancialSummary = {
   job: { id: number; jobNumber?: number | null; title: string; status: string; clientName?: string | null };
   payment: { status: string; amountDue: number | null; invoiceId: number | null };
-  workers: { available: boolean; count: number | null; totalOwed: number | null };
-  subcontractors: { available: boolean; count: number | null; totalOwed: number | null };
-  ownerPay: { supported: boolean; earned: number | null; paid: number | null; remaining: number | null; overpaid: number };
+  workers: { available: boolean; count: number | null; totalOwed: number | null; unavailableReason: string | null };
+  subcontractors: { available: boolean; count: number | null; totalOwed: number | null; unavailableReason: string | null };
+  ownerPay: { supported: boolean; earned: number | null; paid: number | null; remaining: number | null; overpaid: number; unavailableReason: string | null };
   state: "needs_action" | "waiting_on_payment" | "ready_to_close";
   blockers: string[];
   warnings: string[];
@@ -1549,13 +1553,13 @@ function JobPaymentSummary({
     {
       label: "Workers",
       value: summary.workers.totalOwed == null ? "Unavailable" : paymentAmount(summary.workers.totalOwed),
-      detail: "owed",
+      detail: jobFinancialSummaryDetail(summary.workers.totalOwed, summary.workers.unavailableReason, "owed"),
       tone: "text-foreground",
     },
     {
       label: "Subcontractors",
       value: summary.subcontractors.totalOwed == null ? "Unavailable" : paymentAmount(summary.subcontractors.totalOwed),
-      detail: "owed",
+      detail: jobFinancialSummaryDetail(summary.subcontractors.totalOwed, summary.subcontractors.unavailableReason, "owed"),
       tone: "text-foreground",
     },
     {
@@ -1563,7 +1567,7 @@ function JobPaymentSummary({
       value: summary.ownerPay.supported ? paymentAmount(summary.ownerPay.remaining) : "Unavailable",
       detail: summary.ownerPay.supported
         ? `${paymentAmount(summary.ownerPay.earned)} earned · ${paymentAmount(summary.ownerPay.paid)} paid`
-        : "Open job for details",
+        : summary.ownerPay.unavailableReason,
       tone: summary.ownerPay.overpaid > 0 ? "text-purple-700" : "text-foreground",
     },
   ];
@@ -1579,7 +1583,9 @@ function JobPaymentSummary({
           <div key={metric.label} className="min-w-0 rounded-lg bg-background/70 px-2.5 py-2">
             <span className="block truncate text-[10px] text-muted-foreground">{metric.label}</span>
             <span className={`block truncate text-xs font-bold ${metric.tone}`}>{metric.value}</span>
-            <span className="block truncate text-[10px] text-muted-foreground">{metric.detail}</span>
+            {metric.detail && (
+              <span className="block text-[10px] leading-tight text-muted-foreground" title={metric.detail}>{metric.detail}</span>
+            )}
           </div>
         ))}
       </div>

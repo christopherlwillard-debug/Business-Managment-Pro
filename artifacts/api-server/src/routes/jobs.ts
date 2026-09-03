@@ -1315,8 +1315,22 @@ router.get("/financials-summary", async (req, res) => {
         amountOwed: jobSubcontractorsTable.amountOwed,
         fixedAmount: jobSubcontractorsTable.fixedAmount,
         allocationPct: jobSubcontractorsTable.allocationPct,
+         hourlyRate: jobSubcontractorsTable.hourlyRate,
         amountPaidColumn: jobSubcontractorsTable.amountPaid,
         paymentStatus: jobSubcontractorsTable.paymentStatus,
+         hourCount: sql<string>`COALESCE((
+           SELECT COUNT(*)
+           FROM job_sub_hours h
+           WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+             AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+         ), 0)`,
+         missingRateHours: sql<string>`COALESCE((
+           SELECT COUNT(*)
+           FROM job_sub_hours h
+           WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+             AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+             AND h.rate_snapshot IS NULL
+         ), 0)`,
         computedOwed: sql<string>`COALESCE((
           SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
           FROM job_sub_hours h
@@ -1369,6 +1383,9 @@ router.get("/financials-summary", async (req, res) => {
       amountOwed: string | null;
       fixedAmount: string | null;
       allocationPct: string | null;
+      hourlyRate: string | null;
+      hourCount: string;
+      missingRateHours: string;
       amountPaidColumn: string | null;
       paymentStatus: string;
       computedOwed: string;
@@ -1422,7 +1439,11 @@ router.get("/financials-summary", async (req, res) => {
       );
       const workers = assignments.filter((row: FinancialAssignment) => (row.compensationType ?? "hourly") === "hourly");
       const subcontractors = assignments.filter((row: FinancialAssignment) => (row.compensationType ?? "hourly") !== "hourly");
-      const makeDetail = (row: FinancialAssignment, owed: number | null) => {
+      const makeDetail = (
+        row: FinancialAssignment,
+        owed: number | null,
+        unavailableReason: string | null = null,
+      ) => {
         const amountPaid = row.ledgerPaid != null
           ? Number(row.ledgerPaid)
           : row.amountPaidColumn == null ? 0 : Number(row.amountPaidColumn);
@@ -1440,34 +1461,75 @@ router.get("/financials-summary", async (req, res) => {
           amountPaid,
           balance,
           status,
+          unavailableReason,
         };
+      };
+      const workerOwed = (row: FinancialAssignment): number | null => {
+        if (row.amountOwed != null) return Number(row.amountOwed);
+        const hourCount = Number(row.hourCount ?? 0);
+        const missingRateHours = Number(row.missingRateHours ?? 0);
+        if (missingRateHours > 0) return null;
+        if (hourCount === 0 && row.hourlyRate == null) return null;
+        return Number(row.computedOwed ?? 0);
+      };
+      const workerUnavailableReason = (row: FinancialAssignment): string | null => {
+        if (row.amountOwed != null) return null;
+        if (Number(row.missingRateHours ?? 0) > 0) return "Hourly rate is missing for logged hours.";
+        if (Number(row.hourCount ?? 0) === 0 && row.hourlyRate == null) {
+          return "Add an agreed amount or log hours with an hourly rate.";
+        }
+        return null;
       };
       const workerDetails = workers.map((row: FinancialAssignment) => makeDetail(
         row,
-        row.amountOwed != null ? Number(row.amountOwed) : Number(row.computedOwed ?? 0),
+        workerOwed(row),
+        workerUnavailableReason(row),
       ));
       const pool = profitPools.get(job.id);
       const allocationRows = subcontractors.filter((row: FinancialAssignment) => row.compensationType === "allocation");
       const totalAllocationPct = allocationRows.reduce((sum: number, row: FinancialAssignment) => sum + Number(row.allocationPct ?? 0), 0);
       const ownerPct = allocationRows.length > 0 ? Math.max(0, 100 - totalAllocationPct) : ownerSplitPct;
+      const missingAllocationPct = allocationRows.some((row: FinancialAssignment) => row.allocationPct == null);
+      const subcontractorUnavailableReason = (row: FinancialAssignment): string | null => {
+        if (row.amountOwed != null) return null;
+        if (row.compensationType === "fixed" && row.fixedAmount == null) return "Agreed fixed amount is missing.";
+        if (row.compensationType === "allocation") {
+          if (row.allocationPct == null && !pool) return "Profit pool and allocation percentage are missing.";
+          if (row.allocationPct == null) return "Allocation percentage is missing.";
+          if (!pool) return "Profit pool is unavailable.";
+        }
+        return null;
+      };
       const subDetails = subcontractors.map((row: FinancialAssignment) => makeDetail(
         row,
         row.amountOwed != null
           ? Number(row.amountOwed)
           : row.compensationType === "fixed"
-            ? Number(row.fixedAmount ?? 0)
-            : pool ? pool.splitPool * (Number(row.allocationPct ?? 0) / 100) : null,
+            ? row.fixedAmount == null ? null : Number(row.fixedAmount)
+            : row.allocationPct == null || !pool ? null : pool.splitPool * (Number(row.allocationPct) / 100),
+        subcontractorUnavailableReason(row),
       ));
       const workersAvailable = workerDetails.every(row => row.amountOwed != null);
       const subcontractorsAvailable = subDetails.every(row => row.amountOwed != null);
+      const summarizeUnavailableReasons = (details: Array<{ unavailableReason: string | null }>) => {
+        const reasons = [...new Set(details.flatMap(row => row.unavailableReason ? [row.unavailableReason] : []))];
+        return reasons.length > 0 ? reasons.join(" ") : null;
+      };
       const workerTotal = workersAvailable
         ? workerDetails.reduce((sum: number, row) => sum + (row.balance ?? 0), 0)
         : null;
       const subcontractorTotal = subcontractorsAvailable
         ? subDetails.reduce((sum: number, row) => sum + (row.balance ?? 0), 0)
         : null;
-      const ownerEarned = pool
-        ? pool.splitPool * (ownerPct / 100) * (1 - Math.max(0, taxReservePct) / 100)
+      const ownerUnavailableReasons = [
+        !pool ? "Profit pool is unavailable." : null,
+        missingAllocationPct ? "Allocation percentage is missing." : null,
+      ].filter((reason): reason is string => reason != null);
+      const ownerUnavailableReason = ownerUnavailableReasons.length > 0
+        ? ownerUnavailableReasons.join(" ")
+        : null;
+      const ownerEarned = !ownerUnavailableReason
+        ? pool!.splitPool * (ownerPct / 100) * (1 - Math.max(0, taxReservePct) / 100)
         : null;
       const ownerPaid = ownerPaidByJob.get(job.id) ?? 0;
       const ownerRemaining = ownerEarned == null ? null : Math.max(0, ownerEarned - ownerPaid);
@@ -1514,12 +1576,14 @@ router.get("/financials-summary", async (req, res) => {
           count: workerDetails.length,
           totalOwed: workerTotal,
           details: workerDetails,
+          unavailableReason: summarizeUnavailableReasons(workerDetails),
         },
         subcontractors: {
           available: subcontractorsAvailable,
           count: subDetails.length,
           totalOwed: subcontractorTotal,
           details: subDetails,
+          unavailableReason: summarizeUnavailableReasons(subDetails),
         },
         ownerPay: {
           supported: ownerEarned != null,
@@ -1527,6 +1591,7 @@ router.get("/financials-summary", async (req, res) => {
           paid: ownerEarned == null ? null : ownerPaid,
           remaining: ownerRemaining,
           overpaid: ownerOverpaid,
+          unavailableReason: ownerUnavailableReason,
         },
         state,
         blockers,
