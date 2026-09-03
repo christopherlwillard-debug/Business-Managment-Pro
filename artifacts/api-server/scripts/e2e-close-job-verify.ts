@@ -306,14 +306,16 @@ async function main() {
     await sleep(700);
 
     const paidAfter = await fetchAfterAction(markAllPaidFixture.jobId);
-    const splitPool = Math.max(
-      0,
-      (Number(paidAfter.profit.grossInvoiced ?? 0) - Number(paidAfter.profit.jobExpenses ?? 0))
-      - Number(paidAfter.profit.subLaborCost ?? 0),
-    ) * 0.95;
+    const splitPool = Number.isFinite(Number(paidAfter.profit.splitPool))
+      ? Number(paidAfter.profit.splitPool)
+      : Math.max(
+          0,
+          (Number(paidAfter.profit.grossInvoiced ?? 0) - Number(paidAfter.profit.jobExpenses ?? 0))
+          - Number(paidAfter.profit.subLaborCost ?? 0),
+        ) * 0.95;
     const expectedGrossAllocation = splitPool * 0.2;
     const paidWorker = paidAfter.subs.find((row: { subcontractorId: number }) => row.subcontractorId === markAllPaidFixture.subId);
-    record("Job Financials split allocation is $190.00", Math.abs(expectedGrossAllocation - 190) < 0.01, `toSplit=${paidAfter.profit.toSplit}, allocation=${expectedGrossAllocation}`);
+    record("Job Financials split allocation is $190.00", Math.abs(expectedGrossAllocation - 190) < 0.01, `toSplit=${splitPool}, allocation=${expectedGrossAllocation}`);
     record("Partial payment plus close payout settles at $190.00", paidWorker?.paymentStatus === "paid" && Math.abs(Number(paidWorker?.amountPaid) - 190) < 0.01, `status=${paidWorker?.paymentStatus}, amountPaid=${paidWorker?.amountPaid}`);
     const paidLedgerRows = await db.select({
       amount: subPaymentRecordsTable.amount,

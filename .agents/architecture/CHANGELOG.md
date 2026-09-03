@@ -270,3 +270,13 @@ Created the four-document architecture governance system:
 - Scheduled start/end dates no longer imply that every calendar day was worked.
 - When no actual work-date evidence exists, the Jobs UI shows the estimate as
   unavailable and directs the user to record the worked dates.
+
+### Job allocation split-pool consistency
+
+- The per-job profit response now exposes the server-calculated allocation split
+  pool used by the compact outstanding-payments route.
+- Job Financials, the subcontractor-hours payment view, and close-job fallback
+  calculations prefer that same live pool, preventing status refreshes from
+  showing different percentage-pay amounts.
+- Job-only fuel estimates remain outside the accounting ledgers and outside the
+  percentage split pool, consistent with ADR-011.

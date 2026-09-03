@@ -878,11 +878,16 @@ router.get("/:id/profit", async (req, res) => {
       ownerSplitPct: settingsTable.ownerSplitPct,
       taxReservePct: settingsTable.taxReservePct,
     }).from(settingsTable).limit(1);
+    // Allocation pay must use the same server-side split pool as the compact
+    // job-card outstanding-payments route. The job status is intentionally not
+    // an input to this calculation.
+    const allocationSplitPool = (await computeAllocationSplitPool(id))?.splitPool ?? 0;
 
     res.json({
       grossInvoiced, collected, otherIncomeRevenue, jobExpenses, auditTrailTotal, tripTravelTotal, tripMealsDeductible,
       subLaborCost, allocPaid, totalSubHours,
       netProfit, ownerDrawTaken,
+      splitPool: allocationSplitPool,
       mileageReimbursement: mileageReimbursement ? {
         ...mileageReimbursement,
         amount: parseFloat(mileageReimbursement.amount ?? "0"),

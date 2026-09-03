@@ -1454,6 +1454,7 @@ type JobProfit = {
   auditTrailTotal?: number; tripTravelTotal?: number; tripMealsDeductible?: number;
   subLaborCost?: number; allocPaid?: number; totalSubHours?: number; manHours?: number | null;
   netProfit: number;
+  splitPool?: number;
   ownerDrawTaken?: number;
   mileageReimbursement?: {
     id: number;
@@ -2135,10 +2136,19 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     taxReservePct,
   });
   const {
-    splitEligibleExpenses, jobIncome, hourlyWorkers, afterWorkers, growthReserve, toSplit,
-    totalAllocPct, ownerPct, ownerShare, subShare, taxReserve, ownerTakeHome,
+    splitEligibleExpenses, jobIncome, hourlyWorkers, afterWorkers, growthReserve, toSplit: calculatedToSplit,
+    totalAllocPct, ownerPct,
     allocationWarning: allocWarning,
   } = waterfall;
+  // Keep every allocation-pay surface on the API's live split pool. The
+  // compact card and close-job endpoint use this same server-side value.
+  const toSplit = !useCollected && profit?.splitPool != null
+    ? profit.splitPool
+    : calculatedToSplit;
+  const ownerShare = toSplit * (ownerPct / 100);
+  const subShare = toSplit * ((100 - ownerPct) / 100);
+  const taxReserve = ownerShare * (taxReservePct / 100);
+  const ownerTakeHome = ownerShare - taxReserve;
   // A reimbursement paid to the business owner is money owed back for a
   // personal out-of-pocket cost, not a profit-based owner withdrawal. Keep it outside
   // the split and tax reserve, and show only the outstanding amount in the
@@ -3723,7 +3733,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
                   const _jobIncome = Math.max(0, _rev - _exp);
                    const _hfCost = payments.filter(p => p.compensationType !== 'allocation').reduce((s, p) => s + (p.amountOwed ?? (p.compensationType === 'fixed' ? (p.fixedAmount ?? 0) : p.computedOwed)), 0);
                    const _afterW = Math.max(0, _jobIncome - (payments.length > 0 ? _hfCost : (profit?.subLaborCost ?? 0)));
-                  const _toSplit = Math.max(0, _afterW - _afterW * 0.05);
+                  const _toSplit = profit?.splitPool ?? Math.max(0, _afterW - _afterW * 0.05);
                   const displayOwed = pay.amountOwed != null
                     ? pay.amountOwed
                     : pay.compensationType === 'allocation' ? _toSplit * ((pay.allocationPct ?? 0) / 100)
@@ -5193,7 +5203,7 @@ function JobCard({
 
   // Compute split pool for allocation sub amounts (mirrors JobFinancialsPanel waterfall)
   const toSplit = profitData
-    ? calculateJobFinancialWaterfall({
+    ? (profitData.splitPool ?? calculateJobFinancialWaterfall({
         revenue: profitData.grossInvoiced ?? 0,
         jobExpenses: profitData.jobExpenses ?? 0,
         mileageReimbursementCost: profitData.includeMileageInJobCosts === false
@@ -5204,7 +5214,7 @@ function JobCard({
         growthReservePct: profitData.growthReservePct ?? 5,
         ownerSplitPct: profitData.ownerSplitPct ?? 50,
         taxReservePct: 0,
-      }).toSplit
+      }).toSplit)
     : 0;
 
   function outstandingAmount(sub: OutstandingSubRow): number {
@@ -8038,7 +8048,7 @@ export default function Jobs() {
       // Mileage reimbursement is a job cost but stays outside the split pool.
       const closeSubs = subsData as CloseJobDialogSub[];
       const toSplit = profitData
-        ? calculateJobFinancialWaterfall({
+        ? (profitData.splitPool ?? calculateJobFinancialWaterfall({
             revenue: profitData.grossInvoiced ?? 0,
             jobExpenses: profitData.jobExpenses ?? 0,
             mileageReimbursementCost: profitData.includeMileageInJobCosts === false || profitData.mileageReimbursementApplied === false
@@ -8054,7 +8064,7 @@ export default function Jobs() {
             growthReservePct: profitData.growthReservePct ?? 5,
             ownerSplitPct: profitData.ownerSplitPct ?? 50,
             taxReservePct: 0,
-          }).toSplit
+          }).toSplit)
         : 0;
 
       setCloseJobDialog({ job, subs: closeSubs, toSplit });
