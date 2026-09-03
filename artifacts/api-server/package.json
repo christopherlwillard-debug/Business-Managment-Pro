@@ -12,6 +12,7 @@
     "verify:close-job": "tsx ./scripts/e2e-close-job-verify.ts",
     "verify:jobs-planner": "tsx ./scripts/e2e-jobs-planner-verify.ts",
     "verify:subcontractor-delete": "tsx ./scripts/e2e-subcontractor-delete-verify.ts",
+    "verify:mileage-route-recovery": "tsx ./scripts/e2e-mileage-route-recovery-verify.ts",
     "verify:public-site-seo": "tsx ./scripts/e2e-public-site-seo-verify.ts",
     "postinstall": "node node_modules/puppeteer/install.mjs"
   },

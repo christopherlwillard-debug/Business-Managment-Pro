@@ -333,6 +333,7 @@ export default function Mileage() {
 
   const invalidateRouteLookup = () => {
     routeLookupIdRef.current += 1;
+    setDistCalcLoading(false);
     setCalculatedDistance(clearRouteDistanceConfirmation());
   };
 
@@ -1029,6 +1030,7 @@ export default function Mileage() {
                     <label className="text-sm font-medium text-foreground">Date *</label>
                     <input
                       type="date"
+                      data-testid="mileage-date"
                       value={manual.date}
                       onChange={e => setManual(m => ({ ...m, date: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -1038,6 +1040,7 @@ export default function Mileage() {
                     <label className="text-sm font-medium text-foreground">Miles *</label>
                     <input
                       type="number"
+                      data-testid="mileage-miles"
                       min="0"
                       step="0.1"
                       placeholder="e.g. 12.5"
@@ -1056,6 +1059,7 @@ export default function Mileage() {
                     <label className="text-sm font-medium text-foreground">Start Address</label>
                     <input
                       type="text"
+                      data-testid="mileage-start-address"
                       placeholder="e.g. 123 Main St, Owensboro KY"
                       value={manual.startLocation}
                       onChange={e => {
@@ -1070,6 +1074,7 @@ export default function Mileage() {
                     <label className="text-sm font-medium text-foreground">End Address</label>
                     <input
                       type="text"
+                      data-testid="mileage-end-address"
                       placeholder="e.g. 456 Oak Ave, Owensboro KY"
                       value={manual.endLocation}
                       onChange={e => {
@@ -1086,6 +1091,7 @@ export default function Mileage() {
                 <div className="space-y-1.5">
                   <button
                     type="button"
+                    data-testid="mileage-calculate"
                     onClick={calculateMiles}
                     disabled={distCalcLoading || !manual.startLocation.trim() || !manual.endLocation.trim()}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-sky-50 border border-sky-200 text-sky-700 hover:bg-sky-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -1103,7 +1109,7 @@ export default function Mileage() {
                     )}
                   </button>
                   {distCalcError && (
-                    <div role="alert" className="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-xs text-red-700 space-y-2">
+                    <div data-testid="mileage-route-error" role="alert" className="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-xs text-red-700 space-y-2">
                       <div className="flex items-start gap-1.5">
                         <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                         <span>{distCalcError}</span>
@@ -1114,6 +1120,7 @@ export default function Mileage() {
                       <div className="pl-5 flex flex-wrap gap-2">
                         <button
                           type="button"
+                          data-testid="mileage-route-retry"
                           onClick={calculateMiles}
                           disabled={distCalcLoading || !manual.startLocation.trim() || !manual.endLocation.trim()}
                           className="rounded-md border border-red-300 bg-white px-2 py-1 font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
@@ -1122,6 +1129,7 @@ export default function Mileage() {
                         </button>
                         <button
                           type="button"
+                          data-testid="mileage-enter-manually"
                           onClick={focusManualMiles}
                           className="rounded-md border border-red-300 px-2 py-1 font-semibold text-red-700 hover:bg-red-100"
                         >
@@ -1136,6 +1144,7 @@ export default function Mileage() {
                   <label className="text-sm font-medium text-foreground">Purpose</label>
                   <input
                     type="text"
+                  data-testid="mileage-purpose"
                     placeholder="e.g. Material run to Home Depot"
                     value={manual.purpose}
                     onChange={e => setManual(m => ({ ...m, purpose: e.target.value }))}
@@ -1146,6 +1155,7 @@ export default function Mileage() {
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
+                    data-testid="mileage-business"
                     onClick={() => setManual(m => ({ ...m, classification: "business" }))}
                     className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-sm ${
                       manual.classification === "business"
@@ -1158,6 +1168,7 @@ export default function Mileage() {
                   </button>
                   <button
                     type="button"
+                    data-testid="mileage-personal"
                     onClick={() => setManual(m => ({ ...m, classification: "personal" }))}
                     className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-sm ${
                       manual.classification === "personal"
@@ -1173,6 +1184,7 @@ export default function Mileage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-foreground">Link to Job (optional)</label>
                   <select
+                    data-testid="mileage-job"
                     value={manual.jobId}
                     onChange={e => setManual(m => ({ ...m, jobId: e.target.value }))}
                     className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -1193,6 +1205,7 @@ export default function Mileage() {
 
                 <button
                   type="button"
+                  data-testid="mileage-save"
                   onClick={saveManualTrip}
                   disabled={manualSaving}
                   className="w-full py-2.5 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-700 shadow transition-all active:scale-95 text-sm disabled:opacity-60"
