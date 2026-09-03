@@ -57,6 +57,7 @@ export default function Subcontractors() {
   const [settleConfirm, setSettleConfirm] = useState<{ id: number; name: string; reopen: boolean } | null>(null);
   const [settlingId, setSettlingId] = useState<number | null>(null);
   const [exportingHistory, setExportingHistory] = useState(false);
+  const [exportingAllHistory, setExportingAllHistory] = useState(false);
   const [, navigate] = useLocation();
 
   async function handleSettle(id: number, reopen: boolean) {
@@ -175,6 +176,33 @@ export default function Subcontractors() {
       toast({ title: "Export failed", description: "Could not download payment history.", variant: "destructive" });
     } finally {
       setExportingHistory(false);
+    }
+  }
+
+  async function downloadAllPaymentHistoryCsv() {
+    setExportingAllHistory(true);
+    try {
+      const params = new URLSearchParams({ format: "csv" });
+      if (historyYear !== "all") params.set("year", String(historyYear));
+      if (historyBusinessLine) params.set("businessLine", historyBusinessLine);
+
+      const res = await fetch(`${BASE}/api/subcontractors/payment-history/all?${params}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to export all payment history");
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `subcontractors-payment-history-${historyYear === "all" ? "all-years" : historyYear}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Export failed", description: "Could not download all payment history.", variant: "destructive" });
+    } finally {
+      setExportingAllHistory(false);
     }
   }
 
@@ -1257,11 +1285,21 @@ export default function Subcontractors() {
                     <button
                       type="button"
                       onClick={downloadPaymentHistoryCsv}
-                      disabled={exportingHistory || paymentHistoryLoading}
+                      disabled={exportingHistory || exportingAllHistory || paymentHistoryLoading}
                       className="flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Download className="w-4 h-4 mr-1.5" />
                       {exportingHistory ? "Exporting…" : "Export CSV"}
+                    </button>
+                    <button
+                      type="button"
+                      title="Export payment history for all subcontractors"
+                      onClick={downloadAllPaymentHistoryCsv}
+                      disabled={exportingHistory || exportingAllHistory || paymentHistoryLoading}
+                      className="flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium border border-border bg-background text-foreground hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Users className="w-4 h-4 mr-1.5" />
+                      {exportingAllHistory ? "Exporting…" : "Export All CSV"}
                     </button>
                   </div>
 

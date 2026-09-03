@@ -18,13 +18,23 @@ type PaymentHistoryJob = {
   paidAt: string | null;
 };
 
+type PaymentHistoryCsvJob = PaymentHistoryJob & {
+  subcontractorName?: string;
+};
+
 function csvCell(value: string | number | null | undefined): string {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
 
-export function paymentHistoryToCsv(jobs: PaymentHistoryJob[]): string {
-  const header = ["Job", "Business Line", "Comp Type", "Hours", "Owed", "Paid", "Status", "Paid Date"];
+export function paymentHistoryToCsv(
+  jobs: PaymentHistoryCsvJob[],
+  options: { includeSubcontractor?: boolean } = {},
+): string {
+  const header = options.includeSubcontractor
+    ? ["Subcontractor", "Job", "Business Line", "Comp Type", "Hours", "Owed", "Paid", "Status", "Paid Date"]
+    : ["Job", "Business Line", "Comp Type", "Hours", "Owed", "Paid", "Status", "Paid Date"];
   const rows = jobs.map(job => [
+    ...(options.includeSubcontractor ? [job.subcontractorName ?? ""] : []),
     job.jobTitle ?? `Job #${job.jobId}`,
     job.businessLine ?? "",
     job.compensationType,
@@ -38,6 +48,123 @@ export function paymentHistoryToCsv(jobs: PaymentHistoryJob[]): string {
   return [header, ...rows]
     .map(row => row.map(csvCell).join(","))
     .join("\r\n") + "\r\n";
+}
+
+type PaymentHistoryJobWithSubcontractor = PaymentHistoryJob & {
+  subcontractorId: number;
+  subcontractorName: string;
+  effectiveYear: number | null;
+};
+
+async function loadPaymentHistoryJobs(subcontractorId?: number): Promise<PaymentHistoryJobWithSubcontractor[]> {
+  const rows = await db
+    .select({
+      subcontractorId: subcontractorsTable.id,
+      subcontractorName: subcontractorsTable.name,
+      jobId: jobSubcontractorsTable.jobId,
+      jobTitle: jobsTable.title,
+      jobStatus: jobsTable.status,
+      jobStartDate: jobsTable.startDate,
+      businessLine: jobsTable.businessLine,
+      compensationType: jobSubcontractorsTable.compensationType,
+      amountOwedOverride: jobSubcontractorsTable.amountOwed,
+      fixedAmount: jobSubcontractorsTable.fixedAmount,
+      allocationPct: jobSubcontractorsTable.allocationPct,
+      amountPaid: sql<string>`CASE
+        WHEN EXISTS (
+          SELECT 1 FROM sub_payment_records spr
+          WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
+            AND spr.subcontractor_id = ${subcontractorsTable.id}
+            AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+        )
+        THEN COALESCE((
+          SELECT SUM(spr.amount + COALESCE(spr.advance_amount, 0))
+          FROM sub_payment_records spr
+          WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
+            AND spr.subcontractor_id = ${subcontractorsTable.id}
+            AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+        ), 0)
+        ELSE COALESCE(${jobSubcontractorsTable.amountPaid}, 0)
+      END`,
+      paidDate: jobSubcontractorsTable.paidDate,
+      paidNotes: jobSubcontractorsTable.paidNotes,
+      paymentStatus: jobSubcontractorsTable.paymentStatus,
+      paidAt: jobSubcontractorsTable.paidAt,
+      computedOwed: sql<string>`COALESCE((
+        SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
+        FROM job_sub_hours h
+        WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+          AND h.subcontractor_id = ${subcontractorsTable.id}
+      ), 0)`,
+      totalHours: sql<string>`COALESCE((
+        SELECT SUM(h.hours)
+        FROM job_sub_hours h
+        WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+          AND h.subcontractor_id = ${subcontractorsTable.id}
+      ), 0)`,
+    })
+    .from(jobSubcontractorsTable)
+    .innerJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id))
+    .innerJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
+    .where(subcontractorId === undefined
+      ? undefined
+      : eq(jobSubcontractorsTable.subcontractorId, subcontractorId));
+
+  return rows.map(r => {
+    const compType = r.compensationType ?? "hourly";
+    const computedOwed = parseFloat(r.computedOwed ?? "0");
+    const manualOverride = r.amountOwedOverride != null ? parseFloat(r.amountOwedOverride) : null;
+    const amountOwed = manualOverride != null
+      ? manualOverride
+      : compType === "hourly"
+        ? computedOwed
+        : compType === "fixed"
+          ? (r.fixedAmount != null ? parseFloat(r.fixedAmount) : null)
+          : null;
+    const amountPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
+    const paidDate = r.paidDate;
+    const startDate = r.jobStartDate;
+    const effectiveDate = paidDate || startDate;
+    const effectiveYear = effectiveDate ? parseInt(effectiveDate.substring(0, 4)) : null;
+
+    return {
+      subcontractorId: r.subcontractorId,
+      subcontractorName: r.subcontractorName,
+      jobId: r.jobId,
+      jobTitle: r.jobTitle,
+      jobStatus: r.jobStatus,
+      businessLine: r.businessLine ?? null,
+      compensationType: compType,
+      totalHours: parseFloat(r.totalHours ?? "0"),
+      amountOwed,
+      amountPaid,
+      paidDate,
+      paidNotes: r.paidNotes,
+      paymentStatus: r.paymentStatus ?? "unpaid",
+      paidAt: r.paidAt ?? null,
+      effectiveYear,
+    };
+  });
+}
+
+function filterPaymentHistoryJobs(
+  jobs: PaymentHistoryJobWithSubcontractor[],
+  year: number | null,
+  businessLine: string | null,
+): PaymentHistoryJobWithSubcontractor[] {
+  return jobs
+    .filter(job => {
+      if (year !== null && job.effectiveYear !== year) return false;
+      if (businessLine && job.businessLine !== businessLine) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const subSort = a.subcontractorName.localeCompare(b.subcontractorName);
+      if (subSort !== 0) return subSort;
+      const dateSort = (b.paidDate || "").localeCompare(a.paidDate || "");
+      if (dateSort !== 0) return dateSort;
+      return (a.jobTitle ?? `Job #${a.jobId}`).localeCompare(b.jobTitle ?? `Job #${b.jobId}`);
+    });
 }
 
 function format(s: any, ytdOverride?: number) {
@@ -566,6 +693,27 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+router.get("/payment-history/all", async (req, res) => {
+  try {
+    const year = req.query.year ? parseInt(req.query.year as string) : null;
+    const businessLine = req.query.businessLine ? (req.query.businessLine as string) : null;
+    const rows = await loadPaymentHistoryJobs();
+    const jobs = filterPaymentHistoryJobs(rows, year, businessLine);
+
+    if (req.query.format === "csv") {
+      const filename = `subcontractors-payment-history-${year ?? "all-years"}.csv`;
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      return res.send(paymentHistoryToCsv(jobs, { includeSubcontractor: true }));
+    }
+
+    res.json({ jobs });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch payment history" });
+  }
+});
+
 router.get("/:id/payment-history", async (req, res) => {
   try {
     const subId = parseInt(req.params.id);
@@ -573,101 +721,12 @@ router.get("/:id/payment-history", async (req, res) => {
 
     const year = req.query.year ? parseInt(req.query.year as string) : null;
     const businessLine = req.query.businessLine ? (req.query.businessLine as string) : null;
-
-    const rows = await db
-      .select({
-        jobId: jobSubcontractorsTable.jobId,
-        jobTitle: jobsTable.title,
-        jobStatus: jobsTable.status,
-        jobStartDate: jobsTable.startDate,
-        businessLine: jobsTable.businessLine,
-        compensationType: jobSubcontractorsTable.compensationType,
-        amountOwedOverride: jobSubcontractorsTable.amountOwed,
-        fixedAmount: jobSubcontractorsTable.fixedAmount,
-        allocationPct: jobSubcontractorsTable.allocationPct,
-        amountPaid: sql<string>`CASE
-          WHEN EXISTS (
-            SELECT 1 FROM sub_payment_records spr
-            WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
-              AND spr.subcontractor_id = ${subId}
-              AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
-          )
-          THEN COALESCE((
-            SELECT SUM(spr.amount + COALESCE(spr.advance_amount, 0))
-            FROM sub_payment_records spr
-            WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
-              AND spr.subcontractor_id = ${subId}
-              AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
-          ), 0)
-          ELSE COALESCE(${jobSubcontractorsTable.amountPaid}, 0)
-        END`,
-        paidDate: jobSubcontractorsTable.paidDate,
-        paidNotes: jobSubcontractorsTable.paidNotes,
-        paymentStatus: jobSubcontractorsTable.paymentStatus,
-        paidAt: jobSubcontractorsTable.paidAt,
-        computedOwed: sql<string>`COALESCE((
-          SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
-          FROM job_sub_hours h
-          WHERE h.job_id = ${jobSubcontractorsTable.jobId}
-            AND h.subcontractor_id = ${subId}
-        ), 0)`,
-        totalHours: sql<string>`COALESCE((
-          SELECT SUM(h.hours)
-          FROM job_sub_hours h
-          WHERE h.job_id = ${jobSubcontractorsTable.jobId}
-            AND h.subcontractor_id = ${subId}
-        ), 0)`,
-      })
-      .from(jobSubcontractorsTable)
-      .innerJoin(jobsTable, eq(jobSubcontractorsTable.jobId, jobsTable.id))
-      .where(eq(jobSubcontractorsTable.subcontractorId, subId));
-
-    const jobs = rows
-      .map(r => {
-        const compType = r.compensationType ?? "hourly";
-        const computedOwed = parseFloat(r.computedOwed ?? "0");
-        const manualOverride = r.amountOwedOverride != null ? parseFloat(r.amountOwedOverride) : null;
-        const amountOwed = manualOverride != null
-          ? manualOverride
-          : compType === "hourly"
-            ? computedOwed
-            : compType === "fixed"
-              ? (r.fixedAmount != null ? parseFloat(r.fixedAmount) : null)
-              : null;
-        const amountPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
-        const paidDate = r.paidDate;
-        const startDate = r.jobStartDate;
-
-        // Determine the effective year for filtering: paidDate year if paid, else startDate year
-        const effectiveDate = paidDate || startDate;
-        const effectiveYear = effectiveDate ? parseInt(effectiveDate.substring(0, 4)) : null;
-
-        return {
-          jobId: r.jobId,
-          jobTitle: r.jobTitle,
-          jobStatus: r.jobStatus,
-          businessLine: r.businessLine ?? null,
-          compensationType: compType,
-          totalHours: parseFloat(r.totalHours ?? "0"),
-          amountOwed,
-          amountPaid,
-          paidDate,
-          paidNotes: r.paidNotes,
-          paymentStatus: r.paymentStatus ?? "unpaid",
-          paidAt: r.paidAt ?? null,
-          effectiveYear,
-        };
-      })
-      .filter(j => {
-        if (year !== null && j.effectiveYear !== year) return false;
-        if (businessLine && j.businessLine !== businessLine) return false;
-        return true;
-      })
-      .sort((a, b) => {
-        const da = a.paidDate || "";
-        const db = b.paidDate || "";
-        return db.localeCompare(da);
-      });
+    const allJobs = filterPaymentHistoryJobs(
+      await loadPaymentHistoryJobs(subId),
+      year,
+      businessLine,
+    );
+    const jobs = allJobs.map(({ subcontractorId: _subcontractorId, subcontractorName: _subcontractorName, ...job }) => job);
 
     const totalOwed = jobs.reduce((s, j) => s + (j.amountOwed ?? 0), 0);
     const totalPaid = jobs.reduce((s, j) => s + j.amountPaid, 0);
@@ -676,7 +735,7 @@ router.get("/:id/payment-history", async (req, res) => {
 
     // Collect distinct business lines across ALL jobs (unfiltered) for the filter dropdown
     const allBusinessLines = [...new Set(
-      rows.map(r => r.businessLine).filter((bl): bl is string => !!bl)
+      allJobs.map(job => job.businessLine).filter((bl): bl is string => !!bl)
     )].sort();
 
     if (req.query.format === "csv") {
