@@ -58,3 +58,4 @@
 - [Owner withdrawals model](owner-withdrawals-model.md) — Owner Withdrawals is the only user-facing owner-money concept; historical contributions remain internal in the same ledger
 - [Growth Reserve waterfall](growth-reserve-waterfall.md) — calculate after split-eligible job expenses, before hourly labor and split; tax comes from owner share
 - [Rich-text test runtime](rich-text-test-runtime.md) — sanitizer tests need a DOM-backed Vitest environment because Node does not provide DOMParser
+- [Puppeteer evaluate functions](puppeteer-evaluate-functions.md) — tsx can emit missing __name helpers inside serialized page.evaluate callbacks; use anonymous browser-context functions

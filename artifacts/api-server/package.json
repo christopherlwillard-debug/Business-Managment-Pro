@@ -13,6 +13,7 @@
     "verify:invoice-delivery": "tsx ./scripts/e2e-invoice-delivery-verify.ts",
     "verify:job-financials": "tsx ./scripts/e2e-job-financials-verify.ts",
     "verify:jobs-planner": "tsx ./scripts/e2e-jobs-planner-verify.ts",
+    "verify:subcontractor-csv": "tsx ./scripts/e2e-subcontractor-csv-verify.ts",
     "verify:subcontractor-delete": "tsx ./scripts/e2e-subcontractor-delete-verify.ts",
     "verify:mileage-route-recovery": "tsx ./scripts/e2e-mileage-route-recovery-verify.ts",
     "verify:public-site-seo": "tsx ./scripts/e2e-public-site-seo-verify.ts",
