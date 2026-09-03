@@ -340,6 +340,76 @@ async function main() {
     );
     record("Keep As Outstanding completes the job", outstandingAfter.job.status === "completed" && /Job completed/i.test(outstandingAfter.text), `status=${outstandingAfter.job.status}`);
     await page.screenshot({ path: `${SHOTS}/02-keep-outstanding-completed.png` });
+
+     // The completed job moves into the Paid section because its invoice is paid.
+     // Revisit the page as a fresh session state and expand that section so the
+     // card's outstanding balance is verified after the list has been rebuilt.
+     await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
+     await page.waitForFunction(
+       () => document.body.innerText.includes("Paid"),
+       { timeout: 30_000 },
+     ).catch(() => undefined);
+     await sleep(700);
+     const expandedPaidSection = await page.evaluate(() => {
+       const heading = Array.from(document.querySelectorAll<HTMLElement>("h2"))
+         .find(node => node.textContent?.trim() === "Paid");
+       const button = heading?.closest("button");
+       button?.click();
+       return !!button;
+     });
+     record("Paid jobs section can be reopened after reload", expandedPaidSection);
+     await page.waitForFunction(
+       (title) => document.body.innerText.includes(title),
+       { timeout: 30_000 },
+       keepOutstandingFixture.jobTitle,
+     ).catch(() => undefined);
+     await sleep(700);
+
+     const reloadedText = await page.evaluate(() => document.body.innerText);
+     record(
+       "Reloaded completed card shows $25.00 paid and $165.00 outstanding",
+       reloadedText.includes(keepOutstandingFixture.subName)
+         && reloadedText.includes("$25.00 paid")
+         && reloadedText.includes("$165.00 outstanding"),
+       reloadedText.match(/\$25\.00 paid[^\n]*/)?.[0] ?? "paid/outstanding balance text not found",
+     );
+     const outstandingAfterReload = await fetchAfterAction(keepOutstandingFixture.jobId);
+     const reloadedWorker = outstandingAfterReload.subs.find(
+       (row: { subcontractorId: number }) => row.subcontractorId === keepOutstandingFixture.subId,
+     );
+     const reloadedOutstandingRow = outstandingAfterReload.outstanding.find(
+       (row: { subcontractorId: number }) => row.subcontractorId === keepOutstandingFixture.subId,
+     );
+     const reloadedOutstandingBalance = Number(reloadedOutstandingRow?.amountOwed ?? 0)
+       - Number(reloadedOutstandingRow?.amountPaid ?? 0);
+     record(
+       "Reload preserves $25.00 paid and $165.00 outstanding in the API",
+       reloadedWorker?.paymentStatus === "partial"
+         && Math.abs(Number(reloadedWorker?.amountPaid) - 25) < 0.01
+         && Math.abs(reloadedOutstandingBalance - 165) < 0.01,
+       `status=${reloadedWorker?.paymentStatus}, paid=${reloadedWorker?.amountPaid}, outstanding=${reloadedOutstandingBalance}`,
+     );
+     const outstandingLedgerRowsAfterReload = await db.select({
+       amount: subPaymentRecordsTable.amount,
+       netPaid: subPaymentRecordsTable.netPaid,
+       isReversal: subPaymentRecordsTable.isReversal,
+     }).from(subPaymentRecordsTable).where(and(
+       eq(subPaymentRecordsTable.jobId, keepOutstandingFixture.jobId),
+       eq(subPaymentRecordsTable.subcontractorId, keepOutstandingFixture.subId),
+     ));
+     const outstandingActiveAmountsAfterReload = outstandingLedgerRowsAfterReload
+       .filter((row) => row.isReversal !== true)
+       .map((row) => Number(row.netPaid ?? row.amount))
+       .sort((a, b) => a - b);
+     record(
+       "Reload creates no additional subcontractor payment record",
+       outstandingLedgerRowsAfterReload.length === outstandingLedgerRows.length
+         && outstandingActiveAmountsAfterReload.length === outstandingActiveAmounts.length
+         && outstandingActiveAmountsAfterReload.every((amount, index) =>
+           Math.abs(amount - outstandingActiveAmounts[index]) < 0.01),
+       `payment rows=${outstandingLedgerRowsAfterReload.length}, active amounts=${outstandingActiveAmountsAfterReload.map((amount) => amount.toFixed(2)).join(", ")}`,
+     );
+     await page.screenshot({ path: `${SHOTS}/02-keep-outstanding-reloaded.png` });
   } finally {
     if (browser) await browser.close();
     for (const fixture of fixtures) await cleanupFixture(fixture);

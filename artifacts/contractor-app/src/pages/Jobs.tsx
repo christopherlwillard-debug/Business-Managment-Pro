@@ -5846,9 +5846,13 @@ function JobCard({
                           {sub.compensationType === "allocation"
                             ? isAllocationNoData
                               ? `${sub.allocationPct ?? 0}% allocation — invoice to compute`
-                              : `${sub.allocationPct ?? 0}% → ${formatCurrency(amt)}`
-                            : formatCurrency(amt)
+                              : `${sub.allocationPct ?? 0}% allocation`
+                            : "Payment balance"
                           }
+                        </p>
+                        <p className="text-[10px] font-medium text-amber-700">
+                          {formatCurrency(sub.amountPaid ?? 0)} paid
+                          {!isAllocationNoData && ` · ${formatCurrency(amt)} outstanding`}
                         </p>
                       </div>
                       {canEdit("jobs") && !isAllocationNoData && (
