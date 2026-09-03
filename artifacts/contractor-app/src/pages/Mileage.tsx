@@ -328,28 +328,45 @@ export default function Mileage() {
   const [distCalcLoading, setDistCalcLoading] = useState(false);
   const [distCalcError, setDistCalcError] = useState("");
   const [calculatedDistance, setCalculatedDistance] = useState<number | null>(null);
+  const milesInputRef = useRef<HTMLInputElement>(null);
+  const routeLookupIdRef = useRef(0);
+
+  const invalidateRouteLookup = () => {
+    routeLookupIdRef.current += 1;
+    setCalculatedDistance(clearRouteDistanceConfirmation());
+  };
 
   const calculateMiles = async () => {
     if (!manual.startLocation.trim() || !manual.endLocation.trim()) {
       setDistCalcError("Enter both a start and end address to calculate miles.");
       return;
     }
+    const lookupId = ++routeLookupIdRef.current;
     setDistCalcLoading(true);
     setDistCalcError("");
+    setCalculatedDistance(clearRouteDistanceConfirmation());
     try {
       const [fromCoords, toCoords] = await Promise.all([
         geocodeAddress(manual.startLocation.trim()),
         geocodeAddress(manual.endLocation.trim()),
       ]);
       const miles = await getDrivingDistanceMiles(fromCoords, toCoords);
+      if (lookupId !== routeLookupIdRef.current) return;
       setManual(m => ({ ...m, miles: String(miles) }));
       setCalculatedDistance(confirmRouteDistance(miles));
     } catch (err: unknown) {
+      if (lookupId !== routeLookupIdRef.current) return;
       const msg = err instanceof Error ? err.message : "Couldn't calculate distance. Try a more specific address.";
+      setCalculatedDistance(clearRouteDistanceConfirmation());
       setDistCalcError(msg);
     } finally {
-      setDistCalcLoading(false);
+      if (lookupId === routeLookupIdRef.current) setDistCalcLoading(false);
     }
+  };
+
+  const focusManualMiles = () => {
+    milesInputRef.current?.focus();
+    milesInputRef.current?.select();
   };
 
   const [monthlySaving, setMonthlySaving] = useState(false);
@@ -1024,10 +1041,12 @@ export default function Mileage() {
                       min="0"
                       step="0.1"
                       placeholder="e.g. 12.5"
+                      ref={milesInputRef}
                       value={manual.miles}
                       onChange={e => {
                         setManual(m => ({ ...m, miles: e.target.value }));
-                        setCalculatedDistance(clearRouteDistanceConfirmation());
+                        invalidateRouteLookup();
+                        setDistCalcError("");
                       }}
                       className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
@@ -1041,7 +1060,7 @@ export default function Mileage() {
                       value={manual.startLocation}
                       onChange={e => {
                         setManual(m => ({ ...m, startLocation: e.target.value }));
-                        setCalculatedDistance(clearRouteDistanceConfirmation());
+                        invalidateRouteLookup();
                         setDistCalcError("");
                       }}
                       className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -1055,7 +1074,7 @@ export default function Mileage() {
                       value={manual.endLocation}
                       onChange={e => {
                         setManual(m => ({ ...m, endLocation: e.target.value }));
-                        setCalculatedDistance(clearRouteDistanceConfirmation());
+                        invalidateRouteLookup();
                         setDistCalcError("");
                       }}
                       className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -1084,9 +1103,31 @@ export default function Mileage() {
                     )}
                   </button>
                   {distCalcError && (
-                    <div className="flex items-start gap-1.5 text-xs text-red-600">
-                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                      <span>{distCalcError}</span>
+                    <div role="alert" className="rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-xs text-red-700 space-y-2">
+                      <div className="flex items-start gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                        <span>{distCalcError}</span>
+                      </div>
+                      <p className="pl-5 text-red-600/90">
+                        No route miles were saved. Try the lookup again or enter the miles manually.
+                      </p>
+                      <div className="pl-5 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={calculateMiles}
+                          disabled={distCalcLoading || !manual.startLocation.trim() || !manual.endLocation.trim()}
+                          className="rounded-md border border-red-300 bg-white px-2 py-1 font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        >
+                          Try again
+                        </button>
+                        <button
+                          type="button"
+                          onClick={focusManualMiles}
+                          className="rounded-md border border-red-300 px-2 py-1 font-semibold text-red-700 hover:bg-red-100"
+                        >
+                          Enter miles manually
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
