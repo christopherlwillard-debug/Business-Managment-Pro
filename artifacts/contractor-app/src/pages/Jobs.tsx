@@ -1781,6 +1781,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
 }) {
   const [tab, setTab] = useState<"breakdown" | "hours">(initialTab);
   const [profit, setProfit] = useState<JobProfit | null>(initialProfit ?? null);
+  const detailedProfitLoaded = useRef(false);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [loading, setLoading] = useState(!initialProfit);
   const [deletingPayId, setDeletingPayId] = useState<number | null>(null);
@@ -1788,7 +1789,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const [deletingHourId, setDeletingHourId] = useState<number | null>(null);
 
   useEffect(() => {
-    setProfit(initialProfit ?? null);
+    // The parent supplies the bulk profit-summary response, which intentionally
+    // omits reimbursement and fuel-detail fields. It is useful for the first
+    // paint, but must never overwrite the full per-job response after it loads.
+    if (!detailedProfitLoaded.current) setProfit(initialProfit ?? null);
   }, [initialProfit]);
 
   const [fuelExpanded, setFuelExpanded] = useState(false);
@@ -1927,7 +1931,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       setExpenseItems(prev => prev?.filter(item => item.id !== allocationId) ?? prev);
       const fresh = await fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" })
         .then(r => r.ok ? r.json() : null).catch(() => null);
-      if (fresh) setProfit(fresh);
+      if (fresh) {
+        detailedProfitLoaded.current = true;
+        setProfit(fresh);
+      }
       toast({ title: "Allocation removed", description: "The original expense was not changed." });
     } catch (err) {
       toast({ title: "Could not remove allocation", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
@@ -2050,6 +2057,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       const fresh = await fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" })
         .then(r => r.ok ? r.json() : null);
       if (fresh) {
+        detailedProfitLoaded.current = true;
         setProfit(fresh as JobProfit);
         setExpenseItems(null);
         if (expensesOpen) void loadExpenses();
@@ -2104,7 +2112,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       }
       if (hRes.status === "fulfilled" && Array.isArray(hRes.value)) setSubHours(hRes.value as SubHourEntry[]);
       if (dRes.status === "fulfilled" && Array.isArray(dRes.value)) setDistributions(dRes.value);
-      if (profRes?.status === "fulfilled" && profRes.value) setProfit(profRes.value as JobProfit);
+      if (profRes?.status === "fulfilled" && profRes.value) {
+        detailedProfitLoaded.current = true;
+        setProfit(profRes.value as JobProfit);
+      }
       setLoading(false);
     });
   }, [job.id]);
