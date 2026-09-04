@@ -285,3 +285,13 @@ Created the four-document architecture governance system:
 - Job-only fuel estimates remain outside the accounting ledgers, but when shown
   in Job Costs they now reduce the percentage split pool. Remaining and Split
   Pool therefore use the same finalized server waterfall (ADR-017).
+
+### Owner gas reimbursement after take-home
+
+- Automatic fuel estimates now qualify for the existing owner reimbursement
+  presentation when no editable reimbursement has been saved.
+- Job Financials shows the post-tax `Recommended Take Home`, then `Gas Cost
+  Reimbursement`, then a combined `Total to You`.
+- The reimbursement remains outside expenses, mileage, payroll, and owner
+  withdrawal ledgers; saved recipient, amount, and paid status still take
+  precedence over the automatic estimate.

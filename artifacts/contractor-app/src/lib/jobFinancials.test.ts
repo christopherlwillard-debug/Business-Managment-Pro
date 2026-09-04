@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateJobFinancialWaterfall,
+  calculateOwnerReimbursement,
   formatJobFinancialAmount,
   jobFinancialSummaryDetail,
 } from "./jobFinancials";
@@ -101,6 +102,64 @@ describe("calculateJobFinancialWaterfall", () => {
     expect(result.ownerShare).toBeCloseTo(1357.01, 2);
     expect(result.taxReserve).toBeCloseTo(339.25, 2);
     expect(result.ownerTakeHome).toBeCloseTo(1017.75, 2);
+  });
+});
+
+describe("calculateOwnerReimbursement", () => {
+  it("returns the automatic fuel estimate after the taxed take-home", () => {
+    const result = calculateOwnerReimbursement({
+      ownerTakeHome: 1017.75,
+      includeMileageInJobCosts: true,
+      mileageReimbursementApplied: true,
+      savedReimbursement: null,
+      estimatedFuelCost: 177.80,
+    });
+
+    expect(result.amount).toBeCloseTo(177.80, 2);
+    expect(result.outstanding).toBeCloseTo(177.80, 2);
+    expect(result.totalOwnerSettlement).toBeCloseTo(1195.55, 2);
+    expect(result.isAutomatic).toBe(true);
+  });
+
+  it("prefers a saved owner reimbursement over the estimate", () => {
+    const result = calculateOwnerReimbursement({
+      ownerTakeHome: 1017.75,
+      includeMileageInJobCosts: true,
+      savedReimbursement: {
+        amount: 200,
+        recipientType: "owner",
+        status: "owed",
+      },
+      estimatedFuelCost: 177.80,
+    });
+
+    expect(result.amount).toBe(200);
+    expect(result.totalOwnerSettlement).toBeCloseTo(1217.75, 2);
+    expect(result.isAutomatic).toBe(false);
+  });
+
+  it("does not reimburse a disabled, replaced, or non-owner amount", () => {
+    expect(calculateOwnerReimbursement({
+      ownerTakeHome: 1000,
+      includeMileageInJobCosts: false,
+      estimatedFuelCost: 177.80,
+    }).amount).toBe(0);
+    expect(calculateOwnerReimbursement({
+      ownerTakeHome: 1000,
+      includeMileageInJobCosts: true,
+      mileageReimbursementApplied: false,
+      estimatedFuelCost: 177.80,
+    }).amount).toBe(0);
+    expect(calculateOwnerReimbursement({
+      ownerTakeHome: 1000,
+      includeMileageInJobCosts: true,
+      savedReimbursement: {
+        amount: 177.80,
+        recipientType: "subcontractor",
+        status: "owed",
+      },
+      estimatedFuelCost: 177.80,
+    }).amount).toBe(0);
   });
 });
 

@@ -30,6 +30,7 @@ import { formatCurrency, formatDate, localDateString } from "@/lib/utils";
 import { computeSubOwed } from "@/lib/allocationUtils";
 import {
   calculateJobFinancialWaterfall,
+  calculateOwnerReimbursement,
   formatJobFinancialAmount,
   jobFinancialSummaryDetail,
 } from "@/lib/jobFinancials";
@@ -2150,18 +2151,24 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const taxReserve = ownerShare * (taxReservePct / 100);
   const ownerTakeHome = ownerShare - taxReserve;
   // A reimbursement paid to the business owner is money owed back for a
-  // personal out-of-pocket cost, not a profit-based owner withdrawal. Keep it outside
-  // the split and tax reserve, and show only the outstanding amount in the
-  // settlement total.
-  const ownerReimbursement = !mileageIncluded || profit?.mileageReimbursementApplied === false
-    ? 0
-    : profit?.mileageReimbursement?.recipientType === "owner"
-      ? (profit.mileageReimbursement.amount ?? 0)
-      : 0;
-  const outstandingOwnerReimbursement = profit?.mileageReimbursement?.status === "owed"
-    ? ownerReimbursement
-    : 0;
-  const totalOwnerSettlement = ownerTakeHome + outstandingOwnerReimbursement;
+  // personal out-of-pocket cost, not a profit-based owner withdrawal. Keep it
+  // after the split and tax reserve, and include the automatic fuel estimate
+  // when no editable reimbursement has been saved yet.
+  const ownerReimbursement = calculateOwnerReimbursement({
+    ownerTakeHome,
+    includeMileageInJobCosts: mileageIncluded,
+    mileageReimbursementApplied: profit?.mileageReimbursementApplied,
+    savedReimbursement: profit?.mileageReimbursement
+      ? {
+          amount: profit.mileageReimbursement.amount,
+          recipientType: profit.mileageReimbursement.recipientType,
+          status: profit.mileageReimbursement.status,
+        }
+      : null,
+    estimatedFuelCost: profit?.estimatedFuelCost,
+  });
+  const outstandingOwnerReimbursement = ownerReimbursement.outstanding;
+  const totalOwnerSettlement = ownerReimbursement.totalOwnerSettlement;
   const net = profit?.netProfit ?? 0;
   const isProfit = net > 0;
   const margin = profit ? calculateJobMargin(net, profit.collected) : null;
@@ -2303,7 +2310,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                       <p className="text-xs text-violet-700 font-bold uppercase tracking-wide">Mileage Reimbursement</p>
                       <p className="text-[10px] text-violet-600/80 mt-0.5">
                         {mileageIncluded
-                          ? "Added to Job Costs, not the 50/50 or percentage split pool."
+                          ? ownerReimbursement.amount > 0
+                            ? "Included in Job Costs, then returned to you after the post-tax take-home."
+                            : "Included in Job Costs; the saved recipient controls who receives reimbursement."
                           : "Excluded from Job Costs for this job. Saving it here does not change the profit calculation."}
                       </p>
                       {profit.mileageReimbursementApplied === false && (
@@ -2597,22 +2606,22 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                     <div><p className="text-sm font-black text-emerald-800">Recommended Take Home</p>{taxReservePct > 0 && <p className="text-[10px] text-emerald-600">After {taxReservePct}% tax reserve</p>}</div>
                     <span className="text-xl font-black text-emerald-700">${fmt(ownerTakeHome)}</span>
                   </div>
-                  {ownerReimbursement > 0 && (
+                  {ownerReimbursement.amount > 0 && (
                     <>
                       <div className="flex items-center justify-between px-4 py-3 bg-violet-50/60">
                         <div>
-                          <p className="text-sm text-violet-800">Owner Reimbursement</p>
+                          <p className="text-sm text-violet-800">Gas Cost Reimbursement</p>
                           <p className="text-[10px] text-violet-600">
-                            {profit?.mileageReimbursement?.status === "paid" ? "Already paid back" : "Personal cost owed back to you"}
+                            {ownerReimbursement.isPaid ? "Already paid back" : "Returned to you after take-home"}
                           </p>
                         </div>
-                        <span className={`text-sm font-bold ${profit?.mileageReimbursement?.status === "paid" ? "text-violet-500" : "text-violet-700"}`}>
-                          {profit?.mileageReimbursement?.status === "paid" ? "Paid " : "+"}{formatCurrency(ownerReimbursement)}
+                        <span className={`text-sm font-bold ${ownerReimbursement.isPaid ? "text-violet-500" : "text-violet-700"}`}>
+                          {ownerReimbursement.isPaid ? "Paid " : "+"}{formatCurrency(ownerReimbursement.amount)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between px-4 py-3 bg-emerald-100/70 border-t border-emerald-200">
                         <div>
-                          <p className="text-sm font-black text-emerald-900">Total Owner Settlement</p>
+                          <p className="text-sm font-black text-emerald-900">Total to You</p>
                           <p className="text-[10px] text-emerald-700">Take-home plus reimbursement</p>
                         </div>
                         <span className="text-xl font-black text-emerald-800">${fmt(totalOwnerSettlement)}</span>

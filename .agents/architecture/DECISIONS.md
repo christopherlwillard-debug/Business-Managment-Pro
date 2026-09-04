@@ -318,3 +318,21 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-09-03
+
+---
+
+## ADR-018
+
+**Title:** Owner-paid job fuel is returned after tax-adjusted take-home**
+
+**Decision:** Keep an included route-based fuel estimate or saved mileage reimbursement in Job Costs so it reduces job income and the shared percentage pool once. After the normal owner share and tax reserve are calculated, an owner-directed amount is shown as `Gas Cost Reimbursement` and added to `Total to You`. A saved reimbursement amount, recipient, and paid status override the automatic estimate. Automatic estimates do not create expense, mileage, payroll, or owner-withdrawal ledger rows.
+
+**Reason:** The owner must see the business cost in the job waterfall while still receiving back the personal out-of-pocket gas amount after the first, tax-adjusted take-home amount. Hiding the payback inside the profit share makes the settlement impossible to understand.
+
+**Rejected Alternatives:**
+- Showing fuel only as a Job Cost with no owner payback
+- Adding the reimbursement before the tax reserve
+- Creating a duplicate expense or owner-withdrawal ledger entry for the payback
+
+**Status:** Accepted
+**Date:** 2026-09-03

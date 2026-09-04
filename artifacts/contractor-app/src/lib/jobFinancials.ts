@@ -25,6 +25,42 @@ export function jobFinancialSummaryDetail(
   return value == null ? unavailableReason ?? null : availableDetail;
 }
 
+export type OwnerReimbursementInput = {
+  ownerTakeHome: number;
+  includeMileageInJobCosts: boolean;
+  mileageReimbursementApplied?: boolean;
+  savedReimbursement?: {
+    amount: number;
+    recipientType: "owner" | "subcontractor" | "other";
+    status: "owed" | "paid";
+  } | null;
+  estimatedFuelCost?: number | null;
+};
+
+export function calculateOwnerReimbursement(input: OwnerReimbursementInput) {
+  const eligible = input.includeMileageInJobCosts && input.mileageReimbursementApplied !== false;
+  const saved = input.savedReimbursement;
+  const isSavedOwnerReimbursement = saved?.recipientType === "owner";
+  const isAutomaticOwnerReimbursement = saved == null;
+  const amount = !eligible
+    ? 0
+    : isSavedOwnerReimbursement
+      ? Math.max(0, saved.amount)
+      : isAutomaticOwnerReimbursement
+        ? Math.max(0, input.estimatedFuelCost ?? 0)
+        : 0;
+  const isPaid = isSavedOwnerReimbursement && saved.status === "paid";
+  const outstanding = isPaid ? 0 : amount;
+
+  return {
+    amount,
+    outstanding,
+    totalOwnerSettlement: input.ownerTakeHome + outstanding,
+    isAutomatic: isAutomaticOwnerReimbursement && amount > 0,
+    isPaid,
+  };
+}
+
 export function calculateJobFinancialWaterfall(input: JobFinancialWaterfallInput) {
   // Every amount shown under Job Costs reduces the percentage split pool.
   // mileageReimbursementCost remains in the input contract for callers that
