@@ -10,6 +10,7 @@ import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { filterCashReceipts, sumCashReceipts } from "../lib/cash-revenue.js";
 import { calcInvoiceFromStored } from "./invoices.js";
+import { getWeekToDateStart } from "../lib/dashboard-period.js";
 import {
   OWNER_WITHDRAWAL_EXPENSE_CATEGORIES,
   isOwnerWithdrawalExpenseCategory,
@@ -24,9 +25,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const now = new Date();
     let startDate: string;
     if (period === "week") {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 7);
-      startDate = d.toISOString().split("T")[0];
+      startDate = getWeekToDateStart(now);
     } else if (period === "quarter") {
       const d = new Date(now);
       d.setMonth(d.getMonth() - 3);

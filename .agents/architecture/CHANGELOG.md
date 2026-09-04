@@ -295,3 +295,13 @@ Created the four-document architecture governance system:
 - The reimbursement remains outside expenses, mileage, payroll, and owner
   withdrawal ledgers; saved recipient, amount, and paid status still take
   precedence over the automatic estimate.
+
+## 2026-09-04
+
+### Dashboard WTD period correction
+
+- Corrected the dashboard `WTD` period from a trailing seven-day window to the
+  current Monday-start calendar week.
+- Kept all existing cash-basis revenue, expense, subcontractor-pay, and
+  outstanding-invoice calculations unchanged.
+- Added regression coverage for month-boundary and Sunday/Monday week starts.

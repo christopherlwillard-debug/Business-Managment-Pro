@@ -59,3 +59,4 @@
 - [Growth Reserve waterfall](growth-reserve-waterfall.md) — calculate after split-eligible job expenses, before hourly labor and split; tax comes from owner share
 - [Rich-text test runtime](rich-text-test-runtime.md) — sanitizer tests need a DOM-backed Vitest environment because Node does not provide DOMParser
 - [Puppeteer evaluate functions](puppeteer-evaluate-functions.md) — tsx can emit missing __name helpers inside serialized page.evaluate callbacks; use anonymous browser-context functions
+- [Dashboard WTD semantics](dashboard-wtd-semantics.md) — WTD is the current Monday-start calendar week, not a trailing seven-day range

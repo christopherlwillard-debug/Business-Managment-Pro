@@ -336,3 +336,21 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-09-03
+
+---
+
+## ADR-019
+
+**Title:** Dashboard WTD uses the current Monday-start calendar week
+
+**Decision:** The dashboard's `WTD` period begins on Monday of the current calendar week and ends on the report's current date. It is not a trailing seven-day window.
+
+**Reason:** A trailing seven-day range can cross a month boundary and make WTD expenses exceed MTD expenses, which makes the period labels and business-health comparison misleading. The existing invoice, expense, payroll, and cash-basis sources remain unchanged.
+
+**Rejected Alternatives:**
+- Keeping the trailing seven-day range under the `WTD` label
+- Creating a separate dashboard or financial ledger for week-to-date reporting
+- Renaming the existing period to `Last 7 Days`
+
+**Status:** Accepted
+**Date:** 2026-09-04
