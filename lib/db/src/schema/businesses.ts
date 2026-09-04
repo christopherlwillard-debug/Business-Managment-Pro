@@ -8,6 +8,7 @@ export const businessesTable = pgTable("businesses", {
   slug: text("slug").notNull().unique(),
   type: text("type").notNull().default("other"),
   logoUrl: text("logo_url"),
+  invoiceLogoLayout: jsonb("invoice_logo_layout"),
   address: text("address"),
   city: text("city"),
   state: text("state"),

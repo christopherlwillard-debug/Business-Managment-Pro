@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import {
   Building2, Settings2, Receipt, Check, AlertCircle, Upload,
-  X, ImagePlus, Trash2, AlignLeft, AlignCenter, AlignRight,
+  X, ImagePlus, Trash2,
   ChevronRight, DollarSign, Navigation, FileText, ShieldCheck,
   Bell, Users2, Shield, CheckCircle2, XCircle, UserMinus, UserPlus, Mail,
   Link2, Link2Off, Smartphone, LayoutDashboard, Send, Loader2,
@@ -20,7 +20,6 @@ import { FEATURE_OPTIONS } from "@/lib/featureOptions";
 import { HomeLibraryModal } from "@/components/MfhPanel";
 import { SignaturePad } from "@/components/SignaturePad";
 import { ProductionBillingSection } from "@/components/ProductionBillingSection";
-import { getInvoiceLogoDimensions } from "@workspace/api-zod";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -68,18 +67,6 @@ const DEFAULT_TAX_ELECTION_FOR_ENTITY: Record<string, string> = {
   "Multi-Member LLC":    "partnership",
   "Corporation":         "c_corp",
 };
-
-const LOGO_POSITIONS = [
-  { key: "top-left", label: "Left", icon: AlignLeft },
-  { key: "top-center", label: "Center", icon: AlignCenter },
-  { key: "top-right", label: "Right", icon: AlignRight },
-];
-
-const LOGO_SIZES = [
-  { key: "small", label: "Small" },
-  { key: "medium", label: "Medium" },
-  { key: "large", label: "Large" },
-];
 
 const TABS = [
   { key: "profile", label: "Business", icon: Building2 },
@@ -626,64 +613,6 @@ function TeamSection() {
           ) : null}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-// ─── Mini invoice preview showing logo placement ──────────────────────────────
-function InvoiceLogoPreview({
-  logoUrl, position, size, companyName,
-}: {
-  logoUrl: string | null; position: string; size: string; companyName: string;
-}) {
-  const { width, height } = getInvoiceLogoDimensions(size);
-  const scale = 0.42;
-  const imgStyle = { width: width * scale, height: height * scale, maxWidth: "100%", objectFit: "contain" as const };
-  const [previewImgError, setPreviewImgError] = useState(false);
-
-  useEffect(() => setPreviewImgError(false), [logoUrl]);
-
-  const logoEl = logoUrl && !previewImgError
-    ? <img src={`${BASE}${logoUrl}`} style={imgStyle} alt="Logo" className="rounded" onError={() => setPreviewImgError(true)} />
-    : null;
-
-  const nameCol = (
-    <div className={`min-w-0 ${position === "top-center" ? "text-center" : position === "top-right" ? "text-right" : "text-left"}`}>
-      <p className="text-[10px] font-bold text-gray-900">{companyName || "Your Company"}</p>
-      <p className="text-[8px] text-gray-400">Lexington, KY 40501</p>
-    </div>
-  );
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm text-[10px] select-none">
-      <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400" />
-      <div className="px-4 py-3">
-        {position === "top-center" ? (
-          <div className="flex flex-col items-center gap-1 mb-2">
-            {logoEl}
-            {nameCol}
-          </div>
-        ) : position === "top-right" ? (
-          <div className="flex justify-between items-start mb-2">
-            <p className="text-[12px] font-black tracking-widest text-gray-200">INVOICE</p>
-            <div className="flex flex-col items-end gap-1">{logoEl}{nameCol}</div>
-          </div>
-        ) : (
-          <div className="flex justify-between items-start gap-2 mb-2">
-            <div className="flex flex-col items-start gap-1">{logoEl}{nameCol}</div>
-            <p className="text-[12px] font-black tracking-widest text-gray-200">INVOICE</p>
-          </div>
-        )}
-        {/* Fake invoice content lines */}
-        <div className="space-y-1 mt-1">
-          {[60, 80, 50].map((w, i) => (
-            <div key={i} className="flex justify-between">
-              <div className="h-1.5 bg-gray-100 rounded" style={{ width: `${w}%` }} />
-              <div className="h-1.5 bg-gray-100 rounded w-10" />
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -1856,7 +1785,6 @@ export default function Settings() {
     defaultTaxRate: "", invoicePrefix: "INV-2026-",
     defaultPaymentTerms: "Net 30", lateFeePercent: "",
     mileageRate: "0.725", thresholdAmount1099: "2000",
-    invoiceLogoPosition: "top-left", invoiceLogoSize: "medium",
     // SMTP email delivery
     smtpHost: "", smtpPort: "587", smtpUser: "", smtpSecure: "0",
     // mileage tracking
@@ -1916,8 +1844,6 @@ export default function Settings() {
         lateFeePercent: s.lateFeePercent != null ? String(s.lateFeePercent) : "",
         mileageRate: s.mileageRate != null ? String(s.mileageRate) : "0.725",
         thresholdAmount1099: s.thresholdAmount1099 != null ? String(s.thresholdAmount1099) : "2000",
-        invoiceLogoPosition: s.invoiceLogoPosition ?? "top-left",
-        invoiceLogoSize: s.invoiceLogoSize ?? "medium",
         smtpHost: (s.smtpHost as string | undefined) ?? "",
         smtpPort: (s.smtpPort as string | undefined) ?? "587",
         smtpUser: (s.smtpUser as string | undefined) ?? "",
@@ -1980,8 +1906,6 @@ export default function Settings() {
           lateFeePercent: form.lateFeePercent ? parseFloat(form.lateFeePercent) : undefined,
           mileageRate: form.mileageRate ? parseFloat(form.mileageRate) : 0.725,
           thresholdAmount1099: form.thresholdAmount1099 ? parseFloat(form.thresholdAmount1099) : 2000,
-          invoiceLogoPosition: form.invoiceLogoPosition,
-          invoiceLogoSize: form.invoiceLogoSize,
           mileageDefaultClassification: form.mileageDefaultClassification,
           mileageUnits: form.mileageUnits,
           mileageReminderFrequency: form.mileageReminderFrequency,
@@ -2417,75 +2341,6 @@ export default function Settings() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/50 shadow-md bg-card">
-              <CardHeader className="border-b border-border/50 bg-muted/20 pb-4">
-                <CardTitle className="font-display flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-primary" /> Invoice Logo Placement
-                </CardTitle>
-                <CardDescription>Choose where and how big your logo appears on invoices. Preview updates in real time.</CardDescription>
-              </CardHeader>
-              <CardContent className="p-6 space-y-6">
-                {/* Position picker */}
-                <div className="space-y-3">
-                  <p className="text-sm font-semibold text-foreground">Logo Position</p>
-                  <div className="grid grid-cols-3 gap-3">
-                    {LOGO_POSITIONS.map(pos => {
-                      const Icon = pos.icon;
-                      const active = form.invoiceLogoPosition === pos.key;
-                      return (
-                        <button
-                          key={pos.key}
-                          type="button"
-                          onClick={() => setF("invoiceLogoPosition", pos.key)}
-                          className={`flex flex-col items-center gap-2 py-4 rounded-xl border-2 transition-all ${
-                            active ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"
-                          }`}
-                        >
-                          <Icon className={`w-5 h-5 ${active ? "text-primary" : "text-muted-foreground"}`} />
-                          <span className={`text-xs font-semibold ${active ? "text-primary" : "text-muted-foreground"}`}>{pos.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Size picker */}
-                <div className="space-y-3">
-                  <p className="text-sm font-semibold text-foreground">Logo Size</p>
-                  <div className="grid grid-cols-3 gap-3">
-                    {LOGO_SIZES.map(sz => {
-                      const active = form.invoiceLogoSize === sz.key;
-                      return (
-                        <button
-                          key={sz.key}
-                          type="button"
-                          onClick={() => setF("invoiceLogoSize", sz.key)}
-                          className={`flex flex-col items-center gap-2 py-4 rounded-xl border-2 transition-all ${
-                            active ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"
-                          }`}
-                        >
-                          <div className={`rounded bg-primary/20 flex items-center justify-center ${active ? "bg-primary/20" : "bg-muted"}`} style={{ width: getInvoiceLogoDimensions(sz.key).width * 0.2, height: getInvoiceLogoDimensions(sz.key).height * 0.2 }}>
-                            <ImagePlus className={`${active ? "text-primary" : "text-muted-foreground"}`} style={{ width: 18, height: 18 }} />
-                          </div>
-                          <span className={`text-xs font-semibold ${active ? "text-primary" : "text-muted-foreground"}`}>{sz.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Live preview */}
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-foreground">Preview</p>
-                  <InvoiceLogoPreview
-                    logoUrl={logoUrl}
-                    position={form.invoiceLogoPosition}
-                    size={form.invoiceLogoSize}
-                    companyName={form.companyName}
-                  />
-                </div>
-              </CardContent>
-            </Card>
           </>
         )}
 

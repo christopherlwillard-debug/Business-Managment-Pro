@@ -1,5 +1,10 @@
-import { getLogoDims } from "./invoiceLogoConstants";
-import { calculateInvoiceTotals, normalizeInvoiceLogoPosition } from "@workspace/api-zod";
+import { getLogoLayout } from "./invoiceLogoConstants";
+import {
+  calculateInvoiceTotals,
+  invoiceLogoMarginLeft,
+  invoiceLogoPositionFromLayout,
+  type InvoiceLogoLayout,
+} from "@workspace/api-zod";
 
 export interface PrintableInvoice {
   invoiceNumber: string;
@@ -38,6 +43,7 @@ export interface PrintableSettings {
   logoAbsoluteUrl?: string | null;
   logoSize?: string | null;
   logoPosition?: string | null;
+  logoLayout?: InvoiceLogoLayout | null;
   /** Override display name for this business (e.g. DBA name). When set, used instead of companyName + businessLine logic. */
   dbaName?: string | null;
 }
@@ -71,8 +77,8 @@ export const INVOICE_PRINT_STYLES = `
 `;
 
 export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableSettings): string {
-  const { h: logoH, w: logoW } = getLogoDims(settings.logoSize);
-  const logoPos = normalizeInvoiceLogoPosition(settings.logoPosition);
+  const logoLayout = getLogoLayout(settings.logoLayout, settings.logoPosition, settings.logoSize);
+  const logoPos = invoiceLogoPositionFromLayout(logoLayout);
 
   const displayCompanyName = settings.companyName ?? settings.dbaName ?? null;
 
@@ -80,7 +86,7 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
     settings.companyState || settings.companyZip || settings.companyPhone || settings.companyEmail);
 
   const logoHtml = settings.logoAbsoluteUrl
-    ? `<div data-invoice-logo="${logoPos}" style="width:${logoW}px;height:${logoH}px;max-width:100%;flex-shrink:0;"><img src="${esc(settings.logoAbsoluteUrl)}" alt="${esc(displayCompanyName || "Company logo")}" style="width:100%;height:100%;object-fit:contain;display:block;" onerror="this.parentElement.style.display='none'" /></div>`
+    ? `<div data-invoice-logo="${logoPos}" data-invoice-logo-x="${logoLayout.x}" style="width:${logoLayout.width}px;height:${logoLayout.height}px;max-width:100%;margin-left:${invoiceLogoMarginLeft(logoLayout)};"><img src="${esc(settings.logoAbsoluteUrl)}" alt="${esc(displayCompanyName || "Company logo")}" style="width:100%;height:100%;object-fit:contain;display:block;" onerror="this.parentElement.style.display='none'" /></div>`
     : "";
 
   const contactLines: string[] = [];
@@ -111,33 +117,14 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
       </table>
     </div>`;
 
-  let headerHtml = "";
-  if (logoPos === "top-center") {
-    headerHtml = `
-      <div data-invoice-brand-position="top-center">
-        <div style="display:flex;flex-direction:column;align-items:center;text-align:center;margin:0 auto 18px;">
-          ${logoHtml}${contactHtml}
-        </div>
-        <div style="display:flex;justify-content:flex-end;">${invoiceDetailsHtml}</div>
-      </div>`;
-  } else if (logoPos === "top-right") {
-    headerHtml = `
-      <div data-invoice-brand-position="top-right" style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
+  const headerHtml = `
+    <div data-invoice-brand-position="${logoPos}">
+      ${logoHtml ? `<div style="width:100%;margin-bottom:8px;">${logoHtml}</div>` : ""}
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
+        <div>${contactHtml}</div>
         ${invoiceDetailsHtml}
-        <div style="display:flex;flex-direction:column;align-items:flex-end;text-align:right;">
-          ${logoHtml}
-          ${contactHtml}
-        </div>
-      </div>`;
-  } else {
-    headerHtml = `
-      <div data-invoice-brand-position="top-left" style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
-        <div style="display:flex;flex-direction:column;">
-          ${logoHtml}${contactHtml}
-        </div>
-        ${invoiceDetailsHtml}
-      </div>`;
-  }
+      </div>
+    </div>`;
 
   const workLocation = inv.locationName || inv.city || inv.state;
   const billToContent = inv.clientName

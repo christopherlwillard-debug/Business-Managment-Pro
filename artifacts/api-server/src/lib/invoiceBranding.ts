@@ -136,5 +136,6 @@ export function invoiceEmailSettingsFromBrand(
     logoBuffer: brand.logo?.buffer ?? null,
     logoMimeType: brand.logo?.mimeType ?? null,
     logoFilename: brand.logo?.filename ?? null,
+    invoiceLogoLayout: brand.logoLayout,
   };
 }

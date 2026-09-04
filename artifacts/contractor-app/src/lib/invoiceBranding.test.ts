@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { buildInvoiceEmailHtml, dataUriToInlineImage } from "./gmailSend";
 import { buildInvoiceBodyHtml } from "./printInvoice";
+import { normalizeInvoiceLogoLayout, resolveInvoiceBrand } from "@workspace/api-zod";
+import {
+  moveInvoiceLogoLayout,
+  resizeInvoiceLogoLayout,
+  shouldEnterInvoiceLogoLayoutMode,
+} from "./invoiceLogoConstants";
 
 const logoDataUri = "data:image/png;base64,aW52b2ljZS1sb2dv";
 const invoice = {
@@ -15,6 +21,55 @@ const invoice = {
 };
 
 describe("invoice brand rendering", () => {
+  it("converts legacy shared placement into a safe initial business layout", () => {
+    expect(normalizeInvoiceLogoLayout(null, "top-right", "small")).toEqual({
+      x: 1,
+      width: 120,
+      height: 50,
+    });
+  });
+
+  it("constrains direct movement and preserves the resize aspect ratio", () => {
+    const initial = { x: 0.5, width: 200, height: 80 };
+    expect(moveInvoiceLogoLayout(initial, 500, 400).x).toBe(1);
+    expect(moveInvoiceLogoLayout(initial, -500, 400).x).toBe(0);
+
+    const resized = resizeInvoiceLogoLayout(initial, 50, 0);
+    expect(resized).toMatchObject({ width: 250, height: 100 });
+    expect(resized.width / resized.height).toBe(initial.width / initial.height);
+
+    const tall = { x: 0.5, width: 80, height: 140 };
+    const boundedTall = resizeInvoiceLogoLayout(tall, 500, 500);
+    expect(boundedTall).toEqual(tall);
+    expect(boundedTall.width / boundedTall.height).toBe(tall.width / tall.height);
+  });
+
+  it("does not re-enter layout mode and reset the draft after a resize interaction", () => {
+    const saved = { x: 0.5, width: 200, height: 80 };
+    const draftAfterResize = resizeInvoiceLogoLayout(saved, 40, 0);
+
+    expect(shouldEnterInvoiceLogoLayoutMode(true)).toBe(false);
+    expect(draftAfterResize).toEqual({ x: 0.5, width: 240, height: 96 });
+    expect(draftAfterResize).not.toEqual(saved);
+  });
+
+  it("keeps saved layouts isolated by selected business", () => {
+    const settings = { invoiceLogoPosition: "top-left", invoiceLogoSize: "medium" };
+    const asphalt = resolveInvoiceBrand("asphalt_sealing", settings, {
+      slug: "asphalt_sealing",
+      name: "Asphalt",
+      invoiceLogoLayout: { x: 0.82, width: 246, height: 92 },
+    });
+    const general = resolveInvoiceBrand("general_contracting", settings, {
+      slug: "general_contracting",
+      name: "General",
+      invoiceLogoLayout: { x: 0.15, width: 144, height: 54 },
+    });
+
+    expect(asphalt.logoLayout).toEqual({ x: 0.82, width: 246, height: 92 });
+    expect(general.logoLayout).toEqual({ x: 0.15, width: 144, height: 54 });
+  });
+
   it("keeps Gmail preview and printable attachment inputs on the same business brand", () => {
     const emailHtml = buildInvoiceEmailHtml({
       ...invoice,
@@ -76,6 +131,28 @@ describe("invoice brand rendering", () => {
       expect(html).toContain(`data-invoice-brand-position="${position}"`);
       expect(html).toContain(`width:${width}`);
       expect(html).toContain(`height:${height}`);
+    }
+  });
+
+  it("applies a direct custom layout consistently to Gmail and printable HTML", () => {
+    const logoLayout = { x: 0.63, width: 238, height: 89 };
+    const emailHtml = buildInvoiceEmailHtml({
+      ...invoice,
+      companyName: "Willard's Asphalt Sealing",
+      logoSrc: logoDataUri,
+      logoLayout,
+    });
+    const printHtml = buildInvoiceBodyHtml(invoice, {
+      companyName: "Willard's Asphalt Sealing",
+      logoAbsoluteUrl: logoDataUri,
+      logoLayout,
+    });
+
+    for (const html of [emailHtml, printHtml]) {
+      expect(html).toContain('data-invoice-logo-x="0.63"');
+      expect(html).toContain("width:238px");
+      expect(html).toContain("height:89px");
+      expect(html).toContain("margin-left:calc(63% - 149.94px)");
     }
   });
 

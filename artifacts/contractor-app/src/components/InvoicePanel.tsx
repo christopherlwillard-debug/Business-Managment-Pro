@@ -8,13 +8,19 @@ import {
 } from "@workspace/api-client-react";
 import {
   calculateInvoiceTotals,
-  normalizeInvoiceLogoPosition,
+  invoiceLogoPositionFromLayout,
+  normalizeInvoiceLogoLayout,
   resolveInvoiceBrand,
+  type InvoiceLogoLayout,
 } from "@workspace/api-zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, localDateString } from "@/lib/utils";
 import { printInvoiceWindow } from "@/lib/printInvoice";
-import { getLogoDims } from "@/lib/invoiceLogoConstants";
+import {
+  moveInvoiceLogoLayout,
+  resizeInvoiceLogoLayout,
+  shouldEnterInvoiceLogoLayoutMode,
+} from "@/lib/invoiceLogoConstants";
 import { sendViaGmail, buildInvoiceEmailHtml, dataUriToInlineImage } from "@/lib/gmailSend";
 import { buildInvoiceHtml } from "@/lib/printInvoice";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
@@ -83,7 +89,7 @@ export function InvoicePanel({
   const deletePaymentLink = useDeleteInvoicePaymentLink();
   const { isConfigured: googleConfigured, isConnected: googleConnected, getToken, signIn } = useGoogleAuth();
   const { toast } = useToast();
-  const { activeBusiness, businesses } = useBusiness();
+  const { activeBusiness, businesses, refresh: refreshBusinesses } = useBusiness();
 
   const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
   const effectiveExistingInvoice = existingInvoice ?? savedInvoice ?? null;
@@ -207,6 +213,10 @@ export function InvoicePanel({
   const [showClientDrop, setShowClientDrop] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [logoDataUri, setLogoDataUri] = useState<string | null>(null);
+  const [logoLayoutMode, setLogoLayoutMode] = useState(false);
+  const [logoLayoutDraft, setLogoLayoutDraft] = useState<InvoiceLogoLayout | null>(null);
+  const [savingLogoLayout, setSavingLogoLayout] = useState(false);
+  const logoAreaRef = useRef<HTMLDivElement>(null);
 
   const [payUrl, setPayUrl] = useState<string | null>(
     effectiveExistingInvoice?.squarePaymentLinkUrl ?? effectiveExistingInvoice?.stripePaymentLinkUrl ?? null
@@ -269,8 +279,13 @@ export function InvoicePanel({
       setGmailSubject(`Invoice ${effectiveExistingInvoice.invoiceNumber} from ${companyName || "us"}`);
     }
   }, [open, effectiveExistingInvoice?.id, effectiveExistingInvoice?.invoiceNumber, companyName, showGmailCompose]);
-  const logoSize = s?.invoiceLogoSize ?? "medium";
-  const logoPos = normalizeInvoiceLogoPosition(s?.invoiceLogoPosition);
+  const savedLogoLayout = normalizeInvoiceLogoLayout(
+    invoiceBrand.logoLayout,
+    s?.invoiceLogoPosition,
+    s?.invoiceLogoSize,
+  );
+  const logoLayout = logoLayoutDraft ?? savedLogoLayout;
+  const logoPos = invoiceLogoPositionFromLayout(logoLayout);
 
   useEffect(() => {
     if (open) {
@@ -299,6 +314,8 @@ export function InvoicePanel({
         setGmailFinalizationRecovery(null);
       }
       setShowMoreOptions(false);
+      setLogoLayoutMode(false);
+      setLogoLayoutDraft(null);
       setRevertConfirm(false);
       setServerUpdatedBanner(false);
       const url = effectiveExistingInvoice?.squarePaymentLinkUrl ?? effectiveExistingInvoice?.stripePaymentLinkUrl ?? null;
@@ -321,6 +338,11 @@ export function InvoicePanel({
       setServerUpdatedBanner(false);
     }
   }, [open, effectiveExistingInvoice?.id, savedInvoice?.id, initialData?.jobId]);
+
+  useEffect(() => {
+    setLogoLayoutMode(false);
+    setLogoLayoutDraft(null);
+  }, [form.businessLine]);
 
   useEffect(() => {
     if (!open || !["approved", "sent", "overdue"].includes(effectiveExistingInvoice?.status ?? "")) return;
@@ -436,6 +458,73 @@ export function InvoicePanel({
     setFormState(f => ({ ...f, [k]: v }));
   }
 
+  function beginLogoLayout() {
+    if (!selectedBiz || isVoided) return;
+    setLogoLayoutDraft(savedLogoLayout);
+    setLogoLayoutMode(true);
+  }
+
+  function startLogoPointerAction(
+    kind: "move" | "resize",
+    event: React.PointerEvent<HTMLElement>,
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!logoLayoutMode) {
+      beginLogoLayout();
+      return;
+    }
+    const area = logoAreaRef.current;
+    if (!area) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const start = logoLayout;
+    const areaWidth = Math.max(1, area.getBoundingClientRect().width);
+    const onMove = (moveEvent: PointerEvent) => {
+      if (kind === "move") {
+        setLogoLayoutDraft(moveInvoiceLogoLayout(start, moveEvent.clientX - startX, areaWidth));
+        return;
+      }
+      setLogoLayoutDraft(resizeInvoiceLogoLayout(
+        start,
+        moveEvent.clientX - startX,
+        moveEvent.clientY - startY,
+      ));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+  }
+
+  async function saveLogoLayout() {
+    if (!selectedBiz || !logoLayoutDraft) return;
+    setSavingLogoLayout(true);
+    try {
+      const response = await fetch(`${base}/api/businesses/${selectedBiz.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceLogoLayout: logoLayoutDraft }),
+      });
+      if (!response.ok) throw new Error("Could not save logo layout");
+      refreshBusinesses();
+      setLogoLayoutMode(false);
+      setLogoLayoutDraft(null);
+      toast({ title: "Logo layout saved", description: `Future ${selectedBiz.name} invoices will use this layout.` });
+    } catch (error) {
+      toast({
+        title: "Logo layout not saved",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingLogoLayout(false);
+    }
+  }
+
   function setLine(i: number, k: keyof LineItem, v: string) {
     setLineItems(ls =>
       ls.map((l, idx) => idx === i ? { ...l, [k]: k === "description" ? v : parseFloat(v) || 0 } : l)
@@ -520,8 +609,7 @@ export function InvoicePanel({
         companyState,
         companyZip,
         logoAbsoluteUrl: logoDataUri,
-        logoSize,
-        logoPosition: logoPos,
+        logoLayout,
       }
     );
   }
@@ -661,8 +749,7 @@ export function InvoicePanel({
         customMessage: gmailMessage.trim() || undefined,
         paymentLink: payUrl,
         logoSrc: inlineLogo ? `cid:${inlineLogo.contentId}` : null,
-        logoSize,
-        logoPosition: logoPos,
+        logoLayout,
       });
       const printHtml = buildInvoiceHtml(
         {
@@ -689,7 +776,7 @@ export function InvoicePanel({
           notes: form.notes || null,
           businessLine: form.businessLine || null,
         },
-        { companyName, companyEmail, companyPhone, companyAddress, companyCity, companyState, companyZip, logoSize, logoPosition: logoPos, logoAbsoluteUrl: logoForEmail }
+        { companyName, companyEmail, companyPhone, companyAddress, companyCity, companyState, companyZip, logoLayout, logoAbsoluteUrl: logoForEmail }
       );
       let pdfBase64: string | undefined;
       let pdfFilename: string | undefined;
@@ -1002,19 +1089,45 @@ export function InvoicePanel({
     || Boolean(effectiveExistingInvoice?.sentAt)
     || hasConfirmedGmailSend;
 
-  const { h: logoH, w: logoW } = getLogoDims(logoSize);
   const logoEl = logoDataUri ? (
-    <div className="flex-shrink-0 max-w-full" style={{ width: logoW, height: logoH }}>
-      <img
-        src={logoDataUri}
-        alt={`${companyName} logo`}
-        style={{ width: "100%", height: "100%", objectFit: "contain" }}
-        onError={() => setLogoDataUri(null)}
-      />
+    <div ref={logoAreaRef} className="relative w-full max-w-full" style={{ height: logoLayout.height }}>
+      <div
+        data-invoice-logo={logoPos}
+        data-invoice-logo-x={logoLayout.x}
+        className={`absolute top-0 select-none ${logoLayoutMode ? "cursor-move ring-2 ring-amber-400 ring-offset-2 rounded-md" : "cursor-pointer"}`}
+        style={{
+          left: `${logoLayout.x * 100}%`,
+          transform: `translateX(-${logoLayout.x * 100}%)`,
+          width: logoLayout.width,
+          height: logoLayout.height,
+          touchAction: "none",
+        }}
+        onClick={shouldEnterInvoiceLogoLayoutMode(logoLayoutMode) ? beginLogoLayout : undefined}
+        onPointerDown={event => startLogoPointerAction("move", event)}
+        title={logoLayoutMode ? "Drag to move the logo" : "Click to move or resize this logo"}
+      >
+        <img
+          src={logoDataUri}
+          alt={`${companyName} logo`}
+          draggable={false}
+          style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }}
+          onError={() => setLogoDataUri(null)}
+        />
+        {logoLayoutMode && (
+          <button
+            type="button"
+            aria-label="Resize logo"
+            onPointerDown={event => startLogoPointerAction("resize", event)}
+            onClick={event => event.stopPropagation()}
+            className="absolute -bottom-2 -right-2 h-5 w-5 rounded-full border-2 border-white bg-amber-500 shadow-md cursor-nwse-resize"
+            style={{ touchAction: "none" }}
+          />
+        )}
+      </div>
     </div>
   ) : null;
   const companyContact = (
-    <div className={`text-xs text-gray-400 space-y-0.5 ${logoEl ? "mt-2" : ""}`}>
+    <div className="text-xs text-gray-400 space-y-0.5">
       <p className="text-base font-extrabold text-gray-900 leading-tight">{companyName}</p>
       {companyAddress && <p>{companyAddress}</p>}
       {(companyCity || companyState || companyZip) && <p>{[companyCity, companyState, companyZip].filter(Boolean).join(", ")}</p>}
@@ -1022,19 +1135,6 @@ export function InvoicePanel({
       {companyEmail && <p>{companyEmail}</p>}
     </div>
   );
-  const brandBlock = (
-    <div className={`flex flex-col min-w-0 max-w-full ${
-      logoPos === "top-center"
-        ? "items-center text-center"
-        : logoPos === "top-right"
-          ? "items-end text-right"
-          : "items-start text-left"
-    }`}>
-      {logoEl}
-      {companyContact}
-    </div>
-  );
-
   return (
     <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
@@ -1441,8 +1541,7 @@ export function InvoicePanel({
                         customMessage: gmailMessage.trim() || undefined,
                         paymentLink: payUrl,
                         logoSrc: logoDataUri,
-                        logoSize,
-                        logoPosition: logoPos,
+                        logoLayout,
                       }) : ""}
                       style={{ width: "100%", height: "320px", border: "none", display: "block" }} />
                   </div>
@@ -1592,6 +1691,36 @@ export function InvoicePanel({
               </div>
             )}
 
+            {logoLayoutMode && (
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-amber-900">Position {selectedBiz?.name ?? "business"} logo</p>
+                  <p className="text-[10px] text-amber-700">Drag the logo sideways. Drag the round corner handle to resize it proportionally.</p>
+                </div>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={savingLogoLayout}
+                    onClick={() => {
+                      setLogoLayoutMode(false);
+                      setLogoLayoutDraft(null);
+                    }}
+                    className="rounded-lg px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingLogoLayout}
+                    onClick={saveLogoLayout}
+                    className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
+                  >
+                    {savingLogoLayout ? "Saving…" : "Done"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Invoice document */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
               <div className="h-1.5 bg-gradient-to-r from-amber-500 to-amber-400" />
@@ -1599,12 +1728,13 @@ export function InvoicePanel({
               <div className="p-5 sm:p-7 space-y-6">
 
                 {/* ── Header: company info + invoice meta ── */}
-                <div className={logoPos === "top-center" ? "space-y-4" : "flex justify-between items-start gap-6"}>
-                  {logoPos === "top-left" && <div className="flex-1 min-w-0">{brandBlock}</div>}
-                  {logoPos === "top-center" && <div className="flex justify-center">{brandBlock}</div>}
+                <div data-invoice-brand-position={logoPos} className="space-y-3">
+                  {logoEl}
+                  <div className="flex justify-between items-start gap-6">
+                    <div className="flex-1 min-w-0">{companyContact}</div>
 
-                  {/* Invoice number + editable date/terms/status */}
-                  <div className={`${logoPos === "top-right" ? "text-left" : "text-right"} flex-shrink-0 space-y-1 ${logoPos === "top-center" ? "ml-auto w-fit" : ""}`}>
+                    {/* Invoice number + editable date/terms/status */}
+                    <div className="text-right flex-shrink-0 space-y-1">
                     <p className="text-2xl font-black tracking-widest text-gray-200 uppercase leading-none">Invoice</p>
                     <p className="text-xs font-bold text-amber-500">{previewNumber}</p>
                     <div className="space-y-1 pt-1">
@@ -1640,8 +1770,8 @@ export function InvoicePanel({
                         </span>
                       </div>
                     </div>
+                    </div>
                   </div>
-                  {logoPos === "top-right" && <div className="flex-1 min-w-0">{brandBlock}</div>}
                 </div>
 
                 {/* ── Bill To + Work Location ── */}

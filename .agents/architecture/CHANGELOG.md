@@ -316,6 +316,17 @@ Created the four-document architecture governance system:
 - Cash-basis accounting, tax, P&L, reserve, Year-End, and payment-history
   calculations continue to use payment dates.
 
+
+### Business-specific invoice logo layout
+
+- Each business can now save one invoice-header logo position and proportional
+  size directly from the editable invoice.
+- Legacy shared logo alignment and size remain the compatibility fallback until
+  a business saves its own layout.
+- Browser previews, printing, Gmail, server email, reminders, and invoice
+  attachments consume the same resolved business layout.
+- The duplicate Invoice Logo Placement card was removed from Settings; logo
+  upload and replacement remain unchanged.
 ### Yearly monthly-revenue overview
 
 - Added a 12-month Accounting report that reuses Dashboard invoice-revenue

@@ -21,10 +21,14 @@ export {
 export type { SeoValidationErrors } from "./website-seo";
 export {
   getInvoiceLogoDimensions,
+  invoiceLogoPositionFromLayout,
+  invoiceLogoMarginLeft,
+  invoiceLogoPositionToX,
   INVOICE_LOGO_DIMENSIONS,
   INVOICE_LOGO_POSITIONS,
   INVOICE_LOGO_SIZES,
   normalizeInvoiceLogoPosition,
+  normalizeInvoiceLogoLayout,
   normalizeInvoiceLogoSize,
   PRIMARY_BUSINESS_SLUG,
   resolveInvoiceBrand,
@@ -33,6 +37,7 @@ export type {
   InvoiceBrandProfile,
   InvoiceBrandSettings,
   InvoiceLogoDimensions,
+  InvoiceLogoLayout,
   InvoiceLogoPosition,
   InvoiceLogoSize,
   ResolvedInvoiceBrand,

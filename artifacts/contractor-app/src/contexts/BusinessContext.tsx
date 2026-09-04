@@ -6,6 +6,7 @@ export interface Business {
   slug: string;
   type: string;
   logoUrl: string | null;
+  invoiceLogoLayout: { x: number; width: number; height: number } | null;
   address: string | null;
   city: string | null;
   state: string | null;

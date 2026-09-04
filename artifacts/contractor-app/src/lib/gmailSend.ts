@@ -1,7 +1,9 @@
 import {
   calculateInvoiceTotals,
-  getInvoiceLogoDimensions,
-  normalizeInvoiceLogoPosition,
+  invoiceLogoMarginLeft,
+  invoiceLogoPositionFromLayout,
+  normalizeInvoiceLogoLayout,
+  type InvoiceLogoLayout,
 } from "@workspace/api-zod";
 
 function sanitizeHeader(value: string): string {
@@ -268,6 +270,7 @@ export interface BuildInvoiceEmailHtmlOpts {
   logoSrc?: string | null;
   logoSize?: string | null;
   logoPosition?: string | null;
+  logoLayout?: InvoiceLogoLayout | null;
 }
 
 export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
@@ -275,16 +278,13 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
   const cityLine = [opts.companyCity, opts.companyState, opts.companyZip].filter(Boolean).join(", ");
 
   const displayCompanyName = opts.companyName || opts.dbaName || "";
-  const logoPosition = normalizeInvoiceLogoPosition(opts.logoPosition);
-  const logoDimensions = getInvoiceLogoDimensions(opts.logoSize);
+  const logoDimensions = normalizeInvoiceLogoLayout(opts.logoLayout, opts.logoPosition, opts.logoSize);
+  const logoPosition = invoiceLogoPositionFromLayout(logoDimensions);
 
   const contactLines: string[] = [];
   const safeLogoSrc = opts.logoSrc && /^(?:https?:|cid:|data:image\/(?:png|jpeg);base64,)/.test(opts.logoSrc)
     ? opts.logoSrc
     : null;
-  if (safeLogoSrc) {
-    contactLines.push(`<tr><td style="padding-bottom:6px;"><img data-invoice-logo="${logoPosition}" src="${esc(safeLogoSrc)}" alt="${esc(displayCompanyName || "Company logo")}" style="width:${logoDimensions.width}px;height:${logoDimensions.height}px;max-width:100%;display:block;object-fit:contain;" /></td></tr>`);
-  }
   if (displayCompanyName) {
     contactLines.push(`<tr><td style="font-size:18px;font-weight:800;color:#111827;padding-bottom:4px;">${esc(displayCompanyName)}</td></tr>`);
   }
@@ -293,7 +293,10 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
   if (opts.companyPhone)   contactLines.push(`<tr><td style="font-size:11px;color:#6b7280;line-height:1.5;">${esc(opts.companyPhone)}</td></tr>`);
   if (opts.companyEmail)   contactLines.push(`<tr><td style="font-size:11px;color:#6b7280;line-height:1.5;">${esc(opts.companyEmail)}</td></tr>`);
   const contactTable = contactLines.length > 0
-    ? `<table data-invoice-brand-position="${logoPosition}" cellpadding="0" cellspacing="0" style="${logoPosition === "top-center" ? "margin:0 auto;text-align:center;" : logoPosition === "top-right" ? "margin-left:auto;text-align:right;" : "text-align:left;"}">${contactLines.join("")}</table>`
+    ? `<table data-invoice-brand-position="${logoPosition}" cellpadding="0" cellspacing="0" style="text-align:left;">${contactLines.join("")}</table>`
+    : "";
+  const logoHtml = safeLogoSrc
+    ? `<img data-invoice-logo="${logoPosition}" data-invoice-logo-x="${logoDimensions.x}" src="${esc(safeLogoSrc)}" alt="${esc(displayCompanyName || "Company logo")}" style="width:${logoDimensions.width}px;height:${logoDimensions.height}px;max-width:100%;display:block;object-fit:contain;margin-left:${invoiceLogoMarginLeft(logoDimensions)};" />`
     : "";
 
   const dateRows: string[] = [];
@@ -389,16 +392,15 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
         <tr><td style="height:7px;background:linear-gradient(to right,#f59e0b,#fbbf24);font-size:0;">&nbsp;</td></tr>
 
         <tr><td style="padding:32px 40px 24px;">
-          ${logoPosition === "top-center" ? `<div style="text-align:center;margin-bottom:18px;">${contactTable}</div>` : ""}
+          ${logoHtml ? `<div style="width:100%;padding-bottom:8px;">${logoHtml}</div>` : ""}
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
-              ${logoPosition !== "top-right" ? `<td style="vertical-align:top;padding-right:20px;">${logoPosition === "top-left" ? contactTable : ""}</td>` : ""}
-              <td style="vertical-align:top;text-align:${logoPosition === "top-right" ? "left" : "right"};white-space:nowrap;">
+              <td style="vertical-align:top;padding-right:20px;">${contactTable}</td>
+              <td style="vertical-align:top;text-align:right;white-space:nowrap;">
                 <p style="margin:0;font-size:34px;font-weight:900;letter-spacing:0.08em;color:#1f2937;line-height:1;text-transform:uppercase;">INVOICE</p>
                 <p style="margin:4px 0 0;font-size:14px;font-weight:700;color:#f59e0b;">${esc(opts.invoiceNumber)}</p>
-                ${dateRows.length > 0 ? `<table cellpadding="0" cellspacing="0" style="${logoPosition === "top-right" ? "" : "margin-left:auto;"}margin-top:10px;">${dateRows.join("")}</table>` : ""}
+                ${dateRows.length > 0 ? `<table cellpadding="0" cellspacing="0" style="margin-left:auto;margin-top:10px;">${dateRows.join("")}</table>` : ""}
               </td>
-              ${logoPosition === "top-right" ? `<td style="vertical-align:top;padding-left:20px;">${contactTable}</td>` : ""}
             </tr>
           </table>
         </td></tr>

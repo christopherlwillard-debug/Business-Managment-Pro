@@ -4,6 +4,7 @@ import { businessesTable } from "@workspace/db/schema";
 import { eq, asc } from "drizzle-orm";
 import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { normalizeInvoiceLogoLayout } from "@workspace/api-zod";
 
 const objectStorage = new ObjectStorageService();
 
@@ -83,11 +84,13 @@ router.patch("/reorder", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, slug, type, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
+    const { name, slug, type, logoUrl, invoiceLogoLayout, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
     if (!name || !slug) return res.status(400).json({ error: "name and slug are required" });
     const resolvedType = (typeof type === "string" && type.trim()) ? type.trim() : "other";
     const [business] = await db.insert(businessesTable).values({
-      name, slug, type: resolvedType, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId,
+      name, slug, type: resolvedType, logoUrl,
+      invoiceLogoLayout: invoiceLogoLayout == null ? null : normalizeInvoiceLogoLayout(invoiceLogoLayout),
+      address, city, state, zip, phone, email, licenseNumber, taxId,
       enabledFeatures: Array.isArray(enabledFeatures) ? enabledFeatures : null,
       parentBusinessId: parentBusinessId ? parseInt(parentBusinessId) : null,
     }).returning();
@@ -101,7 +104,7 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { name, slug, type, logoUrl, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
+    const { name, slug, type, logoUrl, invoiceLogoLayout, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
     if (slug !== undefined) updates.slug = slug;
@@ -109,6 +112,9 @@ router.put("/:id", async (req, res) => {
       updates.type = (typeof type === "string" && type.trim()) ? type.trim() : "other";
     }
     if (logoUrl !== undefined) updates.logoUrl = logoUrl;
+    if (invoiceLogoLayout !== undefined) {
+      updates.invoiceLogoLayout = invoiceLogoLayout == null ? null : normalizeInvoiceLogoLayout(invoiceLogoLayout);
+    }
     if (address !== undefined) updates.address = address;
     if (city !== undefined) updates.city = city;
     if (state !== undefined) updates.state = state;

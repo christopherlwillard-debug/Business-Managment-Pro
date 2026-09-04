@@ -97,4 +97,34 @@ describe("invoice logo renderer consistency", () => {
       expect(html).not.toContain("data-invoice-logo=");
     }
   });
+
+  it("uses the same saved business layout in browser print, Gmail, server email, reminders, and PDF HTML", () => {
+    const layout = { x: 0.61, width: 236, height: 88 };
+    const browserEmail = buildBrowserInvoiceEmailHtml({
+      ...invoice,
+      companyName: "Willard's Asphalt Sealing",
+      logoSrc: logoDataUri,
+      logoLayout: layout,
+    });
+    const browserPrint = buildInvoiceBodyHtml(invoice, {
+      companyName: "Willard's Asphalt Sealing",
+      logoAbsoluteUrl: logoDataUri,
+      logoLayout: layout,
+    });
+    const serverEmail = buildServerInvoiceEmailHtml(
+      { ...invoice, subtotal: String(invoice.subtotal), total: String(invoice.total) },
+      {
+        companyName: "Willard's Asphalt Sealing",
+        logoDataUri,
+        invoiceLogoLayout: layout,
+      },
+    );
+
+    for (const html of [browserEmail, browserPrint, serverEmail]) {
+      expect(html).toContain('data-invoice-logo-x="0.61"');
+      expect(html).toContain("width:236px");
+      expect(html).toContain("height:88px");
+      expect(html).toContain("margin-left:calc(61% - 143.96px)");
+    }
+  });
 });

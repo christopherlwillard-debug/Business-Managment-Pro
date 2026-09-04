@@ -34,6 +34,7 @@ const asphaltBusiness = {
   phone: "555-0200",
   email: "sealing@example.com",
   logoUrl: "/objects/asphalt-logo.png",
+  invoiceLogoLayout: { x: 0.7, width: 240, height: 90 },
 };
 
 const invoice = {
@@ -63,7 +64,18 @@ describe("invoice branding", () => {
       address: "200 Sealcoat Road",
       email: "sealing@example.com",
       logoUrl: "/objects/asphalt-logo.png",
+      logoLayout: { x: 0.7, width: 240, height: 90 },
     });
+  });
+
+  it("falls back to shared logo settings until the selected business saves a layout", () => {
+    const brand = resolveInvoiceBrand(
+      "general_contracting",
+      { ...settings, invoiceLogoPosition: "top-center", invoiceLogoSize: "large" },
+      generalBusiness,
+    );
+
+    expect(brand.logoLayout).toEqual({ x: 0.5, width: 300, height: 120 });
   });
 
   it("keeps the selected business name visible and does not cross-fill a mismatched logo", () => {

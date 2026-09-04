@@ -11,6 +11,11 @@ export interface InvoiceLogoDimensions {
   height: number;
 }
 
+export interface InvoiceLogoLayout extends InvoiceLogoDimensions {
+  /** Horizontal anchor within the safe header area: 0 = left, 0.5 = center, 1 = right. */
+  x: number;
+}
+
 export const INVOICE_LOGO_DIMENSIONS: Record<InvoiceLogoSize, InvoiceLogoDimensions> = {
   small: { width: 120, height: 50 },
   medium: { width: 200, height: 75 },
@@ -33,6 +38,40 @@ export function getInvoiceLogoDimensions(value: string | null | undefined): Invo
   return INVOICE_LOGO_DIMENSIONS[normalizeInvoiceLogoSize(value)];
 }
 
+export function invoiceLogoPositionToX(value: string | null | undefined): number {
+  const position = normalizeInvoiceLogoPosition(value);
+  return position === "top-center" ? 0.5 : position === "top-right" ? 1 : 0;
+}
+
+export function invoiceLogoPositionFromLayout(layout: InvoiceLogoLayout): InvoiceLogoPosition {
+  return layout.x >= 0.75 ? "top-right" : layout.x >= 0.25 ? "top-center" : "top-left";
+}
+
+/** Email-safe horizontal offset that keeps both logo edges inside its full-width header row. */
+export function invoiceLogoMarginLeft(layout: InvoiceLogoLayout): string {
+  return `calc(${layout.x * 100}% - ${layout.x * layout.width}px)`;
+}
+
+export function normalizeInvoiceLogoLayout(
+  value: unknown,
+  fallbackPosition?: string | null,
+  fallbackSize?: string | null,
+): InvoiceLogoLayout {
+  const fallbackDimensions = getInvoiceLogoDimensions(fallbackSize);
+  const candidate = value && typeof value === "object"
+    ? value as Partial<Record<keyof InvoiceLogoLayout, unknown>>
+    : {};
+  const numberOr = (raw: unknown, fallback: number) => {
+    const parsed = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+  return {
+    x: Math.max(0, Math.min(1, numberOr(candidate.x, invoiceLogoPositionToX(fallbackPosition)))),
+    width: Math.max(80, Math.min(320, numberOr(candidate.width, fallbackDimensions.width))),
+    height: Math.max(32, Math.min(140, numberOr(candidate.height, fallbackDimensions.height))),
+  };
+}
+
 export interface InvoiceBrandProfile {
   slug?: string | null;
   type?: string | null;
@@ -44,6 +83,7 @@ export interface InvoiceBrandProfile {
   phone?: string | null;
   email?: string | null;
   logoUrl?: string | null;
+  invoiceLogoLayout?: unknown;
 }
 
 export interface InvoiceBrandSettings {
@@ -70,6 +110,7 @@ export interface ResolvedInvoiceBrand {
   phone: string;
   email: string;
   logoUrl: string | null;
+  logoLayout: InvoiceLogoLayout;
 }
 
 function clean(value: string | null | undefined): string {
@@ -121,5 +162,10 @@ export function resolveInvoiceBrand(
     phone: profileValue("phone", settings?.companyPhone),
     email: profileValue("email", settings?.companyEmail),
     logoUrl,
+    logoLayout: normalizeInvoiceLogoLayout(
+      selectedProfile?.invoiceLogoLayout,
+      settings?.invoiceLogoPosition,
+      settings?.invoiceLogoSize,
+    ),
   };
 }
