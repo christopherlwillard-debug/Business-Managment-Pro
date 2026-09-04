@@ -216,6 +216,7 @@ export function InvoicePanel({
   const [logoLayoutMode, setLogoLayoutMode] = useState(false);
   const [logoLayoutDraft, setLogoLayoutDraft] = useState<InvoiceLogoLayout | null>(null);
   const [savingLogoLayout, setSavingLogoLayout] = useState(false);
+  const [resetLogoLayoutBusinessId, setResetLogoLayoutBusinessId] = useState<number | null>(null);
   const logoAreaRef = useRef<HTMLDivElement>(null);
 
   const [payUrl, setPayUrl] = useState<string | null>(
@@ -280,7 +281,7 @@ export function InvoicePanel({
     }
   }, [open, effectiveExistingInvoice?.id, effectiveExistingInvoice?.invoiceNumber, companyName, showGmailCompose]);
   const savedLogoLayout = normalizeInvoiceLogoLayout(
-    invoiceBrand.logoLayout,
+    selectedBiz?.id === resetLogoLayoutBusinessId ? null : invoiceBrand.logoLayout,
     s?.invoiceLogoPosition,
     s?.invoiceLogoSize,
   );
@@ -316,6 +317,7 @@ export function InvoicePanel({
       setShowMoreOptions(false);
       setLogoLayoutMode(false);
       setLogoLayoutDraft(null);
+      setResetLogoLayoutBusinessId(null);
       setRevertConfirm(false);
       setServerUpdatedBanner(false);
       const url = effectiveExistingInvoice?.squarePaymentLinkUrl ?? effectiveExistingInvoice?.stripePaymentLinkUrl ?? null;
@@ -342,6 +344,7 @@ export function InvoicePanel({
   useEffect(() => {
     setLogoLayoutMode(false);
     setLogoLayoutDraft(null);
+    setResetLogoLayoutBusinessId(null);
   }, [form.businessLine]);
 
   useEffect(() => {
@@ -510,6 +513,7 @@ export function InvoicePanel({
         body: JSON.stringify({ invoiceLogoLayout: logoLayoutDraft }),
       });
       if (!response.ok) throw new Error("Could not save logo layout");
+      setResetLogoLayoutBusinessId(null);
       refreshBusinesses();
       setLogoLayoutMode(false);
       setLogoLayoutDraft(null);
@@ -517,6 +521,36 @@ export function InvoicePanel({
     } catch (error) {
       toast({
         title: "Logo layout not saved",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingLogoLayout(false);
+    }
+  }
+
+  async function resetLogoLayout() {
+    if (!selectedBiz) return;
+    setSavingLogoLayout(true);
+    try {
+      const response = await fetch(`${base}/api/businesses/${selectedBiz.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceLogoLayout: null }),
+      });
+      if (!response.ok) throw new Error("Could not reset logo layout");
+      setResetLogoLayoutBusinessId(selectedBiz.id);
+      setLogoLayoutMode(false);
+      setLogoLayoutDraft(null);
+      refreshBusinesses();
+      toast({
+        title: "Logo layout reset",
+        description: `${selectedBiz.name} invoices now use the default logo placement.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Logo layout not reset",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
@@ -1698,6 +1732,14 @@ export function InvoicePanel({
                   <p className="text-[10px] text-amber-700">Drag the logo sideways. Drag the round corner handle to resize it proportionally.</p>
                 </div>
                 <div className="flex flex-shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={savingLogoLayout}
+                    onClick={resetLogoLayout}
+                    className="rounded-lg px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    Reset to default
+                  </button>
                   <button
                     type="button"
                     disabled={savingLogoLayout}
