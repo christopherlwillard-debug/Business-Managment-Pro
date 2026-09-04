@@ -306,9 +306,14 @@ export default function BusinessTripsTab({ year }: { year: number }) {
           </div>
           <div className="bg-card border border-border/50 rounded-2xl px-4 py-3 text-center">
             <p className="text-2xl font-bold">{allReady ? "🟢" : "🟡"}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{allReady ? "All Audit Ready" : "Needs Attention"}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{allReady ? "Active Trips Ready" : "Needs Attention"}</p>
           </div>
         </div>
+      )}
+      {archivedTrips.length > 0 && (
+        <p className="text-xs text-muted-foreground -mt-3">
+          Archived trips remain in the historical spend and meal totals; audit-readiness checks apply only to active trips.
+        </p>
       )}
 
       {isLoading ? (
@@ -407,7 +412,7 @@ export default function BusinessTripsTab({ year }: { year: number }) {
 
           {/* Needs Attention list */}
           {(() => {
-            const attention = trips.filter(t => auditStatus(t).issues.length > 0);
+            const attention = activeTrips.filter(t => auditStatus(t).issues.length > 0);
             if (attention.length === 0) return null;
             return (
               <div className="rounded-2xl border border-amber-200 bg-amber-50/60 px-5 py-4">

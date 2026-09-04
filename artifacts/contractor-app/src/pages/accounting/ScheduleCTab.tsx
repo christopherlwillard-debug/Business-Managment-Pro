@@ -46,7 +46,12 @@ interface ProfitLossReport {
 
 function ScheduleCTab({ year }: { year: number }) {
   const { activeBusiness } = useBusiness();
-  const { data: report, isLoading: reportLoading } = useScheduleCReport(year, activeBusiness?.slug);
+  const {
+    data: report,
+    isLoading: reportLoading,
+    error: reportError,
+    refetch: refetchReport,
+  } = useScheduleCReport(year, activeBusiness?.slug);
   const [showHomeOffice, setShowHomeOffice] = useState(false);
   const queryClient = useQueryClient();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,6 +148,27 @@ function ScheduleCTab({ year }: { year: number }) {
     <div className="space-y-6">
       {reportLoading && (
         <div className="text-center py-20 text-muted-foreground animate-pulse">Loading Schedule C…</div>
+      )}
+
+      {reportError && (
+        <div className="flex flex-col items-center justify-center py-20 px-4 text-center gap-3">
+          <div className="w-11 h-11 rounded-full bg-destructive/10 flex items-center justify-center">
+            <AlertCircle className="w-5 h-5 text-destructive" />
+          </div>
+          <div>
+            <p className="font-semibold text-foreground">Schedule C is temporarily unavailable</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md">
+              We couldn’t load the {year} report. Your financial records were not changed.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => refetchReport()}
+            className="px-4 py-2 rounded-xl border border-border bg-background text-sm font-medium hover:bg-muted/60 transition-colors"
+          >
+            Try again
+          </button>
+        </div>
       )}
 
       {report && (

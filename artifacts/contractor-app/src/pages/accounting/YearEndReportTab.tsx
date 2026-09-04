@@ -420,9 +420,10 @@ function BusinessTripSummarySection({ year }: { year: number }) {
   });
 
   const activeTrips = trips.filter(t => t.status !== "archived");
-  const totalTravelSpend = activeTrips.reduce((s, t) => s + t.totalAmount, 0);
-  const totalTravelReceipts = activeTrips.reduce((s, t) => s + t.receiptCount, 0);
-  const totalDeductibleMeals = activeTrips.reduce((s, t) => s + t.deductibleMeals, 0);
+  const archivedTrips = trips.filter(t => t.status === "archived");
+  const totalTravelSpend = trips.reduce((s, t) => s + t.totalAmount, 0);
+  const totalTravelReceipts = trips.reduce((s, t) => s + t.receiptCount, 0);
+  const totalDeductibleMeals = trips.reduce((s, t) => s + t.deductibleMeals, 0);
   const needsAttention = activeTrips.filter(t => t.missingReceipts > 0 || !t.businessPurpose || !t.startDate || !t.endDate);
 
   return (
@@ -433,7 +434,7 @@ function BusinessTripSummarySection({ year }: { year: number }) {
       >
         <Briefcase className="w-4 h-4 text-primary" />
         <h3 className="font-semibold text-sm text-foreground flex-1">Business Trip Summary</h3>
-        <span className="text-xs text-muted-foreground mr-2">{activeTrips.length} trips · {fmtMoney(totalTravelSpend)}</span>
+        <span className="text-xs text-muted-foreground mr-2">{trips.length} trips · {fmtMoney(totalTravelSpend)}</span>
         {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
       </button>
       {expanded && (
@@ -458,14 +459,19 @@ function BusinessTripSummarySection({ year }: { year: number }) {
 
           {isLoading ? (
             <p className="text-sm text-muted-foreground animate-pulse">Loading trips…</p>
-          ) : activeTrips.length === 0 ? (
+          ) : trips.length === 0 ? (
             <p className="text-sm text-muted-foreground py-2">No business trips in this date range.</p>
           ) : (
             <>
+              {archivedTrips.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Archived trips are included in historical totals; audit attention and the detail list cover active trips only.
+                </p>
+              )}
               {/* Summary metrics */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                  { label: "Total Trips", value: String(activeTrips.length) },
+                  { label: "Total Trips", value: String(trips.length) },
                   { label: "Total Travel Spend", value: fmtMoney(totalTravelSpend) },
                   { label: "Total Travel Receipts", value: String(totalTravelReceipts) },
                   { label: "Deductible Meals (50%)", value: fmtMoney(totalDeductibleMeals) },
@@ -1023,8 +1029,43 @@ export default function YearEndReportTab({ year }: { year: number }) {
             <h3 className="font-semibold text-sm text-foreground flex-1">1099 Subcontractor Payments</h3>
             {expandedSections.has("1099s") ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
           </button>
-          {expandedSections.has("1099s") && <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          {expandedSections.has("1099s") && (
+            <>
+              <div className="divide-y divide-border/40 md:hidden">
+                {report.sub1099s.map(s => (
+                  <div key={s.id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-foreground break-words">{s.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 break-words">
+                          W-9 legal name: {s.w9LegalName ?? "Not provided"}
+                        </p>
+                      </div>
+                      <p className="text-sm font-bold tabular-nums shrink-0">{fmtMoney(s.ytdPayments)}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      {s.requires1099 ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-100 text-red-700 font-semibold">
+                          <AlertTriangle className="w-3 h-3" /> 1099 Required
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Below threshold</span>
+                      )}
+                      {s.w9OnFile ? (
+                        <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
+                          <CheckCircle2 className="w-3 h-3" /> W-9 on file
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-red-600 font-medium">
+                          <AlertCircle className="w-3 h-3" /> W-9 missing
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/20 text-xs text-muted-foreground uppercase tracking-wide">
                   <th className="text-left px-4 py-2">Name</th>
@@ -1064,7 +1105,9 @@ export default function YearEndReportTab({ year }: { year: number }) {
                 ))}
               </tbody>
             </table>
-          </div>}
+              </div>
+            </>
+          )}
         </div>
       )}
 

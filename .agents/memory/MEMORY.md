@@ -60,3 +60,4 @@
 - [Rich-text test runtime](rich-text-test-runtime.md) — sanitizer tests need a DOM-backed Vitest environment because Node does not provide DOMParser
 - [Puppeteer evaluate functions](puppeteer-evaluate-functions.md) — tsx can emit missing __name helpers inside serialized page.evaluate callbacks; use anonymous browser-context functions
 - [Dashboard WTD semantics](dashboard-wtd-semantics.md) — WTD is the current Monday-start calendar week, not a trailing seven-day range
+- [Business trip archive semantics](business-trip-archive-semantics.md) — archived trips remain in historical totals but not active audit-readiness checks

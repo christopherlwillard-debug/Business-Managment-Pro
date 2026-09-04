@@ -326,7 +326,6 @@ router.get("/schedule-c", async (req, res) => {
     // standard-mileage deductions. Sub records are preserved; only excluded from owner's deduction.
     const mileageData = await db
       .select({
-        totalMiles: sum(mileageLogsTable.miles),
         date: mileageLogsTable.date,
         miles: mileageLogsTable.miles,
         classification: mileageLogsTable.classification,
@@ -496,6 +495,7 @@ router.get("/schedule-c", async (req, res) => {
         and(
           gte(mileageLogsTable.date, startDate),
           lte(mileageLogsTable.date, endDate),
+          mileageWhere,
           isNull(mileageLogsTable.voidedAt)
         )
       )
