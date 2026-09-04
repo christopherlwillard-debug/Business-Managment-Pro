@@ -37,6 +37,20 @@ If the answer to any of these is **yes**, reuse it.
 
 The goal is **one source of truth** for every piece of business logic. UIs may differ by user role, but the underlying logic must be shared: one receipt scanner, one expense engine, one mileage engine, one tax calculation engine, one notification engine, one payment engine, one authentication system.
 
+## Protected Financial Rule — Owner Gas Reimbursement
+
+The approved owner gas-reimbursement waterfall is protected and must not be changed, removed, or reinterpreted unless Christopher directly authorizes that specific change.
+
+The required order is:
+
+1. Calculate Job Costs, Growth Reserve, labor, and the percentage split.
+2. Calculate the owner's share and subtract the tax reserve.
+3. Show **Recommended Take Home**.
+4. Add **Gas Cost Reimbursement** back to the owner.
+5. Show the combined **Total to You**.
+
+The gas reimbursement remains separate from the profit split and must not be duplicated as an expense, mileage row, payroll record, or owner-withdrawal ledger entry.
+
 ---
 
 ## Overview
