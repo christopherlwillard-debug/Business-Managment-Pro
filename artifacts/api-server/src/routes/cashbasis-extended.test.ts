@@ -883,3 +883,56 @@ describe("Dashboard revenue — verified send-period attribution", () => {
     expect(sumCashReceipts(paidInvoices, `${SENT_MONTH}-01`, `${SENT_MONTH}-31`)).toBeCloseTo(0, 10);
   });
 });
+
+describe("Revenue by month — yearly overview", () => {
+  it("returns all 12 months using verified delivery attribution and receipt-dated other income", async () => {
+    h.selectQueue.push([
+      {
+        id: 950,
+        status: "paid",
+        amountPaid: "1200.00",
+        total: "1200.00",
+        issueDate: "2026-01-10",
+        verifiedSentAt: new Date("2026-02-14T12:00:00.000Z"),
+        voidedAt: null,
+        businessLine: null,
+      },
+      {
+        id: 951,
+        status: "paid",
+        amountPaid: "300.00",
+        total: "300.00",
+        issueDate: "2026-03-05",
+        verifiedSentAt: null,
+        voidedAt: null,
+        businessLine: null,
+      },
+    ]);
+    h.selectQueue.push([
+      { date: "2026-02-20", amount: "125.00" },
+    ]);
+
+    const res = await request(dashApp).get("/reports/revenue-by-month?year=2026");
+
+    expect(res.status).toBe(200);
+    expect(res.body.months).toHaveLength(12);
+    expect(res.body.months[0]).toEqual(expect.objectContaining({
+      month: "2026-01",
+      totalRevenue: 0,
+    }));
+    expect(res.body.months[1]).toEqual({
+      month: "2026-02",
+      invoiceRevenue: 1200,
+      otherIncome: 125,
+      totalRevenue: 1325,
+    });
+    expect(res.body.months[2]).toEqual({
+      month: "2026-03",
+      invoiceRevenue: 300,
+      otherIncome: 0,
+      totalRevenue: 300,
+    });
+    expect(res.body.annualTotal).toBe(1625);
+    expect(res.body.monthlyAverage).toBeCloseTo(135.4166666667, 8);
+  });
+});

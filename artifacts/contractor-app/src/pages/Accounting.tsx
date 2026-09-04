@@ -3,7 +3,7 @@ import { useBusiness } from "@/contexts/BusinessContext";
 import { useQuery } from "@tanstack/react-query";
 import {
   Printer, BarChart3, TrendingUp, FileText,
-  Calendar, FileSpreadsheet, BarChart2, Briefcase, PiggyBank,
+  Calendar, FileSpreadsheet, BarChart2, Briefcase, PiggyBank, DollarSign,
 } from "lucide-react";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -16,6 +16,7 @@ const YearEndReportTab = lazy(() => import("./accounting/YearEndReportTab"));
 const BenchmarksTab    = lazy(() => import("./accounting/BenchmarksTab"));
 const BusinessTripsTab = lazy(() => import("./accounting/BusinessTripsTab"));
 const InvestmentsTab   = lazy(() => import("./accounting/InvestmentsTab"));
+const RevenueByMonthTab = lazy(() => import("./accounting/RevenueByMonthTab"));
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -27,12 +28,12 @@ async function fetchAccounting(year: number, businessLine?: string) {
   return res.json();
 }
 
-export type AccountingTab = "overview" | "profit-loss" | "schedule-c" | "tax-calendar" | "year-end" | "benchmarks" | "business-trips" | "investments";
+export type AccountingTab = "overview" | "revenue-by-month" | "profit-loss" | "schedule-c" | "tax-calendar" | "year-end" | "benchmarks" | "business-trips" | "investments";
 
 function getInitialTab(): AccountingTab {
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
-  if (tab === "profit-loss" || tab === "schedule-c" || tab === "tax-calendar" || tab === "year-end" || tab === "benchmarks" || tab === "business-trips" || tab === "investments") return tab;
+  if (tab === "revenue-by-month" || tab === "profit-loss" || tab === "schedule-c" || tab === "tax-calendar" || tab === "year-end" || tab === "benchmarks" || tab === "business-trips" || tab === "investments") return tab;
   return "overview";
 }
 
@@ -96,6 +97,7 @@ export default function Accounting() {
       <div className="flex gap-1 border-b border-border overflow-x-auto">
         {[
           { key: "overview" as const,        label: "Overview",                     icon: BarChart3 },
+          { key: "revenue-by-month" as const, label: "Revenue by Month",            icon: DollarSign },
           { key: "profit-loss" as const,   label: "Profit & Loss",                icon: TrendingUp },
           { key: "schedule-c" as const,    label: "Schedule C + Home Office",     icon: FileText },
           { key: "tax-calendar" as const,  label: "Tax Calendar & Compliance",    icon: Calendar },
@@ -138,6 +140,14 @@ export default function Accounting() {
         <ErrorBoundary>
           <Suspense fallback={<TabSpinner />}>
             <ProfitLossTab year={year} />
+          </Suspense>
+        </ErrorBoundary>
+      )}
+
+      {activeTab === "revenue-by-month" && (
+        <ErrorBoundary>
+          <Suspense fallback={<TabSpinner />}>
+            <RevenueByMonthTab year={year} businessLine={bizSlug} />
           </Suspense>
         </ErrorBoundary>
       )}

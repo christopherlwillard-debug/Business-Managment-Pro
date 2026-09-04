@@ -467,6 +467,78 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
   }
 });
 
+router.get("/revenue-by-month", sectionGuard("invoices"), async (req, res) => {
+  try {
+    const requestedYear = Number(req.query.year);
+    const currentYear = new Date().getFullYear();
+    const year = Number.isInteger(requestedYear) && requestedYear >= 2000 && requestedYear <= currentYear + 1
+      ? requestedYear
+      : currentYear;
+    const businessLine = typeof req.query.businessLine === "string" && req.query.businessLine.trim()
+      ? req.query.businessLine.trim()
+      : null;
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+    const businessWhere = (column: Parameters<typeof eq>[0]) =>
+      businessLine ? eq(column, businessLine) : undefined;
+
+    const [paidInvoices, otherIncome] = await Promise.all([
+      db.select(dashboardInvoiceSelection)
+        .from(invoicesTable)
+        .where(and(
+          eq(invoicesTable.status, "paid"),
+          isNull(invoicesTable.voidedAt),
+          businessWhere(invoicesTable.businessLine),
+        )),
+      db.select({
+        date: otherIncomeTable.date,
+        amount: otherIncomeTable.amount,
+      })
+        .from(otherIncomeTable)
+        .where(and(
+          gte(otherIncomeTable.date, startDate),
+          lte(otherIncomeTable.date, endDate),
+          isNull(otherIncomeTable.voidedAt),
+          businessWhere(otherIncomeTable.businessLine),
+        )),
+    ]);
+
+    const months = Array.from({ length: 12 }, (_, index) => {
+      const month = `${year}-${String(index + 1).padStart(2, "0")}`;
+      const lastDay = String(new Date(year, index + 1, 0).getDate()).padStart(2, "0");
+      const monthStart = `${month}-01`;
+      const monthEnd = `${month}-${lastDay}`;
+      const invoiceRevenue = sumDashboardRevenue(paidInvoices, monthStart, monthEnd);
+      const otherIncomeRevenue = otherIncome
+        .filter(row => row.date >= monthStart && row.date <= monthEnd)
+        .reduce((sum, row) => sum + parseFloat(row.amount ?? "0"), 0);
+
+      return {
+        month,
+        invoiceRevenue,
+        otherIncome: otherIncomeRevenue,
+        totalRevenue: invoiceRevenue + otherIncomeRevenue,
+      };
+    });
+    const annualTotal = months.reduce((sum, month) => sum + month.totalRevenue, 0);
+
+    res.json({
+      year,
+      businessLine,
+      annualTotal,
+      monthlyAverage: annualTotal / 12,
+      months,
+      attribution: {
+        invoices: "first_verified_delivery_or_issue_date",
+        otherIncome: "receipt_date",
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to get monthly revenue" });
+  }
+});
+
 router.get("/compliance", sectionGuard("compliance"), async (req, res) => {
   try {
     const blFilter = (req.query.businessLine as string | undefined) || null;

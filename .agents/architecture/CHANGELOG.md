@@ -315,3 +315,12 @@ Created the four-document architecture governance system:
   remain outstanding rather than becoming dashboard revenue.
 - Cash-basis accounting, tax, P&L, reserve, Year-End, and payment-history
   calculations continue to use payment dates.
+
+### Yearly monthly-revenue overview
+
+- Added a 12-month Accounting report that reuses Dashboard invoice-revenue
+  attribution rather than creating a competing revenue calculation.
+- Each month separates paid-invoice revenue from receipt-dated other income and
+  exposes the annual total and monthly average without storing derived values.
+- Profit & Loss, tax, reserve, Year-End, and payment-history reports remain on
+  their existing cash-basis payment-date treatment.
