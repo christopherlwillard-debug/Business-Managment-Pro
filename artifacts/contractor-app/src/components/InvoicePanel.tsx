@@ -1125,6 +1125,15 @@ export function InvoicePanel({
 
   const logoEl = logoDataUri ? (
     <div ref={logoAreaRef} className="relative w-full max-w-full" style={{ height: logoLayout.height }}>
+      {logoLayoutMode && (
+        <div
+          aria-hidden="true"
+          data-invoice-logo-guides
+          className="pointer-events-none absolute inset-0 rounded-sm border border-dashed border-amber-300/80"
+        >
+          <div className="absolute inset-y-0 left-1/2 border-l border-dashed border-amber-300/80" />
+        </div>
+      )}
       <div
         data-invoice-logo={logoPos}
         data-invoice-logo-x={logoLayout.x}
