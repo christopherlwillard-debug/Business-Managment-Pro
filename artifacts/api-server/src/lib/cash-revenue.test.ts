@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   filterCashReceipts,
+  getDashboardRevenueDate,
   getEffectivePaymentDate,
   getCashReceiptAmount,
+  sumDashboardRevenue,
   sumCashReceipts,
   sumCashReceiptEvents,
 } from "./cash-revenue.js";
@@ -21,6 +23,36 @@ describe("cash revenue reconciliation", () => {
     expect(getEffectivePaymentDate(invoice)).toBe(`${YEAR}-01-02`);
     expect(filterCashReceipts([invoice], `${YEAR}-01-01`, `${YEAR}-12-31`)).toHaveLength(1);
     expect(filterCashReceipts([invoice], `${YEAR - 1}-01-01`, `${YEAR - 1}-12-31`)).toHaveLength(0);
+  });
+
+  it("attributes dashboard revenue to verified send date with an issue-date legacy fallback", () => {
+    const deliveredInvoice = {
+      status: "paid",
+      issueDate: `${YEAR - 1}-12-30`,
+      verifiedSentAt: new Date(`${YEAR - 1}-12-31T18:00:00.000Z`),
+      stripePaidAt: new Date(`${YEAR}-01-02T12:00:00.000Z`),
+      total: "1250.00",
+    };
+    const legacyInvoice = {
+      status: "paid",
+      issueDate: `${YEAR - 1}-12-15`,
+      verifiedSentAt: null,
+      stripePaidAt: new Date(`${YEAR}-01-03T12:00:00.000Z`),
+      total: "250.00",
+    };
+
+    expect(getDashboardRevenueDate(deliveredInvoice)).toBe(`${YEAR - 1}-12-31`);
+    expect(getDashboardRevenueDate(legacyInvoice)).toBe(`${YEAR - 1}-12-15`);
+    expect(sumDashboardRevenue(
+      [deliveredInvoice, legacyInvoice],
+      `${YEAR - 1}-01-01`,
+      `${YEAR - 1}-12-31`,
+    )).toBe(1500);
+    expect(sumDashboardRevenue(
+      [deliveredInvoice, legacyInvoice],
+      `${YEAR}-01-01`,
+      `${YEAR}-12-31`,
+    )).toBe(0);
   });
 
   it("uses Square before the issue-date fallback and excludes unpaid invoices", () => {

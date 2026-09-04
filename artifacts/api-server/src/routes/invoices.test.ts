@@ -652,17 +652,24 @@ describe("POST /:id/communications/:eventId/finalize", () => {
       status: "accepted",
       providerMessageId: "gmail-message-1",
     }));
-    expect(h.updates).toContainEqual(expect.objectContaining({
+    const acceptedEventUpdate = h.updates.find(update =>
+      update.status === "accepted" && update.providerMessageId === "gmail-message-1"
+    );
+    const sentCompatibilityUpdate = h.updates.find(update => update.status === "sent");
+    expect(sentCompatibilityUpdate).toEqual(expect.objectContaining({
       status: "sent",
       sentMethod: "gmail",
     }));
+    expect(sentCompatibilityUpdate.sentAt).toBe(acceptedEventUpdate.completedAt);
   });
 
   it("idempotently repairs SENT when Gmail history was accepted but the invoice update did not finish", async () => {
+    const completedAt = new Date("2026-09-02T19:57:42.023Z");
     h.selectQueue.push([pendingEvent({
       status: "accepted",
       providerMessageId: "gmail-message-1",
       providerThreadId: "gmail-thread-1",
+      completedAt,
     })]);
 
     const res = await request(app)
@@ -679,6 +686,7 @@ describe("POST /:id/communications/:eventId/finalize", () => {
     expect(h.updates).toContainEqual(expect.objectContaining({
       status: "sent",
       sentMethod: "gmail",
+      sentAt: completedAt,
     }));
     expect(h.updates).not.toContainEqual(expect.objectContaining({
       status: "accepted",

@@ -3,6 +3,7 @@ export interface CashRevenueInvoice {
   total?: string | number | null;
   amountPaid?: string | number | null;
   issueDate?: string | null;
+  verifiedSentAt?: Date | string | null;
   stripePaidAt?: Date | null;
   squarePaidAt?: Date | null;
   lastManualPaidAt?: Date | null;
@@ -58,6 +59,54 @@ export function sumCashReceipts(
   endDate: string,
 ): number {
   return filterCashReceipts(invoices, startDate, endDate)
+    .reduce((sum, invoice) => sum + getCashReceiptAmount(invoice), 0);
+}
+
+/**
+ * Dashboard-only revenue attribution date.
+ *
+ * A finalized delivery timestamp is authoritative. Issue date is the explicit
+ * compatibility fallback for historical paid invoices that predate reliable
+ * delivery tracking. Cash-basis reports must continue using
+ * getEffectivePaymentDate instead.
+ */
+export function getDashboardRevenueDate(invoice: CashRevenueInvoice): string {
+  const verifiedSentAt = invoice.verifiedSentAt;
+  if (verifiedSentAt instanceof Date && Number.isFinite(verifiedSentAt.getTime())) {
+    return verifiedSentAt.toISOString().slice(0, 10);
+  }
+  if (typeof verifiedSentAt === "string" && verifiedSentAt.length >= 10) {
+    const parsed = new Date(verifiedSentAt);
+    if (Number.isFinite(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  }
+  return invoice.issueDate ?? "";
+}
+
+export function isDashboardRevenueInPeriod(
+  invoice: CashRevenueInvoice,
+  startDate: string,
+  endDate: string,
+): boolean {
+  const revenueDate = getDashboardRevenueDate(invoice);
+  return invoice.status === "paid"
+    && revenueDate >= startDate
+    && revenueDate <= endDate;
+}
+
+export function filterDashboardRevenueInvoices<T extends CashRevenueInvoice>(
+  invoices: T[],
+  startDate: string,
+  endDate: string,
+): T[] {
+  return invoices.filter(invoice => isDashboardRevenueInPeriod(invoice, startDate, endDate));
+}
+
+export function sumDashboardRevenue(
+  invoices: CashRevenueInvoice[],
+  startDate: string,
+  endDate: string,
+): number {
+  return filterDashboardRevenueInvoices(invoices, startDate, endDate)
     .reduce((sum, invoice) => sum + getCashReceiptAmount(invoice), 0);
 }
 

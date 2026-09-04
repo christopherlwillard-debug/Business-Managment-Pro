@@ -674,7 +674,7 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
             error: "This delivery event was already finalized with a different Gmail message.",
           });
         }
-        await updateCompatibilitySentFields(invoiceId, "gmail");
+        await updateCompatibilitySentFields(invoiceId, "gmail", existing.completedAt);
       }
       return res.json(existing);
     }
@@ -735,7 +735,11 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
       existing.provider === "gmail" &&
       ["initial_invoice", "resend_invoice"].includes(existing.eventType)
     ) {
-      await updateCompatibilitySentFields(invoiceId, existing.channel === "gmail" ? "gmail" : existing.provider);
+      await updateCompatibilitySentFields(
+        invoiceId,
+        existing.channel === "gmail" ? "gmail" : existing.provider,
+        event.completedAt,
+      );
     }
     res.json(event);
   } catch (err) {
@@ -1098,7 +1102,7 @@ router.post("/:id/send", async (req, res) => {
     }
 
     if (deliveryResult.delivery.provider === "gmail" && deliveryResult.delivery.messageId) {
-      await updateCompatibilitySentFields(id, "gmail");
+      await updateCompatibilitySentFields(id, "gmail", deliveryResult.event.completedAt);
     }
 
     const [updated] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));

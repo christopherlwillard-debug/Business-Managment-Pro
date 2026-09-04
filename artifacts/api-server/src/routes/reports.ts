@@ -1,14 +1,19 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable, growthFundDeploymentsTable, recurringExpensesTable, subPaymentRecordsTable } from "@workspace/db/schema";
+import { jobsTable, invoicesTable, invoiceCommunicationEventsTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable, growthFundDeploymentsTable, recurringExpensesTable, subPaymentRecordsTable } from "@workspace/db/schema";
 import { plaidConnectionsTable } from "@workspace/db";
-import { eq, and, or, gte, lte, desc, ne, inArray, sql, count, isNull } from "drizzle-orm";
+import { eq, and, or, gte, lte, desc, ne, inArray, sql, count, isNull, getTableColumns } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
 import { sectionGuard, ownerGuard } from "./guards";
 import { summarizeMileageRecords } from "../lib/irs-rates.js";
 import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
-import { filterCashReceipts, sumCashReceipts } from "../lib/cash-revenue.js";
+import {
+  filterCashReceipts,
+  filterDashboardRevenueInvoices,
+  sumCashReceipts,
+  sumDashboardRevenue,
+} from "../lib/cash-revenue.js";
 import { calcInvoiceFromStored } from "./invoices.js";
 import { getWeekToDateStart } from "../lib/dashboard-period.js";
 import {
@@ -17,6 +22,23 @@ import {
 } from "../lib/owner-withdrawals.js";
 
 const router = Router();
+
+const dashboardInvoiceSelection = {
+  ...getTableColumns(invoicesTable),
+  // Revenue attribution must come from append-only verified Gmail evidence,
+  // never from the invoices.sentAt compatibility summary. MIN preserves the
+  // first verified delivery period when an invoice is later resent.
+  verifiedSentAt: sql<Date | null>`(
+    SELECT MIN(${invoiceCommunicationEventsTable.completedAt})
+    FROM ${invoiceCommunicationEventsTable}
+    WHERE ${invoiceCommunicationEventsTable.invoiceId} = ${invoicesTable.id}
+      AND ${invoiceCommunicationEventsTable.eventType} IN ('initial_invoice', 'resend_invoice')
+      AND ${invoiceCommunicationEventsTable.status} = 'accepted'
+      AND ${invoiceCommunicationEventsTable.provider} = 'gmail'
+      AND ${invoiceCommunicationEventsTable.providerMessageId} IS NOT NULL
+      AND ${invoiceCommunicationEventsTable.completedAt} IS NOT NULL
+  )`.as("verified_sent_at"),
+};
 
 router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
   try {
@@ -78,11 +100,10 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       kpiPaidInvoices, kpiNonPaidInvoices, kpiExpenses, allMileage, kpiOtherIncome, kpiActiveJobs,
       recentJobsRows, recentInvoicesRows, kpiOwnerCapital, allSubPayments,
     ] = await Promise.all([
-      // KPI invoice queries — split so paid invoices are not date-bounded:
-      // effective payment date (stripePaidAt → squarePaidAt → issueDate) governs period
-      // attribution in JS, so a Dec-issued invoice paid in Jan appears in January's revenue.
-      // Paid invoices: no issueDate filter — payment date is the attribution gate in JS below
-      db.select().from(invoicesTable).where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
+      // Dashboard revenue uses verified send date with issueDate as a legacy fallback.
+      // Paid invoices remain unbounded here so JS can attribute a paid invoice to its
+      // send period even when payment arrived in a later period.
+      db.select(dashboardInvoiceSelection).from(invoicesTable).where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
       // Non-paid invoices: issueDate-bounded so pending/overdue counts remain period-specific
       db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
       db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
@@ -118,12 +139,12 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     ]);
 
     // Merge paid + non-paid into the unified kpiInvoices array.
-    // Paid invoices are pre-filtered to those whose effective payment date falls within
-    // the selected period — this ensures every downstream aggregate (revenue, byBusinessLine,
-    // unattributed breakdown) stays period-accurate without individual payment-date
-    // guards in each calculation. The issueDate-bounded non-paid array is appended unchanged.
+    // Paid invoices are pre-filtered to those whose verified send date (or legacy
+    // issueDate fallback) falls within the selected period. This ensures every downstream
+    // aggregate (revenue, byBusinessLine, unattributed breakdown) stays period-accurate
+    // without individual date guards. The issueDate-bounded non-paid array is appended unchanged.
     const kpiInvoices = [
-      ...filterCashReceipts(kpiPaidInvoices, startDate, endDate),
+      ...filterDashboardRevenueInvoices(kpiPaidInvoices, startDate, endDate),
       ...kpiNonPaidInvoices,
     ];
 
@@ -132,16 +153,16 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const [rawPaidInvoices, rawNonPaidInvoices, rawExpenses, rawOtherIncome, rawActiveJobs] = validBl
       ? await Promise.all([
           // Same paid/non-paid split as kpiInvoices — see comment above
-          db.select().from(invoicesTable).where(eq(invoicesTable.status, "paid")),
+          db.select(dashboardInvoiceSelection).from(invoicesTable).where(eq(invoicesTable.status, "paid")),
           db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
           db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate), isNull(expensesTable.voidedAt))),
           db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), isNull(otherIncomeTable.voidedAt))),
           db.select().from(jobsTable).where(eq(jobsTable.status, "in_progress")),
         ])
       : [kpiPaidInvoices, kpiNonPaidInvoices, kpiExpenses, kpiOtherIncome, kpiActiveJobs];
-    // Same period gate as kpiInvoices — filter paid to effective payment date within period.
+    // Same dashboard send-date gate as kpiInvoices.
     const rawInvoices = [
-      ...filterCashReceipts(rawPaidInvoices, startDate, endDate),
+      ...filterDashboardRevenueInvoices(rawPaidInvoices, startDate, endDate),
       ...rawNonPaidInvoices,
     ];
 
@@ -151,8 +172,9 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       ? allMileage
       : await db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, ytdStart), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt), mileageWhere));
 
-    // Cash-basis: count paid invoice revenue only when the payment was actually received in this period
-    const invoiceRevenue = sumCashReceipts(kpiInvoices, startDate, endDate);
+    // Dashboard operating revenue is attributed to the invoice's verified send period.
+    // Payment status still controls recognition: unpaid sent/overdue invoices remain outstanding.
+    const invoiceRevenue = sumDashboardRevenue(kpiInvoices, startDate, endDate);
     const otherIncomeTotal = kpiOtherIncome.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const totalRevenue = invoiceRevenue + otherIncomeTotal;
     const pendingInvoices = kpiInvoices.filter(i => i.status === "sent").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
@@ -290,7 +312,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       // pre-payments (already captured in jsh accruals) from the BL breakdown too.
       const blExpenses = rawExpenses.filter(e => e.businessLine === bl && e.category !== "mileage" && !isOutstandingCostBooking(e) && !e.isWageAdvance);
       const blActiveJobs = rawActiveJobs.filter(j => j.businessLine === bl);
-      const blRevenue = sumCashReceipts(blInvoices, startDate, endDate)
+      const blRevenue = sumDashboardRevenue(blInvoices, startDate, endDate)
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const blSubPayTotal = subPayByBl.get(bl) ?? 0;
       const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + blSubPayTotal;
@@ -324,7 +346,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     );
     const unattribInvoices = rawInvoices.filter(i => !i.businessLine || !knownBls.has(i.businessLine));
     const unattribOther = rawOtherIncome.filter(o => !o.businessLine || !knownBls.has(o.businessLine));
-    const unattribRevenue = sumCashReceipts(unattribInvoices, startDate, endDate)
+    const unattribRevenue = sumDashboardRevenue(unattribInvoices, startDate, endDate)
       + unattribOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     // Unattributed sub payments: those with null/unknown businessLine or a slug not in registered businesses
     const unattribSubPay = Array.from(subPayByBl.entries())
@@ -364,20 +386,20 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const lastDay = String(new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()).padStart(2, "0");
       const [monthlyPaidInv, monthlyNonPaidInv, monthlyExp, monthlyOther] = await Promise.all([
-        // Paid invoices: no issueDate filter — JS filters by effective payment date below
-        db.select().from(invoicesTable).where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
+        // Paid invoices: no issueDate filter — JS attributes by send date below
+        db.select(dashboardInvoiceSelection).from(invoicesTable).where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
         // Non-paid: issueDate-bounded so outstanding counts remain month-specific
         db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, `${monthStr}-01`), lte(invoicesTable.issueDate, `${monthStr}-${lastDay}`), blWhere(invoicesTable.businessLine))),
         db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-${lastDay}`), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
         db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-${lastDay}`), blWhere(otherIncomeTable.businessLine), isNull(otherIncomeTable.voidedAt))),
       ]);
-      // Filter paid to effective payment date within this month so the revenue bar
+      // Filter paid to verified send date (or issueDate fallback) within this month so the revenue bar
       // and outstanding aggregate only reflect invoices that belong to this period.
       const monthlyInv = [
-        ...filterCashReceipts(monthlyPaidInv, `${monthStr}-01`, `${monthStr}-${lastDay}`),
+        ...filterDashboardRevenueInvoices(monthlyPaidInv, `${monthStr}-01`, `${monthStr}-${lastDay}`),
         ...monthlyNonPaidInv,
       ];
-      const invRevenue = sumCashReceipts(monthlyInv, `${monthStr}-01`, `${monthStr}-${lastDay}`);
+      const invRevenue = sumDashboardRevenue(monthlyInv, `${monthStr}-01`, `${monthStr}-${lastDay}`);
       const othRevenue = monthlyOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const mo_revenue = invRevenue + othRevenue;
       // Exclude mileage (sourced from mileage_logs), owner distributions (equity, not business costs),

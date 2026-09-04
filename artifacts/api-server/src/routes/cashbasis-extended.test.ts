@@ -827,3 +827,59 @@ describe("Dashboard monthly chart — sub payment in prior chart month", () => {
     expect(currentMonthBar.expenses).toBeCloseTo(350, 10);
   });
 });
+
+describe("Dashboard revenue — verified send-period attribution", () => {
+  it("attributes a paid invoice to its send month while cash-basis revenue stays in its payment month", async () => {
+    const SENT_MONTH = monthAgo(1);
+    const PAYMENT_MONTH = monthAgo(0);
+    const verifiedInvoice = {
+      id: 901,
+      status: "paid",
+      total: "1200.00",
+      amountPaid: "1200.00",
+      issueDate: `${SENT_MONTH}-01`,
+      // Compatibility field intentionally differs: Dashboard must trust the
+      // verified event projection, not invoices.sentAt.
+      sentAt: new Date(`${PAYMENT_MONTH}-01T12:00:00.000Z`),
+      verifiedSentAt: new Date(`${SENT_MONTH}-15T12:00:00.000Z`),
+      stripePaidAt: new Date(`${PAYMENT_MONTH}-02T12:00:00.000Z`),
+      squarePaidAt: null,
+      lastManualPaidAt: null,
+      businessLine: null,
+    };
+    const legacyInvoice = {
+      ...verifiedInvoice,
+      id: 902,
+      total: "300.00",
+      amountPaid: "300.00",
+      issueDate: `${SENT_MONTH}-05`,
+      sentAt: new Date(`${PAYMENT_MONTH}-01T12:00:00.000Z`),
+      verifiedSentAt: null,
+    };
+    const paidInvoices = [verifiedInvoice, legacyInvoice];
+
+    h.selectQueue.push(paidInvoices); // [0] KPI paid invoices
+    for (let i = 1; i < 10; i++) h.selectQueue.push([]); // [1-9] remaining main slots
+    h.selectQueue.push([]); // [10] ytdMileageLogs
+    h.selectQueue.push([]); // [11] subPayRows
+    h.selectQueue.push([]); // [12] allBusinesses
+    for (let i = 5; i >= 0; i--) {
+      h.selectQueue.push(paidInvoices); // monthly paid invoices are intentionally unbounded
+      h.selectQueue.push([]); // monthly non-paid invoices
+      h.selectQueue.push([]); // monthly expenses
+      h.selectQueue.push([]); // monthly other income
+    }
+
+    const res = await request(dashApp).get("/reports/dashboard");
+    expect(res.status).toBe(200);
+
+    expect(res.body.totalRevenue).toBe(0);
+    const chart = res.body.monthlyRevenue as any[];
+    expect(chart.find(bucket => bucket.month === SENT_MONTH)?.revenue).toBeCloseTo(1500, 10);
+    expect(chart.find(bucket => bucket.month === PAYMENT_MONTH)?.revenue).toBeCloseTo(0, 10);
+
+    const { sumCashReceipts } = await import("../lib/cash-revenue.js");
+    expect(sumCashReceipts(paidInvoices, `${PAYMENT_MONTH}-01`, `${PAYMENT_MONTH}-31`)).toBeCloseTo(1500, 10);
+    expect(sumCashReceipts(paidInvoices, `${SENT_MONTH}-01`, `${SENT_MONTH}-31`)).toBeCloseTo(0, 10);
+  });
+});

@@ -305,3 +305,13 @@ Created the four-document architecture governance system:
 - Kept all existing cash-basis revenue, expense, subcontractor-pay, and
   outstanding-invoice calculations unchanged.
 - Added regression coverage for month-boundary and Sunday/Monday week starts.
+
+### Dashboard invoice revenue attribution
+
+- Dashboard revenue and its six-month trend now attribute paid invoices to the
+  verified invoice-send timestamp, with invoice issue date as the explicit
+  fallback for historical records without verified delivery timestamps.
+- Payment status still controls recognition: unpaid sent and overdue invoices
+  remain outstanding rather than becoming dashboard revenue.
+- Cash-basis accounting, tax, P&L, reserve, Year-End, and payment-history
+  calculations continue to use payment dates.

@@ -288,12 +288,20 @@ export async function markInvoiceCommunicationAccepted(
 export async function updateCompatibilitySentFields(
   invoiceId: number,
   sentMethod: string,
+  completedAt: Date | string | null,
 ) {
+  if (!completedAt) {
+    throw new Error("Verified invoice delivery is missing its completion timestamp");
+  }
+  const sentAt = completedAt instanceof Date ? completedAt : new Date(completedAt);
+  if (!Number.isFinite(sentAt.getTime())) {
+    throw new Error("Verified invoice delivery has an invalid completion timestamp");
+  }
   // Only the first confirmed delivery moves Approved → Sent. Replays are
   // intentionally no-ops so they cannot rewrite sentAt or regress an invoice
   // that has already advanced to overdue, partially paid, or paid.
   await db.update(invoicesTable)
-    .set({ status: "sent", sentAt: new Date(), sentMethod })
+    .set({ status: "sent", sentAt, sentMethod })
     .where(and(
       eq(invoicesTable.id, invoiceId),
       eq(invoicesTable.status, "approved"),
