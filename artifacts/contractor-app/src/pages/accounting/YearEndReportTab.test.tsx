@@ -4,15 +4,24 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import YearEndReportTab from "./YearEndReportTab";
 
-const queryHarness = vi.hoisted(() => ({ report: null as any }));
+const queryHarness = vi.hoisted(() => ({
+  report: null as any,
+  tripsError: false,
+  tripsRefetch: vi.fn(),
+}));
 
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: ({ queryKey }: { queryKey?: unknown[] }) => ({
-    data: queryKey?.[0] === "year-end-report" ? queryHarness.report : [],
-    isLoading: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
+  useQuery: ({ queryKey }: { queryKey?: unknown[] }) => {
+    const isTripQuery = queryKey?.[0] === "biz-trips-report";
+    return {
+      data: isTripQuery ? [] : queryHarness.report,
+      isLoading: false,
+      isFetching: false,
+      isError: isTripQuery && queryHarness.tripsError,
+      error: null,
+      refetch: isTripQuery ? queryHarness.tripsRefetch : vi.fn(),
+    };
+  },
 }));
 
 vi.mock("@/contexts/BusinessContext", () => ({
@@ -96,5 +105,46 @@ describe("Year-End 1099 mobile presentation", () => {
     act(() => root.unmount());
     container.remove();
     queryHarness.report = null;
+  });
+});
+
+describe("Year-End Business Trips request state", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    queryHarness.report = reportFixture;
+    queryHarness.tripsError = true;
+    queryHarness.tripsRefetch.mockReset();
+    act(() => {
+      root.render(<YearEndReportTab year={2026} />);
+    });
+  });
+
+  it("labels failed trip totals as unavailable and retries the read query", () => {
+    const summary = container.querySelector('[data-testid="status-year-end-trips-summary"]');
+    expect(summary?.textContent).toBe("Trips unavailable");
+    expect(summary?.textContent).not.toContain("0 trips");
+
+    const sectionToggle = Array.from(container.querySelectorAll("button"))
+      .find(button => button.textContent?.includes("Business Trip Summary"));
+    act(() => sectionToggle?.click());
+
+    const errorState = container.querySelector('[data-testid="status-year-end-trips-error"]');
+    expect(errorState?.textContent).toContain("Travel totals are unavailable, not zero");
+
+    const retry = container.querySelector('[data-testid="button-retry-year-end-trips"]') as HTMLButtonElement;
+    act(() => retry.click());
+    expect(queryHarness.tripsRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    queryHarness.report = null;
+    queryHarness.tripsError = false;
   });
 });

@@ -252,7 +252,7 @@ function TripRow({ trip }: { trip: BusinessTrip }) {
 }
 
 export default function BusinessTripsTab({ year }: { year: number }) {
-  const { data: trips = [], isLoading } = useQuery<BusinessTrip[]>({
+  const { data: trips = [], isLoading, isError, isFetching, refetch } = useQuery<BusinessTrip[]>({
     queryKey: ["business-trips-acct", year],
     queryFn: async () => {
       const res = await fetch(`${API}/trips?year=${year}`, { credentials: "include" });
@@ -318,6 +318,28 @@ export default function BusinessTripsTab({ year }: { year: number }) {
 
       {isLoading ? (
         <div className="text-center py-20 text-muted-foreground animate-pulse text-sm">Loading trips…</div>
+      ) : isError ? (
+        <div
+          className="rounded-2xl border border-red-200 bg-red-50/70 px-5 py-8 text-center"
+          role="alert"
+          data-testid="status-business-trips-error"
+        >
+          <AlertTriangle className="w-9 h-9 mx-auto mb-3 text-red-500" />
+          <p className="text-sm font-semibold text-red-800">Business trips could not be loaded</p>
+          <p className="text-xs text-red-700 mt-1">
+            These totals may be incomplete. Retry before relying on this report.
+          </p>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            className="inline-flex items-center gap-1.5 mt-4 px-3 py-2 rounded-xl border border-red-200 bg-white text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed"
+            data-testid="button-retry-business-trips"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+            {isFetching ? "Retrying…" : "Retry"}
+          </button>
+        </div>
       ) : trips.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground">
           <Briefcase className="w-10 h-10 mx-auto mb-3 opacity-20" />

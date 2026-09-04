@@ -402,7 +402,7 @@ function BusinessTripSummarySection({ year }: { year: number }) {
   const [dateFrom, setDateFrom] = useState(`${year}-01-01`);
   const [dateTo, setDateTo] = useState(`${year}-12-31`);
 
-  const { data: trips = [], isLoading } = useQuery<TripStat[]>({
+  const { data: trips = [], isLoading, isError, isFetching, refetch } = useQuery<TripStat[]>({
     queryKey: ["biz-trips-report", year, dateFrom, dateTo],
     queryFn: async () => {
       const params = new URLSearchParams({ year: String(year) });
@@ -434,7 +434,12 @@ function BusinessTripSummarySection({ year }: { year: number }) {
       >
         <Briefcase className="w-4 h-4 text-primary" />
         <h3 className="font-semibold text-sm text-foreground flex-1">Business Trip Summary</h3>
-        <span className="text-xs text-muted-foreground mr-2">{trips.length} trips · {fmtMoney(totalTravelSpend)}</span>
+        <span
+          className={`text-xs mr-2 ${isError ? "font-semibold text-red-600" : "text-muted-foreground"}`}
+          data-testid="status-year-end-trips-summary"
+        >
+          {isLoading ? "Loading trips…" : isError ? "Trips unavailable" : `${trips.length} trips · ${fmtMoney(totalTravelSpend)}`}
+        </span>
         {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
       </button>
       {expanded && (
@@ -459,6 +464,32 @@ function BusinessTripSummarySection({ year }: { year: number }) {
 
           {isLoading ? (
             <p className="text-sm text-muted-foreground animate-pulse">Loading trips…</p>
+          ) : isError ? (
+            <div
+              className="rounded-xl border border-red-200 bg-red-50/70 px-4 py-4"
+              role="alert"
+              data-testid="status-year-end-trips-error"
+            >
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 mt-0.5 text-red-500 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-red-800">Business trips could not be loaded</p>
+                  <p className="text-xs text-red-700 mt-0.5">
+                    Travel totals are unavailable, not zero. Retry before relying on this summary.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void refetch()}
+                  disabled={isFetching}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                  data-testid="button-retry-year-end-trips"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+                  {isFetching ? "Retrying…" : "Retry"}
+                </button>
+              </div>
+            </div>
           ) : trips.length === 0 ? (
             <p className="text-sm text-muted-foreground py-2">No business trips in this date range.</p>
           ) : (
