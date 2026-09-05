@@ -1,0 +1,179 @@
+// @vitest-environment happy-dom
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { InvoicePanel } from "./InvoicePanel";
+
+const harness = vi.hoisted(() => ({
+  refreshBusinesses: vi.fn(),
+  toast: vi.fn(),
+}));
+
+vi.mock("@workspace/api-client-react", () => ({
+  useListClients: () => ({ data: [] }),
+  useListJobs: () => ({ data: [] }),
+  useGetSettings: () => ({
+    data: {
+      companyName: "Shared Company",
+      invoiceLogoPosition: "top-left",
+      invoiceLogoSize: "small",
+    },
+  }),
+  useCreateInvoice: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateInvoice: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateClient: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateInvoicePaymentLink: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteInvoicePaymentLink: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useListInvoiceCommunications: () => ({ data: [] }),
+}));
+
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
+}));
+
+vi.mock("@/contexts/GoogleAuth", () => ({
+  useGoogleAuth: () => ({
+    isConfigured: false,
+    isConnected: false,
+    getToken: vi.fn(),
+    signIn: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/use-toast", () => ({
+  useToast: () => ({ toast: harness.toast }),
+}));
+
+vi.mock("@/contexts/BusinessContext", () => ({
+  useBusiness: () => ({
+    activeBusiness: null,
+    businesses: [
+      {
+        id: 17,
+        name: "Asphalt",
+        slug: "asphalt_sealing",
+        logoUrl: "/logos/asphalt.png",
+        invoiceLogoLayout: { x: 0.8, width: 240, height: 90 },
+      },
+      {
+        id: 23,
+        name: "General",
+        slug: "general_contracting",
+        logoUrl: "/logos/general.png",
+        invoiceLogoLayout: { x: 0.25, width: 180, height: 70 },
+      },
+    ],
+    refresh: harness.refreshBusinesses,
+  }),
+}));
+
+async function flush() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+describe("InvoicePanel logo layout reset", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let resetSucceeds: boolean;
+  let requests: Array<{ url: string; init?: RequestInit }>;
+
+  beforeEach(async () => {
+    resetSucceeds = true;
+    requests = [];
+    harness.toast.mockReset();
+    harness.refreshBusinesses.mockReset();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, init });
+      if (url.includes("/api/settings/logo-data-uri")) {
+        return new Response(JSON.stringify({ dataUri: "data:image/png;base64,bG9nbw==" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/businesses/17") && init?.method === "PUT") {
+        return new Response(null, { status: resetSucceeds ? 200 : 500 });
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }));
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <InvoicePanel
+          open
+          onOpenChange={vi.fn()}
+          initialData={{ businessLine: "asphalt_sealing" } as never}
+        />,
+      );
+    });
+    await flush();
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  });
+
+  async function enterLayoutModeAndReset() {
+    const logo = container.querySelector('[data-invoice-logo]') as HTMLDivElement;
+    expect(logo).not.toBeNull();
+    expect(logo.style.left).toBe("80%");
+    expect(logo.style.width).toBe("240px");
+
+    act(() => logo.click());
+    const reset = Array.from(container.querySelectorAll("button"))
+      .find(button => button.textContent?.trim() === "Reset to default") as HTMLButtonElement;
+    expect(reset).not.toBeUndefined();
+    await act(async () => reset.click());
+    await flush();
+  }
+
+  it("clears only the selected business, previews the shared fallback, and exits layout mode", async () => {
+    await enterLayoutModeAndReset();
+
+    const resetRequest = requests.find(request => request.url.endsWith("/api/businesses/17"));
+    expect(resetRequest).toMatchObject({
+      url: "/api/businesses/17",
+      init: {
+        method: "PUT",
+        credentials: "include",
+        body: JSON.stringify({ invoiceLogoLayout: null }),
+      },
+    });
+    expect(requests.some(request => request.url.endsWith("/api/businesses/23"))).toBe(false);
+    expect(container.textContent).not.toContain("Reset to default");
+    expect(container.querySelector("[data-invoice-logo-guides]")).toBeNull();
+
+    const logo = container.querySelector('[data-invoice-logo]') as HTMLDivElement;
+    expect(logo.style.left).toBe("0%");
+    expect(logo.style.width).toBe("120px");
+    expect(harness.refreshBusinesses).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the current draft and shows an error when reset fails", async () => {
+    resetSucceeds = false;
+    await enterLayoutModeAndReset();
+
+    expect(container.textContent).toContain("Reset to default");
+    expect(container.querySelector("[data-invoice-logo-guides]")).not.toBeNull();
+    const logo = container.querySelector('[data-invoice-logo]') as HTMLDivElement;
+    expect(logo.style.left).toBe("80%");
+    expect(logo.style.width).toBe("240px");
+    expect(harness.refreshBusinesses).not.toHaveBeenCalled();
+    expect(harness.toast).toHaveBeenCalledWith({
+      title: "Logo layout not reset",
+      description: "Could not reset logo layout",
+      variant: "destructive",
+    });
+  });
+});
