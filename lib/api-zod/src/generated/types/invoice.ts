@@ -49,6 +49,8 @@ export interface Invoice {
   acceptedAt?: string | null;
   sentAt?: string | null;
   sentMethod?: string | null;
+  /** True when an existing Gmail invoice delivery has a message ID but still needs server evidence verification before reminders can resume. */
+  gmailDeliveryNeedsRepair?: boolean;
   voidedAt?: string | null;
   voidReason?: string | null;
   createdAt: string;

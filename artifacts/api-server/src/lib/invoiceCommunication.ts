@@ -98,6 +98,50 @@ export interface ConfirmedGmailInvoiceDelivery {
   completedAt: Date | string | null;
 }
 
+export async function gmailRepairRequiredInvoiceIds(
+  invoices: Array<{ id: number; status: string; acceptedAt?: Date | string | null }>,
+): Promise<Set<number>> {
+  const candidates = invoices.filter(invoice =>
+    ["approved", "sent", "overdue", "partiallyPaid"].includes(invoice.status),
+  );
+  if (candidates.length === 0) return new Set();
+
+  const acceptedAtByInvoiceId = new Map(
+    candidates.map(invoice => [
+      invoice.id,
+      invoice.acceptedAt ? new Date(invoice.acceptedAt).getTime() : 0,
+    ]),
+  );
+  const rows = await db
+    .select({
+      invoiceId: invoiceCommunicationEventsTable.invoiceId,
+      eventType: invoiceCommunicationEventsTable.eventType,
+      status: invoiceCommunicationEventsTable.status,
+      provider: invoiceCommunicationEventsTable.provider,
+      providerMessageId: invoiceCommunicationEventsTable.providerMessageId,
+      metadata: invoiceCommunicationEventsTable.metadata,
+      requestedAt: invoiceCommunicationEventsTable.requestedAt,
+    })
+    .from(invoiceCommunicationEventsTable)
+    .where(inArray(invoiceCommunicationEventsTable.invoiceId, candidates.map(invoice => invoice.id)));
+
+  const confirmedInvoiceIds = new Set(
+    rows.filter(isConfirmedGmailInvoiceEvent).map(row => row.invoiceId),
+  );
+  return new Set(rows.filter(row => {
+    const metadata = row.metadata && typeof row.metadata === "object"
+      ? row.metadata as Record<string, unknown>
+      : {};
+    return !confirmedInvoiceIds.has(row.invoiceId)
+      && (row.eventType === "initial_invoice" || row.eventType === "resend_invoice")
+      && (row.status === "pending" || row.status === "accepted")
+      && row.provider === "gmail"
+      && Boolean(row.providerMessageId)
+      && metadata.gmailEvidenceVerified !== true
+      && new Date(row.requestedAt).getTime() >= (acceptedAtByInvoiceId.get(row.invoiceId) ?? 0);
+  }).map(row => row.invoiceId));
+}
+
 function isConfirmedGmailInvoiceEvent(row: {
   invoiceId: number;
   eventType: string;

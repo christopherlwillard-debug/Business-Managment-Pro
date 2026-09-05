@@ -288,6 +288,11 @@ export default function Invoices() {
     return list;
   }, [allInvoices, nonVoidedInvoices, filterStatus, searchQuery, activeBusiness, showVoided]);
 
+  const repairRequiredInvoices = useMemo(
+    () => filteredInvoices.filter((invoice: any) => invoice.gmailDeliveryNeedsRepair === true),
+    [filteredInvoices],
+  );
+
   const pendingOpenId = useRef<number | null>(null);
 
   useEffect(() => {
@@ -454,7 +459,38 @@ export default function Invoices() {
 
       {/* Search + status filter (All Invoices tab only) */}
       {activeTab === "all" && (
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="space-y-3">
+          {repairRequiredInvoices.length > 0 && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold">
+                    {repairRequiredInvoices.length === 1
+                      ? "1 invoice needs Gmail delivery repair"
+                      : `${repairRequiredInvoices.length} invoices need Gmail delivery repair`}
+                  </p>
+                  <p className="mt-1 text-xs text-amber-800">
+                    Automatic reminders stay paused until the existing Gmail delivery is verified. Repairing history does not send another email.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {repairRequiredInvoices.map((invoice: any) => (
+                      <button
+                        key={invoice.id}
+                        type="button"
+                        onClick={() => setViewInvoice(invoice)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                      >
+                        <Mail className="h-3.5 w-3.5" />
+                        Open {invoice.invoiceNumber ?? "invoice"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input
@@ -500,6 +536,7 @@ export default function Invoices() {
                 <span className="ml-1.5 opacity-80">{statusCounts.voided}</span>
               </button>
             )}
+          </div>
           </div>
         </div>
       )}
@@ -576,6 +613,15 @@ export default function Invoices() {
                               aria-label={`Initial invoice communication accepted ${new Date(inv.sentAt).toLocaleString()}`}
                             >
                               <Mail className="w-3 h-3" />
+                            </span>
+                          )}
+                          {inv.gmailDeliveryNeedsRepair === true && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+                              title="Gmail delivery history needs verification before reminders can resume"
+                            >
+                              <AlertTriangle className="h-3 w-3" />
+                              Repair Gmail
                             </span>
                           )}
                         </div>

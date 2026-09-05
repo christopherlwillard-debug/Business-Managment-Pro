@@ -901,6 +901,12 @@ export const ListInvoicesResponseItem = zod.object({
   acceptedAt: zod.string().nullish(),
   sentAt: zod.string().nullish(),
   sentMethod: zod.string().nullish(),
+  gmailDeliveryNeedsRepair: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when an existing Gmail invoice delivery has a message ID but still needs server evidence verification before reminders can resume.",
+    ),
   voidedAt: zod.string().nullish(),
   voidReason: zod.string().nullish(),
   createdAt: zod.string(),
@@ -1027,6 +1033,12 @@ export const GetInvoiceResponse = zod.object({
   acceptedAt: zod.string().nullish(),
   sentAt: zod.string().nullish(),
   sentMethod: zod.string().nullish(),
+  gmailDeliveryNeedsRepair: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when an existing Gmail invoice delivery has a message ID but still needs server evidence verification before reminders can resume.",
+    ),
   voidedAt: zod.string().nullish(),
   voidReason: zod.string().nullish(),
   createdAt: zod.string(),
@@ -1149,6 +1161,12 @@ export const UpdateInvoiceResponse = zod.object({
   acceptedAt: zod.string().nullish(),
   sentAt: zod.string().nullish(),
   sentMethod: zod.string().nullish(),
+  gmailDeliveryNeedsRepair: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when an existing Gmail invoice delivery has a message ID but still needs server evidence verification before reminders can resume.",
+    ),
   voidedAt: zod.string().nullish(),
   voidReason: zod.string().nullish(),
   createdAt: zod.string(),
@@ -1239,6 +1257,12 @@ export const UpdateInvoiceStatusResponse = zod.object({
   acceptedAt: zod.string().nullish(),
   sentAt: zod.string().nullish(),
   sentMethod: zod.string().nullish(),
+  gmailDeliveryNeedsRepair: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when an existing Gmail invoice delivery has a message ID but still needs server evidence verification before reminders can resume.",
+    ),
   voidedAt: zod.string().nullish(),
   voidReason: zod.string().nullish(),
   createdAt: zod.string(),
@@ -1318,6 +1342,12 @@ export const VoidInvoiceResponse = zod.object({
   acceptedAt: zod.string().nullish(),
   sentAt: zod.string().nullish(),
   sentMethod: zod.string().nullish(),
+  gmailDeliveryNeedsRepair: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when an existing Gmail invoice delivery has a message ID but still needs server evidence verification before reminders can resume.",
+    ),
   voidedAt: zod.string().nullish(),
   voidReason: zod.string().nullish(),
   createdAt: zod.string(),
@@ -2680,6 +2710,12 @@ export const GetDashboardStatsResponse = zod.object({
       acceptedAt: zod.string().nullish(),
       sentAt: zod.string().nullish(),
       sentMethod: zod.string().nullish(),
+      gmailDeliveryNeedsRepair: zod
+        .boolean()
+        .optional()
+        .describe(
+          "True when an existing Gmail invoice delivery has a message ID but still needs server evidence verification before reminders can resume.",
+        ),
       voidedAt: zod.string().nullish(),
       voidReason: zod.string().nullish(),
       createdAt: zod.string(),

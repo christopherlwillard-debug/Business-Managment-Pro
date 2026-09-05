@@ -91,6 +91,7 @@ vi.mock("../lib/generateMaterialsPdf.js",   () => ({ generateMaterialsPdfBuffer:
 const mod = await import("./invoices");
 const invoiceRouter = mod.default;
 const { calcInvoice, calcInvoiceFromStored, fmt } = mod;
+const communicationMod = await import("../lib/invoiceCommunication");
 
 // Grab the spy handle for deleteSquarePaymentLink from the module mock.
 const squareMod = await import("../lib/square.js");
@@ -550,6 +551,68 @@ describe("GET /:id — confirmed Gmail delivery reconciliation", () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("approved");
     expect(res.body.sentAt).toBeNull();
+    expect(h.updates).toHaveLength(0);
+  });
+});
+
+describe("gmailRepairRequiredInvoiceIds", () => {
+  it("flags only unverified Gmail deliveries when no confirmed send enables reminders", async () => {
+    h.selectQueue.push([
+      {
+        invoiceId: 42,
+        eventType: "initial_invoice",
+        status: "pending",
+        provider: "gmail",
+        providerMessageId: "gmail-message-needing-repair",
+        metadata: {},
+        requestedAt: new Date("2026-09-05T12:00:00.000Z"),
+      },
+      {
+        invoiceId: 42,
+        eventType: "resend_invoice",
+        status: "accepted",
+        provider: "gmail",
+        providerMessageId: "later-verified-resend",
+        metadata: { gmailEvidenceVerified: true },
+        requestedAt: new Date("2026-09-05T13:00:00.000Z"),
+      },
+      {
+        invoiceId: 43,
+        eventType: "initial_invoice",
+        status: "accepted",
+        provider: "gmail",
+        providerMessageId: "gmail-message-verified",
+        metadata: { gmailEvidenceVerified: true },
+        requestedAt: new Date("2026-09-05T12:00:00.000Z"),
+      },
+      {
+        invoiceId: 44,
+        eventType: "initial_invoice",
+        status: "pending",
+        provider: "gmail",
+        providerMessageId: null,
+        metadata: {},
+        requestedAt: new Date("2026-09-05T12:00:00.000Z"),
+      },
+      {
+        invoiceId: 45,
+        eventType: "initial_invoice",
+        status: "pending",
+        provider: "gmail",
+        providerMessageId: "gmail-message-needing-repair",
+        metadata: {},
+        requestedAt: new Date("2026-09-05T12:00:00.000Z"),
+      },
+    ]);
+
+    const result = await communicationMod.gmailRepairRequiredInvoiceIds([
+      { id: 42, status: "approved", acceptedAt: "2026-09-05T10:00:00.000Z" },
+      { id: 43, status: "sent", acceptedAt: "2026-09-05T10:00:00.000Z" },
+      { id: 44, status: "approved", acceptedAt: "2026-09-05T10:00:00.000Z" },
+      { id: 45, status: "approved", acceptedAt: "2026-09-05T10:00:00.000Z" },
+    ]);
+
+    expect([...result]).toEqual([45]);
     expect(h.updates).toHaveLength(0);
   });
 });

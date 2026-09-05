@@ -30,6 +30,7 @@ import {
   updateCompatibilitySentFields,
   reconcileConfirmedGmailInvoiceDelivery,
   reconcileConfirmedGmailInvoiceDeliveries,
+  gmailRepairRequiredInvoiceIds,
   verifyGmailSentMessage,
   type InvoiceCommunicationType,
 } from "../lib/invoiceCommunication";
@@ -263,7 +264,11 @@ router.get("/", async (req, res) => {
       .orderBy(sql`COALESCE(CAST(REGEXP_REPLACE(${invoicesTable.invoiceNumber}, '\\D', '', 'g') AS INTEGER), 0) DESC`, desc(invoicesTable.id));
 
     const reconciledInvoices = await reconcileInvoiceRows(invoices);
-    res.json(reconciledInvoices.map(fmt));
+    const repairRequiredInvoiceIds = await gmailRepairRequiredInvoiceIds(reconciledInvoices);
+    res.json(reconciledInvoices.map(invoice => ({
+      ...fmt(invoice),
+      gmailDeliveryNeedsRepair: repairRequiredInvoiceIds.has(invoice.id),
+    })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch invoices" });

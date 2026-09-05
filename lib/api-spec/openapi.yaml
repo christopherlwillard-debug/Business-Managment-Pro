@@ -2327,6 +2327,9 @@ components:
         acceptedAt: { type: string, nullable: true }
         sentAt: { type: string, nullable: true }
         sentMethod: { type: string, nullable: true }
+        gmailDeliveryNeedsRepair:
+          type: boolean
+          description: True when an existing Gmail invoice delivery has a message ID but still needs server evidence verification before reminders can resume.
         voidedAt: { type: string, nullable: true }
         voidReason: { type: string, nullable: true }
         createdAt:
