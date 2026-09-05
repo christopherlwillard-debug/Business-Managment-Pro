@@ -232,6 +232,59 @@ describe("InvoicePanel logo layout editing", () => {
     expect(harness.refreshBusinesses).toHaveBeenCalledTimes(1);
   });
 
+  it("sends only one save while Done is pending and stays disabled until it succeeds", async () => {
+    let settleSave!: (response: Response) => void;
+    const pendingSave = new Promise<Response>(resolve => {
+      settleSave = resolve;
+    });
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, init });
+      if (url.endsWith("/api/businesses/17") && init?.method === "PUT") {
+        return pendingSave;
+      }
+      if (url.includes("/api/settings/logo-data-uri")) {
+        return new Response(JSON.stringify({ dataUri: "data:image/png;base64,bG9nbw==" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    await enterLayoutModeAndResize();
+
+    const done = Array.from(container.querySelectorAll("button"))
+      .find(button => button.textContent?.trim() === "Done") as HTMLButtonElement;
+    expect(done).not.toBeUndefined();
+
+    act(() => {
+      done.click();
+      done.click();
+      done.click();
+    });
+
+    expect(requests.filter(request =>
+      request.url.endsWith("/api/businesses/17")
+      && request.init?.method === "PUT"
+    )).toHaveLength(1);
+    expect(done.disabled).toBe(true);
+    expect(done.textContent).toContain("Saving");
+    expect(container.querySelector("[data-invoice-logo-guides]")).not.toBeNull();
+
+    await act(async () => {
+      settleSave(new Response(null, { status: 200 }));
+      await pendingSave;
+    });
+    await flush();
+
+    expect(container.textContent).not.toContain("Done");
+    expect(container.querySelector("[data-invoice-logo-guides]")).toBeNull();
+    expect(harness.refreshBusinesses).toHaveBeenCalledTimes(1);
+  });
+
   it("cancels the draft when switching businesses and cannot save it to the newly selected business", async () => {
     await enterLayoutModeAndResize();
 

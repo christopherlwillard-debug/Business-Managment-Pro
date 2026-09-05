@@ -219,6 +219,7 @@ export function InvoicePanel({
   const [savingLogoLayout, setSavingLogoLayout] = useState(false);
   const [resetLogoLayoutBusinessId, setResetLogoLayoutBusinessId] = useState<number | null>(null);
   const logoAreaRef = useRef<HTMLDivElement>(null);
+  const savingLogoLayoutRef = useRef(false);
 
   const [payUrl, setPayUrl] = useState<string | null>(
     effectiveExistingInvoice?.squarePaymentLinkUrl ?? effectiveExistingInvoice?.stripePaymentLinkUrl ?? null
@@ -549,12 +550,15 @@ export function InvoicePanel({
 
   async function saveLogoLayout() {
     if (
+      savingLogoLayoutRef.current
+      ||
       !selectedBiz
       || !logoLayoutDraft
       || logoLayoutDraftBusinessId === null
       || selectedBiz.id !== logoLayoutDraftBusinessId
     ) return;
     const draftBusiness = selectedBiz;
+    savingLogoLayoutRef.current = true;
     setSavingLogoLayout(true);
     try {
       const response = await fetch(`${base}/api/businesses/${draftBusiness.id}`, {
@@ -577,6 +581,7 @@ export function InvoicePanel({
         variant: "destructive",
       });
     } finally {
+      savingLogoLayoutRef.current = false;
       setSavingLogoLayout(false);
     }
   }
