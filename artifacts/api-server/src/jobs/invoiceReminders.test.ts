@@ -109,6 +109,7 @@ type CommunicationHistory = {
   status: string;
   provider: string;
   providerMessageId: string | null;
+  metadata?: Record<string, unknown>;
 };
 
 function queueWorker(history: CommunicationHistory[], invoice = eligibleInvoice()) {
@@ -185,6 +186,7 @@ describe("scheduled invoice reminder worker Gmail boundary", () => {
       status: "accepted",
       provider: "gmail",
       providerMessageId: "invoice-message-1",
+      metadata: { gmailEvidenceVerified: true },
     }]);
 
     await processInvoiceReminders();
@@ -212,6 +214,7 @@ describe("scheduled invoice reminder worker Gmail boundary", () => {
       status: "accepted",
       provider: "gmail",
       providerMessageId: "invoice-message-2",
+      metadata: { gmailEvidenceVerified: true },
     }]);
     h.sendInvoiceEmail.mockRejectedValue(new Error("Gmail rejected reminder"));
 
@@ -229,6 +232,7 @@ describe("scheduled invoice reminder worker Gmail boundary", () => {
       status: "accepted",
       provider: "gmail",
       providerMessageId: "invoice-message-3",
+      metadata: { gmailEvidenceVerified: true },
     }]);
     h.sendAndRecord.mockImplementation(async (_context: unknown, send: () => Promise<unknown>) => {
       await send();

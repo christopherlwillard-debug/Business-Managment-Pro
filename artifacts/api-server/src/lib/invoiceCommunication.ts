@@ -59,6 +59,7 @@ export async function finalizeInvoiceCommunication(
     providerThreadId?: string | null;
     errorCode?: string | null;
     errorMessage?: string | null;
+    metadata?: Record<string, unknown>;
   },
 ): Promise<InvoiceCommunicationEvent> {
   const [event] = await db.update(invoiceCommunicationEventsTable)
@@ -69,6 +70,7 @@ export async function finalizeInvoiceCommunication(
       providerThreadId: result.providerThreadId ?? null,
       errorCode: result.errorCode ?? null,
       errorMessage: result.errorMessage ?? null,
+      metadata: result.metadata,
       completedAt: new Date(),
     })
     .where(and(
@@ -102,11 +104,16 @@ function isConfirmedGmailInvoiceEvent(row: {
   status: string;
   provider: string | null;
   providerMessageId: string | null;
+  metadata: unknown;
 }): boolean {
+  const metadata = row.metadata && typeof row.metadata === "object"
+    ? row.metadata as Record<string, unknown>
+    : {};
   return (row.eventType === "initial_invoice" || row.eventType === "resend_invoice")
     && row.status === "accepted"
     && row.provider === "gmail"
-    && Boolean(row.providerMessageId);
+    && Boolean(row.providerMessageId)
+    && metadata.gmailEvidenceVerified === true;
 }
 
 /**
@@ -125,6 +132,7 @@ export async function confirmedGmailInvoiceDeliveries(invoiceIds?: number[]): Pr
       status: invoiceCommunicationEventsTable.status,
       provider: invoiceCommunicationEventsTable.provider,
       providerMessageId: invoiceCommunicationEventsTable.providerMessageId,
+      metadata: invoiceCommunicationEventsTable.metadata,
       completedAt: invoiceCommunicationEventsTable.completedAt,
     })
     .from(invoiceCommunicationEventsTable);

@@ -361,12 +361,23 @@ export function InvoicePanel({
         event.channel === "gmail" &&
         event.provider === "gmail" &&
         ["initial_invoice", "resend_invoice"].includes(event.eventType) &&
-        (event.status === "pending" || (event.status === "accepted" && !event.providerMessageId)) &&
+        (
+          event.status === "pending"
+          || (
+            event.status === "accepted"
+            && (
+              !event.providerMessageId
+              || !event.metadata
+              || typeof event.metadata !== "object"
+              || (event.metadata as Record<string, unknown>).gmailEvidenceVerified !== true
+            )
+          )
+        ) &&
         new Date(event.requestedAt).getTime() >= acceptedAt
       )
       .at(-1);
     if (!unresolved) return;
-    if (unresolved.status === "accepted" && unresolved.providerMessageId) {
+    if (unresolved.providerMessageId) {
       setGmailFinalizationRecovery({
         invoiceId: effectiveExistingInvoice.id,
         eventId: unresolved.id,
@@ -380,6 +391,36 @@ export function InvoicePanel({
       setGmailPendingEventId(unresolved.id);
     }
   }, [open, effectiveExistingInvoice?.id, effectiveExistingInvoice?.status, effectiveExistingInvoice?.acceptedAt, communicationHistory.data]);
+
+  async function finalizeGmailDelivery(
+    recovery: GmailFinalizationRecovery,
+    gmailAccessToken: string,
+  ): Promise<{ ok: boolean; result: Record<string, any> }> {
+    let result: Record<string, any> = {};
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await fetch(
+        `${base}/api/invoices/${recovery.invoiceId}/communications/${recovery.eventId}/finalize`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            status: "accepted",
+            providerMessageId: recovery.providerMessageId,
+            providerThreadId: recovery.providerThreadId,
+            gmailAccessToken,
+          }),
+        },
+      );
+      result = await response.json().catch(() => ({}));
+      if (response.ok) return { ok: true, result };
+      const verificationMayBeDelayed = response.status === 400
+        && /could not verify/i.test(String(result.error ?? ""));
+      if (!verificationMayBeDelayed || attempt === 2) break;
+      await new Promise(resolve => window.setTimeout(resolve, 700 * (attempt + 1)));
+    }
+    return { ok: false, result };
+  }
 
   // Detect background changes to an already-open invoice (e.g. Square webhook
   // or another tab saving). Updates payUrl silently and shows a non-intrusive
@@ -987,22 +1028,12 @@ export function InvoicePanel({
         // React state still blocks another send in this browser. The prepared
         // event also makes the server block duplicate sends across sessions.
       }
-      const finalizeResponse = await fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${pendingEvent.id}/finalize`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          status: "accepted",
-          providerMessageId: gmailResult.messageId ?? null,
-          providerThreadId: gmailResult.threadId ?? null,
-            gmailAccessToken: token,
-        }),
-      });
-      if (!finalizeResponse.ok) {
-        const finalizeError = await finalizeResponse.json().catch(() => ({}));
+      const finalization = await finalizeGmailDelivery(recovery, token);
+      if (!finalization.ok) {
+        await communicationHistory.refetch();
         toast({
           title: "Email accepted by Gmail — history needs repair",
-          description: finalizeError.error ?? "The invoice remains Approved. Repair the delivery history before sending again.",
+          description: finalization.result.error ?? "The invoice remains Approved. Repair the delivery history before sending again.",
           variant: "destructive",
         });
         return;
@@ -1032,22 +1063,10 @@ export function InvoicePanel({
     setGmailSending(true);
     try {
       const token = await getToken();
-      const response = await fetch(
-        `${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${gmailFinalizationRecovery.eventId}/finalize`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            status: "accepted",
-            providerMessageId: gmailFinalizationRecovery.providerMessageId,
-            providerThreadId: gmailFinalizationRecovery.providerThreadId,
-            gmailAccessToken: token,
-          }),
-        },
-      );
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error ?? "Delivery history could not be repaired.");
+      const finalization = await finalizeGmailDelivery(gmailFinalizationRecovery, token);
+      if (!finalization.ok) {
+        throw new Error(finalization.result.error ?? "Delivery history could not be repaired.");
+      }
       window.localStorage.removeItem(`invoice-gmail-finalization:${effectiveExistingInvoice.id}`);
       setGmailFinalizationRecovery(null);
       await queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
@@ -1312,6 +1331,25 @@ export function InvoicePanel({
             </button>
           </div>
         </div>
+
+        {googleConfigured
+          && isEdit
+          && ["approved", "sent", "overdue"].includes(effectiveExistingInvoice?.status ?? "")
+          && !showGmailCompose
+          && !gmailFinalizationRecovery
+          && !gmailDeliveryBlocked && (
+          <div className="border-b border-blue-100 bg-blue-50 px-4 py-2 sm:hidden">
+            <button
+              type="button"
+              onClick={handleGmailButtonClick}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white shadow-sm"
+              aria-label={invoiceHasBeenSent ? "Resend invoice via Gmail" : "Send invoice via Gmail"}
+            >
+              <Send className="h-4 w-4" />
+              {invoiceHasBeenSent ? "Resend Invoice" : "Send Invoice"}
+            </button>
+          </div>
+        )}
 
         {/* Voided banner */}
         {isVoided && (

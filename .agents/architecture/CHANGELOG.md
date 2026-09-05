@@ -335,3 +335,17 @@ Created the four-document architecture governance system:
   exposes the annual total and monthly average without storing derived values.
 - Profit & Loss, tax, reserve, Year-End, and payment-history reports remain on
   their existing cash-basis payment-date treatment.
+
+## 2026-09-05
+
+### Gmail invoice delivery verification recovery
+
+- Gmail message IDs may be retained on pending communication events after
+  provider acceptance, but they remain repair candidates rather than proof.
+- Only server-verified Gmail evidence receives the durable verification marker
+  required to reconcile an Approved invoice to Sent.
+- Finalization retries brief Gmail Sent-folder delays, preserves strict
+  recipient, subject, correlation-header, and Sent-label checks, and keeps
+  duplicate sends blocked while repair is pending.
+- The invoice editor now refreshes communication history after delayed
+  verification and exposes a clearly labeled mobile Send Invoice action.

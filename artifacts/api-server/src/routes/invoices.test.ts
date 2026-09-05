@@ -492,6 +492,7 @@ describe("GET /:id — confirmed Gmail delivery reconciliation", () => {
         status: "accepted",
         provider: "gmail",
         providerMessageId: "gmail-message-1",
+        metadata: { gmailEvidenceVerified: true },
         completedAt,
       }],
     );
@@ -507,6 +508,28 @@ describe("GET /:id — confirmed Gmail delivery reconciliation", () => {
       sentAt: completedAt,
       sentMethod: "gmail",
     }));
+  });
+
+  it("does not reconcile accepted Gmail evidence without the server verification marker", async () => {
+    h.selectQueue.push(
+      [fakeInvoice({ status: "approved", sentAt: null, sentMethod: null })],
+      [{
+        invoiceId: 42,
+        eventType: "initial_invoice",
+        status: "accepted",
+        provider: "gmail",
+        providerMessageId: "unverified-message",
+        metadata: {},
+        completedAt: new Date("2026-09-02T19:57:42.023Z"),
+      }],
+    );
+
+    const res = await request(app).get("/42");
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("approved");
+    expect(res.body.sentAt).toBeNull();
+    expect(h.updates).toHaveLength(0);
   });
 
   it("does not reconcile an invoice from a pending Gmail event", async () => {
@@ -631,6 +654,58 @@ describe("POST /:id/communications/:eventId/finalize", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/could not verify/i);
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      provider: "gmail",
+      providerMessageId: "gmail-message-1",
+    }));
+    expect(h.updates).not.toContainEqual(expect.objectContaining({
+      status: "accepted",
+    }));
+    expect(h.updates).not.toContainEqual(expect.objectContaining({
+      status: "sent",
+    }));
+  });
+
+  it("keeps delayed Gmail evidence attached to the pending event for a later repair", async () => {
+    h.selectQueue.push(
+      [pendingEvent({ providerMessageId: "gmail-message-1" })],
+      [{ status: "approved" }],
+    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(verifiedGmailResponse()));
+
+    const res = await request(app)
+      .post("/42/communications/77/finalize")
+      .send({
+        status: "accepted",
+        providerMessageId: "gmail-message-1",
+        providerThreadId: "gmail-thread-1",
+        gmailAccessToken: "gmail-token",
+      });
+
+    expect(res.status).toBe(200);
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "accepted",
+      providerMessageId: "gmail-message-1",
+    }));
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "sent",
+      sentMethod: "gmail",
+    }));
+  });
+
+  it("rejects replacing the Gmail message attached to a pending repair", async () => {
+    h.selectQueue.push([pendingEvent({ providerMessageId: "gmail-message-1" })]);
+
+    const res = await request(app)
+      .post("/42/communications/77/finalize")
+      .send({
+        status: "accepted",
+        providerMessageId: "different-message",
+        gmailAccessToken: "gmail-token",
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/different Gmail message/i);
     expect(h.updates).toHaveLength(0);
   });
 
@@ -670,6 +745,7 @@ describe("POST /:id/communications/:eventId/finalize", () => {
       providerMessageId: "gmail-message-1",
       providerThreadId: "gmail-thread-1",
       completedAt,
+      metadata: { gmailEvidenceVerified: true },
     })]);
 
     const res = await request(app)
@@ -690,6 +766,51 @@ describe("POST /:id/communications/:eventId/finalize", () => {
     }));
     expect(h.updates).not.toContainEqual(expect.objectContaining({
       status: "accepted",
+    }));
+  });
+
+  it("does not promote an accepted Gmail event that has no message evidence", async () => {
+    h.selectQueue.push([pendingEvent({
+      status: "accepted",
+      providerMessageId: null,
+      completedAt: new Date("2026-09-02T19:57:42.023Z"),
+    })]);
+
+    const res = await request(app)
+      .post("/42/communications/77/finalize")
+      .send({ status: "accepted", gmailAccessToken: "gmail-token" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/no message evidence/i);
+    expect(h.updates).toHaveLength(0);
+  });
+
+  it("re-verifies legacy accepted Gmail evidence before repairing SENT", async () => {
+    const completedAt = new Date("2026-09-02T19:57:42.023Z");
+    h.selectQueue.push([pendingEvent({
+      status: "accepted",
+      providerMessageId: "gmail-message-1",
+      completedAt,
+      metadata: {},
+    })]);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(verifiedGmailResponse()));
+
+    const res = await request(app)
+      .post("/42/communications/77/finalize")
+      .send({
+        status: "accepted",
+        providerMessageId: "gmail-message-1",
+        gmailAccessToken: "gmail-token",
+      });
+
+    expect(res.status).toBe(200);
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      metadata: expect.objectContaining({ gmailEvidenceVerified: true }),
+    }));
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "sent",
+      sentMethod: "gmail",
+      sentAt: completedAt,
     }));
   });
 
@@ -741,6 +862,7 @@ describe("POST /:id/send-reminder", () => {
         status: "accepted",
         provider: "gmail",
         providerMessageId: "gmail-invoice-message-1",
+        metadata: { gmailEvidenceVerified: true },
       }],
       [reminderInvoice],
     );

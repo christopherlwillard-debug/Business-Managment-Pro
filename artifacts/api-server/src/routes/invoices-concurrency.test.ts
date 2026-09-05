@@ -232,6 +232,7 @@ describe("browser Gmail delivery lifecycle — concurrent real-DB", () => {
         status: "accepted",
         providerMessageId: "gmail-concurrency-message",
         providerThreadId: "gmail-concurrency-thread",
+        metadata: { gmailEvidenceVerified: true },
         completedAt: new Date(),
       })
       .where(eq(invoiceCommunicationEventsTable.id, nextPrepare.body.id));
