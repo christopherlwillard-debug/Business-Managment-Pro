@@ -349,3 +349,12 @@ Created the four-document architecture governance system:
   duplicate sends blocked while repair is pending.
 - The invoice editor now refreshes communication history after delayed
   verification and exposes a clearly labeled mobile Send Invoice action.
+
+### Corrected MileIQ export deduplication
+
+- New MileIQ trips retain their exported start/end timestamp identity, allowing
+  corrected re-exports to add only drives that were not previously imported.
+- Active imported trips are protected by a business- and provider-scoped unique
+  database index, including simultaneous or repeated-file submissions.
+- Existing trip rows, exact-file detection, rollback history, effective-date
+  deductions, and monthly consolidated mileage expenses remain unchanged.

@@ -7,6 +7,7 @@ export interface ParsedTrip {
   endLocation: string;
   classification: MileageClassification;
   notes: string;
+  sourceTripKey: string;
 }
 
 export interface InvalidRow {
@@ -32,6 +33,13 @@ function parseMileIQDate(raw: string): string | null {
   if (!match) return null;
   const [, mm, dd, yyyy] = match;
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function normalizeMileIQTimestamp(raw: string): string | null {
+  const normalized = raw.trim().replace(/\s+/g, " ").toLowerCase();
+  return /^\d{2}\/\d{2}\/\d{4} \d{1,2}:\d{2}(?: [ap]m)?$/.test(normalized)
+    ? normalized
+    : null;
 }
 
 export class MileIQProvider implements MileageImportProvider {
@@ -77,6 +85,7 @@ export class MileIQProvider implements MileageImportProvider {
       }
 
       const rawDate = cols[0] ?? "";
+      const rawEndDate = cols[1] ?? "";
       const rawCategory = (cols[2] ?? "").trim();
       const rawStart = (cols[3] ?? "").trim();
       const rawStop = (cols[4] ?? "").trim();
@@ -87,6 +96,12 @@ export class MileIQProvider implements MileageImportProvider {
       const date = parseMileIQDate(rawDate);
       if (!date) {
         invalid.push({ rowIndex: i + 1, rawData: line, reason: "Invalid or missing date" });
+        continue;
+      }
+      const sourceStartTimestamp = normalizeMileIQTimestamp(rawDate);
+      const sourceEndTimestamp = normalizeMileIQTimestamp(rawEndDate);
+      if (!sourceStartTimestamp || !sourceEndTimestamp) {
+        invalid.push({ rowIndex: i + 1, rawData: line, reason: "Invalid or missing drive timestamp" });
         continue;
       }
 
@@ -106,7 +121,8 @@ export class MileIQProvider implements MileageImportProvider {
       if (rawNotes) notesParts.push(rawNotes);
       const notes = notesParts.join(" — ");
 
-      valid.push({ date, miles, startLocation: rawStart, endLocation: rawStop, classification, notes });
+      const sourceTripKey = `${sourceStartTimestamp}|${sourceEndTimestamp}`;
+      valid.push({ date, miles, startLocation: rawStart, endLocation: rawStop, classification, notes, sourceTripKey });
     }
 
     return { valid, invalid };

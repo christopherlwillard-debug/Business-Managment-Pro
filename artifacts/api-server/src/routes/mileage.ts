@@ -4,6 +4,7 @@ import { mileageLogsTable, mileageImportsTable, jobsTable, settingsTable, expens
 import { eq, and, gte, lte, isNull, inArray, getTableColumns } from "drizzle-orm";
 import { getRequestUserId } from "./guards";
 import { calculateMileageDeduction, getIrsRateForDate, summarizeMileageRecords } from "../lib/irs-rates.js";
+import { partitionMileageImportTrips, type MileageImportTrip } from "../lib/mileage-import-dedup.js";
 
 const router = Router();
 
@@ -104,10 +105,15 @@ export async function recalcImportExpenses(importId: number) {
     }
   }
 
-  // Delete aggregates for months that no longer have any business logs
+  // Void aggregates for months that no longer have any active business logs.
   const staleIds = [...existingByMonth.values()].map(e => e.id);
   if (staleIds.length > 0) {
-    await db.delete(expensesTable).where(inArray(expensesTable.id, staleIds));
+    await db.update(expensesTable)
+      .set({
+        voidedAt: new Date(),
+        voidReason: "Mileage import aggregate no longer has active trips",
+      })
+      .where(inArray(expensesTable.id, staleIds));
   }
 }
 
@@ -309,6 +315,8 @@ router.post("/:id/void", async (req, res) => {
     if (updated?.expenseId) {
       await db.update(expensesTable).set({ voidedAt: new Date(), voidReason: reason })
         .where(and(eq(expensesTable.id, updated.expenseId), isNull(expensesTable.voidedAt)));
+    } else if (updated?.importId) {
+      await recalcImportExpenses(updated.importId);
     }
     res.json(formatMileage(updated));
   } catch (err) {
@@ -415,14 +423,7 @@ router.get("/imports", async (req, res) => {
 router.post("/bulk", async (req, res) => {
   try {
     const { trips, businessId, filename, fileHash, source, skipPersonal } = req.body as {
-      trips: Array<{
-        date: string;
-        miles: number;
-        startLocation: string;
-        endLocation: string;
-        classification: "business" | "personal";
-        notes?: string;
-      }>;
+      trips: MileageImportTrip[];
       businessId: number;
       filename: string;
       fileHash?: string;
@@ -455,6 +456,7 @@ router.post("/bulk", async (req, res) => {
       }
     }
 
+    const importSource = (source ?? "mileiq").trim().toLowerCase();
     const tripsToProcess = skipPersonal
       ? trips.filter(t => t.classification !== "personal")
       : trips;
@@ -465,32 +467,23 @@ router.post("/bulk", async (req, res) => {
         miles: mileageLogsTable.miles,
         startLocation: mileageLogsTable.startLocation,
         endLocation: mileageLogsTable.endLocation,
+        source: mileageLogsTable.source,
+        sourceTripKey: mileageLogsTable.sourceTripKey,
       })
       .from(mileageLogsTable)
       .where(and(
         eq(mileageLogsTable.businessId, bizId),
         isNull(mileageLogsTable.subcontractorId),
+        isNull(mileageLogsTable.voidedAt),
       ));
 
-    const dupSet = new Set(
-      existingLogs.map(l =>
-        `${l.date}|${parseFloat(l.miles ?? "0").toFixed(2)}|${(l.startLocation ?? "").toLowerCase()}|${(l.endLocation ?? "").toLowerCase()}`
-      )
+    const { toInsert, duplicatesSkipped: preflightDuplicatesSkipped } = partitionMileageImportTrips(
+      tripsToProcess,
+      existingLogs,
+      importSource,
     );
+    let duplicatesSkipped = preflightDuplicatesSkipped;
 
-    const toInsert = [];
-    let duplicatesSkipped = 0;
-
-    for (const trip of tripsToProcess) {
-      const key = `${trip.date}|${trip.miles.toFixed(2)}|${trip.startLocation.toLowerCase()}|${trip.endLocation.toLowerCase()}`;
-      if (dupSet.has(key)) {
-        duplicatesSkipped++;
-        continue;
-      }
-      toInsert.push(trip);
-    }
-
-    const importSource = source ?? "mileiq";
     let importedCount = 0;
     let totalMiles = 0;
     let estimatedDeduction = 0;
@@ -534,17 +527,34 @@ router.post("/bulk", async (req, res) => {
           deductionAmount: deductionAmt.toString(),
           notes: t.notes || null,
           source: importSource,
+          sourceTripKey: t.sourceTripKey,
           businessId: bizId,
           importId,
           expenseId: null,
         };
       });
 
-      await db.insert(mileageLogsTable).values(logValues);
-      importedCount = logValues.length;
+      const insertedLogs = await db
+        .insert(mileageLogsTable)
+        .values(logValues)
+        .onConflictDoNothing()
+        .returning({
+          miles: mileageLogsTable.miles,
+          classification: mileageLogsTable.classification,
+          deductionAmount: mileageLogsTable.deductionAmount,
+        });
+      importedCount = insertedLogs.length;
+      duplicatesSkipped += logValues.length - importedCount;
+      totalMiles = insertedLogs.reduce((sum, log) => sum + parseFloat(log.miles ?? "0"), 0);
+      estimatedDeduction = insertedLogs.reduce(
+        (sum, log) => sum + (log.classification === "business" ? parseFloat(log.deductionAmount ?? "0") : 0),
+        0,
+      );
 
       // One aggregate expense per month (not one per trip)
-      await recalcImportExpenses(importId!);
+      if (importedCount > 0) {
+        await recalcImportExpenses(importId!);
+      }
 
       const created = await db
         .select({ id: expensesTable.id, description: expensesTable.description })

@@ -73,6 +73,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Reports:** Yes — mileage deduction in tax reports (`mileageLogsTable`)
 - **Source of truth:** `mileage_logs` for individual trips; `mileage_imports` tracks import batches. Imported trips create one expense per month via `expenses.mileage_import_id`. Deduction calculation is owned by the effective-date engine in `artifacts/api-server/src/lib/irs-rates.ts`; stored rate/deduction fields are snapshots.
 - **Rule:** Do not store mileage costs directly in expenses as line items — use the mileage engine.
+- **Import identity:** New provider imports retain a provider-specific drive key. Active imported trips are unique per business, source, and drive key; voided history remains re-importable.
 - **Correction policy:** Mileage logs and generated expense rows are voided together; import rollback preserves source rows.
 - **Recalculation policy:** `GET /imports/:id/recalculate/preview` is read-only; `POST /imports/:id/recalculate` requires `{ confirm: true }`.
 

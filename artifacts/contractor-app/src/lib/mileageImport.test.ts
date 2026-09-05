@@ -51,6 +51,7 @@ describe("MileIQProvider", () => {
     expect(result.valid).toHaveLength(146);
     expect(result.invalid).toEqual([]);
     expect(result.valid.reduce((sum, trip) => sum + trip.miles, 0)).toBeCloseTo(2934.6);
+    expect(result.valid[0]?.sourceTripKey).toBe("08/01/2026 08:16|08/01/2026 08:46");
   });
 
   it("still reports malformed rows inside the detailed trip table", () => {
@@ -68,6 +69,30 @@ describe("MileIQProvider", () => {
         reason: "Invalid or missing date",
         rawData: expect.stringContaining("not-a-date"),
       }),
+    ]);
+  });
+
+  it("rejects a trip without both provider timestamps", () => {
+    const row = csvTrip(1).replace("08/01/2026 08:46", "");
+    const result = new MileIQProvider().parse(mileIQReport([row]));
+
+    expect(result.valid).toEqual([]);
+    expect(result.invalid).toEqual([
+      expect.objectContaining({ reason: "Invalid or missing drive timestamp" }),
+    ]);
+  });
+
+  it("keeps repeated same-day routes distinct by their MileIQ timestamps", () => {
+    const first = csvTrip(1);
+    const second = first
+      .replace("08/01/2026 08:16", "08/01/2026 10:16")
+      .replace("08/01/2026 08:46", "08/01/2026 10:46");
+
+    const result = new MileIQProvider().parse(mileIQReport([first, second]));
+
+    expect(result.valid.map(trip => trip.sourceTripKey)).toEqual([
+      "08/01/2026 08:16|08/01/2026 08:46",
+      "08/01/2026 10:16|08/01/2026 10:46",
     ]);
   });
 });

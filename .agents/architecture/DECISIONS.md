@@ -354,3 +354,22 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-09-04
+
+---
+
+## ADR-020
+
+**Title:** Imported mileage drive identity uses provider timestamps
+
+**Decision:** New MileIQ imports retain a normalized key derived from the exported start and end timestamps. PostgreSQL enforces uniqueness for active imported trips by business, provider source, and that key. Rows without a provider key retain the existing route-based compatibility check, and voided trips do not block a later re-import.
+
+**Reason:** A corrected MileIQ export has a different file hash but repeats the same drives. File-level hashes cannot prevent trip duplication, while the prior date, miles, start, and stop comparison discarded drive times and could not distinguish legitimate same-day repeat routes. The provider timestamps remain stable when mileage, classification, or address text is corrected and allow the database to protect concurrent imports.
+
+**Rejected Alternatives:**
+- Treating a corrected export as an entirely new batch without trip-level protection
+- Enforcing date, mileage, and route as a unique identity
+- Voiding and replacing every prior import from the same month
+- Relying only on an application-memory duplicate check
+
+**Status:** Accepted
+**Date:** 2026-09-05
