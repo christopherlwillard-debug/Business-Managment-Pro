@@ -1064,10 +1064,30 @@ export function InvoicePanel({
   }
 
   async function handleRepairGmailHistory() {
-    if (!effectiveExistingInvoice || !gmailFinalizationRecovery) return;
+    if (!effectiveExistingInvoice) return;
     setGmailSending(true);
     try {
       const token = await getToken();
+      if (!gmailFinalizationRecovery && gmailPendingEventId) {
+        const response = await fetch(
+          `${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${gmailPendingEventId}/recover-gmail`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ gmailAccessToken: token }),
+          },
+        );
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error ?? "Delivery history could not be recovered.");
+        setGmailDeliveryBlocked(null);
+        setGmailPendingEventId(null);
+        await queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+        await communicationHistory.refetch();
+        toast({ title: "Delivery history repaired", description: "The existing Gmail message was verified. The invoice is now marked Sent." });
+        return;
+      }
+      if (!gmailFinalizationRecovery) return;
       const finalization = await finalizeGmailDelivery(gmailFinalizationRecovery, token);
       if (!finalization.ok) {
         throw new Error(finalization.result.error ?? "Delivery history could not be repaired.");
@@ -1579,15 +1599,25 @@ export function InvoicePanel({
                 <p className="text-xs font-bold text-amber-800">Delivery history needs review</p>
                 <p className="mt-1 text-[11px] text-amber-700">{gmailDeliveryBlocked}</p>
                 {gmailPendingEventId && (
-                  <button
-                    type="button"
-                    onClick={handleResolvePendingGmailAttempt}
-                    disabled={gmailSending}
-                    className="mt-2 inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    {gmailSending ? "Resolving…" : "I Checked Gmail — Not Sent"}
-                  </button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleRepairGmailHistory}
+                      disabled={gmailSending}
+                      className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      {gmailSending ? "Checking Gmail…" : "Find Sent Email & Repair"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleResolvePendingGmailAttempt}
+                      disabled={gmailSending}
+                      className="inline-flex items-center gap-1 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                    >
+                      I Checked Gmail — Not Sent
+                    </button>
+                  </div>
                 )}
               </div>
             ) : gmailSent ? (

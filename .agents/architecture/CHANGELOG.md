@@ -347,8 +347,15 @@ Created the four-document architecture governance system:
 - Finalization retries brief Gmail Sent-folder delays, preserves strict
   recipient, subject, correlation-header, and Sent-label checks, and keeps
   duplicate sends blocked while repair is pending.
+- Google authorization now requests Gmail metadata access in addition to send
+  access. Pending events that lost their provider message ID can search a
+  bounded Sent-folder window and recover only an exact delivery-header match;
+  the recovery never sends another email.
 - The invoice editor now refreshes communication history after delayed
   verification and exposes a clearly labeled mobile Send Invoice action.
+- A guarded ownership repair assigns the user-confirmed Wil-1047 invoice and
+  Wil-1049 job/invoice records to General Contracting so business-scoped invoice
+  lists and job financial summaries use the canonical owner.
 
 ### Corrected MileIQ export deduplication
 

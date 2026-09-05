@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
 
 const CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "") as string;
-const SCOPES = "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.send";
+const SCOPES = "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.metadata";
 
 export interface GoogleTokenInfo {
   token: string;
@@ -58,7 +58,9 @@ function loadGisScript(): Promise<void> {
   });
 }
 
-const TOKEN_KEY = "bp_gauth_v1";
+// Incremented when Gmail metadata verification was added so a stale send-only
+// token cannot be silently reused.
+const TOKEN_KEY = "bp_gauth_v2";
 
 function saveToken(info: GoogleTokenInfo) {
   try { localStorage.setItem(TOKEN_KEY, JSON.stringify(info)); } catch {}

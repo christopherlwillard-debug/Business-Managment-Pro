@@ -250,6 +250,34 @@ function normalizedEmail(value: string): string {
   return (match?.[1] ?? value).trim().toLowerCase();
 }
 
+type GmailMessageMetadata = {
+  id?: string;
+  threadId?: string;
+  internalDate?: string;
+  labelIds?: string[];
+  payload?: { headers?: Array<{ name?: string; value?: string }> };
+};
+
+function matchesGmailSentMessage(
+  message: GmailMessageMetadata | null,
+  input: {
+    messageId?: string;
+    deliveryId: string;
+    recipient: string;
+    subject: string;
+  },
+): boolean {
+  const headers = new Map(
+    (message?.payload?.headers ?? []).map(header => [header.name?.toLowerCase() ?? "", header.value ?? ""]),
+  );
+  return (!input.messageId || message?.id === input.messageId)
+    && Array.isArray(message?.labelIds)
+    && message.labelIds.includes("SENT")
+    && headers.get("x-buildpro-delivery-id") === input.deliveryId
+    && normalizedEmail(headers.get("to") ?? "") === normalizedEmail(input.recipient)
+    && (headers.get("subject") ?? "").trim() === input.subject.trim();
+}
+
 export async function verifyGmailSentMessage(input: {
   accessToken: string;
   messageId: string;
@@ -264,20 +292,61 @@ export async function verifyGmailSentMessage(input: {
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   if (!response.ok) return false;
-  const message = await response.json().catch(() => null) as {
-    id?: string;
-    labelIds?: string[];
-    payload?: { headers?: Array<{ name?: string; value?: string }> };
-  } | null;
-  const headers = new Map(
-    (message?.payload?.headers ?? []).map(header => [header.name?.toLowerCase() ?? "", header.value ?? ""]),
+  const message = await response.json().catch(() => null) as GmailMessageMetadata | null;
+  return matchesGmailSentMessage(message, { messageId, deliveryId, recipient, subject });
+}
+
+export async function recoverGmailSentMessage(input: {
+  accessToken: string;
+  deliveryId: string;
+  recipient: string;
+  subject: string;
+  requestedAt: Date | string;
+  windowHours?: number;
+}): Promise<{ messageId: string; threadId: string | null } | null> {
+  const { accessToken, deliveryId, recipient, subject, requestedAt } = input;
+  if (![accessToken, deliveryId, recipient, subject].every(value => value.trim())) return null;
+  const requestedMs = new Date(requestedAt).getTime();
+  if (!Number.isFinite(requestedMs)) return null;
+
+  const windowMs = Math.min(Math.max(input.windowHours ?? 48, 1), 168) * 60 * 60 * 1000;
+  const after = new Date(requestedMs - windowMs).toISOString().slice(0, 10).replaceAll("-", "/");
+  const before = new Date(requestedMs + windowMs + 24 * 60 * 60 * 1000).toISOString().slice(0, 10).replaceAll("-", "/");
+  const quote = (value: string) => `"${value.replace(/[\\"]/g, " ").trim()}"`;
+  const query = `in:sent to:${quote(recipient)} subject:${quote(subject)} after:${after} before:${before}`;
+  const listResponse = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=50&fields=messages(id,threadId)`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
   );
-  return message?.id === messageId
-    && Array.isArray(message.labelIds)
-    && message.labelIds.includes("SENT")
-    && headers.get("x-buildpro-delivery-id") === deliveryId
-    && normalizedEmail(headers.get("to") ?? "") === normalizedEmail(recipient)
-    && (headers.get("subject") ?? "").trim() === subject.trim();
+  if (!listResponse.ok) {
+    throw new Error("Gmail metadata permission is required to repair this delivery.");
+  }
+  const list = await listResponse.json().catch(() => null) as {
+    messages?: Array<{ id?: string; threadId?: string }>;
+  } | null;
+
+  const matches: Array<{ messageId: string; threadId: string | null }> = [];
+  for (const candidate of list?.messages ?? []) {
+    if (!candidate.id) continue;
+    const response = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(candidate.id)}?format=metadata&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=X-BuildPro-Delivery-ID&fields=id,threadId,internalDate,labelIds,payload/headers`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!response.ok) continue;
+    const message = await response.json().catch(() => null) as GmailMessageMetadata | null;
+    const sentMs = Number(message?.internalDate);
+    if (!Number.isFinite(sentMs) || Math.abs(sentMs - requestedMs) > windowMs) continue;
+    if (!matchesGmailSentMessage(message, { deliveryId, recipient, subject })) continue;
+    matches.push({
+      messageId: message!.id!,
+      threadId: message?.threadId ?? candidate.threadId ?? null,
+    });
+  }
+
+  if (matches.length > 1) {
+    throw new Error("Multiple Gmail messages matched this delivery. No history was changed.");
+  }
+  return matches[0] ?? null;
 }
 
 export async function sendAndRecordInvoiceCommunication<T extends ProviderDeliveryResult>(

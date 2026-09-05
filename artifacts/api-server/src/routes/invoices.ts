@@ -31,6 +31,7 @@ import {
   reconcileConfirmedGmailInvoiceDelivery,
   reconcileConfirmedGmailInvoiceDeliveries,
   gmailRepairRequiredInvoiceIds,
+  recoverGmailSentMessage,
   verifyGmailSentMessage,
   type InvoiceCommunicationType,
 } from "../lib/invoiceCommunication";
@@ -817,6 +818,78 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
   } catch (err) {
     console.error("Finalize invoice communication error:", err);
     res.status(500).json({ error: "Failed to finalize invoice communication" });
+  }
+});
+
+router.post("/:id/communications/:eventId/recover-gmail", async (req, res) => {
+  try {
+    const invoiceId = Number(req.params.id);
+    const eventId = Number(req.params.eventId);
+    if (!Number.isInteger(invoiceId) || !Number.isInteger(eventId)) {
+      return res.status(400).json({ error: "Invalid invoice or communication id" });
+    }
+    const [existing] = await db.select().from(invoiceCommunicationEventsTable)
+      .where(and(
+        eq(invoiceCommunicationEventsTable.id, eventId),
+        eq(invoiceCommunicationEventsTable.invoiceId, invoiceId),
+      ));
+    if (!existing) return res.status(404).json({ error: "Invoice communication event not found" });
+    if (
+      existing.channel !== "gmail"
+      || existing.provider !== "gmail"
+      || !["initial_invoice", "resend_invoice"].includes(existing.eventType)
+    ) {
+      return res.status(409).json({ error: "This event is not a Gmail invoice delivery." });
+    }
+    if (existing.status !== "pending") {
+      return res.status(409).json({ error: "Only a pending Gmail delivery can be recovered." });
+    }
+    if (existing.providerMessageId) {
+      return res.status(409).json({
+        error: "This delivery already has Gmail evidence. Use the normal repair action.",
+        providerMessageId: existing.providerMessageId,
+        providerThreadId: existing.providerThreadId,
+      });
+    }
+
+    const gmailAccessToken = typeof req.body?.gmailAccessToken === "string"
+      ? req.body.gmailAccessToken
+      : "";
+    const recovered = await recoverGmailSentMessage({
+      accessToken: gmailAccessToken,
+      deliveryId: String(existing.id),
+      recipient: existing.recipient ?? "",
+      subject: existing.subject ?? "",
+      requestedAt: existing.requestedAt,
+    });
+    if (!recovered) {
+      return res.status(404).json({
+        error: "No exact Gmail Sent message matched this delivery. The invoice remains unsent.",
+      });
+    }
+
+    const existingMetadata = existing.metadata && typeof existing.metadata === "object"
+      ? existing.metadata as Record<string, unknown>
+      : {};
+    const event = await finalizeInvoiceCommunication(eventId, invoiceId, {
+      status: "accepted",
+      provider: "gmail",
+      providerMessageId: recovered.messageId,
+      providerThreadId: recovered.threadId,
+      metadata: {
+        ...existingMetadata,
+        gmailEvidenceVerified: true,
+        gmailEvidenceVerifiedAt: new Date().toISOString(),
+        gmailEvidenceRecovered: true,
+      },
+    });
+    await updateCompatibilitySentFields(invoiceId, "gmail", event.completedAt);
+    res.json(event);
+  } catch (err) {
+    console.error("Recover Gmail invoice communication error:", err);
+    res.status(400).json({
+      error: err instanceof Error ? err.message : "Gmail delivery history could not be recovered.",
+    });
   }
 });
 

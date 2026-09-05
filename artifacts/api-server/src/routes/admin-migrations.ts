@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, subPaymentRecordsTable, productionServiceTypesTable, expensesTable } from "@workspace/db";
-import { jobSubcontractorsTable, invoicesTable, clientBillingProfilesTable } from "@workspace/db/schema";
+import { jobSubcontractorsTable, invoicesTable, clientBillingProfilesTable, businessesTable } from "@workspace/db/schema";
 import { isNull, and, inArray, sql, ilike, eq, ne } from "drizzle-orm";
 
 const router = Router();
@@ -15,6 +15,93 @@ const router = Router();
 //   • Diagnostic tools with ongoing value
 //   • Bulk-cleanup tools with safety guards that may be needed again
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Repair the confirmed General Contracting ownership of Wil-1047 and Wil-1049.
+// This is intentionally exact, dry-run by default, and safe to rerun.
+router.post("/repair-wil-1047-1049-ownership", async (req: Request, res: Response) => {
+  try {
+    const { dryRun = true } = (req.body ?? {}) as { dryRun?: boolean };
+    const [business] = await db.select({
+      id: businessesTable.id,
+      slug: businessesTable.slug,
+      name: businessesTable.name,
+    }).from(businessesTable)
+      .where(eq(businessesTable.slug, "general_contracting"))
+      .limit(1);
+    if (!business) return res.status(409).json({ error: "General Contracting business was not found." });
+
+    const targetNumbers = ["Wil-1047", "Wil-1049"];
+    const invoiceRows = await db.select({
+      id: invoicesTable.id,
+      invoiceNumber: invoicesTable.invoiceNumber,
+      jobId: invoicesTable.jobId,
+      businessId: invoicesTable.businessId,
+      businessLine: invoicesTable.businessLine,
+    }).from(invoicesTable)
+      .where(inArray(invoicesTable.invoiceNumber, targetNumbers));
+    if (invoiceRows.length !== 2 || new Set(invoiceRows.map(row => row.invoiceNumber)).size !== 2) {
+      return res.status(409).json({
+        error: "Expected exactly one Wil-1047 and one Wil-1049 invoice.",
+        found: invoiceRows.map(row => ({ id: row.id, invoiceNumber: row.invoiceNumber })),
+      });
+    }
+    const invoice1049 = invoiceRows.find(row => row.invoiceNumber === "Wil-1049");
+    if (!invoice1049?.jobId) {
+      return res.status(409).json({ error: "Wil-1049 is not linked to a job." });
+    }
+    const [job1049] = await db.select({
+      id: jobsTable.id,
+      businessId: jobsTable.businessId,
+      businessLine: jobsTable.businessLine,
+    }).from(jobsTable)
+      .where(eq(jobsTable.id, invoice1049.jobId))
+      .limit(1);
+    if (!job1049) return res.status(409).json({ error: "Wil-1049's linked job was not found." });
+
+    const conflicting = [
+      ...invoiceRows
+        .filter(row => row.businessId != null && row.businessId !== business.id)
+        .map(row => `invoice ${row.invoiceNumber}`),
+      ...(job1049.businessId != null && job1049.businessId !== business.id ? ["Wil-1049 job"] : []),
+    ];
+    if (conflicting.length > 0) {
+      return res.status(409).json({
+        error: "A target record is already owned by another business.",
+        conflicting,
+      });
+    }
+
+    const plan = {
+      business,
+      invoices: invoiceRows.map(row => ({
+        id: row.id,
+        invoiceNumber: row.invoiceNumber,
+        from: { businessId: row.businessId, businessLine: row.businessLine },
+        to: { businessId: business.id, businessLine: business.slug },
+      })),
+      job: {
+        id: job1049.id,
+        from: { businessId: job1049.businessId, businessLine: job1049.businessLine },
+        to: { businessId: business.id, businessLine: business.slug },
+      },
+    };
+    if (dryRun) return res.json({ ok: true, dryRun: true, plan });
+
+    await db.transaction(async tx => {
+      await tx.update(invoicesTable)
+        .set({ businessId: business.id, businessLine: business.slug })
+        .where(inArray(invoicesTable.id, invoiceRows.map(row => row.id)));
+      await tx.update(jobsTable)
+        .set({ businessId: business.id, businessLine: business.slug })
+        .where(eq(jobsTable.id, job1049.id));
+    });
+    console.log("[admin/migrations] repaired Wil-1047/Wil-1049 General Contracting ownership", JSON.stringify(plan));
+    res.json({ ok: true, dryRun: false, updatedInvoices: invoiceRows.length, updatedJobs: 1, plan });
+  } catch (err) {
+    console.error("[admin/migrations] repair-wil-1047-1049-ownership failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
 
 // Recompute sub payment statuses for records where advances were applied but status is still "partial"
 router.post("/recompute-sub-payment-status", async (_req: Request, res: Response) => {
