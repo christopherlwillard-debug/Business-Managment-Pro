@@ -39,6 +39,7 @@ import {
   FileText,
 } from "lucide-react";
 import { MileIQProvider, computeFileHash, type ParsedTrip, type InvalidRow } from "@/lib/mileageImport";
+import { MileIQImportPreviewSummary } from "@/components/MileIQImportPreviewSummary";
 import { getIrsRate } from "@/lib/irsMileageRates";
 import { confirmRouteDistance, clearRouteDistanceConfirmation } from "@/lib/mileageRouteConfirmation";
 import { MileageRouteConfirmation } from "@/components/MileageRouteConfirmation";
@@ -792,6 +793,11 @@ export default function Mileage() {
                       <p className="text-xs text-muted-foreground mt-0.5">Rows skipped</p>
                     </div>
                   </div>
+
+                  <MileIQImportPreviewSummary
+                    tripCount={importValidTrips.length}
+                    totalMiles={importValidTrips.reduce((sum, trip) => sum + trip.miles, 0)}
+                  />
 
                   {importInvalidRows.length > 0 && (
                     <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">

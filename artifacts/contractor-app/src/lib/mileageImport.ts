@@ -66,6 +66,9 @@ export class MileIQProvider implements MileageImportProvider {
       if (!line) continue;
 
       const cols = parseCSVLine(line);
+      if ((cols[0] ?? "").trim().toLowerCase() === "totals") {
+        break;
+      }
       if (cols.length < 7) {
         if (cols.some(c => c.trim())) {
           invalid.push({ rowIndex: i + 1, rawData: line, reason: "Too few columns" });
