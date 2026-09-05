@@ -232,6 +232,27 @@ describe("InvoicePanel logo layout editing", () => {
     expect(harness.refreshBusinesses).toHaveBeenCalledTimes(1);
   });
 
+  it("cancels the draft when switching businesses and cannot save it to the newly selected business", async () => {
+    await enterLayoutModeAndResize();
+
+    const generalBusiness = Array.from(container.querySelectorAll("button"))
+      .find(button => button.textContent?.trim() === "General") as HTMLButtonElement;
+    expect(generalBusiness).not.toBeUndefined();
+
+    await act(async () => generalBusiness.click());
+    await flush();
+
+    expect(container.textContent).not.toContain("Done");
+    expect(container.querySelector("[data-invoice-logo-guides]")).toBeNull();
+    expect(requests.some(request =>
+      request.init?.method === "PUT"
+      && (
+        request.url.endsWith("/api/businesses/17")
+        || request.url.endsWith("/api/businesses/23")
+      )
+    )).toBe(false);
+  });
+
   it("preserves the edited draft in layout mode and shows a destructive error when save fails", async () => {
     resetSucceeds = false;
     await enterLayoutModeAndResize();

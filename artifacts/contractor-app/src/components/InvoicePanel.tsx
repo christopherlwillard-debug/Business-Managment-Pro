@@ -215,6 +215,7 @@ export function InvoicePanel({
   const [logoDataUri, setLogoDataUri] = useState<string | null>(null);
   const [logoLayoutMode, setLogoLayoutMode] = useState(false);
   const [logoLayoutDraft, setLogoLayoutDraft] = useState<InvoiceLogoLayout | null>(null);
+  const [logoLayoutDraftBusinessId, setLogoLayoutDraftBusinessId] = useState<number | null>(null);
   const [savingLogoLayout, setSavingLogoLayout] = useState(false);
   const [resetLogoLayoutBusinessId, setResetLogoLayoutBusinessId] = useState<number | null>(null);
   const logoAreaRef = useRef<HTMLDivElement>(null);
@@ -317,6 +318,7 @@ export function InvoicePanel({
       setShowMoreOptions(false);
       setLogoLayoutMode(false);
       setLogoLayoutDraft(null);
+      setLogoLayoutDraftBusinessId(null);
       setResetLogoLayoutBusinessId(null);
       setRevertConfirm(false);
       setServerUpdatedBanner(false);
@@ -344,6 +346,7 @@ export function InvoicePanel({
   useEffect(() => {
     setLogoLayoutMode(false);
     setLogoLayoutDraft(null);
+    setLogoLayoutDraftBusinessId(null);
     setResetLogoLayoutBusinessId(null);
   }, [form.businessLine]);
 
@@ -464,6 +467,7 @@ export function InvoicePanel({
   function beginLogoLayout() {
     if (!selectedBiz || isVoided) return;
     setLogoLayoutDraft(savedLogoLayout);
+    setLogoLayoutDraftBusinessId(selectedBiz.id);
     setLogoLayoutMode(true);
   }
 
@@ -503,10 +507,16 @@ export function InvoicePanel({
   }
 
   async function saveLogoLayout() {
-    if (!selectedBiz || !logoLayoutDraft) return;
+    if (
+      !selectedBiz
+      || !logoLayoutDraft
+      || logoLayoutDraftBusinessId === null
+      || selectedBiz.id !== logoLayoutDraftBusinessId
+    ) return;
+    const draftBusiness = selectedBiz;
     setSavingLogoLayout(true);
     try {
-      const response = await fetch(`${base}/api/businesses/${selectedBiz.id}`, {
+      const response = await fetch(`${base}/api/businesses/${draftBusiness.id}`, {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -517,7 +527,8 @@ export function InvoicePanel({
       refreshBusinesses();
       setLogoLayoutMode(false);
       setLogoLayoutDraft(null);
-      toast({ title: "Logo layout saved", description: `Future ${selectedBiz.name} invoices will use this layout.` });
+      setLogoLayoutDraftBusinessId(null);
+      toast({ title: "Logo layout saved", description: `Future ${draftBusiness.name} invoices will use this layout.` });
     } catch (error) {
       toast({
         title: "Logo layout not saved",
@@ -543,6 +554,7 @@ export function InvoicePanel({
       setResetLogoLayoutBusinessId(selectedBiz.id);
       setLogoLayoutMode(false);
       setLogoLayoutDraft(null);
+      setLogoLayoutDraftBusinessId(null);
       refreshBusinesses();
       toast({
         title: "Logo layout reset",
@@ -1755,6 +1767,7 @@ export function InvoicePanel({
                     onClick={() => {
                       setLogoLayoutMode(false);
                       setLogoLayoutDraft(null);
+                      setLogoLayoutDraftBusinessId(null);
                     }}
                     className="rounded-lg px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                   >
