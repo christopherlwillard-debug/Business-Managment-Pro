@@ -366,6 +366,15 @@ Created the four-document architecture governance system:
 - Existing trip rows, exact-file detection, rollback history, effective-date
   deductions, and monthly consolidated mileage expenses remain unchanged.
 
+
+### Atomic mileage imports
+
+- Mileage import batches, conflict-safe trip inserts, monthly aggregate expenses,
+  and finalized batch counters now commit in one database transaction.
+- A failure during aggregate expense creation rolls back the batch and its trips
+  instead of leaving mileage and accounting records out of sync.
+- Corrected-export deduplication, rollback history, and effective-date deduction
+  behavior remain unchanged.
 ### Canonical job and invoice mutation ownership
 
 - Job and invoice mutations now resolve a canonical business id and slug through

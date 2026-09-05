@@ -78,6 +78,51 @@ afterEach(async () => {
 });
 
 describe("mileage import financial integrity — real database", () => {
+  it("rolls back the batch and trips when monthly expense creation fails", async () => {
+    const businessId = await createBusiness("atomic-failure");
+    const triggerName = `mileage_import_failure_${businessId}`;
+    const functionName = `${triggerName}_fn`;
+
+    await db.execute(sql.raw(`
+      CREATE FUNCTION ${functionName}() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.business_id = ${businessId} AND NEW.mileage_import_id IS NOT NULL THEN
+          RAISE EXCEPTION 'forced mileage aggregate failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      CREATE TRIGGER ${triggerName}
+      BEFORE INSERT ON expenses
+      FOR EACH ROW EXECUTE FUNCTION ${functionName}();
+    `));
+
+    try {
+      const response = await request(app)
+        .post("/mileage/bulk")
+        .send({
+          businessId,
+          source: "mileiq",
+          filename: "must-rollback.csv",
+          fileHash: `must-rollback-${businessId}`,
+          trips: [trip("09/01/2026 07:00|09/01/2026 07:20", 10)],
+        });
+
+      expect(response.status).toBe(500);
+      expect(await activeLogs(businessId)).toHaveLength(0);
+      expect(await activeMileageExpenses(businessId)).toHaveLength(0);
+
+      const imports = await db
+        .select()
+        .from(mileageImportsTable)
+        .where(eq(mileageImportsTable.businessId, businessId));
+      expect(imports).toHaveLength(0);
+    } finally {
+      await db.execute(sql.raw(`DROP TRIGGER IF EXISTS ${triggerName} ON expenses`));
+      await db.execute(sql.raw(`DROP FUNCTION IF EXISTS ${functionName}()`));
+    }
+  });
+
   it("recalculates the original aggregate after a void and keeps a corrected re-import unique", async () => {
     const businessId = await createBusiness("void-reimport");
     const correctedKey = "09/01/2026 08:00|09/01/2026 08:15";

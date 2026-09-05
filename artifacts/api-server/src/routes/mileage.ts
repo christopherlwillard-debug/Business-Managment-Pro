@@ -8,6 +8,8 @@ import { partitionMileageImportTrips, type MileageImportTrip } from "../lib/mile
 
 const router = Router();
 
+type MileageDatabase = Pick<typeof db, "select" | "insert" | "update">;
+
 function formatMileage(m: any, jobTitle?: string | null) {
   const calculated = calculateMileageDeduction(m.miles, m.classification, m.date);
   const storedDeduction = parseFloat(m.deductionAmount ?? "0");
@@ -48,14 +50,14 @@ function monthLabel(ym: string): string {
 // Groups the import's business logs by month and upserts one expense per month
 // (description "<Month> <Year> IRS Mileage", linked via expenses.mileage_import_id).
 // Months with no remaining business logs get their aggregate expense deleted.
-export async function recalcImportExpenses(importId: number) {
-  const [importRecord] = await db
+export async function recalcImportExpenses(importId: number, database: MileageDatabase = db) {
+  const [importRecord] = await database
     .select()
     .from(mileageImportsTable)
     .where(eq(mileageImportsTable.id, importId));
   if (!importRecord) return;
 
-  const logs = await db
+  const logs = await database
     .select()
     .from(mileageLogsTable)
     .where(and(
@@ -77,7 +79,7 @@ export async function recalcImportExpenses(importId: number) {
     byMonth.set(ym, entry);
   }
 
-  const existingExpenses = await db
+  const existingExpenses = await database
     .select()
     .from(expensesTable)
     .where(and(eq(expensesTable.mileageImportId, importId), isNull(expensesTable.voidedAt)));
@@ -98,17 +100,17 @@ export async function recalcImportExpenses(importId: number) {
     };
     const existing = existingByMonth.get(ym);
     if (existing) {
-      await db.update(expensesTable).set(values).where(eq(expensesTable.id, existing.id));
+      await database.update(expensesTable).set(values).where(eq(expensesTable.id, existing.id));
       existingByMonth.delete(ym);
     } else {
-      await db.insert(expensesTable).values(values);
+      await database.insert(expensesTable).values(values);
     }
   }
 
   // Void aggregates for months that no longer have any active business logs.
   const staleIds = [...existingByMonth.values()].map(e => e.id);
   if (staleIds.length > 0) {
-    await db.update(expensesTable)
+    await database.update(expensesTable)
       .set({
         voidedAt: new Date(),
         voidReason: "Mileage import aggregate no longer has active trips",
@@ -484,106 +486,104 @@ router.post("/bulk", async (req, res) => {
     );
     let duplicatesSkipped = preflightDuplicatesSkipped;
 
-    let importedCount = 0;
-    let totalMiles = 0;
-    let estimatedDeduction = 0;
-    let importId: number | null = null;
+    const result = await db.transaction(async (tx) => {
+      let importedCount = 0;
+      let totalMiles = 0;
+      let estimatedDeduction = 0;
 
-    const [importRecord] = await db
-      .insert(mileageImportsTable)
-      .values({
-        businessId: bizId,
-        userId,
-        source: importSource,
-        filename: filename ?? "import.csv",
-        fileHash: fileHash ?? null,
-        status: toInsert.length === 0 ? "completed" : "completed",
-        tripsFound: trips.length,
-        tripsImported: 0,
-        duplicatesSkipped,
-        totalMiles: "0",
-        estimatedDeduction: "0",
-      })
-      .returning();
-
-    importId = importRecord.id;
-
-    let expensesCreated = 0;
-    const expenseMonths: string[] = [];
-
-    if (toInsert.length > 0) {
-      const logValues = toInsert.map(t => {
-        const { rate: tripRate, deduction: deductionAmt } = calculateMileageDeduction(t.miles, t.classification, t.date);
-        totalMiles += t.miles;
-        if (t.classification === "business") estimatedDeduction += deductionAmt;
-
-        return {
-          date: t.date,
-          startLocation: t.startLocation || null,
-          endLocation: t.endLocation || null,
-          miles: t.miles.toString(),
-          classification: t.classification,
-          ratePerMile: tripRate.toString(),
-          deductionAmount: deductionAmt.toString(),
-          notes: t.notes || null,
-          source: importSource,
-          sourceTripKey: t.sourceTripKey,
+      const [importRecord] = await tx
+        .insert(mileageImportsTable)
+        .values({
           businessId: bizId,
-          importId,
-          expenseId: null,
-        };
-      });
+          userId,
+          source: importSource,
+          filename: filename ?? "import.csv",
+          fileHash: fileHash ?? null,
+          status: "completed",
+          tripsFound: trips.length,
+          tripsImported: 0,
+          duplicatesSkipped,
+          totalMiles: "0",
+          estimatedDeduction: "0",
+        })
+        .returning();
 
-      const insertedLogs = await db
-        .insert(mileageLogsTable)
-        .values(logValues)
-        .onConflictDoNothing()
-        .returning({
-          miles: mileageLogsTable.miles,
-          classification: mileageLogsTable.classification,
-          deductionAmount: mileageLogsTable.deductionAmount,
+      const importId = importRecord.id;
+      let expensesCreated = 0;
+      const expenseMonths: string[] = [];
+
+      if (toInsert.length > 0) {
+        const logValues = toInsert.map(t => {
+          const { rate: tripRate, deduction: deductionAmt } = calculateMileageDeduction(t.miles, t.classification, t.date);
+          return {
+            date: t.date,
+            startLocation: t.startLocation || null,
+            endLocation: t.endLocation || null,
+            miles: t.miles.toString(),
+            classification: t.classification,
+            ratePerMile: tripRate.toString(),
+            deductionAmount: deductionAmt.toString(),
+            notes: t.notes || null,
+            source: importSource,
+            sourceTripKey: t.sourceTripKey,
+            businessId: bizId,
+            importId,
+            expenseId: null,
+          };
         });
-      importedCount = insertedLogs.length;
-      duplicatesSkipped += logValues.length - importedCount;
-      totalMiles = insertedLogs.reduce((sum, log) => sum + parseFloat(log.miles ?? "0"), 0);
-      estimatedDeduction = insertedLogs.reduce(
-        (sum, log) => sum + (log.classification === "business" ? parseFloat(log.deductionAmount ?? "0") : 0),
-        0,
-      );
 
-      // One aggregate expense per month (not one per trip)
-      if (importedCount > 0) {
-        await recalcImportExpenses(importId!);
+        const insertedLogs = await tx
+          .insert(mileageLogsTable)
+          .values(logValues)
+          .onConflictDoNothing()
+          .returning({
+            miles: mileageLogsTable.miles,
+            classification: mileageLogsTable.classification,
+            deductionAmount: mileageLogsTable.deductionAmount,
+          });
+        importedCount = insertedLogs.length;
+        duplicatesSkipped += logValues.length - importedCount;
+        totalMiles = insertedLogs.reduce((sum, log) => sum + parseFloat(log.miles ?? "0"), 0);
+        estimatedDeduction = insertedLogs.reduce(
+          (sum, log) => sum + (log.classification === "business" ? parseFloat(log.deductionAmount ?? "0") : 0),
+          0,
+        );
+
+        if (importedCount > 0) {
+          await recalcImportExpenses(importId, tx);
+        }
+
+        const created = await tx
+          .select({ id: expensesTable.id, description: expensesTable.description })
+          .from(expensesTable)
+          .where(eq(expensesTable.mileageImportId, importId));
+        expensesCreated = created.length;
+        expenseMonths.push(...created.map(e => (e.description ?? "").replace(" IRS Mileage", "")));
       }
 
-      const created = await db
-        .select({ id: expensesTable.id, description: expensesTable.description })
-        .from(expensesTable)
-        .where(eq(expensesTable.mileageImportId, importId!));
-      expensesCreated = created.length;
-      expenseMonths.push(...created.map(e => (e.description ?? "").replace(" IRS Mileage", "")));
-    }
+      await tx
+        .update(mileageImportsTable)
+        .set({
+          tripsImported: importedCount,
+          duplicatesSkipped,
+          totalMiles: totalMiles.toFixed(2),
+          estimatedDeduction: estimatedDeduction.toFixed(2),
+          status: "completed",
+        })
+        .where(eq(mileageImportsTable.id, importId));
 
-    await db
-      .update(mileageImportsTable)
-      .set({
-        tripsImported: importedCount,
-        duplicatesSkipped,
-        totalMiles: totalMiles.toFixed(2),
-        estimatedDeduction: estimatedDeduction.toFixed(2),
-        status: "completed",
-      })
-      .where(eq(mileageImportsTable.id, importId!));
+      return { importedCount, duplicatesSkipped, importId, totalMiles, estimatedDeduction, expensesCreated, expenseMonths };
+    });
 
     res.status(201).json({
-      imported: importedCount,
-      duplicatesSkipped,
-      importId,
-      totalMiles,
-      estimatedDeduction,
+      imported: result.importedCount,
+      duplicatesSkipped: result.duplicatesSkipped,
+      importId: result.importId,
+      totalMiles: result.totalMiles,
+      estimatedDeduction: result.estimatedDeduction,
       fileAlreadyImported,
-      expensesCreated,
-      expenseMonths,
+      expensesCreated: result.expensesCreated,
+      expenseMonths: result.expenseMonths,
     });
   } catch (err) {
     console.error(err);
