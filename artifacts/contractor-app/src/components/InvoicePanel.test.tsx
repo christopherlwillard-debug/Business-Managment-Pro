@@ -74,7 +74,7 @@ async function flush() {
   });
 }
 
-describe("InvoicePanel logo layout reset", () => {
+describe("InvoicePanel logo layout editing", () => {
   let container: HTMLDivElement;
   let root: Root;
   let resetSucceeds: boolean;
@@ -138,6 +138,35 @@ describe("InvoicePanel logo layout reset", () => {
     await flush();
   }
 
+  async function enterLayoutModeAndResize() {
+    const logo = container.querySelector('[data-invoice-logo]') as HTMLDivElement;
+    expect(logo).not.toBeNull();
+    expect(logo.style.width).toBe("240px");
+    expect(logo.style.height).toBe("90px");
+
+    act(() => logo.click());
+    const resizeHandle = container.querySelector(
+      'button[aria-label="Resize logo"]',
+    ) as HTMLButtonElement;
+    expect(resizeHandle).not.toBeNull();
+
+    act(() => {
+      resizeHandle.dispatchEvent(new PointerEvent("pointerdown", {
+        bubbles: true,
+        clientX: 0,
+        clientY: 0,
+      }));
+      window.dispatchEvent(new PointerEvent("pointermove", {
+        clientX: 40,
+        clientY: 0,
+      }));
+      window.dispatchEvent(new PointerEvent("pointerup"));
+    });
+
+    expect(logo.style.width).toBe("280px");
+    expect(logo.style.height).toBe("105px");
+  }
+
   it("clears only the selected business, previews the shared fallback, and exits layout mode", async () => {
     await enterLayoutModeAndReset();
 
@@ -173,6 +202,55 @@ describe("InvoicePanel logo layout reset", () => {
     expect(harness.toast).toHaveBeenCalledWith({
       title: "Logo layout not reset",
       description: "Could not reset logo layout",
+      variant: "destructive",
+    });
+  });
+
+  it("saves the edited layout only to the selected business, refreshes branding, and exits layout mode", async () => {
+    await enterLayoutModeAndResize();
+
+    const done = Array.from(container.querySelectorAll("button"))
+      .find(button => button.textContent?.trim() === "Done") as HTMLButtonElement;
+    expect(done).not.toBeUndefined();
+    await act(async () => done.click());
+    await flush();
+
+    const saveRequest = requests.find(request => request.url.endsWith("/api/businesses/17"));
+    expect(saveRequest).toMatchObject({
+      url: "/api/businesses/17",
+      init: {
+        method: "PUT",
+        credentials: "include",
+        body: JSON.stringify({
+          invoiceLogoLayout: { x: 0.8, width: 280, height: 105 },
+        }),
+      },
+    });
+    expect(requests.some(request => request.url.endsWith("/api/businesses/23"))).toBe(false);
+    expect(container.textContent).not.toContain("Done");
+    expect(container.querySelector("[data-invoice-logo-guides]")).toBeNull();
+    expect(harness.refreshBusinesses).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the edited draft in layout mode and shows a destructive error when save fails", async () => {
+    resetSucceeds = false;
+    await enterLayoutModeAndResize();
+
+    const done = Array.from(container.querySelectorAll("button"))
+      .find(button => button.textContent?.trim() === "Done") as HTMLButtonElement;
+    expect(done).not.toBeUndefined();
+    await act(async () => done.click());
+    await flush();
+
+    expect(container.textContent).toContain("Done");
+    expect(container.querySelector("[data-invoice-logo-guides]")).not.toBeNull();
+    const logo = container.querySelector('[data-invoice-logo]') as HTMLDivElement;
+    expect(logo.style.width).toBe("280px");
+    expect(logo.style.height).toBe("105px");
+    expect(harness.refreshBusinesses).not.toHaveBeenCalled();
+    expect(harness.toast).toHaveBeenCalledWith({
+      title: "Logo layout not saved",
+      description: "Could not save logo layout",
       variant: "destructive",
     });
   });
