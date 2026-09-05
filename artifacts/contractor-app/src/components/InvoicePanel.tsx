@@ -1805,7 +1805,7 @@ export function InvoicePanel({
           <div className="p-4 sm:p-6">
 
             {/* Business line toggle */}
-            {!activeBusiness && businesses.length > 1 && (
+            {!form.jobId && !activeBusiness && businesses.length > 1 && (
               <div className="flex items-center gap-1 p-0.5 bg-gray-100 rounded-lg w-fit mb-4">
                 {businesses.map(b => (
                   <button key={b.slug} type="button"
@@ -2143,7 +2143,20 @@ export function InvoicePanel({
                       {/* Job selector */}
                       <div>
                         <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1">Job (optional)</label>
-                        <select value={form.jobId} onChange={e => setField("jobId", e.target.value)}
+                        <select value={form.jobId} onChange={e => {
+                          const jobId = e.target.value;
+                          const selectedJob = jobs.find(job => String(job.id) === jobId);
+                          const jobBusiness = selectedJob?.businessId != null
+                            ? businesses.find(business => business.id === Number(selectedJob.businessId))
+                            : null;
+                          setFormState(current => ({
+                            ...current,
+                            jobId,
+                            businessLine: jobId
+                              ? (jobBusiness?.slug ?? selectedJob?.businessLine ?? current.businessLine)
+                              : current.businessLine,
+                          }));
+                        }}
                           className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400">
                           <option value="">No specific job</option>
                           {filteredJobs.map((j: any) => <option key={j.id} value={j.id}>{j.title}</option>)}

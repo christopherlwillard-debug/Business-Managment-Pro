@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { estimatesTable, clientsTable, jobsTable } from "@workspace/db/schema";
 import { eq, asc, getTableColumns } from "drizzle-orm";
+import { canonicalRecordBusiness, generalContractingBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -155,6 +156,14 @@ router.post("/:id/convert-to-job", async (req, res) => {
   try {
     const [estimate] = await db.select({ ...getTableColumns(estimatesTable), clientName: clientsTable.name }).from(estimatesTable).leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id)).where(eq(estimatesTable.id, parseInt(req.params.id)));
     if (!estimate) return res.status(404).json({ error: "Estimate not found" });
+    const recordedOwnership = await canonicalRecordBusiness(estimate);
+    if (recordedOwnership.state === "invalid") {
+      return res.status(409).json({ error: "Estimate has an unknown business owner" });
+    }
+    const owner = recordedOwnership.state === "resolved"
+      ? recordedOwnership.business
+      : await generalContractingBusiness();
+    if (!owner) return res.status(409).json({ error: "General Contracting business was not found" });
 
     const [job] = await db.insert(jobsTable).values({
       title: estimate.title,
@@ -162,6 +171,8 @@ router.post("/:id/convert-to-job", async (req, res) => {
       status: "scheduled",
       jobType: estimate.jobType,
       notes: estimate.notes,
+      businessId: owner.id,
+      businessLine: owner.slug,
     }).returning();
 
     await db.update(estimatesTable).set({ status: "won" }).where(eq(estimatesTable.id, estimate.id));

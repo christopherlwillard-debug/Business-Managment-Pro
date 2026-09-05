@@ -373,3 +373,22 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-09-05
+
+---
+
+## ADR-021
+
+**Title:** General Contracting is the permanent default owner for job and invoice mutations
+
+**Decision:** Mutation routes resolve ownership through the `businesses` record with stable slug `general_contracting`. A valid explicit selector takes precedence; without one, new or deterministically legacy ownership is General Contracting. Job-linked invoices inherit the linked job's canonical owner and reject an explicit conflicting selector.
+
+**Reason:** Numeric business IDs vary by environment and workflow labels are not ownership. Resolving one canonical id/slug pair at mutation time prevents null ownership while retaining child DBA ownership, including Asphalt, without cross-business reassignment.
+
+**Rejected Alternatives:**
+- Treating workflow as an ownership selector
+- Using a numeric General Contracting ID
+- Writing a null owner when a selector is absent
+- Bulk-normalizing ambiguous or explicitly DBA-owned historical records
+
+**Status:** Accepted
+**Date:** 2026-09-05

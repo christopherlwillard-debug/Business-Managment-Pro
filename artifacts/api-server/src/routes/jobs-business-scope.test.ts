@@ -37,6 +37,11 @@ vi.mock("@workspace/db", () => {
 
 vi.mock("../lib/business-scope.js", () => ({
   requestedBusiness: async () => ({ id: 1, slug: "asphalt_sealing" }),
+  resolveMutationBusiness: async () => ({
+    ok: true,
+    explicit: true,
+    business: { id: 1, slug: "asphalt_sealing" },
+  }),
   invalidBusinessScope: () => false,
   belongsToBusiness: () => true,
 }));

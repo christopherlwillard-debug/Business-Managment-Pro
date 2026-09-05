@@ -20,7 +20,7 @@ import { eq, and, gte, lte, desc, inArray, ne, getTableColumns, sql } from "driz
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { syncMaterialsToJobInvoice } from "./material-lists.js";
-import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { requestedBusiness, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness } from "../lib/business-scope.js";
 import { calculateInvoiceTotals } from "@workspace/api-zod";
 import {
   createPendingInvoiceCommunication,
@@ -308,13 +308,36 @@ export async function assignInvoiceNumberIfNeeded(invoiceId: number): Promise<st
 router.post("/", async (req, res) => {
   try {
     const { clientId, jobId, issueDate, dueDate, taxRate, notes, terms, lineItems = [], city, state, locationName, attachments = [], businessLine } = req.body;
-    const scope = await requestedBusiness(req);
+    const requestedOwner = await resolveMutationBusiness(req);
+    if (!requestedOwner.ok) return res.status(400).json({ error: requestedOwner.error });
     // Validate line items before any DB work
     const lineItemError = validateLineItems(lineItems);
     if (lineItemError) return res.status(400).json({ error: lineItemError });
     // All new invoices start as drafts — invoice numbers are assigned only at the /accept endpoint.
     // The `status` field in the request body is intentionally ignored to enforce the lifecycle.
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
+
+    let owner = requestedOwner.business;
+    if (jobId) {
+      const [job] = await db.select({
+        id: jobsTable.id, businessId: jobsTable.businessId, businessLine: jobsTable.businessLine,
+      }).from(jobsTable).where(eq(jobsTable.id, Number(jobId)));
+      if (!job) return res.status(400).json({ error: "Job not found" });
+      // A blank legacy job predates ownership. Under the permanent-default
+      // policy it is deterministically General Contracting, not ownerless.
+      const jobOwnership = await canonicalRecordBusiness(job);
+      if (jobOwnership.state === "invalid") {
+        return res.status(409).json({ error: "Linked job has invalid business ownership" });
+      }
+      const jobOwner = jobOwnership.state === "resolved"
+        ? jobOwnership.business
+        : await generalContractingBusiness();
+      if (!jobOwner) return res.status(409).json({ error: "General Contracting business was not found" });
+      if (requestedOwner.explicit && jobOwner.id !== requestedOwner.business.id) {
+        return res.status(409).json({ error: "Invoice business conflicts with the linked job" });
+      }
+      owner = jobOwner;
+    }
 
     const [invoice] = await db.insert(invoicesTable).values({
       invoiceNumber: null,
@@ -334,8 +357,8 @@ router.post("/", async (req, res) => {
       terms,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
       attachments: Array.isArray(attachments) ? attachments : [],
-      businessLine: businessLine || null,
-      businessId: scope?.id ?? null,
+       businessLine: owner.slug,
+       businessId: owner.id,
     }).returning();
 
     // Sync material lists into the new draft so materials appear immediately,
@@ -417,7 +440,7 @@ router.put("/:id", async (req, res) => {
 
     // Guard: cancelled (voided) invoices are read-only
     const [currentInv] = await db
-      .select({ status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber, jobId: invoicesTable.jobId })
+      .select({ status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber, jobId: invoicesTable.jobId, businessId: invoicesTable.businessId, businessLine: invoicesTable.businessLine })
       .from(invoicesTable)
       .where(eq(invoicesTable.id, id));
     if (!currentInv) return res.status(404).json({ error: "Invoice not found" });
@@ -436,6 +459,33 @@ router.put("/:id", async (req, res) => {
     if (lineItemError) return res.status(400).json({ error: lineItemError });
 
     const { subtotal, taxAmount, total } = calcInvoice(lineItems, taxRate);
+    const requestedOwner = await resolveMutationBusiness(req);
+    if (!requestedOwner.ok) return res.status(400).json({ error: requestedOwner.error });
+    const effectiveJobId = jobId !== undefined ? (jobId || null) : currentInv.jobId;
+    const currentOwnership = await canonicalRecordBusiness(currentInv);
+    let owner = currentOwnership.state === "resolved" ? currentOwnership.business : requestedOwner.business;
+    if (effectiveJobId) {
+      const [job] = await db.select({
+        id: jobsTable.id, businessId: jobsTable.businessId, businessLine: jobsTable.businessLine,
+      }).from(jobsTable).where(eq(jobsTable.id, Number(effectiveJobId)));
+      if (!job) return res.status(400).json({ error: "Job not found" });
+      const jobOwnership = await canonicalRecordBusiness(job);
+      if (jobOwnership.state === "invalid") {
+        return res.status(409).json({ error: "Linked job has invalid business ownership" });
+      }
+      const jobOwner = jobOwnership.state === "resolved"
+        ? jobOwnership.business
+        : await generalContractingBusiness();
+      if (!jobOwner) return res.status(409).json({ error: "General Contracting business was not found" });
+      if (requestedOwner.explicit && jobOwner.id !== requestedOwner.business.id) {
+        return res.status(409).json({ error: "Invoice business conflicts with the linked job" });
+      }
+      owner = jobOwner;
+    } else if (requestedOwner.explicit) {
+      owner = requestedOwner.business;
+    } else if (currentOwnership.state === "invalid") {
+      return res.status(409).json({ error: "Invoice has invalid business ownership" });
+    }
 
     await db.update(invoicesTable).set({
       // Only write clientId / jobId when they are explicitly present in the body.
@@ -454,12 +504,12 @@ router.put("/:id", async (req, res) => {
       notes, terms,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
       ...(attachments !== undefined ? { attachments: Array.isArray(attachments) ? attachments : [] } : {}),
-      ...(businessLine !== undefined ? { businessLine: businessLine || null } : {}),
+       businessLine: owner.slug,
+       businessId: owner.id,
     }).where(eq(invoicesTable.id, id));
 
     // Keep material lists in sync whenever a draft invoice is saved.
     // Resolve the effective jobId: prefer body value (if explicitly sent), else the pre-existing one.
-    const effectiveJobId = jobId !== undefined ? (jobId || null) : currentInv.jobId;
     if (currentInv.status === "draft" && effectiveJobId) {
       await syncMaterialsToJobInvoice(effectiveJobId);
     }

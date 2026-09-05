@@ -243,7 +243,7 @@ Before implementing any financial, schema, or business logic feature — consult
 ### Business ownership policy
 
 - **Canonical ownership:** `business_id` on core records; `business_line` is a compatibility fallback for legacy rows.
-- **Enforcement:** `artifacts/api-server/src/lib/business-scope.ts` resolves the requested business and scoped route parameters reject records from another business.
+- **Enforcement:** `artifacts/api-server/src/lib/business-scope.ts` resolves requested read scope and canonical mutation ownership. Mutation writes use a valid explicit selector or the stable `general_contracting` default; job-linked invoices inherit the job owner and reject conflicting explicit ownership. DBA ownership is preserved.
 - **Migration:** `lib/db/migrations/0047_business_ownership_backfill.sql` backfills known slugs and emits an inventory of intentionally unassigned rows.
 
 ---

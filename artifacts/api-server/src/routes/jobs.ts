@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, jobReadinessConditionsTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, inArray, sql, isNull, desc, or, ne } from "drizzle-orm";
@@ -11,7 +11,7 @@ import { calculateAllocationSplitPool, computeAllocationSplitPool, computeAlloca
 import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
 import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/productionBilling.js";
 import { z } from "zod/v4";
-import { requestedBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
+import { requestedBusiness, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
 import { getRequestUser } from "./guards";
 
@@ -521,7 +521,8 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, includeMileageInJobCosts = true, planningState = "ready", priority = "normal", resourceDemand = "standard", queuePosition = null } = req.body;
-    const scope = await requestedBusiness(req);
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     if (!title) return res.status(400).json({ error: "Title is required" });
     if (typeof includeMileageInJobCosts !== "boolean") return res.status(400).json({ error: "includeMileageInJobCosts must be a boolean" });
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
@@ -551,8 +552,8 @@ router.post("/", async (req, res) => {
       jobType, homeModel: homeModel || null, address, city, state, locationName,
       startDate, endDate,
       notes,
-      businessLine: businessLine || null,
-      businessId: scope?.id ?? null,
+       businessLine: ownership.business.slug,
+       businessId: ownership.business.id,
        planningState, priority, resourceDemand, queuePosition: queuePosition == null ? null : Number(queuePosition),
       workflow: workflow || null,
       sqFt: sqFt != null ? parseInt(sqFt) : null,
@@ -1764,6 +1765,14 @@ router.post("/:id/apply-production-pricing", async (req, res) => {
 
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id));
     if (!job) return res.status(404).json({ error: "Job not found" });
+    const jobOwnership = await canonicalRecordBusiness(job);
+    if (jobOwnership.state === "invalid") {
+      return res.status(409).json({ error: "Job has invalid business ownership" });
+    }
+    const owner = jobOwnership.state === "resolved"
+      ? jobOwnership.business
+      : await generalContractingBusiness();
+    if (!owner) return res.status(409).json({ error: "General Contracting business was not found" });
 
     const serviceIds = Array.isArray(job.mhProductionServices)
       ? job.mhProductionServices.map(Number).filter((n) => Number.isFinite(n))
@@ -1821,6 +1830,8 @@ router.post("/:id/apply-production-pricing", async (req, res) => {
           taxAmount: taxAmount.toString(),
           total: total.toString(),
           clientId: job.clientId ?? draft.clientId ?? null,
+          businessId: owner.id,
+          businessLine: owner.slug,
         })
         .where(eq(invoicesTable.id, draft.id));
       const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, draft.id));
@@ -1844,7 +1855,8 @@ router.post("/:id/apply-production-pricing", async (req, res) => {
         state: job.state ?? null,
         locationName: job.locationName ?? null,
         lineItems,
-        businessLine: job.businessLine ?? null,
+        businessId: owner.id,
+        businessLine: owner.slug,
       })
       .returning();
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, invoice.id));
@@ -2132,7 +2144,24 @@ router.get("/closed/export", async (req, res) => {
     const conditions: ReturnType<typeof eq>[] = [eq(jobsTable.status, "closed") as ReturnType<typeof eq>];
     if (from) conditions.push(sql`COALESCE(${jobsTable.closedAt}, ${jobsTable.endDate}) >= ${from}` as unknown as ReturnType<typeof eq>);
     if (to)   conditions.push(sql`COALESCE(${jobsTable.closedAt}, ${jobsTable.endDate}) <= ${to}` as unknown as ReturnType<typeof eq>);
-    if (businessLine && businessLine !== "all") conditions.push(eq(jobsTable.businessLine, businessLine) as ReturnType<typeof eq>);
+    const rawBusinessId = req.query.businessId;
+    const hasBusinessId = rawBusinessId != null && String(rawBusinessId).trim() !== "";
+    const hasBusinessLine = Boolean(businessLine && businessLine !== "all");
+    if (hasBusinessId || hasBusinessLine) {
+      const ownership = await resolveMutationBusiness({
+        query: {
+          ...(hasBusinessId ? { businessId: rawBusinessId } : {}),
+          ...(hasBusinessLine ? { businessLine } : {}),
+        },
+        body: {},
+      } as unknown as Request);
+      if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+      const scope = ownership.business;
+      conditions.push(or(
+        eq(jobsTable.businessId, scope.id),
+        and(isNull(jobsTable.businessId), eq(jobsTable.businessLine, scope.slug)),
+      ) as ReturnType<typeof eq>);
+    }
 
     const jobs = await db.select({
       id: jobsTable.id,
@@ -2340,6 +2369,37 @@ router.put("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
     const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, daysOnJob, includeMileageInJobCosts, planningState, priority, resourceDemand, queuePosition } = req.body;
+    const [currentOwnership] = await db.select({
+      businessId: jobsTable.businessId,
+      businessLine: jobsTable.businessLine,
+    }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!currentOwnership) return res.status(404).json({ error: "Job not found" });
+    const requestedOwner = await resolveMutationBusiness(req);
+    if (!requestedOwner.ok) return res.status(400).json({ error: requestedOwner.error });
+    const existingOwnership = await canonicalRecordBusiness(currentOwnership);
+    const ownershipWouldChange = requestedOwner.explicit && (
+      existingOwnership.state !== "resolved" ||
+      existingOwnership.business.id !== requestedOwner.business.id
+    );
+    if (ownershipWouldChange) {
+      const [linkedInvoice] = await db.select({ id: invoicesTable.id })
+        .from(invoicesTable)
+        .where(eq(invoicesTable.jobId, id))
+        .limit(1);
+      if (linkedInvoice) {
+        return res.status(409).json({
+          error: "Job business cannot be changed while invoices are linked",
+        });
+      }
+    }
+    if (!requestedOwner.explicit && existingOwnership.state === "invalid") {
+      return res.status(409).json({ error: "Job has invalid business ownership" });
+    }
+    const owner = requestedOwner.explicit
+      ? requestedOwner.business
+      : existingOwnership.state === "resolved"
+        ? existingOwnership.business
+        : requestedOwner.business;
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
     if ("includeMileageInJobCosts" in req.body && typeof includeMileageInJobCosts !== "boolean") return res.status(400).json({ error: "includeMileageInJobCosts must be a boolean" });
@@ -2377,22 +2437,8 @@ router.put("/:id", async (req, res) => {
     if (startDate !== undefined) updates.startDate = startDate;
     if (endDate !== undefined) updates.endDate = endDate;
     if (notes !== undefined) updates.notes = notes;
-    if ("businessLine" in req.body) {
-      const normalizedBusinessLine = typeof businessLine === "string" ? businessLine.trim() : "";
-      if (!normalizedBusinessLine) {
-        updates.businessLine = null;
-        updates.businessId = null;
-      } else {
-        const [business] = await db
-          .select({ id: businessesTable.id, slug: businessesTable.slug })
-          .from(businessesTable)
-          .where(eq(businessesTable.slug, normalizedBusinessLine))
-          .limit(1);
-        if (!business) return res.status(400).json({ error: "Select a valid business before saving this job" });
-        updates.businessLine = business.slug;
-        updates.businessId = business.id;
-      }
-    }
+    updates.businessLine = owner.slug;
+    updates.businessId = owner.id;
     if ("workflow" in req.body) updates.workflow = workflow || null;
     if ("planningState" in req.body) updates.planningState = planningState;
     if ("priority" in req.body) updates.priority = priority;

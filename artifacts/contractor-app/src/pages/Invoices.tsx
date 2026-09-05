@@ -26,6 +26,7 @@ import {
   formatInvoiceCommunicationTimestamp,
   sortReminderTimestamps,
 } from "@/components/InvoiceDeliveryHistory";
+import { belongsToSelectedBusiness } from "@/lib/businessOwnership";
 
 const STATUS_COLORS: Record<string, string> = {
   paid:          "bg-emerald-100 text-emerald-700",
@@ -271,7 +272,7 @@ export default function Invoices() {
   const filteredInvoices = useMemo(() => {
     let list = showVoided ? allInvoices : nonVoidedInvoices;
     if (activeBusiness) {
-      list = list.filter((inv: any) => inv.businessLine === activeBusiness.slug);
+      list = list.filter((inv: any) => belongsToSelectedBusiness(inv, activeBusiness));
     }
     if (filterStatus === "active") {
       list = list.filter((inv: any) => ACTIVE_STATUSES.has(inv.status));

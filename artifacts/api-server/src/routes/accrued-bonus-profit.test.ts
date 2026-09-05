@@ -238,8 +238,30 @@ function pushSummarySelects(opts: {
 }
 
 describe("job mileage reimbursement ownership and validation", () => {
+  it("rejects a job owner change when an invoice is already linked", async () => {
+    h.selectQueue.push(
+      [{ id: 1, slug: "general_contracting" }], // param scope resolution
+      [{ id: 7, businessId: 1, businessLine: "general_contracting" }], // param ownership gate
+      [{ businessId: 2, businessLine: "asphalt_sealing" }], // handler's current owner
+      [{ id: 1, slug: "general_contracting" }], // requested owner
+      [{ id: 2, slug: "asphalt_sealing" }], // canonical current owner
+      [{ id: 44 }], // linked invoice
+    );
+
+    const res = await request(app)
+      .put("/jobs/7")
+      .send({ businessLine: "general_contracting" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/cannot be changed while invoices are linked/i);
+    expect(h.updates).toHaveLength(0);
+  });
+
   it("resets a removed subcontractor reimbursement recipient to the owner", async () => {
     h.selectQueue.push(
+      [{ businessId: 1, businessLine: "general_contracting" }], // current job ownership
+      [{ id: 1, slug: "general_contracting" }], // default mutation owner
+      [{ id: 1, slug: "general_contracting" }], // canonical current owner
       [{ subcontractorId: 12 }, { subcontractorId: 13 }], // current assignments
       [], // recomputeSubPaid
       [{ id: 7, createdAt: new Date(), subcontractorId: null, subcontractorName: null }], // refreshed job

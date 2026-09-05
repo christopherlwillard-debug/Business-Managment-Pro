@@ -23,6 +23,9 @@ const h = vi.hoisted(() => ({
   executeQueue: undefined as any,
   // Record of every .set(data) call (for asserting what was written to DB).
   updates: [] as any[],
+  inserts: [] as any[],
+  mutationResolution: undefined as any,
+  canonicalOwner: undefined as any,
   // Controls whether isSquareConfigured() returns true in a given test.
   squareConfigured: false,
   scenario: "no request",
@@ -58,9 +61,12 @@ vi.mock("@workspace/db", () => {
       },
     }),
     insert:  () => ({
-      values: () => ({
+      values: (data: any) => {
+        h.inserts.push(data);
+        return {
         returning: () => Promise.resolve([{ id: 42 }]),
-      }),
+        };
+      },
     }),
     execute: () => {
       return Promise.resolve({ rows: h.executeQueue.take(h.scenario) });
@@ -82,6 +88,16 @@ vi.mock("../lib/square.js", () => ({
 }));
 vi.mock("../lib/invoiceEmail", () => ({
   sendInvoiceEmail: vi.fn(),
+}));
+vi.mock("./material-lists", () => ({
+  syncMaterialsToJobInvoice: vi.fn(),
+}));
+vi.mock("../lib/business-scope.js", () => ({
+  requestedBusiness: async () => null,
+  resolveMutationBusiness: async () => h.mutationResolution,
+  canonicalRecordBusiness: async () => h.canonicalOwner,
+  generalContractingBusiness: async () => ({ id: 1, slug: "general_contracting" }),
+  belongsToBusiness: () => true,
 }));
 vi.mock("../lib/launchBrowser.js",          () => ({ launchBrowser:              vi.fn() }));
 vi.mock("../lib/generateChecklistPdf.js",   () => ({ generateChecklistPdfBuffer: vi.fn() }));
@@ -166,6 +182,13 @@ beforeEach(() => {
   h.selectQueue = createStrictQueryQueue<any[]>({ kind: "select" });
   h.executeQueue = createStrictQueryQueue<any[]>({ kind: "execute" });
   h.updates.length = 0;
+  h.inserts.length = 0;
+  h.mutationResolution = {
+    ok: true,
+    explicit: false,
+    business: { id: 1, slug: "general_contracting" },
+  };
+  h.canonicalOwner = { state: "blank" };
   h.squareConfigured = false;
   deleteSquarePaymentLink.mockClear();
   sendInvoiceEmail.mockReset();
@@ -249,6 +272,55 @@ describe("POST / — line item validation", () => {
     const res = await request(app).post("/").send({ issueDate: "2026-07-10" });
 
     expect(res.status).toBe(201);
+  });
+
+  it("writes General Contracting ownership when no business is selected", async () => {
+    h.selectQueue.push([fakeInvoice({ status: "draft", invoiceNumber: null })]);
+
+    const res = await request(app).post("/").send({ issueDate: "2026-07-10" });
+
+    expect(res.status).toBe(201);
+    expect(h.inserts[0]).toMatchObject({
+      businessId: 1,
+      businessLine: "general_contracting",
+    });
+  });
+
+  it("inherits a linked Asphalt job's canonical ownership", async () => {
+    h.canonicalOwner = { state: "resolved", business: { id: 9, slug: "asphalt_sealing" } };
+    h.selectQueue.push(
+      [{ id: 55, businessId: 9, businessLine: "asphalt_sealing" }],
+      [fakeInvoice({ status: "draft", invoiceNumber: null, jobId: 55, businessId: 9, businessLine: "asphalt_sealing" })],
+    );
+
+    const res = await request(app).post("/").send({ issueDate: "2026-07-10", jobId: 55 });
+
+    expect(res.status).toBe(201);
+    expect(h.inserts[0]).toMatchObject({
+      jobId: 55,
+      businessId: 9,
+      businessLine: "asphalt_sealing",
+    });
+  });
+
+  it("rejects an explicit invoice owner that conflicts with its linked job", async () => {
+    h.mutationResolution = {
+      ok: true,
+      explicit: true,
+      business: { id: 1, slug: "general_contracting" },
+    };
+    h.canonicalOwner = { state: "resolved", business: { id: 9, slug: "asphalt_sealing" } };
+    h.selectQueue.push([{ id: 55, businessId: 9, businessLine: "asphalt_sealing" }]);
+
+    const res = await request(app).post("/").send({
+      issueDate: "2026-07-10",
+      jobId: 55,
+      businessLine: "general_contracting",
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/conflicts with the linked job/i);
+    expect(h.inserts).toHaveLength(0);
   });
 
   it("returns 400 when a line item has no description", async () => {

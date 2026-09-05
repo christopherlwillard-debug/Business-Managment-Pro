@@ -65,6 +65,7 @@ import { calculateSurchargeDays, isMileageSurchargeLine, mergeMileageSurchargeLi
 import { isMaterialInvoiceLine } from "@/lib/invoiceLineItems";
 import { calculateJobMargin } from "@/lib/jobMargin";
 import { sumIncludedJobCostDetails } from "@/lib/jobExpenseDisplay";
+import { belongsToSelectedBusiness } from "@/lib/businessOwnership";
 import { JobMarginCard } from "@/components/JobMarginCard";
 import { JobPlanningDialog } from "@/components/planner/JobPlanningDialog";
 import { ExtendedJob } from "@/components/planner/types";
@@ -6140,7 +6141,7 @@ function JobFormDialog({
 }) {
   const createJob = useCreateJob();
   const updateJob = useUpdateJob();
-  const { activeBusiness, businesses } = useBusiness();
+  const { activeBusiness } = useBusiness();
   const { toast } = useToast();
 
   function makeForm() {
@@ -6685,37 +6686,6 @@ function JobFormDialog({
               </span>
             </span>
           </label>
-
-          {editJob && (!activeBusiness || !editJob.businessId) && (
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Business
-              {!editJob.businessId && <span className="text-xs font-normal text-amber-600 ml-1">(required for reimbursements)</span>}
-            </label>
-            {!editJob.businessId && (
-              <p className="text-xs text-muted-foreground mb-2">
-                Assign this job to the correct business so mileage reimbursements and other business records save correctly.
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {[{ value: "", label: "Unassigned" }, ...businesses.map(b => ({ value: b.slug, label: b.name }))].map(opt => (
-                <label key={opt.value} className="flex-1 min-w-[100px]">
-                  <input type="radio" name="businessLine" value={opt.value}
-                    checked={form.businessLine === opt.value}
-                    onChange={() => setField("businessLine", opt.value)}
-                    className="sr-only" />
-                  <span className={`flex items-center justify-center px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
-                    form.businessLine === opt.value
-                      ? "bg-primary border-primary text-primary-foreground shadow-sm"
-                      : "bg-background border-border text-muted-foreground hover:border-primary/30"
-                  }`}>
-                    {opt.label}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-          )}
 
           {form.businessLine === "asphalt_sealing" && (
             <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
@@ -7812,9 +7782,9 @@ export default function Jobs() {
     // purposes; this keeps old work visible without rewriting production data.
     const isUnassignedLegacyJob = j.businessId == null && !j.businessLine;
     const isDefaultBusiness = activeBusiness?.id === businesses[0]?.id;
+    const selectedBusiness = activeBusiness ?? businesses.find(business => business.slug === jobBLFilter);
     return (
-      j.businessId === activeBusiness?.id ||
-      j.businessLine === jobBLFilter ||
+      (selectedBusiness != null && belongsToSelectedBusiness(j, selectedBusiness)) ||
       (isUnassignedLegacyJob && isDefaultBusiness)
     );
   };
@@ -8498,7 +8468,12 @@ export default function Jobs() {
           {[{ value: "", label: "All Jobs" }, ...businesses.map(b => ({ value: b.slug, label: b.name }))].map((opt, idx) => {
             const count = opt.value === ""
               ? jobs.length
-              : jobs.filter(j => j.businessLine === opt.value).length;
+              : (() => {
+                  const business = businesses.find(candidate => candidate.slug === opt.value);
+                  return business
+                    ? jobs.filter(job => belongsToSelectedBusiness(job, business)).length
+                    : 0;
+                })();
             return (
               <button
                 key={opt.value}

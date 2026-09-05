@@ -16,91 +16,99 @@ const router = Router();
 //   • Bulk-cleanup tools with safety guards that may be needed again
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Repair the confirmed General Contracting ownership of Wil-1047 and Wil-1049.
-// This is intentionally exact, dry-run by default, and safe to rerun.
-router.post("/repair-wil-1047-1049-ownership", async (req: Request, res: Response) => {
+// Audit legacy ownership before making any changes. Execution is deliberately
+// opt-in and may only normalize records deterministically owned by the
+// permanent General Contracting parent; it never moves a DBA-owned record.
+router.post("/audit-repair-business-ownership", async (req: Request, res: Response) => {
   try {
-    const { dryRun = true } = (req.body ?? {}) as { dryRun?: boolean };
-    const [business] = await db.select({
-      id: businessesTable.id,
-      slug: businessesTable.slug,
-      name: businessesTable.name,
-    }).from(businessesTable)
-      .where(eq(businessesTable.slug, "general_contracting"))
-      .limit(1);
+    const { dryRun = true, confirm } = (req.body ?? {}) as { dryRun?: boolean; confirm?: string };
+    if (dryRun === false && confirm !== "REPAIR_GENERAL_CONTRACTING_OWNERSHIP") {
+      return res.status(400).json({ error: "Execution requires confirm: REPAIR_GENERAL_CONTRACTING_OWNERSHIP" });
+    }
+    const businesses = await db.select({ id: businessesTable.id, slug: businessesTable.slug, name: businessesTable.name })
+      .from(businessesTable);
+    const business = businesses.find(row => row.slug === "general_contracting");
     if (!business) return res.status(409).json({ error: "General Contracting business was not found." });
+    const byId = new Map(businesses.map(row => [row.id, row]));
+    const bySlug = new Map(businesses.map(row => [row.slug, row]));
+    const jobs = await db.select({ id: jobsTable.id, businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+      .from(jobsTable);
+    const invoices = await db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, jobId: invoicesTable.jobId, businessId: invoicesTable.businessId, businessLine: invoicesTable.businessLine })
+      .from(invoicesTable);
 
-    const targetNumbers = ["Wil-1047", "Wil-1049"];
-    const invoiceRows = await db.select({
-      id: invoicesTable.id,
-      invoiceNumber: invoicesTable.invoiceNumber,
-      jobId: invoicesTable.jobId,
-      businessId: invoicesTable.businessId,
-      businessLine: invoicesTable.businessLine,
-    }).from(invoicesTable)
-      .where(inArray(invoicesTable.invoiceNumber, targetNumbers));
-    if (invoiceRows.length !== 2 || new Set(invoiceRows.map(row => row.invoiceNumber)).size !== 2) {
-      return res.status(409).json({
-        error: "Expected exactly one Wil-1047 and one Wil-1049 invoice.",
-        found: invoiceRows.map(row => ({ id: row.id, invoiceNumber: row.invoiceNumber })),
-      });
-    }
-    const invoice1049 = invoiceRows.find(row => row.invoiceNumber === "Wil-1049");
-    if (!invoice1049?.jobId) {
-      return res.status(409).json({ error: "Wil-1049 is not linked to a job." });
-    }
-    const [job1049] = await db.select({
-      id: jobsTable.id,
-      businessId: jobsTable.businessId,
-      businessLine: jobsTable.businessLine,
-    }).from(jobsTable)
-      .where(eq(jobsTable.id, invoice1049.jobId))
-      .limit(1);
-    if (!job1049) return res.status(409).json({ error: "Wil-1049's linked job was not found." });
-
-    const conflicting = [
-      ...invoiceRows
-        .filter(row => row.businessId != null && row.businessId !== business.id)
-        .map(row => `invoice ${row.invoiceNumber}`),
-      ...(job1049.businessId != null && job1049.businessId !== business.id ? ["Wil-1049 job"] : []),
-    ];
-    if (conflicting.length > 0) {
-      return res.status(409).json({
-        error: "A target record is already owned by another business.",
-        conflicting,
-      });
-    }
-
-    const plan = {
-      business,
-      invoices: invoiceRows.map(row => ({
-        id: row.id,
-        invoiceNumber: row.invoiceNumber,
-        from: { businessId: row.businessId, businessLine: row.businessLine },
-        to: { businessId: business.id, businessLine: business.slug },
-      })),
-      job: {
-        id: job1049.id,
-        from: { businessId: job1049.businessId, businessLine: job1049.businessLine },
-        to: { businessId: business.id, businessLine: business.slug },
-      },
+    type LegacyRow = { id: number; businessId: number | null; businessLine: string | null };
+    const classify = (row: LegacyRow) => {
+      const idBusiness = row.businessId == null ? undefined : byId.get(row.businessId);
+      const slug = row.businessLine?.trim() ?? "";
+      const slugBusiness = slug ? bySlug.get(slug) : undefined;
+      if ((row.businessId != null && !idBusiness) || (slug && !slugBusiness)) return "ambiguous" as const;
+      if (idBusiness && slugBusiness && idBusiness.id !== slugBusiness.id) return "ambiguous" as const;
+      const owner = idBusiness ?? slugBusiness;
+      return !owner || owner.id === business.id ? "generalContracting" as const : "preserve" as const;
     };
-    if (dryRun) return res.json({ ok: true, dryRun: true, plan });
-
+    const jobClassifications = new Map(jobs.map(job => [job.id, classify(job)]));
+    const jobOwners = new Map(jobs.map(job => {
+      const classification = jobClassifications.get(job.id);
+      const recordedOwner = byId.get(job.businessId ?? -1)
+        ?? (job.businessLine ? bySlug.get(job.businessLine.trim()) : undefined);
+      return [job.id, recordedOwner ?? (classification === "generalContracting" ? business : undefined)] as const;
+    }));
+    const deterministicJobs = jobs.filter(job => jobClassifications.get(job.id) === "generalContracting");
+    const deterministicInvoices: typeof invoices = [];
+    const preserveInvoices: typeof invoices = [];
+    const ambiguousInvoices: Array<typeof invoices[number] & { reason: string }> = [];
+    for (const invoice of invoices) {
+      const own = classify(invoice);
+      if (invoice.jobId != null) {
+        const jobClass = jobClassifications.get(invoice.jobId);
+        const jobOwner = jobOwners.get(invoice.jobId);
+        if (!jobClass || jobClass === "ambiguous" || !jobOwner) {
+          ambiguousInvoices.push({ ...invoice, reason: "linked_job_not_found_or_ambiguous" });
+        } else if (jobClass === "preserve") {
+          const invoiceOwner = byId.get(invoice.businessId ?? -1)
+            ?? (invoice.businessLine ? bySlug.get(invoice.businessLine.trim()) : undefined);
+          own === "generalContracting" || !invoiceOwner || invoiceOwner.id !== jobOwner.id
+            ? ambiguousInvoices.push({ ...invoice, reason: "conflicts_with_other_business_job" })
+            : preserveInvoices.push(invoice);
+        } else if (own === "preserve") {
+          ambiguousInvoices.push({ ...invoice, reason: "conflicts_with_general_contracting_job" });
+        } else if (own === "ambiguous") {
+          ambiguousInvoices.push({ ...invoice, reason: "ambiguous_invoice_owner" });
+        } else {
+          deterministicInvoices.push(invoice);
+        }
+      } else if (own === "generalContracting") deterministicInvoices.push(invoice);
+      else if (own === "preserve") preserveInvoices.push(invoice);
+      else ambiguousInvoices.push({ ...invoice, reason: "ambiguous_invoice_owner" });
+    }
+    const preservedJobs = jobs.filter(job => jobClassifications.get(job.id) === "preserve");
+    const ambiguousJobs = jobs.filter(job => jobClassifications.get(job.id) === "ambiguous");
+    const plan = {
+      generalContracting: business,
+      deterministicGeneralContracting: { jobs: deterministicJobs, invoices: deterministicInvoices },
+      preserveExplicitOtherBusiness: { jobs: preservedJobs, invoices: preserveInvoices },
+      ambiguousOrConflicting: { jobs: ambiguousJobs, invoices: ambiguousInvoices },
+    };
+    if (dryRun !== false) return res.json({ ok: true, dryRun: true, plan });
     await db.transaction(async tx => {
-      await tx.update(invoicesTable)
-        .set({ businessId: business.id, businessLine: business.slug })
-        .where(inArray(invoicesTable.id, invoiceRows.map(row => row.id)));
-      await tx.update(jobsTable)
-        .set({ businessId: business.id, businessLine: business.slug })
-        .where(eq(jobsTable.id, job1049.id));
+      if (deterministicJobs.length) await tx.update(jobsTable).set({ businessId: business.id, businessLine: business.slug })
+        .where(inArray(jobsTable.id, deterministicJobs.map(row => row.id)));
+      if (deterministicInvoices.length) await tx.update(invoicesTable).set({ businessId: business.id, businessLine: business.slug })
+        .where(inArray(invoicesTable.id, deterministicInvoices.map(row => row.id)));
     });
-    console.log("[admin/migrations] repaired Wil-1047/Wil-1049 General Contracting ownership", JSON.stringify(plan));
-    res.json({ ok: true, dryRun: false, updatedInvoices: invoiceRows.length, updatedJobs: 1, plan });
+    res.json({ ok: true, dryRun: false, updatedJobs: deterministicJobs.length, updatedInvoices: deterministicInvoices.length, plan });
   } catch (err) {
-    console.error("[admin/migrations] repair-wil-1047-1049-ownership failed:", err);
+    console.error("[admin/migrations] audit-repair-business-ownership failed:", err);
     res.status(500).json({ error: "Migration failed", detail: String(err) });
   }
+});
+
+/* Legacy endpoint retained only as a deliberately disabled compatibility
+ * response; the generalized audit route above supersedes the exact repair. */
+router.post("/repair-wil-1047-1049-ownership", async (_req: Request, res: Response) => {
+  return res.status(410).json({
+    error: "Superseded by /audit-repair-business-ownership. Run its dry run before confirmed execution.",
+  });
 });
 
 // Recompute sub payment statuses for records where advances were applied but status is still "partial"

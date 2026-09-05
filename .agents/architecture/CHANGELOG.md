@@ -365,3 +365,19 @@ Created the four-document architecture governance system:
   database index, including simultaneous or repeated-file submissions.
 - Existing trip rows, exact-file detection, rollback history, effective-date
   deductions, and monthly consolidated mileage expenses remain unchanged.
+
+### Canonical job and invoice mutation ownership
+
+- Job and invoice mutations now resolve a canonical business id and slug through
+  the business registry, defaulting absent ownership selection to the permanent
+  General Contracting parent.
+- Job-linked invoices inherit canonical job ownership and reject conflicting
+  explicit business selection; production-pricing invoices follow the same
+  rule, and estimate-to-job conversion preserves a known DBA owner.
+- Conflicting explicit business ID/slug pairs are rejected rather than allowing
+  one selector to silently override the other.
+- A job's business cannot be reassigned while invoices are linked, preventing
+  the job and its financial documents from splitting across owners.
+- The guarded ownership migration audit is dry-run-first and only repairs
+  deterministic General Contracting legacy records, leaving other-business and
+  ambiguous records untouched.

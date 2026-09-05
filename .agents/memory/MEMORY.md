@@ -3,7 +3,7 @@
 - [Workflow aliases](workflow-aliases.md) — "Contractor App" workflow always fails (legacy); use "artifacts/contractor-app: web" and "artifacts/api-server: API Server"
 - [API publish health probe](deployment-health-probe-path.md) — autoscale promotion may probe the API service path (/api) despite the configured /api/healthz startup path
 - [Post-merge schema push behavior](post-merge-schema-push.md) — post-merge tolerates Drizzle push failures; always verify development metadata explicitly
-- [Business isolation architecture](business-isolation.md) — recurring_expenses and expenses have businessId FK; reports route still uses businessLine text slug; Business type includes parentBusinessId for shell/DBA structure
+- [Business isolation architecture](business-isolation.md) — General Contracting is the permanent parent/default owner; Asphalt is a child DBA; workflows never determine financial ownership
 - [Legacy job ownership](legacy-job-ownership.md) — unassigned legacy jobs may be claimed during an explicitly business-scoped edit; scoped reads still require ownership
 - [Card editor panel architecture](card-editor-panel.md) — specialContent injection into InspectorPanel was unreliable; replaced with selectedCardData state captured at click-time + standalone panel that returns early before InspectorPanel renders
 - [Owner Capital Ledger](owner-capital-ledger.md) — owner_capital_entries table replaces single ownerPersonalInvestment setting; auto-migrates on first GET; drizzle push needs interactive TTY so use psql directly
