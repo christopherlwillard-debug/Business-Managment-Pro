@@ -66,8 +66,30 @@ describe("MileIQProvider", () => {
     expect(result.valid).toHaveLength(2);
     expect(result.invalid).toEqual([
       expect.objectContaining({
+        rowIndex: 12,
         reason: "Invalid or missing date",
         rawData: expect.stringContaining("not-a-date"),
+        date: "not-a-date",
+        startLocation: "Start",
+        endLocation: "Stop",
+      }),
+    ]);
+  });
+
+  it("keeps available route context for short malformed trip rows", () => {
+    const csv = mileIQReport([
+      "08/01/2026 09:12,08/01/2026 09:30,Business,Warehouse,Job site",
+    ]);
+
+    const result = new MileIQProvider().parse(csv);
+
+    expect(result.invalid).toEqual([
+      expect.objectContaining({
+        rowIndex: 11,
+        reason: "Too few columns",
+        date: "08/01/2026 09:12",
+        startLocation: "Warehouse",
+        endLocation: "Job site",
       }),
     ]);
   });

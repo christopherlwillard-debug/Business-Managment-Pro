@@ -14,6 +14,9 @@ export interface InvalidRow {
   rowIndex: number;
   rawData: string;
   reason: string;
+  date?: string;
+  startLocation?: string;
+  endLocation?: string;
 }
 
 export interface ParseResult {
@@ -77,9 +80,14 @@ export class MileIQProvider implements MileageImportProvider {
       if ((cols[0] ?? "").trim().toLowerCase() === "totals") {
         break;
       }
+      const rowContext = {
+        date: (cols[0] ?? "").trim() || undefined,
+        startLocation: (cols[3] ?? "").trim() || undefined,
+        endLocation: (cols[4] ?? "").trim() || undefined,
+      };
       if (cols.length < 7) {
         if (cols.some(c => c.trim())) {
-          invalid.push({ rowIndex: i + 1, rawData: line, reason: "Too few columns" });
+          invalid.push({ rowIndex: i + 1, rawData: line, reason: "Too few columns", ...rowContext });
         }
         continue;
       }
@@ -95,7 +103,7 @@ export class MileIQProvider implements MileageImportProvider {
 
       const date = parseMileIQDate(rawDate);
       if (!date) {
-        invalid.push({ rowIndex: i + 1, rawData: line, reason: "Invalid or missing date" });
+        invalid.push({ rowIndex: i + 1, rawData: line, reason: "Invalid or missing date", ...rowContext });
         continue;
       }
       const sourceStartTimestamp = normalizeMileIQTimestamp(rawDate);
@@ -107,7 +115,7 @@ export class MileIQProvider implements MileageImportProvider {
 
       const miles = parseFloat(rawMiles);
       if (isNaN(miles) || miles <= 0) {
-        invalid.push({ rowIndex: i + 1, rawData: line, reason: "Invalid or missing mileage" });
+        invalid.push({ rowIndex: i + 1, rawData: line, reason: "Invalid or missing mileage", ...rowContext });
         continue;
       }
 

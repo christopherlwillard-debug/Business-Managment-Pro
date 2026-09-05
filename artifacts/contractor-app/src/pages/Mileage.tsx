@@ -800,10 +800,35 @@ export default function Mileage() {
                   />
 
                   {importInvalidRows.length > 0 && (
-                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-                      <span className="font-semibold">{importInvalidRows.length} row{importInvalidRows.length > 1 ? "s" : ""} skipped: </span>
-                      {[...new Set(importInvalidRows.map(r => r.reason))].join(", ")}
-                    </div>
+                    <details className="group rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2">
+                        <span>
+                          <span className="font-semibold">{importInvalidRows.length} row{importInvalidRows.length > 1 ? "s" : ""} skipped: </span>
+                          {[...new Set(importInvalidRows.map(r => r.reason))].join(", ")}
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
+                      </summary>
+                      <div className="max-h-56 overflow-y-auto border-t border-amber-200 divide-y divide-amber-200/70">
+                        {importInvalidRows.map(row => {
+                          const route = [row.startLocation, row.endLocation].filter(Boolean).join(" → ");
+                          return (
+                            <div key={row.rowIndex} className="px-3 py-2.5">
+                              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                                <span className="font-semibold text-amber-950">Row {row.rowIndex}</span>
+                                <span className="text-amber-700">{row.reason}</span>
+                              </div>
+                              {(row.date || route) && (
+                                <p className="mt-1 break-words text-amber-900">
+                                  {row.date && <span>{row.date}</span>}
+                                  {row.date && route && <span className="mx-1.5 text-amber-500">·</span>}
+                                  {route && <span>{route}</span>}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </details>
                   )}
 
                   <label className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border cursor-pointer hover:bg-muted/30 transition-colors">
