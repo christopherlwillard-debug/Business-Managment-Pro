@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, jobReadinessConditionsTable, type ServiceBilling } from "@workspace/db/schema";
-import { eq, and, count, inArray, sql, isNull, desc, or, ne } from "drizzle-orm";
+import { eq, and, count, countDistinct, inArray, sql, isNull, desc, or, ne } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
 import { countActualWorkdays } from "../lib/job-workdays.js";
@@ -16,6 +16,14 @@ import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
 import { getRequestUser } from "./guards";
 
 const router = Router();
+
+function catalogPhotoUrl(objectPath: string | null | undefined): string | null {
+  if (!objectPath) return null;
+  if (objectPath.startsWith("/objects/")) {
+    return `/api/storage/objects/${objectPath.slice("/objects/".length)}`;
+  }
+  return objectPath;
+}
 
 router.param("id", (req, res, next, rawId) => {
   void (async () => {
@@ -424,6 +432,147 @@ async function replaceSubcontractors(jobId: number, ids: number[]) {
     await recomputeSubPaid(jobId).catch(() => {});
   }
 }
+
+router.get("/trim-out-catalog", async (req, res): Promise<void> => {
+  try {
+    const parsed = z.object({
+      page: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(1).max(100).default(25),
+      manufacturerId: z.coerce.number().int().positive().optional(),
+      modelId: z.coerce.number().int().positive().optional(),
+    }).safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+    const conditions = [
+      inArray(jobsTable.status, ["completed", "invoiced", "closed"]),
+      sql`${jobsTable.mfhManufacturerId} is not null`,
+      sql`${jobsTable.mfhModelId} is not null`,
+    ];
+    if (scope) {
+      conditions.push(or(
+        eq(jobsTable.businessId, scope.id),
+        and(isNull(jobsTable.businessId), eq(jobsTable.businessLine, scope.slug)),
+      )!);
+    }
+
+    if (parsed.data.manufacturerId) {
+      conditions.push(eq(jobsTable.mfhManufacturerId, parsed.data.manufacturerId));
+    }
+    if (parsed.data.modelId) {
+      conditions.push(eq(jobsTable.mfhModelId, parsed.data.modelId));
+    }
+    const where = and(...conditions);
+    const photoCountExpr = sql<number>`(
+      coalesce((select count(*) from job_finished_photos fp join job_checklists jc on jc.id = fp.job_checklist_id where jc.job_id = ${jobsTable.id}), 0)
+      + coalesce((select count(*) from job_start_photos sp join job_checklists jc on jc.id = sp.job_checklist_id where jc.job_id = ${jobsTable.id}), 0)
+      + coalesce((select count(*) from job_checklist_item_photos ip join job_checklist_items ji on ji.id = ip.job_checklist_item_id join job_checklists jc on jc.id = ji.job_checklist_id where jc.job_id = ${jobsTable.id}), 0)
+    )::int`;
+    const coverPathExpr = sql<string | null>`coalesce(
+      (select fp.object_path from job_finished_photos fp join job_checklists jc on jc.id = fp.job_checklist_id where jc.job_id = ${jobsTable.id} order by fp.created_at asc limit 1),
+      (select sp.object_path from job_start_photos sp join job_checklists jc on jc.id = sp.job_checklist_id where jc.job_id = ${jobsTable.id} order by sp.created_at asc limit 1),
+      (select ip.object_path from job_checklist_item_photos ip join job_checklist_items ji on ji.id = ip.job_checklist_item_id join job_checklists jc on jc.id = ji.job_checklist_id where jc.job_id = ${jobsTable.id} order by ip.created_at asc limit 1)
+    )`;
+
+    const [{ totalHomes }] = await db
+      .select({ totalHomes: count(jobsTable.id) })
+      .from(jobsTable)
+      .where(where);
+    const totalPages = Math.max(1, Math.ceil(totalHomes / parsed.data.pageSize));
+    const page = Math.min(parsed.data.page, totalPages);
+    const offset = (page - 1) * parsed.data.pageSize;
+    const [homeRows, builderRows, modelRows] = await Promise.all([
+      db.select({
+        jobId: jobsTable.id,
+        manufacturerId: jobsTable.mfhManufacturerId,
+        manufacturerName: mfhManufacturersTable.name,
+        modelId: jobsTable.mfhModelId,
+        modelName: mfhModelsTable.name,
+        locationName: jobsTable.locationName,
+        address: jobsTable.address,
+        city: jobsTable.city,
+        state: jobsTable.state,
+        endDate: jobsTable.endDate,
+        photoCount: photoCountExpr,
+        coverPath: coverPathExpr,
+      })
+        .from(jobsTable)
+        .innerJoin(mfhManufacturersTable, eq(jobsTable.mfhManufacturerId, mfhManufacturersTable.id))
+        .innerJoin(mfhModelsTable, eq(jobsTable.mfhModelId, mfhModelsTable.id))
+        .where(where)
+        .orderBy(desc(jobsTable.endDate), desc(jobsTable.createdAt))
+        .limit(parsed.data.pageSize)
+        .offset(offset),
+      db.select({
+        id: mfhManufacturersTable.id,
+        name: mfhManufacturersTable.name,
+        homeCount: count(jobsTable.id),
+        modelCount: countDistinct(jobsTable.mfhModelId),
+        photoCount: sql<number>`coalesce(sum(${photoCountExpr}), 0)::int`,
+      })
+        .from(jobsTable)
+        .innerJoin(mfhManufacturersTable, eq(jobsTable.mfhManufacturerId, mfhManufacturersTable.id))
+        .where(where)
+        .groupBy(mfhManufacturersTable.id, mfhManufacturersTable.name)
+        .orderBy(mfhManufacturersTable.name),
+      db.select({
+        manufacturerId: mfhManufacturersTable.id,
+        id: mfhModelsTable.id,
+        name: mfhModelsTable.name,
+        homeCount: count(jobsTable.id),
+        photoCount: sql<number>`coalesce(sum(${photoCountExpr}), 0)::int`,
+        coverPath: sql<string | null>`max(${coverPathExpr})`,
+      })
+        .from(jobsTable)
+        .innerJoin(mfhManufacturersTable, eq(jobsTable.mfhManufacturerId, mfhManufacturersTable.id))
+        .innerJoin(mfhModelsTable, eq(jobsTable.mfhModelId, mfhModelsTable.id))
+        .where(where)
+        .groupBy(mfhManufacturersTable.id, mfhModelsTable.id, mfhModelsTable.name)
+        .orderBy(mfhModelsTable.name),
+    ]);
+    const homes = homeRows.map(job => ({
+      jobId: job.jobId,
+      manufacturerId: job.manufacturerId!,
+      manufacturerName: job.manufacturerName,
+      modelId: job.modelId!,
+      modelName: job.modelName,
+      locationName: job.locationName,
+      address: job.address,
+      city: job.city,
+      state: job.state,
+      endDate: job.endDate,
+      photoCount: job.photoCount,
+      coverPhotoUrl: catalogPhotoUrl(job.coverPath),
+    }));
+    const modelsByBuilder = new Map<number, Array<{
+      id: number; name: string; homeCount: number; photoCount: number; coverPhotoUrl: string | null;
+    }>>();
+    for (const model of modelRows) {
+      const models = modelsByBuilder.get(model.manufacturerId) ?? [];
+      models.push({
+        id: model.id,
+        name: model.name,
+        homeCount: model.homeCount,
+        photoCount: model.photoCount,
+        coverPhotoUrl: catalogPhotoUrl(model.coverPath),
+      });
+      modelsByBuilder.set(model.manufacturerId, models);
+    }
+    const builders = builderRows.map(builder => ({
+      ...builder,
+      models: modelsByBuilder.get(builder.id) ?? [],
+    }));
+
+    res.json({ builders, homes, page, pageSize: parsed.data.pageSize, totalHomes, totalPages });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load Trim-Out Catalog" });
+  }
+});
 
 router.get("/", async (req, res) => {
   try {

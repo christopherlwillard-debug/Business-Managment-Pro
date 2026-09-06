@@ -1,10 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
 import {
-  useListJobs,
-  useMfhKnowledgeBase,
-  useListMfhManufacturers,
-  Job
+  useGetTrimOutCatalog
 } from "@workspace/api-client-react";
 import {
   Image as ImageIcon,
@@ -110,41 +107,28 @@ function checklistPhotos(checklist?: JobChecklist): CatalogPhoto[] {
   ];
 }
 
-// ── Custom Hooks ───────────────────────────────────────────────────────────
-
-function useChecklistsForJobs(jobs: Job[]) {
-  // We want to fetch checklists for the given jobs to get their photo counts.
-  // For the prototype, we can fetch them sequentially or parallel if there aren't too many.
-  // We use standard React Query with `useQueries` or just fetch inside a useEffect for simplicity.
-  const [checklists, setChecklists] = useState<Record<number, JobChecklist>>({});
+function useHomeChecklist(jobId: number | null) {
+  const [checklist, setChecklist] = useState<JobChecklist | undefined>();
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let mounted = true;
-    async function fetchAll() {
-      if (jobs.length === 0) return;
+    async function fetchChecklist() {
+      setChecklist(undefined);
+      if (jobId == null) return;
       setLoading(true);
       try {
-        const results: Record<number, JobChecklist> = {};
-        await Promise.all(
-          jobs.map(async (job) => {
-            const res = await fetch(`${BASE}/api/jobs/${job.id}/checklist`, { credentials: "include" });
-            if (res.ok) {
-              const data = await res.json();
-              if (mounted) results[job.id] = data;
-            }
-          })
-        );
-        if (mounted) setChecklists(prev => ({ ...prev, ...results }));
+        const res = await fetch(`${BASE}/api/jobs/${jobId}/checklist`, { credentials: "include" });
+        if (res.ok && mounted) setChecklist(await res.json());
       } finally {
         if (mounted) setLoading(false);
       }
     }
-    fetchAll();
+    fetchChecklist();
     return () => { mounted = false; };
-  }, [jobs.map(j => j.id).join(",")]);
+  }, [jobId]);
 
-  return { checklists, loading };
+  return { checklist, loading };
 }
 
 // ── View States ────────────────────────────────────────────────────────────
@@ -158,60 +142,39 @@ type ViewState =
 
 export default function TrimOutCatalog() {
   const [view, setView] = useState<ViewState>({ type: "catalog" });
+  const [page, setPage] = useState(1);
   
   // Local Selection Mode (prototype action)
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
   const [selectedHomes, setSelectedHomes] = useState<Set<number>>(new Set());
+  const [selectedHomePhotoCounts, setSelectedHomePhotoCounts] = useState<Record<number, number>>({});
 
-  // Data fetching
-  const { data: rawJobs = [], isLoading: jobsLoading } = useListJobs();
-  const { data: manufacturers = [], isLoading: mfrLoading } = useListMfhManufacturers();
-  const { data: models = [], isLoading: modelsLoading } = useMfhKnowledgeBase();
+  const selectedManufacturerId = view.type === "catalog" ? undefined : view.mfrId;
+  const selectedModelId = view.type === "model" || view.type === "home" ? view.modelId : undefined;
+  const { data: catalog, isLoading } = useGetTrimOutCatalog({
+    page,
+    pageSize: 25,
+    manufacturerId: selectedManufacturerId,
+    modelId: selectedModelId,
+  });
+  const builders = catalog?.builders ?? [];
+  const homes = catalog?.homes ?? [];
+  const openJobId = view.type === "home" ? view.jobId : null;
+  const { checklist: openChecklist, loading: checklistLoading } = useHomeChecklist(openJobId);
+  const selectedPhotoCount = selectedPhotos.size + Array.from(selectedHomes)
+    .reduce((total, jobId) => total + (selectedHomePhotoCounts[jobId] ?? 0), 0);
 
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Filter to completed/invoiced/closed jobs with MFH assignments
-  const catalogJobs = useMemo(() => {
-    return rawJobs.filter(
-      (j) =>
-        (j.status === "completed" || j.status === "invoiced" || j.status === "closed") &&
-        j.mfhManufacturerId != null &&
-        j.mfhModelId != null
-    );
-  }, [rawJobs]);
-  const { checklists, loading: checklistsLoading } = useChecklistsForJobs(catalogJobs);
-
-  const isLoading = jobsLoading || mfrLoading || modelsLoading;
-
-  // Derive counts
   const buildersWithJobs = useMemo(() => {
-    const map = new Map<number, { id: number; name: string; jobs: Job[]; modelIds: Set<number>; photoCount: number }>();
-    for (const job of catalogJobs) {
-      if (!job.mfhManufacturerId || !job.mfhModelId) continue;
-      if (!map.has(job.mfhManufacturerId)) {
-        const mfr = manufacturers.find(m => m.id === job.mfhManufacturerId);
-        map.set(job.mfhManufacturerId, {
-          id: job.mfhManufacturerId,
-          name: mfr?.name || job.mfhManufacturerName || "Unknown Builder",
-          jobs: [],
-          modelIds: new Set(),
-          photoCount: 0,
-        });
-      }
-      const entry = map.get(job.mfhManufacturerId)!;
-      entry.jobs.push(job);
-      entry.modelIds.add(job.mfhModelId);
-      entry.photoCount += checklistPhotos(checklists[job.id]).length;
-    }
-    
-    let list = Array.from(map.values());
+    let list = builders;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(b => b.name.toLowerCase().includes(q));
     }
-    return list.sort((a, b) => a.name.localeCompare(b.name));
-  }, [catalogJobs, manufacturers, searchQuery, checklists]);
+    return list;
+  }, [builders, searchQuery]);
 
   if (isLoading) {
     return (
@@ -227,7 +190,7 @@ export default function TrimOutCatalog() {
 
   function renderCatalog() {
     // Check total jobs before filtering by search
-    const hasAnyJobs = catalogJobs.length > 0;
+    const hasAnyJobs = builders.length > 0;
 
     if (!hasAnyJobs) {
       return (
@@ -267,7 +230,10 @@ export default function TrimOutCatalog() {
             {buildersWithJobs.map((b) => (
               <button
                 key={b.id}
-                onClick={() => setView({ type: "builder", mfrId: b.id })}
+                 onClick={() => {
+                   setPage(1);
+                   setView({ type: "builder", mfrId: b.id });
+                 }}
                 className="group text-left bg-white border border-slate-200 hover:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500 hover:shadow-lg transition-all rounded-2xl p-6 flex flex-col"
               >
                 <div className="flex items-start justify-between mb-8">
@@ -280,15 +246,15 @@ export default function TrimOutCatalog() {
                 <div className="flex items-center gap-4 text-sm font-medium text-slate-500 mt-auto">
                   <div className="flex items-center gap-1.5">
                     <Layers className="w-4 h-4 text-slate-400" />
-                    {b.modelIds.size} Models
+                     {b.modelCount} Models
                   </div>
                   <div className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4 text-slate-400" />
-                    {b.jobs.length} Homes
+                     {b.homeCount} Homes
                   </div>
                   <div className="flex items-center gap-1.5">
                     <Camera className="w-4 h-4 text-slate-400" />
-                    {checklistsLoading ? "…" : b.photoCount} Photos
+                     {b.photoCount} Photos
                   </div>
                 </div>
               </button>
@@ -304,22 +270,7 @@ export default function TrimOutCatalog() {
     if (!builder) return null;
 
     // Group jobs by model
-    const modelsMap = new Map<number, { id: number; name: string; jobs: Job[]; photos: CatalogPhoto[] }>();
-    for (const job of builder.jobs) {
-      if (!job.mfhModelId) continue;
-      if (!modelsMap.has(job.mfhModelId)) {
-        const kbModel = models.find(m => m.id === job.mfhModelId);
-        modelsMap.set(job.mfhModelId, {
-          id: job.mfhModelId,
-          name: kbModel?.name || job.mfhModelName || "Unknown Model",
-          jobs: [],
-          photos: [],
-        });
-      }
-      modelsMap.get(job.mfhModelId)!.jobs.push(job);
-      modelsMap.get(job.mfhModelId)!.photos.push(...checklistPhotos(checklists[job.id]));
-    }
-    const modelsList = Array.from(modelsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const modelsList = builder.models;
 
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -341,12 +292,15 @@ export default function TrimOutCatalog() {
             {modelsList.map((m) => (
               <button
                 key={m.id}
-                onClick={() => setView({ type: "model", mfrId, modelId: m.id })}
+                 onClick={() => {
+                   setPage(1);
+                   setView({ type: "model", mfrId, modelId: m.id });
+                 }}
                 className="group text-left bg-white border border-slate-200 hover:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500 hover:shadow-lg transition-all rounded-2xl overflow-hidden flex flex-col"
               >
                 <div className="h-32 bg-slate-50 border-b border-slate-100 flex items-center justify-center relative overflow-hidden">
-                  {m.photos[0] ? (
-                    <img src={imgUrl(m.photos[0].url)} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                   {m.coverPhotoUrl ? (
+                     <img src={imgUrl(m.coverPhotoUrl)} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
                   ) : (
                     <>
                       <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px] opacity-50" />
@@ -357,7 +311,7 @@ export default function TrimOutCatalog() {
                 <div className="p-6">
                   <h3 className="text-xl font-display font-bold text-slate-900 mb-1 group-hover:text-amber-700 transition-colors">{m.name}</h3>
                   <p className="text-sm font-medium text-slate-500 mb-4">
-                    {m.jobs.length} completed {m.jobs.length === 1 ? "home" : "homes"} · {checklistsLoading ? "…" : m.photos.length} photos
+                     {m.homeCount} completed {m.homeCount === 1 ? "home" : "homes"} · {m.photoCount} photos
                   </p>
                   <div className="flex items-center justify-between text-amber-600 font-semibold text-sm">
                     <span>Browse gallery</span>
@@ -374,13 +328,9 @@ export default function TrimOutCatalog() {
 
   function ModelView({ mfrId, modelId }: { mfrId: number, modelId: number }) {
     const builder = buildersWithJobs.find(b => b.id === mfrId);
-    const mJobs = builder?.jobs.filter(j => j.mfhModelId === modelId) || [];
-    const modelInfo = models.find(m => m.id === modelId);
-    const modelName = modelInfo?.name || mJobs[0]?.mfhModelName || "Unknown Model";
-
-    const getPhotoCount = (jobId: number) => {
-      return checklistPhotos(checklists[jobId]).length;
-    };
+    const mJobs = homes;
+    const modelInfo = builder?.models.find(m => m.id === modelId);
+    const modelName = modelInfo?.name || "Unknown Model";
 
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -401,6 +351,7 @@ export default function TrimOutCatalog() {
               if (selectionMode) {
                 setSelectedPhotos(new Set()); // Reset on exit
                 setSelectedHomes(new Set());
+                 setSelectedHomePhotoCounts({});
               }
             }}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border focus:outline-none focus:ring-2 focus:ring-amber-500 ${
@@ -417,7 +368,7 @@ export default function TrimOutCatalog() {
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold flex-shrink-0">
-                {selectedPhotos.size}
+                {selectedPhotoCount}
               </div>
               <div>
                 <p className="font-semibold text-amber-900">Prototype Mode Active</p>
@@ -425,11 +376,11 @@ export default function TrimOutCatalog() {
               </div>
             </div>
             <button 
-              disabled={selectedPhotos.size === 0}
+              disabled={selectedPhotoCount === 0}
               className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-bold disabled:opacity-50 hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors shadow-sm whitespace-nowrap"
               type="button"
             >
-              Review {selectedPhotos.size} selected
+              Review {selectedPhotoCount} selected
             </button>
           </div>
         )}
@@ -441,25 +392,27 @@ export default function TrimOutCatalog() {
               <p className="text-slate-500 font-medium">No completed homes found for this model.</p>
             </div>
           ) : mJobs.map((job) => {
-            const photoCount = getPhotoCount(job.id);
-            const cl = checklists[job.id];
-            const coverPhotoUrl = cl ? (cl.finishedPhotos?.[0]?.url || cl.startPhotos?.[0]?.url) : null;
-            const isHomeSelected = selectedHomes.has(job.id);
+            const photoCount = job.photoCount;
+            const coverPhotoUrl = job.coverPhotoUrl;
+            const isHomeSelected = selectedHomes.has(job.jobId);
 
             return (
               <div 
-                key={job.id} 
+                key={job.jobId}
                 onClick={() => {
                   if (selectionMode) {
                     const next = new Set(selectedHomes);
                     const nextPhotos = new Set(selectedPhotos);
-                    const jobPhotos = checklistPhotos(checklists[job.id]);
-                    if (next.has(job.id)) {
-                      next.delete(job.id);
-                      jobPhotos.forEach((photo) => nextPhotos.delete(photo.id));
+                    if (next.has(job.jobId)) {
+                      next.delete(job.jobId);
+                      setSelectedHomePhotoCounts(current => {
+                        const nextCounts = { ...current };
+                        delete nextCounts[job.jobId];
+                        return nextCounts;
+                      });
                     } else {
-                      next.add(job.id);
-                      jobPhotos.forEach((photo) => nextPhotos.add(photo.id));
+                      next.add(job.jobId);
+                      setSelectedHomePhotoCounts(current => ({ ...current, [job.jobId]: job.photoCount }));
                     }
                     setSelectedHomes(next);
                     setSelectedPhotos(nextPhotos);
@@ -494,7 +447,7 @@ export default function TrimOutCatalog() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="text-lg font-bold text-slate-900 truncate">
-                      {job.locationName || job.address || `Job #${job.id}`}
+                      {job.locationName || job.address || `Job #${job.jobId}`}
                     </h3>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-slate-500">
@@ -505,16 +458,12 @@ export default function TrimOutCatalog() {
 
                 <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-3 flex-shrink-0 mt-2 sm:mt-0 border-t sm:border-t-0 border-slate-100 pt-4 sm:pt-0">
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 border border-slate-100 text-sm font-semibold text-slate-600">
-                    {checklistsLoading && !checklists[job.id] ? (
-                      <span className="w-3 h-3 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <>{photoCount} Photos</>
-                    )}
+                    {photoCount} Photos
                   </span>
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      setView({ type: "home", mfrId, modelId, jobId: job.id });
+                      setView({ type: "home", mfrId, modelId, jobId: job.jobId });
                     }}
                     className="px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 transition-colors shadow-sm"
                   >
@@ -525,13 +474,20 @@ export default function TrimOutCatalog() {
             );
           })}
         </div>
+        {catalog && catalog.totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3">
+            <button type="button" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold disabled:opacity-40">Previous</button>
+            <span className="text-sm text-slate-500">Page {catalog.page} of {catalog.totalPages}</span>
+            <button type="button" disabled={page >= catalog.totalPages} onClick={() => setPage(p => p + 1)} className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold disabled:opacity-40">Next</button>
+          </div>
+        )}
       </div>
     );
   }
 
   function HomeGalleryView({ mfrId, modelId, jobId }: { mfrId: number, modelId: number, jobId: number }) {
-    const job = rawJobs.find(j => j.id === jobId);
-    const cl = checklists[jobId];
+    const job = homes.find(j => j.jobId === jobId);
+    const cl = openChecklist;
 
     const [filter, setFilter] = useState<"all" | "start" | "checklist" | "finished">("all");
 
@@ -545,20 +501,28 @@ export default function TrimOutCatalog() {
 
     const toggleSelection = (photoId: string) => {
       const next = new Set(selectedPhotos);
-      if (next.has(photoId)) next.delete(photoId);
+      if (selectedHomes.has(jobId)) {
+        photos.forEach(photo => next.add(photo.id));
+        next.delete(photoId);
+      } else if (next.has(photoId)) next.delete(photoId);
       else next.add(photoId);
       setSelectedPhotos(next);
       setSelectedHomes((current) => {
         if (!current.has(jobId)) return current;
         const nextHomes = new Set(current);
         nextHomes.delete(jobId);
+        setSelectedHomePhotoCounts(counts => {
+          const nextCounts = { ...counts };
+          delete nextCounts[jobId];
+          return nextCounts;
+        });
         return nextHomes;
       });
     };
 
     const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
-    if (checklistsLoading && !cl) {
+    if (checklistLoading && !cl) {
       return (
         <div className="flex-1 flex items-center justify-center py-24">
           <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
@@ -589,11 +553,12 @@ export default function TrimOutCatalog() {
         {/* Prototype Selection Persistence Banner */}
         {selectionMode && (
           <div className="sticky top-4 z-20 bg-amber-500 text-white rounded-xl p-3 shadow-lg flex items-center justify-between mb-6">
-            <div className="font-bold">{selectedPhotos.size} photos selected for catalog</div>
+            <div className="font-bold">{selectedPhotoCount} photos selected for catalog</div>
             <button onClick={() => {
               setSelectionMode(false);
               setSelectedPhotos(new Set());
               setSelectedHomes(new Set());
+              setSelectedHomePhotoCounts({});
             }} className="text-sm underline hover:text-amber-100 focus:outline-none focus:ring-2 focus:ring-white rounded px-1">Exit prototype mode</button>
           </div>
         )}
@@ -620,7 +585,7 @@ export default function TrimOutCatalog() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {filteredPhotos.map(photo => {
-              const isSelected = selectedPhotos.has(photo.id);
+               const isSelected = selectedHomes.has(jobId) || selectedPhotos.has(photo.id);
               return (
                 <div 
                   key={photo.id} 

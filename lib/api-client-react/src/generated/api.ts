@@ -43,6 +43,7 @@ import type {
   GetDashboardStatsParams,
   GetInvoiceTaxReportParams,
   GetMileageSummaryParams,
+  GetTrimOutCatalogParams,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
   Invoice,
@@ -76,6 +77,7 @@ import type {
   ResetPortalPin200,
   Subcontractor,
   TaxReportRow,
+  TrimOutCatalogResponse,
   UpdateClientBillingProfileRequest,
   UpdateInvoiceStatusBody,
   UpdateRecurringExpenseRequest,
@@ -1288,6 +1290,103 @@ export const useCreateJob = <
 > => {
   return useMutation(getCreateJobMutationOptions(options));
 };
+
+/**
+ * @summary Get paginated completed-home summaries for the Trim-Out Catalog
+ */
+export const getGetTrimOutCatalogUrl = (params?: GetTrimOutCatalogParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/trim-out-catalog?${stringifiedParams}`
+    : `/api/jobs/trim-out-catalog`;
+};
+
+export const getTrimOutCatalog = async (
+  params?: GetTrimOutCatalogParams,
+  options?: RequestInit,
+): Promise<TrimOutCatalogResponse> => {
+  return customFetch<TrimOutCatalogResponse>(getGetTrimOutCatalogUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTrimOutCatalogQueryKey = (
+  params?: GetTrimOutCatalogParams,
+) => {
+  return [`/api/jobs/trim-out-catalog`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetTrimOutCatalogQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTrimOutCatalog>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetTrimOutCatalogParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTrimOutCatalog>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetTrimOutCatalogQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTrimOutCatalog>>
+  > = ({ signal }) => getTrimOutCatalog(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTrimOutCatalog>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTrimOutCatalogQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTrimOutCatalog>>
+>;
+export type GetTrimOutCatalogQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get paginated completed-home summaries for the Trim-Out Catalog
+ */
+
+export function useGetTrimOutCatalog<
+  TData = Awaited<ReturnType<typeof getTrimOutCatalog>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetTrimOutCatalogParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTrimOutCatalog>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTrimOutCatalogQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get a pre-filled invoice draft for a completed job

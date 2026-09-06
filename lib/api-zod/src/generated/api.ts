@@ -410,6 +410,68 @@ export const CreateJobBody = zod.object({
 });
 
 /**
+ * @summary Get paginated completed-home summaries for the Trim-Out Catalog
+ */
+export const getTrimOutCatalogQueryPageDefault = 1;
+
+export const getTrimOutCatalogQueryPageSizeDefault = 25;
+export const getTrimOutCatalogQueryPageSizeMax = 100;
+
+export const GetTrimOutCatalogQueryParams = zod.object({
+  page: zod.coerce.number().min(1).default(getTrimOutCatalogQueryPageDefault),
+  pageSize: zod.coerce
+    .number()
+    .min(1)
+    .max(getTrimOutCatalogQueryPageSizeMax)
+    .default(getTrimOutCatalogQueryPageSizeDefault),
+  manufacturerId: zod.coerce.number().optional(),
+  modelId: zod.coerce.number().optional(),
+  businessId: zod.coerce.number().optional(),
+  businessLine: zod.coerce.string().optional(),
+});
+
+export const GetTrimOutCatalogResponse = zod.object({
+  builders: zod.array(
+    zod.object({
+      id: zod.number(),
+      name: zod.string(),
+      homeCount: zod.number(),
+      modelCount: zod.number(),
+      photoCount: zod.number(),
+      models: zod.array(
+        zod.object({
+          id: zod.number(),
+          name: zod.string(),
+          homeCount: zod.number(),
+          photoCount: zod.number(),
+          coverPhotoUrl: zod.string().nullish(),
+        }),
+      ),
+    }),
+  ),
+  homes: zod.array(
+    zod.object({
+      jobId: zod.number(),
+      manufacturerId: zod.number(),
+      manufacturerName: zod.string(),
+      modelId: zod.number(),
+      modelName: zod.string(),
+      locationName: zod.string().nullish(),
+      address: zod.string().nullish(),
+      city: zod.string().nullish(),
+      state: zod.string().nullish(),
+      endDate: zod.string().nullish(),
+      photoCount: zod.number(),
+      coverPhotoUrl: zod.string().nullish(),
+    }),
+  ),
+  page: zod.number(),
+  pageSize: zod.number(),
+  totalHomes: zod.number(),
+  totalPages: zod.number(),
+});
+
+/**
  * @summary Get a pre-filled invoice draft for a completed job
  */
 export const GetJobInvoiceDraftParams = zod.object({

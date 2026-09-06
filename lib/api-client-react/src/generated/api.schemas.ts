@@ -214,6 +214,54 @@ export interface Job {
   [key: string]: unknown;
 }
 
+export interface TrimOutCatalogModelSummary {
+  id: number;
+  name: string;
+  homeCount: number;
+  photoCount: number;
+  /** @nullable */
+  coverPhotoUrl?: string | null;
+}
+
+export interface TrimOutCatalogBuilderSummary {
+  id: number;
+  name: string;
+  homeCount: number;
+  modelCount: number;
+  photoCount: number;
+  models: TrimOutCatalogModelSummary[];
+}
+
+export interface TrimOutCatalogHomeSummary {
+  jobId: number;
+  manufacturerId: number;
+  manufacturerName: string;
+  modelId: number;
+  modelName: string;
+  /** @nullable */
+  locationName?: string | null;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  endDate?: string | null;
+  photoCount: number;
+  /** @nullable */
+  coverPhotoUrl?: string | null;
+}
+
+export interface TrimOutCatalogResponse {
+  builders: TrimOutCatalogBuilderSummary[];
+  homes: TrimOutCatalogHomeSummary[];
+  page: number;
+  pageSize: number;
+  totalHomes: number;
+  totalPages: number;
+}
+
 export type CreateJobRequestStatus =
   (typeof CreateJobRequestStatus)[keyof typeof CreateJobRequestStatus];
 
@@ -1411,6 +1459,22 @@ export type HandleBrowserLoginCallbackParams = {
 export type ListJobsParams = {
   status?: string;
   clientId?: number;
+};
+
+export type GetTrimOutCatalogParams = {
+  /**
+   * @minimum 1
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  manufacturerId?: number;
+  modelId?: number;
+  businessId?: number;
+  businessLine?: string;
 };
 
 export type ListInvoicesParams = {
