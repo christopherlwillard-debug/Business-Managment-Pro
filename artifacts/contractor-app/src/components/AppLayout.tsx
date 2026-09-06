@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Briefcase, Receipt, Navigation,
   UsersRound,
   Settings, Menu, X, BookOpen, LogOut, Package, Route, Wrench, Crosshair, CreditCard, FileText, FilePen, Landmark, ScrollText, KeyRound,
-  Sun, Moon, Building2, ChevronDown, Globe, Home, PackageSearch, Warehouse, HardHat, Award,
+  Sun, Moon, Building2, ChevronDown, Globe, Home, PackageSearch, Warehouse, HardHat, Award, Image,
   type LucideIcon,
 } from "lucide-react";
 import { useBusiness } from "@/contexts/BusinessContext";
@@ -106,6 +106,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Aerial Quote",          href: "/aerial-quote",         icon: Crosshair,       feature: null,           section: null,       ownerOnly: true,  group: "business_tools" },
     { name: "Website",               href: "/website",              icon: Globe,           feature: null,           section: null,       ownerOnly: true,  group: "business_tools" },
     { name: "Home Knowledge Base",   href: "/mfh-homes",            icon: Home,            feature: null,           section: null,       ownerOnly: true,  group: "business_tools" },
+    { name: "Trim-Out Catalog",      href: "/trim-out-catalog",     icon: Image,           feature: null,           section: null,       ownerOnly: true,  group: "operations" },
     { name: "Estimates",             href: "/estimates",            icon: FilePen,         feature: "estimates",    section: null,       ownerOnly: true,  group: "finance" },
     { name: "Invoices",              href: "/invoices",             icon: FileText,        feature: "invoices",     section: null,       ownerOnly: true,  group: "finance" },
     { name: "Square Transactions",   href: "/square-transactions",  icon: CreditCard,      feature: null,           section: null,       ownerOnly: true,  group: "finance" },

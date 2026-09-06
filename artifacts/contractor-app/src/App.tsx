@@ -50,6 +50,7 @@ const JobPayroll = lazy(() => import("./pages/JobPayroll"));
 const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage"));
 const CrewManagement = lazy(() => import("./pages/CrewManagement"));
 const Grants = lazy(() => import("./pages/Grants"));
+const TrimOutCatalog = lazy(() => import("./pages/TrimOutCatalog"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -350,6 +351,9 @@ function AdminApp() {
           </Route>
           <Route path="/crew">
             <PermissionGuard ownerOnly><CrewManagement /></PermissionGuard>
+          </Route>
+          <Route path="/trim-out-catalog">
+            <PermissionGuard ownerOnly><TrimOutCatalog /></PermissionGuard>
           </Route>
           <Route component={NotFound} />
         </Switch>
