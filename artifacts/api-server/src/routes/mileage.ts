@@ -9,6 +9,7 @@ import { partitionMileageImportTrips, type MileageImportTrip } from "../lib/mile
 const router = Router();
 
 type MileageDatabase = Pick<typeof db, "select" | "insert" | "update">;
+type MileageTransactionalDatabase = Pick<typeof db, "transaction">;
 
 function formatMileage(m: any, jobTitle?: string | null) {
   const calculated = calculateMileageDeduction(m.miles, m.classification, m.date);
@@ -328,8 +329,8 @@ router.post("/:id/void", async (req, res) => {
 });
 
 // ─── GET /api/mileage/imports ────────────────────────────────────────────────
-async function getImportRecalculation(importId: number) {
-  const logs = await db.select().from(mileageLogsTable).where(and(
+async function getImportRecalculation(importId: number, database: MileageDatabase = db) {
+  const logs = await database.select().from(mileageLogsTable).where(and(
     eq(mileageLogsTable.importId, importId),
     isNull(mileageLogsTable.voidedAt),
   ));
@@ -358,6 +359,24 @@ async function getImportRecalculation(importId: number) {
   };
 }
 
+export async function recalculateMileageImport(
+  importId: number,
+  database: MileageTransactionalDatabase = db,
+) {
+  return database.transaction(async (tx) => {
+    const preview = await getImportRecalculation(importId, tx);
+    for (const row of preview.changedRows) {
+      await tx.update(mileageLogsTable).set({
+        ratePerMile: row.newRate.toString(),
+        deductionAmount: row.newDeduction.toFixed(2),
+      }).where(eq(mileageLogsTable.id, row.id));
+    }
+    await recalcImportExpenses(importId, tx);
+    const result = await getImportRecalculation(importId, tx);
+    return { ...result, updatedRows: preview.changedRows.length };
+  });
+}
+
 router.get("/imports/:id/recalculate/preview", async (req, res) => {
   try {
     const importId = parseInt(req.params.id);
@@ -380,16 +399,7 @@ router.post("/imports/:id/recalculate", async (req, res) => {
     }
     const [record] = await db.select().from(mileageImportsTable).where(eq(mileageImportsTable.id, importId));
     if (!record) return res.status(404).json({ error: "Import not found" });
-    const preview = await getImportRecalculation(importId);
-    for (const row of preview.changedRows) {
-      await db.update(mileageLogsTable).set({
-        ratePerMile: row.newRate.toString(),
-        deductionAmount: row.newDeduction.toFixed(2),
-      }).where(eq(mileageLogsTable.id, row.id));
-    }
-    await recalcImportExpenses(importId);
-    const result = await getImportRecalculation(importId);
-    res.json({ ...result, updatedRows: preview.changedRows.length });
+    res.json(await recalculateMileageImport(importId));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to recalculate mileage import" });

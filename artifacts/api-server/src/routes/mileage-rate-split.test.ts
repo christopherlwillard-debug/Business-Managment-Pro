@@ -59,6 +59,9 @@ const h = vi.hoisted(() => ({
   missingSlots: [] as number[],
   strict: true,
   scenario: "no request",
+  transactionCalls: 0,
+  committedUpdates: [] as Array<{ table: unknown; values: Record<string, unknown> }>,
+  failUpdateAt: null as number | null,
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -89,13 +92,40 @@ vi.mock("@workspace/db", () => {
     };
     return c;
   }
-  return {
-    db: {
+  function makeUpdate(stagedUpdates?: Array<{ table: unknown; values: Record<string, unknown> }>) {
+    return (table: unknown) => ({
+      set: (values: Record<string, unknown>) => ({
+        where: async () => {
+          if (stagedUpdates) {
+            stagedUpdates.push({ table, values });
+            if (h.failUpdateAt === stagedUpdates.length) {
+              throw new Error("forced transactional update failure");
+            }
+          }
+        },
+      }),
+    });
+  }
+  const db = {
       select: () => makeChain(),
       insert: () => ({ values: () => ({ returning: () => Promise.resolve([]) }) }),
-      update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+      update: makeUpdate(),
       delete: () => ({ where: () => Promise.resolve() }),
-    },
+      transaction: async (callback: (tx: any) => Promise<any>) => {
+        h.transactionCalls += 1;
+        const stagedUpdates: Array<{ table: unknown; values: Record<string, unknown> }> = [];
+        const tx = {
+          select: () => makeChain(),
+          insert: db.insert,
+          update: makeUpdate(stagedUpdates),
+        };
+        const result = await callback(tx);
+        h.committedUpdates.push(...stagedUpdates);
+        return result;
+      },
+    };
+  return {
+    db,
     plaidConnectionsTable: {},
   };
 });
@@ -146,7 +176,7 @@ vi.mock("../lib/allocation.js", () => ({
 }));
 
 // Import pure function and router after mocks are in place
-const { getIrsRateForDate } = await import("./mileage");
+const { getIrsRateForDate, recalculateMileageImport } = await import("./mileage");
 const { default: reportsRouter } = await import("./reports");
 
 const app = express();
@@ -164,6 +194,9 @@ beforeEach(() => {
   h.missingSlots.length = 0;
   h.strict = true;
   h.scenario = "no request";
+  h.transactionCalls = 0;
+  h.committedUpdates.length = 0;
+  h.failUpdateAt = null;
 });
 
 afterEach(() => {
@@ -270,6 +303,30 @@ describe("getIrsRateForDate — 2026 H1/H2 rate split", () => {
     const h2Deduction = h2Trip.miles * getIrsRateForDate(h2Trip.date);
     expect(h1Deduction).toBeCloseTo(72.5, 10);
     expect(h2Deduction).toBeCloseTo(76.0, 10);
+  });
+});
+
+describe("confirmed mileage import recalculation", () => {
+  it("rolls back every snapshot and expense update when a mid-operation update fails", async () => {
+    h.scenario = "confirmed mileage import recalculation rollback";
+    h.failUpdateAt = 3;
+    h.selectQueue.push(
+      [
+        { id: 201, date: "2026-06-30", miles: "100", classification: "business", ratePerMile: "0.700", deductionAmount: "70.00" },
+        { id: 202, date: "2026-07-01", miles: "100", classification: "business", ratePerMile: "0.700", deductionAmount: "70.00" },
+      ],
+      [{ id: 77, businessId: 1, source: "mileiq" }],
+      [
+        { id: 201, date: "2026-06-30", miles: "100", classification: "business", ratePerMile: "0.725", deductionAmount: "72.50" },
+        { id: 202, date: "2026-07-01", miles: "100", classification: "business", ratePerMile: "0.760", deductionAmount: "76.00" },
+      ],
+      [{ id: 301, date: "2026-06-30", mileageImportId: 77, voidedAt: null }],
+    );
+
+    await expect(recalculateMileageImport(77)).rejects.toThrow("forced transactional update failure");
+
+    expect(h.transactionCalls).toBe(1);
+    expect(h.committedUpdates).toEqual([]);
   });
 });
 
