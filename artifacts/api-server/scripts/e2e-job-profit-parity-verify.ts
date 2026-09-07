@@ -156,6 +156,19 @@ async function clickRouteStopAction(page: Page, title: string, action: string): 
   }, { stopTitle: title, buttonTitle: action });
 }
 
+async function waitForRouteStopOrder(page: Page, expectedTitles: string[]): Promise<boolean> {
+  return page.waitForFunction(
+    titles => {
+      const actualTitles = [...document.querySelectorAll<HTMLElement>("[draggable='true']")]
+        .map(card => card.querySelector<HTMLElement>("span.text-sm.font-medium")?.textContent?.trim() ?? "")
+        .filter(Boolean);
+      return JSON.stringify(actualTitles) === JSON.stringify(titles);
+    },
+    { timeout: 20_000 },
+    expectedTitles,
+  ).then(() => true).catch(() => false);
+}
+
 async function clickButtonByText(page: Page, text: string, scopeText?: string): Promise<boolean> {
   const index = await page.evaluate(({ buttonText, requiredScopeText }) => {
     const buttons = [...document.querySelectorAll<HTMLButtonElement>("button")];
@@ -568,7 +581,7 @@ async function main() {
         return;
       }
       if (routeStopMatch && method === "GET") {
-        respondJson(routeStops);
+        respondJson([...routeStops].sort((left, right) => left.sortOrder - right.sortOrder));
         return;
       }
       if (routeStopMatch && method === "POST") {
@@ -795,6 +808,61 @@ async function main() {
       `loaded=${routeProfitLoaded}, displayed=${routeNetProfit ?? "missing"}, expected=${expectedRouteNetProfit}`,
     );
     await page.screenshot({ path: `${SHOTS}/03-route-profit.png`, fullPage: true });
+
+    const beforeReorder = expectedRouteProfit(today);
+    const beforeReorderOrder = [...routeStops]
+      .filter(stop => stop.scheduledDate === today)
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map(stop => stop.jobId);
+    const reorderWriteStart = routeWrites.length;
+    const reorderClicked = await clickRouteStopAction(page, fixtures[0].title, "Move down");
+    const reorderApplied = await waitForCondition(() => {
+      const ordered = [...routeStops]
+        .filter(stop => stop.scheduledDate === today)
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map(stop => stop.jobId);
+      return ordered.join(",") === `${secondJobId},${firstJobId}`;
+    });
+    const reorderAfter = expectedRouteProfit(today);
+    const reorderUiApplied = await waitForRouteStopOrder(page, [
+      fixtures[1].title,
+      fixtures[0].title,
+    ]);
+    const reorderRefreshed = await waitForRouteProfit(page, reorderAfter.netProfit);
+    const reorderText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const reorderDisplayed = readMoneyAfter(reorderText, "Net Profit");
+    const afterReorderOrder = [...routeStops]
+      .filter(stop => stop.scheduledDate === today)
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map(stop => stop.jobId);
+    const reorderWrites = routeWrites.slice(reorderWriteStart);
+    const expectedReorderWritePaths = new Set([
+      `/api/route-stops/${routeStops.find(stop => stop.jobId === firstJobId)?.id}`,
+      `/api/route-stops/${routeStops.find(stop => stop.jobId === secondJobId)?.id}`,
+    ]);
+    const reorderWritesAreExpected = reorderWrites.length === 2
+      && reorderWrites.every(write => {
+        const [method, path] = write.split(" ");
+        return method === "PUT" && expectedReorderWritePaths.has(path);
+      });
+    record(
+      "Reordering route stops preserves the canonical job set and net profit",
+      reorderClicked
+        && reorderApplied
+        && reorderUiApplied
+        && reorderRefreshed
+        && reorderWritesAreExpected
+        && beforeReorderOrder.join(",") === `${firstJobId},${secondJobId}`
+        && afterReorderOrder.join(",") === `${secondJobId},${firstJobId}`
+        && JSON.stringify(beforeReorder.jobIds) === JSON.stringify(reorderAfter.jobIds)
+        && nearlyEqual(reorderDisplayed, beforeReorder.netProfit)
+        && nearlyEqual(reorderDisplayed, reorderAfter.netProfit),
+      `beforeJobs=${beforeReorder.jobIds.join(",")}, afterJobs=${reorderAfter.jobIds.join(",")}, ` +
+      `order=${afterReorderOrder.join(",")}, displayed=${reorderDisplayed ?? "missing"}, ` +
+      `canonicalBefore=${beforeReorder.netProfit}, canonicalAfter=${reorderAfter.netProfit}, ` +
+      `writes=${reorderWrites.join(";")}`,
+    );
+    await page.screenshot({ path: `${SHOTS}/03b-route-profit-reordered.png`, fullPage: true });
 
     const removedJobId = secondJobId;
     const deleted = await clickRouteStopAction(page, fixtures[1].title, "Delete");
