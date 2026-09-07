@@ -149,8 +149,10 @@ async function clickJobCardAction(page: Page, title: string, action: string): Pr
 
 async function clickRouteStopAction(page: Page, title: string, action: string): Promise<boolean> {
   return page.evaluate(({ stopTitle, buttonTitle }) => {
-    const titleElement = [...document.querySelectorAll<HTMLElement>("*")]
-      .find(element => element.textContent?.trim() === stopTitle);
+    const titleElement = [...document.querySelectorAll<HTMLElement>("span.text-sm.font-medium")]
+      .find(element => element.textContent?.trim() === stopTitle)
+      ?? [...document.querySelectorAll<HTMLElement>("*")]
+        .find(element => element.textContent?.trim() === stopTitle);
     let ancestor: HTMLElement | null = titleElement ?? null;
     for (let depth = 0; ancestor && depth < 20; depth += 1, ancestor = ancestor.parentElement) {
       const button = ancestor.querySelector<HTMLButtonElement>(`button[title="${buttonTitle}"]`);
@@ -1026,26 +1028,84 @@ async function main() {
     const resetApplied = await waitForCondition(
       () => routeStops.some(stop => stop.jobId === removedJobId && stop.scheduledDate === today),
     );
-    const selectedTodayForWeek = await selectCalendarDate(page, today);
-    const weekViewSelected = await clickButtonByText(page, "Week");
     const visibleWeekStart = startOfWeekSunday(today);
     const visibleWeekEnd = addDays(visibleWeekStart, 6);
+    const weekMoveDate = addDays(visibleWeekEnd, 1);
+    routeStops.push(
+      {
+        id: 93999,
+        title: "E2E Unlinked Route Stop",
+        address: "200 Unlinked Street, Testville, KY",
+        lat: null,
+        lng: null,
+        notes: null,
+        scheduledDate: today,
+        status: "scheduled",
+        estimatedDurationMinutes: 45,
+        sortOrder: 2,
+        blockNumber: null,
+        crewLabel: null,
+        clientId: 100,
+        prospectId: null,
+        jobId: null,
+        clientName: "E2E Unlinked Client",
+        prospectContactName: null,
+        prospectAddress: null,
+        jobSqFt: null,
+        jobCoats: null,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 94000,
+        title: "E2E Outside Week Route Stop",
+        address: "300 Outside Street, Testville, KY",
+        lat: null,
+        lng: null,
+        notes: null,
+        scheduledDate: weekMoveDate,
+        status: "scheduled",
+        estimatedDurationMinutes: 45,
+        sortOrder: 3,
+        blockNumber: null,
+        crewLabel: null,
+        clientId: 100,
+        prospectId: null,
+        jobId: firstJobId,
+        clientName: "E2E Profit Client",
+        prospectContactName: null,
+        prospectAddress: null,
+        jobSqFt: 1000,
+        jobCoats: 1,
+        createdAt: new Date().toISOString(),
+      },
+    );
+    await page.reload({
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    const selectedTodayForWeek = await selectCalendarDate(page, today);
+    const weekViewSelected = await clickButtonByText(page, "Week");
     const beforeWeekMove = expectedRouteProfitBetween(visibleWeekStart, visibleWeekEnd);
     const beforeWeekMoveRefreshed = await waitForRouteProfit(page, beforeWeekMove.netProfit);
     const beforeWeekMoveText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const beforeWeekMoveDisplayed = readMoneyAfter(beforeWeekMoveText, "Net Profit");
+    const weekScopeExplained = beforeWeekMoveText.includes("Included in this week's total")
+      && beforeWeekMoveText.includes(fixtures[0].title)
+      && beforeWeekMoveText.includes(fixtures[1].title)
+      && beforeWeekMoveText.includes("1 unlinked stop excluded.")
+      && beforeWeekMoveText.includes("1 stop outside this week excluded.");
     record(
-      "Week view displays the canonical batch profit for every visible job",
+      "Week view displays canonical profit and identifies the visible included jobs",
       resetClicked
         && resetApplied
         && selectedTodayForWeek
         && weekViewSelected
         && beforeWeekMoveRefreshed
-        && nearlyEqual(beforeWeekMoveDisplayed, beforeWeekMove.netProfit),
-      `jobIds=${beforeWeekMove.jobIds.join(",")}, displayed=${beforeWeekMoveDisplayed ?? "missing"}, canonical=${beforeWeekMove.netProfit}`,
+        && nearlyEqual(beforeWeekMoveDisplayed, beforeWeekMove.netProfit)
+        && weekScopeExplained,
+      `jobIds=${beforeWeekMove.jobIds.join(",")}, displayed=${beforeWeekMoveDisplayed ?? "missing"}, canonical=${beforeWeekMove.netProfit}, scopeExplained=${weekScopeExplained}`,
     );
 
-    const weekMoveDate = addDays(visibleWeekEnd, 1);
     const weekMoveClicked = await clickRouteStopAction(page, movedStopTitle, "Edit");
     await page.waitForFunction(
       () => document.querySelector("input[type='date']") != null,
@@ -1071,7 +1131,7 @@ async function main() {
         && afterWeekMoveRefreshed
         && nearlyEqual(afterWeekMoveDisplayed, afterWeekMove.netProfit)
         && !afterWeekMoveText.includes(routeProfitLabel(beforeWeekMove.netProfit)),
-      `jobIds=${afterWeekMove.jobIds.join(",")}, displayed=${afterWeekMoveDisplayed ?? "missing"}, canonical=${afterWeekMove.netProfit}`,
+      `jobIds=${afterWeekMove.jobIds.join(",")}, displayed=${afterWeekMoveDisplayed ?? "missing"}, canonical=${afterWeekMove.netProfit}, clicked=${weekMoveClicked}, applied=${weekMoveApplied}, refreshed=${afterWeekMoveRefreshed}, oldTotalGone=${!afterWeekMoveText.includes(routeProfitLabel(beforeWeekMove.netProfit))}`,
     );
     await page.screenshot({ path: `${SHOTS}/04b-route-profit-week.png`, fullPage: true });
 

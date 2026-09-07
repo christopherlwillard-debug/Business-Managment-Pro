@@ -485,37 +485,70 @@ export default function RoutePlanner() {
     const stopsWithJobs = viewStops.filter(s => s.jobId != null);
     if (stopsWithJobs.length === 0) return null;
 
-    let totalAdjSqFt = 0;
-    const profitRows: JobProfitData[] = [];
-    const seenJobIds = new Set<number>();
-
+    const linkedJobsById = new Map<number, {
+      id: number;
+      title: string;
+      stopCount: number;
+      profitAvailable: boolean;
+    }>();
     for (const stop of stopsWithJobs) {
-      if (seenJobIds.has(stop.jobId!)) continue;
-      seenJobIds.add(stop.jobId!);
-      const p = profitSummary[stop.jobId!];
-      if (!p) continue;
-      const adjSqFt = (stop.jobSqFt ?? 0) * (stop.jobCoats ?? 1);
-      totalAdjSqFt += adjSqFt;
-      profitRows.push(p);
+      const jobId = stop.jobId!;
+      const existing = linkedJobsById.get(jobId);
+      if (existing) {
+        existing.stopCount += 1;
+      } else {
+        linkedJobsById.set(jobId, {
+          id: jobId,
+          title: allJobs.find(job => job.id === jobId)?.title?.trim()
+            || stop.title?.trim()
+            || stop.clientName?.trim()
+            || `Job #${jobId}`,
+          stopCount: 1,
+          profitAvailable: profitSummary[jobId] != null,
+        });
+      }
+    }
+    const linkedJobs = [...linkedJobsById.values()];
+    let totalAdjSqFt = 0;
+    const profitRows = linkedJobs
+      .map(job => profitSummary[job.id])
+      .filter((profit): profit is JobProfitData => profit != null);
+    for (const job of linkedJobs) {
+      const stop = stopsWithJobs.find(candidate => candidate.jobId === job.id);
+      if (stop) {
+        totalAdjSqFt += (stop.jobSqFt ?? 0) * (stop.jobCoats ?? 1);
+      }
     }
 
     const totals = aggregateCanonicalJobProfit(profitRows);
-    const profitPerSqFt = totalAdjSqFt > 0 && totals.jobsWithInvoice > 0
+    const profitDataIncomplete = !isLoadingProfit
+      && linkedJobs.some(job => profitSummary[job.id] == null);
+    const outsideWeekStopCount = viewMode === "week"
+      ? allStops.filter(s =>
+        s.scheduledDate != null
+        && (s.scheduledDate < weekStart || s.scheduledDate > weekEnd)
+      ).length
+      : 0;
+    const profitPerSqFt = !profitDataIncomplete && totalAdjSqFt > 0 && totals.jobsWithInvoice > 0
       ? totals.totalNetProfit / totalAdjSqFt
       : null;
 
     return {
       stopsWithJobs: stopsWithJobs.length,
+      unlinkedStopCount: viewStops.filter(s => s.jobId == null).length,
+      outsideWeekStopCount,
+      linkedJobs,
       jobsWithData: profitRows.length,
-      hasInvoiceData: totals.jobsWithInvoice > 0,
+      hasInvoiceData: !profitDataIncomplete && totals.jobsWithInvoice > 0,
       totalAdjSqFt: totalAdjSqFt > 0 ? totalAdjSqFt : null,
-      totalInvoiced: totals.jobsWithInvoice > 0 ? totals.totalInvoiced : null,
-      totalExpenses: profitRows.length > 0 ? totals.totalIncludedCosts : null,
-      netProfit: profitRows.length > 0 ? totals.totalNetProfit : null,
+      totalInvoiced: !profitDataIncomplete && totals.jobsWithInvoice > 0 ? totals.totalInvoiced : null,
+      totalExpenses: !profitDataIncomplete && profitRows.length > 0 ? totals.totalIncludedCosts : null,
+      netProfit: !profitDataIncomplete && profitRows.length > 0 ? totals.totalNetProfit : null,
       profitPerSqFt,
       profitUnavailable: isProfitError,
+      profitDataIncomplete,
     };
-  }, [dayStops, profitSummary, isProfitError]);
+  }, [allJobs, allStops, isLoadingProfit, isProfitError, profitSummary, viewMode, viewStops, weekEnd, weekStart]);
 
   const displayStops = optimizedOrder ?? viewStops;
 
@@ -1196,6 +1229,21 @@ export default function RoutePlanner() {
                   Try again
                 </button>
               </div>
+            ) : routeProfitStats.profitDataIncomplete ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold text-amber-700">Some linked job profit data is unavailable</p>
+                <p className="text-[10px] text-amber-700/80 mt-1">
+                  The route total is hidden until every visible linked job has canonical profit data.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void refetchProfit()}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-100"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Try again
+                </button>
+              </div>
             ) : !routeProfitStats.hasInvoiceData ? (
               <p className="text-[11px] text-muted-foreground italic">
                 Link jobs with invoices to see profit data.
@@ -1259,6 +1307,34 @@ export default function RoutePlanner() {
                   </div>
                 </div>
               </>
+            )}
+            {viewMode === "week" && (
+              <div className="mt-2.5 rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2.5">
+                <p className="text-[10px] font-semibold text-blue-800 flex items-center gap-1">
+                  <Info className="w-3 h-3" />
+                  Included in this week&apos;s total
+                </p>
+                <ul className="mt-1.5 space-y-1 text-[10px] text-blue-900">
+                  {routeProfitStats.linkedJobs.map(job => (
+                    <li key={job.id} className="flex items-center justify-between gap-2">
+                      <span className="truncate">
+                        {job.title}{job.stopCount > 1 ? ` (${job.stopCount} stops)` : ""}
+                      </span>
+                      <span className="shrink-0 font-semibold">
+                        {job.profitAvailable ? "Included" : "Profit unavailable"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1.5 text-[10px] text-blue-800/80">
+                  {routeProfitStats.unlinkedStopCount > 0
+                    ? `${routeProfitStats.unlinkedStopCount} unlinked stop${routeProfitStats.unlinkedStopCount === 1 ? "" : "s"} excluded. `
+                    : "Unlinked stops excluded. "}
+                  {routeProfitStats.outsideWeekStopCount > 0
+                    ? `${routeProfitStats.outsideWeekStopCount} stop${routeProfitStats.outsideWeekStopCount === 1 ? "" : "s"} outside this week excluded.`
+                    : "Stops outside this week excluded."}
+                </p>
+              </div>
             )}
           </div>
         )}
