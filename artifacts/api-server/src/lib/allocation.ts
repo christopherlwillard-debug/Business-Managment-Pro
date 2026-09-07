@@ -142,7 +142,9 @@ export async function computeAllocationSplitPools(
     db
       .select({
         jobId: subPaymentRecordsTable.jobId,
-        total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount}), 0)`,
+        total: sql<string>`COALESCE(SUM(
+          ${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)
+        ), 0)`,
       })
       .from(subPaymentRecordsTable)
       .innerJoin(jobSubcontractorsTable, and(

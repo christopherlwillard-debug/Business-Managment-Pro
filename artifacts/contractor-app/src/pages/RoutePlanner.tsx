@@ -16,6 +16,7 @@ import {
 import { useListJobs } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { aggregateCanonicalJobProfit } from "@/lib/jobFinancials";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay,
   isToday, parseISO, startOfWeek, endOfWeek, addMonths, subMonths,
@@ -96,6 +97,7 @@ interface JobProfitData {
   grossInvoiced: number;
   collected: number;
   jobExpenses: number;
+  includedCostTotal: number;
   netProfit: number;
 }
 
@@ -479,35 +481,32 @@ export default function RoutePlanner() {
     if (stopsWithJobs.length === 0) return null;
 
     let totalAdjSqFt = 0;
-    let totalInvoiced = 0;
-    let totalCollected = 0;
-    let totalExpenses = 0;
-    let jobsWithData = 0;
-    let jobsWithInvoice = 0;
+    const profitRows: JobProfitData[] = [];
+    const seenJobIds = new Set<number>();
 
     for (const stop of stopsWithJobs) {
+      if (seenJobIds.has(stop.jobId!)) continue;
+      seenJobIds.add(stop.jobId!);
       const p = profitSummary[stop.jobId!];
       if (!p) continue;
       const adjSqFt = (stop.jobSqFt ?? 0) * (stop.jobCoats ?? 1);
       totalAdjSqFt += adjSqFt;
-      totalInvoiced += p.grossInvoiced;
-      totalCollected += p.collected;
-      totalExpenses += p.jobExpenses;
-      jobsWithData++;
-      if (p.grossInvoiced > 0) jobsWithInvoice++;
+      profitRows.push(p);
     }
 
-    const netProfit = totalCollected - totalExpenses;
-    const profitPerSqFt = totalAdjSqFt > 0 && jobsWithInvoice > 0 ? netProfit / totalAdjSqFt : null;
+    const totals = aggregateCanonicalJobProfit(profitRows);
+    const profitPerSqFt = totalAdjSqFt > 0 && totals.jobsWithInvoice > 0
+      ? totals.totalNetProfit / totalAdjSqFt
+      : null;
 
     return {
       stopsWithJobs: stopsWithJobs.length,
-      jobsWithData,
-      hasInvoiceData: jobsWithInvoice > 0,
+      jobsWithData: profitRows.length,
+      hasInvoiceData: totals.jobsWithInvoice > 0,
       totalAdjSqFt: totalAdjSqFt > 0 ? totalAdjSqFt : null,
-      totalInvoiced: jobsWithInvoice > 0 ? totalInvoiced : null,
-      totalExpenses: jobsWithData > 0 ? totalExpenses : null,
-      netProfit: jobsWithData > 0 ? netProfit : null,
+      totalInvoiced: totals.jobsWithInvoice > 0 ? totals.totalInvoiced : null,
+      totalExpenses: profitRows.length > 0 ? totals.totalIncludedCosts : null,
+      netProfit: profitRows.length > 0 ? totals.totalNetProfit : null,
       profitPerSqFt,
     };
   }, [dayStops, profitSummary]);

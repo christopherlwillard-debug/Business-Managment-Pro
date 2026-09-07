@@ -2165,6 +2165,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     growthReservePct,
     ownerSplitPct,
     taxReservePct,
+    authoritativeSplitPool: useCollected ? undefined : profit?.splitPool,
   });
   const {
     splitEligibleExpenses, jobIncome, hourlyWorkers, afterWorkers, growthReserve, toSplit: calculatedToSplit,
@@ -2173,9 +2174,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   } = waterfall;
   // Keep every allocation-pay surface on the API's live split pool. The
   // compact card and close-job endpoint use this same server-side value.
-  const toSplit = !useCollected && profit?.splitPool != null
-    ? profit.splitPool
-    : calculatedToSplit;
+  const toSplit = calculatedToSplit;
   const ownerShare = toSplit * (ownerPct / 100);
   const subShare = toSplit * ((100 - ownerPct) / 100);
   const taxReserve = ownerShare * (taxReservePct / 100);
@@ -3804,13 +3803,8 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
               ) : (
                 payments.map(pay => {
                   const pf = payForm[pay.subcontractorId] ?? { amountOwed: "", amountPaid: "", paidDate: "", paidNotes: "" };
-                  // Compute split pool for allocation workers (mirrors JobFinancialsPanel waterfall)
-                  const _rev = profit?.grossInvoiced ?? 0;
-                  const _exp = Math.max(0, (profit?.jobExpenses ?? 0) - (profit?.includeMileageInJobCosts === false ? 0 : (profit?.mileageReimbursement?.amount ?? (profit?.estimatedFuelCost ?? 0))));
-                  const _jobIncome = Math.max(0, _rev - _exp);
-                   const _hfCost = payments.filter(p => p.compensationType !== 'allocation').reduce((s, p) => s + (p.amountOwed ?? (p.compensationType === 'fixed' ? (p.fixedAmount ?? 0) : p.computedOwed)), 0);
-                   const _afterW = Math.max(0, _jobIncome - (payments.length > 0 ? _hfCost : (profit?.subLaborCost ?? 0)));
-                  const _toSplit = profit?.splitPool ?? Math.max(0, _afterW - _afterW * 0.05);
+                  // The server's job-scoped pool is authoritative for allocation workers.
+                  const _toSplit = profit?.splitPool ?? 0;
                   const displayOwed = pay.amountOwed != null
                     ? pay.amountOwed
                     : pay.compensationType === 'allocation' ? _toSplit * ((pay.allocationPct ?? 0) / 100)
@@ -5278,21 +5272,8 @@ function JobCard({
       .catch(() => setUnpaidSubs([]));
   }, [job.id, hasSubs, localSubPaid]);
 
-  // Compute split pool for allocation sub amounts (mirrors JobFinancialsPanel waterfall)
-  const toSplit = profitData
-    ? (profitData.splitPool ?? calculateJobFinancialWaterfall({
-        revenue: profitData.grossInvoiced ?? 0,
-        jobExpenses: profitData.jobExpenses ?? 0,
-        mileageReimbursementCost: profitData.includeMileageInJobCosts === false
-          ? 0
-          : (profitData.mileageReimbursement?.amount ?? profitData.estimatedFuelCost ?? 0),
-        subLaborCost: profitData.subLaborCost ?? 0,
-        allocationPcts: [],
-        growthReservePct: profitData.growthReservePct ?? 5,
-        ownerSplitPct: profitData.ownerSplitPct ?? 50,
-        taxReservePct: 0,
-      }).toSplit)
-    : 0;
+  // The server's job-scoped pool is authoritative for allocation workers.
+  const toSplit = profitData?.splitPool ?? 0;
 
   function outstandingAmount(sub: OutstandingSubRow): number {
     const fullOwed = sub.amountOwed != null ? sub.amountOwed
@@ -8090,28 +8071,10 @@ export default function Jobs() {
         return;
       }
 
-      // Use the same waterfall as Job Financials and the job-card payment flow.
-      // Mileage reimbursement is a job cost but stays outside the split pool.
+      // Use the same server-owned pool as Job Financials and the job-card
+      // payment flow. Mileage reimbursement is already included exactly once.
       const closeSubs = subsData as CloseJobDialogSub[];
-      const toSplit = profitData
-        ? (profitData.splitPool ?? calculateJobFinancialWaterfall({
-            revenue: profitData.grossInvoiced ?? 0,
-            jobExpenses: profitData.jobExpenses ?? 0,
-            mileageReimbursementCost: profitData.includeMileageInJobCosts === false || profitData.mileageReimbursementApplied === false
-              ? 0
-              : (profitData.mileageReimbursement?.amount ?? profitData.estimatedFuelCost ?? 0),
-            subLaborCost: profitData.subLaborCost ?? 0,
-             hourlyFixedCost: closeSubs
-              .filter(sub => sub.compensationType !== "allocation")
-               .reduce((sum, sub) => sum + (sub.amountOwed ?? (sub.compensationType === "fixed" ? (sub.fixedAmount ?? 0) : (sub.computedOwed ?? 0))), 0),
-            allocationPcts: closeSubs
-              .filter(sub => sub.compensationType === "allocation")
-              .map(sub => sub.allocationPct ?? 0),
-            growthReservePct: profitData.growthReservePct ?? 5,
-            ownerSplitPct: profitData.ownerSplitPct ?? 50,
-            taxReservePct: 0,
-          }).toSplit)
-        : 0;
+      const toSplit = profitData?.splitPool ?? 0;
 
       setCloseJobDialog({ job, subs: closeSubs, toSplit });
     } catch {

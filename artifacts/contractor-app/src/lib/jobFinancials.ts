@@ -8,6 +8,12 @@ export type JobFinancialWaterfallInput = {
   growthReservePct: number;
   ownerSplitPct: number;
   taxReservePct: number;
+  /**
+   * The server's job-scoped allocation pool. When present, it is authoritative
+   * for the normal (gross revenue) waterfall; the local calculation remains a
+   * fallback for collected-revenue preview mode and older responses.
+   */
+  authoritativeSplitPool?: number;
 };
 
 export function formatJobFinancialAmount(
@@ -61,6 +67,32 @@ export function calculateOwnerReimbursement(input: OwnerReimbursementInput) {
   };
 }
 
+export type CanonicalJobProfitRow = {
+  grossInvoiced: number;
+  collected: number;
+  includedCostTotal: number;
+  netProfit: number;
+};
+
+export function aggregateCanonicalJobProfit(rows: readonly CanonicalJobProfitRow[]) {
+  return rows.reduce(
+    (totals, row) => ({
+      totalInvoiced: totals.totalInvoiced + row.grossInvoiced,
+      totalCollected: totals.totalCollected + row.collected,
+      totalIncludedCosts: totals.totalIncludedCosts + row.includedCostTotal,
+      totalNetProfit: totals.totalNetProfit + row.netProfit,
+      jobsWithInvoice: totals.jobsWithInvoice + (row.grossInvoiced > 0 ? 1 : 0),
+    }),
+    {
+      totalInvoiced: 0,
+      totalCollected: 0,
+      totalIncludedCosts: 0,
+      totalNetProfit: 0,
+      jobsWithInvoice: 0,
+    },
+  );
+}
+
 export function calculateJobFinancialWaterfall(input: JobFinancialWaterfallInput) {
   // Every amount shown under Job Costs reduces the percentage split pool.
   // mileageReimbursementCost remains in the input contract for callers that
@@ -76,7 +108,9 @@ export function calculateJobFinancialWaterfall(input: JobFinancialWaterfallInput
   const growthReserve = splitIncome * (Math.max(0, input.growthReservePct) / 100);
   const afterGrowth = Math.max(0, splitIncome - growthReserve);
   const afterWorkers = Math.max(0, afterGrowth - hourlyWorkers);
-  const toSplit = afterWorkers;
+  const toSplit = input.authoritativeSplitPool == null
+    ? afterWorkers
+    : Math.max(0, input.authoritativeSplitPool);
   const totalAllocPct = input.allocationPcts.reduce((sum, pct) => sum + pct, 0);
   const hasAllocations = input.allocationPcts.length > 0;
   const ownerPct = hasAllocations ? Math.max(0, 100 - totalAllocPct) : input.ownerSplitPct;

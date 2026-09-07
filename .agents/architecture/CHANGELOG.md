@@ -91,6 +91,15 @@ Created the four-document architecture governance system:
 - Owner-pay presentation applies allocation, growth-reserve, and tax-reserve rules only after canonical job profit is calculated; owner withdrawals remain sourced from `owner_capital_entries`.
 - Added regression coverage proving two jobs cannot share labor/cost inputs and that allocated/audit-only expense rows are handled once.
 
+## 2026-09-07
+
+### Unified user-facing job-profit consumers
+
+- Job Payroll and job-card allocation/close flows now use the server's canonical job-scoped split pool instead of reconstructing profit arithmetic in the browser.
+- Route Planner now sums canonical per-job net profit and included costs, counting each linked job once even when it has multiple route stops.
+- Batch profit aggregation now includes payroll advance amounts consistently with per-job and export calculations.
+- Added regression coverage for authoritative split-pool usage, canonical aggregation, and stale job-response rejection during navigation.
+
 ## 2026-08-20
 
 ### Task #1965 — Core business ownership enforcement

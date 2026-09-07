@@ -1,10 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
+  aggregateCanonicalJobProfit,
   calculateJobFinancialWaterfall,
   calculateOwnerReimbursement,
   formatJobFinancialAmount,
   jobFinancialSummaryDetail,
 } from "./jobFinancials";
+
+describe("aggregateCanonicalJobProfit", () => {
+  it("sums each job's canonical result without substituting collected revenue", () => {
+    expect(aggregateCanonicalJobProfit([
+      { grossInvoiced: 1000, collected: 700, includedCostTotal: 250, netProfit: 750 },
+      { grossInvoiced: 500, collected: 500, includedCostTotal: 650, netProfit: -150 },
+    ])).toEqual({
+      totalInvoiced: 1500,
+      totalCollected: 1200,
+      totalIncludedCosts: 900,
+      totalNetProfit: 600,
+      jobsWithInvoice: 2,
+    });
+  });
+});
 
 describe("calculateJobFinancialWaterfall", () => {
   const base = {
@@ -59,6 +75,18 @@ describe("calculateJobFinancialWaterfall", () => {
 
     expect(closeJob.toSplit).toBeCloseTo(panel.toSplit, 2);
     expect(closeJob.toSplit * 0.5).toBeCloseTo(677.80, 2);
+  });
+
+  it("uses the server job-scoped pool for the normal waterfall", () => {
+    const result = calculateJobFinancialWaterfall({
+      ...base,
+      allocationPcts: [50],
+      authoritativeSplitPool: 1000,
+    });
+
+    expect(result.toSplit).toBe(1000);
+    expect(result.ownerShare).toBe(500);
+    expect(result.ownerTakeHome).toBe(375);
   });
 
   it("uses the agreed hourly payout when the worker has an amount override", () => {

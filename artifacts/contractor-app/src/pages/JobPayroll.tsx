@@ -4,6 +4,8 @@ import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCi
 import { useToast } from "@/hooks/use-toast";
 
 import { computeSubOwed } from "@/lib/allocationUtils";
+import { calculateJobFinancialWaterfall } from "@/lib/jobFinancials";
+import { canApplyJobResponse } from "@/lib/jobProfitRequests";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
 
@@ -72,6 +74,7 @@ type JobProfit = {
   allocPaid: number;
   totalSubHours?: number;
   netProfit: number;
+  splitPool?: number;
   includeMileageInJobCosts?: boolean;
   mileageReimbursementApplied?: boolean;
   mileageReimbursement?: { amount: number } | null;
@@ -1146,6 +1149,9 @@ export default function JobPayroll() {
   // Track whether any card has unsaved changes for back-navigation guard
   const dirtyCountRef = useRef(0);
   const [anyDirty, setAnyDirty] = useState(false);
+  const loadKeyRef = useRef(0);
+  const currentJobIdRef = useRef(jobId);
+  currentJobIdRef.current = jobId;
 
   function handleCardDirtyChange(isDirty: boolean) {
     dirtyCountRef.current = Math.max(0, dirtyCountRef.current + (isDirty ? 1 : -1));
@@ -1153,25 +1159,38 @@ export default function JobPayroll() {
   }
 
   const refreshAll = useCallback(async () => {
+    const requestKey = loadKeyRef.current;
+    const requestedJobId = jobId;
     const [pRes, profRes, hoursRes] = await Promise.allSettled([
-      fetch(`${BASE}/api/jobs/${jobId}/sub-payments`,  { credentials: "include" }).then(r => r.ok ? r.json() : []),
-      fetch(`${BASE}/api/jobs/${jobId}/profit`,        { credentials: "include" }).then(r => r.ok ? r.json() : null),
-      fetch(`${BASE}/api/jobs/${jobId}/sub-hours`,     { credentials: "include" }).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`,  { credentials: "include" }).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${requestedJobId}/profit`,        { credentials: "include" }).then(r => r.ok ? r.json() : null),
+      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`,     { credentials: "include" }).then(r => r.ok ? r.json() : []),
     ]);
+    if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) return;
     if (pRes.status    === "fulfilled") setPayments(pRes.value as SubPaymentRow[]);
     if (profRes.status === "fulfilled" && profRes.value) setProfit(profRes.value as JobProfit);
     if (hoursRes.status === "fulfilled") setSubHours(hoursRes.value as SubHourEntry[]);
   }, [jobId]);
 
   useEffect(() => {
+    const requestedJobId = jobId;
+    const requestKey = ++loadKeyRef.current;
+    setLoading(true);
+    setJob(null);
+    setProfit(null);
+    setPayments([]);
+    setSubHours([]);
+    dirtyCountRef.current = 0;
+    setAnyDirty(false);
     const load = async () => {
       const [jobRes, pRes, profRes, settingsRes, hoursInitRes] = await Promise.allSettled([
-        fetch(`${BASE}/api/jobs/${jobId}`,             { credentials: "include" }).then(r => r.ok ? r.json() : null),
-        fetch(`${BASE}/api/jobs/${jobId}/sub-payments`,{ credentials: "include" }).then(r => r.ok ? r.json() : []),
-        fetch(`${BASE}/api/jobs/${jobId}/profit`,      { credentials: "include" }).then(r => r.ok ? r.json() : null),
+        fetch(`${BASE}/api/jobs/${requestedJobId}`,             { credentials: "include" }).then(r => r.ok ? r.json() : null),
+        fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`,{ credentials: "include" }).then(r => r.ok ? r.json() : []),
+        fetch(`${BASE}/api/jobs/${requestedJobId}/profit`,      { credentials: "include" }).then(r => r.ok ? r.json() : null),
         fetch(`${BASE}/api/settings`,                  { credentials: "include" }).then(r => r.ok ? r.json() : null),
-        fetch(`${BASE}/api/jobs/${jobId}/sub-hours`,   { credentials: "include" }).then(r => r.ok ? r.json() : []),
+        fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`,   { credentials: "include" }).then(r => r.ok ? r.json() : []),
       ]);
+      if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) return;
       if (jobRes.status       === "fulfilled" && jobRes.value)     setJob(jobRes.value as Job);
       if (pRes.status         === "fulfilled")                     setPayments(pRes.value as SubPaymentRow[]);
       if (profRes.status      === "fulfilled" && profRes.value)    setProfit(profRes.value as JobProfit);
@@ -1188,6 +1207,9 @@ export default function JobPayroll() {
       setLoading(false);
     };
     load();
+    return () => {
+      loadKeyRef.current += 1;
+    };
   }, [jobId]);
 
   if (isNaN(jobId) || jobId <= 0) {
@@ -1201,18 +1223,19 @@ export default function JobPayroll() {
   const revenue        = profit?.grossInvoiced  ?? 0;
   const jobExpenses    = profit?.jobExpenses    ?? 0;
   const subLaborCost   = profit?.subLaborCost   ?? 0;
-  const jobIncome      = Math.max(0, revenue - jobExpenses);
-  const mileageReimbursementCost = profit?.includeMileageInJobCosts === false || profit?.mileageReimbursementApplied === false
-    ? 0
-    : (profit?.mileageReimbursement?.amount ?? profit?.estimatedFuelCost ?? 0);
-  const splitIncome    = Math.max(0, revenue - Math.max(0, jobExpenses - mileageReimbursementCost));
-  const growthReserve  = splitIncome * (growthReservePct / 100);
-  const afterGrowth    = Math.max(0, splitIncome - growthReserve);
-  const afterWorkers   = Math.max(0, afterGrowth - subLaborCost);
-  const toSplit        = afterWorkers;
-  const ownerShare     = toSplit * (ownerSplitPct / 100);
-  const taxReserve     = ownerShare * (taxReservePct / 100);
-  const ownerTakeHome  = ownerShare - taxReserve;
+  const waterfall = calculateJobFinancialWaterfall({
+    revenue,
+    jobExpenses,
+    mileageReimbursementCost: 0,
+    subLaborCost,
+    hourlyFixedCost: subLaborCost,
+    allocationPcts: payments.filter(p => p.compensationType === "allocation").map(p => p.allocationPct ?? 0),
+    growthReservePct,
+    ownerSplitPct,
+    taxReservePct,
+    authoritativeSplitPool: profit?.splitPool,
+  });
+  const { growthReserve, toSplit, ownerPct, ownerShare, taxReserve, ownerTakeHome } = waterfall;
 
   function handleBack() {
     if (anyDirty) {
@@ -1316,7 +1339,7 @@ export default function JobPayroll() {
                     <span className="font-bold text-foreground">${fmt(toSplit)}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Your Share ({ownerSplitPct}%)</span>
+                    <span className="text-muted-foreground">Your Share ({ownerPct.toFixed(1)}%)</span>
                     <span className="font-bold text-foreground">${fmt(ownerShare)}</span>
                   </div>
                   {taxReservePct > 0 && (

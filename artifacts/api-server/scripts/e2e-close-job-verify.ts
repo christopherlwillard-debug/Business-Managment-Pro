@@ -294,6 +294,19 @@ async function main() {
       };
     }, jobId);
 
+    const waitForJobStatus = async (jobId: number, expectedStatus: string) => {
+      await page.waitForFunction(async (id, status) => {
+        try {
+          const response = await fetch(`/api/jobs/${id}`);
+          if (!response.ok) return false;
+          const job = await response.json() as { status?: string };
+          return job.status === status;
+        } catch {
+          return false;
+        }
+      }, { timeout: 15_000 }, jobId, expectedStatus);
+    };
+
     await openCompletionDialog(markAllPaidFixture, "01-mark-all-paid");
     const clickedPay = await page.evaluate(() => {
       const button = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
@@ -303,7 +316,7 @@ async function main() {
     });
     record("Mark All Paid Now is available", clickedPay);
     await page.waitForNetworkIdle({ idleTime: 800, timeout: 15_000 }).catch(() => sleep(3000));
-    await sleep(700);
+    await waitForJobStatus(markAllPaidFixture.jobId, "completed");
 
     const paidAfter = await fetchAfterAction(markAllPaidFixture.jobId);
     const splitPool = Number.isFinite(Number(paidAfter.profit.splitPool))
@@ -348,7 +361,7 @@ async function main() {
     });
     record("Complete Job & Keep As Outstanding is available", clickedOutstanding);
     await page.waitForNetworkIdle({ idleTime: 800, timeout: 15_000 }).catch(() => sleep(3000));
-    await sleep(700);
+    await waitForJobStatus(keepOutstandingFixture.jobId, "completed");
 
     const outstandingAfter = await fetchAfterAction(keepOutstandingFixture.jobId);
     const outstandingWorker = outstandingAfter.subs.find(
