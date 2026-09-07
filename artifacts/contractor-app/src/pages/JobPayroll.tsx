@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCircle2, Pencil, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import type { JobProfitResponse } from "@workspace/api-zod";
 
 import { computeSubOwed } from "@/lib/allocationUtils";
 import { calculateJobFinancialWaterfall } from "@/lib/jobFinancials";
@@ -66,20 +67,7 @@ type SubPaymentRow = {
   paymentHistory?: SubPayHistoryEntry[];
 };
 
-type JobProfit = {
-  grossInvoiced: number;
-  collected: number;
-  jobExpenses: number;
-  subLaborCost: number;
-  allocPaid: number;
-  totalSubHours?: number;
-  netProfit: number;
-  splitPool?: number;
-  includeMileageInJobCosts?: boolean;
-  mileageReimbursementApplied?: boolean;
-  mileageReimbursement?: { amount: number } | null;
-  estimatedFuelCost?: number | null;
-};
+type JobProfit = JobProfitResponse;
 
 type Job = {
   id: number;

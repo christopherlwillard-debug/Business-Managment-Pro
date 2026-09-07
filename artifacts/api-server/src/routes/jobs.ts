@@ -13,7 +13,8 @@ import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/pr
 import { z } from "zod/v4";
 import { requestedBusiness, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
-import { buildJobProfitResponse, calculateJobProfit, type JobProfitResponse } from "../lib/job-profit.js";
+import { buildJobProfitResponse, calculateJobProfit } from "../lib/job-profit.js";
+import type { JobProfitResponse, JobProfitMileageReimbursement } from "@workspace/api-zod";
 import { loadJobProfitByJob } from "../lib/job-profit-loader.js";
 import { buildClosedJobExportRow } from "../lib/job-profit-reports.js";
 import { getRequestUser } from "./guards";
@@ -991,7 +992,7 @@ router.get("/:id/profit", async (req, res) => {
         ...mileageReimbursement,
         amount: parseFloat(mileageReimbursement.amount ?? "0"),
         estimatedAmount: mileageReimbursement.estimatedAmount == null ? null : parseFloat(mileageReimbursement.estimatedAmount),
-      } : null,
+      } as JobProfitMileageReimbursement : null,
       mileageReimbursementApplied,
       estimatedFuelCost,
       includeMileageInJobCosts,

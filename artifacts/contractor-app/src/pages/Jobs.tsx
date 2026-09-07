@@ -23,6 +23,7 @@ import {
   useUpdateProductionServiceType, useDeleteProductionServiceType,
   useListServiceAddonPrompts, type ServiceAddonPrompt,
 } from "@workspace/api-client-react";
+import type { JobProfitResponse } from "@workspace/api-zod";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
@@ -1451,66 +1452,12 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 }
 
 // ─── Job Profit Panel ──────────────────────────────────────────────────────────
-type JobProfit = {
-  grossInvoiced: number; collected: number; jobExpenses: number;
-  auditTrailTotal?: number; tripTravelTotal?: number; tripMealsDeductible?: number;
-  subLaborCost?: number; allocPaid?: number; totalSubHours?: number; manHours?: number | null;
-  netProfit: number;
-  profitBreakdown?: {
-    revenue: { invoices: number; otherIncome: number; total: number };
-    includedCosts: {
-      directExpenses: number;
-      allocatedExpenses: number;
-      subLabor: number;
-      splitPayouts: number;
-      mileageReimbursement: number;
-      estimatedFuel: number;
-      total: number;
-    };
-    excludedFromProfit: {
-      ownerWithdrawals: number;
-      auditTrail: number;
-      payrollLinkedExpenses: number;
-      legacySubcontractorExpense: number;
-    };
-  };
-  splitPool?: number;
-  ownerDrawTaken?: number;
-  mileageReimbursement?: {
-    id: number;
-    amount: number;
-    estimatedAmount?: number | null;
-    recipientType: "owner" | "subcontractor" | "other";
-    recipientName: string;
-    recipientSubcontractorId?: number | null;
-    status: "owed" | "paid";
-    paidAt?: string | null;
-    notes?: string | null;
-  } | null;
-  mileageReimbursementApplied?: boolean;
-  estimatedFuelCost?: number | null;
-  includeMileageInJobCosts?: boolean;
-  actualFuelCost?: number | null;
-  fuelStatus?: "ok" | "missing_address" | "geocoding_failed" | "workdays_missing" | "error";
-  fuelReconciliation?:
-    | "estimate_only"
-    | "reimbursement_matches_estimate"
-    | "reimbursement_differs_from_estimate"
-    | "reimbursement_without_estimate"
-    | "actual_fuel_expense"
-    | "actual_fuel_expense_replaces_reimbursement"
-    | "excluded_from_job_costs"
-    | "estimate_unavailable";
-  operationalProfit?: number | null;
-  growthReservePct?: number;
-  ownerSplitPct?: number;
-  taxReservePct?: number;
-  fuelBreakdown?: {
-    onewayMiles: number; roundTripMiles: number; daysOnJob: number;
-    totalMiles: number; fuelGallons: number; mpg: number; fuelPrice: number;
-    routeProvider?: "osrm" | "haversine";
-  } | null;
-};
+type JobProfit = JobProfitResponse;
+
+function getSavedMileageReimbursement(profit: JobProfit | null | undefined) {
+  const reimbursement = profit?.mileageReimbursement;
+  return reimbursement && typeof reimbursement === "object" ? reimbursement : null;
+}
 
 type JobFinancialSummary = {
   job: { id: number; jobNumber?: number | null; title: string; status: string; clientName?: string | null };
@@ -2039,7 +1986,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
 
   useEffect(() => {
     if (!profit) return;
-    const saved = profit.mileageReimbursement;
+    const saved = getSavedMileageReimbursement(profit);
     setReimbursementAmount(saved ? Number(saved.amount).toFixed(2) : profit.estimatedFuelCost != null ? Number(profit.estimatedFuelCost).toFixed(2) : "");
     setReimbursementRecipientType(saved?.recipientType ?? "owner");
     setReimbursementRecipientName(saved?.recipientName ?? "Business owner");
@@ -2144,9 +2091,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     : (profit?.grossInvoiced || 0);
   const jobExpenses = profit?.jobExpenses ?? 0;
   const mileageIncluded = profit?.includeMileageInJobCosts !== false;
+  const savedMileageReimbursement = getSavedMileageReimbursement(profit);
   const mileageReimbursementCost = !mileageIncluded || profit?.mileageReimbursementApplied === false
     ? 0
-    : (profit?.mileageReimbursement?.amount ?? (profit?.estimatedFuelCost ?? 0));
+    : (savedMileageReimbursement?.amount ?? (profit?.estimatedFuelCost ?? 0));
   const memberSubs = payments.filter(p => p.role === 'member');
   const hourlyFixedSubs = payments.filter(p => p.compensationType !== 'allocation');
   const pctSubs = payments.filter(p => p.compensationType === 'allocation');
@@ -2187,11 +2135,11 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     ownerTakeHome,
     includeMileageInJobCosts: mileageIncluded,
     mileageReimbursementApplied: profit?.mileageReimbursementApplied,
-    savedReimbursement: profit?.mileageReimbursement
+    savedReimbursement: savedMileageReimbursement
       ? {
-          amount: profit.mileageReimbursement.amount,
-          recipientType: profit.mileageReimbursement.recipientType,
-          status: profit.mileageReimbursement.status,
+          amount: savedMileageReimbursement.amount,
+          recipientType: savedMileageReimbursement.recipientType,
+          status: savedMileageReimbursement.status,
         }
       : null,
     estimatedFuelCost: profit?.estimatedFuelCost,
@@ -2387,9 +2335,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                           An actual Fuel/Travel expense is already linked, so this reimbursement is not added again.
                         </p>
                       )}
-                       {profit.fuelReconciliation === "reimbursement_differs_from_estimate" && profit.mileageReimbursement && profit.estimatedFuelCost != null && (
+                        {profit.fuelReconciliation === "reimbursement_differs_from_estimate" && savedMileageReimbursement && profit.estimatedFuelCost != null && (
                          <p className="text-[10px] text-amber-700 font-semibold mt-1">
-                           Job Costs uses the saved {formatCurrency(profit.mileageReimbursement.amount)} reimbursement once. The current route estimate is {formatCurrency(profit.estimatedFuelCost)} and is reference-only.
+                            Job Costs uses the saved {formatCurrency(savedMileageReimbursement.amount)} reimbursement once. The current route estimate is {formatCurrency(profit.estimatedFuelCost)} and is reference-only.
                          </p>
                        )}
                        {profit.fuelReconciliation === "reimbursement_matches_estimate" && (

@@ -1,4 +1,7 @@
 import { isOwnerWithdrawalExpenseCategory } from "./owner-withdrawals.js";
+import type {
+  JobProfitResponse,
+} from "@workspace/api-zod";
 
 export type JobProfitExpenseRow = {
   id?: number | null;
@@ -59,40 +62,6 @@ export type JobProfitCalculation = {
       legacySubcontractorExpense: number;
     };
   };
-};
-
-export type JobProfitMileageReimbursement = {
-  id: number;
-  amount: number;
-  estimatedAmount: number | null;
-  [key: string]: unknown;
-};
-
-/**
- * Shared wire contract for the per-job and batch profit endpoints.
- *
- * The calculation fields are intentionally required here. Both routes must
- * build their response from the complete calculation instead of maintaining
- * separate lists of payroll and cost fields.
- */
-export type JobProfitResponse = Omit<
-  JobProfitCalculation,
-  "mileageReimbursement" | "estimatedFuelCost" | "actualFuelCost"
-> & {
-  mileageReimbursement: number | JobProfitMileageReimbursement | null;
-  estimatedFuelCost: number | null;
-  actualFuelCost: number | null;
-  splitPool: number;
-  manHours?: number | null;
-  includeMileageInJobCosts?: boolean;
-  mileageReimbursementApplied?: boolean;
-  fuelStatus?: "ok" | "missing_address" | "geocoding_failed" | "workdays_missing" | "error";
-  fuelReconciliation?: string;
-  operationalProfit?: number | null;
-  fuelBreakdown?: Record<string, unknown> | null;
-  growthReservePct?: number;
-  ownerSplitPct?: number;
-  taxReservePct?: number;
 };
 
 export type JobProfitResponseExtras = Pick<JobProfitResponse, "splitPool"> & Partial<
