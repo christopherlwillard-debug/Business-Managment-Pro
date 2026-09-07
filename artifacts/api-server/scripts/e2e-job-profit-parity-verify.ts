@@ -740,6 +740,22 @@ async function main() {
       netProfit: readMoneyAfter(financialsText, "Net Business Profit"),
     };
     const firstExpected = fixtures[0].profit;
+    const recoveredFirstExpected: ProfitFixture = {
+      ...firstExpected,
+      grossInvoiced: 1350,
+      collected: 1350,
+      jobExpenses: 200,
+      netProfit: 1150,
+      splitPool: 1092.5,
+      profitBreakdown: {
+        ...firstExpected.profitBreakdown,
+        includedCosts: {
+          ...firstExpected.profitBreakdown.includedCosts,
+          directExpenses: 200,
+          total: 200,
+        },
+      },
+    };
     record(
       "Job Financials displays the canonical revenue, costs, split pool, and net profit",
       nearlyEqual(financialsValues.revenue, firstExpected.grossInvoiced)
@@ -1067,6 +1083,9 @@ async function main() {
     await page.screenshot({ path: `${SHOTS}/05-rapid-navigation.png`, fullPage: true });
 
     profitDetailFailureMode = true;
+    // Change the canonical response while the outage is active so a retry
+    // cannot pass by returning the same cached-looking values.
+    fixtures[0].profit = recoveredFirstExpected;
     await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
     const failureJobLoaded = await waitForText(page, fixtures[0].title);
     const openedFailureCard = failureJobLoaded && await clickJobCardAction(page, fixtures[0].title, "Open Job Card");
@@ -1095,7 +1114,9 @@ async function main() {
         const panelText = panel?.innerText.toLowerCase() ?? "";
         return document.querySelector('[data-testid="job-financials-profit-error"]') == null
           && panelText.includes("job revenue")
-          && panelText.includes("net business profit");
+          && panelText.includes("net business profit")
+          && panelText.includes("$1,350.00")
+          && panelText.includes("$1,150.00");
       },
       { timeout: 20_000 },
     ).then(() => true).catch(() => false);
@@ -1108,15 +1129,16 @@ async function main() {
     };
     const financialsRetryErrorPanelShown = await page.$('[data-testid="job-financials-profit-error"]') !== null;
     record(
-      "Job Financials retry recovers canonical values without a page reload",
+      "Job Financials retry recovers newly updated canonical values without a page reload",
       financialsRetryClicked
         && financialsRetryRecovered
         && page.url() === financialsRetryUrl
         && mainFrameNavigationCount === financialsNavigationCount
-        && nearlyEqual(financialsRetryValues.revenue, firstExpected.grossInvoiced)
-        && nearlyEqual(financialsRetryValues.costs, -firstExpected.jobExpenses)
-        && nearlyEqual(financialsRetryValues.splitPool, firstExpected.splitPool)
-        && nearlyEqual(financialsRetryValues.netProfit, firstExpected.netProfit)
+        && nearlyEqual(financialsRetryValues.revenue, recoveredFirstExpected.grossInvoiced)
+        && nearlyEqual(financialsRetryValues.costs, -recoveredFirstExpected.jobExpenses)
+        && nearlyEqual(financialsRetryValues.splitPool, recoveredFirstExpected.splitPool)
+        && nearlyEqual(financialsRetryValues.netProfit, recoveredFirstExpected.netProfit)
+        && !nearlyEqual(financialsRetryValues.netProfit, firstExpected.netProfit)
         && !financialsRetryText.includes("Unable to load job profit"),
       `clicked=${financialsRetryClicked}, recovered=${financialsRetryRecovered}, errorPanel=${financialsRetryErrorPanelShown}, values=${JSON.stringify(financialsRetryValues)}, navigationUnchanged=${mainFrameNavigationCount === financialsNavigationCount}`,
     );
@@ -1143,7 +1165,8 @@ async function main() {
       () => {
         const bodyText = document.body.innerText.toLowerCase();
         return !bodyText.includes("unable to load job profit")
-          && bodyText.includes("$1,200.00")
+          && bodyText.includes("$1,350.00")
+          && bodyText.includes("$1,150.00")
           && bodyText.includes("net profit");
       },
       { timeout: 20_000 },
@@ -1157,15 +1180,16 @@ async function main() {
     };
     const payrollRetryErrorShown = payrollRetryText.includes("Unable to load job profit");
     record(
-      "Job Payroll retry recovers canonical values without a page reload",
+      "Job Payroll retry recovers newly updated canonical values without a page reload",
       payrollRetryClicked
         && payrollRetryRecovered
         && page.url() === payrollRetryUrl
         && mainFrameNavigationCount === payrollNavigationCount
-        && nearlyEqual(payrollRetryValues.revenue, firstExpected.grossInvoiced)
-        && nearlyEqual(payrollRetryValues.costs, -firstExpected.jobExpenses)
-        && nearlyEqual(payrollRetryValues.splitPool, firstExpected.splitPool)
-        && nearlyEqual(payrollRetryValues.netProfit, firstExpected.netProfit)
+        && nearlyEqual(payrollRetryValues.revenue, recoveredFirstExpected.grossInvoiced)
+        && nearlyEqual(payrollRetryValues.costs, -recoveredFirstExpected.jobExpenses)
+        && nearlyEqual(payrollRetryValues.splitPool, recoveredFirstExpected.splitPool)
+        && nearlyEqual(payrollRetryValues.netProfit, recoveredFirstExpected.netProfit)
+        && !nearlyEqual(payrollRetryValues.netProfit, firstExpected.netProfit)
         && !payrollRetryText.includes("Unable to load job profit"),
       `clicked=${payrollRetryClicked}, recovered=${payrollRetryRecovered}, errorShown=${payrollRetryErrorShown}, values=${JSON.stringify(payrollRetryValues)}, navigationUnchanged=${mainFrameNavigationCount === payrollNavigationCount}`,
     );
@@ -1193,12 +1217,13 @@ async function main() {
     const routeRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const routeRetryNetProfit = readMoneyAfter(routeRetryText, "Net Profit");
     record(
-      "Route Planner retry recovers the canonical route profit without a page reload",
+      "Route Planner retry recovers the newly updated canonical route profit without a page reload",
       routeRetryClicked
         && routeRetryRecovered
         && page.url() === routeRetryUrl
         && mainFrameNavigationCount === routeNavigationCount
         && nearlyEqual(routeRetryNetProfit, expectedRouteNetProfitAfterRetry)
+        && !nearlyEqual(routeRetryNetProfit, firstExpected.netProfit)
         && !routeRetryText.includes("Profit data unavailable"),
       `clicked=${routeRetryClicked}, recovered=${routeRetryRecovered}, displayed=${routeRetryNetProfit ?? "missing"}, expected=${expectedRouteNetProfitAfterRetry}, navigationUnchanged=${mainFrameNavigationCount === routeNavigationCount}`,
     );
