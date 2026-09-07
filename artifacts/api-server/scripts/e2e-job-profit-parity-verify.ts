@@ -286,6 +286,8 @@ async function main() {
   const pageErrors: string[] = [];
   let delayedProfitJobId: number | null = null;
   let delayedProfitResponseUsed = false;
+  let profitSummaryFailureMode = false;
+  let profitDetailFailureMode = false;
   let sessionId: string | undefined;
   const browser = await launchBrowser();
 
@@ -313,6 +315,14 @@ async function main() {
           body: JSON.stringify(body),
         });
       };
+      const respondError = (message: string) => {
+        if (request.isInterceptResolutionHandled()) return;
+        void request.respond({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: message }),
+        });
+      };
 
       if (path === "/api/jobs") {
         respondJson(jobs);
@@ -323,6 +333,10 @@ async function main() {
         return;
       }
       if (path === "/api/jobs/profit-summary") {
+        if (profitSummaryFailureMode) {
+          respondError("Profit service unavailable");
+          return;
+        }
         const response = Object.fromEntries(
           fixtures.map(fixture => [fixture.id, fixture.profit]),
         );
@@ -396,6 +410,10 @@ async function main() {
         const fixture = jobById.get(jobId);
         if (!fixture) {
           respondJson({});
+          return;
+        }
+        if (profitDetailFailureMode) {
+          respondError("Profit service unavailable");
           return;
         }
         if (jobId === delayedProfitJobId && !delayedProfitResponseUsed) {
@@ -565,6 +583,53 @@ async function main() {
       `displayed=${rapidNetProfit ?? "missing"}, path=${page.url()}`,
     );
     await page.screenshot({ path: `${SHOTS}/04-rapid-navigation.png`, fullPage: true });
+
+    profitDetailFailureMode = true;
+    await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
+    const failureJobLoaded = await waitForText(page, fixtures[0].title);
+    const openedFailureCard = failureJobLoaded && await clickJobCardAction(page, fixtures[0].title, "Open Job Card");
+    const openedFailureFinancials = openedFailureCard && await clickJobCardAction(page, fixtures[0].title, "Job P&L");
+    const financialsErrorShown = await waitForText(page, "Unable to load job profit");
+    const financialsErrorPanelShown = await page.$('[data-testid="job-financials-profit-error"]') !== null;
+    const financialsErrorText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    record(
+      "Job Financials explains a failed profit request without stale values",
+      Boolean(openedFailureFinancials)
+        && financialsErrorShown
+        && financialsErrorPanelShown
+        && !financialsErrorText.includes("Financial Summary"),
+      `job=${failureJobLoaded}, card=${Boolean(openedFailureCard)}, opened=${Boolean(openedFailureFinancials)}, error=${financialsErrorShown}, panel=${financialsErrorPanelShown}, url=${page.url()}`,
+    );
+
+    await page.goto(`${BASE}/jobs/${firstJobId}/payroll`, {
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    const payrollErrorShown = await waitForText(page, "Unable to load job profit");
+    const payrollErrorText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    record(
+      "Job Payroll explains a failed profit request without stale values",
+      payrollErrorShown
+        && !payrollErrorText.includes("$1,200.00")
+        && !payrollErrorText.includes("Net Profit"),
+    );
+
+    profitDetailFailureMode = false;
+    profitSummaryFailureMode = true;
+    await page.goto(`${BASE}/route-planner`, {
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    const routeErrorShown = await waitForText(page, "Profit data unavailable");
+    const routeErrorText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    record(
+      "Route Planner distinguishes unavailable profit from a zero-profit route",
+      routeErrorShown
+        && !routeErrorText.includes("+$1,795")
+        && !routeErrorText.includes("$0"),
+    );
+    profitDetailFailureMode = false;
+    profitSummaryFailureMode = false;
 
     record(
       "Authenticated browser made no unexpected writes",

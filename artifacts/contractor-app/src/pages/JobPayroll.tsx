@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useLocation } from "wouter";
-import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCircle2, Pencil, Save } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCircle2, Pencil, Save, AlertCircle, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { JobProfitResponse } from "@workspace/api-zod";
 
@@ -1124,6 +1124,7 @@ export default function JobPayroll() {
 
   const [job,      setJob]      = useState<Job | null>(null);
   const [profit,   setProfit]   = useState<JobProfit | null>(null);
+  const [profitError, setProfitError] = useState(false);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [subHours, setSubHours] = useState<SubHourEntry[]>([]);
   const [loading,  setLoading]  = useState(true);
@@ -1147,23 +1148,36 @@ export default function JobPayroll() {
   }
 
   const refreshAll = useCallback(async () => {
+    setLoading(true);
+    setProfitError(false);
     const requestKey = loadKeyRef.current;
     const requestedJobId = jobId;
     const [pRes, profRes, hoursRes] = await Promise.allSettled([
       fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`,  { credentials: "include" }).then(r => r.ok ? r.json() : []),
-      fetch(`${BASE}/api/jobs/${requestedJobId}/profit`,        { credentials: "include" }).then(r => r.ok ? r.json() : null),
+      fetch(`${BASE}/api/jobs/${requestedJobId}/profit`,        { credentials: "include" }).then(r => {
+        if (!r.ok) throw new Error(`Profit request failed (${r.status})`);
+        return r.json();
+      }),
       fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`,     { credentials: "include" }).then(r => r.ok ? r.json() : []),
     ]);
     if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) return;
     if (pRes.status    === "fulfilled") setPayments(pRes.value as SubPaymentRow[]);
-    if (profRes.status === "fulfilled" && profRes.value) setProfit(profRes.value as JobProfit);
+    if (profRes.status === "fulfilled" && profRes.value) {
+      setProfit(profRes.value as JobProfit);
+      setProfitError(false);
+    } else {
+      setProfit(null);
+      setProfitError(true);
+    }
     if (hoursRes.status === "fulfilled") setSubHours(hoursRes.value as SubHourEntry[]);
+    setLoading(false);
   }, [jobId]);
 
   useEffect(() => {
     const requestedJobId = jobId;
     const requestKey = ++loadKeyRef.current;
     setLoading(true);
+    setProfitError(false);
     setJob(null);
     setProfit(null);
     setPayments([]);
@@ -1174,14 +1188,23 @@ export default function JobPayroll() {
       const [jobRes, pRes, profRes, settingsRes, hoursInitRes] = await Promise.allSettled([
         fetch(`${BASE}/api/jobs/${requestedJobId}`,             { credentials: "include" }).then(r => r.ok ? r.json() : null),
         fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`,{ credentials: "include" }).then(r => r.ok ? r.json() : []),
-        fetch(`${BASE}/api/jobs/${requestedJobId}/profit`,      { credentials: "include" }).then(r => r.ok ? r.json() : null),
+        fetch(`${BASE}/api/jobs/${requestedJobId}/profit`,      { credentials: "include" }).then(r => {
+          if (!r.ok) throw new Error(`Profit request failed (${r.status})`);
+          return r.json();
+        }),
         fetch(`${BASE}/api/settings`,                  { credentials: "include" }).then(r => r.ok ? r.json() : null),
         fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`,   { credentials: "include" }).then(r => r.ok ? r.json() : []),
       ]);
       if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) return;
       if (jobRes.status       === "fulfilled" && jobRes.value)     setJob(jobRes.value as Job);
       if (pRes.status         === "fulfilled")                     setPayments(pRes.value as SubPaymentRow[]);
-      if (profRes.status      === "fulfilled" && profRes.value)    setProfit(profRes.value as JobProfit);
+      if (profRes.status      === "fulfilled" && profRes.value) {
+        setProfit(profRes.value as JobProfit);
+        setProfitError(false);
+      } else {
+        setProfit(null);
+        setProfitError(true);
+      }
       if (hoursInitRes.status === "fulfilled")                     setSubHours(hoursInitRes.value as SubHourEntry[]);
       if (settingsRes.status === "fulfilled" && settingsRes.value) {
         const s = settingsRes.value as Record<string, unknown>;
@@ -1273,6 +1296,22 @@ export default function JobPayroll() {
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : profitError ? (
+        <div className="max-w-2xl mx-auto px-4 py-16 text-center">
+          <AlertCircle className="w-10 h-10 mx-auto text-red-500 mb-3" />
+          <h2 className="text-base font-bold text-foreground">Unable to load job profit</h2>
+          <p className="text-sm text-muted-foreground mt-2">
+            The latest profit data could not be loaded, so no financial values are shown.
+          </p>
+          <button
+            type="button"
+            onClick={refreshAll}
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Try again
+          </button>
         </div>
       ) : (
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-5 pb-36">

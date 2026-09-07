@@ -52,7 +52,7 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench, Navigation, Fuel, Truck,
+  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench, Navigation, Fuel, Truck, RefreshCw,
   CalendarDays, ChevronLeft, ChevronRight, ListTodo, Settings2,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
@@ -1748,6 +1748,8 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const [tab, setTab] = useState<"breakdown" | "hours">(initialTab);
   const [profit, setProfit] = useState<JobProfit | null>(initialProfit ?? null);
   const detailedProfitLoaded = useRef(false);
+  const [profitError, setProfitError] = useState(false);
+  const [profitRetryKey, setProfitRetryKey] = useState(0);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [loading, setLoading] = useState(!initialProfit);
   const [deletingPayId, setDeletingPayId] = useState<number | null>(null);
@@ -2060,6 +2062,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   }, [settingsData]);
 
   useEffect(() => {
+    setLoading(true);
+    setProfitError(false);
+    setProfit(null);
+    detailedProfitLoaded.current = false;
     const fetches: Promise<any>[] = [
       fetch(`${BASE}/api/jobs/${job.id}/sub-payments`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
       fetch(`${BASE}/api/jobs/${job.id}/sub-hours`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
@@ -2068,7 +2074,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     // Always fetch the full per-job profit endpoint — the bulk profit-summary used by
     // the job list omits estimatedFuelCost/fuelStatus, so we must refresh here even
     // when initialProfit was passed from the parent (it's partial data).
-    fetches.push(fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" }).then(r => r.ok ? r.json() : null));
+    fetches.push(fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" }).then(r => {
+      if (!r.ok) throw new Error(`Profit request failed (${r.status})`);
+      return r.json();
+    }));
     Promise.allSettled(fetches).then(results => {
       const [pRes, hRes, dRes, profRes] = results;
       if (pRes.status === "fulfilled" && Array.isArray(pRes.value)) {
@@ -2081,10 +2090,15 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       if (profRes?.status === "fulfilled" && profRes.value) {
         detailedProfitLoaded.current = true;
         setProfit(profRes.value as JobProfit);
+        setProfitError(false);
+      } else {
+        detailedProfitLoaded.current = true;
+        setProfit(null);
+        setProfitError(true);
       }
       setLoading(false);
     });
-  }, [job.id]);
+  }, [job.id, profitRetryKey]);
 
   const revenue = useCollected
     ? (profit?.collected || profit?.grossInvoiced || 0)
@@ -2189,6 +2203,22 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="h-16 rounded-xl bg-muted/40 animate-pulse" />)}</div>
+          ) : profitError ? (
+            <div data-testid="job-financials-profit-error" className="flex flex-col items-center justify-center h-56 text-center">
+              <AlertCircle className="w-9 h-9 text-red-500 mb-3" />
+              <p className="text-sm font-semibold text-foreground">Unable to load job profit</p>
+              <p className="text-xs text-muted-foreground mt-2 max-w-[250px]">
+                The latest financial values could not be loaded, so stale values are hidden.
+              </p>
+              <button
+                type="button"
+                onClick={() => setProfitRetryKey(key => key + 1)}
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Try again
+              </button>
+            </div>
           ) : tab === "breakdown" ? (
             /* ── Profit Split tab ── */
             <div className="space-y-4">

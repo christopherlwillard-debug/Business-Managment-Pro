@@ -468,7 +468,12 @@ export default function RoutePlanner() {
   );
   const dayJobIdsKey = dayJobIds.join(",");
 
-  const { data: profitSummary = {}, isLoading: isLoadingProfit } = useQuery<Record<number, JobProfitData>>({
+  const {
+    data: profitSummary = {},
+    isLoading: isLoadingProfit,
+    isError: isProfitError,
+    refetch: refetchProfit,
+  } = useQuery<Record<number, JobProfitData>>({
     queryKey: ["job-profit-summary", dayJobIdsKey],
     queryFn: () =>
       apiFetch(`/jobs/profit-summary?jobIds=${dayJobIdsKey}`) as unknown as Promise<Record<number, JobProfitData>>,
@@ -508,8 +513,9 @@ export default function RoutePlanner() {
       totalExpenses: profitRows.length > 0 ? totals.totalIncludedCosts : null,
       netProfit: profitRows.length > 0 ? totals.totalNetProfit : null,
       profitPerSqFt,
+      profitUnavailable: isProfitError,
     };
-  }, [dayStops, profitSummary]);
+  }, [dayStops, profitSummary, isProfitError]);
 
   const displayStops = optimizedOrder ?? viewStops;
 
@@ -1175,7 +1181,22 @@ export default function RoutePlanner() {
               </p>
               {isLoadingProfit && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
             </div>
-            {!routeProfitStats.hasInvoiceData ? (
+            {routeProfitStats.profitUnavailable ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold text-red-700">Profit data unavailable</p>
+                <p className="text-[10px] text-red-600/80 mt-1">
+                  The route total is hidden until the latest job profit data loads.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void refetchProfit()}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-red-700 hover:bg-red-100"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Try again
+                </button>
+              </div>
+            ) : !routeProfitStats.hasInvoiceData ? (
               <p className="text-[11px] text-muted-foreground italic">
                 Link jobs with invoices to see profit data.
               </p>
@@ -1212,10 +1233,12 @@ export default function RoutePlanner() {
                         ? routeProfitStats.netProfit > 0 ? "text-emerald-600" : "text-red-600"
                         : "text-muted-foreground"
                     )}>
-                      {routeProfitStats.netProfit != null && routeProfitStats.netProfit !== 0
+                      {routeProfitStats.netProfit != null
                         ? routeProfitStats.netProfit > 0
                           ? `+$${routeProfitStats.netProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                          : `-$${Math.abs(routeProfitStats.netProfit).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                          : routeProfitStats.netProfit < 0
+                            ? `-$${Math.abs(routeProfitStats.netProfit).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                            : "$0"
                         : "—"}
                     </div>
                   </div>
