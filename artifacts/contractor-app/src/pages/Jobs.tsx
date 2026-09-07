@@ -38,6 +38,7 @@ import {
 import {
   compareProfitSummaryValuesDescending,
   hasCompleteProfitSummaries,
+  hasPartialProfitSummaries,
   initialJobPaymentSummaryRefreshState,
   jobProfitSummaryRequestKey,
   jobPaymentSummaryRefreshReducer,
@@ -7934,8 +7935,11 @@ export default function Jobs() {
         const entries = Object.entries(obj).map(
           ([id, p]) => [parseInt(id, 10), p] as [number, JobProfitResponse]
         );
-        setProfitMap(new Map(entries));
-        setProfitSummaryStatus("ready");
+        const nextProfitMap = new Map(entries);
+        setProfitMap(nextProfitMap);
+        setProfitSummaryStatus(
+          hasPartialProfitSummaries(visibleJobIds, nextProfitMap) ? "partial" : "ready",
+        );
       })
       .catch(() => {
         if (controller.signal.aborted) return;
@@ -7968,7 +7972,9 @@ export default function Jobs() {
   // Sorted/filtered closed jobs for the archive table (uses profitMap for sort)
   const archiveSearchLower = archiveSearch.toLowerCase().trim();
   const profitSummaryValue = (jobId: number, field: "grossInvoiced" | "netProfit") =>
-    profitSummaryStatus === "ready" ? profitMap.get(jobId)?.[field] ?? null : null;
+    (profitSummaryStatus === "ready" || profitSummaryStatus === "partial")
+      ? profitMap.get(jobId)?.[field] ?? null
+      : null;
   const closedJobs = [...allClosedBase]
     .filter(j =>
       !archiveSearchLower ||
@@ -8808,6 +8814,25 @@ export default function Jobs() {
                   </button>
                 </div>
               )}
+              {profitSummaryStatus === "partial" && (
+                <div
+                  role="status"
+                  className="flex flex-wrap items-center justify-between gap-2 mb-3 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-900"
+                >
+                  <span className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+                    Some closed-job profit summaries are unavailable. Available rows are shown, but totals and missing rows are marked unavailable.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setProfitSummaryRetryKey(key => key + 1)}
+                    className="inline-flex items-center gap-1.5 font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-950"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Retry
+                  </button>
+                </div>
+              )}
 
               {/* Summary bar — always visible */}
               {(() => {
@@ -8917,7 +8942,8 @@ export default function Jobs() {
                         <tbody>
                           {closedJobs.map(job => {
                             const profit = profitMap.get(job.id);
-                            const profitAvailable = profitSummaryStatus === "ready" && profit != null;
+                            const profitAvailable = (profitSummaryStatus === "ready" || profitSummaryStatus === "partial")
+                              && profit != null;
                             const netProfit = profitAvailable ? profit.netProfit : null;
                             const grossInvoiced = profitAvailable ? profit.grossInvoiced : null;
                             const photoCount = photoCountMap.get(job.id) ?? 0;

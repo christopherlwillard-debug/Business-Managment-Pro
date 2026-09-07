@@ -7,6 +7,7 @@ import { calculateJobMargin } from "./jobMargin";
 import {
   compareProfitSummaryValuesDescending,
   hasCompleteProfitSummaries,
+  hasPartialProfitSummaries,
   initialJobPaymentSummaryRefreshState,
   jobProfitSummaryRequestKey,
   jobPaymentSummaryRefreshReducer,
@@ -116,5 +117,7 @@ describe("Jobs payment summary refresh", () => {
 
     expect(hasCompleteProfitSummaries([1, 2], complete)).toBe(true);
     expect(hasCompleteProfitSummaries([1, 2], incomplete)).toBe(false);
+    expect(hasPartialProfitSummaries([1, 2], complete)).toBe(false);
+    expect(hasPartialProfitSummaries([1, 2], incomplete)).toBe(true);
   });
 });

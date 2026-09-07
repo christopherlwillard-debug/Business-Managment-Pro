@@ -492,6 +492,7 @@ async function main() {
   let delayedProfitJobId: number | null = null;
   let delayedProfitResponseUsed = false;
   let profitSummaryFailureMode = false;
+  let profitSummaryPartialMode = false;
   let profitDetailFailureMode = false;
   let profitDetailFailureJobId: number | null = null;
   let sessionId: string | undefined;
@@ -553,7 +554,11 @@ async function main() {
           .split(",")
           .map(Number)
           .filter(jobId => Number.isInteger(jobId) && jobId > 0);
-        respondJson(canonicalBatchProfitSummary(jobIds));
+        const summary = canonicalBatchProfitSummary(jobIds);
+        if (profitSummaryPartialMode) {
+          delete summary[secondJobId];
+        }
+        respondJson(summary);
         return;
       }
       if (path === "/api/jobs/financials-summary") {
@@ -1300,6 +1305,7 @@ async function main() {
     );
 
     fixtures[0].job.status = "closed";
+    fixtures[1].job.status = "closed";
     profitSummaryFailureMode = true;
     await page.goto(`${BASE}/jobs`, {
       waitUntil: "networkidle2",
@@ -1356,6 +1362,60 @@ async function main() {
         && closedJobsAfterRetryText.includes(fixtures[0].title)
         && !closedJobsAfterRetryText.includes("Closed-job profit summaries are unavailable"),
       `clicked=${closedJobsRetryClicked}, recovered=${closedJobsRetryRecovered}, urlUnchanged=${page.url() === closedJobsRetryUrl}, navigationUnchanged=${mainFrameNavigationCount === closedJobsNavigationCount}`,
+    );
+
+    profitSummaryPartialMode = true;
+    await page.goto(`${BASE}/jobs`, {
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    await clickButtonContainingText(page, "Closed Jobs");
+    const partialClosedJobsText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const partialClosedJobRows = await page.$$eval(
+      "table tbody tr",
+      rows => rows.map(row => row.textContent?.replace(/\s+/g, " ").trim() ?? ""),
+    );
+    const partialAvailableRow = partialClosedJobRows.find(row => row.includes(fixtures[0].title)) ?? "";
+    const partialUnavailableRow = partialClosedJobRows.find(row => row.includes(fixtures[1].title)) ?? "";
+    const partialWarningShown = partialClosedJobsText.includes("Some closed-job profit summaries are unavailable");
+    const partialTotalsUnavailable = partialClosedJobsText.includes("Total Revenue: Unavailable")
+      && partialClosedJobsText.includes("Total Net Profit: Unavailable");
+    const partialAvailableRowUsable = partialAvailableRow.includes(closedExpectedRevenueLabel)
+      && partialAvailableRow.includes(closedExpectedNetProfitLabel)
+      && !partialAvailableRow.includes("Unavailable");
+    const partialUnavailableRowMarked = partialUnavailableRow.includes("Unavailable");
+    record(
+      "Closed Jobs explains partial summaries while keeping available rows usable",
+      partialWarningShown
+        && partialTotalsUnavailable
+        && partialAvailableRowUsable
+        && partialUnavailableRowMarked,
+      `warning=${partialWarningShown}, totalsUnavailable=${partialTotalsUnavailable}, availableRow=${partialAvailableRowUsable}, unavailableRow=${partialUnavailableRowMarked}`,
+    );
+
+    profitSummaryPartialMode = false;
+    const partialRetryClicked = await clickButtonByText(page, "Retry", "Some closed-job profit summaries are unavailable");
+    const partialRetryRecovered = await page.waitForFunction(
+      ({ expectedRevenue, expectedNetProfit, missingJobTitle }) => {
+        const bodyText = document.body.innerText;
+        return bodyText.includes(expectedRevenue)
+          && bodyText.includes(expectedNetProfit)
+          && bodyText.includes(missingJobTitle)
+          && !bodyText.includes("Some closed-job profit summaries are unavailable")
+          && !bodyText.includes("Total Revenue: Unavailable")
+          && !bodyText.includes("Total Net Profit: Unavailable");
+      },
+      { timeout: 20_000 },
+      {
+        expectedRevenue: closedExpectedRevenueLabel,
+        expectedNetProfit: closedExpectedNetProfitLabel,
+        missingJobTitle: fixtures[1].title,
+      },
+    ).then(() => true).catch(() => false);
+    record(
+      "Closed Jobs retry completes a previously partial batch",
+      partialRetryClicked && partialRetryRecovered,
+      `clicked=${partialRetryClicked}, recovered=${partialRetryRecovered}`,
     );
 
     record(

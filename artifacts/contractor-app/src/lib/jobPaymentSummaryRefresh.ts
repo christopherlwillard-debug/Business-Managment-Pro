@@ -15,7 +15,7 @@ export const initialJobPaymentSummaryRefreshState: JobPaymentSummaryRefreshState
   financialKey: 0,
 };
 
-export type JobProfitSummaryStatus = "loading" | "ready" | "error";
+export type JobProfitSummaryStatus = "loading" | "ready" | "partial" | "error";
 
 export function compareProfitSummaryValuesDescending(
   a: number | null | undefined,
@@ -32,6 +32,13 @@ export function hasCompleteProfitSummaries<T>(
   profitMap: Map<number, T | null>,
 ): boolean {
   return jobIds.every(jobId => profitMap.get(jobId) != null);
+}
+
+export function hasPartialProfitSummaries<T>(
+  jobIds: number[],
+  profitMap: Map<number, T | null>,
+): boolean {
+  return !hasCompleteProfitSummaries(jobIds, profitMap);
 }
 
 export function jobProfitSummaryRequestKey(jobIds: number[], financialKey: number): string {
