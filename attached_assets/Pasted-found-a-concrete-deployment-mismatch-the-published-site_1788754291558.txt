@@ -1,0 +1,62 @@
+found a concrete deployment mismatch: the published site is serving a different frontend bundle than the current workspace build (index-BtnMvRvT.js publicly versus index-C0nVe7rx.js locally). I’m comparing those bundles and the API artifact next to determine whether the republish used an older build or whether the API is still running an older calculation.
+I found a likely explanation for why the earlier production query did not settle this: the screenshot shows #38 and #45, but the UI displays jobNumber when available and only falls back to the database ID. I’m checking the actual internal IDs behind those visible job numbers now. If they differ, the earlier source-row comparison was against the wrong records.
+The published frontend bundle now matches the current workspace build, so the remaining negative values—if they were captured after a hard refresh—must be coming from the authenticated API response or an already-open stale page. I’m doing one production-wide scan next to see whether any other closed jobs have impossible negative results under the corrected, job-scoped inputs.
+I looked deeper and found several additional issues.
+
+Production-wide check
+
+I scanned every closed job in production using job-scoped revenue, expenses, subcontractor costs, allocations, and bonuses.
+
+Result: none of the closed jobs produce a negative profit using the corrected inputs.
+
+For the two affected jobs, the scoped results remain:
+
+Drywall repair: $1,018.70 before resolving the separate $320 payroll-record mismatch
+Martin Water Heater: $182.27
+The $4,340 cross-job contamination does not belong to either job.
+
+The current frontend bundle on the published site now matches the current workspace build. If the screenshot was taken after a hard refresh and a completed republish, the remaining issue is likely the authenticated API response still coming from an old server process/build. The production API cannot be inspected anonymously, so that is the one piece I cannot confirm directly from here.
+
+Additional issues found
+
+1. Job Payroll can show the wrong job after fast navigation
+
+JobPayroll.tsx starts several requests when the job ID changes but does not cancel or guard stale responses. If someone opens Job A and quickly navigates to Job B, Job A’s result can arrive afterward and overwrite Job B’s screen.
+
+That can display the correct-looking financial data under the wrong job.
+
+2. Job Payroll uses a different financial waterfall
+
+Job Payroll calculates its own split income instead of using the canonical waterfall. It:
+
+Removes mileage reimbursement from expenses before calculating the split pool.
+Uses aggregate subLaborCost.
+Does not consistently distinguish hourly, fixed, and allocation payouts.
+Can disagree with Job Financials and the close-job flow.
+This is a real financial-display inconsistency.
+
+3. Route Planner’s total profit is incomplete
+
+The Route Planner’s aggregate currently calculates:
+
+total collected - total expenses
+It omits subcontractor labor, allocation payouts, and other costs included in the canonical job profit result. Individual route stops and the route total can therefore disagree.
+
+4. Closed Jobs CSV uses a separate outdated calculation
+
+The on-screen Closed Jobs table uses the newer profit summary, but CSV export uses its own older arithmetic. The export can disagree because it omits or mishandles:
+
+Hourly subcontractor labor
+Fixed/allocation payroll
+Accrued bonuses
+Job-linked other income
+Mileage reimbursement and fuel handling
+Void filtering
+Canonical expense exclusions
+It also does not select jobNumber, so exported job numbers can fall back to internal IDs.
+
+5. Drywall has a separate payroll-data mismatch
+
+Drywall has a $320 hourly payment record with 16 work hours, but no corresponding job_sub_hours row. That is an undercount risk, not the cause of the negative value. It should be reviewed separately so the final correct profit includes the intended labor cost exactly once.
+
+I have not changed production records or modified these additional paths yet. The original negative problem is mathematically isolated to cross-job batch contamination; these are other real areas that could produce inconsistent financial displays elsewhere.
