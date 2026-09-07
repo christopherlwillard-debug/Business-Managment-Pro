@@ -19,12 +19,6 @@ export {
   validateSeoMetadata,
 } from "./website-seo";
 export type { SeoValidationErrors } from "./website-seo";
-export type {
-  JobProfitBreakdown,
-  JobProfitFuelBreakdown,
-  JobProfitMileageReimbursement,
-  JobProfitResponse,
-} from "./job-profit";
 export {
   getInvoiceLogoDimensions,
   invoiceLogoPositionFromLayout,

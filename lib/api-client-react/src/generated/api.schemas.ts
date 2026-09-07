@@ -214,6 +214,144 @@ export interface Job {
   [key: string]: unknown;
 }
 
+export type JobProfitMileageReimbursementRecipientType =
+  (typeof JobProfitMileageReimbursementRecipientType)[keyof typeof JobProfitMileageReimbursementRecipientType];
+
+export const JobProfitMileageReimbursementRecipientType = {
+  owner: "owner",
+  subcontractor: "subcontractor",
+  other: "other",
+} as const;
+
+export type JobProfitMileageReimbursementStatus =
+  (typeof JobProfitMileageReimbursementStatus)[keyof typeof JobProfitMileageReimbursementStatus];
+
+export const JobProfitMileageReimbursementStatus = {
+  owed: "owed",
+  paid: "paid",
+} as const;
+
+export interface JobProfitMileageReimbursement {
+  id: number;
+  amount: number;
+  estimatedAmount: number | null;
+  recipientType: JobProfitMileageReimbursementRecipientType;
+  recipientName: string;
+  recipientSubcontractorId?: number | null;
+  status: JobProfitMileageReimbursementStatus;
+  paidAt?: string | null;
+  notes?: string | null;
+}
+
+export type JobProfitFuelBreakdownRouteProvider =
+  (typeof JobProfitFuelBreakdownRouteProvider)[keyof typeof JobProfitFuelBreakdownRouteProvider];
+
+export const JobProfitFuelBreakdownRouteProvider = {
+  osrm: "osrm",
+  haversine: "haversine",
+} as const;
+
+export interface JobProfitFuelBreakdown {
+  onewayMiles: number;
+  roundTripMiles: number;
+  daysOnJob: number;
+  totalMiles: number;
+  fuelGallons: number;
+  mpg: number;
+  fuelPrice: number;
+  routeProvider?: JobProfitFuelBreakdownRouteProvider;
+}
+
+export type JobProfitBreakdownRevenue = {
+  invoices: number;
+  otherIncome: number;
+  total: number;
+};
+
+export type JobProfitBreakdownIncludedCosts = {
+  directExpenses: number;
+  allocatedExpenses: number;
+  subLabor: number;
+  splitPayouts: number;
+  mileageReimbursement: number;
+  estimatedFuel: number;
+  total: number;
+};
+
+export type JobProfitBreakdownExcludedFromProfit = {
+  ownerWithdrawals: number;
+  auditTrail: number;
+  payrollLinkedExpenses: number;
+  legacySubcontractorExpense: number;
+};
+
+export interface JobProfitBreakdown {
+  revenue: JobProfitBreakdownRevenue;
+  includedCosts: JobProfitBreakdownIncludedCosts;
+  excludedFromProfit: JobProfitBreakdownExcludedFromProfit;
+}
+
+export type JobProfitResponseFuelStatus =
+  (typeof JobProfitResponseFuelStatus)[keyof typeof JobProfitResponseFuelStatus];
+
+export const JobProfitResponseFuelStatus = {
+  ok: "ok",
+  missing_address: "missing_address",
+  geocoding_failed: "geocoding_failed",
+  workdays_missing: "workdays_missing",
+  error: "error",
+} as const;
+
+export type JobProfitResponseFuelReconciliation =
+  (typeof JobProfitResponseFuelReconciliation)[keyof typeof JobProfitResponseFuelReconciliation];
+
+export const JobProfitResponseFuelReconciliation = {
+  estimate_only: "estimate_only",
+  reimbursement_matches_estimate: "reimbursement_matches_estimate",
+  reimbursement_differs_from_estimate: "reimbursement_differs_from_estimate",
+  reimbursement_without_estimate: "reimbursement_without_estimate",
+  actual_fuel_expense: "actual_fuel_expense",
+  actual_fuel_expense_replaces_reimbursement:
+    "actual_fuel_expense_replaces_reimbursement",
+  excluded_from_job_costs: "excluded_from_job_costs",
+  estimate_unavailable: "estimate_unavailable",
+} as const;
+
+export interface JobProfitResponse {
+  grossInvoiced: number;
+  collected: number;
+  otherIncomeRevenue: number;
+  jobExpenses: number;
+  directExpenseTotal: number;
+  allocatedExpenseTotal: number;
+  mileageReimbursement: number | JobProfitMileageReimbursement | null;
+  estimatedFuelCost: number | null;
+  actualFuelCost: number | null;
+  auditTrailTotal: number;
+  tripTravelTotal: number;
+  tripMealsDeductible: number;
+  ownerDrawTaken: number;
+  payrollLinkedExcluded: number;
+  legacySubcontractorExpense: number;
+  subLaborCost: number;
+  allocPaid: number;
+  totalSubHours: number;
+  netProfit: number;
+  includedCostTotal: number;
+  profitBreakdown: JobProfitBreakdown;
+  splitPool: number;
+  manHours?: number | null;
+  includeMileageInJobCosts?: boolean;
+  mileageReimbursementApplied?: boolean;
+  fuelStatus?: JobProfitResponseFuelStatus;
+  fuelReconciliation?: JobProfitResponseFuelReconciliation;
+  operationalProfit?: number | null;
+  fuelBreakdown?: JobProfitFuelBreakdown | null;
+  growthReservePct?: number;
+  ownerSplitPct?: number;
+  taxReservePct?: number;
+}
+
 export interface TrimOutCatalogModelSummary {
   id: number;
   name: string;
@@ -1460,6 +1598,15 @@ export type ListJobsParams = {
   status?: string;
   clientId?: number;
 };
+
+export type GetJobsProfitSummaryParams = {
+  /**
+   * Comma-separated job IDs
+   */
+  jobIds: string;
+};
+
+export type GetJobsProfitSummary200 = { [key: string]: JobProfitResponse };
 
 export type GetTrimOutCatalogParams = {
   /**

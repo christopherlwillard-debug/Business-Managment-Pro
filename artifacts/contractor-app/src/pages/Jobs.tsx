@@ -23,7 +23,7 @@ import {
   useUpdateProductionServiceType, useDeleteProductionServiceType,
   useListServiceAddonPrompts, type ServiceAddonPrompt,
 } from "@workspace/api-client-react";
-import type { JobProfitResponse } from "@workspace/api-zod";
+import type { JobProfitResponse } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
@@ -1455,9 +1455,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 }
 
 // ─── Job Profit Panel ──────────────────────────────────────────────────────────
-type JobProfit = JobProfitResponse;
-
-function getSavedMileageReimbursement(profit: JobProfit | null | undefined) {
+function getSavedMileageReimbursement(profit: JobProfitResponse | null | undefined) {
   const reimbursement = profit?.mileageReimbursement;
   return reimbursement && typeof reimbursement === "object" ? reimbursement : null;
 }
@@ -1581,13 +1579,13 @@ function JobPaymentSummary({
 
 
 function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
-  const [data, setData] = useState<JobProfit | null>(null);
+  const [data, setData] = useState<JobProfitResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
     fetch(`${BASE}/api/jobs/${job.id}/profit`)
-      .then(r => r.ok ? r.json() as Promise<JobProfit> : Promise.reject())
+      .then(r => r.ok ? r.json() as Promise<JobProfitResponse> : Promise.reject())
       .then(d => { setData(d); })
       .catch(() => setData(null))
       .finally(() => setLoading(false));
@@ -1743,13 +1741,13 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 // ─── Unified Job Financials Panel ─────────────────────────────────────────────
 function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "breakdown", onClose, onSubsPaidChanged }: {
   job: Job;
-  profitData?: JobProfit | null;
+  profitData?: JobProfitResponse | null;
   initialTab?: "breakdown" | "hours";
   onClose: () => void;
   onSubsPaidChanged?: (allPaid: boolean) => void;
 }) {
   const [tab, setTab] = useState<"breakdown" | "hours">(initialTab);
-  const [profit, setProfit] = useState<JobProfit | null>(initialProfit ?? null);
+  const [profit, setProfit] = useState<JobProfitResponse | null>(initialProfit ?? null);
   const detailedProfitLoaded = useRef(false);
   const [profitError, setProfitError] = useState(false);
   const [profitRetryKey, setProfitRetryKey] = useState(0);
@@ -2029,7 +2027,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
         .then(r => r.ok ? r.json() : null);
       if (fresh) {
         detailedProfitLoaded.current = true;
-        setProfit(fresh as JobProfit);
+        setProfit(fresh as JobProfitResponse);
         setExpenseItems(null);
         if (expensesOpen) void loadExpenses();
       }
@@ -2092,7 +2090,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       if (dRes.status === "fulfilled" && Array.isArray(dRes.value)) setDistributions(dRes.value);
       if (profRes?.status === "fulfilled" && profRes.value) {
         detailedProfitLoaded.current = true;
-        setProfit(profRes.value as JobProfit);
+        setProfit(profRes.value as JobProfitResponse);
         setProfitError(false);
       } else {
         detailedProfitLoaded.current = true;
@@ -3408,7 +3406,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
   const [hours, setHours] = useState<SubHourEntry[]>([]);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [benchmark, setBenchmark] = useState<BenchmarkRow | null>(null);
-  const [profit, setProfit] = useState<JobProfit | null>(null);
+  const [profit, setProfit] = useState<JobProfitResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -3443,7 +3441,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
       setHours(Array.isArray(h) ? h : []);
       setPayments(Array.isArray(p) ? p : []);
       setSubExpenses(Array.isArray(se) ? se : []);
-      if (prRes.status === "fulfilled" && prRes.value) setProfit(prRes.value as JobProfit);
+      if (prRes.status === "fulfilled" && prRes.value) setProfit(prRes.value as JobProfitResponse);
       // Find matching benchmark for this job's type (silently skipped if endpoint forbidden)
       if (Array.isArray(allBenchmarks) && job.jobType) {
         const match = allBenchmarks.find((b: BenchmarkRow) =>
@@ -5167,7 +5165,7 @@ function JobCard({
   onCreateInvoice?: () => void;
   onClientClick?: (clientId: number) => void;
   hasSubExpenses?: boolean;
-  profitData?: JobProfit | null;
+  profitData?: JobProfitResponse | null;
   onSendPaymentLink?: (invoiceId: number, invoiceNumber: string, currentTotal: number, jobId: number) => void;
   onGoToInvoices?: () => void;
   generatingLinkId?: number | null;
@@ -5217,7 +5215,7 @@ function JobCard({
   const [financialsPanelOpen, setFinancialsPanelOpen] = useState(false);
   const [financialsInitialTab, setFinancialsInitialTab] = useState<"breakdown" | "hours">("breakdown");
   const [jobExpenseOpen, setJobExpenseOpen] = useState(false);
-  const [displayProfit, setDisplayProfit] = useState<JobProfit | null | undefined>(profitData);
+  const [displayProfit, setDisplayProfit] = useState<JobProfitResponse | null | undefined>(profitData);
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
   const [checklistPanelOpen, setChecklistPanelOpen] = useState(false);
   const [mfhPanelOpen, setMfhPanelOpen] = useState(false);
@@ -7914,7 +7912,7 @@ export default function Jobs() {
   }, [visibleJobIds.join(","), invoiceSummaryRefreshKey]);
 
   // Fetch profit summary for all visible jobs in a single batch request
-  const [profitMap, setProfitMap] = useState<Map<number, JobProfit | null>>(new Map());
+  const [profitMap, setProfitMap] = useState<Map<number, JobProfitResponse | null>>(new Map());
   const [profitSummaryStatus, setProfitSummaryStatus] = useState<JobProfitSummaryStatus>("loading");
   const [profitSummaryRetryKey, setProfitSummaryRetryKey] = useState(0);
   const profitSummaryRequestKey = jobProfitSummaryRequestKey(
@@ -7934,11 +7932,11 @@ export default function Jobs() {
       signal: controller.signal,
       credentials: "include",
     })
-      .then(r => r.ok ? r.json() as Promise<Record<string, JobProfit>> : Promise.reject())
+      .then(r => r.ok ? r.json() as Promise<Record<string, JobProfitResponse>> : Promise.reject())
       .then(obj => {
         if (controller.signal.aborted) return;
         const entries = Object.entries(obj).map(
-          ([id, p]) => [parseInt(id, 10), p] as [number, JobProfit]
+          ([id, p]) => [parseInt(id, 10), p] as [number, JobProfitResponse]
         );
         setProfitMap(new Map(entries));
         setProfitSummaryStatus("ready");

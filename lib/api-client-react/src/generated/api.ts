@@ -42,6 +42,8 @@ import type {
   Get1099ReportParams,
   GetDashboardStatsParams,
   GetInvoiceTaxReportParams,
+  GetJobsProfitSummary200,
+  GetJobsProfitSummaryParams,
   GetMileageSummaryParams,
   GetTrimOutCatalogParams,
   HandleBrowserLoginCallbackParams,
@@ -50,6 +52,7 @@ import type {
   InvoiceCommunicationEvent,
   InvoiceDraft,
   Job,
+  JobProfitResponse,
   JobReadinessCondition,
   JobReadinessConditionInput,
   ListClientBillingProfilesParams,
@@ -1290,6 +1293,196 @@ export const useCreateJob = <
 > => {
   return useMutation(getCreateJobMutationOptions(options));
 };
+
+/**
+ * @summary Get the canonical profit calculation for one job
+ */
+export const getGetJobProfitUrl = (id: number) => {
+  return `/api/jobs/${id}/profit`;
+};
+
+export const getJobProfit = async (
+  id: number,
+  options?: RequestInit,
+): Promise<JobProfitResponse> => {
+  return customFetch<JobProfitResponse>(getGetJobProfitUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetJobProfitQueryKey = (id: number) => {
+  return [`/api/jobs/${id}/profit`] as const;
+};
+
+export const getGetJobProfitQueryOptions = <
+  TData = Awaited<ReturnType<typeof getJobProfit>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobProfit>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetJobProfitQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getJobProfit>>> = ({
+    signal,
+  }) => getJobProfit(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getJobProfit>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetJobProfitQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getJobProfit>>
+>;
+export type GetJobProfitQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get the canonical profit calculation for one job
+ */
+
+export function useGetJobProfit<
+  TData = Awaited<ReturnType<typeof getJobProfit>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobProfit>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetJobProfitQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get canonical profit calculations for multiple jobs
+ */
+export const getGetJobsProfitSummaryUrl = (
+  params: GetJobsProfitSummaryParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/profit-summary?${stringifiedParams}`
+    : `/api/jobs/profit-summary`;
+};
+
+export const getJobsProfitSummary = async (
+  params: GetJobsProfitSummaryParams,
+  options?: RequestInit,
+): Promise<GetJobsProfitSummary200> => {
+  return customFetch<GetJobsProfitSummary200>(
+    getGetJobsProfitSummaryUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetJobsProfitSummaryQueryKey = (
+  params?: GetJobsProfitSummaryParams,
+) => {
+  return [`/api/jobs/profit-summary`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetJobsProfitSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getJobsProfitSummary>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetJobsProfitSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobsProfitSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetJobsProfitSummaryQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getJobsProfitSummary>>
+  > = ({ signal }) =>
+    getJobsProfitSummary(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getJobsProfitSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetJobsProfitSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getJobsProfitSummary>>
+>;
+export type GetJobsProfitSummaryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get canonical profit calculations for multiple jobs
+ */
+
+export function useGetJobsProfitSummary<
+  TData = Awaited<ReturnType<typeof getJobsProfitSummary>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetJobsProfitSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobsProfitSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetJobsProfitSummaryQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get paginated completed-home summaries for the Trim-Out Catalog

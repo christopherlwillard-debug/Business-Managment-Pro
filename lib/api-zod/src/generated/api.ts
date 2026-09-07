@@ -410,6 +410,223 @@ export const CreateJobBody = zod.object({
 });
 
 /**
+ * @summary Get the canonical profit calculation for one job
+ */
+export const GetJobProfitParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetJobProfitResponse = zod.object({
+  grossInvoiced: zod.number(),
+  collected: zod.number(),
+  otherIncomeRevenue: zod.number(),
+  jobExpenses: zod.number(),
+  directExpenseTotal: zod.number(),
+  allocatedExpenseTotal: zod.number(),
+  mileageReimbursement: zod.union([
+    zod.number(),
+    zod.object({
+      id: zod.number(),
+      amount: zod.number(),
+      estimatedAmount: zod.number().nullable(),
+      recipientType: zod.enum(["owner", "subcontractor", "other"]),
+      recipientName: zod.string(),
+      recipientSubcontractorId: zod.number().nullish(),
+      status: zod.enum(["owed", "paid"]),
+      paidAt: zod.string().nullish(),
+      notes: zod.string().nullish(),
+    }),
+    zod.null(),
+  ]),
+  estimatedFuelCost: zod.number().nullable(),
+  actualFuelCost: zod.number().nullable(),
+  auditTrailTotal: zod.number(),
+  tripTravelTotal: zod.number(),
+  tripMealsDeductible: zod.number(),
+  ownerDrawTaken: zod.number(),
+  payrollLinkedExcluded: zod.number(),
+  legacySubcontractorExpense: zod.number(),
+  subLaborCost: zod.number(),
+  allocPaid: zod.number(),
+  totalSubHours: zod.number(),
+  netProfit: zod.number(),
+  includedCostTotal: zod.number(),
+  profitBreakdown: zod.object({
+    revenue: zod.object({
+      invoices: zod.number(),
+      otherIncome: zod.number(),
+      total: zod.number(),
+    }),
+    includedCosts: zod.object({
+      directExpenses: zod.number(),
+      allocatedExpenses: zod.number(),
+      subLabor: zod.number(),
+      splitPayouts: zod.number(),
+      mileageReimbursement: zod.number(),
+      estimatedFuel: zod.number(),
+      total: zod.number(),
+    }),
+    excludedFromProfit: zod.object({
+      ownerWithdrawals: zod.number(),
+      auditTrail: zod.number(),
+      payrollLinkedExpenses: zod.number(),
+      legacySubcontractorExpense: zod.number(),
+    }),
+  }),
+  splitPool: zod.number(),
+  manHours: zod.number().nullish(),
+  includeMileageInJobCosts: zod.boolean().optional(),
+  mileageReimbursementApplied: zod.boolean().optional(),
+  fuelStatus: zod
+    .enum([
+      "ok",
+      "missing_address",
+      "geocoding_failed",
+      "workdays_missing",
+      "error",
+    ])
+    .optional(),
+  fuelReconciliation: zod
+    .enum([
+      "estimate_only",
+      "reimbursement_matches_estimate",
+      "reimbursement_differs_from_estimate",
+      "reimbursement_without_estimate",
+      "actual_fuel_expense",
+      "actual_fuel_expense_replaces_reimbursement",
+      "excluded_from_job_costs",
+      "estimate_unavailable",
+    ])
+    .optional(),
+  operationalProfit: zod.number().nullish(),
+  fuelBreakdown: zod
+    .object({
+      onewayMiles: zod.number(),
+      roundTripMiles: zod.number(),
+      daysOnJob: zod.number(),
+      totalMiles: zod.number(),
+      fuelGallons: zod.number(),
+      mpg: zod.number(),
+      fuelPrice: zod.number(),
+      routeProvider: zod.enum(["osrm", "haversine"]).optional(),
+    })
+    .nullish(),
+  growthReservePct: zod.number().optional(),
+  ownerSplitPct: zod.number().optional(),
+  taxReservePct: zod.number().optional(),
+});
+
+/**
+ * @summary Get canonical profit calculations for multiple jobs
+ */
+export const GetJobsProfitSummaryQueryParams = zod.object({
+  jobIds: zod.coerce.string().describe("Comma-separated job IDs"),
+});
+
+export const GetJobsProfitSummaryResponse = zod.record(
+  zod.string(),
+  zod.object({
+    grossInvoiced: zod.number(),
+    collected: zod.number(),
+    otherIncomeRevenue: zod.number(),
+    jobExpenses: zod.number(),
+    directExpenseTotal: zod.number(),
+    allocatedExpenseTotal: zod.number(),
+    mileageReimbursement: zod.union([
+      zod.number(),
+      zod.object({
+        id: zod.number(),
+        amount: zod.number(),
+        estimatedAmount: zod.number().nullable(),
+        recipientType: zod.enum(["owner", "subcontractor", "other"]),
+        recipientName: zod.string(),
+        recipientSubcontractorId: zod.number().nullish(),
+        status: zod.enum(["owed", "paid"]),
+        paidAt: zod.string().nullish(),
+        notes: zod.string().nullish(),
+      }),
+      zod.null(),
+    ]),
+    estimatedFuelCost: zod.number().nullable(),
+    actualFuelCost: zod.number().nullable(),
+    auditTrailTotal: zod.number(),
+    tripTravelTotal: zod.number(),
+    tripMealsDeductible: zod.number(),
+    ownerDrawTaken: zod.number(),
+    payrollLinkedExcluded: zod.number(),
+    legacySubcontractorExpense: zod.number(),
+    subLaborCost: zod.number(),
+    allocPaid: zod.number(),
+    totalSubHours: zod.number(),
+    netProfit: zod.number(),
+    includedCostTotal: zod.number(),
+    profitBreakdown: zod.object({
+      revenue: zod.object({
+        invoices: zod.number(),
+        otherIncome: zod.number(),
+        total: zod.number(),
+      }),
+      includedCosts: zod.object({
+        directExpenses: zod.number(),
+        allocatedExpenses: zod.number(),
+        subLabor: zod.number(),
+        splitPayouts: zod.number(),
+        mileageReimbursement: zod.number(),
+        estimatedFuel: zod.number(),
+        total: zod.number(),
+      }),
+      excludedFromProfit: zod.object({
+        ownerWithdrawals: zod.number(),
+        auditTrail: zod.number(),
+        payrollLinkedExpenses: zod.number(),
+        legacySubcontractorExpense: zod.number(),
+      }),
+    }),
+    splitPool: zod.number(),
+    manHours: zod.number().nullish(),
+    includeMileageInJobCosts: zod.boolean().optional(),
+    mileageReimbursementApplied: zod.boolean().optional(),
+    fuelStatus: zod
+      .enum([
+        "ok",
+        "missing_address",
+        "geocoding_failed",
+        "workdays_missing",
+        "error",
+      ])
+      .optional(),
+    fuelReconciliation: zod
+      .enum([
+        "estimate_only",
+        "reimbursement_matches_estimate",
+        "reimbursement_differs_from_estimate",
+        "reimbursement_without_estimate",
+        "actual_fuel_expense",
+        "actual_fuel_expense_replaces_reimbursement",
+        "excluded_from_job_costs",
+        "estimate_unavailable",
+      ])
+      .optional(),
+    operationalProfit: zod.number().nullish(),
+    fuelBreakdown: zod
+      .object({
+        onewayMiles: zod.number(),
+        roundTripMiles: zod.number(),
+        daysOnJob: zod.number(),
+        totalMiles: zod.number(),
+        fuelGallons: zod.number(),
+        mpg: zod.number(),
+        fuelPrice: zod.number(),
+        routeProvider: zod.enum(["osrm", "haversine"]).optional(),
+      })
+      .nullish(),
+    growthReservePct: zod.number().optional(),
+    ownerSplitPct: zod.number().optional(),
+    taxReservePct: zod.number().optional(),
+  }),
+);
+
+/**
  * @summary Get paginated completed-home summaries for the Trim-Out Catalog
  */
 export const getTrimOutCatalogQueryPageDefault = 1;

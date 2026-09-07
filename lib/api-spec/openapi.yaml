@@ -297,6 +297,47 @@ paths:
               schema:
                 $ref: "#/components/schemas/Job"
 
+  /jobs/{id}/profit:
+    get:
+      operationId: getJobProfit
+      tags: [jobs]
+      summary: Get the canonical profit calculation for one job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Canonical job profit response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobProfitResponse"
+
+  /jobs/profit-summary:
+    get:
+      operationId: getJobsProfitSummary
+      tags: [jobs]
+      summary: Get canonical profit calculations for multiple jobs
+      parameters:
+        - name: jobIds
+          in: query
+          required: true
+          description: Comma-separated job IDs
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Canonical profit response keyed by job ID
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: "#/components/schemas/JobProfitResponse"
+
   /jobs/trim-out-catalog:
     get:
       operationId: getTrimOutCatalog
@@ -2028,6 +2069,149 @@ components:
         createdAt:
           type: string
       required: [id, title, status, createdAt]
+
+    JobProfitMileageReimbursement:
+      type: object
+      properties:
+        id: { type: integer }
+        amount: { type: number }
+        estimatedAmount: { type: number, nullable: true }
+        recipientType:
+          type: string
+          enum: [owner, subcontractor, other]
+        recipientName: { type: string }
+        recipientSubcontractorId: { type: integer, nullable: true }
+        status:
+          type: string
+          enum: [owed, paid]
+        paidAt: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+      required: [id, amount, estimatedAmount, recipientType, recipientName, status]
+
+    JobProfitFuelBreakdown:
+      type: object
+      properties:
+        onewayMiles: { type: number }
+        roundTripMiles: { type: number }
+        daysOnJob: { type: number }
+        totalMiles: { type: number }
+        fuelGallons: { type: number }
+        mpg: { type: number }
+        fuelPrice: { type: number }
+        routeProvider:
+          type: string
+          enum: [osrm, haversine]
+      required: [onewayMiles, roundTripMiles, daysOnJob, totalMiles, fuelGallons, mpg, fuelPrice]
+
+    JobProfitBreakdown:
+      type: object
+      properties:
+        revenue:
+          type: object
+          properties:
+            invoices: { type: number }
+            otherIncome: { type: number }
+            total: { type: number }
+          required: [invoices, otherIncome, total]
+        includedCosts:
+          type: object
+          properties:
+            directExpenses: { type: number }
+            allocatedExpenses: { type: number }
+            subLabor: { type: number }
+            splitPayouts: { type: number }
+            mileageReimbursement: { type: number }
+            estimatedFuel: { type: number }
+            total: { type: number }
+          required: [directExpenses, allocatedExpenses, subLabor, splitPayouts, mileageReimbursement, estimatedFuel, total]
+        excludedFromProfit:
+          type: object
+          properties:
+            ownerWithdrawals: { type: number }
+            auditTrail: { type: number }
+            payrollLinkedExpenses: { type: number }
+            legacySubcontractorExpense: { type: number }
+          required: [ownerWithdrawals, auditTrail, payrollLinkedExpenses, legacySubcontractorExpense]
+      required: [revenue, includedCosts, excludedFromProfit]
+
+    JobProfitResponse:
+      type: object
+      properties:
+        grossInvoiced: { type: number }
+        collected: { type: number }
+        otherIncomeRevenue: { type: number }
+        jobExpenses: { type: number }
+        directExpenseTotal: { type: number }
+        allocatedExpenseTotal: { type: number }
+        mileageReimbursement:
+          oneOf:
+            - type: number
+            - $ref: "#/components/schemas/JobProfitMileageReimbursement"
+            - type: "null"
+        estimatedFuelCost: { type: number, nullable: true }
+        actualFuelCost: { type: number, nullable: true }
+        auditTrailTotal: { type: number }
+        tripTravelTotal: { type: number }
+        tripMealsDeductible: { type: number }
+        ownerDrawTaken: { type: number }
+        payrollLinkedExcluded: { type: number }
+        legacySubcontractorExpense: { type: number }
+        subLaborCost: { type: number }
+        allocPaid: { type: number }
+        totalSubHours: { type: number }
+        netProfit: { type: number }
+        includedCostTotal: { type: number }
+        profitBreakdown:
+          $ref: "#/components/schemas/JobProfitBreakdown"
+        splitPool: { type: number }
+        manHours: { type: number, nullable: true }
+        includeMileageInJobCosts: { type: boolean }
+        mileageReimbursementApplied: { type: boolean }
+        fuelStatus:
+          type: string
+          enum: [ok, missing_address, geocoding_failed, workdays_missing, error]
+        fuelReconciliation:
+          type: string
+          enum:
+            - estimate_only
+            - reimbursement_matches_estimate
+            - reimbursement_differs_from_estimate
+            - reimbursement_without_estimate
+            - actual_fuel_expense
+            - actual_fuel_expense_replaces_reimbursement
+            - excluded_from_job_costs
+            - estimate_unavailable
+        operationalProfit: { type: number, nullable: true }
+        fuelBreakdown:
+          allOf:
+            - $ref: "#/components/schemas/JobProfitFuelBreakdown"
+          nullable: true
+        growthReservePct: { type: number }
+        ownerSplitPct: { type: number }
+        taxReservePct: { type: number }
+      required:
+        - grossInvoiced
+        - collected
+        - otherIncomeRevenue
+        - jobExpenses
+        - directExpenseTotal
+        - allocatedExpenseTotal
+        - mileageReimbursement
+        - estimatedFuelCost
+        - actualFuelCost
+        - auditTrailTotal
+        - tripTravelTotal
+        - tripMealsDeductible
+        - ownerDrawTaken
+        - payrollLinkedExcluded
+        - legacySubcontractorExpense
+        - subLaborCost
+        - allocPaid
+        - totalSubHours
+        - netProfit
+        - includedCostTotal
+        - profitBreakdown
+        - splitPool
 
     TrimOutCatalogModelSummary:
       type: object

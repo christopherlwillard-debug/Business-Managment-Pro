@@ -360,6 +360,17 @@ Created the four-document architecture governance system:
 - Profit & Loss, tax, reserve, Year-End, and payment-history reports remain on
   their existing cash-basis payment-date treatment.
 
+## 2026-09-07
+
+### Generated job-profit API contract
+
+- Added the individual and batch job-profit operations to the canonical
+  OpenAPI specification.
+- Generated Zod and React client types now own the shared job-profit response,
+  including the detail/batch mileage representation.
+- Removed the parallel hand-maintained profit type so frontend and API
+  consumers compile against the same generated contract.
+
 ## 2026-09-05
 
 ### Gmail invoice delivery verification recovery

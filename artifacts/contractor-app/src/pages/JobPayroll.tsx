@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCircle2, Pencil, Save, AlertCircle, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { JobProfitResponse } from "@workspace/api-zod";
+import type { JobProfitResponse } from "@workspace/api-client-react";
 
 import { computeSubOwed } from "@/lib/allocationUtils";
 import { calculateJobFinancialWaterfall } from "@/lib/jobFinancials";
@@ -66,8 +66,6 @@ type SubPaymentRow = {
   paymentReferenceDraft?: string | null;
   paymentHistory?: SubPayHistoryEntry[];
 };
-
-type JobProfit = JobProfitResponse;
 
 type Job = {
   id: number;
@@ -1123,7 +1121,7 @@ export default function JobPayroll() {
   const jobId = parseInt(id ?? "0");
 
   const [job,      setJob]      = useState<Job | null>(null);
-  const [profit,   setProfit]   = useState<JobProfit | null>(null);
+  const [profit,   setProfit]   = useState<JobProfitResponse | null>(null);
   const [profitError, setProfitError] = useState(false);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [subHours, setSubHours] = useState<SubHourEntry[]>([]);
@@ -1163,7 +1161,7 @@ export default function JobPayroll() {
     if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) return;
     if (pRes.status    === "fulfilled") setPayments(pRes.value as SubPaymentRow[]);
     if (profRes.status === "fulfilled" && profRes.value) {
-      setProfit(profRes.value as JobProfit);
+      setProfit(profRes.value as JobProfitResponse);
       setProfitError(false);
     } else {
       setProfit(null);
@@ -1199,7 +1197,7 @@ export default function JobPayroll() {
       if (jobRes.status       === "fulfilled" && jobRes.value)     setJob(jobRes.value as Job);
       if (pRes.status         === "fulfilled")                     setPayments(pRes.value as SubPaymentRow[]);
       if (profRes.status      === "fulfilled" && profRes.value) {
-        setProfit(profRes.value as JobProfit);
+        setProfit(profRes.value as JobProfitResponse);
         setProfitError(false);
       } else {
         setProfit(null);
