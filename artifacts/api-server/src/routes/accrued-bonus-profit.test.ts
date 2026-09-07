@@ -247,6 +247,43 @@ function pushSummarySelects(opts: {
   }] : []); // job address/workday rows
 }
 
+function pushBatchSummarySelects(opts: {
+  invoices?: { jobId: number; total: string; status: string }[];
+  otherIncome?: { jobId: number; amount: string }[];
+  expenses?: any[];
+  mileageReimbursements?: { jobId: number; amount: string }[];
+  hoursRows?: { jobId: number; total: string }[];
+  hoursCountRows?: { jobId: number; totalHours: string }[];
+  manHoursRows: { id: number; manHours: string | null; includeMileageInJobCosts?: boolean }[];
+  sprRows?: { jobId: number; compType: string; total: string }[];
+  accruedBonusRows?: { jobId: number; total: string }[];
+  fuelSettings?: { companyAddress?: string | null; companyCity?: string | null; companyState?: string | null };
+  fuelVehicle?: { avgMpg: number; fuelPricePerGallon: string };
+  fuelJobs?: {
+    id: number;
+    address: string;
+    city: string;
+    state: string;
+    includeMileageInJobCosts?: boolean;
+    workdayCount: number;
+  }[];
+}) {
+  h.selectQueue.push(opts.invoices ?? []);
+  h.selectQueue.push(opts.otherIncome ?? []);
+  h.selectQueue.push(opts.expenses ?? []);
+  h.selectQueue.push([]); // job-only allocations
+  h.selectQueue.push(opts.mileageReimbursements ?? []);
+  h.selectQueue.push(opts.hoursRows ?? []);
+  h.selectQueue.push(opts.hoursCountRows ?? []);
+  h.selectQueue.push(opts.manHoursRows);
+  h.selectQueue.push(opts.sprRows ?? []);
+  h.selectQueue.push(opts.accruedBonusRows ?? []);
+  // Fuel enrichment reads one shared settings row, vehicle row, and all job addresses.
+  h.selectQueue.push(opts.fuelSettings ? [opts.fuelSettings] : []);
+  h.selectQueue.push(opts.fuelVehicle ? [opts.fuelVehicle] : []);
+  h.selectQueue.push(opts.fuelJobs ?? []);
+}
+
 const SHARED_PROFIT_RESPONSE_FIELDS = [
   "grossInvoiced",
   "collected",
@@ -859,6 +896,87 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expect(profit.profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(600);
     expect(profit.splitPool).toBeCloseTo(942.4);
     expectSharedProfitCalculationFields(profit);
+  });
+
+  it("keeps payroll and cached fuel values isolated across multiple batch jobs", async () => {
+    const cachedRoute = vi.spyOn(RoutingEngine, "getCachedRoute").mockImplementation(({ destination }) => ({
+      miles: destination.includes("Oak") ? 10 : 25,
+      durationMinutes: destination.includes("Oak") ? 20 : 50,
+      routeStatus: "ok",
+      provider: "haversine",
+      cached: true,
+    }));
+
+    pushBatchSummarySelects({
+      invoices: [
+        { jobId: 501, total: "1000.00", status: "paid" },
+        { jobId: 502, total: "1800.00", status: "paid" },
+      ],
+      hoursRows: [
+        { jobId: 501, total: "120.00" },
+      ],
+      hoursCountRows: [
+        { jobId: 501, totalHours: "4.0" },
+      ],
+      manHoursRows: [
+        { id: 501, manHours: null },
+        { id: 502, manHours: null },
+      ],
+      sprRows: [
+        { jobId: 501, compType: "allocation", total: "150.00" },
+        { jobId: 502, compType: "fixed", total: "350.00" },
+        { jobId: 502, compType: "allocation", total: "75.00" },
+      ],
+      fuelSettings: {
+        companyAddress: "100 Main St",
+        companyCity: "Evansville",
+        companyState: "IN",
+      },
+      fuelVehicle: { avgMpg: 20, fuelPricePerGallon: "4.00" },
+      fuelJobs: [
+        {
+          id: 501,
+          address: "200 Oak St",
+          city: "Evansville",
+          state: "IN",
+          workdayCount: 2,
+        },
+        {
+          id: 502,
+          address: "300 Pine St",
+          city: "Evansville",
+          state: "IN",
+          workdayCount: 3,
+        },
+      ],
+    });
+
+    const res = await request(app).get("/jobs/profit-summary?jobIds=501,502");
+    cachedRoute.mockRestore();
+
+    expect(res.status).toBe(200);
+    const firstJob = res.body[501];
+    const secondJob = res.body[502];
+
+    expect(firstJob.allocPaid).toBeCloseTo(150);
+    expect(firstJob.subLaborCost).toBeCloseTo(120);
+    expect(firstJob.estimatedFuelCost).toBeCloseTo(8);
+    expect(firstJob.splitPool).toBeCloseTo(822.4);
+    expect(firstJob.netProfit).toBeCloseTo(722);
+
+    expect(secondJob.allocPaid).toBeCloseTo(75);
+    expect(secondJob.subLaborCost).toBeCloseTo(350);
+    expect(secondJob.estimatedFuelCost).toBeCloseTo(30);
+    expect(secondJob.splitPool).toBeCloseTo(1331.5);
+    expect(secondJob.netProfit).toBeCloseTo(1345);
+
+    expect(firstJob.allocPaid).not.toBeCloseTo(secondJob.allocPaid);
+    expect(firstJob.subLaborCost).not.toBeCloseTo(secondJob.subLaborCost);
+    expect(firstJob.estimatedFuelCost).not.toBeCloseTo(secondJob.estimatedFuelCost);
+    expect(firstJob.splitPool).not.toBeCloseTo(secondJob.splitPool);
+    expect(firstJob.netProfit).not.toBeCloseTo(secondJob.netProfit);
+    expectSharedProfitCalculationFields(firstJob);
+    expectSharedProfitCalculationFields(secondJob);
   });
 
   it("keeps the batch mileage reimbursement in its numeric compatibility form", async () => {
