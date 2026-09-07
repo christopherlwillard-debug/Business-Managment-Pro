@@ -82,6 +82,15 @@ Created the four-document architecture governance system:
 
 *Add new entries here as architectural changes are completed and verified.*
 
+## 2026-09-06
+
+### Unified alternate job-profit report paths
+
+- Closed Jobs CSV and Owner Pay Summary now load job-scoped source records through the same canonical `calculateJobProfit` input path used by individual and batch job-profit views.
+- Export revenue includes non-voided invoices and linked other income; canonical exclusions, allocations, mileage reimbursement, payroll-ledger payments, accrued bonuses, and cross-job labor isolation are preserved.
+- Owner-pay presentation applies allocation, growth-reserve, and tax-reserve rules only after canonical job profit is calculated; owner withdrawals remain sourced from `owner_capital_entries`.
+- Added regression coverage proving two jobs cannot share labor/cost inputs and that allocated/audit-only expense rows are handled once.
+
 ## 2026-08-20
 
 ### Task #1965 — Core business ownership enforcement

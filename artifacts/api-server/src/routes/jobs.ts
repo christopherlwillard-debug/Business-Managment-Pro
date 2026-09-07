@@ -14,6 +14,8 @@ import { z } from "zod/v4";
 import { requestedBusiness, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
 import { calculateJobProfit } from "../lib/job-profit.js";
+import { loadJobProfitByJob } from "../lib/job-profit-loader.js";
+import { buildClosedJobExportRow } from "../lib/job-profit-reports.js";
 import { getRequestUser } from "./guards";
 
 const router = Router();
@@ -2252,6 +2254,7 @@ router.get("/closed/export", async (req, res) => {
 
     const jobs = await db.select({
       id: jobsTable.id,
+      jobNumber: jobsTable.jobNumber,
       title: jobsTable.title,
       clientName: clientsTable.name,
       address: jobsTable.address,
@@ -2274,76 +2277,24 @@ router.get("/closed/export", async (req, res) => {
     }
 
     const jobIds = jobs.map(j => j.id);
-
-    const [invoiceRows, expenseRows] = await Promise.all([
-      db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
-        .from(invoicesTable)
-        .where(inArray(invoicesTable.jobId, jobIds)),
-      db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category })
-        .from(expensesTable)
-        .where(and(inArray(expensesTable.jobId, jobIds), isNull(expensesTable.jobSubHoursId))),
-    ]);
-
-    // Best invoice status: paid > overdue > sent > draft
-    const STATUS_RANK: Record<string, number> = { paid: 4, overdue: 3, sent: 2, draft: 1 };
-    const invoiceByJob = new Map<number, { status: string; revenue: number }>();
-    for (const inv of invoiceRows) {
-      if (inv.jobId == null) continue;
-      const existing = invoiceByJob.get(inv.jobId) ?? { status: "draft", revenue: 0 };
-      if ((STATUS_RANK[inv.status] ?? 0) > (STATUS_RANK[existing.status] ?? 0)) existing.status = inv.status;
-      if (inv.status === "paid") existing.revenue += parseFloat(inv.total ?? "0");
-      invoiceByJob.set(inv.jobId, existing);
-    }
-
-    const expensesByJob = new Map<number, { materials: number; labor: number; otherOpex: number }>();
-    for (const exp of expenseRows) {
-      if (exp.jobId == null) continue;
-      const existing = expensesByJob.get(exp.jobId) ?? { materials: 0, labor: 0, otherOpex: 0 };
-      const amt = parseFloat(exp.amount ?? "0");
-      const cat = (exp.category ?? "").toLowerCase();
-      // mileage and owner draw are tracked separately / excluded from operational net profit
-      if (cat === "mileage" || cat === "owner draw") { expensesByJob.set(exp.jobId, existing); continue; }
-      if (cat === "materials") existing.materials += amt;
-      else if (cat === "subcontractor" || cat === "labor") existing.labor += amt;
-      else existing.otherOpex += amt;
-      expensesByJob.set(exp.jobId, existing);
-    }
+    const profitByJob = await loadJobProfitByJob(jobIds);
 
     const rows = jobs.map(job => {
-      const inv = invoiceByJob.get(job.id) ?? { status: "draft", revenue: 0 };
-      const exp = expensesByJob.get(job.id) ?? { materials: 0, labor: 0, otherOpex: 0 };
-
-      const dateOpened = job.startDate ?? "";
-      const dateClosed = job.closedAt ?? job.endDate ?? "";
-      let daysOpen = 0;
-      if (dateOpened && dateClosed) {
-        daysOpen = Math.max(0, Math.round(
-          (new Date(dateClosed).getTime() - new Date(dateOpened).getTime()) / (1000 * 60 * 60 * 24)
-        ));
+      const loaded = profitByJob.get(job.id);
+      if (!loaded) {
+        throw new Error(`Missing canonical profit calculation for closed job ${job.id}`);
       }
-
-      const revenue = inv.revenue;
-      const materials = exp.materials;
-      const labor = exp.labor;
-      const netProfit = revenue - materials - labor - exp.otherOpex;
-      const location = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
-
-      return {
-        dateOpened,
-        dateClosed,
-        daysOpen,
-        jobNumber: (job as any).jobNumber ?? job.id,
-        businessLine: job.businessLine ?? "",
+      return buildClosedJobExportRow({
+        dateOpened: job.startDate,
+        dateClosed: job.closedAt ?? job.endDate,
+        jobNumber: job.jobNumber ?? job.id,
+        businessLine: job.businessLine,
         jobName: job.title,
         customer: job.clientName ?? "",
-        location,
-        revenue,
-        materials,
-        labor,
-        netProfit,
-        invoiceStatus: inv.status,
+        location: [job.locationName, job.city, job.state].filter(Boolean).join(", "),
+        invoiceStatus: loaded.invoiceStatus,
         subStatus: job.subPaid ? "Settled" : "Outstanding",
-      };
+      }, loaded);
     });
 
     const totals = rows.reduce(

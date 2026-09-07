@@ -8,6 +8,8 @@ import { sectionGuard, ownerGuard } from "./guards";
 import { summarizeMileageRecords } from "../lib/irs-rates.js";
 import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
+import { calculateOwnerPayFromJobProfit } from "../lib/job-profit-reports.js";
+import { loadJobProfitByJob } from "../lib/job-profit-loader.js";
 import {
   filterCashReceipts,
   filterDashboardRevenueInvoices,
@@ -2468,8 +2470,6 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
 // ─── My Pay Summary: running balance of what the business owes the owner ─────
 router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
   try {
-    const GROWTH_PCT = 0.05;
-    const TAX_PCT    = 0.25;
     const rawBusinessId = String(req.query.businessId ?? "").trim();
     const businessId = rawBusinessId ? Number.parseInt(rawBusinessId, 10) : null;
     if (rawBusinessId && (!Number.isFinite(businessId) || businessId == null)) {
@@ -2511,34 +2511,13 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
       .orderBy(desc(jobsTable.jobNumber), desc(jobsTable.id));
 
     const jobIds = allJobs.map(j => j.id);
-
-    // Revenue per job — ALL invoices (any status) so every job shows a number
-    const invoiceRows = jobIds.length > 0 ? await db.select({
-      jobId: invoicesTable.jobId,
-      total: invoicesTable.total,
-    }).from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)) : [];
-
-    const revenueByJob = new Map<number, number>();
-    for (const row of invoiceRows) {
-      if (!row.jobId) continue;
-      revenueByJob.set(row.jobId, (revenueByJob.get(row.jobId) ?? 0) + parseFloat(row.total ?? "0"));
-    }
-
-    // Hourly sub labor cost per job
-    const hoursCostRows = jobIds.length > 0 ? await db.select({
-      jobId: jobSubHoursTable.jobId,
-      cost: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours} * COALESCE(${jobSubHoursTable.rateSnapshot}, 0)), 0)`,
-    }).from(jobSubHoursTable).where(inArray(jobSubHoursTable.jobId, jobIds)).groupBy(jobSubHoursTable.jobId) : [];
-    const hoursCostByJob = new Map(hoursCostRows.map(r => [r.jobId, parseFloat(r.cost ?? "0")]));
-
-    // Fixed sub costs per job
-    const fixedSubRows = jobIds.length > 0 ? await db.select({
-      jobId: jobSubcontractorsTable.jobId,
-      cost: sql<string>`COALESCE(SUM(COALESCE(${jobSubcontractorsTable.fixedAmount}, 0)), 0)`,
-    }).from(jobSubcontractorsTable)
-      .where(and(inArray(jobSubcontractorsTable.jobId, jobIds), eq(jobSubcontractorsTable.compensationType, "fixed")))
-      .groupBy(jobSubcontractorsTable.jobId) : [];
-    const fixedCostByJob = new Map(fixedSubRows.map(r => [r.jobId, parseFloat(r.cost ?? "0")]));
+    const [profitByJob, financialSettings] = await Promise.all([
+      loadJobProfitByJob(jobIds),
+      db.select({
+        growthReservePct: settingsTable.growthReservePct,
+        taxReservePct: settingsTable.taxReservePct,
+      }).from(settingsTable).limit(1),
+    ]);
 
     // Allocation sub percentages per job
     const allocRows = jobIds.length > 0 ? await db.select({
@@ -2548,32 +2527,38 @@ router.get("/owner-pay-summary", sectionGuard("invoices"), async (req, res) => {
       .where(and(inArray(jobSubcontractorsTable.jobId, jobIds), eq(jobSubcontractorsTable.compensationType, "allocation")))
       .groupBy(jobSubcontractorsTable.jobId) : [];
     const allocPctByJob = new Map(allocRows.map(r => [r.jobId, parseFloat(r.totalAllocPct ?? "0")]));
+    const growthReservePct = financialSettings[0]?.growthReservePct != null
+      ? parseFloat(String(financialSettings[0].growthReservePct))
+      : 5;
+    const taxReservePct = financialSettings[0]?.taxReservePct != null
+      ? parseFloat(String(financialSettings[0].taxReservePct))
+      : 25;
 
-    // Per-job take-home — same formula as Pay Breakdown panel
+    // Per-job take-home starts from the canonical job-profit calculation.
+    // Owner allocation and tax reserve remain a separate presentation layer.
     let totalEarned = 0;
     const jobs = allJobs.map(job => {
-      const revenue       = revenueByJob.get(job.id) ?? 0;
-      const hourlyCost    = hoursCostByJob.get(job.id) ?? 0;
-      const fixedCost     = fixedCostByJob.get(job.id) ?? 0;
-      const afterWorkers  = Math.max(0, revenue - hourlyCost - fixedCost);
-      const growthReserve = afterWorkers * GROWTH_PCT;
-      const toSplit       = afterWorkers - growthReserve;
+      const loaded = profitByJob.get(job.id);
+      if (!loaded) throw new Error(`Missing canonical profit calculation for job ${job.id}`);
       const totalAllocPct = allocPctByJob.get(job.id) ?? 0;
-      const ownerPct      = totalAllocPct > 0 ? Math.max(0, 100 - totalAllocPct) : 100;
-      const ownerShare    = toSplit * (ownerPct / 100);
-      const takeHome      = ownerShare * (1 - TAX_PCT);
+      const pay = calculateOwnerPayFromJobProfit(
+        loaded,
+        totalAllocPct,
+        growthReservePct,
+        taxReservePct,
+      );
       // All jobs in the resolved business scope count automatically. The old
       // owner_pay_included flag powered a confusing UI toggle and must not hide
       // earned job pay from the summary.
-      totalEarned += takeHome;
+      totalEarned += pay.takeHome;
       return {
         jobId:            job.id,
         jobNumber:        job.jobNumber,
         title:            job.title,
         status:           job.status,
         ownerPayIncluded: job.ownerPayIncluded,
-        revenue,
-        takeHome,
+        revenue:         pay.revenue,
+        takeHome:        pay.takeHome,
       };
     });
 
