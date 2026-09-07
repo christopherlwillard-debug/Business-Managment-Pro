@@ -100,6 +100,12 @@ Created the four-document architecture governance system:
 - Batch profit aggregation now includes payroll advance amounts consistently with per-job and export calculations.
 - Added regression coverage for authoritative split-pool usage, canonical aggregation, and stale job-response rejection during navigation.
 
+### Shared job-profit response contract
+
+- Per-job and batch profit responses now derive from one shared contract built from the complete `calculateJobProfit` result.
+- Batch fuel enrichment rebuilds the complete response instead of manually copying selected fields, so payroll-ledger additions remain present in both paths.
+- Added response-shape regression coverage for payroll advances and all current calculation fields.
+
 ## 2026-08-20
 
 ### Task #1965 — Core business ownership enforcement

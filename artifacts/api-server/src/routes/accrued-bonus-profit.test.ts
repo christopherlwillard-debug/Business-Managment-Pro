@@ -18,6 +18,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
+import { calculateJobProfit } from "../lib/job-profit.js";
 
 // ── Hoisted mutable state ─────────────────────────────────────────────────────
 const h = vi.hoisted(() => ({
@@ -235,6 +236,13 @@ function pushSummarySelects(opts: {
   h.selectQueue.push([]); // [11] fuel logs
   h.selectQueue.push([]); // [12] fuel expenses
   h.selectQueue.push([]); // [13] job mileage
+}
+
+function expectSharedProfitCalculationFields(body: unknown) {
+  expect(body).toBeTruthy();
+  for (const field of Object.keys(calculateJobProfit({}))) {
+    expect(body).toHaveProperty(field);
+  }
 }
 
 describe("job mileage reimbursement ownership and validation", () => {
@@ -696,6 +704,35 @@ describe("GET /jobs/:id/profit — no double-count after a payment is recorded",
 });
 
 describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () => {
+
+  it("keeps payroll advances in the shared calculation fields on both response paths", async () => {
+    pushProfitSelects({
+      invoices: [{ total: "1000.00", status: "paid" }],
+      sprRows: [{ compType: "fixed", total: "600.00" }], // $500 pay + $100 advance
+    });
+
+    const perJobRes = await request(app).get("/jobs/1/profit");
+
+    expect(perJobRes.status).toBe(200);
+    expect(perJobRes.body.subLaborCost).toBeCloseTo(600);
+    expect(perJobRes.body.includedCostTotal).toBeCloseTo(600);
+    expect(perJobRes.body.profitBreakdown.includedCosts.subLabor).toBeCloseTo(600);
+    expectSharedProfitCalculationFields(perJobRes.body);
+
+    pushSummarySelects({
+      jobId: 5,
+      invoices: [{ jobId: 5, total: "1000.00", status: "paid" }],
+      sprRows: [{ jobId: 5, compType: "fixed", total: "600.00" }], // $500 pay + $100 advance
+    });
+
+    const batchRes = await request(app).get("/jobs/profit-summary?jobIds=5");
+
+    expect(batchRes.status).toBe(200);
+    expect(batchRes.body[5].subLaborCost).toBeCloseTo(600);
+    expect(batchRes.body[5].includedCostTotal).toBeCloseTo(600);
+    expect(batchRes.body[5].profitBreakdown.includedCosts.subLabor).toBeCloseTo(600);
+    expectSharedProfitCalculationFields(batchRes.body[5]);
+  });
 
   it("includes accrued_bonus per job in the batch result", async () => {
     pushSummarySelects({

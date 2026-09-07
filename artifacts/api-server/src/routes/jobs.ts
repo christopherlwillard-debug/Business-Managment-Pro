@@ -13,7 +13,7 @@ import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/pr
 import { z } from "zod/v4";
 import { requestedBusiness, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
-import { calculateJobProfit } from "../lib/job-profit.js";
+import { buildJobProfitResponse, calculateJobProfit, type JobProfitResponse } from "../lib/job-profit.js";
 import { loadJobProfitByJob } from "../lib/job-profit-loader.js";
 import { buildClosedJobExportRow } from "../lib/job-profit-reports.js";
 import { getRequestUser } from "./guards";
@@ -985,11 +985,7 @@ router.get("/:id/profit", async (req, res) => {
         : 5,
     }).splitPool;
 
-    res.json({
-      grossInvoiced, collected, otherIncomeRevenue, jobExpenses, auditTrailTotal, tripTravelTotal, tripMealsDeductible,
-      subLaborCost, allocPaid, totalSubHours,
-      netProfit, ownerDrawTaken,
-      profitBreakdown: profit.profitBreakdown,
+    res.json(buildJobProfitResponse(profit, {
       splitPool: allocationSplitPool,
       mileageReimbursement: mileageReimbursement ? {
         ...mileageReimbursement,
@@ -1007,7 +1003,7 @@ router.get("/:id/profit", async (req, res) => {
       growthReservePct: financialSettings?.growthReservePct != null ? parseFloat(String(financialSettings.growthReservePct)) : 5,
       ownerSplitPct: financialSettings?.ownerSplitPct != null ? parseFloat(String(financialSettings.ownerSplitPct)) : 50,
       taxReservePct: financialSettings?.taxReservePct != null ? parseFloat(String(financialSettings.taxReservePct)) : 25,
-    });
+    }));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch job profit" });
@@ -1223,22 +1219,7 @@ router.get("/profit-summary", async (req, res) => {
         .filter(e => e.category === "Fuel/Travel" && e.countsTowardJobProfit !== false && e.jobId != null)
         .map(e => e.jobId as number)
     );
-    type SummaryRow = {
-      grossInvoiced: number;
-      collected: number;
-      otherIncomeRevenue: number;
-      jobExpenses: number;
-      subLaborCost: number;
-      allocPaid: number;
-      totalSubHours: number;
-      manHours: number | null;
-      netProfit: number;
-      splitPool: number;
-      estimatedFuelCost?: number | null;
-      includeMileageInJobCosts: boolean;
-      profitBreakdown: ReturnType<typeof calculateJobProfit>["profitBreakdown"];
-    };
-    const result: Record<number, SummaryRow> = {};
+    const result: Record<number, JobProfitResponse> = {};
     for (const id of jobIds) {
       const calculation = calculateJobProfit({
         invoices: invRows.filter(row => row.jobId === id),
@@ -1257,13 +1238,11 @@ router.get("/profit-summary", async (req, res) => {
         accruedBonus: accruedBonusMap.get(id) ?? 0,
         allocPaid: sprAllocMap.get(id) ?? 0,
       });
-      result[id] = {
-        ...calculation,
-        totalSubHours: hoursCountMap.get(id) ?? 0,
+      result[id] = buildJobProfitResponse(calculation, {
         manHours: manHoursMap.get(id) ?? null,
         splitPool: allocationSplitPools.get(id)?.splitPool ?? 0,
         includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true,
-      };
+      });
     }
 
     // ── Estimated fuel cost from cache (informational only — never affects accounting) ──
@@ -1325,8 +1304,6 @@ router.get("/profit-summary", async (req, res) => {
             daysOnJob,
             vehicleProfile: { avgMpg: mpg, fuelPricePerGallon: fuelPrice },
           });
-           const row = result[jobRow.id];
-           if (!row) continue;
            const calculation = calculateJobProfit({
              invoices: invRows.filter(item => item.jobId === jobRow.id),
              otherIncome: otherIncomeRows.filter(item => item.jobId === jobRow.id),
@@ -1345,15 +1322,14 @@ router.get("/profit-summary", async (req, res) => {
              accruedBonus: accruedBonusMap.get(jobRow.id) ?? 0,
              allocPaid: sprAllocMap.get(jobRow.id) ?? 0,
            });
-           row.grossInvoiced = calculation.grossInvoiced;
-           row.collected = calculation.collected;
-           row.otherIncomeRevenue = calculation.otherIncomeRevenue;
-           row.jobExpenses = calculation.jobExpenses;
-           row.subLaborCost = calculation.subLaborCost;
-           row.allocPaid = calculation.allocPaid;
-           row.netProfit = calculation.netProfit;
-           row.profitBreakdown = calculation.profitBreakdown;
-           row.estimatedFuelCost = vehicleCost.fuelCost;
+            const existing = result[jobRow.id];
+            if (!existing) continue;
+            result[jobRow.id] = buildJobProfitResponse(calculation, {
+              manHours: existing.manHours,
+              splitPool: existing.splitPool,
+              includeMileageInJobCosts: jobRow.includeMileageInJobCosts !== false,
+              estimatedFuelCost: vehicleCost.fuelCost,
+            });
         }
       }
     } catch (fuelErr) {

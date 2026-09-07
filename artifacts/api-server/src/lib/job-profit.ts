@@ -61,6 +61,86 @@ export type JobProfitCalculation = {
   };
 };
 
+export type JobProfitMileageReimbursement = {
+  id: number;
+  amount: number;
+  estimatedAmount: number | null;
+  [key: string]: unknown;
+};
+
+/**
+ * Shared wire contract for the per-job and batch profit endpoints.
+ *
+ * The calculation fields are intentionally required here. Both routes must
+ * build their response from the complete calculation instead of maintaining
+ * separate lists of payroll and cost fields.
+ */
+export type JobProfitResponse = Omit<
+  JobProfitCalculation,
+  "mileageReimbursement" | "estimatedFuelCost" | "actualFuelCost"
+> & {
+  mileageReimbursement: number | JobProfitMileageReimbursement | null;
+  estimatedFuelCost: number | null;
+  actualFuelCost: number | null;
+  splitPool: number;
+  manHours?: number | null;
+  includeMileageInJobCosts?: boolean;
+  mileageReimbursementApplied?: boolean;
+  fuelStatus?: "ok" | "missing_address" | "geocoding_failed" | "workdays_missing" | "error";
+  fuelReconciliation?: string;
+  operationalProfit?: number | null;
+  fuelBreakdown?: Record<string, unknown> | null;
+  growthReservePct?: number;
+  ownerSplitPct?: number;
+  taxReservePct?: number;
+};
+
+export type JobProfitResponseExtras = Pick<JobProfitResponse, "splitPool"> & Partial<
+  Pick<
+    JobProfitResponse,
+    | "mileageReimbursement"
+    | "estimatedFuelCost"
+    | "actualFuelCost"
+    | "manHours"
+    | "includeMileageInJobCosts"
+    | "mileageReimbursementApplied"
+    | "fuelStatus"
+    | "fuelReconciliation"
+    | "operationalProfit"
+    | "fuelBreakdown"
+    | "growthReservePct"
+    | "ownerSplitPct"
+    | "taxReservePct"
+  >
+>;
+
+/**
+ * Builds the shared wire response without allowing a route to omit newly
+ * added calculation fields. Route-specific presentation fields can override
+ * the internal numeric representations where the existing API requires it
+ * (for example, the detailed mileage reimbursement object on the individual
+ * endpoint).
+ */
+export function buildJobProfitResponse(
+  calculation: JobProfitCalculation,
+  extras: JobProfitResponseExtras,
+): JobProfitResponse {
+  const {
+    mileageReimbursement,
+    estimatedFuelCost,
+    actualFuelCost,
+    ...calculationFields
+  } = calculation;
+
+  return {
+    ...calculationFields,
+    mileageReimbursement,
+    estimatedFuelCost,
+    actualFuelCost,
+    ...extras,
+  };
+}
+
 type InvoiceRow = {
   total: string | number | null;
   status?: string | null;
