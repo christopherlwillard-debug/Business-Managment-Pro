@@ -898,6 +898,55 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expectSharedProfitCalculationFields(profit);
   });
 
+  it("keeps fixed labor and allocation payouts separate after cached fuel re-projects the batch response", async () => {
+    const cachedRoute = vi.spyOn(RoutingEngine, "getCachedRoute").mockReturnValue({
+      miles: 10,
+      durationMinutes: 20,
+      routeStatus: "ok",
+      provider: "haversine",
+      cached: true,
+    });
+
+    pushSummarySelects({
+      jobId: 5,
+      invoices: [{ jobId: 5, total: "1000.00", status: "paid" }],
+      // Both compensation types belong to this job and must remain distinct:
+      // fixed payroll is labor cost; allocation payroll is a split payout.
+      sprRows: [
+        { jobId: 5, compType: "fixed", total: "400.00" },
+        { jobId: 5, compType: "allocation", total: "250.00" },
+      ],
+      fuelSettings: {
+        companyAddress: "100 Main St",
+        companyCity: "Evansville",
+        companyState: "IN",
+      },
+      fuelVehicle: { avgMpg: 20, fuelPricePerGallon: "4.00" },
+      fuelJob: {
+        address: "200 Oak St",
+        city: "Evansville",
+        state: "IN",
+        workdayCount: 2,
+      },
+    });
+
+    const res = await request(app).get("/jobs/profit-summary?jobIds=5");
+    cachedRoute.mockRestore();
+
+    expect(res.status).toBe(200);
+    const profit = res.body[5];
+    expect(profit.subLaborCost).toBeCloseTo(400);
+    expect(profit.allocPaid).toBeCloseTo(250);
+    expect(profit.jobExpenses).toBeCloseTo(8);
+    expect(profit.estimatedFuelCost).toBeCloseTo(8);
+    expect(profit.includedCostTotal).toBeCloseTo(658);
+    expect(profit.netProfit).toBeCloseTo(342);
+    expect(profit.profitBreakdown.includedCosts.subLabor).toBeCloseTo(400);
+    expect(profit.profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(250);
+    expect(profit.splitPool).toBeCloseTo(542.4);
+    expectSharedProfitCalculationFields(profit);
+  });
+
   it("keeps payroll and cached fuel values isolated across multiple batch jobs", async () => {
     const cachedRoute = vi.spyOn(RoutingEngine, "getCachedRoute").mockImplementation(({ destination }) => ({
       miles: destination.includes("Oak") ? 10 : 25,
