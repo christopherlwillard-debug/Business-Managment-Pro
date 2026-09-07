@@ -461,12 +461,12 @@ export default function RoutePlanner() {
   // Optimize always operates on the selected day's stops only
   const dayStops = allStops.filter(s => s.scheduledDate === selectedDateStr);
 
-  const dayJobIds = useMemo(
-    () => [...new Set(dayStops.filter(s => s.jobId != null).map(s => s.jobId!))].sort((a, b) => a - b),
+  const visibleJobIds = useMemo(
+    () => [...new Set(viewStops.filter(s => s.jobId != null).map(s => s.jobId!))].sort((a, b) => a - b),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dayStops.map(s => s.jobId).join(",")],
+    [viewStops.map(s => s.jobId).join(",")],
   );
-  const dayJobIdsKey = dayJobIds.join(",");
+  const visibleJobIdsKey = visibleJobIds.join(",");
 
   const {
     data: profitSummary = {},
@@ -474,15 +474,15 @@ export default function RoutePlanner() {
     isError: isProfitError,
     refetch: refetchProfit,
   } = useQuery<Record<number, JobProfitData>>({
-    queryKey: ["job-profit-summary", dayJobIdsKey],
+    queryKey: ["job-profit-summary", visibleJobIdsKey],
     queryFn: () =>
-      apiFetch(`/jobs/profit-summary?jobIds=${dayJobIdsKey}`) as unknown as Promise<Record<number, JobProfitData>>,
+      apiFetch(`/jobs/profit-summary?jobIds=${visibleJobIdsKey}`) as unknown as Promise<Record<number, JobProfitData>>,
     staleTime: 60_000,
-    enabled: dayJobIds.length > 0,
+    enabled: visibleJobIds.length > 0,
   });
 
   const routeProfitStats = useMemo(() => {
-    const stopsWithJobs = dayStops.filter(s => s.jobId != null);
+    const stopsWithJobs = viewStops.filter(s => s.jobId != null);
     if (stopsWithJobs.length === 0) return null;
 
     let totalAdjSqFt = 0;

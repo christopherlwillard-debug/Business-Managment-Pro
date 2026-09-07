@@ -49,6 +49,12 @@ function addDays(dateString: string, days: number): string {
   return localDateString(new Date(year, month - 1, day + days, 12));
 }
 
+function startOfWeekSunday(dateString: string): string {
+  const [year, month, day] = dateString.split("-").map(Number);
+  const date = new Date(year, month - 1, day, 12);
+  return localDateString(new Date(year, month - 1, day - date.getDay(), 12));
+}
+
 function readMoneyAfter(text: string, label: string): number | null {
   const normalized = text.replace(/−/g, "-").replace(/\s+/g, " ");
   const labelIndex = normalized.toLowerCase().indexOf(label.toLowerCase());
@@ -430,15 +436,24 @@ async function main() {
     );
   }
 
-  function expectedRouteProfit(date: string) {
+  function expectedRouteProfitBetween(startDate: string, endDate: string) {
     const jobIds = routeStops
-      .filter(stop => stop.scheduledDate === date && stop.jobId != null)
+      .filter(stop =>
+        stop.scheduledDate != null
+        && stop.scheduledDate >= startDate
+        && stop.scheduledDate <= endDate
+        && stop.jobId != null,
+      )
       .map(stop => stop.jobId!);
     const summary = canonicalBatchProfitSummary(jobIds);
     return {
       jobIds: [...new Set(jobIds)].sort((a, b) => a - b),
       netProfit: Object.values(summary).reduce((total, profit) => total + profit.netProfit, 0),
     };
+  }
+
+  function expectedRouteProfit(date: string) {
+    return expectedRouteProfitBetween(date, date);
   }
 
   const unexpectedWrites: string[] = [];
@@ -888,6 +903,69 @@ async function main() {
       `jobIds=${afterMoveNewDay.jobIds.join(",")}, displayed=${newDayDisplayed ?? "missing"}, canonical=${afterMoveNewDay.netProfit}`,
     );
     await page.screenshot({ path: `${SHOTS}/04-route-profit-mutations.png`, fullPage: true });
+
+    const resetClicked = await clickRouteStopAction(page, movedStopTitle, "Edit");
+    await page.waitForFunction(
+      () => document.querySelector("input[type='date']") != null,
+      { timeout: 20_000 },
+    );
+    await setRouteControlValue(page, "input[type='date']", today);
+    await page.evaluate(() => {
+      const saveButton = [...document.querySelectorAll<HTMLButtonElement>("button")]
+        .find(button => button.textContent?.trim() === "Save");
+      saveButton?.click();
+    });
+    const resetApplied = await waitForCondition(
+      () => routeStops.some(stop => stop.jobId === removedJobId && stop.scheduledDate === today),
+    );
+    const selectedTodayForWeek = await selectCalendarDate(page, today);
+    const weekViewSelected = await clickButtonByText(page, "Week");
+    const visibleWeekStart = startOfWeekSunday(today);
+    const visibleWeekEnd = addDays(visibleWeekStart, 6);
+    const beforeWeekMove = expectedRouteProfitBetween(visibleWeekStart, visibleWeekEnd);
+    const beforeWeekMoveRefreshed = await waitForRouteProfit(page, beforeWeekMove.netProfit);
+    const beforeWeekMoveText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const beforeWeekMoveDisplayed = readMoneyAfter(beforeWeekMoveText, "Net Profit");
+    record(
+      "Week view displays the canonical batch profit for every visible job",
+      resetClicked
+        && resetApplied
+        && selectedTodayForWeek
+        && weekViewSelected
+        && beforeWeekMoveRefreshed
+        && nearlyEqual(beforeWeekMoveDisplayed, beforeWeekMove.netProfit),
+      `jobIds=${beforeWeekMove.jobIds.join(",")}, displayed=${beforeWeekMoveDisplayed ?? "missing"}, canonical=${beforeWeekMove.netProfit}`,
+    );
+
+    const weekMoveDate = addDays(visibleWeekEnd, 1);
+    const weekMoveClicked = await clickRouteStopAction(page, movedStopTitle, "Edit");
+    await page.waitForFunction(
+      () => document.querySelector("input[type='date']") != null,
+      { timeout: 20_000 },
+    );
+    await setRouteControlValue(page, "input[type='date']", weekMoveDate);
+    await page.evaluate(() => {
+      const saveButton = [...document.querySelectorAll<HTMLButtonElement>("button")]
+        .find(button => button.textContent?.trim() === "Save");
+      saveButton?.click();
+    });
+    const weekMoveApplied = await waitForCondition(
+      () => routeStops.some(stop => stop.jobId === removedJobId && stop.scheduledDate === weekMoveDate),
+    );
+    const afterWeekMove = expectedRouteProfitBetween(visibleWeekStart, visibleWeekEnd);
+    const afterWeekMoveRefreshed = await waitForRouteProfit(page, afterWeekMove.netProfit);
+    const afterWeekMoveText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const afterWeekMoveDisplayed = readMoneyAfter(afterWeekMoveText, "Net Profit");
+    record(
+      "Moving a route job out of the visible week refreshes Week view against its canonical total",
+      weekMoveClicked
+        && weekMoveApplied
+        && afterWeekMoveRefreshed
+        && nearlyEqual(afterWeekMoveDisplayed, afterWeekMove.netProfit)
+        && !afterWeekMoveText.includes(routeProfitLabel(beforeWeekMove.netProfit)),
+      `jobIds=${afterWeekMove.jobIds.join(",")}, displayed=${afterWeekMoveDisplayed ?? "missing"}, canonical=${afterWeekMove.netProfit}`,
+    );
+    await page.screenshot({ path: `${SHOTS}/04b-route-profit-week.png`, fullPage: true });
 
     delayedProfitJobId = firstJobId;
     delayedProfitResponseUsed = false;
