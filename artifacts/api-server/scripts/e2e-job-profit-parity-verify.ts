@@ -44,6 +44,11 @@ function localDateString(date = new Date()): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+function addDays(dateString: string, days: number): string {
+  const [year, month, day] = dateString.split("-").map(Number);
+  return localDateString(new Date(year, month - 1, day + days, 12));
+}
+
 function readMoneyAfter(text: string, label: string): number | null {
   const normalized = text.replace(/−/g, "-").replace(/\s+/g, " ");
   const labelIndex = normalized.toLowerCase().indexOf(label.toLowerCase());
@@ -115,7 +120,10 @@ async function clickJobCardAction(page: Page, title: string, action: string): Pr
       let ancestor: HTMLElement | null = titleElement;
       for (let depth = 0; ancestor && depth < 20; depth += 1, ancestor = ancestor.parentElement) {
         const button = [...ancestor.querySelectorAll<HTMLButtonElement>("button")]
-          .find(candidate => (candidate.textContent ?? "").includes(buttonText));
+          .find(candidate =>
+            (candidate.textContent ?? "").includes(buttonText)
+            || candidate.title === buttonText,
+          );
         if (button) {
           button.click();
           return true;
@@ -124,6 +132,113 @@ async function clickJobCardAction(page: Page, title: string, action: string): Pr
     }
     return false;
   }, { jobTitle: title, buttonText: action });
+}
+
+async function clickRouteStopAction(page: Page, title: string, action: string): Promise<boolean> {
+  return page.evaluate(({ stopTitle, buttonTitle }) => {
+    const titleElement = [...document.querySelectorAll<HTMLElement>("*")]
+      .find(element => element.textContent?.trim() === stopTitle);
+    let ancestor: HTMLElement | null = titleElement ?? null;
+    for (let depth = 0; ancestor && depth < 20; depth += 1, ancestor = ancestor.parentElement) {
+      const button = ancestor.querySelector<HTMLButtonElement>(`button[title="${buttonTitle}"]`);
+      if (button) {
+        button.click();
+        return true;
+      }
+    }
+    return false;
+  }, { stopTitle: title, buttonTitle: action });
+}
+
+async function setRouteControlValue(page: Page, selector: string, value: string): Promise<void> {
+  await page.evaluate(({ controlSelector, nextValue }) => {
+    const control = document.querySelector<HTMLInputElement | HTMLSelectElement>(controlSelector);
+    if (!control) throw new Error(`Route control not found: ${controlSelector}`);
+    const prototype = control instanceof HTMLSelectElement
+      ? HTMLSelectElement.prototype
+      : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+    if (!setter) throw new Error(`Route control has no value setter: ${controlSelector}`);
+    setter.call(control, nextValue);
+    control.dispatchEvent(new Event("input", { bubbles: true }));
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+  }, { controlSelector: selector, nextValue: value });
+}
+
+async function setRouteSelectOption(page: Page, value: string): Promise<void> {
+  await page.evaluate(nextValue => {
+    const select = [...document.querySelectorAll<HTMLSelectElement>("form select")]
+      .find(candidate => [...candidate.options].some(option => option.value === nextValue));
+    if (!select) throw new Error(`Route select option not found: ${nextValue}`);
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+    if (!setter) throw new Error("Route select has no value setter");
+    setter.call(select, nextValue);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  }, value);
+}
+
+function routeProfitLabel(value: number): string {
+  const amount = Math.abs(value).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  return `${value >= 0 ? "+" : "-"}$${amount}`;
+}
+
+async function waitForRouteProfit(page: Page, expected: number): Promise<boolean> {
+  return page.waitForFunction(
+    label => document.body.innerText.includes(label),
+    { timeout: 20_000 },
+    routeProfitLabel(expected),
+  ).then(() => true).catch(() => false);
+}
+
+async function waitForCondition(
+  predicate: () => boolean,
+  timeout = 20_000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeout;
+  while (!predicate() && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  return predicate();
+}
+
+async function selectCalendarDate(page: Page, date: string): Promise<boolean> {
+  const [year, month, day] = date.split("-").map(Number);
+  const targetMonthLabel = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, month - 1, day, 12));
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const selected = await page.evaluate(({ targetDay, monthLabel }) => {
+      const monthText = [...document.querySelectorAll<HTMLElement>("span")]
+        .find(element => element.textContent?.trim() === monthLabel);
+      const currentMonthText = [...document.querySelectorAll<HTMLElement>("span")]
+        .find(element => /^[A-Za-z]+ \d{4}$/.test(element.textContent?.trim() ?? ""));
+      const monthHeader = currentMonthText?.parentElement;
+      if (!monthText && monthHeader) {
+        const buttons = monthHeader.querySelectorAll<HTMLButtonElement>("button");
+        buttons[buttons.length - 1]?.click();
+        return false;
+      }
+
+      const dayButton = [...document.querySelectorAll<HTMLButtonElement>("button")]
+        .find(button =>
+          button.className.includes("relative flex flex-col")
+          && !button.className.includes("opacity-25")
+          && button.querySelector("span")?.textContent?.trim() === String(targetDay),
+        );
+      if (!dayButton) {
+        const headerButtons = monthHeader?.querySelectorAll<HTMLButtonElement>("button");
+        headerButtons?.[headerButtons.length - 1]?.click();
+        return false;
+      }
+      dayButton.click();
+      return true;
+    }, { targetDay: day, monthLabel: targetMonthLabel });
+    if (selected) return true;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  return false;
 }
 
 async function waitForText(page: Page, text: string, timeout = 20_000): Promise<boolean> {
@@ -236,6 +351,7 @@ async function main() {
       priority: "normal",
       resourceDemand: "standard",
       clientName: "E2E Profit Client",
+      clientId: 100,
       locationName: "E2E Profit Address",
       address: "100 Test Street",
       city: "Testville",
@@ -271,7 +387,7 @@ async function main() {
     sortOrder: index,
     blockNumber: null,
     crewLabel: null,
-    clientId: null,
+    clientId: 100,
     prospectId: null,
     jobId: fixture.id,
     clientName: "E2E Profit Client",
@@ -282,7 +398,27 @@ async function main() {
     createdAt: new Date().toISOString(),
   }));
 
+  function canonicalBatchProfitSummary(jobIds: number[]): Record<number, ProfitFixture> {
+    return Object.fromEntries(
+      [...new Set(jobIds)]
+        .map(jobId => [jobId, jobById.get(jobId)?.profit] as const)
+        .filter((entry): entry is [number, ProfitFixture] => entry[1] != null),
+    );
+  }
+
+  function expectedRouteProfit(date: string) {
+    const jobIds = routeStops
+      .filter(stop => stop.scheduledDate === date && stop.jobId != null)
+      .map(stop => stop.jobId!);
+    const summary = canonicalBatchProfitSummary(jobIds);
+    return {
+      jobIds: [...new Set(jobIds)].sort((a, b) => a - b),
+      netProfit: Object.values(summary).reduce((total, profit) => total + profit.netProfit, 0),
+    };
+  }
+
   const unexpectedWrites: string[] = [];
+  const routeWrites: string[] = [];
   const pageErrors: string[] = [];
   let delayedProfitJobId: number | null = null;
   let delayedProfitResponseUsed = false;
@@ -299,29 +435,31 @@ async function main() {
     page.on("request", request => {
       if (request.isInterceptResolutionHandled()) return;
       const method = request.method().toUpperCase();
-      if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+      const url = new URL(request.url());
+      const path = url.pathname;
+      const routeStopMatch = path.match(/^\/api\/route-stops(?:\/(\d+))?$/);
+      const isRouteStopMutation = routeStopMatch != null
+        && method !== "GET"
+        && method !== "HEAD"
+        && method !== "OPTIONS";
+      if (isRouteStopMutation) {
+        routeWrites.push(`${method} ${path}`);
+      } else if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
         unexpectedWrites.push(`${method} ${request.url()}`);
         void request.abort();
         return;
       }
 
-      const url = new URL(request.url());
-      const path = url.pathname;
-      const respondJson = (body: unknown) => {
+      const respondJson = (body: unknown, status = 200) => {
         if (request.isInterceptResolutionHandled()) return;
         void request.respond({
-          status: 200,
+          status,
           contentType: "application/json",
           body: JSON.stringify(body),
         });
       };
       const respondError = (message: string) => {
-        if (request.isInterceptResolutionHandled()) return;
-        void request.respond({
-          status: 503,
-          contentType: "application/json",
-          body: JSON.stringify({ error: message }),
-        });
+        respondJson({ error: message }, 503);
       };
 
       if (path === "/api/jobs") {
@@ -337,10 +475,11 @@ async function main() {
           respondError("Profit service unavailable");
           return;
         }
-        const response = Object.fromEntries(
-          fixtures.map(fixture => [fixture.id, fixture.profit]),
-        );
-        respondJson(response);
+        const jobIds = (url.searchParams.get("jobIds") ?? "")
+          .split(",")
+          .map(Number)
+          .filter(jobId => Number.isInteger(jobId) && jobId > 0);
+        respondJson(canonicalBatchProfitSummary(jobIds));
         return;
       }
       if (path === "/api/jobs/financials-summary") {
@@ -385,15 +524,76 @@ async function main() {
         });
         return;
       }
-      if (path === "/api/route-stops") {
+      if (routeStopMatch && method === "GET") {
         respondJson(routeStops);
+        return;
+      }
+      if (routeStopMatch && method === "POST") {
+        const body = JSON.parse(request.postData() ?? "{}") as Record<string, unknown>;
+        const jobId = typeof body.jobId === "number" ? body.jobId : null;
+        const clientId = typeof body.clientId === "number" ? body.clientId : null;
+        const fixture = jobId == null ? undefined : jobById.get(jobId);
+        const created = {
+          id: Math.max(...routeStops.map(stop => stop.id), 93000) + 1,
+          title: typeof body.title === "string" ? body.title : null,
+          address: typeof body.address === "string" ? body.address : "",
+          lat: typeof body.lat === "number" ? body.lat : null,
+          lng: typeof body.lng === "number" ? body.lng : null,
+          notes: typeof body.notes === "string" ? body.notes : null,
+          scheduledDate: typeof body.scheduledDate === "string" ? body.scheduledDate : today,
+          status: typeof body.status === "string" ? body.status : "scheduled",
+          estimatedDurationMinutes: typeof body.estimatedDurationMinutes === "number" ? body.estimatedDurationMinutes : 60,
+          sortOrder: typeof body.sortOrder === "number" ? body.sortOrder : routeStops.length,
+          blockNumber: null,
+          crewLabel: null,
+          clientId,
+          prospectId: typeof body.prospectId === "number" ? body.prospectId : null,
+          jobId,
+          clientName: clientId === 100 ? "E2E Profit Client" : null,
+          prospectContactName: null,
+          prospectAddress: null,
+          jobSqFt: typeof fixture?.job.sqFt === "number" ? fixture.job.sqFt : null,
+          jobCoats: typeof fixture?.job.coats === "number" ? fixture.job.coats : null,
+          createdAt: new Date().toISOString(),
+        };
+        routeStops.push(created);
+        respondJson(created, 201);
+        return;
+      }
+      if (routeStopMatch && method === "PUT") {
+        const stopId = Number(routeStopMatch[1]);
+        const stop = routeStops.find(candidate => candidate.id === stopId);
+        if (!stop) {
+          respondJson({ error: "Route stop not found" }, 404);
+          return;
+        }
+        const body = JSON.parse(request.postData() ?? "{}") as Record<string, unknown>;
+        Object.assign(stop, body);
+        respondJson(stop);
+        return;
+      }
+      if (routeStopMatch && method === "DELETE") {
+        const stopId = Number(routeStopMatch[1]);
+        const index = routeStops.findIndex(candidate => candidate.id === stopId);
+        if (index >= 0) routeStops.splice(index, 1);
+        if (!request.isInterceptResolutionHandled()) {
+          void request.respond({ status: 204, body: "" });
+        }
         return;
       }
       if (path === "/api/mapbox-token") {
         respondJson({ token: null });
         return;
       }
-      if (path === "/api/clients" || path === "/api/prospects") {
+      if (path === "/api/geocode") {
+        respondJson([]);
+        return;
+      }
+      if (path === "/api/clients") {
+        respondJson([{ id: 100, name: "E2E Profit Client", address: "100 Test Street", city: "Testville", state: "KY", zip: "" }]);
+        return;
+      }
+      if (path === "/api/prospects") {
         respondJson([]);
         return;
       }
@@ -553,6 +753,114 @@ async function main() {
     );
     await page.screenshot({ path: `${SHOTS}/03-route-profit.png`, fullPage: true });
 
+    const removedJobId = secondJobId;
+    const deleted = await clickRouteStopAction(page, fixtures[1].title, "Delete");
+    const removalApplied = await waitForCondition(
+      () => !routeStops.some(stop => stop.jobId === removedJobId && stop.scheduledDate === today),
+    );
+    const afterRemoval = expectedRouteProfit(today);
+    const removalRefreshed = await waitForRouteProfit(page, afterRemoval.netProfit);
+    const removalText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const removalDisplayed = readMoneyAfter(removalText, "Net Profit");
+    record(
+      "Removing a route job refreshes the displayed canonical net profit",
+      deleted
+        && removalApplied
+        && removalRefreshed
+        && nearlyEqual(removalDisplayed, afterRemoval.netProfit),
+      `jobIds=${afterRemoval.jobIds.join(",")}, displayed=${removalDisplayed ?? "missing"}, canonical=${afterRemoval.netProfit}`,
+    );
+
+    await page.evaluate(() => {
+      const addButton = [...document.querySelectorAll<HTMLButtonElement>("button")]
+        .find(button => button.textContent?.trim() === "Add Stop");
+      addButton?.click();
+    });
+    await page.waitForFunction(
+      () => document.querySelector("form input[placeholder='Address or location *']") != null,
+      { timeout: 20_000 },
+    );
+    await page.select("form select", "client:100");
+    const linkedJobSelectorLoaded = await page.waitForFunction(
+      jobId => [...document.querySelectorAll<HTMLSelectElement>("form select")]
+        .some(select => [...select.options].some(option => option.value === String(jobId))),
+      { timeout: 20_000 },
+      removedJobId,
+    ).then(() => true).catch(() => false);
+    if (!linkedJobSelectorLoaded) {
+      const diagnostic = await page.evaluate(() => ({
+        selects: [...document.querySelectorAll<HTMLSelectElement>("form select")].map(select => ({
+          value: select.value,
+          options: [...select.options].map(option => option.value),
+        })),
+        body: document.body.innerText.slice(-2_000),
+      }));
+      throw new Error(`Linked job selector did not render: ${JSON.stringify(diagnostic)}`);
+    }
+    await setRouteSelectOption(page, String(removedJobId));
+    await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>("form button[type='submit']")?.click();
+    });
+    const additionApplied = await waitForCondition(
+      () => routeStops.some(stop => stop.jobId === removedJobId && stop.scheduledDate === today),
+    );
+    const afterAddition = expectedRouteProfit(today);
+    const additionRefreshed = await waitForRouteProfit(page, afterAddition.netProfit);
+    const additionText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const additionDisplayed = readMoneyAfter(additionText, "Net Profit");
+    record(
+      "Adding a route job refreshes the displayed canonical net profit",
+      additionApplied
+        && additionRefreshed
+        && nearlyEqual(additionDisplayed, afterAddition.netProfit)
+        && routeStops.some(stop => stop.jobId === removedJobId && stop.scheduledDate === today),
+      `jobIds=${afterAddition.jobIds.join(",")}, displayed=${additionDisplayed ?? "missing"}, canonical=${afterAddition.netProfit}`,
+    );
+
+    const tomorrow = addDays(today, 1);
+    const movedStopTitle = "E2E Profit Client";
+    const clickedEdit = await clickRouteStopAction(page, movedStopTitle, "Edit");
+    await page.waitForFunction(
+      () => document.querySelector("input[type='date']") != null,
+      { timeout: 20_000 },
+    );
+    await setRouteControlValue(page, "input[type='date']", tomorrow);
+    await page.evaluate(() => {
+      const saveButton = [...document.querySelectorAll<HTMLButtonElement>("button")]
+        .find(button => button.textContent?.trim() === "Save");
+      saveButton?.click();
+    });
+    const moveApplied = await waitForCondition(
+      () => routeStops.some(stop => stop.jobId === removedJobId && stop.scheduledDate === tomorrow),
+    );
+    const afterMoveOldDay = expectedRouteProfit(today);
+    const oldDayRefreshed = await waitForRouteProfit(page, afterMoveOldDay.netProfit);
+    const oldDayText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const oldDayDisplayed = readMoneyAfter(oldDayText, "Net Profit");
+    record(
+      "Moving a route job refreshes the old day without retaining its prior total",
+      clickedEdit
+        && moveApplied
+        && oldDayRefreshed
+        && nearlyEqual(oldDayDisplayed, afterMoveOldDay.netProfit)
+        && !oldDayText.includes(routeProfitLabel(afterAddition.netProfit)),
+      `jobIds=${afterMoveOldDay.jobIds.join(",")}, displayed=${oldDayDisplayed ?? "missing"}, canonical=${afterMoveOldDay.netProfit}`,
+    );
+
+    const selectedTomorrow = await selectCalendarDate(page, tomorrow);
+    const afterMoveNewDay = expectedRouteProfit(tomorrow);
+    const newDayRefreshed = await waitForRouteProfit(page, afterMoveNewDay.netProfit);
+    const newDayText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const newDayDisplayed = readMoneyAfter(newDayText, "Net Profit");
+    record(
+      "Moving a route job refreshes the new day against its canonical total",
+      selectedTomorrow
+        && newDayRefreshed
+        && nearlyEqual(newDayDisplayed, afterMoveNewDay.netProfit),
+      `jobIds=${afterMoveNewDay.jobIds.join(",")}, displayed=${newDayDisplayed ?? "missing"}, canonical=${afterMoveNewDay.netProfit}`,
+    );
+    await page.screenshot({ path: `${SHOTS}/04-route-profit-mutations.png`, fullPage: true });
+
     delayedProfitJobId = firstJobId;
     delayedProfitResponseUsed = false;
     await page.goto(`${BASE}/jobs/${firstJobId}/payroll`, {
@@ -582,7 +890,7 @@ async function main() {
         && !rapidText.includes(fixtures[0].title),
       `displayed=${rapidNetProfit ?? "missing"}, path=${page.url()}`,
     );
-    await page.screenshot({ path: `${SHOTS}/04-rapid-navigation.png`, fullPage: true });
+    await page.screenshot({ path: `${SHOTS}/05-rapid-navigation.png`, fullPage: true });
 
     profitDetailFailureMode = true;
     await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
@@ -628,13 +936,14 @@ async function main() {
         && !routeErrorText.includes("+$1,795")
         && !routeErrorText.includes("$0"),
     );
-    profitDetailFailureMode = false;
     profitSummaryFailureMode = false;
 
     record(
-      "Authenticated browser made no unexpected writes",
+      "Authenticated browser writes stayed within route-stop fixture CRUD",
       unexpectedWrites.length === 0,
-      unexpectedWrites.join("; "),
+      unexpectedWrites.length > 0
+        ? unexpectedWrites.join("; ")
+        : `${routeWrites.length} route-stop writes`,
     );
     record(
       "Browser flow completed without page errors",
