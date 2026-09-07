@@ -390,3 +390,13 @@ Created the four-document architecture governance system:
 - The guarded ownership migration audit is dry-run-first and only repairs
   deterministic General Contracting legacy records, leaving other-business and
   ambiguous records untouched.
+
+### Closed-job profit calculation reconciliation
+
+- Per-job Job Financials and the Closed Jobs batch summary now use one shared
+  live profit calculation over the existing invoice, expense, allocation,
+  mileage, and subcontractor ledgers.
+- Allocation source expenses are excluded from the direct bucket when an
+  allocation is present, preventing one source cost from being counted twice.
+- Both responses expose a source-level included-cost and excluded-row breakdown
+  so displayed profit can be explained without changing production records.

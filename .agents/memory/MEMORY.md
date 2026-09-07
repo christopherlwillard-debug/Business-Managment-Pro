@@ -61,3 +61,4 @@
 - [Puppeteer evaluate functions](puppeteer-evaluate-functions.md) — tsx can emit missing __name helpers inside serialized page.evaluate callbacks; use anonymous browser-context functions
 - [Dashboard WTD semantics](dashboard-wtd-semantics.md) — WTD is the current Monday-start calendar week, not a trailing seven-day range
 - [Business trip archive semantics](business-trip-archive-semantics.md) — archived trips remain in historical totals but not active audit-readiness checks
+- [Shared job profit calculation](job-profit-calculation.md) — individual and batch job-profit views must use one source-derived engine with traceable included/excluded buckets

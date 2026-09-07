@@ -1456,6 +1456,24 @@ type JobProfit = {
   auditTrailTotal?: number; tripTravelTotal?: number; tripMealsDeductible?: number;
   subLaborCost?: number; allocPaid?: number; totalSubHours?: number; manHours?: number | null;
   netProfit: number;
+  profitBreakdown?: {
+    revenue: { invoices: number; otherIncome: number; total: number };
+    includedCosts: {
+      directExpenses: number;
+      allocatedExpenses: number;
+      subLabor: number;
+      splitPayouts: number;
+      mileageReimbursement: number;
+      estimatedFuel: number;
+      total: number;
+    };
+    excludedFromProfit: {
+      ownerWithdrawals: number;
+      auditTrail: number;
+      payrollLinkedExpenses: number;
+      legacySubcontractorExpense: number;
+    };
+  };
   splitPool?: number;
   ownerDrawTaken?: number;
   mileageReimbursement?: {
@@ -2187,6 +2205,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const subLaborCost = profit?.subLaborCost ?? 0;
   const allocPaid = profit?.allocPaid ?? 0;
   const totalSubHours = profit?.totalSubHours ?? 0;
+  const profitBreakdown = profit?.profitBreakdown;
 
   function fmt(n: number) {
     return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2257,6 +2276,43 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                     <p className="text-xs text-muted-foreground text-center py-2 px-4">{formatCurrency(profit.grossInvoiced - profit.collected)} outstanding (not yet collected)</p>
                   )}
                 </div>
+                 {profitBreakdown && (
+                   <div className="rounded-xl border border-border/50 overflow-hidden">
+                     <div className="bg-muted/30 px-4 py-2.5 border-b border-border/50">
+                       <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Where this number comes from</p>
+                     </div>
+                     <div className="divide-y divide-border/30 text-xs">
+                       {[
+                         ["Direct job expenses", profitBreakdown.includedCosts.directExpenses],
+                         ["Allocated shared expenses", profitBreakdown.includedCosts.allocatedExpenses],
+                         ["Sub labor", profitBreakdown.includedCosts.subLabor],
+                         ["Split payouts", profitBreakdown.includedCosts.splitPayouts],
+                         ["Mileage reimbursement", profitBreakdown.includedCosts.mileageReimbursement],
+                         ["Estimated fuel", profitBreakdown.includedCosts.estimatedFuel],
+                       ].filter(([, amount]) => Number(amount) > 0).map(([label, amount]) => (
+                         <div key={String(label)} className="flex items-center justify-between px-4 py-2.5">
+                           <span className="text-muted-foreground">{String(label)}</span>
+                           <span className="font-semibold tabular-nums text-red-500">−{formatCurrency(Number(amount))}</span>
+                         </div>
+                       ))}
+                       <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20 font-semibold">
+                         <span>Included costs total</span>
+                         <span className="tabular-nums text-red-600">−{formatCurrency(profitBreakdown.includedCosts.total)}</span>
+                       </div>
+                     </div>
+                     {(profitBreakdown.excludedFromProfit.ownerWithdrawals > 0 ||
+                       profitBreakdown.excludedFromProfit.auditTrail > 0 ||
+                       profitBreakdown.excludedFromProfit.payrollLinkedExpenses > 0 ||
+                       profitBreakdown.excludedFromProfit.legacySubcontractorExpense > 0) && (
+                       <div className="border-t border-blue-200/60 bg-blue-50/60 px-4 py-3">
+                         <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Excluded from business profit</p>
+                         <p className="mt-1 text-[11px] leading-relaxed text-blue-700/80">
+                           Owner withdrawals and audit-only travel records are shown for traceability but do not reduce job profit. Payroll-linked rows stay out of direct expenses; legacy subcontractor rows count as labor only when no canonical payroll record exists.
+                         </p>
+                       </div>
+                     )}
+                   </div>
+                 )}
                 <JobMarginCard margin={margin} />
                 {/* Estimated Fuel Cost */}
                 {profit?.estimatedFuelCost != null && (() => {

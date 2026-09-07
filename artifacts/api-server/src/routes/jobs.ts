@@ -13,6 +13,7 @@ import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/pr
 import { z } from "zod/v4";
 import { requestedBusiness, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
+import { calculateJobProfit } from "../lib/job-profit.js";
 import { getRequestUser } from "./guards";
 
 const router = Router();
@@ -740,7 +741,7 @@ router.get("/:id/profit", async (req, res) => {
 
     const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, sprRows, subHoursRow, subHoursSum, accruedBonusRow] = await Promise.all([
       db.select({ total: invoicesTable.total, status: invoicesTable.status })
-        .from(invoicesTable).where(eq(invoicesTable.jobId, id)),
+        .from(invoicesTable).where(and(eq(invoicesTable.jobId, id), isNull(invoicesTable.voidedAt))),
       // Job-linked other income is standalone cash revenue only when it has an
       // explicit job link. Unlinked rows remain in aggregate/tax reports only.
       db.select({ amount: otherIncomeTable.amount })
@@ -748,9 +749,9 @@ router.get("/:id/profit", async (req, res) => {
       // Fetch all expenses not auto-linked to a sub-hours row.
       // Subcontractor-category expenses are moved into the sub labor bucket below
       // so they never double-count with hours-based sub labor cost.
-      db.select({ amount: expensesTable.amount, category: expensesTable.category, subcontractorId: expensesTable.subcontractorId, countsTowardJobProfit: expensesTable.countsTowardJobProfit, tripId: expensesTable.tripId })
+      db.select({ id: expensesTable.id, amount: expensesTable.amount, category: expensesTable.category, subcontractorId: expensesTable.subcontractorId, countsTowardJobProfit: expensesTable.countsTowardJobProfit, tripId: expensesTable.tripId })
         .from(expensesTable).where(and(eq(expensesTable.jobId, id), isNull(expensesTable.jobSubHoursId), isNull(expensesTable.voidedAt))),
-      db.select({ amount: jobExpenseAllocationsTable.amount })
+      db.select({ expenseId: jobExpenseAllocationsTable.expenseId, amount: jobExpenseAllocationsTable.amount })
         .from(jobExpenseAllocationsTable)
         .innerJoin(expensesTable, eq(jobExpenseAllocationsTable.expenseId, expensesTable.id))
         .where(and(eq(jobExpenseAllocationsTable.jobId, id), isNull(expensesTable.voidedAt))),
@@ -812,85 +813,11 @@ router.get("/:id/profit", async (req, res) => {
         .from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, id)),
     ]);
 
-    let grossInvoiced = 0;
-    let collected = 0;
-    for (const inv of invRows) {
-      const t = parseFloat(inv.total ?? "0");
-      grossInvoiced += t;
-      if (inv.status === "paid") collected += t;
-    }
-    const otherIncomeRevenue = otherIncomeRows.reduce((sum, row) => sum + parseFloat(row.amount ?? "0"), 0);
-    grossInvoiced += otherIncomeRevenue;
-    collected += otherIncomeRevenue;
-    let jobExpenses = 0;
-    let auditTrailTotal = 0; // Travel/audit expenses — excluded from job profit but tracked separately
-    let tripTravelTotal = 0; // Subset of auditTrailTotal: expenses linked to a business trip
-    let tripMealsDeductible = 0; // 50% of Meals-category trip expenses (IRS rule)
-    let flatSubCost = 0; // Subcontractor-category expenses not linked to hours (legacy fallback)
-    let ownerDrawTaken = 0; // Owner draws/compensation — equity withdrawals, NEVER reduce Net Profit
     const mileageReimbursement = reimbursementRows[0] ?? null;
     const hasActualFuelExpense = expRows.some(e =>
       e.category === "Fuel/Travel" && e.countsTowardJobProfit !== false
     );
     const mileageReimbursementApplied = !hasActualFuelExpense;
-    // Owner-pay category set: "Owner Draw", "Owner Compensation", "Owner Withdrawal" are all equity withdrawals.
-    // record-owner-draw writes the canonical owner withdrawal ledger; legacy
-    // expense rows may still use "Owner Compensation" or "Owner Draw".
-    for (const allocation of allocationRows) {
-      jobExpenses += parseFloat(allocation.amount ?? "0");
-    }
-    for (const exp of expRows) {
-      if (isOwnerWithdrawalExpenseCategory(exp.category)) {
-        ownerDrawTaken += parseFloat(exp.amount ?? "0");
-        continue;
-      }
-      // Payroll-linked expense rows are legacy duplicate bookkeeping. Payroll
-      // belongs to sub_payment_records/job_subcontractors, never Job Costs.
-      if (exp.subcontractorId != null) {
-        continue;
-      }
-      if (exp.category === "Subcontractor") {
-        flatSubCost += parseFloat(exp.amount ?? "0");
-      } else if (exp.countsTowardJobProfit === false) {
-        const amt = parseFloat(exp.amount ?? "0");
-        auditTrailTotal += amt;
-        if (exp.tripId != null) {
-          tripTravelTotal += amt;
-          if (exp.category === "Meals") {
-            tripMealsDeductible += amt * 0.5;
-          }
-        }
-      } else {
-        jobExpenses += parseFloat(exp.amount ?? "0");
-      }
-    }
-
-    const hoursLaborCost = parseFloat(subHoursRow?.[0]?.total ?? "0");
-    const totalSubHours = parseFloat(subHoursSum?.[0]?.total ?? "0");
-    // Accrued bonuses saved without recording payment — always count as labor cost
-    const accruedBonusTotal = parseFloat(accruedBonusRow?.[0]?.total ?? "0");
-    // Fixed sub cost: prefer sub_payment_records (new ledger),
-    // fall back to flat Subcontractor expenses for legacy data pre-Task #892.
-    const sprFixedCost = parseFloat(sprRows.find(r => r.compType === "fixed")?.total ?? "0");
-    // Allocation payouts (profit-split subs) are real cash out of the job —
-    // kept separate from subLaborCost so Pay Breakdown math stays unchanged.
-    const allocPaid = parseFloat(sprRows.find(r => r.compType === "allocation")?.total ?? "0");
-    // Only fall back to legacy flat Subcontractor expenses when there are no
-    // tracked hours AND no fixed-sub payment records — otherwise the expense
-    // was recorded alongside hours and would double-count the labor cost.
-    const nonHoursCost = sprFixedCost > 0 ? sprFixedCost : (hoursLaborCost > 0 ? 0 : flatSubCost);
-    // Sub labor: hourly (hours × rate + accrued bonus) + fixed (cash paid)
-    const subLaborCost = hoursLaborCost + nonHoursCost + accruedBonusTotal;
-
-    // Actual fuel cost — sum of Fuel/Travel expenses that count toward job profit
-    const actualFuelCost = expRows
-      .filter(e => e.category === "Fuel/Travel" && e.countsTowardJobProfit !== false && !isOwnerWithdrawalExpenseCategory(e.category))
-      .reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
-
-    // Net profit uses grossInvoiced (accrual view) — shows job profitability the moment
-    // it's invoiced rather than waiting for cash collection. The accounting/tax system
-    // stays on cash basis; this is an operational job-management metric only.
-    let netProfit = grossInvoiced - jobExpenses - subLaborCost - allocPaid;
 
     // ── Estimated fuel cost (job-card operational value; never affects accounting/tax reports) ──
     // RoutingEngine is the single source of truth for driving distance (Constitution Rule 51).
@@ -1012,15 +939,30 @@ router.get("/:id/profit", async (req, res) => {
       estimatedFuelCost,
     });
 
-    // If the user has not saved an editable reimbursement yet, the calculated
-    // estimate is still a job-card-only deduction. Once saved, the edited
-    // reimbursement amount replaces the estimate exactly once.
-    if (includeMileageInJobCosts && mileageReimbursementApplied && mileageReimbursement && mileageReimbursement.amount != null) {
-      jobExpenses += parseFloat(mileageReimbursement.amount);
-    } else if (includeMileageInJobCosts && !mileageReimbursement && !hasActualFuelExpense && estimatedFuelCost != null) {
-      jobExpenses += estimatedFuelCost;
-    }
-    netProfit = grossInvoiced - jobExpenses - subLaborCost - allocPaid;
+    const profit = calculateJobProfit({
+      invoices: invRows,
+      otherIncome: otherIncomeRows,
+      expenses: expRows,
+      allocations: allocationRows,
+      mileageReimbursement: mileageReimbursement?.amount == null
+        ? null
+        : parseFloat(mileageReimbursement.amount),
+      hasMileageReimbursement: mileageReimbursement != null,
+      estimatedFuelCost,
+      includeMileageInJobCosts,
+      hasActualFuelExpense,
+      hourlyLaborCost: parseFloat(subHoursRow?.[0]?.total ?? "0"),
+      totalSubHours: parseFloat(subHoursSum?.[0]?.total ?? "0"),
+      fixedSubCost: parseFloat(sprRows.find(r => r.compType === "fixed")?.total ?? "0"),
+      accruedBonus: parseFloat(accruedBonusRow?.[0]?.total ?? "0"),
+      allocPaid: parseFloat(sprRows.find(r => r.compType === "allocation")?.total ?? "0"),
+    });
+    const {
+      grossInvoiced, collected, otherIncomeRevenue, jobExpenses,
+      auditTrailTotal, tripTravelTotal, tripMealsDeductible,
+      subLaborCost, allocPaid, totalSubHours, netProfit, ownerDrawTaken,
+      actualFuelCost,
+    } = profit;
     if (estimatedFuelCost != null) operationalProfit = netProfit;
 
     const [financialSettings] = await db.select({
@@ -1045,6 +987,7 @@ router.get("/:id/profit", async (req, res) => {
       grossInvoiced, collected, otherIncomeRevenue, jobExpenses, auditTrailTotal, tripTravelTotal, tripMealsDeductible,
       subLaborCost, allocPaid, totalSubHours,
       netProfit, ownerDrawTaken,
+      profitBreakdown: profit.profitBreakdown,
       splitPool: allocationSplitPool,
       mileageReimbursement: mileageReimbursement ? {
         ...mileageReimbursement,
@@ -1178,13 +1121,13 @@ router.get("/profit-summary", async (req, res) => {
 
     const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows, allocationSplitPools] = await Promise.all([
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
-        .from(invoicesTable).where(inArray(invoicesTable.jobId, jobIds)),
+        .from(invoicesTable).where(and(inArray(invoicesTable.jobId, jobIds), isNull(invoicesTable.voidedAt))),
       db.select({ jobId: otherIncomeTable.jobId, amount: otherIncomeTable.amount })
         .from(otherIncomeTable).where(and(inArray(otherIncomeTable.jobId, jobIds), isNull(otherIncomeTable.voidedAt))),
       // Exclude auto-linked sub-hour expenses; payroll-linked rows are not job costs
-      db.select({ jobId: expensesTable.jobId, amount: expensesTable.amount, category: expensesTable.category, subcontractorId: expensesTable.subcontractorId, countsTowardJobProfit: expensesTable.countsTowardJobProfit })
+      db.select({ jobId: expensesTable.jobId, id: expensesTable.id, amount: expensesTable.amount, category: expensesTable.category, subcontractorId: expensesTable.subcontractorId, countsTowardJobProfit: expensesTable.countsTowardJobProfit, tripId: expensesTable.tripId })
         .from(expensesTable).where(and(inArray(expensesTable.jobId, jobIds), isNull(expensesTable.jobSubHoursId), isNull(expensesTable.voidedAt))),
-      db.select({ jobId: jobExpenseAllocationsTable.jobId, amount: jobExpenseAllocationsTable.amount })
+      db.select({ jobId: jobExpenseAllocationsTable.jobId, expenseId: jobExpenseAllocationsTable.expenseId, amount: jobExpenseAllocationsTable.amount })
         .from(jobExpenseAllocationsTable)
         .innerJoin(expensesTable, eq(jobExpenseAllocationsTable.expenseId, expensesTable.id))
         .where(and(inArray(jobExpenseAllocationsTable.jobId, jobIds), isNull(expensesTable.voidedAt))),
@@ -1276,73 +1219,47 @@ router.get("/profit-summary", async (req, res) => {
         .filter(e => e.category === "Fuel/Travel" && e.countsTowardJobProfit !== false && e.jobId != null)
         .map(e => e.jobId as number)
     );
-    const flatSubCostMap: Record<number, number> = {};
-    for (const id of jobIds) flatSubCostMap[id] = 0;
-
-    const result: Record<number, { grossInvoiced: number; collected: number; otherIncomeRevenue: number; jobExpenses: number; subLaborCost: number; allocPaid: number; totalSubHours: number; manHours: number | null; netProfit: number; splitPool: number; estimatedFuelCost?: number | null; includeMileageInJobCosts: boolean }> = {};
-    for (const id of jobIds) result[id] = { grossInvoiced: 0, collected: 0, otherIncomeRevenue: 0, jobExpenses: 0, subLaborCost: 0, allocPaid: 0, totalSubHours: 0, manHours: null, netProfit: 0, splitPool: allocationSplitPools.get(id)?.splitPool ?? 0, includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true };
-
-    for (const inv of invRows) {
-      if (inv.jobId == null) continue;
-      const r = result[inv.jobId];
-      if (!r) continue;
-      const t = parseFloat(inv.total ?? "0");
-      r.grossInvoiced += t;
-      if (inv.status === "paid") r.collected += t;
-    }
-    for (const otherIncome of otherIncomeRows) {
-      if (otherIncome.jobId == null) continue;
-      const r = result[otherIncome.jobId];
-      if (!r) continue;
-      const amount = parseFloat(otherIncome.amount ?? "0");
-      r.otherIncomeRevenue += amount;
-      r.grossInvoiced += amount;
-      r.collected += amount;
-    }
-    for (const exp of expRows) {
-      if (exp.jobId == null) continue;
-      const r = result[exp.jobId];
-      if (!r) continue;
-      if (isOwnerWithdrawalExpenseCategory(exp.category)) continue;
-       // Payroll-linked expense rows are legacy duplicate bookkeeping. Payroll
-       // belongs to sub_payment_records/job_subcontractors, never Job Costs.
-       if (exp.subcontractorId != null) {
-         continue;
-       }
-       if (exp.category === "Subcontractor") {
-        flatSubCostMap[exp.jobId] = (flatSubCostMap[exp.jobId] ?? 0) + parseFloat(exp.amount ?? "0");
-        continue;
-      }
-      if (exp.countsTowardJobProfit === false) continue; // audit-trail only — not a job cost
-      r.jobExpenses += parseFloat(exp.amount ?? "0");
-    }
-    for (const allocation of allocationRows) {
-      const r = result[allocation.jobId];
-      if (r) r.jobExpenses += parseFloat(allocation.amount ?? "0");
-    }
-    for (const reimbursement of reimbursementRows) {
-      const r = result[reimbursement.jobId];
-      if (r && mileageIncludedMap.get(reimbursement.jobId) !== false && !actualFuelJobIds.has(reimbursement.jobId)) r.jobExpenses += parseFloat(reimbursement.amount ?? "0");
-    }
+    type SummaryRow = {
+      grossInvoiced: number;
+      collected: number;
+      otherIncomeRevenue: number;
+      jobExpenses: number;
+      subLaborCost: number;
+      allocPaid: number;
+      totalSubHours: number;
+      manHours: number | null;
+      netProfit: number;
+      splitPool: number;
+      estimatedFuelCost?: number | null;
+      includeMileageInJobCosts: boolean;
+      profitBreakdown: ReturnType<typeof calculateJobProfit>["profitBreakdown"];
+    };
+    const result: Record<number, SummaryRow> = {};
     for (const id of jobIds) {
-      const hoursLaborCost = hoursMap.get(id) ?? 0;
-      const sprFixedCost = sprFixedMap.get(id) ?? 0;
-      const accruedBonusTotal = accruedBonusMap.get(id) ?? 0;
-      // Prefer sub_payment_records (new ledger); fall back to flat Subcontractor expenses
-      // ONLY when there are no tracked hours — if hours exist, those capture the labor cost
-      // and the flat expense would be a double-count.
-      const nonHoursCost = sprFixedCost > 0 ? sprFixedCost : (hoursLaborCost > 0 ? 0 : (flatSubCostMap[id] ?? 0));
-      // Accrued bonuses count immediately as labor cost (even before payment is recorded)
-      result[id].subLaborCost = hoursLaborCost + nonHoursCost + accruedBonusTotal;
-      // Allocation payouts are real cash out — subtracted from net profit,
-      // but kept out of subLaborCost so Pay Breakdown math stays unchanged.
-      result[id].allocPaid = sprAllocMap.get(id) ?? 0;
-      // Use grossInvoiced (accrual) — consistent with the per-job profit route.
-      result[id].netProfit = result[id].grossInvoiced - result[id].jobExpenses - result[id].subLaborCost - result[id].allocPaid;
-      // Man-hours: tracked sub hours take priority; fall back to manually entered job field
-      const trackedHours = hoursCountMap.get(id) ?? 0;
-      result[id].totalSubHours = trackedHours;
-      result[id].manHours = manHoursMap.get(id) ?? null;
+      const calculation = calculateJobProfit({
+        invoices: invRows.filter(row => row.jobId === id),
+        otherIncome: otherIncomeRows.filter(row => row.jobId === id),
+        expenses: expRows.filter(row => row.jobId === id),
+        allocations: allocationRows.filter(row => row.jobId === id),
+        mileageReimbursement: reimbursementRows.find(row => row.jobId === id)?.amount == null
+          ? null
+          : parseFloat(reimbursementRows.find(row => row.jobId === id)!.amount),
+        hasMileageReimbursement: reimbursementRows.some(row => row.jobId === id),
+        includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true,
+        hasActualFuelExpense: actualFuelJobIds.has(id),
+        hourlyLaborCost: hoursMap.get(id) ?? 0,
+        totalSubHours: hoursCountMap.get(id) ?? 0,
+        fixedSubCost: sprFixedMap.get(id) ?? 0,
+        accruedBonus: accruedBonusMap.get(id) ?? 0,
+        allocPaid: sprAllocMap.get(id) ?? 0,
+      });
+      result[id] = {
+        ...calculation,
+        totalSubHours: hoursCountMap.get(id) ?? 0,
+        manHours: manHoursMap.get(id) ?? null,
+        splitPool: allocationSplitPools.get(id)?.splitPool ?? 0,
+        includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true,
+      };
     }
 
     // ── Estimated fuel cost from cache (informational only — never affects accounting) ──
@@ -1404,14 +1321,35 @@ router.get("/profit-summary", async (req, res) => {
             daysOnJob,
             vehicleProfile: { avgMpg: mpg, fuelPricePerGallon: fuelPrice },
           });
-          result[jobRow.id].estimatedFuelCost = vehicleCost.fuelCost;
-            if (jobRow.includeMileageInJobCosts !== false && !reimbursementRows.some(row => row.jobId === jobRow.id) && !actualFuelJobIds.has(jobRow.id)) {
-             result[jobRow.id].jobExpenses += vehicleCost.fuelCost;
-             result[jobRow.id].netProfit = result[jobRow.id].grossInvoiced
-               - result[jobRow.id].jobExpenses
-               - result[jobRow.id].subLaborCost
-               - result[jobRow.id].allocPaid;
-           }
+           const row = result[jobRow.id];
+           if (!row) continue;
+           const calculation = calculateJobProfit({
+             invoices: invRows.filter(item => item.jobId === jobRow.id),
+             otherIncome: otherIncomeRows.filter(item => item.jobId === jobRow.id),
+             expenses: expRows.filter(item => item.jobId === jobRow.id),
+             allocations: allocationRows.filter(item => item.jobId === jobRow.id),
+             mileageReimbursement: reimbursementRows.find(item => item.jobId === jobRow.id)?.amount == null
+               ? null
+               : parseFloat(reimbursementRows.find(item => item.jobId === jobRow.id)!.amount),
+             hasMileageReimbursement: reimbursementRows.some(item => item.jobId === jobRow.id),
+             estimatedFuelCost: vehicleCost.fuelCost,
+             includeMileageInJobCosts: jobRow.includeMileageInJobCosts !== false,
+             hasActualFuelExpense: actualFuelJobIds.has(jobRow.id),
+             hourlyLaborCost: hoursMap.get(jobRow.id) ?? 0,
+             totalSubHours: hoursCountMap.get(jobRow.id) ?? 0,
+             fixedSubCost: sprFixedMap.get(jobRow.id) ?? 0,
+             accruedBonus: accruedBonusMap.get(jobRow.id) ?? 0,
+             allocPaid: sprAllocMap.get(jobRow.id) ?? 0,
+           });
+           row.grossInvoiced = calculation.grossInvoiced;
+           row.collected = calculation.collected;
+           row.otherIncomeRevenue = calculation.otherIncomeRevenue;
+           row.jobExpenses = calculation.jobExpenses;
+           row.subLaborCost = calculation.subLaborCost;
+           row.allocPaid = calculation.allocPaid;
+           row.netProfit = calculation.netProfit;
+           row.profitBreakdown = calculation.profitBreakdown;
+           row.estimatedFuelCost = vehicleCost.fuelCost;
         }
       }
     } catch (fuelErr) {
