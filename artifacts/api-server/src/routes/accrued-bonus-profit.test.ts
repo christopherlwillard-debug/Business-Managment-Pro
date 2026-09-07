@@ -784,6 +784,47 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expectSharedProfitCalculationFields(profit);
   });
 
+  it("keeps allocation payouts when cached fuel re-projects the batch response", async () => {
+    const cachedRoute = vi.spyOn(RoutingEngine, "getCachedRoute").mockReturnValue({
+      miles: 10,
+      durationMinutes: 20,
+      routeStatus: "ok",
+      provider: "haversine",
+      cached: true,
+    });
+
+    pushSummarySelects({
+      jobId: 5,
+      invoices: [{ jobId: 5, total: "1000.00", status: "paid" }],
+      sprRows: [{ jobId: 5, compType: "allocation", total: "600.00" }],
+      fuelSettings: {
+        companyAddress: "100 Main St",
+        companyCity: "Evansville",
+        companyState: "IN",
+      },
+      fuelVehicle: { avgMpg: 20, fuelPricePerGallon: "4.00" },
+      fuelJob: {
+        address: "200 Oak St",
+        city: "Evansville",
+        state: "IN",
+        workdayCount: 2,
+      },
+    });
+
+    const res = await request(app).get("/jobs/profit-summary?jobIds=5");
+    cachedRoute.mockRestore();
+
+    expect(res.status).toBe(200);
+    const profit = res.body[5];
+    expect(profit.allocPaid).toBeCloseTo(600);
+    expect(profit.jobExpenses).toBeCloseTo(8);
+    expect(profit.estimatedFuelCost).toBeCloseTo(8);
+    expect(profit.includedCostTotal).toBeCloseTo(608);
+    expect(profit.profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(600);
+    expect(profit.splitPool).toBeCloseTo(942.4);
+    expectSharedProfitCalculationFields(profit);
+  });
+
   it("includes accrued_bonus per job in the batch result", async () => {
     pushSummarySelects({
       jobId:          5,
