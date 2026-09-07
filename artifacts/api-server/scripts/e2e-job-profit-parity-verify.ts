@@ -150,6 +150,30 @@ async function clickRouteStopAction(page: Page, title: string, action: string): 
   }, { stopTitle: title, buttonTitle: action });
 }
 
+async function clickButtonByText(page: Page, text: string, scopeText?: string): Promise<boolean> {
+  const index = await page.evaluate(({ buttonText, requiredScopeText }) => {
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>("button")];
+    const candidate = buttons
+      .filter(button => button.textContent?.trim() === buttonText)
+      .find(button => {
+        if (!requiredScopeText) return true;
+        let ancestor: HTMLElement | null = button.parentElement;
+        for (let depth = 0; ancestor && depth < 10; depth += 1, ancestor = ancestor.parentElement) {
+          if (ancestor.textContent?.includes(requiredScopeText)) return true;
+        }
+        return false;
+      });
+    return candidate ? buttons.indexOf(candidate) : -1;
+  }, { buttonText: text, requiredScopeText: scopeText });
+  if (index < 0) return false;
+  const buttons = await page.$$("button");
+  const button = buttons[index];
+  if (!button) return false;
+  await button.click();
+  await Promise.all(buttons.map(candidate => candidate.dispose()));
+  return true;
+}
+
 async function setRouteControlValue(page: Page, selector: string, value: string): Promise<void> {
   await page.evaluate(({ controlSelector, nextValue }) => {
     const control = document.querySelector<HTMLInputElement | HTMLSelectElement>(controlSelector);
@@ -431,6 +455,10 @@ async function main() {
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 1200 });
     page.on("pageerror", error => pageErrors.push(error.message));
+    let mainFrameNavigationCount = 0;
+    page.on("framenavigated", frame => {
+      if (frame === page.mainFrame()) mainFrameNavigationCount += 1;
+    });
     await page.setRequestInterception(true);
     page.on("request", request => {
       if (request.isInterceptResolutionHandled()) return;
@@ -909,6 +937,45 @@ async function main() {
       `job=${failureJobLoaded}, card=${Boolean(openedFailureCard)}, opened=${Boolean(openedFailureFinancials)}, error=${financialsErrorShown}, panel=${financialsErrorPanelShown}, url=${page.url()}`,
     );
 
+    const financialsRetryUrl = page.url();
+    const financialsNavigationCount = mainFrameNavigationCount;
+    profitDetailFailureMode = false;
+    const financialsRetryClicked = await clickButtonByText(page, "Try again", "Unable to load job profit");
+    const financialsRetryRecovered = await page.waitForFunction(
+      () => {
+        const panel = [...document.querySelectorAll<HTMLElement>("div.fixed.inset-0")]
+          .find(candidate => [...candidate.querySelectorAll("h2")]
+            .some(heading => heading.textContent?.trim() === "Job Financials"));
+        const panelText = panel?.innerText.toLowerCase() ?? "";
+        return document.querySelector('[data-testid="job-financials-profit-error"]') == null
+          && panelText.includes("job revenue")
+          && panelText.includes("net business profit");
+      },
+      { timeout: 20_000 },
+    ).then(() => true).catch(() => false);
+    const financialsRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const financialsRetryValues = {
+      revenue: readMoneyAfter(financialsRetryText, "Job Revenue"),
+      costs: readMoneyAfter(financialsRetryText, "Job Costs"),
+      splitPool: readMoneyAfter(financialsRetryText, "Split Pool"),
+      netProfit: readMoneyAfter(financialsRetryText, "Net Business Profit"),
+    };
+    const financialsRetryErrorPanelShown = await page.$('[data-testid="job-financials-profit-error"]') !== null;
+    record(
+      "Job Financials retry recovers canonical values without a page reload",
+      financialsRetryClicked
+        && financialsRetryRecovered
+        && page.url() === financialsRetryUrl
+        && mainFrameNavigationCount === financialsNavigationCount
+        && nearlyEqual(financialsRetryValues.revenue, firstExpected.grossInvoiced)
+        && nearlyEqual(financialsRetryValues.costs, -firstExpected.jobExpenses)
+        && nearlyEqual(financialsRetryValues.splitPool, firstExpected.splitPool)
+        && nearlyEqual(financialsRetryValues.netProfit, firstExpected.netProfit)
+        && !financialsRetryText.includes("Unable to load job profit"),
+      `clicked=${financialsRetryClicked}, recovered=${financialsRetryRecovered}, errorPanel=${financialsRetryErrorPanelShown}, values=${JSON.stringify(financialsRetryValues)}, navigationUnchanged=${mainFrameNavigationCount === financialsNavigationCount}`,
+    );
+
+    profitDetailFailureMode = true;
     await page.goto(`${BASE}/jobs/${firstJobId}/payroll`, {
       waitUntil: "networkidle2",
       timeout: 60_000,
@@ -922,7 +989,41 @@ async function main() {
         && !payrollErrorText.includes("Net Profit"),
     );
 
+    const payrollRetryUrl = page.url();
+    const payrollNavigationCount = mainFrameNavigationCount;
     profitDetailFailureMode = false;
+    const payrollRetryClicked = await clickButtonByText(page, "Try again", "Unable to load job profit");
+    const payrollRetryRecovered = await page.waitForFunction(
+      () => {
+        const bodyText = document.body.innerText.toLowerCase();
+        return !bodyText.includes("unable to load job profit")
+          && bodyText.includes("$1,200.00")
+          && bodyText.includes("net profit");
+      },
+      { timeout: 20_000 },
+    ).then(() => true).catch(() => false);
+    const payrollRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const payrollRetryValues = {
+      revenue: readMoneyAfter(payrollRetryText, "Revenue"),
+      costs: readMoneyAfter(payrollRetryText, "Job Costs"),
+      splitPool: readMoneyAfter(payrollRetryText, "Split Pool"),
+      netProfit: readMoneyAfter(payrollRetryText, "Net Profit"),
+    };
+    const payrollRetryErrorShown = payrollRetryText.includes("Unable to load job profit");
+    record(
+      "Job Payroll retry recovers canonical values without a page reload",
+      payrollRetryClicked
+        && payrollRetryRecovered
+        && page.url() === payrollRetryUrl
+        && mainFrameNavigationCount === payrollNavigationCount
+        && nearlyEqual(payrollRetryValues.revenue, firstExpected.grossInvoiced)
+        && nearlyEqual(payrollRetryValues.costs, -firstExpected.jobExpenses)
+        && nearlyEqual(payrollRetryValues.splitPool, firstExpected.splitPool)
+        && nearlyEqual(payrollRetryValues.netProfit, firstExpected.netProfit)
+        && !payrollRetryText.includes("Unable to load job profit"),
+      `clicked=${payrollRetryClicked}, recovered=${payrollRetryRecovered}, errorShown=${payrollRetryErrorShown}, values=${JSON.stringify(payrollRetryValues)}, navigationUnchanged=${mainFrameNavigationCount === payrollNavigationCount}`,
+    );
+
     profitSummaryFailureMode = true;
     await page.goto(`${BASE}/route-planner`, {
       waitUntil: "networkidle2",
@@ -937,6 +1038,24 @@ async function main() {
         && !routeErrorText.includes("$0"),
     );
     profitSummaryFailureMode = false;
+
+    const routeRetryUrl = page.url();
+    const routeNavigationCount = mainFrameNavigationCount;
+    const routeRetryClicked = await clickButtonByText(page, "Try again", "Profit data unavailable");
+    const expectedRouteNetProfitAfterRetry = expectedRouteProfit(today).netProfit;
+    const routeRetryRecovered = await waitForRouteProfit(page, expectedRouteNetProfitAfterRetry);
+    const routeRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const routeRetryNetProfit = readMoneyAfter(routeRetryText, "Net Profit");
+    record(
+      "Route Planner retry recovers the canonical route profit without a page reload",
+      routeRetryClicked
+        && routeRetryRecovered
+        && page.url() === routeRetryUrl
+        && mainFrameNavigationCount === routeNavigationCount
+        && nearlyEqual(routeRetryNetProfit, expectedRouteNetProfitAfterRetry)
+        && !routeRetryText.includes("Profit data unavailable"),
+      `clicked=${routeRetryClicked}, recovered=${routeRetryRecovered}, displayed=${routeRetryNetProfit ?? "missing"}, expected=${expectedRouteNetProfitAfterRetry}, navigationUnchanged=${mainFrameNavigationCount === routeNavigationCount}`,
+    );
 
     record(
       "Authenticated browser writes stayed within route-stop fixture CRUD",
