@@ -180,6 +180,11 @@ function pushProfitSelects(opts: {
   hoursLaborCost?: string;
   totalHours?:     string;
   accruedBonus?:   string;
+  fuelSettings?:   { companyAddress?: string | null; companyCity?: string | null; companyState?: string | null };
+  fuelVehicle?:    { avgMpg: number; fuelPricePerGallon: string };
+  fuelJob?:        { address: string; city: string; state: string; includeMileageInJobCosts?: boolean };
+  fuelWorkDates?:  string[];
+  fuelDailyLogDates?: string[];
 }) {
   h.selectQueue.push(opts.invoices ?? []);
   h.selectQueue.push(opts.otherIncome ?? []);
@@ -190,12 +195,17 @@ function pushProfitSelects(opts: {
   h.selectQueue.push([{ total: opts.hoursLaborCost ?? "0" }]);
   h.selectQueue.push([{ total: opts.totalHours     ?? "0" }]);
   h.selectQueue.push([{ total: opts.accruedBonus   ?? "0" }]);
-  // Fuel estimation performs three additional selects after the profit waterfall,
-  // followed by the financial-settings select used by the waterfall UI.
-  h.selectQueue.push([]); // [9] fuel logs
-  h.selectQueue.push([]); // [10] fuel expenses
-  h.selectQueue.push([]); // [11] job mileage
-  h.selectQueue.push([]); // [12] financial settings
+  // Fuel estimation performs settings, vehicle, and job selects after the
+  // profit waterfall. When the job has addresses and a vehicle, it also reads
+  // actual work dates before the financial-settings select.
+  h.selectQueue.push(opts.fuelSettings ? [opts.fuelSettings] : []); // [9] settings
+  h.selectQueue.push(opts.fuelVehicle ? [opts.fuelVehicle] : []); // [10] default vehicle
+  h.selectQueue.push(opts.fuelJob ? [opts.fuelJob] : []); // [11] job address
+  if (opts.fuelJob) {
+    h.selectQueue.push((opts.fuelWorkDates ?? []).map(date => ({ date }))); // sub-hour dates
+    h.selectQueue.push((opts.fuelDailyLogDates ?? []).map(date => ({ date }))); // daily-log dates
+  }
+  h.selectQueue.push([]); // financial settings
 }
 
 /**
@@ -812,6 +822,95 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expect(batchRes.body[5].includedCostTotal).toBeCloseTo(600);
     expect(batchRes.body[5].profitBreakdown.includedCosts.subLabor).toBeCloseTo(600);
     expectSharedProfitCalculationFields(batchRes.body[5]);
+  });
+
+  it("keeps mixed fixed/allocation payout buckets equal across detail and cached-fuel batch views", async () => {
+    const route = {
+      miles: 10,
+      durationMinutes: 20,
+      routeStatus: "ok" as const,
+      provider: "haversine" as const,
+      cached: true,
+    };
+    const liveRoute = vi.spyOn(RoutingEngine, "calculate").mockResolvedValue(route);
+    const cachedRoute = vi.spyOn(RoutingEngine, "getCachedRoute").mockReturnValue(route);
+
+    // The same accounting fixture is supplied to both endpoints:
+    // $400 fixed labor + $250 allocation payout, plus an $8 cached fuel estimate.
+    pushProfitSelects({
+      invoices: [{ total: "1000.00", status: "paid" }],
+      sprRows: [
+        { compType: "fixed", total: "400.00" },
+        { compType: "allocation", total: "250.00" },
+      ],
+      fuelSettings: {
+        companyAddress: "100 Main St",
+        companyCity: "Evansville",
+        companyState: "IN",
+      },
+      fuelVehicle: { avgMpg: 20, fuelPricePerGallon: "4.00" },
+      fuelJob: {
+        address: "200 Oak St",
+        city: "Evansville",
+        state: "IN",
+      },
+      fuelWorkDates: ["2026-01-05", "2026-01-06"],
+    });
+
+    const detailRes = await request(app).get("/jobs/5/profit");
+
+    expect(detailRes.status).toBe(200);
+    expect(detailRes.body.estimatedFuelCost).toBeCloseTo(8);
+    expect(liveRoute).toHaveBeenCalledTimes(1);
+
+    // Batch enrichment must use only the in-memory route cache, not external routing.
+    liveRoute.mockClear();
+    pushBatchSummarySelects({
+      invoices: [{ jobId: 5, total: "1000.00", status: "paid" }],
+      manHoursRows: [{ id: 5, manHours: null }],
+      sprRows: [
+        { jobId: 5, compType: "fixed", total: "400.00" },
+        { jobId: 5, compType: "allocation", total: "250.00" },
+      ],
+      fuelSettings: {
+        companyAddress: "100 Main St",
+        companyCity: "Evansville",
+        companyState: "IN",
+      },
+      fuelVehicle: { avgMpg: 20, fuelPricePerGallon: "4.00" },
+      fuelJobs: [{
+        id: 5,
+        address: "200 Oak St",
+        city: "Evansville",
+        state: "IN",
+        workdayCount: 2,
+      }],
+    });
+
+    const batchRes = await request(app).get("/jobs/profit-summary?jobIds=5");
+
+    expect(batchRes.status).toBe(200);
+    expect(liveRoute).not.toHaveBeenCalled();
+    expect(cachedRoute).toHaveBeenCalledTimes(1);
+    expect(batchRes.body[5].estimatedFuelCost).toBeCloseTo(8);
+
+    const detail = detailRes.body;
+    const batch = batchRes.body[5];
+    for (const [label, detailValue, batchValue] of [
+      ["subLaborCost", detail.subLaborCost, batch.subLaborCost],
+      ["allocPaid", detail.allocPaid, batch.allocPaid],
+      ["includedCostTotal", detail.includedCostTotal, batch.includedCostTotal],
+      ["splitPayouts", detail.profitBreakdown.includedCosts.splitPayouts, batch.profitBreakdown.includedCosts.splitPayouts],
+      ["netProfit", detail.netProfit, batch.netProfit],
+    ] as const) {
+      expect(batchValue, `${label} should match both profit views`).toBeCloseTo(detailValue);
+    }
+
+    expect(detail.subLaborCost).toBeCloseTo(400);
+    expect(detail.allocPaid).toBeCloseTo(250);
+    expect(detail.includedCostTotal).toBeCloseTo(658);
+    expect(detail.profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(250);
+    expect(detail.netProfit).toBeCloseTo(342);
   });
 
   it("keeps fixed-sub advances when cached fuel re-projects the batch response", async () => {
