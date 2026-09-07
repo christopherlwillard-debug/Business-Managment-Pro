@@ -70,6 +70,13 @@ function readMoneyAfter(text: string, label: string): number | null {
   return signAfterLabel || signBeforeCostLabel ? -amount : amount;
 }
 
+function formatMoneyLabel(value: number): string {
+  return `$${value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 function nearlyEqual(left: number | null, right: number | null): boolean {
   return left != null && right != null && Math.abs(left - right) < 0.01;
 }
@@ -191,6 +198,16 @@ async function clickButtonByText(page: Page, text: string, scopeText?: string): 
   await button.click();
   await Promise.all(buttons.map(candidate => candidate.dispose()));
   return true;
+}
+
+async function clickButtonContainingText(page: Page, text: string): Promise<boolean> {
+  return page.evaluate(buttonText => {
+    const button = [...document.querySelectorAll<HTMLButtonElement>("button")]
+      .find(candidate => candidate.textContent?.includes(buttonText));
+    if (!button) return false;
+    button.click();
+    return true;
+  }, text);
 }
 
 async function setRouteControlValue(page: Page, selector: string, value: string): Promise<void> {
@@ -1280,6 +1297,65 @@ async function main() {
         && !nearlyEqual(routeRetryNetProfit, firstExpected.netProfit)
         && !routeRetryText.includes("Profit data unavailable"),
       `clicked=${routeRetryClicked}, recovered=${routeRetryRecovered}, displayed=${routeRetryNetProfit ?? "missing"}, expected=${expectedRouteNetProfitAfterRetry}, navigationUnchanged=${mainFrameNavigationCount === routeNavigationCount}`,
+    );
+
+    fixtures[0].job.status = "closed";
+    profitSummaryFailureMode = true;
+    await page.goto(`${BASE}/jobs`, {
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    const closedJobsHeadingShown = await waitForText(page, "Closed Jobs");
+    const closedJobTitleShown = await waitForText(page, fixtures[0].title);
+    const closedJobsExpanded = await clickButtonContainingText(page, "Closed Jobs");
+    const closedJobsErrorText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const closedExpectedRevenueLabel = formatMoneyLabel(fixtures[0].profit.grossInvoiced);
+    const closedExpectedNetProfitLabel = formatMoneyLabel(fixtures[0].profit.netProfit);
+    const closedJobsWarningShown = closedJobsErrorText.includes("Closed-job profit summaries are unavailable");
+    const closedJobsTotalsUnavailable = closedJobsErrorText.includes("Total Revenue: Unavailable")
+      && closedJobsErrorText.includes("Total Net Profit: Unavailable");
+    const closedJobsRetryShown = closedJobsErrorText.includes("Retry");
+    const closedJobsBeforeRetryHasNoProfit = !closedJobsErrorText.includes(closedExpectedRevenueLabel)
+      && !closedJobsErrorText.includes(closedExpectedNetProfitLabel);
+    record(
+      "Closed Jobs shows an unavailable warning and no silent zero profit totals",
+      closedJobsHeadingShown
+        && closedJobTitleShown
+        && closedJobsExpanded
+        && closedJobsWarningShown
+        && closedJobsTotalsUnavailable
+        && closedJobsRetryShown
+        && closedJobsBeforeRetryHasNoProfit,
+      `heading=${closedJobsHeadingShown}, title=${closedJobTitleShown}, expanded=${closedJobsExpanded}, warning=${closedJobsWarningShown}, totalsUnavailable=${closedJobsTotalsUnavailable}, retry=${closedJobsRetryShown}`,
+    );
+
+    profitSummaryFailureMode = false;
+    const closedJobsRetryUrl = page.url();
+    const closedJobsNavigationCount = mainFrameNavigationCount;
+    const closedJobsRetryClicked = await clickButtonByText(page, "Retry", "Closed-job profit summaries are unavailable");
+    const closedJobsRetryRecovered = await page.waitForFunction(
+      ({ expectedRevenue, expectedNetProfit }) => {
+        const bodyText = document.body.innerText;
+        return bodyText.includes(expectedRevenue)
+          && bodyText.includes(expectedNetProfit)
+          && !bodyText.includes("Closed-job profit summaries are unavailable")
+          && !bodyText.includes("Total Revenue: Unavailable")
+          && !bodyText.includes("Total Net Profit: Unavailable");
+      },
+      { timeout: 20_000 },
+      { expectedRevenue: closedExpectedRevenueLabel, expectedNetProfit: closedExpectedNetProfitLabel },
+    ).then(() => true).catch(() => false);
+    const closedJobsAfterRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    record(
+      "Closed Jobs retry restores profit totals without leaving the Jobs list",
+      closedJobsRetryClicked
+        && closedJobsRetryRecovered
+        && page.url() === closedJobsRetryUrl
+        && mainFrameNavigationCount === closedJobsNavigationCount
+        && closedJobsAfterRetryText.includes("Closed Jobs")
+        && closedJobsAfterRetryText.includes(fixtures[0].title)
+        && !closedJobsAfterRetryText.includes("Closed-job profit summaries are unavailable"),
+      `clicked=${closedJobsRetryClicked}, recovered=${closedJobsRetryRecovered}, urlUnchanged=${page.url() === closedJobsRetryUrl}, navigationUnchanged=${mainFrameNavigationCount === closedJobsNavigationCount}`,
     );
 
     record(
