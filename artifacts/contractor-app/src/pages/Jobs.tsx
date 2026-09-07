@@ -44,6 +44,7 @@ import {
   type JobProfitSummaryStatus,
   type JobPaymentSummaryRefreshAction,
 } from "@/lib/jobPaymentSummaryRefresh";
+import { getSavedMileageReimbursement } from "@/lib/jobProfitRequests";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { Card } from "@/components/ui/card";
@@ -1455,11 +1456,6 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 }
 
 // ─── Job Profit Panel ──────────────────────────────────────────────────────────
-function getSavedMileageReimbursement(profit: JobProfitResponse | null | undefined) {
-  const reimbursement = profit?.mileageReimbursement;
-  return reimbursement && typeof reimbursement === "object" ? reimbursement : null;
-}
-
 type JobFinancialSummary = {
   job: { id: number; jobNumber?: number | null; title: string; status: string; clientName?: string | null };
   payment: { status: string; amountDue: number | null; invoiceId: number | null };

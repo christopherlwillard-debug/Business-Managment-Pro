@@ -211,6 +211,7 @@ function pushSummarySelects(opts: {
   invoices?:      { jobId: number; total: string; status: string }[];
   otherIncome?:   { jobId: number; amount: string }[];
   expenses?:      any[];
+  mileageReimbursement?: { jobId: number; amount: string };
   hoursLaborCost?: string;
   totalHours?:    string;
   sprRows?:       { jobId: number; compType: string; total: string }[];
@@ -224,7 +225,7 @@ function pushSummarySelects(opts: {
   h.selectQueue.push(opts.otherIncome ?? []);
   h.selectQueue.push(opts.expenses ?? []);
   h.selectQueue.push([]); // job-only allocations
-  h.selectQueue.push([]); // job-card mileage reimbursements
+  h.selectQueue.push(opts.mileageReimbursement ? [opts.mileageReimbursement] : []); // job-card mileage reimbursements
   // hours cost grouped by jobId
   h.selectQueue.push(opts.hoursLaborCost && opts.hoursLaborCost !== "0"
     ? [{ jobId, total: opts.hoursLaborCost }] : []);
@@ -246,9 +247,34 @@ function pushSummarySelects(opts: {
   }] : []); // job address/workday rows
 }
 
+const SHARED_PROFIT_RESPONSE_FIELDS = [
+  "grossInvoiced",
+  "collected",
+  "otherIncomeRevenue",
+  "jobExpenses",
+  "directExpenseTotal",
+  "allocatedExpenseTotal",
+  "mileageReimbursement",
+  "estimatedFuelCost",
+  "actualFuelCost",
+  "auditTrailTotal",
+  "tripTravelTotal",
+  "tripMealsDeductible",
+  "ownerDrawTaken",
+  "payrollLinkedExcluded",
+  "legacySubcontractorExpense",
+  "subLaborCost",
+  "allocPaid",
+  "totalSubHours",
+  "netProfit",
+  "includedCostTotal",
+  "profitBreakdown",
+  "splitPool",
+] as const;
+
 function expectSharedProfitCalculationFields(body: unknown) {
   expect(body).toBeTruthy();
-  for (const field of Object.keys(calculateJobProfit({}))) {
+  for (const field of SHARED_PROFIT_RESPONSE_FIELDS) {
     expect(body).toHaveProperty(field);
   }
 }
@@ -635,7 +661,16 @@ describe("GET /jobs/:id/profit — accrued bonus included in subLaborCost", () =
     expect(res.status).toBe(200);
     expect(res.body.jobExpenses).toBeCloseTo(125);
     expect(res.body.netProfit).toBeCloseTo(875);
-    expect(res.body.mileageReimbursement.amount).toBeCloseTo(125);
+    expect(res.body.mileageReimbursement).toMatchObject({
+      id: 7,
+      amount: 125,
+      recipientType: "owner",
+      recipientName: "Business owner",
+    });
+    expectSharedProfitCalculationFields(res.body);
+    expect(res.body.growthReservePct).toBeTypeOf("number");
+    expect(res.body.ownerSplitPct).toBeTypeOf("number");
+    expect(res.body.taxReservePct).toBeTypeOf("number");
   });
 
   it("does not add mileage reimbursement on top of an actual Fuel/Travel expense", async () => {
@@ -782,6 +817,7 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expect(profit.netProfit).toBeCloseTo(392);
     expect(profit.profitBreakdown.includedCosts.subLabor).toBeCloseTo(600);
     expectSharedProfitCalculationFields(profit);
+    expect(profit.mileageReimbursement).toBe(0);
   });
 
   it("keeps allocation payouts when cached fuel re-projects the batch response", async () => {
@@ -822,6 +858,27 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expect(profit.includedCostTotal).toBeCloseTo(608);
     expect(profit.profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(600);
     expect(profit.splitPool).toBeCloseTo(942.4);
+    expectSharedProfitCalculationFields(profit);
+  });
+
+  it("keeps the batch mileage reimbursement in its numeric compatibility form", async () => {
+    pushSummarySelects({
+      jobId: 5,
+      invoices: [{ jobId: 5, total: "1000.00", status: "paid" }],
+      mileageReimbursement: { jobId: 5, amount: "125.00" },
+      sprRows: [{ jobId: 5, compType: "fixed", total: "200.00" }],
+      hoursLaborCost: "300.00",
+      totalHours: "10.0",
+      accruedBonus: "50.00",
+    });
+
+    const res = await request(app).get("/jobs/profit-summary?jobIds=5");
+
+    expect(res.status).toBe(200);
+    const profit = res.body[5];
+    expect(profit.mileageReimbursement).toBe(125);
+    expect(profit.subLaborCost).toBeCloseTo(550);
+    expect(profit.netProfit).toBeCloseTo(325);
     expectSharedProfitCalculationFields(profit);
   });
 
