@@ -476,6 +476,7 @@ async function main() {
   let delayedProfitResponseUsed = false;
   let profitSummaryFailureMode = false;
   let profitDetailFailureMode = false;
+  let profitDetailFailureJobId: number | null = null;
   let sessionId: string | undefined;
   const browser = await launchBrowser();
 
@@ -668,7 +669,8 @@ async function main() {
           respondJson({});
           return;
         }
-        if (profitDetailFailureMode) {
+        if (profitDetailFailureMode
+          && (profitDetailFailureJobId == null || profitDetailFailureJobId === jobId)) {
           respondError("Profit service unavailable");
           return;
         }
@@ -1082,7 +1084,59 @@ async function main() {
     );
     await page.screenshot({ path: `${SHOTS}/05-rapid-navigation.png`, fullPage: true });
 
+    delayedProfitJobId = firstJobId;
+    delayedProfitResponseUsed = false;
+    profitDetailFailureJobId = secondJobId;
     profitDetailFailureMode = true;
+    await page.goto(`${BASE}/jobs/${firstJobId}/payroll`, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
+    const firstRaceHeadingLoaded = await waitForText(page, fixtures[0].title);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await page.evaluate(path => {
+      window.history.pushState({}, "", path);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }, `${BASE}/jobs/${secondJobId}/payroll`);
+    const secondRaceHeadingLoaded = await waitForText(page, fixtures[1].title);
+    const secondRaceErrorShown = await waitForText(page, "Unable to load job profit");
+    const secondRaceErrorText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const secondRaceStayedActive = secondRaceErrorText.includes(fixtures[1].title)
+      && !secondRaceErrorText.includes(fixtures[0].title)
+      && !secondRaceErrorText.includes("$1,200.00");
+
+    profitDetailFailureMode = false;
+    profitDetailFailureJobId = null;
+    const raceRetryClicked = await clickButtonByText(page, "Try again", "Unable to load job profit");
+    const raceRetryRecovered = await page.waitForFunction(
+      () => {
+        const bodyText = document.body.innerText;
+        return bodyText.includes("$720.00")
+          && !bodyText.includes("$1,200.00")
+          && !bodyText.includes("Unable to load job profit");
+      },
+      { timeout: 20_000 },
+    ).then(() => true).catch(() => false);
+    await new Promise(resolve => setTimeout(resolve, 1_000));
+    const raceFinalText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const raceFinalNetProfit = readMoneyAfter(raceFinalText, "Net Profit");
+    record(
+      "Payroll retry after switching jobs ignores the first job's late profit response",
+      firstRaceHeadingLoaded
+        && secondRaceHeadingLoaded
+        && secondRaceErrorShown
+        && secondRaceStayedActive
+        && raceRetryClicked
+        && raceRetryRecovered
+        && raceFinalText.includes(fixtures[1].title)
+        && !raceFinalText.includes(fixtures[0].title)
+        && nearlyEqual(raceFinalNetProfit, fixtures[1].profit.netProfit),
+      `firstHeading=${firstRaceHeadingLoaded}, secondHeading=${secondRaceHeadingLoaded}, error=${secondRaceErrorShown}, activeBeforeRetry=${secondRaceStayedActive}, retry=${raceRetryClicked}, recovered=${raceRetryRecovered}, displayed=${raceFinalNetProfit ?? "missing"}, path=${page.url()}`,
+    );
+    delayedProfitJobId = null;
+
+    profitDetailFailureMode = true;
+    profitDetailFailureJobId = null;
     // Change the canonical response while the outage is active so a retry
     // cannot pass by returning the same cached-looking values.
     fixtures[0].profit = recoveredFirstExpected;
