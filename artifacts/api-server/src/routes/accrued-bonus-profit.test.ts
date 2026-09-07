@@ -266,6 +266,7 @@ function pushBatchSummarySelects(opts: {
   hoursCountRows?: { jobId: number; totalHours: string }[];
   manHoursRows: { id: number; manHours: string | null; includeMileageInJobCosts?: boolean }[];
   sprRows?: { jobId: number; compType: string; total: string }[];
+  sprPaymentRows?: { jobId: number; compType: "fixed" | "allocation"; amount: string; isReversal?: boolean | null }[];
   accruedBonusRows?: { jobId: number; total: string }[];
   fuelSettings?: { companyAddress?: string | null; companyCity?: string | null; companyState?: string | null };
   fuelVehicle?: { avgMpg: number; fuelPricePerGallon: string };
@@ -286,7 +287,32 @@ function pushBatchSummarySelects(opts: {
   h.selectQueue.push(opts.hoursRows ?? []);
   h.selectQueue.push(opts.hoursCountRows ?? []);
   h.selectQueue.push(opts.manHoursRows);
-  h.selectQueue.push(opts.sprRows ?? []);
+  if (opts.sprPaymentRows) {
+    const activeTotals = new Map<string, { jobId: number; compType: "fixed" | "allocation"; total: number }>();
+    for (const row of opts.sprPaymentRows) {
+      // Mirrors the production query's `is_reversal IS NOT TRUE` predicate
+      // before fixed/allocation rows are grouped by job and comp type.
+      if (row.isReversal === true) continue;
+      const key = `${row.jobId}:${row.compType}`;
+      const current = activeTotals.get(key);
+      if (current) {
+        current.total += parseFloat(row.amount);
+      } else {
+        activeTotals.set(key, {
+          jobId: row.jobId,
+          compType: row.compType,
+          total: parseFloat(row.amount),
+        });
+      }
+    }
+    h.selectQueue.push([...activeTotals.values()].map(row => ({
+      jobId: row.jobId,
+      compType: row.compType,
+      total: row.total.toFixed(2),
+    })));
+  } else {
+    h.selectQueue.push(opts.sprRows ?? []);
+  }
   h.selectQueue.push(opts.accruedBonusRows ?? []);
   // Fuel enrichment reads one shared settings row, vehicle row, and all job addresses.
   h.selectQueue.push(opts.fuelSettings ? [opts.fuelSettings] : []);
@@ -1044,6 +1070,66 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expect(profit.profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(250);
     expect(profit.splitPool).toBeCloseTo(542.4);
     expectSharedProfitCalculationFields(profit);
+  });
+
+  it("excludes reversed fixed/allocation payouts after cached fuel re-projects the batch response", async () => {
+    const route = {
+      miles: 10,
+      durationMinutes: 20,
+      routeStatus: "ok" as const,
+      provider: "haversine" as const,
+      cached: true,
+    };
+    const liveRoute = vi.spyOn(RoutingEngine, "calculate");
+    const cachedRoute = vi.spyOn(RoutingEngine, "getCachedRoute").mockReturnValue(route);
+
+    // The ledger contains active and reversed rows for both non-hourly
+    // compensation types. The production aggregate excludes is_reversal=true
+    // before the cached-fuel re-projection receives its grouped totals.
+    pushBatchSummarySelects({
+      invoices: [{ jobId: 5, total: "1000.00", status: "paid" }],
+      manHoursRows: [{ id: 5, manHours: null }],
+      sprPaymentRows: [
+        { jobId: 5, compType: "fixed", amount: "400.00", isReversal: false },
+        { jobId: 5, compType: "fixed", amount: "900.00", isReversal: true },
+        { jobId: 5, compType: "allocation", amount: "250.00", isReversal: null },
+        { jobId: 5, compType: "allocation", amount: "750.00", isReversal: true },
+      ],
+      fuelSettings: {
+        companyAddress: "100 Main St",
+        companyCity: "Evansville",
+        companyState: "IN",
+      },
+      fuelVehicle: { avgMpg: 20, fuelPricePerGallon: "4.00" },
+      fuelJobs: [{
+        id: 5,
+        address: "200 Oak St",
+        city: "Evansville",
+        state: "IN",
+        workdayCount: 2,
+      }],
+    });
+
+    const res = await request(app).get("/jobs/profit-summary?jobIds=5");
+
+    expect(res.status).toBe(200);
+    expect(liveRoute).not.toHaveBeenCalled();
+    expect(cachedRoute).toHaveBeenCalledTimes(1);
+
+    const profit = res.body[5];
+    expect(profit.subLaborCost).toBeCloseTo(400);
+    expect(profit.allocPaid).toBeCloseTo(250);
+    expect(profit.estimatedFuelCost).toBeCloseTo(8);
+    expect(profit.includedCostTotal).toBeCloseTo(658);
+    expect(profit.profitBreakdown.includedCosts.subLabor).toBeCloseTo(400);
+    expect(profit.profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(250);
+    expect(profit.profitBreakdown.includedCosts.total).toBeCloseTo(658);
+    expect(profit.splitPool).toBeCloseTo(542.4);
+    expect(profit.netProfit).toBeCloseTo(342);
+    expectSharedProfitCalculationFields(profit);
+
+    liveRoute.mockRestore();
+    cachedRoute.mockRestore();
   });
 
   it("keeps payroll and cached fuel values isolated across multiple batch jobs", async () => {
