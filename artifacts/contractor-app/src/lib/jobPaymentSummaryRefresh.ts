@@ -15,6 +15,25 @@ export const initialJobPaymentSummaryRefreshState: JobPaymentSummaryRefreshState
   financialKey: 0,
 };
 
+export type JobProfitSummaryStatus = "loading" | "ready" | "error";
+
+export function compareProfitSummaryValuesDescending(
+  a: number | null | undefined,
+  b: number | null | undefined,
+): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return b - a;
+}
+
+export function hasCompleteProfitSummaries<T>(
+  jobIds: number[],
+  profitMap: Map<number, T | null>,
+): boolean {
+  return jobIds.every(jobId => profitMap.get(jobId) != null);
+}
+
 export function jobProfitSummaryRequestKey(jobIds: number[], financialKey: number): string {
   return `${jobIds.join(",")}:${financialKey}`;
 }

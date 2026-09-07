@@ -36,9 +36,12 @@ import {
   jobFinancialSummaryDetail,
 } from "@/lib/jobFinancials";
 import {
+  compareProfitSummaryValuesDescending,
+  hasCompleteProfitSummaries,
   initialJobPaymentSummaryRefreshState,
   jobProfitSummaryRequestKey,
   jobPaymentSummaryRefreshReducer,
+  type JobProfitSummaryStatus,
   type JobPaymentSummaryRefreshAction,
 } from "@/lib/jobPaymentSummaryRefresh";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
@@ -7912,14 +7915,25 @@ export default function Jobs() {
 
   // Fetch profit summary for all visible jobs in a single batch request
   const [profitMap, setProfitMap] = useState<Map<number, JobProfit | null>>(new Map());
+  const [profitSummaryStatus, setProfitSummaryStatus] = useState<JobProfitSummaryStatus>("loading");
+  const [profitSummaryRetryKey, setProfitSummaryRetryKey] = useState(0);
   const profitSummaryRequestKey = jobProfitSummaryRequestKey(
     visibleJobIds,
     jobFinancialSummaryRefreshKey,
   );
   useEffect(() => {
-    if (visibleJobIds.length === 0) { setProfitMap(new Map()); return; }
+    if (visibleJobIds.length === 0) {
+      setProfitMap(new Map());
+      setProfitSummaryStatus("ready");
+      return;
+    }
+    setProfitMap(new Map());
+    setProfitSummaryStatus("loading");
     const controller = new AbortController();
-    fetch(`${BASE}/api/jobs/profit-summary?jobIds=${visibleJobIds.join(",")}`, { signal: controller.signal })
+    fetch(`${BASE}/api/jobs/profit-summary?jobIds=${visibleJobIds.join(",")}`, {
+      signal: controller.signal,
+      credentials: "include",
+    })
       .then(r => r.ok ? r.json() as Promise<Record<string, JobProfit>> : Promise.reject())
       .then(obj => {
         if (controller.signal.aborted) return;
@@ -7927,11 +7941,16 @@ export default function Jobs() {
           ([id, p]) => [parseInt(id, 10), p] as [number, JobProfit]
         );
         setProfitMap(new Map(entries));
+        setProfitSummaryStatus("ready");
       })
-      .catch(() => { if (!controller.signal.aborted) setProfitMap(new Map()); });
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setProfitMap(new Map());
+        setProfitSummaryStatus("error");
+      });
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profitSummaryRequestKey]);
+  }, [profitSummaryRequestKey, profitSummaryRetryKey]);
 
 
 
@@ -7954,6 +7973,8 @@ export default function Jobs() {
 
   // Sorted/filtered closed jobs for the archive table (uses profitMap for sort)
   const archiveSearchLower = archiveSearch.toLowerCase().trim();
+  const profitSummaryValue = (jobId: number, field: "grossInvoiced" | "netProfit") =>
+    profitSummaryStatus === "ready" ? profitMap.get(jobId)?.[field] ?? null : null;
   const closedJobs = [...allClosedBase]
     .filter(j =>
       !archiveSearchLower ||
@@ -7966,8 +7987,14 @@ export default function Jobs() {
     .sort((a, b) => {
       switch (archiveSort) {
         case "oldest":  return (a.closedAt ?? a.endDate ?? "").localeCompare(b.closedAt ?? b.endDate ?? "");
-        case "revenue": return (profitMap.get(b.id)?.grossInvoiced ?? 0) - (profitMap.get(a.id)?.grossInvoiced ?? 0);
-        case "profit":  return (profitMap.get(b.id)?.netProfit ?? 0) - (profitMap.get(a.id)?.netProfit ?? 0);
+        case "revenue": return compareProfitSummaryValuesDescending(
+          profitSummaryValue(a.id, "grossInvoiced"),
+          profitSummaryValue(b.id, "grossInvoiced"),
+        );
+        case "profit":  return compareProfitSummaryValuesDescending(
+          profitSummaryValue(a.id, "netProfit"),
+          profitSummaryValue(b.id, "netProfit"),
+        );
         case "hours": {
           const getHrs = (j: typeof a) => {
             const p = profitMap.get(j.id);
@@ -8768,10 +8795,36 @@ export default function Jobs() {
                 </div>
               </div>
 
+              {profitSummaryStatus === "error" && (
+                <div
+                  role="alert"
+                  className="flex flex-wrap items-center justify-between gap-2 mb-3 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-900"
+                >
+                  <span className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+                    Closed-job profit summaries are unavailable. Revenue, profit totals, and profit sorting may be unavailable.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setProfitSummaryRetryKey(key => key + 1)}
+                    className="inline-flex items-center gap-1.5 font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-950"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Retry
+                  </button>
+                </div>
+              )}
+
               {/* Summary bar — always visible */}
               {(() => {
-                const totalRev = allClosedBase.reduce((s, j) => s + (profitMap.get(j.id)?.grossInvoiced ?? 0), 0);
-                const totalProfit = allClosedBase.reduce((s, j) => s + (profitMap.get(j.id)?.netProfit ?? 0), 0);
+                const summariesAvailable = profitSummaryStatus === "ready" &&
+                  hasCompleteProfitSummaries(allClosedBase.map(j => j.id), profitMap);
+                const totalRev = summariesAvailable
+                  ? allClosedBase.reduce((s, j) => s + (profitMap.get(j.id)?.grossInvoiced ?? 0), 0)
+                  : null;
+                const totalProfit = summariesAvailable
+                  ? allClosedBase.reduce((s, j) => s + (profitMap.get(j.id)?.netProfit ?? 0), 0)
+                  : null;
                 const totalHrs = allClosedBase.reduce((s, j) => {
                   const p = profitMap.get(j.id);
                   const tracked = p?.totalSubHours ?? 0;
@@ -8784,11 +8837,18 @@ export default function Jobs() {
                       Total Closed: <span className="font-semibold text-foreground">{allClosedBase.length}</span>
                     </span>
                     <span className="text-muted-foreground">
-                      Total Revenue: <span className="font-semibold text-foreground">{formatCurrency(totalRev)}</span>
+                      Total Revenue: <span className="font-semibold text-foreground">
+                        {totalRev == null ? "Unavailable" : formatCurrency(totalRev)}
+                      </span>
                     </span>
-                    <span className={totalProfit >= 0 ? "text-emerald-700" : "text-red-600"}>
-                      Total Net Profit: <span className="font-semibold">{formatCurrency(totalProfit)}</span>
-                      {totalRev > 0 && (
+                    <span className={
+                      totalProfit == null ? "text-amber-700" :
+                      totalProfit >= 0 ? "text-emerald-700" : "text-red-600"
+                    }>
+                      Total Net Profit: <span className="font-semibold">
+                        {totalProfit == null ? "Unavailable" : formatCurrency(totalProfit)}
+                      </span>
+                      {totalProfit != null && totalRev != null && totalRev > 0 && (
                         <span className={`ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full ${
                           (totalProfit / totalRev) >= 0.30 ? "bg-emerald-100 text-emerald-700" :
                           (totalProfit / totalRev) >= 0.15 ? "bg-yellow-100 text-yellow-700" :
@@ -8803,7 +8863,7 @@ export default function Jobs() {
                         Total Man-hrs: <span className="font-semibold">{totalHrs.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span>
                       </span>
                     )}
-                    {totalHrs > 0 && totalRev > 0 && (
+                    {totalHrs > 0 && totalRev != null && totalRev > 0 && (
                       <span className="text-blue-700">
                         Avg $/hr: <span className="font-semibold">{formatCurrency(totalRev / totalHrs)}</span>
                       </span>
@@ -8863,8 +8923,9 @@ export default function Jobs() {
                         <tbody>
                           {closedJobs.map(job => {
                             const profit = profitMap.get(job.id);
-                            const netProfit = profit?.netProfit ?? 0;
-                            const grossInvoiced = profit?.grossInvoiced ?? 0;
+                            const profitAvailable = profitSummaryStatus === "ready" && profit != null;
+                            const netProfit = profitAvailable ? profit.netProfit : null;
+                            const grossInvoiced = profitAvailable ? profit.grossInvoiced : null;
                             const photoCount = photoCountMap.get(job.id) ?? 0;
                             const isExpanded = archiveExpandedId === job.id;
                             const locationParts = [job.locationName, job.city, job.state].filter(Boolean);
@@ -8875,7 +8936,9 @@ export default function Jobs() {
                             const trackedHrs = profit?.totalSubHours ?? 0;
                             const manualHrs = profit?.manHours ?? ((job as unknown as Record<string, unknown>).manHours != null ? parseFloat(String((job as unknown as Record<string, unknown>).manHours)) : 0);
                             const displayHrs = trackedHrs > 0 ? trackedHrs : manualHrs;
-                            const revenuePerHr = displayHrs > 0 && grossInvoiced > 0 ? grossInvoiced / displayHrs : null;
+                            const revenuePerHr = displayHrs > 0 && grossInvoiced != null && grossInvoiced > 0
+                              ? grossInvoiced / displayHrs
+                              : null;
                             return (
                               <Fragment key={job.id}>
                                 <tr
@@ -8887,11 +8950,16 @@ export default function Jobs() {
                                   <td className="px-3 py-2.5 font-medium text-foreground truncate max-w-[160px]">{job.title}</td>
                                   <td className="px-3 py-2.5 text-muted-foreground hidden md:table-cell truncate max-w-[120px]">{job.clientName ?? "—"}</td>
                                   <td className="px-3 py-2.5 text-muted-foreground hidden lg:table-cell truncate max-w-[120px]">{locationParts.join(", ") || "—"}</td>
-                                  <td className="px-3 py-2.5 text-right font-semibold">{formatCurrency(grossInvoiced)}</td>
-                                  <td className={`px-3 py-2.5 text-right font-semibold ${netProfit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                                  <td className="px-3 py-2.5 text-right font-semibold">
+                                    {grossInvoiced == null ? "Unavailable" : formatCurrency(grossInvoiced)}
+                                  </td>
+                                  <td className={`px-3 py-2.5 text-right font-semibold ${
+                                    netProfit == null ? "text-amber-700" :
+                                    netProfit >= 0 ? "text-emerald-600" : "text-red-500"
+                                  }`}>
                                     <div className="flex flex-col items-end gap-0.5">
-                                      {formatCurrency(netProfit)}
-                                      {grossInvoiced > 0 && (() => {
+                                      {netProfit == null ? "Unavailable" : formatCurrency(netProfit)}
+                                      {netProfit != null && grossInvoiced != null && grossInvoiced > 0 && (() => {
                                         const pct = netProfit / grossInvoiced * 100;
                                         const cls = pct >= 30 ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
                                                     pct >= 15 ? "bg-yellow-50 text-yellow-700 border-yellow-200" :

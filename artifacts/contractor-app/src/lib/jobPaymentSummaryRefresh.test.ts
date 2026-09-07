@@ -5,6 +5,8 @@ import { JobMarginCard } from "../components/JobMarginCard";
 import { formatJobFinancialAmount } from "./jobFinancials";
 import { calculateJobMargin } from "./jobMargin";
 import {
+  compareProfitSummaryValuesDescending,
+  hasCompleteProfitSummaries,
   initialJobPaymentSummaryRefreshState,
   jobProfitSummaryRequestKey,
   jobPaymentSummaryRefreshReducer,
@@ -93,5 +95,26 @@ describe("Jobs payment summary refresh", () => {
     expect(refreshedMargin).toBe(50);
     expect(markup).toContain("50%");
     expect(markup).toContain("emerald");
+  });
+
+  it("sorts unavailable profit summaries after available values", () => {
+    expect(compareProfitSummaryValuesDescending(250, 100)).toBe(-150);
+    expect(compareProfitSummaryValuesDescending(null, 100)).toBe(1);
+    expect(compareProfitSummaryValuesDescending(250, undefined)).toBe(-1);
+    expect(compareProfitSummaryValuesDescending(null, undefined)).toBe(0);
+  });
+
+  it("only treats a batch as complete when every requested job has a summary", () => {
+    const complete = new Map<number, { netProfit: number }>([
+      [1, { netProfit: 100 }],
+      [2, { netProfit: 0 }],
+    ]);
+    const incomplete = new Map<number, { netProfit: number } | null>([
+      [1, { netProfit: 100 }],
+      [2, null],
+    ]);
+
+    expect(hasCompleteProfitSummaries([1, 2], complete)).toBe(true);
+    expect(hasCompleteProfitSummaries([1, 2], incomplete)).toBe(false);
   });
 });
