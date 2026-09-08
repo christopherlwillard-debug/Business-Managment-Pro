@@ -1561,6 +1561,81 @@ async function main() {
     );
 
     profitDetailFailureMode = true;
+    const financialsSecondOutageCloseClicked = await page.evaluate(() => {
+      const closeButton = document.querySelector<HTMLButtonElement>(
+        '[data-testid="job-financials-panel"] button',
+      );
+      closeButton?.click();
+      return closeButton != null;
+    });
+    const financialsSecondOutageClosed = await page.waitForFunction(
+      () => document.querySelector('[data-testid="job-financials-panel"]') == null,
+      { timeout: 20_000 },
+    ).then(() => true).catch(() => false);
+    const reopenedFinancialsCard = financialsSecondOutageClosed
+      && await clickJobCardAction(page, fixtures[0].title, "Open Job Card");
+    const reopenedFinancialsPanel = reopenedFinancialsCard
+      && await clickJobCardAction(page, fixtures[0].title, "Job P&L");
+    const financialsSecondOutageShown = await waitForText(page, "Unable to load job profit");
+    const financialsSecondOutageText = await page.evaluate(
+      () => document.body.innerText.replace(/\s+/g, " ").trim(),
+    );
+    const financialsSecondOutagePanelText = await page.$eval(
+      '[data-testid="job-financials-panel"]',
+      panel => panel.textContent?.replace(/\s+/g, " ").trim() ?? "",
+    );
+    const financialsSecondOutageErrorPanelShown = await page.$(
+      '[data-testid="job-financials-profit-error"]',
+    ) !== null;
+    profitDetailFailureMode = false;
+    const financialsSecondRetryClicked = await clickButtonByText(
+      page,
+      "Try again",
+      "Unable to load job profit",
+    );
+    const financialsSecondRetryRecovered = await page.waitForFunction(
+      ({ revenueLabel, netProfitLabel }) => {
+        const panel = document.querySelector<HTMLElement>('[data-testid="job-financials-panel"]');
+        const panelText = panel?.innerText ?? "";
+        return document.querySelector('[data-testid="job-financials-profit-error"]') == null
+          && panelText.includes(revenueLabel)
+          && panelText.includes(netProfitLabel);
+      },
+      { timeout: 20_000 },
+      {
+        revenueLabel: formatMoneyLabel(recoveredFirstExpected.grossInvoiced),
+        netProfitLabel: formatMoneyLabel(recoveredFirstExpected.netProfit),
+      },
+    ).then(() => true).catch(() => false);
+    const financialsSecondRetryText = await page.evaluate(
+      () => document.body.innerText.replace(/\s+/g, " ").trim(),
+    );
+    const financialsSecondRetryValues = {
+      revenue: readMoneyAfter(financialsSecondRetryText, "Job Revenue"),
+      costs: readMoneyAfter(financialsSecondRetryText, "Job Costs"),
+      splitPool: readMoneyAfter(financialsSecondRetryText, "Split Pool"),
+      netProfit: readMoneyAfter(financialsSecondRetryText, "Net Business Profit"),
+    };
+    record(
+      "Job Financials clears recovered values during a second outage and retries again",
+      financialsSecondOutageCloseClicked
+        && financialsSecondOutageClosed
+        && Boolean(reopenedFinancialsPanel)
+        && financialsSecondOutageShown
+        && financialsSecondOutageErrorPanelShown
+        && !financialsSecondOutagePanelText.includes(formatMoneyLabel(recoveredFirstExpected.grossInvoiced))
+        && !financialsSecondOutagePanelText.includes(formatMoneyLabel(recoveredFirstExpected.netProfit))
+        && financialsSecondRetryClicked
+        && financialsSecondRetryRecovered
+        && nearlyEqual(financialsSecondRetryValues.revenue, recoveredFirstExpected.grossInvoiced)
+        && nearlyEqual(financialsSecondRetryValues.costs, -recoveredFirstExpected.jobExpenses)
+        && nearlyEqual(financialsSecondRetryValues.splitPool, recoveredFirstExpected.splitPool)
+        && nearlyEqual(financialsSecondRetryValues.netProfit, recoveredFirstExpected.netProfit)
+        && !financialsSecondRetryText.includes("Unable to load job profit"),
+      `closed=${financialsSecondOutageClosed}, reopened=${Boolean(reopenedFinancialsPanel)}, outage=${financialsSecondOutageShown}, staleCleared=${!financialsSecondOutagePanelText.includes(formatMoneyLabel(recoveredFirstExpected.netProfit))}, retry=${financialsSecondRetryClicked}, recovered=${financialsSecondRetryRecovered}, values=${JSON.stringify(financialsSecondRetryValues)}`,
+    );
+
+    profitDetailFailureMode = true;
     await page.goto(`${BASE}/jobs/${firstJobId}/payroll`, {
       waitUntil: "networkidle2",
       timeout: 60_000,
