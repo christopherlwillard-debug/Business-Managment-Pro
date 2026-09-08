@@ -7940,10 +7940,13 @@ export default function Jobs() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleJobIds.join(","), invoiceSummaryRefreshKey]);
 
-  // Fetch profit summary for all visible jobs in a single batch request
+  // Fetch the full visible set initially, then retry only missing closed jobs.
   const [profitMap, setProfitMap] = useState<Map<number, JobProfitResponse | null>>(new Map());
   const [profitSummaryStatus, setProfitSummaryStatus] = useState<JobProfitSummaryStatus>("loading");
   const [profitSummaryRetryKey, setProfitSummaryRetryKey] = useState(0);
+  const profitSummaryRetryJobIdsRef = useRef<number[] | null>(null);
+  const profitSummaryRetryRequestKeyRef = useRef<string | null>(null);
+  const closedJobIds = allClosedBase.map(job => job.id);
   const profitSummaryRequestKey = jobProfitSummaryRequestKey(
     visibleJobIds,
     jobFinancialSummaryRefreshKey,
@@ -7954,11 +7957,20 @@ export default function Jobs() {
       setProfitSummaryStatus("ready");
       return;
     }
-    setProfitMap(new Map());
-    setProfitSummaryStatus("loading");
+    const targetedRetryJobIds = profitSummaryRetryRequestKeyRef.current === profitSummaryRequestKey
+      ? profitSummaryRetryJobIdsRef.current
+      : null;
+    const requestedJobIds = targetedRetryJobIds?.length
+      ? targetedRetryJobIds
+      : visibleJobIds;
+    const isTargetedRetry = targetedRetryJobIds != null && targetedRetryJobIds.length > 0;
+    if (!isTargetedRetry) {
+      setProfitMap(new Map());
+      setProfitSummaryStatus("loading");
+    }
     const controller = new AbortController();
     getJobsProfitSummary(
-      { jobIds: visibleJobIds.join(",") },
+      { jobIds: requestedJobIds.join(",") },
       { signal: controller.signal, credentials: "include" },
     )
       .then(obj => {
@@ -7966,16 +7978,32 @@ export default function Jobs() {
         const entries = Object.entries(obj).map(
           ([id, p]) => [parseInt(id, 10), p] as const,
         );
-        const nextProfitMap = new Map(entries);
+        const nextProfitMap = isTargetedRetry
+          ? new Map(profitMap)
+          : new Map(entries);
+        if (isTargetedRetry) {
+          const responseMap = new Map(entries);
+          for (const jobId of requestedJobIds) {
+            nextProfitMap.set(jobId, responseMap.get(jobId) ?? null);
+          }
+        }
         setProfitMap(nextProfitMap);
         setProfitSummaryStatus(
-          hasPartialProfitSummaries(visibleJobIds, nextProfitMap) ? "partial" : "ready",
+          hasPartialProfitSummaries(closedJobIds, nextProfitMap) ? "partial" : "ready",
         );
+        profitSummaryRetryJobIdsRef.current = null;
+        profitSummaryRetryRequestKeyRef.current = null;
       })
       .catch(() => {
         if (controller.signal.aborted) return;
-        setProfitMap(new Map());
-        setProfitSummaryStatus("error");
+        if (isTargetedRetry) {
+          setProfitSummaryStatus("partial");
+        } else {
+          setProfitMap(new Map());
+          setProfitSummaryStatus("error");
+        }
+        profitSummaryRetryJobIdsRef.current = null;
+        profitSummaryRetryRequestKeyRef.current = null;
       });
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -8010,8 +8038,19 @@ export default function Jobs() {
     (profitSummaryStatus === "ready" || profitSummaryStatus === "partial")
       ? profitMap.get(jobId)?.[field] ?? null
       : null;
+  const retryClosedProfitSummaries = () => {
+    const missingJobIds = missingProfitSummaryJobIds(closedJobIds, profitMap);
+    if (profitSummaryStatus === "partial" && missingJobIds.length > 0) {
+      profitSummaryRetryJobIdsRef.current = missingJobIds;
+      profitSummaryRetryRequestKeyRef.current = profitSummaryRequestKey;
+    } else {
+      profitSummaryRetryJobIdsRef.current = null;
+      profitSummaryRetryRequestKeyRef.current = null;
+    }
+    setProfitSummaryRetryKey(key => key + 1);
+  };
   const missingClosedProfitJobIds = missingProfitSummaryJobIds(
-    allClosedBase.map(job => job.id),
+    closedJobIds,
     profitMap,
   );
   const missingClosedProfitJobIdSet = new Set(missingClosedProfitJobIds);
@@ -8850,7 +8889,7 @@ export default function Jobs() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => setProfitSummaryRetryKey(key => key + 1)}
+                    onClick={retryClosedProfitSummaries}
                     className="inline-flex items-center gap-1.5 font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-950"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
@@ -8877,7 +8916,7 @@ export default function Jobs() {
                   )}
                   <button
                     type="button"
-                    onClick={() => setProfitSummaryRetryKey(key => key + 1)}
+                    onClick={retryClosedProfitSummaries}
                     className="inline-flex items-center gap-1.5 font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-950"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />

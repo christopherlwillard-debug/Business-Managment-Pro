@@ -555,6 +555,7 @@ async function main() {
   let delayedProfitResponseUsed = false;
   let profitSummaryFailureMode = false;
   let profitSummaryPartialMode = false;
+  let profitSummaryResponseDelayMs = 0;
   let profitDetailFailureMode = false;
   let profitDetailFailureJobId: number | null = null;
   let sessionId: string | undefined;
@@ -624,7 +625,11 @@ async function main() {
         if (profitSummaryPartialMode) {
           delete summary[secondJobId];
         }
-        respondJson(summary);
+        if (profitSummaryResponseDelayMs > 0) {
+          setTimeout(() => respondJson(summary), profitSummaryResponseDelayMs);
+        } else {
+          respondJson(summary);
+        }
         return;
       }
       if (path === "/api/jobs/financials-summary") {
@@ -1946,12 +1951,14 @@ async function main() {
     );
 
     profitSummaryPartialMode = true;
+    const partialProfitRequestStart = profitSummaryRequests.length;
     await page.goto(`${BASE}/jobs`, {
       waitUntil: "networkidle2",
       timeout: 60_000,
     });
     await clickButtonContainingText(page, "Closed Jobs");
     const partialClosedJobsText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const partialInitialProfitRequest = profitSummaryRequests[partialProfitRequestStart];
     const partialClosedJobRows = await page.$$eval(
       "table tbody tr",
       rows => rows.map(row => row.textContent?.replace(/\s+/g, " ").trim() ?? ""),
@@ -1977,7 +1984,30 @@ async function main() {
     );
 
     profitSummaryPartialMode = false;
+    profitSummaryResponseDelayMs = 750;
     const partialRetryClicked = await clickButtonByText(page, "Retry", "Some closed-job profit summaries are unavailable");
+    const partialRetryRequestIssued = await waitForCondition(
+      () => profitSummaryRequests.length > partialProfitRequestStart + 1,
+    );
+    const partialRetryRequest = profitSummaryRequests[partialProfitRequestStart + 1];
+    const partialAvailableRowPreservedDuringRetry = await page.waitForFunction(
+      ({ availableTitle, expectedRevenue, expectedNetProfit }) => {
+        const availableRow = [...document.querySelectorAll("table tbody tr")]
+          .find(row => row.textContent?.includes(availableTitle));
+        const rowText = availableRow?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+        return rowText.includes(expectedRevenue)
+          && rowText.includes(expectedNetProfit)
+          && !rowText.includes("Unavailable")
+          && document.body.innerText.includes("Total Revenue: Unavailable")
+          && document.body.innerText.includes("Total Net Profit: Unavailable");
+      },
+      { timeout: 20_000 },
+      {
+        availableTitle: fixtures[0].title,
+        expectedRevenue: closedExpectedRevenueLabel,
+        expectedNetProfit: closedExpectedNetProfitLabel,
+      },
+    ).then(() => true).catch(() => false);
     const partialRetryRecovered = await page.waitForFunction(
       ({ expectedRevenue, expectedNetProfit, missingJobTitle }) => {
         const bodyText = document.body.innerText;
@@ -1996,10 +2026,17 @@ async function main() {
         missingJobTitle: fixtures[1].title,
       },
     ).then(() => true).catch(() => false);
+    profitSummaryResponseDelayMs = 0;
+    const partialRetryRequestTargeted = partialRetryRequest?.jobIds.length === 1
+      && partialRetryRequest.jobIds[0] === secondJobId;
     record(
       "Closed Jobs retry completes a previously partial batch",
-      partialRetryClicked && partialRetryRecovered,
-      `clicked=${partialRetryClicked}, recovered=${partialRetryRecovered}`,
+      partialRetryClicked
+        && partialRetryRequestIssued
+        && partialRetryRequestTargeted
+        && partialAvailableRowPreservedDuringRetry
+        && partialRetryRecovered,
+      `clicked=${partialRetryClicked}, requestIssued=${partialRetryRequestIssued}, targeted=${partialRetryRequestTargeted}, availableRowPreserved=${partialAvailableRowPreservedDuringRetry}, recovered=${partialRetryRecovered}, initialRequestIds=${partialInitialProfitRequest?.jobIds.join(",") ?? "missing"}, retryRequestIds=${partialRetryRequest?.jobIds.join(",") ?? "missing"}`,
     );
 
     record(
