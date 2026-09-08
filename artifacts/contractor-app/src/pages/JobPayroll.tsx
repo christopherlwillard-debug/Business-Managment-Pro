@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCircle2, Pencil, Save, AlertCircle, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getJobProfit } from "@workspace/api-client-react";
 import type { JobProfitResponse } from "@workspace/api-client-react";
 
 import { computeSubOwed } from "@/lib/allocationUtils";
@@ -1152,16 +1153,13 @@ export default function JobPayroll() {
     const requestedJobId = jobId;
     const [pRes, profRes, hoursRes] = await Promise.allSettled([
       fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`,  { credentials: "include" }).then(r => r.ok ? r.json() : []),
-      fetch(`${BASE}/api/jobs/${requestedJobId}/profit`,        { credentials: "include" }).then(r => {
-        if (!r.ok) throw new Error(`Profit request failed (${r.status})`);
-        return r.json();
-      }),
+      getJobProfit(requestedJobId, { credentials: "include" }),
       fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`,     { credentials: "include" }).then(r => r.ok ? r.json() : []),
     ]);
     if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) return;
     if (pRes.status    === "fulfilled") setPayments(pRes.value as SubPaymentRow[]);
     if (profRes.status === "fulfilled" && profRes.value) {
-      setProfit(profRes.value as JobProfitResponse);
+      setProfit(profRes.value);
       setProfitError(false);
     } else {
       setProfit(null);
@@ -1186,10 +1184,7 @@ export default function JobPayroll() {
       const [jobRes, pRes, profRes, settingsRes, hoursInitRes] = await Promise.allSettled([
         fetch(`${BASE}/api/jobs/${requestedJobId}`,             { credentials: "include" }).then(r => r.ok ? r.json() : null),
         fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`,{ credentials: "include" }).then(r => r.ok ? r.json() : []),
-        fetch(`${BASE}/api/jobs/${requestedJobId}/profit`,      { credentials: "include" }).then(r => {
-          if (!r.ok) throw new Error(`Profit request failed (${r.status})`);
-          return r.json();
-        }),
+        getJobProfit(requestedJobId, { credentials: "include" }),
         fetch(`${BASE}/api/settings`,                  { credentials: "include" }).then(r => r.ok ? r.json() : null),
         fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`,   { credentials: "include" }).then(r => r.ok ? r.json() : []),
       ]);
@@ -1197,7 +1192,7 @@ export default function JobPayroll() {
       if (jobRes.status       === "fulfilled" && jobRes.value)     setJob(jobRes.value as Job);
       if (pRes.status         === "fulfilled")                     setPayments(pRes.value as SubPaymentRow[]);
       if (profRes.status      === "fulfilled" && profRes.value) {
-        setProfit(profRes.value as JobProfitResponse);
+        setProfit(profRes.value);
         setProfitError(false);
       } else {
         setProfit(null);
