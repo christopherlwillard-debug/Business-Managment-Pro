@@ -1141,7 +1141,7 @@ export default function RoutePlanner() {
 
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-foreground">{viewLabel}</p>
+              <p data-testid="route-view-label" className="text-sm font-semibold text-foreground">{viewLabel}</p>
               <p className="text-xs text-muted-foreground">
                 {displayStops.length} stop{displayStops.length !== 1 ? "s" : ""}
                 {displayStops.length > 0 && ` · ~${Math.round(totalEstDuration / 60 * 10) / 10}h est.`}
@@ -1206,7 +1206,7 @@ export default function RoutePlanner() {
         </div>
 
         {routeProfitStats && (
-          <div className="px-4 py-2.5 border-b border-border bg-muted/20">
+          <div data-testid="route-profit-panel" className="px-4 py-2.5 border-b border-border bg-muted/20">
             <div className="flex items-center justify-between mb-1.5">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
                 <TrendingUp className="w-3 h-3" />
@@ -1309,7 +1309,7 @@ export default function RoutePlanner() {
               </>
             )}
             {viewMode === "week" && (
-              <div className="mt-2.5 rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2.5">
+              <div data-testid="route-profit-week-scope" className="mt-2.5 rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2.5">
                 <p className="text-[10px] font-semibold text-blue-800 flex items-center gap-1">
                   <Info className="w-3 h-3" />
                   Included in this week&apos;s total

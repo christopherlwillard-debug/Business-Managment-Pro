@@ -1106,6 +1106,97 @@ async function main() {
       `jobIds=${beforeWeekMove.jobIds.join(",")}, displayed=${beforeWeekMoveDisplayed ?? "missing"}, canonical=${beforeWeekMove.netProfit}, scopeExplained=${weekScopeExplained}`,
     );
 
+    profitSummaryPartialMode = true;
+    const partialWeekUrl = page.url();
+    await page.reload({
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    const partialWeekDateSelected = await selectCalendarDate(page, today);
+    const partialWeekViewSelected = await clickButtonByText(page, "Week");
+    const partialWeekLabel = await page.$eval(
+      '[data-testid="route-view-label"]',
+      label => label.textContent?.trim() ?? "",
+    );
+    const partialWeekPanelText = await page.$eval(
+      '[data-testid="route-profit-panel"]',
+      panel => panel.textContent?.replace(/\s+/g, " ").trim() ?? "",
+    );
+    const partialWeekScopeText = await page.$eval(
+      '[data-testid="route-profit-week-scope"]',
+      scope => scope.textContent?.replace(/\s+/g, " ").trim() ?? "",
+    );
+    const partialWeekMissingJobMarked = partialWeekScopeText.includes(fixtures[1].title)
+      && partialWeekScopeText.includes("Profit unavailable");
+    const partialWeekReturnedJobIncluded = partialWeekScopeText.includes(fixtures[0].title)
+      && partialWeekScopeText.includes("Included");
+    const partialWeekDisplayed = readMoneyAfter(partialWeekPanelText, "Net Profit");
+    const partialWeekTotalHidden = partialWeekDisplayed == null
+      && !partialWeekPanelText.includes(routeProfitLabel(fixtures[0].profit.netProfit))
+      && !partialWeekPanelText.includes(routeProfitLabel(beforeWeekMove.netProfit));
+    record(
+      "Week view marks an omitted linked job unavailable and hides the partial route total",
+      partialWeekDateSelected
+        && partialWeekViewSelected
+        && partialWeekReturnedJobIncluded
+        && partialWeekMissingJobMarked
+        && partialWeekTotalHidden,
+      `dateSelected=${partialWeekDateSelected}, viewSelected=${partialWeekViewSelected}, returnedJobIncluded=${partialWeekReturnedJobIncluded}, missingJobMarked=${partialWeekMissingJobMarked}, totalHidden=${partialWeekTotalHidden}, displayed=${partialWeekDisplayed ?? "missing"}`,
+    );
+
+    profitSummaryPartialMode = false;
+    const partialWeekNavigationCount = mainFrameNavigationCount;
+    const partialWeekRetryClicked = await clickButtonByText(
+      page,
+      "Try again",
+      "Some linked job profit data is unavailable",
+    );
+    const partialWeekRetryRecovered = await page.waitForFunction(
+      ({ expectedLabel, expectedWeekLabel, firstJobTitle, secondJobTitle }) => {
+        const panel = document.querySelector<HTMLElement>('[data-testid="route-profit-panel"]');
+        const scope = document.querySelector<HTMLElement>('[data-testid="route-profit-week-scope"]');
+        const weekLabel = document.querySelector<HTMLElement>('[data-testid="route-view-label"]');
+        const panelText = panel?.innerText ?? "";
+        const scopeText = scope?.innerText ?? "";
+        return panelText.includes(expectedLabel)
+          && weekLabel?.innerText.trim() === expectedWeekLabel
+          && !panelText.includes("Some linked job profit data is unavailable")
+          && scopeText.includes(firstJobTitle)
+          && scopeText.includes(secondJobTitle)
+          && scopeText.includes("Included")
+          && !scopeText.includes("Profit unavailable");
+      },
+      { timeout: 20_000 },
+      {
+        expectedLabel: routeProfitLabel(beforeWeekMove.netProfit),
+        expectedWeekLabel: partialWeekLabel,
+        firstJobTitle: fixtures[0].title,
+        secondJobTitle: fixtures[1].title,
+      },
+    ).then(() => true).catch(() => false);
+    const partialWeekRetryPanelText = await page.$eval(
+      '[data-testid="route-profit-panel"]',
+      panel => panel.textContent?.replace(/\s+/g, " ").trim() ?? "",
+    );
+    const partialWeekRetryDisplayed = readMoneyAfter(partialWeekRetryPanelText, "Net Profit");
+    const partialWeekRetryScopeText = await page.$eval(
+      '[data-testid="route-profit-week-scope"]',
+      scope => scope.textContent?.replace(/\s+/g, " ").trim() ?? "",
+    );
+    const partialWeekVisibleScopeRestored = partialWeekRetryScopeText.includes(fixtures[0].title)
+      && partialWeekRetryScopeText.includes(fixtures[1].title)
+      && !partialWeekRetryScopeText.includes("Profit unavailable");
+    record(
+      "Week retry restores the complete canonical total without changing the visible week",
+      partialWeekRetryClicked
+        && partialWeekRetryRecovered
+        && page.url() === partialWeekUrl
+        && mainFrameNavigationCount === partialWeekNavigationCount
+        && nearlyEqual(partialWeekRetryDisplayed, beforeWeekMove.netProfit)
+        && partialWeekVisibleScopeRestored,
+      `clicked=${partialWeekRetryClicked}, recovered=${partialWeekRetryRecovered}, displayed=${partialWeekRetryDisplayed ?? "missing"}, canonical=${beforeWeekMove.netProfit}, urlUnchanged=${page.url() === partialWeekUrl}, navigationUnchanged=${mainFrameNavigationCount === partialWeekNavigationCount}, visibleScopeRestored=${partialWeekVisibleScopeRestored}`,
+    );
+
     const weekMoveClicked = await clickRouteStopAction(page, movedStopTitle, "Edit");
     await page.waitForFunction(
       () => document.querySelector("input[type='date']") != null,
