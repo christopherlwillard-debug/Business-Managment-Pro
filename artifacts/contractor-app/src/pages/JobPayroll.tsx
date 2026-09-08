@@ -8,6 +8,7 @@ import type { JobProfitResponse } from "@workspace/api-client-react";
 import { computeSubOwed } from "@/lib/allocationUtils";
 import { calculateJobFinancialWaterfall } from "@/lib/jobFinancials";
 import { canApplyJobResponse } from "@/lib/jobProfitRequests";
+import { applyJobPayrollProfitRefresh } from "@/lib/jobPaymentSummaryRefresh";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
 
@@ -1158,13 +1159,20 @@ export default function JobPayroll() {
     ]);
     if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) return;
     if (pRes.status    === "fulfilled") setPayments(pRes.value as SubPaymentRow[]);
-    if (profRes.status === "fulfilled" && profRes.value) {
-      setProfit(profRes.value);
-      setProfitError(false);
-    } else {
-      setProfit(null);
-      setProfitError(true);
-    }
+    const profitState = applyJobPayrollProfitRefresh(
+      { loading: true, profit, profitError },
+      {
+        requestKey,
+        currentRequestKey: loadKeyRef.current,
+        requestedJobId,
+        currentJobId: currentJobIdRef.current,
+        response: profRes.status === "fulfilled"
+          ? { status: "fulfilled", value: profRes.value }
+          : { status: "rejected" },
+      },
+    );
+    setProfit(profitState.profit);
+    setProfitError(profitState.profitError);
     if (hoursRes.status === "fulfilled") setSubHours(hoursRes.value as SubHourEntry[]);
     setLoading(false);
   }, [jobId]);
@@ -1191,13 +1199,20 @@ export default function JobPayroll() {
       if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) return;
       if (jobRes.status       === "fulfilled" && jobRes.value)     setJob(jobRes.value as Job);
       if (pRes.status         === "fulfilled")                     setPayments(pRes.value as SubPaymentRow[]);
-      if (profRes.status      === "fulfilled" && profRes.value) {
-        setProfit(profRes.value);
-        setProfitError(false);
-      } else {
-        setProfit(null);
-        setProfitError(true);
-      }
+      const profitState = applyJobPayrollProfitRefresh(
+        { loading: true, profit: null, profitError: false },
+        {
+          requestKey,
+          currentRequestKey: loadKeyRef.current,
+          requestedJobId,
+          currentJobId: currentJobIdRef.current,
+          response: profRes.status === "fulfilled"
+            ? { status: "fulfilled", value: profRes.value }
+            : { status: "rejected" },
+        },
+      );
+      setProfit(profitState.profit);
+      setProfitError(profitState.profitError);
       if (hoursInitRes.status === "fulfilled")                     setSubHours(hoursInitRes.value as SubHourEntry[]);
       if (settingsRes.status === "fulfilled" && settingsRes.value) {
         const s = settingsRes.value as Record<string, unknown>;

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { JobMarginCard } from "../components/JobMarginCard";
+import type { JobProfitResponse } from "@workspace/api-client-react";
 import { formatJobFinancialAmount } from "./jobFinancials";
 import { calculateJobMargin } from "./jobMargin";
 import {
+  applyJobPayrollProfitRefresh,
   canSortProfitSummaries,
   compareProfitSummaryValuesDescending,
   hasCompleteProfitSummaries,
@@ -14,6 +16,11 @@ import {
   jobPaymentSummaryRefreshReducer,
   type JobPaymentSummaryRefreshAction,
 } from "./jobPaymentSummaryRefresh";
+
+type PayrollProfitSnapshot = Pick<
+  JobProfitResponse,
+  "subLaborCost" | "estimatedFuelCost" | "growthReservePct" | "netProfit"
+>;
 
 describe("Jobs payment summary refresh", () => {
   it.each<JobPaymentSummaryRefreshAction>([
@@ -97,6 +104,99 @@ describe("Jobs payment summary refresh", () => {
     expect(refreshedMargin).toBe(50);
     expect(markup).toContain("50%");
     expect(markup).toContain("emerald");
+  });
+
+  it("applies the complete payroll profit response after a successful refresh", () => {
+    const refreshedProfit: PayrollProfitSnapshot = {
+      subLaborCost: 412.5,
+      estimatedFuelCost: 63.25,
+      growthReservePct: 5,
+      netProfit: 1710.75,
+    };
+
+    const next = applyJobPayrollProfitRefresh<PayrollProfitSnapshot>(
+      { loading: true, profit: null, profitError: false },
+      {
+        requestKey: 8,
+        currentRequestKey: 8,
+        requestedJobId: 42,
+        currentJobId: 42,
+        response: { status: "fulfilled", value: refreshedProfit },
+      },
+    );
+
+    expect(next).toEqual({
+      loading: false,
+      profit: refreshedProfit,
+      profitError: false,
+    });
+    expect(next.profit).toMatchObject({
+      subLaborCost: 412.5,
+      estimatedFuelCost: 63.25,
+      growthReservePct: 5,
+      netProfit: 1710.75,
+    });
+  });
+
+  it("clears an old payroll profit and exposes the actionable error state after failure", () => {
+    const previousProfit: PayrollProfitSnapshot = {
+      subLaborCost: 300,
+      estimatedFuelCost: 40,
+      growthReservePct: 5,
+      netProfit: 1200,
+    };
+
+    const next = applyJobPayrollProfitRefresh<PayrollProfitSnapshot>(
+      { loading: true, profit: previousProfit, profitError: false },
+      {
+        requestKey: 9,
+        currentRequestKey: 9,
+        requestedJobId: 42,
+        currentJobId: 42,
+        response: { status: "rejected" },
+      },
+    );
+
+    expect(next).toEqual({
+      loading: false,
+      profit: null,
+      profitError: true,
+    });
+  });
+
+  it("ignores a refreshed response for a job that is no longer selected", () => {
+    const selectedProfit: PayrollProfitSnapshot = {
+      subLaborCost: 275,
+      estimatedFuelCost: 35,
+      growthReservePct: 5,
+      netProfit: 980,
+    };
+    const staleProfit: PayrollProfitSnapshot = {
+      subLaborCost: 999,
+      estimatedFuelCost: 88,
+      growthReservePct: 10,
+      netProfit: -250,
+    };
+    const state = {
+      loading: true,
+      profit: selectedProfit,
+      profitError: false,
+    };
+
+    const next = applyJobPayrollProfitRefresh(
+      state,
+      {
+        requestKey: 10,
+        currentRequestKey: 11,
+        requestedJobId: 42,
+        currentJobId: 43,
+        response: { status: "fulfilled", value: staleProfit },
+      },
+    );
+
+    expect(next).toBe(state);
+    expect(next.profit).toEqual(selectedProfit);
+    expect(next.profitError).toBe(false);
   });
 
   it("sorts unavailable profit summaries after available values", () => {
