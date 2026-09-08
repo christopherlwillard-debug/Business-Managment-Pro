@@ -1251,6 +1251,98 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expectSharedProfitCalculationFields(secondJob);
   });
 
+  it("does not leak a cached fuel estimate into a batch job with no cached route", async () => {
+    const liveRoute = vi.spyOn(RoutingEngine, "calculate");
+    const cachedRoute = vi.spyOn(RoutingEngine, "getCachedRoute").mockImplementation(({ destination }) => (
+      destination.includes("Oak")
+        ? {
+            miles: 10,
+            durationMinutes: 20,
+            routeStatus: "ok",
+            provider: "haversine",
+            cached: true,
+          }
+        : null
+    ));
+
+    pushBatchSummarySelects({
+      invoices: [
+        { jobId: 601, total: "1000.00", status: "paid" },
+        { jobId: 602, total: "1800.00", status: "paid" },
+      ],
+      hoursRows: [
+        { jobId: 601, total: "120.00" },
+      ],
+      hoursCountRows: [
+        { jobId: 601, totalHours: "4.0" },
+      ],
+      manHoursRows: [
+        { id: 601, manHours: null },
+        { id: 602, manHours: null },
+      ],
+      sprRows: [
+        { jobId: 601, compType: "allocation", total: "150.00" },
+        { jobId: 602, compType: "fixed", total: "350.00" },
+        { jobId: 602, compType: "allocation", total: "75.00" },
+      ],
+      fuelSettings: {
+        companyAddress: "100 Main St",
+        companyCity: "Evansville",
+        companyState: "IN",
+      },
+      fuelVehicle: { avgMpg: 20, fuelPricePerGallon: "4.00" },
+      fuelJobs: [
+        {
+          id: 601,
+          address: "200 Oak St",
+          city: "Evansville",
+          state: "IN",
+          workdayCount: 2,
+        },
+        {
+          id: 602,
+          address: "300 Pine St",
+          city: "Evansville",
+          state: "IN",
+          workdayCount: 3,
+        },
+      ],
+    });
+
+    const res = await request(app).get("/jobs/profit-summary?jobIds=601,602");
+
+    expect(res.status).toBe(200);
+    expect(liveRoute).not.toHaveBeenCalled();
+    expect(cachedRoute).toHaveBeenCalledTimes(2);
+
+    const cachedJob = res.body[601];
+    const cacheMissJob = res.body[602];
+
+    expect(cachedJob.estimatedFuelCost).toBeCloseTo(8);
+    expect(cachedJob.subLaborCost).toBeCloseTo(120);
+    expect(cachedJob.allocPaid).toBeCloseTo(150);
+    expect(cachedJob.splitPool).toBeCloseTo(822.4);
+    expect(cachedJob.netProfit).toBeCloseTo(722);
+
+    expect(cacheMissJob.estimatedFuelCost).toBe(0);
+    expect(cacheMissJob.profitBreakdown.includedCosts.estimatedFuel).toBe(0);
+    expect(cacheMissJob.subLaborCost).toBeCloseTo(350);
+    expect(cacheMissJob.allocPaid).toBeCloseTo(75);
+    expect(cacheMissJob.splitPool).toBeCloseTo(1360);
+    expect(cacheMissJob.netProfit).toBeCloseTo(1375);
+
+    expect(cachedJob.estimatedFuelCost).not.toBeCloseTo(cacheMissJob.estimatedFuelCost);
+    expect(cachedJob.subLaborCost).not.toBeCloseTo(cacheMissJob.subLaborCost);
+    expect(cachedJob.allocPaid).not.toBeCloseTo(cacheMissJob.allocPaid);
+    expect(cachedJob.splitPool).not.toBeCloseTo(cacheMissJob.splitPool);
+    expect(cachedJob.netProfit).not.toBeCloseTo(cacheMissJob.netProfit);
+    expectSharedProfitCalculationFields(cachedJob);
+    expectSharedProfitCalculationFields(cacheMissJob);
+
+    liveRoute.mockRestore();
+    cachedRoute.mockRestore();
+  });
+
   it("keeps the batch mileage reimbursement in its numeric compatibility form", async () => {
     pushSummarySelects({
       jobId: 5,
