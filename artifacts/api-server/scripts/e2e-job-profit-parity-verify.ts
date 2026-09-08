@@ -147,6 +147,24 @@ async function clickJobCardAction(page: Page, title: string, action: string): Pr
   }, { jobTitle: title, buttonText: action });
 }
 
+async function clickJobCardHeadingAction(page: Page, title: string, action: string): Promise<boolean> {
+  return page.evaluate(({ jobTitle, buttonText }) => {
+    const heading = [...document.querySelectorAll<HTMLHeadingElement>("h3")]
+      .find(element => element.textContent?.trim() === jobTitle);
+    let ancestor: HTMLElement | null = heading ?? null;
+    for (let depth = 0; ancestor && depth < 8; depth += 1, ancestor = ancestor.parentElement) {
+      const button = [...ancestor.querySelectorAll<HTMLButtonElement>("button")]
+        .find(candidate => (candidate.textContent ?? "").includes(buttonText)
+          || candidate.title === buttonText);
+      if (button) {
+        button.click();
+        return true;
+      }
+    }
+    return false;
+  }, { jobTitle: title, buttonText: action });
+}
+
 async function clickRouteStopAction(page: Page, title: string, action: string): Promise<boolean> {
   return page.evaluate(({ stopTitle, buttonTitle }) => {
     const titleElement = [...document.querySelectorAll<HTMLElement>("span.text-sm.font-medium")]
@@ -203,10 +221,10 @@ async function waitForRouteStopOrder(page: Page, expectedTitles: string[]): Prom
 }
 
 async function clickButtonByText(page: Page, text: string, scopeText?: string): Promise<boolean> {
-  const index = await page.evaluate(({ buttonText, requiredScopeText }) => {
-    const buttons = [...document.querySelectorAll<HTMLButtonElement>("button")];
-    const candidate = buttons
+  return page.evaluate(({ buttonText, requiredScopeText }) => {
+    const candidate = [...document.querySelectorAll<HTMLButtonElement>("button")]
       .filter(button => button.textContent?.trim() === buttonText)
+      .filter(button => !button.disabled && button.getClientRects().length > 0)
       .find(button => {
         if (!requiredScopeText) return true;
         let ancestor: HTMLElement | null = button.parentElement;
@@ -215,15 +233,10 @@ async function clickButtonByText(page: Page, text: string, scopeText?: string): 
         }
         return false;
       });
-    return candidate ? buttons.indexOf(candidate) : -1;
+    if (!candidate) return false;
+    candidate.click();
+    return true;
   }, { buttonText: text, requiredScopeText: scopeText });
-  if (index < 0) return false;
-  const buttons = await page.$$("button");
-  const button = buttons[index];
-  if (!button) return false;
-  await button.click();
-  await Promise.all(buttons.map(candidate => candidate.dispose()));
-  return true;
 }
 
 async function clickButtonContainingText(page: Page, text: string): Promise<boolean> {
@@ -478,6 +491,110 @@ async function main() {
   }
 
   const jobById = new Map(fixtures.map(fixture => [fixture.id, fixture]));
+  const panelDetailsByJobId = new Map<number, {
+    payments: unknown[];
+    hours: unknown[];
+    distributions: unknown[];
+  }>([
+    [firstJobId, {
+      payments: [{
+        subcontractorId: 7101,
+        subName: "First Job Crew",
+        amountOwed: 100,
+        computedOwed: 100,
+        amountPaid: 50,
+        balance: 50,
+        percentComplete: 50,
+        paidDate: null,
+        paidNotes: null,
+        totalHours: 4,
+        totalWorkHours: 4,
+        totalTravelHours: 0,
+        payRate: 25,
+        travelPayRate: null,
+        payType: "hourly",
+        role: "subcontractor",
+        growthPct: null,
+        compensationType: "hourly",
+        hourlyRate: 25,
+        travelRate: null,
+        fixedAmount: null,
+        allocationPct: null,
+        paymentStatus: "partial",
+        paymentHistory: [{
+          id: 71011,
+          date: today,
+          amount: 50,
+          netPaid: 50,
+          paymentMethod: "Cash",
+          workHours: 2,
+          workRate: 25,
+        }],
+      }],
+      hours: [{
+        id: 7111,
+        subcontractorId: 7101,
+        subName: "First Job Crew",
+        hours: 4,
+        hourType: "work",
+        date: today,
+        rateSnapshot: 25,
+        description: "First job hours",
+      }],
+      distributions: [{
+        id: 7121,
+        jobId: firstJobId,
+        date: today,
+        description: "First job draw",
+        amount: 40,
+      }],
+    }],
+    [secondJobId, {
+      payments: [{
+        subcontractorId: 7201,
+        subName: "Second Job Crew",
+        amountOwed: 200,
+        computedOwed: 200,
+        amountPaid: 0,
+        balance: 200,
+        percentComplete: 0,
+        paidDate: null,
+        paidNotes: null,
+        totalHours: 8,
+        totalWorkHours: 8,
+        totalTravelHours: 0,
+        payRate: 25,
+        travelPayRate: null,
+        payType: "hourly",
+        role: "subcontractor",
+        growthPct: null,
+        compensationType: "hourly",
+        hourlyRate: 25,
+        travelRate: null,
+        fixedAmount: null,
+        allocationPct: null,
+        paymentStatus: "unpaid",
+        paymentHistory: [],
+      }],
+      hours: [{
+        id: 7211,
+        subcontractorId: 7201,
+        subName: "Second Job Crew",
+        hours: 8,
+        hourType: "work",
+        date: today,
+        rateSnapshot: 25,
+        description: "Second job hours",
+      }],
+      distributions: [{
+        id: 7221,
+        jobId: secondJobId,
+        date: today,
+        description: "Second job draw",
+        amount: 80,
+      }],
+    }],
+  ]);
   const jobs = fixtures.map(fixture => fixture.job);
   const schedule = {
     jobs: jobs.map(job => ({
@@ -553,6 +670,7 @@ async function main() {
   const profitDetailRequests: number[] = [];
   const panelReadRequests: string[] = [];
   const panelAbortedRequests: string[] = [];
+  const panelDelayedRequests: string[] = [];
   let delayedProfitJobId: number | null = null;
   let delayedProfitResponseUsed = false;
   let profitSummaryFailureMode = false;
@@ -561,6 +679,7 @@ async function main() {
   let profitDetailFailureMode = false;
   let profitDetailFailureJobId: number | null = null;
   let panelResponseDelayMs = 0;
+  let panelResponseDelayJobId: number | null = null;
   let sessionId: string | undefined;
   const browser = await launchBrowser();
 
@@ -793,7 +912,9 @@ async function main() {
           respondError("Profit service unavailable");
           return;
         }
-        if (panelResponseDelayMs > 0) {
+        if (panelResponseDelayMs > 0
+          && (panelResponseDelayJobId == null || panelResponseDelayJobId === jobId)) {
+          panelDelayedRequests.push(path);
           setTimeout(() => respondJson(fixture.profit), panelResponseDelayMs);
         } else if (jobId === delayedProfitJobId && !delayedProfitResponseUsed) {
           delayedProfitResponseUsed = true;
@@ -806,19 +927,27 @@ async function main() {
 
       const subPaymentsMatch = path.match(/^\/api\/jobs\/(\d+)\/sub-payments$/);
       if (subPaymentsMatch) {
-        if (panelResponseDelayMs > 0) {
-          setTimeout(() => respondJson([]), panelResponseDelayMs);
+        const jobId = Number(subPaymentsMatch[1]);
+        const payments = panelDetailsByJobId.get(jobId)?.payments ?? [];
+        if (panelResponseDelayMs > 0
+          && (panelResponseDelayJobId == null || panelResponseDelayJobId === jobId)) {
+          panelDelayedRequests.push(path);
+          setTimeout(() => respondJson(payments), panelResponseDelayMs);
         } else {
-          respondJson([]);
+          respondJson(payments);
         }
         return;
       }
       const subHoursMatch = path.match(/^\/api\/jobs\/(\d+)\/sub-hours$/);
       if (subHoursMatch) {
-        if (panelResponseDelayMs > 0) {
-          setTimeout(() => respondJson([]), panelResponseDelayMs);
+        const jobId = Number(subHoursMatch[1]);
+        const hours = panelDetailsByJobId.get(jobId)?.hours ?? [];
+        if (panelResponseDelayMs > 0
+          && (panelResponseDelayJobId == null || panelResponseDelayJobId === jobId)) {
+          panelDelayedRequests.push(path);
+          setTimeout(() => respondJson(hours), panelResponseDelayMs);
         } else {
-          respondJson([]);
+          respondJson(hours);
         }
         return;
       }
@@ -828,8 +957,15 @@ async function main() {
         return;
       }
       if (path.startsWith("/api/owner-capital")) {
-        if (method === "GET" && panelResponseDelayMs > 0) {
-          setTimeout(() => respondJson([]), panelResponseDelayMs);
+        const jobId = Number(url.searchParams.get("jobId"));
+        const distributions = panelDetailsByJobId.get(jobId)?.distributions ?? [];
+        if (method === "GET"
+          && panelResponseDelayMs > 0
+          && (panelResponseDelayJobId == null || panelResponseDelayJobId === jobId)) {
+          panelDelayedRequests.push(path);
+          setTimeout(() => respondJson(distributions), panelResponseDelayMs);
+        } else if (method === "GET") {
+          respondJson(distributions);
         } else {
           respondJson([]);
         }
@@ -1596,6 +1732,140 @@ async function main() {
       closeButton?.click();
       return closeButton != null;
     }).catch(() => false);
+
+    const closedBeforeDelayedSwitch = await closeFinancialsPanel();
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="job-financials-panel"]') == null,
+      { timeout: 10_000 },
+    ).catch(() => undefined);
+    await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
+    const firstJobVisibleForSwitch = await waitForText(page, fixtures[0].title);
+    const firstCardOpenedForSwitch = firstJobVisibleForSwitch
+      && await clickJobCardAction(page, fixtures[0].title, "Open Job Card");
+    panelResponseDelayMs = 1_500;
+    panelResponseDelayJobId = firstJobId;
+    const firstPanelDelayedStart = panelDelayedRequests.length;
+    const firstPanelOpened = firstCardOpenedForSwitch
+      && await clickJobCardAction(page, fixtures[0].title, "Job P&L");
+    const firstPanelReadsIssued = await waitForCondition(
+      () => {
+        const paths = new Set(panelDelayedRequests.slice(firstPanelDelayedStart));
+        return [
+          `/api/jobs/${firstJobId}/sub-payments`,
+          `/api/jobs/${firstJobId}/sub-hours`,
+          "/api/owner-capital",
+        ].every(path => paths.has(path));
+      },
+    );
+    const firstPanelClosed = await closeFinancialsPanel();
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="job-financials-panel"]') == null,
+      { timeout: 10_000 },
+    ).catch(() => undefined);
+    panelResponseDelayMs = 0;
+    panelResponseDelayJobId = null;
+
+    const secondCardOpened = await clickJobCardHeadingAction(page, fixtures[1].title, "Open Job Card");
+    const secondPanelOpened = secondCardOpened
+      && await clickJobCardHeadingAction(page, fixtures[1].title, "Job P&L");
+    const secondPanelDetailsLoaded = await page.waitForFunction(
+      ({ secondTitle, secondCrew, secondDraw, firstCrew, firstDraw }) => {
+        const panel = document.querySelector('[data-testid="job-financials-panel"]');
+        const text = panel?.textContent ?? "";
+        return panel != null
+          && text.includes(secondTitle)
+          && text.includes(secondCrew)
+          && text.includes(secondDraw)
+          && !text.includes(firstCrew)
+          && !text.includes(firstDraw);
+      },
+      { timeout: 20_000 },
+      {
+        secondTitle: fixtures[1].title,
+        secondCrew: "Second Job Crew",
+        secondDraw: "Second job draw",
+        firstCrew: "First Job Crew",
+        firstDraw: "First job draw",
+      },
+    ).then(() => true).catch(() => false);
+    const secondHoursTabOpened = await clickButtonByText(page, "Sub Hours", "Job Financials");
+    const secondHoursLoaded = await page.waitForFunction(
+      ({ secondHours, firstHours }) => {
+        const panel = document.querySelector('[data-testid="job-financials-panel"]');
+        const text = panel?.textContent ?? "";
+        return panel != null && text.includes(secondHours) && !text.includes(firstHours);
+      },
+      { timeout: 20_000 },
+      { secondHours: "Second job hours", firstHours: "First job hours" },
+    ).then(() => true).catch(() => false);
+    record(
+      "Job Financials keeps payment, withdrawal, and hours details tied to the selected job",
+      closedBeforeDelayedSwitch
+        && firstPanelOpened
+        && firstPanelReadsIssued
+        && firstPanelClosed
+        && secondPanelOpened
+        && secondPanelDetailsLoaded
+        && secondHoursTabOpened
+        && secondHoursLoaded,
+      `firstOpened=${firstPanelOpened}, firstReadsIssued=${firstPanelReadsIssued}, firstClosed=${firstPanelClosed}, delayed=${panelDelayedRequests.slice(firstPanelDelayedStart).join(",")}, secondOpened=${secondPanelOpened}, secondDetails=${secondPanelDetailsLoaded}, hoursTab=${secondHoursTabOpened}, hours=${secondHoursLoaded}`,
+    );
+
+    const secondPanelClosedForRetry = await closeFinancialsPanel();
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="job-financials-panel"]') == null,
+      { timeout: 10_000 },
+    ).catch(() => undefined);
+    profitDetailFailureMode = true;
+    profitDetailFailureJobId = secondJobId;
+    const secondFailurePanelOpened = await clickJobCardHeadingAction(page, fixtures[1].title, "Job P&L");
+    const secondFailureShown = await page.waitForSelector(
+      '[data-testid="job-financials-profit-error"]',
+      { visible: true, timeout: 20_000 },
+    ).then(() => true).catch(() => false);
+    const retryReadStart = panelReadRequests.length;
+    const retryProfitStart = profitDetailRequests.length;
+    profitDetailFailureMode = false;
+    profitDetailFailureJobId = null;
+    const activeJobRetryClicked = await clickButtonByText(page, "Try again", "Unable to load job profit");
+    const activeJobRetryReadsIssued = await waitForCondition(
+      () => panelReadRequests.length >= retryReadStart + 4,
+    );
+    const activeJobRetryRecovered = await page.waitForFunction(
+      ({ secondTitle, secondCrew, secondDraw }) => {
+        const panel = document.querySelector('[data-testid="job-financials-panel"]');
+        const text = panel?.textContent ?? "";
+        return panel != null
+          && text.includes(secondTitle)
+          && text.includes(secondCrew)
+          && text.includes(secondDraw)
+          && !document.querySelector('[data-testid="job-financials-profit-error"]');
+      },
+      { timeout: 20_000 },
+      {
+        secondTitle: fixtures[1].title,
+        secondCrew: "Second Job Crew",
+        secondDraw: "Second job draw",
+      },
+    ).then(() => true).catch(() => false);
+    const retryReadPaths = panelReadRequests.slice(retryReadStart);
+    const retryProfitJobIds = profitDetailRequests.slice(retryProfitStart);
+    const activeJobRetryScoped = retryReadPaths.length >= 4
+      && retryReadPaths.every(path => path.includes(`/${secondJobId}/`) || path === "/api/owner-capital")
+      && retryProfitJobIds.length > 0
+      && retryProfitJobIds.every(jobId => jobId === secondJobId);
+    record(
+      "Job Financials retry reloads only the active job's details",
+      secondPanelClosedForRetry
+        && secondFailurePanelOpened
+        && secondFailureShown
+        && activeJobRetryClicked
+        && activeJobRetryReadsIssued
+        && activeJobRetryRecovered
+        && activeJobRetryScoped,
+      `closed=${secondPanelClosedForRetry}, failureOpened=${secondFailurePanelOpened}, failure=${secondFailureShown}, clicked=${activeJobRetryClicked}, readsIssued=${activeJobRetryReadsIssued}, recovered=${activeJobRetryRecovered}, scoped=${activeJobRetryScoped}, retryPaths=${retryReadPaths.join(",")}, retryProfitJobs=${retryProfitJobIds.join(",")}`,
+    );
+
     const closedBeforeAbort = await closeFinancialsPanel();
     await page.waitForFunction(
       () => document.querySelector('[data-testid="job-financials-panel"]') == null,
