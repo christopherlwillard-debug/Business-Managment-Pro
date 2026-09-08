@@ -551,6 +551,8 @@ async function main() {
     jobIds: number[];
   }> = [];
   const profitDetailRequests: number[] = [];
+  const panelReadRequests: string[] = [];
+  const panelAbortedRequests: string[] = [];
   let delayedProfitJobId: number | null = null;
   let delayedProfitResponseUsed = false;
   let profitSummaryFailureMode = false;
@@ -558,6 +560,7 @@ async function main() {
   let profitSummaryResponseDelayMs = 0;
   let profitDetailFailureMode = false;
   let profitDetailFailureJobId: number | null = null;
+  let panelResponseDelayMs = 0;
   let sessionId: string | undefined;
   const browser = await launchBrowser();
 
@@ -565,6 +568,21 @@ async function main() {
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 1200 });
     page.on("pageerror", error => pageErrors.push(error.message));
+    page.on("requestfailed", request => {
+      const url = new URL(request.url());
+      const panelPaths = [
+        /^\/api\/jobs\/\d+\/profit$/,
+        /^\/api\/jobs\/\d+\/sub-payments$/,
+        /^\/api\/jobs\/\d+\/sub-hours$/,
+        /^\/api\/owner-capital$/,
+      ];
+      if (panelPaths.some(pattern => pattern.test(url.pathname))) {
+        const errorText = request.failure()?.errorText ?? "";
+        if (errorText.includes("ABORT")) {
+          panelAbortedRequests.push(url.pathname);
+        }
+      }
+    });
     let mainFrameNavigationCount = 0;
     page.on("framenavigated", frame => {
       if (frame === page.mainFrame()) mainFrameNavigationCount += 1;
@@ -575,6 +593,13 @@ async function main() {
       const method = request.method().toUpperCase();
       const url = new URL(request.url());
       const path = url.pathname;
+      const isPanelRead = method === "GET" && (
+        /^\/api\/jobs\/\d+\/profit$/.test(path)
+        || /^\/api\/jobs\/\d+\/sub-payments$/.test(path)
+        || /^\/api\/jobs\/\d+\/sub-hours$/.test(path)
+        || path === "/api/owner-capital"
+      );
+      if (isPanelRead) panelReadRequests.push(path);
       const routeStopMatch = path.match(/^\/api\/route-stops(?:\/(\d+))?$/);
       const isRouteStopMutation = routeStopMatch != null
         && method !== "GET"
@@ -768,7 +793,9 @@ async function main() {
           respondError("Profit service unavailable");
           return;
         }
-        if (jobId === delayedProfitJobId && !delayedProfitResponseUsed) {
+        if (panelResponseDelayMs > 0) {
+          setTimeout(() => respondJson(fixture.profit), panelResponseDelayMs);
+        } else if (jobId === delayedProfitJobId && !delayedProfitResponseUsed) {
           delayedProfitResponseUsed = true;
           setTimeout(() => respondJson(fixture.profit), 900);
         } else {
@@ -779,12 +806,20 @@ async function main() {
 
       const subPaymentsMatch = path.match(/^\/api\/jobs\/(\d+)\/sub-payments$/);
       if (subPaymentsMatch) {
-        respondJson([]);
+        if (panelResponseDelayMs > 0) {
+          setTimeout(() => respondJson([]), panelResponseDelayMs);
+        } else {
+          respondJson([]);
+        }
         return;
       }
       const subHoursMatch = path.match(/^\/api\/jobs\/(\d+)\/sub-hours$/);
       if (subHoursMatch) {
-        respondJson([]);
+        if (panelResponseDelayMs > 0) {
+          setTimeout(() => respondJson([]), panelResponseDelayMs);
+        } else {
+          respondJson([]);
+        }
         return;
       }
       const expensesMatch = path.match(/^\/api\/jobs\/(\d+)\/expenses$/);
@@ -793,7 +828,11 @@ async function main() {
         return;
       }
       if (path.startsWith("/api/owner-capital")) {
-        respondJson([]);
+        if (method === "GET" && panelResponseDelayMs > 0) {
+          setTimeout(() => respondJson([]), panelResponseDelayMs);
+        } else {
+          respondJson([]);
+        }
         return;
       }
 
@@ -1549,6 +1588,65 @@ async function main() {
         && !financialsRetryPanelText.includes(fixtures[1].title)
         && !financialsRetryText.includes("Unable to load job profit"),
       `clicked=${financialsRetryClicked}, recovered=${financialsRetryRecovered}, errorPanel=${financialsRetryErrorPanelShown}, values=${JSON.stringify(financialsRetryValues)}, navigationUnchanged=${mainFrameNavigationCount === financialsNavigationCount}`,
+    );
+
+    const closeFinancialsPanel = () => page.evaluate(() => {
+      const panel = document.querySelector('[data-testid="job-financials-panel"]');
+      const closeButton = panel?.querySelector("button");
+      closeButton?.click();
+      return closeButton != null;
+    }).catch(() => false);
+    const closedBeforeAbort = await closeFinancialsPanel();
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="job-financials-panel"]') == null,
+      { timeout: 10_000 },
+    ).catch(() => undefined);
+    panelResponseDelayMs = 1_500;
+    const panelReadStart = panelReadRequests.length;
+    const panelAbortStart = panelAbortedRequests.length;
+    const reopenedForAbort = await clickJobCardAction(page, fixtures[0].title, "Job P&L");
+    const panelReadsIssued = await waitForCondition(
+      () => panelReadRequests.length >= panelReadStart + 4,
+    );
+    const closedDuringPendingReads = await closeFinancialsPanel();
+    const panelAbortsObserved = await waitForCondition(
+      () => new Set(panelAbortedRequests.slice(panelAbortStart)).size >= 4,
+    );
+    panelResponseDelayMs = 0;
+    const panelAbortPaths = new Set(panelAbortedRequests.slice(panelAbortStart));
+    const panelAbortErrorsSuppressed = !(await page.evaluate(
+      () => document.body.innerText.includes("Unable to load job profit"),
+    ));
+    const reopenedAfterAbort = await clickJobCardAction(page, fixtures[0].title, "Job P&L");
+    const activePanelRecoveredAfterAbort = await page.waitForFunction(
+      () => {
+        const panel = document.querySelector('[data-testid="job-financials-panel"]');
+        const text = panel?.textContent ?? "";
+        return panel != null
+          && text.includes("Job Revenue")
+          && text.includes("$1,350.00")
+          && text.includes("$1,150.00");
+      },
+      { timeout: 20_000 },
+    ).then(() => true).catch(() => false);
+    record(
+      "Closing Job Financials aborts all pending panel reads without an error toast",
+      closedBeforeAbort
+        && reopenedForAbort
+        && panelReadsIssued
+        && closedDuringPendingReads
+        && panelAbortsObserved
+        && panelAbortPaths.has(`/api/jobs/${firstJobId}/profit`)
+        && panelAbortPaths.has(`/api/jobs/${firstJobId}/sub-payments`)
+        && panelAbortPaths.has(`/api/jobs/${firstJobId}/sub-hours`)
+        && panelAbortPaths.has("/api/owner-capital")
+        && panelAbortErrorsSuppressed,
+      `closedBeforeAbort=${closedBeforeAbort}, reopened=${reopenedForAbort}, readsIssued=${panelReadsIssued}, closedDuringReads=${closedDuringPendingReads}, abortsObserved=${panelAbortsObserved}, abortPaths=${[...panelAbortPaths].join(",")}, errorsSuppressed=${panelAbortErrorsSuppressed}`,
+    );
+    record(
+      "Job Financials still loads normally after an aborted panel request",
+      reopenedAfterAbort && activePanelRecoveredAfterAbort,
+      `reopened=${reopenedAfterAbort}, recovered=${activePanelRecoveredAfterAbort}`,
     );
 
     const financialsRefreshUrl = page.url();
