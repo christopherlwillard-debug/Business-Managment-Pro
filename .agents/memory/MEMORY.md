@@ -62,5 +62,6 @@
 - [Dashboard WTD semantics](dashboard-wtd-semantics.md) — WTD is the current Monday-start calendar week, not a trailing seven-day range
 - [Business trip archive semantics](business-trip-archive-semantics.md) — archived trips remain in historical totals but not active audit-readiness checks
 - [Shared job profit calculation](job-profit-calculation.md) — individual and batch job-profit views must use one source-derived engine with traceable included/excluded buckets
+- [Reimbursement opt-out parity](reimbursement-opt-out-parity.md) — reimbursement source rows stay visible, while applied-status metadata and all profit arithmetic honor the persisted opt-out in every view
 - [Profit loading error states](profit-loading-error-states.md) — distinguish unavailable profit responses from legitimate zero-profit results and clear stale values before showing errors
 - [Route Planner profit scope](route-planner-profit-scope.md) — Week totals and explanations must share the same visible, date-filtered, deduplicated linked-job set

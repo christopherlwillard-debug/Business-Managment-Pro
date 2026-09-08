@@ -62,6 +62,22 @@ describe("calculateJobProfit", () => {
     expect(result.netProfit).toBeCloseTo(457.25);
   });
 
+  it("keeps a saved reimbursement in the source data without applying it when opted out", () => {
+    const result = calculateJobProfit({
+      invoices: [{ total: "500.00", status: "paid" }],
+      mileageReimbursement: 42.75,
+      hasMileageReimbursement: true,
+      estimatedFuelCost: 80,
+      includeMileageInJobCosts: false,
+    });
+
+    expect(result.mileageReimbursement).toBe(0);
+    expect(result.jobExpenses).toBe(0);
+    expect(result.includedCostTotal).toBe(0);
+    expect(result.profitBreakdown.includedCosts.mileageReimbursement).toBe(0);
+    expect(result.netProfit).toBeCloseTo(500);
+  });
+
   it("keeps a job with no costs at its invoiced revenue", () => {
     const result = calculateJobProfit({
       invoices: [{ total: "182.27", status: "paid" }],
