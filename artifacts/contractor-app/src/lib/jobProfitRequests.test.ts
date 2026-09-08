@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canApplyJobResponse,
   getSavedMileageReimbursement,
+  isAbortError,
 } from "./jobProfitRequests";
 import type { JobProfitResponse } from "@workspace/api-client-react";
 
@@ -42,5 +43,18 @@ describe("getSavedMileageReimbursement", () => {
     expect(getSavedMileageReimbursement({
       mileageReimbursement: null,
     } as JobProfitResponse)).toBeNull();
+  });
+});
+
+describe("isAbortError", () => {
+  it("recognizes browser-style abort errors", () => {
+    expect(isAbortError(Object.assign(new Error("The operation was aborted"), { name: "AbortError" }))).toBe(true);
+    expect(isAbortError({ name: "AbortError" })).toBe(true);
+  });
+
+  it("does not classify ordinary errors as aborts", () => {
+    expect(isAbortError(new Error("Network unavailable"))).toBe(false);
+    expect(isAbortError(null)).toBe(false);
+    expect(isAbortError({ name: "TypeError" })).toBe(false);
   });
 });

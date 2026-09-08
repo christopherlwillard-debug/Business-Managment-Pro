@@ -48,7 +48,7 @@ import {
   type JobProfitSummaryStatus,
   type JobPaymentSummaryRefreshAction,
 } from "@/lib/jobPaymentSummaryRefresh";
-import { canApplyJobResponse, getSavedMileageReimbursement } from "@/lib/jobProfitRequests";
+import { canApplyJobResponse, getSavedMileageReimbursement, isAbortError } from "@/lib/jobProfitRequests";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { Card } from "@/components/ui/card";
@@ -1749,6 +1749,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const [profit, setProfit] = useState<JobProfitResponse | null>(initialProfit ?? null);
   const detailedProfitLoaded = useRef(false);
   const profitLoadKeyRef = useRef(0);
+  const panelAbortControllerRef = useRef<AbortController | null>(null);
   const currentJobIdRef = useRef(job.id);
   currentJobIdRef.current = job.id;
   const [profitError, setProfitError] = useState(false);
@@ -1758,6 +1759,13 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const [deletingPayId, setDeletingPayId] = useState<number | null>(null);
   const [subHours, setSubHours] = useState<SubHourEntry[]>([]);
   const [deletingHourId, setDeletingHourId] = useState<number | null>(null);
+
+  function panelRequestOptions(): RequestInit {
+    const controller = panelAbortControllerRef.current;
+    return controller
+      ? { credentials: "include", signal: controller.signal }
+      : { credentials: "include" };
+  }
 
   useEffect(() => {
     // The parent supplies the bulk profit-summary response, which intentionally
@@ -1795,7 +1803,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
 
   async function loadDistributions() {
     try {
-      const data = await fetch(`${BASE}/api/owner-capital?jobId=${job.id}`, { credentials: "include" })
+      const data = await fetch(`${BASE}/api/owner-capital?jobId=${job.id}`, panelRequestOptions())
         .then(r => r.ok ? r.json() : []);
       setDistributions(data as OwnerPayEntry[]);
     } catch {
@@ -1853,7 +1861,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     if (expenseItems !== null) return; // already fetched
     setExpensesLoading(true);
     try {
-      const data = await fetch(`${BASE}/api/jobs/${job.id}/expenses`, { credentials: "include" })
+      const data = await fetch(`${BASE}/api/jobs/${job.id}/expenses`, panelRequestOptions())
         .then(r => r.ok ? r.json() : []);
       const items: ExpenseItem[] = (Array.isArray(data) ? data : []).map(item => {
         // Older responses may contain a previously synthesized estimate row.
@@ -1900,7 +1908,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Could not remove the allocation.");
       setExpenseItems(prev => prev?.filter(item => item.id !== allocationId) ?? prev);
-      const fresh = await getJobProfit(job.id, { credentials: "include" }).catch(() => null);
+      const fresh = await getJobProfit(job.id, panelRequestOptions()).catch(() => null);
       if (fresh) {
         detailedProfitLoaded.current = true;
         setProfit(fresh);
@@ -1943,7 +1951,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   }
 
   async function refreshPayments() {
-    const rows: SubPaymentRow[] = await fetch(`${BASE}/api/jobs/${job.id}/sub-payments`, { credentials: "include" })
+    const rows: SubPaymentRow[] = await fetch(`${BASE}/api/jobs/${job.id}/sub-payments`, panelRequestOptions())
       .then(r => r.ok ? r.json() : []).catch(() => []);
     setPayments(rows);
     notifySubsPaid(rows);
@@ -2006,6 +2014,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       return;
     }
     setReimbursementSaving(true);
+    const requestController = panelAbortControllerRef.current;
     try {
       const response = await fetch(`${BASE}/api/jobs/${job.id}/mileage-reimbursement`, {
         method: "PUT",
@@ -2024,7 +2033,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Could not save mileage reimbursement.");
-      const fresh = await getJobProfit(job.id, { credentials: "include" });
+      const fresh = await getJobProfit(job.id, requestController
+        ? { credentials: "include", signal: requestController.signal }
+        : { credentials: "include" });
       if (fresh) {
         detailedProfitLoaded.current = true;
         setProfit(fresh);
@@ -2033,6 +2044,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       }
       toast({ title: "Mileage reimbursement saved", description: "This amount is added to job costs and excluded from the percentage split." });
     } catch (err) {
+      if (isAbortError(err) && requestController?.signal.aborted) return;
       toast({ title: "Could not save mileage reimbursement", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
       setReimbursementSaving(false);
@@ -2065,15 +2077,19 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   useEffect(() => {
     const requestedJobId = job.id;
     const requestKey = ++profitLoadKeyRef.current;
+    const controller = new AbortController();
+    panelAbortControllerRef.current?.abort();
+    panelAbortControllerRef.current = controller;
+    const requestOptions: RequestInit = { credentials: "include", signal: controller.signal };
     setLoading(true);
     setProfitError(false);
     setProfit(null);
     detailedProfitLoaded.current = false;
     const fetches = [
-      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
-      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
-      fetch(`${BASE}/api/owner-capital?jobId=${requestedJobId}`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
-      getJobProfit(requestedJobId, { credentials: "include" }),
+      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`, requestOptions).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`, requestOptions).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/owner-capital?jobId=${requestedJobId}`, requestOptions).then(r => r.ok ? r.json() : []),
+      getJobProfit(requestedJobId, requestOptions),
     ];
     // Always fetch the full per-job profit endpoint — the bulk profit-summary used by
     // the job list omits estimatedFuelCost/fuelStatus, so we must refresh here even
@@ -2105,6 +2121,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       setLoading(false);
     });
     return () => {
+      controller.abort();
+      if (panelAbortControllerRef.current === controller) {
+        panelAbortControllerRef.current = null;
+      }
       profitLoadKeyRef.current += 1;
     };
   }, [job.id, profitRetryKey]);

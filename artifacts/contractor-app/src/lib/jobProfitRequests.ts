@@ -12,6 +12,13 @@ export function canApplyJobResponse(
   return requestKey === currentKey && requestedJobId === currentJobId;
 }
 
+export function isAbortError(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "name" in error
+    && (error as { name?: unknown }).name === "AbortError";
+}
+
 /**
  * The detail endpoint returns a saved reimbursement record, while the batch
  * endpoint keeps the historical numeric representation for compatibility.
