@@ -1227,6 +1227,99 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     cachedRoute.mockRestore();
   });
 
+  it("keeps active and reversed payouts isolated by job in a multi-job batch", async () => {
+    pushProfitSelects({
+      invoices: [{ total: "1000.00", status: "paid" }],
+      sprRows: [
+        { compType: "fixed", total: "120.00" },
+        { compType: "allocation", total: "80.00" },
+      ],
+      reversedSprRows: [
+        { compType: "fixed", total: "900.00" },
+        { compType: "allocation", total: "700.00" },
+      ],
+    });
+    const firstDetailRes = await request(app).get("/jobs/501/profit");
+
+    pushProfitSelects({
+      invoices: [{ total: "1800.00", status: "paid" }],
+      sprRows: [
+        { compType: "fixed", total: "350.00" },
+        { compType: "allocation", total: "75.00" },
+      ],
+      reversedSprRows: [
+        { compType: "fixed", total: "600.00" },
+        { compType: "allocation", total: "450.00" },
+      ],
+    });
+    const secondDetailRes = await request(app).get("/jobs/502/profit");
+
+    pushBatchSummarySelects({
+      invoices: [
+        { jobId: 501, total: "1000.00", status: "paid" },
+        { jobId: 502, total: "1800.00", status: "paid" },
+      ],
+      manHoursRows: [
+        { id: 501, manHours: null },
+        { id: 502, manHours: null },
+      ],
+      sprPaymentRows: [
+        { jobId: 501, compType: "fixed", amount: "120.00", isReversal: false },
+        { jobId: 501, compType: "allocation", amount: "80.00", isReversal: null },
+        { jobId: 501, compType: "fixed", amount: "900.00", isReversal: true },
+        { jobId: 501, compType: "allocation", amount: "700.00", isReversal: true },
+        { jobId: 502, compType: "fixed", amount: "350.00", isReversal: false },
+        { jobId: 502, compType: "allocation", amount: "75.00", isReversal: null },
+        { jobId: 502, compType: "fixed", amount: "600.00", isReversal: true },
+        { jobId: 502, compType: "allocation", amount: "450.00", isReversal: true },
+      ],
+    });
+    const batchRes = await request(app).get("/jobs/profit-summary?jobIds=501,502");
+
+    expect(firstDetailRes.status).toBe(200);
+    expect(secondDetailRes.status).toBe(200);
+    expect(batchRes.status).toBe(200);
+    expect(Object.keys(batchRes.body).sort()).toEqual(["501", "502"]);
+
+    const detailByJob = {
+      501: firstDetailRes.body,
+      502: secondDetailRes.body,
+    } as const;
+    for (const jobId of [501, 502] as const) {
+      const detail = detailByJob[jobId];
+      const batch = batchRes.body[jobId];
+
+      expect(batch).toBeDefined();
+      for (const [label, detailValue, batchValue] of [
+        ["subLaborCost", detail.subLaborCost, batch.subLaborCost],
+        ["allocPaid", detail.allocPaid, batch.allocPaid],
+        ["includedCostTotal", detail.includedCostTotal, batch.includedCostTotal],
+        ["splitPayouts", detail.profitBreakdown.includedCosts.splitPayouts, batch.profitBreakdown.includedCosts.splitPayouts],
+        ["reversedFixedPayouts", detail.profitBreakdown.excludedFromProfit.reversedFixedPayouts, batch.profitBreakdown.excludedFromProfit.reversedFixedPayouts],
+        ["reversedAllocationPayouts", detail.profitBreakdown.excludedFromProfit.reversedAllocationPayouts, batch.profitBreakdown.excludedFromProfit.reversedAllocationPayouts],
+        ["netProfit", detail.netProfit, batch.netProfit],
+      ] as const) {
+        expect(batchValue, `${label} should stay isolated for job ${jobId}`).toBeCloseTo(detailValue);
+      }
+    }
+
+    expect(batchRes.body[501].subLaborCost).toBeCloseTo(120);
+    expect(batchRes.body[501].allocPaid).toBeCloseTo(80);
+    expect(batchRes.body[501].includedCostTotal).toBeCloseTo(200);
+    expect(batchRes.body[501].profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(80);
+    expect(batchRes.body[501].profitBreakdown.excludedFromProfit.reversedFixedPayouts).toBeCloseTo(900);
+    expect(batchRes.body[501].profitBreakdown.excludedFromProfit.reversedAllocationPayouts).toBeCloseTo(700);
+    expect(batchRes.body[501].netProfit).toBeCloseTo(800);
+
+    expect(batchRes.body[502].subLaborCost).toBeCloseTo(350);
+    expect(batchRes.body[502].allocPaid).toBeCloseTo(75);
+    expect(batchRes.body[502].includedCostTotal).toBeCloseTo(425);
+    expect(batchRes.body[502].profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(75);
+    expect(batchRes.body[502].profitBreakdown.excludedFromProfit.reversedFixedPayouts).toBeCloseTo(600);
+    expect(batchRes.body[502].profitBreakdown.excludedFromProfit.reversedAllocationPayouts).toBeCloseTo(450);
+    expect(batchRes.body[502].netProfit).toBeCloseTo(1375);
+  });
+
   it("keeps payroll and cached fuel values isolated across multiple batch jobs", async () => {
     const liveRoute = vi.spyOn(RoutingEngine, "calculate");
     const cachedRoute = vi.spyOn(RoutingEngine, "getCachedRoute").mockImplementation(({ destination }) => ({
