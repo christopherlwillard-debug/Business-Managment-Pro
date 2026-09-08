@@ -550,6 +550,7 @@ async function main() {
     mode: "failure" | "success";
     jobIds: number[];
   }> = [];
+  const profitDetailRequests: number[] = [];
   let delayedProfitJobId: number | null = null;
   let delayedProfitResponseUsed = false;
   let profitSummaryFailureMode = false;
@@ -751,6 +752,7 @@ async function main() {
       const profitMatch = path.match(/^\/api\/jobs\/(\d+)\/profit$/);
       if (profitMatch) {
         const jobId = Number(profitMatch[1]);
+        profitDetailRequests.push(jobId);
         const fixture = jobById.get(jobId);
         if (!fixture) {
           respondJson({});
@@ -1427,6 +1429,52 @@ async function main() {
         && !raceFinalText.includes(fixtures[0].title)
         && nearlyEqual(raceFinalNetProfit, fixtures[1].profit.netProfit),
       `firstHeading=${firstRaceHeadingLoaded}, secondHeading=${secondRaceHeadingLoaded}, error=${secondRaceErrorShown}, activeBeforeRetry=${secondRaceStayedActive}, retry=${raceRetryClicked}, recovered=${raceRetryRecovered}, displayed=${raceFinalNetProfit ?? "missing"}, path=${page.url()}`,
+    );
+    const firstReturnRequestStart = profitDetailRequests.length;
+    const firstReturnNavigationCount = mainFrameNavigationCount;
+    await page.evaluate(path => {
+      window.history.pushState({}, "", path);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }, `${BASE}/jobs/${firstJobId}/payroll`);
+    const firstReturnHeadingLoaded = await waitForText(page, fixtures[0].title);
+    const firstReturnRequestIssued = await waitForCondition(
+      () => profitDetailRequests.length > firstReturnRequestStart
+        && profitDetailRequests[profitDetailRequests.length - 1] === firstJobId,
+    );
+    const firstReturnRecovered = await page.waitForFunction(
+      ({ firstTitle, secondTitle, firstRevenueLabel, secondRevenueLabel }) => {
+        const bodyText = document.body.innerText;
+        return bodyText.includes(firstTitle)
+          && bodyText.includes(firstRevenueLabel)
+          && !bodyText.includes(secondTitle)
+          && !bodyText.includes(secondRevenueLabel)
+          && !bodyText.includes("Unable to load job profit");
+      },
+      { timeout: 20_000 },
+      {
+        firstTitle: fixtures[0].title,
+        secondTitle: fixtures[1].title,
+        firstRevenueLabel: formatMoneyLabel(fixtures[0].profit.grossInvoiced),
+        secondRevenueLabel: formatMoneyLabel(fixtures[1].profit.grossInvoiced),
+      },
+    ).then(() => true).catch(() => false);
+    const firstReturnText = await page.evaluate(
+      () => document.body.innerText.replace(/\s+/g, " ").trim(),
+    );
+    const firstReturnNetProfit = readMoneyAfter(firstReturnText, "Net Profit");
+    const firstReturnPath = new URL(page.url()).pathname;
+    record(
+      "Payroll switching back reloads the first job's canonical profit",
+      firstReturnHeadingLoaded
+        && firstReturnRequestIssued
+        && firstReturnRecovered
+        && firstReturnPath === `/jobs/${firstJobId}/payroll`
+        && firstReturnText.includes(fixtures[0].title)
+        && firstReturnText.includes(formatMoneyLabel(fixtures[0].profit.grossInvoiced))
+        && !firstReturnText.includes(fixtures[1].title)
+        && !firstReturnText.includes(formatMoneyLabel(fixtures[1].profit.grossInvoiced))
+        && nearlyEqual(firstReturnNetProfit, fixtures[0].profit.netProfit),
+      `heading=${firstReturnHeadingLoaded}, requestIssued=${firstReturnRequestIssued}, recovered=${firstReturnRecovered}, displayed=${firstReturnNetProfit ?? "missing"}, firstJob=${firstReturnText.includes(fixtures[0].title)}, secondJobGone=${!firstReturnText.includes(fixtures[1].title)}, path=${firstReturnPath}, spaNavigationDelta=${mainFrameNavigationCount - firstReturnNavigationCount}`,
     );
     delayedProfitJobId = null;
 
