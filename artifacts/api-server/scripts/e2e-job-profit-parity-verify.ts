@@ -1498,6 +1498,68 @@ async function main() {
       `clicked=${financialsRetryClicked}, recovered=${financialsRetryRecovered}, errorPanel=${financialsRetryErrorPanelShown}, values=${JSON.stringify(financialsRetryValues)}, navigationUnchanged=${mainFrameNavigationCount === financialsNavigationCount}`,
     );
 
+    const financialsRefreshUrl = page.url();
+    await page.reload({
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    const financialsRefreshJobsLoaded = await waitForText(page, fixtures[0].title);
+    const financialsRefreshCardOpened = financialsRefreshJobsLoaded
+      && await clickJobCardAction(page, fixtures[0].title, "Open Job Card");
+    const financialsRefreshPanelOpened = financialsRefreshCardOpened
+      && await clickJobCardAction(page, fixtures[0].title, "Job P&L");
+    const financialsRefreshSummaryLoaded = financialsRefreshPanelOpened
+      && await page.waitForFunction(
+        () => document.body.innerText.includes("Job Revenue")
+          && document.body.innerText.includes("Net Business Profit"),
+        { timeout: 20_000 },
+      ).then(() => true).catch(() => false);
+    const financialsRefreshRecovered = await page.waitForFunction(
+      ({ revenueLabel, netProfitLabel }) => {
+        const bodyText = document.body.innerText;
+        return bodyText.includes("Job Revenue")
+          && bodyText.includes("Net Business Profit")
+          && bodyText.includes(revenueLabel)
+          && bodyText.includes(netProfitLabel)
+          && !bodyText.includes("Unable to load job profit");
+      },
+      { timeout: 20_000 },
+      {
+        revenueLabel: formatMoneyLabel(recoveredFirstExpected.grossInvoiced),
+        netProfitLabel: formatMoneyLabel(recoveredFirstExpected.netProfit),
+      },
+    ).then(() => true).catch(() => false);
+    const financialsRefreshText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const financialsRefreshValues = {
+      revenue: readMoneyAfter(financialsRefreshText, "Job Revenue"),
+      costs: readMoneyAfter(financialsRefreshText, "Job Costs"),
+      splitPool: readMoneyAfter(financialsRefreshText, "Split Pool"),
+      netProfit: readMoneyAfter(financialsRefreshText, "Net Business Profit"),
+    };
+    record(
+      "Job Financials keeps recovered values after a full page refresh",
+      financialsRefreshJobsLoaded
+        && financialsRefreshCardOpened
+        && financialsRefreshPanelOpened
+        && financialsRefreshSummaryLoaded
+        && financialsRefreshRecovered
+        && page.url() === financialsRefreshUrl
+        && nearlyEqual(financialsRefreshValues.revenue, recoveredFirstExpected.grossInvoiced)
+        && nearlyEqual(financialsRefreshValues.costs, -recoveredFirstExpected.jobExpenses)
+        && nearlyEqual(financialsRefreshValues.splitPool, recoveredFirstExpected.splitPool)
+        && nearlyEqual(financialsRefreshValues.netProfit, recoveredFirstExpected.netProfit)
+        && !nearlyEqual(financialsRefreshValues.revenue, firstExpected.grossInvoiced)
+        && !nearlyEqual(financialsRefreshValues.costs, -firstExpected.jobExpenses)
+        && !nearlyEqual(financialsRefreshValues.splitPool, firstExpected.splitPool)
+        && !nearlyEqual(financialsRefreshValues.netProfit, firstExpected.netProfit),
+      `jobsLoaded=${financialsRefreshJobsLoaded}, cardOpened=${financialsRefreshCardOpened}, panelOpened=${financialsRefreshPanelOpened}, summaryLoaded=${financialsRefreshSummaryLoaded}, recovered=${financialsRefreshRecovered}, url=${page.url() === financialsRefreshUrl}, values=${JSON.stringify(financialsRefreshValues)}, oldValues=${JSON.stringify({
+        revenue: firstExpected.grossInvoiced,
+        costs: -firstExpected.jobExpenses,
+        splitPool: firstExpected.splitPool,
+        netProfit: firstExpected.netProfit,
+      })}`,
+    );
+
     profitDetailFailureMode = true;
     await page.goto(`${BASE}/jobs/${firstJobId}/payroll`, {
       waitUntil: "networkidle2",
@@ -1549,6 +1611,42 @@ async function main() {
       `clicked=${payrollRetryClicked}, recovered=${payrollRetryRecovered}, errorShown=${payrollRetryErrorShown}, values=${JSON.stringify(payrollRetryValues)}, navigationUnchanged=${mainFrameNavigationCount === payrollNavigationCount}`,
     );
 
+    const payrollRefreshUrl = page.url();
+    await page.reload({
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    const payrollRefreshLoaded = await waitForText(page, fixtures[0].title);
+    const payrollRefreshValuesLoaded = await waitForText(page, formatMoneyLabel(recoveredFirstExpected.grossInvoiced));
+    const payrollRefreshText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const payrollRefreshValues = {
+      revenue: readMoneyAfter(payrollRefreshText, "Revenue"),
+      costs: readMoneyAfter(payrollRefreshText, "Job Costs"),
+      splitPool: readMoneyAfter(payrollRefreshText, "Split Pool"),
+      netProfit: readMoneyAfter(payrollRefreshText, "Net Profit"),
+    };
+    record(
+      "Job Payroll keeps recovered values after a full page refresh",
+      payrollRefreshLoaded
+        && payrollRefreshValuesLoaded
+        && page.url() === payrollRefreshUrl
+        && nearlyEqual(payrollRefreshValues.revenue, recoveredFirstExpected.grossInvoiced)
+        && nearlyEqual(payrollRefreshValues.costs, -recoveredFirstExpected.jobExpenses)
+        && nearlyEqual(payrollRefreshValues.splitPool, recoveredFirstExpected.splitPool)
+        && nearlyEqual(payrollRefreshValues.netProfit, recoveredFirstExpected.netProfit)
+        && !nearlyEqual(payrollRefreshValues.revenue, firstExpected.grossInvoiced)
+        && !nearlyEqual(payrollRefreshValues.costs, -firstExpected.jobExpenses)
+        && !nearlyEqual(payrollRefreshValues.splitPool, firstExpected.splitPool)
+        && !nearlyEqual(payrollRefreshValues.netProfit, firstExpected.netProfit)
+        && !payrollRefreshText.includes("Unable to load job profit"),
+      `loaded=${payrollRefreshLoaded}, values=${JSON.stringify(payrollRefreshValues)}, oldValues=${JSON.stringify({
+        revenue: firstExpected.grossInvoiced,
+        costs: -firstExpected.jobExpenses,
+        splitPool: firstExpected.splitPool,
+        netProfit: firstExpected.netProfit,
+      })}`,
+    );
+
     profitSummaryFailureMode = true;
     await page.goto(`${BASE}/route-planner`, {
       waitUntil: "networkidle2",
@@ -1567,7 +1665,14 @@ async function main() {
     const routeRetryUrl = page.url();
     const routeNavigationCount = mainFrameNavigationCount;
     const routeRetryClicked = await clickButtonByText(page, "Try again", "Profit data unavailable");
-    const expectedRouteNetProfitAfterRetry = expectedRouteProfit(today).netProfit;
+    const expectedRouteAfterRetry = expectedRouteProfit(today);
+    const expectedRouteNetProfitAfterRetry = expectedRouteAfterRetry.netProfit;
+    const expectedRouteNetProfitBeforeRecovery = expectedRouteAfterRetry.jobIds.reduce(
+      (total, jobId) => total + (jobId === firstJobId
+        ? firstExpected.netProfit
+        : jobById.get(jobId)?.profit.netProfit ?? 0),
+      0,
+    );
     const routeRetryRecovered = await waitForRouteProfit(page, expectedRouteNetProfitAfterRetry);
     const routeRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const routeRetryNetProfit = readMoneyAfter(routeRetryText, "Net Profit");
@@ -1581,6 +1686,39 @@ async function main() {
         && !nearlyEqual(routeRetryNetProfit, firstExpected.netProfit)
         && !routeRetryText.includes("Profit data unavailable"),
       `clicked=${routeRetryClicked}, recovered=${routeRetryRecovered}, displayed=${routeRetryNetProfit ?? "missing"}, expected=${expectedRouteNetProfitAfterRetry}, navigationUnchanged=${mainFrameNavigationCount === routeNavigationCount}`,
+    );
+
+    const routeRefreshUrl = page.url();
+    await page.reload({
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    const routeRefreshLoaded = await waitForText(page, "Net Profit");
+    const routeRefreshRecovered = await page.waitForFunction(
+      ({ expectedLabel, staleLabel }) => {
+        const bodyText = document.body.innerText;
+        return bodyText.includes("Net Profit")
+          && bodyText.includes(expectedLabel)
+          && !bodyText.includes(staleLabel)
+          && !bodyText.includes("Profit data unavailable");
+      },
+      { timeout: 20_000 },
+      {
+        expectedLabel: routeProfitLabel(expectedRouteNetProfitAfterRetry),
+        staleLabel: routeProfitLabel(expectedRouteNetProfitBeforeRecovery),
+      },
+    ).then(() => true).catch(() => false);
+    const routeRefreshText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const routeRefreshNetProfit = readMoneyAfter(routeRefreshText, "Net Profit");
+    record(
+      "Route Planner keeps recovered profit after a full page refresh",
+      routeRefreshLoaded
+        && routeRefreshRecovered
+        && page.url() === routeRefreshUrl
+        && nearlyEqual(routeRefreshNetProfit, expectedRouteNetProfitAfterRetry)
+        && !nearlyEqual(routeRefreshNetProfit, expectedRouteNetProfitBeforeRecovery)
+        && !routeRefreshText.includes("Profit data unavailable"),
+      `loaded=${routeRefreshLoaded}, displayed=${routeRefreshNetProfit ?? "missing"}, recovered=${expectedRouteNetProfitAfterRetry}, preRecovery=${expectedRouteNetProfitBeforeRecovery}`,
     );
 
     jobs.reverse();
