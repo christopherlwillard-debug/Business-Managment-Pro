@@ -90,10 +90,10 @@ function writeTemporaryConfig(temporaryRoot) {
     temporaryFetch,
   );
 
-  const configPath = path.join(
-    apiSpecDir,
-    `.job-profit-contract-${process.pid}.config.ts`,
+  const configDirectory = fs.mkdtempSync(
+    path.join(apiSpecDir, ".job-profit-contract-"),
   );
+  const configPath = path.join(configDirectory, "config.ts");
   const quote = (value) => JSON.stringify(value);
   const config = `import { defineConfig } from "orval";
 
@@ -154,7 +154,7 @@ export default defineConfig({
 `;
 
   fs.writeFileSync(configPath, config);
-  return configPath;
+  return { configPath, configDirectory };
 }
 
 function runCodegen(configPath) {
@@ -294,10 +294,11 @@ function main() {
   const temporaryRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "buildpro-job-profit-contract-"),
   );
-  let configPath;
+  let configDirectory;
   try {
-    configPath = writeTemporaryConfig(temporaryRoot);
-    runCodegen(configPath);
+    const temporaryConfig = writeTemporaryConfig(temporaryRoot);
+    configDirectory = temporaryConfig.configDirectory;
+    runCodegen(temporaryConfig.configPath);
 
     const errors = compareGeneratedOutputs(temporaryRoot);
     const serverError = verifyServerResponseContract();
@@ -319,7 +320,9 @@ function main() {
       "Job-profit API contract check passed: OpenAPI codegen matches generated profit outputs and buildJobProfitResponse typechecks.",
     );
   } finally {
-    if (configPath) fs.rmSync(configPath, { force: true });
+    if (configDirectory) {
+      fs.rmSync(configDirectory, { recursive: true, force: true });
+    }
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }
 }
