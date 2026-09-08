@@ -46,6 +46,10 @@ args = "typecheck-libs"
 task = "workflow.run"
 args = "close-job"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "job-profit-contract"
+
 [[workflows.workflow]]
 name = "Contractor App"
 author = "agent"
@@ -109,6 +113,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/api-server run verify:close-job"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "job-profit-contract"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm run job-profit-contract:check"
 
 [workflows.workflow.metadata]
 isValidation = true
