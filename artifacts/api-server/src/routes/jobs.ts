@@ -895,13 +895,18 @@ router.get("/:id/profit", async (req, res) => {
         // It shares a single 24h in-memory cache with /api/business-distance — same engine,
         // same cache key — so the "X mi from shop" on the job card and this fuel estimate
         // always reflect identical mileage.
-        const route = await RoutingEngine.calculate({ origin: businessAddr, destination: jobAddr });
+        // An included Fuel/Travel expense is the canonical fuel cost for this
+        // job. Do not make a routing request or calculate an estimate that
+        // would only be suppressed later by the shared profit engine.
+        const route = hasActualFuelExpense
+          ? null
+          : await RoutingEngine.calculate({ origin: businessAddr, destination: jobAddr });
 
-        if (route.routeStatus === "missing_address") {
+        if (route?.routeStatus === "missing_address") {
           fuelStatus = "missing_address";
-        } else if (route.routeStatus === "geocoding_failed") {
+        } else if (route?.routeStatus === "geocoding_failed") {
           fuelStatus = "geocoding_failed";
-        } else if (route.miles != null) {
+        } else if (route?.miles != null) {
           // Workdays come from actual work evidence, not the scheduled calendar span.
           // A skipped day between startDate and endDate must not create a round trip.
           const [subHourDateRows, dailyLogDateRows] = await Promise.all([
@@ -1291,6 +1296,8 @@ router.get("/profit-summary", async (req, res) => {
         manHours: manHoursMap.get(id) ?? null,
         splitPool: allocationSplitPools.get(id)?.splitPool ?? 0,
         includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true,
+        estimatedFuelCost: actualFuelJobIds.has(id) ? null : calculation.estimatedFuelCost,
+        mileageReimbursementApplied: !actualFuelJobIds.has(id),
       });
     }
 
@@ -1379,7 +1386,8 @@ router.get("/profit-summary", async (req, res) => {
               manHours: existing.manHours,
               splitPool: existing.splitPool,
               includeMileageInJobCosts: jobRow.includeMileageInJobCosts !== false,
-              estimatedFuelCost: vehicleCost.fuelCost,
+              estimatedFuelCost: actualFuelJobIds.has(jobRow.id) ? null : calculation.estimatedFuelCost,
+              mileageReimbursementApplied: !actualFuelJobIds.has(jobRow.id),
             });
         }
       }

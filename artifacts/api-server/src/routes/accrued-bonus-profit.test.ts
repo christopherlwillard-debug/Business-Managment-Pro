@@ -1424,15 +1424,14 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
   });
 
   it("keeps mileage reimbursement profit fields aligned between detail and batch routes", async () => {
-    const route = {
-      miles: 10,
-      durationMinutes: 20,
-      routeStatus: "ok" as const,
-      provider: "haversine" as const,
-      cached: true,
+    const liveRoute = vi.spyOn(RoutingEngine, "calculate");
+    const cachedRoute = vi.spyOn(RoutingEngine, "getCachedRoute");
+    const actualFuelExpense = {
+      id: 706,
+      amount: "80.00",
+      category: "Fuel/Travel",
+      countsTowardJobProfit: true,
     };
-    const liveRoute = vi.spyOn(RoutingEngine, "calculate").mockResolvedValue(route);
-    const cachedRoute = vi.spyOn(RoutingEngine, "getCachedRoute").mockReturnValue(route);
     const reimbursement = {
       id: 705,
       amount: "125.00",
@@ -1442,23 +1441,12 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
 
     pushProfitSelects({
       invoices: [{ total: "1000.00", status: "paid" }],
+      expenses: [actualFuelExpense],
       mileageReimbursement: reimbursement,
       sprRows: [{ compType: "fixed", total: "200.00" }],
       hoursLaborCost: "300.00",
       totalHours: "10.0",
       accruedBonus: "50.00",
-      fuelSettings: {
-        companyAddress: "100 Main St",
-        companyCity: "Evansville",
-        companyState: "IN",
-      },
-      fuelVehicle: { avgMpg: 20, fuelPricePerGallon: "4.00" },
-      fuelJob: {
-        address: "200 Oak St",
-        city: "Evansville",
-        state: "IN",
-      },
-      fuelWorkDates: ["2026-09-01", "2026-09-02"],
     });
 
     const detailRes = await request(app).get("/jobs/5/profit");
@@ -1466,36 +1454,38 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     pushSummarySelects({
       jobId: 5,
       invoices: [{ jobId: 5, total: "1000.00", status: "paid" }],
+      expenses: [{ jobId: 5, ...actualFuelExpense }],
       mileageReimbursement: { jobId: 5, amount: reimbursement.amount },
       sprRows: [{ jobId: 5, compType: "fixed", total: "200.00" }],
       hoursLaborCost: "300.00",
       totalHours: "10.0",
       accruedBonus: "50.00",
-      fuelSettings: {
-        companyAddress: "100 Main St",
-        companyCity: "Evansville",
-        companyState: "IN",
-      },
-      fuelVehicle: { avgMpg: 20, fuelPricePerGallon: "4.00" },
-      fuelJob: {
-        address: "200 Oak St",
-        city: "Evansville",
-        state: "IN",
-        workdayCount: 2,
-      },
     });
 
     const batchRes = await request(app).get("/jobs/profit-summary?jobIds=5");
 
     expect(detailRes.status).toBe(200);
     expect(batchRes.status).toBe(200);
-    expect(liveRoute).toHaveBeenCalledTimes(1);
-    expect(cachedRoute).toHaveBeenCalledTimes(1);
+    expect(liveRoute).not.toHaveBeenCalled();
+    expect(cachedRoute).not.toHaveBeenCalled();
 
     const detailProfit = detailRes.body;
     const batchProfit = batchRes.body[5];
+    for (const profit of [detailProfit, batchProfit]) {
+      expect(profit.actualFuelCost).toBeCloseTo(80);
+      expect(profit.estimatedFuelCost).toBeNull();
+      expect(profit.mileageReimbursementApplied).toBe(false);
+      expect(profit.jobExpenses).toBeCloseTo(80);
+      expect(profit.includedCostTotal).toBeCloseTo(80 + 550 + 0);
+      expect(profit.netProfit).toBeCloseTo(1000 - (80 + 550));
+      expect(profit.profitBreakdown.includedCosts).toMatchObject({
+        directExpenses: 80,
+        mileageReimbursement: 0,
+        estimatedFuel: 0,
+      });
+    }
     expect(detailProfit.mileageReimbursement.amount).toBeCloseTo(125);
-    expect(batchProfit.mileageReimbursement).toBeCloseTo(125);
+    expect(batchProfit.mileageReimbursement).toBe(0);
 
     for (const field of ["subLaborCost", "allocPaid", "includedCostTotal", "netProfit"] as const) {
       expect(batchProfit[field]).toBeCloseTo(detailProfit[field]);

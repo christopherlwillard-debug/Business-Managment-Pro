@@ -14,3 +14,9 @@ The historical Closed Jobs mismatch was identifiable from the production values:
 **Why:** Separate route-local waterfalls drifted and produced impossible negative Closed Jobs values even when the authoritative source records did not support a loss. A shared calculator alone is not enough unless each route passes correctly grouped per-job source inputs.
 
 **How to apply:** When a batch value looks impossible, compare the implied cost (`revenue - displayed profit`) across rows. A repeated base that equals a cross-job aggregate points to grouping/mapping leakage; verify the raw rows and the pre-shared deployed route before changing data.
+
+Profit route response extras must not reintroduce a suppressed operational fuel estimate after the shared calculator has excluded it. Keep the internal zero used for cost arithmetic distinct from the wire-level `null` meaning that no estimate applies, especially when actual Fuel/Travel expense evidence exists.
+
+**Why:** Detail and batch routes can calculate the correct included costs while still exposing a misleading estimate if route-specific response enrichment overwrites the shared result.
+
+**How to apply:** When an actual included fuel expense is present, skip routing estimation, expose actual fuel in the canonical field, report no applied reimbursement, and keep estimated fuel unavailable in both detail and batch responses.
