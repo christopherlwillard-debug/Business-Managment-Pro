@@ -165,6 +165,30 @@ async function clickRouteStopAction(page: Page, title: string, action: string): 
   }, { stopTitle: title, buttonTitle: action });
 }
 
+async function dragRouteStop(page: Page, sourceTitle: string, targetTitle: string): Promise<boolean> {
+  return page.evaluate(({ source, target }) => {
+    const cards = [...document.querySelectorAll<HTMLElement>("[draggable='true']")];
+    const titles = cards.map(card =>
+      card.querySelector<HTMLElement>("span.text-sm.font-medium")?.textContent?.trim() ?? "",
+    );
+    const sourceIndex = titles.indexOf(source);
+    const targetIndex = titles.indexOf(target);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return false;
+
+    const dataTransfer = new DataTransfer();
+    dataTransfer.effectAllowed = "move";
+    dataTransfer.setData("text/plain", String(sourceIndex));
+    const sourceCard = cards[sourceIndex];
+    const targetCard = cards[targetIndex];
+    sourceCard.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer }));
+    targetCard.dispatchEvent(new DragEvent("dragenter", { bubbles: true, cancelable: true, dataTransfer }));
+    targetCard.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
+    targetCard.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+    sourceCard.dispatchEvent(new DragEvent("dragend", { bubbles: true, cancelable: true, dataTransfer }));
+    return true;
+  }, { source: sourceTitle, target: targetTitle });
+}
+
 async function waitForRouteStopOrder(page: Page, expectedTitles: string[]): Promise<boolean> {
   return page.waitForFunction(
     titles => {
@@ -889,7 +913,7 @@ async function main() {
       .sort((left, right) => left.sortOrder - right.sortOrder)
       .map(stop => stop.jobId);
     const reorderWriteStart = routeWrites.length;
-    const reorderClicked = await clickRouteStopAction(page, fixtures[0].title, "Move down");
+    const reorderDragged = await dragRouteStop(page, fixtures[0].title, fixtures[1].title);
     const reorderApplied = await waitForCondition(() => {
       const ordered = [...routeStops]
         .filter(stop => stop.scheduledDate === today)
@@ -909,6 +933,7 @@ async function main() {
       .filter(stop => stop.scheduledDate === today)
       .sort((left, right) => left.sortOrder - right.sortOrder)
       .map(stop => stop.jobId);
+    const afterReorderJobSet = [...new Set(afterReorderOrder)].sort((left, right) => (left ?? 0) - (right ?? 0));
     const reorderWrites = routeWrites.slice(reorderWriteStart);
     const expectedReorderWritePaths = new Set([
       `/api/route-stops/${routeStops.find(stop => stop.jobId === firstJobId)?.id}`,
@@ -919,13 +944,16 @@ async function main() {
         const [method, path] = write.split(" ");
         return method === "PUT" && expectedReorderWritePaths.has(path);
       });
+    const reorderPreservedJobSet =
+      JSON.stringify(afterReorderJobSet) === JSON.stringify(beforeReorder.jobIds);
     record(
-      "Reordering route stops preserves the canonical job set and net profit",
-      reorderClicked
+      "Dragging route stops preserves the canonical job set and net profit",
+      reorderDragged
         && reorderApplied
         && reorderUiApplied
         && reorderRefreshed
         && reorderWritesAreExpected
+        && reorderPreservedJobSet
         && beforeReorderOrder.join(",") === `${firstJobId},${secondJobId}`
         && afterReorderOrder.join(",") === `${secondJobId},${firstJobId}`
         && JSON.stringify(beforeReorder.jobIds) === JSON.stringify(reorderAfter.jobIds)
@@ -934,7 +962,7 @@ async function main() {
       `beforeJobs=${beforeReorder.jobIds.join(",")}, afterJobs=${reorderAfter.jobIds.join(",")}, ` +
       `order=${afterReorderOrder.join(",")}, displayed=${reorderDisplayed ?? "missing"}, ` +
       `canonicalBefore=${beforeReorder.netProfit}, canonicalAfter=${reorderAfter.netProfit}, ` +
-      `writes=${reorderWrites.join(";")}`,
+      `writes=${reorderWrites.join(";")}, dragged=${reorderDragged}`,
     );
     await page.screenshot({ path: `${SHOTS}/03b-route-profit-reordered.png`, fullPage: true });
 
