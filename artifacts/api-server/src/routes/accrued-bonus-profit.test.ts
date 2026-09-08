@@ -168,8 +168,8 @@ afterEach(() => {
 /**
  * Push the select results that GET /jobs/:id/profit issues:
  *   [0] invoices      [1] other income [2] expenses [3] job allocations
- *   [4] mileage reimbursement [5] spr fixed/alloc rows [6] hours cost
- *   [7] hours cnt [8] accrued bonus [9-11] fuel inputs [12] settings
+ *   [4] mileage reimbursement [5] active spr rows [6] reversed spr rows
+ *   [7] hours cost [8] hours cnt [9] accrued bonus [10-12] fuel inputs [13] settings
  */
 function pushProfitSelects(opts: {
   invoices?:       { total: string; status: string }[];
@@ -177,6 +177,7 @@ function pushProfitSelects(opts: {
   expenses?:       any[];
   mileageReimbursement?: { id: number; amount: string; recipientType: string; recipientName: string };
   sprRows?:        { compType: string; total: string }[];
+  reversedSprRows?: { compType: string; total: string }[];
   hoursLaborCost?: string;
   totalHours?:     string;
   accruedBonus?:   string;
@@ -192,6 +193,7 @@ function pushProfitSelects(opts: {
   h.selectQueue.push([]); // job-only allocations
   h.selectQueue.push(opts.mileageReimbursement ? [opts.mileageReimbursement] : []); // job-card mileage reimbursements
   h.selectQueue.push(opts.sprRows  ?? []);
+  h.selectQueue.push(opts.reversedSprRows ?? []);
   h.selectQueue.push([{ total: opts.hoursLaborCost ?? "0" }]);
   h.selectQueue.push([{ total: opts.totalHours     ?? "0" }]);
   h.selectQueue.push([{ total: opts.accruedBonus   ?? "0" }]);
@@ -211,7 +213,8 @@ function pushProfitSelects(opts: {
 /**
  * Push the select results that GET /jobs/profit-summary issues via Promise.all:
  *   [0] invoices  [1] other income [2] expenses [3] job allocations
- *   [4] hours cost rows [5] hours count rows [6] manHours [7] spr rows [8] accrued bonus rows
+   *   [4] hours cost rows [5] hours count rows [6] manHours [7] active spr rows
+   *   [8] reversed spr rows [9] accrued bonus rows
  *
  * All arrays are grouped by jobId on the real DB; the mock just returns the
  * raw rows — the route code maps them by jobId.
@@ -225,6 +228,7 @@ function pushSummarySelects(opts: {
   hoursLaborCost?: string;
   totalHours?:    string;
   sprRows?:       { jobId: number; compType: string; total: string }[];
+  reversedSprRows?: { jobId: number; compType: string; total: string }[];
   accruedBonus?:  string;
   fuelSettings?:  { companyAddress?: string | null; companyCity?: string | null; companyState?: string | null };
   fuelVehicle?:   { avgMpg: number; fuelPricePerGallon: string };
@@ -245,6 +249,7 @@ function pushSummarySelects(opts: {
   // manHours from jobs table
   h.selectQueue.push([{ id: jobId, manHours: null }]);
   h.selectQueue.push(opts.sprRows ?? []);
+  h.selectQueue.push(opts.reversedSprRows ?? []);
   // accrued bonus grouped by jobId
   h.selectQueue.push(opts.accruedBonus && opts.accruedBonus !== "0"
     ? [{ jobId, total: opts.accruedBonus }] : []);
@@ -310,8 +315,29 @@ function pushBatchSummarySelects(opts: {
       compType: row.compType,
       total: row.total.toFixed(2),
     })));
+    const reversedTotals = new Map<string, { jobId: number; compType: "fixed" | "allocation"; total: number }>();
+    for (const row of opts.sprPaymentRows) {
+      if (row.isReversal !== true) continue;
+      const key = `${row.jobId}:${row.compType}`;
+      const current = reversedTotals.get(key);
+      if (current) {
+        current.total += parseFloat(row.amount);
+      } else {
+        reversedTotals.set(key, {
+          jobId: row.jobId,
+          compType: row.compType,
+          total: parseFloat(row.amount),
+        });
+      }
+    }
+    h.selectQueue.push([...reversedTotals.values()].map(row => ({
+      jobId: row.jobId,
+      compType: row.compType,
+      total: row.total.toFixed(2),
+    })));
   } else {
     h.selectQueue.push(opts.sprRows ?? []);
+    h.selectQueue.push([]);
   }
   h.selectQueue.push(opts.accruedBonusRows ?? []);
   // Fuel enrichment reads one shared settings row, vehicle row, and all job addresses.
@@ -869,6 +895,10 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
         { compType: "fixed", total: "400.00" },
         { compType: "allocation", total: "250.00" },
       ],
+      reversedSprRows: [
+        { compType: "fixed", total: "900.00" },
+        { compType: "allocation", total: "750.00" },
+      ],
       fuelSettings: {
         companyAddress: "100 Main St",
         companyCity: "Evansville",
@@ -894,9 +924,11 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     pushBatchSummarySelects({
       invoices: [{ jobId: 5, total: "1000.00", status: "paid" }],
       manHoursRows: [{ id: 5, manHours: null }],
-      sprRows: [
-        { jobId: 5, compType: "fixed", total: "400.00" },
-        { jobId: 5, compType: "allocation", total: "250.00" },
+      sprPaymentRows: [
+        { jobId: 5, compType: "fixed", amount: "400.00", isReversal: false },
+        { jobId: 5, compType: "allocation", amount: "250.00", isReversal: null },
+        { jobId: 5, compType: "fixed", amount: "900.00", isReversal: true },
+        { jobId: 5, compType: "allocation", amount: "750.00", isReversal: true },
       ],
       fuelSettings: {
         companyAddress: "100 Main St",
@@ -927,6 +959,8 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
       ["allocPaid", detail.allocPaid, batch.allocPaid],
       ["includedCostTotal", detail.includedCostTotal, batch.includedCostTotal],
       ["splitPayouts", detail.profitBreakdown.includedCosts.splitPayouts, batch.profitBreakdown.includedCosts.splitPayouts],
+      ["reversedFixedPayouts", detail.profitBreakdown.excludedFromProfit.reversedFixedPayouts, batch.profitBreakdown.excludedFromProfit.reversedFixedPayouts],
+      ["reversedAllocationPayouts", detail.profitBreakdown.excludedFromProfit.reversedAllocationPayouts, batch.profitBreakdown.excludedFromProfit.reversedAllocationPayouts],
       ["netProfit", detail.netProfit, batch.netProfit],
     ] as const) {
       expect(batchValue, `${label} should match both profit views`).toBeCloseTo(detailValue);
@@ -936,6 +970,8 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expect(detail.allocPaid).toBeCloseTo(250);
     expect(detail.includedCostTotal).toBeCloseTo(658);
     expect(detail.profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(250);
+    expect(detail.profitBreakdown.excludedFromProfit.reversedFixedPayouts).toBeCloseTo(900);
+    expect(detail.profitBreakdown.excludedFromProfit.reversedAllocationPayouts).toBeCloseTo(750);
     expect(detail.netProfit).toBeCloseTo(342);
   });
 
@@ -1124,6 +1160,8 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expect(profit.profitBreakdown.includedCosts.subLabor).toBeCloseTo(400);
     expect(profit.profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(250);
     expect(profit.profitBreakdown.includedCosts.total).toBeCloseTo(658);
+    expect(profit.profitBreakdown.excludedFromProfit.reversedFixedPayouts).toBeCloseTo(900);
+    expect(profit.profitBreakdown.excludedFromProfit.reversedAllocationPayouts).toBeCloseTo(750);
     expect(profit.splitPool).toBeCloseTo(542.4);
     expect(profit.netProfit).toBeCloseTo(342);
     expectSharedProfitCalculationFields(profit);

@@ -60,6 +60,8 @@ export type JobProfitCalculation = {
       auditTrail: number;
       payrollLinkedExpenses: number;
       legacySubcontractorExpense: number;
+      reversedFixedPayouts: number;
+      reversedAllocationPayouts: number;
     };
   };
 };
@@ -139,6 +141,8 @@ export function calculateJobProfit(input: {
   fixedSubCost?: number;
   accruedBonus?: number;
   allocPaid?: number;
+  reversedFixedPayout?: number;
+  reversedAllocationPayout?: number;
 }): JobProfitCalculation {
   const invoices = input.invoices ?? [];
   const otherIncome = input.otherIncome ?? [];
@@ -213,6 +217,8 @@ export function calculateJobProfit(input: {
   const hourlyLaborCost = money(input.hourlyLaborCost);
   const fixedSubCost = money(input.fixedSubCost);
   const accruedBonus = money(input.accruedBonus);
+  const reversedFixedPayouts = money(input.reversedFixedPayout);
+  const reversedAllocationPayouts = money(input.reversedAllocationPayout);
   const nonHoursSubCost = fixedSubCost > 0
     ? fixedSubCost
     : hourlyLaborCost > 0
@@ -265,6 +271,8 @@ export function calculateJobProfit(input: {
         auditTrail: auditTrailTotal,
         payrollLinkedExpenses: payrollLinkedExcluded,
         legacySubcontractorExpense,
+        reversedFixedPayouts,
+        reversedAllocationPayouts,
       },
     },
   };

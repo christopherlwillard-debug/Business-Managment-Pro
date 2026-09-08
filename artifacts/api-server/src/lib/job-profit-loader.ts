@@ -42,6 +42,7 @@ export async function loadJobProfitByJob(jobIds: number[]): Promise<Map<number, 
     hoursCountRows,
     jobRows,
     paymentRows,
+    reversedPaymentRows,
     accruedBonusRows,
   ] = await Promise.all([
     db.select({
@@ -144,6 +145,24 @@ export async function loadJobProfitByJob(jobIds: number[]): Promise<Map<number, 
       ))
       .groupBy(subPaymentRecordsTable.jobId, jobSubcontractorsTable.compensationType),
     db.select({
+      jobId: subPaymentRecordsTable.jobId,
+      compType: jobSubcontractorsTable.compensationType,
+      total: sql<string>`COALESCE(SUM(
+        ${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)
+      ), 0)`,
+    })
+      .from(subPaymentRecordsTable)
+      .innerJoin(jobSubcontractorsTable, and(
+        eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+        eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+      ))
+      .where(and(
+        inArray(subPaymentRecordsTable.jobId, jobIds),
+        eq(subPaymentRecordsTable.isReversal, true),
+        sql`${jobSubcontractorsTable.compensationType} IN ('fixed', 'allocation')`,
+      ))
+      .groupBy(subPaymentRecordsTable.jobId, jobSubcontractorsTable.compensationType),
+    db.select({
       jobId: jobSubcontractorsTable.jobId,
       total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.accruedBonus}), 0)`,
     })
@@ -165,6 +184,16 @@ export async function loadJobProfitByJob(jobIds: number[]): Promise<Map<number, 
       fixedPaymentMap.set(row.jobId, (fixedPaymentMap.get(row.jobId) ?? 0) + total);
     } else if (row.compType === "allocation") {
       allocationPaymentMap.set(row.jobId, (allocationPaymentMap.get(row.jobId) ?? 0) + total);
+    }
+  }
+  const reversedFixedPaymentMap = new Map<number, number>();
+  const reversedAllocationPaymentMap = new Map<number, number>();
+  for (const row of reversedPaymentRows) {
+    const total = Number(row.total ?? 0);
+    if (row.compType === "fixed") {
+      reversedFixedPaymentMap.set(row.jobId, (reversedFixedPaymentMap.get(row.jobId) ?? 0) + total);
+    } else if (row.compType === "allocation") {
+      reversedAllocationPaymentMap.set(row.jobId, (reversedAllocationPaymentMap.get(row.jobId) ?? 0) + total);
     }
   }
   const jobSettings = new Map(jobRows.map((row) => [
@@ -206,6 +235,8 @@ export async function loadJobProfitByJob(jobIds: number[]): Promise<Map<number, 
       fixedSubCost: fixedPaymentMap.get(jobId) ?? 0,
       accruedBonus: accruedBonusMap.get(jobId) ?? 0,
       allocPaid: allocationPaymentMap.get(jobId) ?? 0,
+      reversedFixedPayout: reversedFixedPaymentMap.get(jobId) ?? 0,
+      reversedAllocationPayout: reversedAllocationPaymentMap.get(jobId) ?? 0,
     });
     byJob.set(jobId, {
       calculation,

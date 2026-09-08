@@ -2131,7 +2131,9 @@ components:
             auditTrail: { type: number }
             payrollLinkedExpenses: { type: number }
             legacySubcontractorExpense: { type: number }
-          required: [ownerWithdrawals, auditTrail, payrollLinkedExpenses, legacySubcontractorExpense]
+            reversedFixedPayouts: { type: number }
+            reversedAllocationPayouts: { type: number }
+          required: [ownerWithdrawals, auditTrail, payrollLinkedExpenses, legacySubcontractorExpense, reversedFixedPayouts, reversedAllocationPayouts]
       required: [revenue, includedCosts, excludedFromProfit]
 
     JobProfitResponse:

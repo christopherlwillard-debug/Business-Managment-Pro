@@ -742,7 +742,7 @@ router.get("/:id/profit", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
 
-    const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, sprRows, subHoursRow, subHoursSum, accruedBonusRow] = await Promise.all([
+    const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, sprRows, reversedSprRows, subHoursRow, subHoursSum, accruedBonusRow] = await Promise.all([
       db.select({ total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(and(eq(invoicesTable.jobId, id), isNull(invoicesTable.voidedAt))),
       // Job-linked other income is standalone cash revenue only when it has an
@@ -788,6 +788,23 @@ router.get("/:id/profit", async (req, res) => {
         .where(and(
           eq(subPaymentRecordsTable.jobId, id),
           sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+          sql`${jobSubcontractorsTable.compensationType} IN ('fixed', 'allocation')`,
+        ))
+        .groupBy(jobSubcontractorsTable.compensationType),
+      // Reversed ledger rows stay out of active labor/split costs but are
+      // returned separately so Job Financials can reconcile the correction.
+      db.select({
+        compType: jobSubcontractorsTable.compensationType,
+        total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)), 0)`,
+      })
+        .from(subPaymentRecordsTable)
+        .innerJoin(jobSubcontractorsTable, and(
+          eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+          eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+        ))
+        .where(and(
+          eq(subPaymentRecordsTable.jobId, id),
+          eq(subPaymentRecordsTable.isReversal, true),
           sql`${jobSubcontractorsTable.compensationType} IN ('fixed', 'allocation')`,
         ))
         .groupBy(jobSubcontractorsTable.compensationType),
@@ -959,6 +976,8 @@ router.get("/:id/profit", async (req, res) => {
       fixedSubCost: parseFloat(sprRows.find(r => r.compType === "fixed")?.total ?? "0"),
       accruedBonus: parseFloat(accruedBonusRow?.[0]?.total ?? "0"),
       allocPaid: parseFloat(sprRows.find(r => r.compType === "allocation")?.total ?? "0"),
+      reversedFixedPayout: parseFloat(reversedSprRows.find(r => r.compType === "fixed")?.total ?? "0"),
+      reversedAllocationPayout: parseFloat(reversedSprRows.find(r => r.compType === "allocation")?.total ?? "0"),
     });
     const {
       grossInvoiced, collected, otherIncomeRevenue, jobExpenses,
@@ -1118,7 +1137,7 @@ router.get("/profit-summary", async (req, res) => {
     const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
 
-    const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, accruedBonusRows, allocationSplitPools] = await Promise.all([
+    const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, reversedSprNonHoursRows, accruedBonusRows, allocationSplitPools] = await Promise.all([
       db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(and(inArray(invoicesTable.jobId, jobIds), isNull(invoicesTable.voidedAt))),
       db.select({ jobId: otherIncomeTable.jobId, amount: otherIncomeTable.amount })
@@ -1188,6 +1207,25 @@ router.get("/profit-summary", async (req, res) => {
           sql`${jobSubcontractorsTable.compensationType} IN ('fixed', 'allocation')`,
         ))
         .groupBy(subPaymentRecordsTable.jobId, jobSubcontractorsTable.compensationType),
+      // Keep reversed payroll corrections separate from the active-only totals.
+      db.select({
+        jobId: subPaymentRecordsTable.jobId,
+        compType: jobSubcontractorsTable.compensationType,
+        total: sql<string>`COALESCE(SUM(
+          ${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)
+        ), 0)`,
+      })
+        .from(subPaymentRecordsTable)
+        .innerJoin(jobSubcontractorsTable, and(
+          eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+          eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+        ))
+        .where(and(
+          inArray(subPaymentRecordsTable.jobId, jobIds),
+          eq(subPaymentRecordsTable.isReversal, true),
+          sql`${jobSubcontractorsTable.compensationType} IN ('fixed', 'allocation')`,
+        ))
+        .groupBy(subPaymentRecordsTable.jobId, jobSubcontractorsTable.compensationType),
       // Accrued bonuses (saved without payment) — always count as labor cost on all job views
       db.select({
         jobId: jobSubcontractorsTable.jobId,
@@ -1214,6 +1252,14 @@ router.get("/profit-summary", async (req, res) => {
       if (r.compType === "fixed") sprFixedMap.set(r.jobId, (sprFixedMap.get(r.jobId) ?? 0) + total);
       else if (r.compType === "allocation") sprAllocMap.set(r.jobId, (sprAllocMap.get(r.jobId) ?? 0) + total);
     }
+    const reversedFixedMap = new Map<number, number>();
+    const reversedAllocMap = new Map<number, number>();
+    for (const r of reversedSprNonHoursRows) {
+      if (r.jobId == null) continue;
+      const total = parseFloat(r.total ?? "0");
+      if (r.compType === "fixed") reversedFixedMap.set(r.jobId, (reversedFixedMap.get(r.jobId) ?? 0) + total);
+      else if (r.compType === "allocation") reversedAllocMap.set(r.jobId, (reversedAllocMap.get(r.jobId) ?? 0) + total);
+    }
     const accruedBonusMap = new Map(accruedBonusRows.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
     const actualFuelJobIds = new Set(
       expRows
@@ -1238,6 +1284,8 @@ router.get("/profit-summary", async (req, res) => {
         fixedSubCost: sprFixedMap.get(id) ?? 0,
         accruedBonus: accruedBonusMap.get(id) ?? 0,
         allocPaid: sprAllocMap.get(id) ?? 0,
+        reversedFixedPayout: reversedFixedMap.get(id) ?? 0,
+        reversedAllocationPayout: reversedAllocMap.get(id) ?? 0,
       });
       result[id] = buildJobProfitResponse(calculation, {
         manHours: manHoursMap.get(id) ?? null,
@@ -1322,6 +1370,8 @@ router.get("/profit-summary", async (req, res) => {
              fixedSubCost: sprFixedMap.get(jobRow.id) ?? 0,
              accruedBonus: accruedBonusMap.get(jobRow.id) ?? 0,
              allocPaid: sprAllocMap.get(jobRow.id) ?? 0,
+              reversedFixedPayout: reversedFixedMap.get(jobRow.id) ?? 0,
+              reversedAllocationPayout: reversedAllocMap.get(jobRow.id) ?? 0,
            });
             const existing = result[jobRow.id];
             if (!existing) continue;

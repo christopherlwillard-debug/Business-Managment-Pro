@@ -2287,12 +2287,33 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                      {(profitBreakdown.excludedFromProfit.ownerWithdrawals > 0 ||
                        profitBreakdown.excludedFromProfit.auditTrail > 0 ||
                        profitBreakdown.excludedFromProfit.payrollLinkedExpenses > 0 ||
-                       profitBreakdown.excludedFromProfit.legacySubcontractorExpense > 0) && (
+                        profitBreakdown.excludedFromProfit.legacySubcontractorExpense > 0 ||
+                        profitBreakdown.excludedFromProfit.reversedFixedPayouts > 0 ||
+                        profitBreakdown.excludedFromProfit.reversedAllocationPayouts > 0) && (
                        <div className="border-t border-blue-200/60 bg-blue-50/60 px-4 py-3">
                          <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Excluded from business profit</p>
                          <p className="mt-1 text-[11px] leading-relaxed text-blue-700/80">
                            Owner withdrawals and audit-only travel records are shown for traceability but do not reduce job profit. Payroll-linked rows stay out of direct expenses; legacy subcontractor rows count as labor only when no canonical payroll record exists.
                          </p>
+                          {(profitBreakdown.excludedFromProfit.reversedFixedPayouts > 0 ||
+                            profitBreakdown.excludedFromProfit.reversedAllocationPayouts > 0) && (
+                            <div className="mt-2 pt-2 border-t border-blue-200/60 space-y-1">
+                              <p className="text-[11px] font-semibold text-blue-700">Reversed payouts</p>
+                              {profitBreakdown.excludedFromProfit.reversedFixedPayouts > 0 && (
+                                <div className="flex items-center justify-between text-[11px] text-blue-700">
+                                  <span>Fixed payout reversal</span>
+                                  <span className="font-semibold tabular-nums">{formatCurrency(profitBreakdown.excludedFromProfit.reversedFixedPayouts)}</span>
+                                </div>
+                              )}
+                              {profitBreakdown.excludedFromProfit.reversedAllocationPayouts > 0 && (
+                                <div className="flex items-center justify-between text-[11px] text-blue-700">
+                                  <span>Split payout reversal</span>
+                                  <span className="font-semibold tabular-nums">{formatCurrency(profitBreakdown.excludedFromProfit.reversedAllocationPayouts)}</span>
+                                </div>
+                              )}
+                              <p className="text-[10px] text-blue-700/80">Reversed payroll entries are shown for reconciliation and are not included in labor or split-payout costs.</p>
+                            </div>
+                          )}
                        </div>
                      )}
                    </div>

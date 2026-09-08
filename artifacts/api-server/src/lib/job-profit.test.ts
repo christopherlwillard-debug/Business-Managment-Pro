@@ -70,4 +70,21 @@ describe("calculateJobProfit", () => {
     expect(result.netProfit).toBeCloseTo(182.27);
     expect(result.includedCostTotal).toBe(0);
   });
+
+  it("reports reversed fixed and allocation payouts without changing active costs", () => {
+    const result = calculateJobProfit({
+      invoices: [{ total: "1000.00", status: "paid" }],
+      fixedSubCost: 400,
+      allocPaid: 250,
+      reversedFixedPayout: 900,
+      reversedAllocationPayout: 750,
+    });
+
+    expect(result.subLaborCost).toBeCloseTo(400);
+    expect(result.allocPaid).toBeCloseTo(250);
+    expect(result.includedCostTotal).toBeCloseTo(650);
+    expect(result.netProfit).toBeCloseTo(350);
+    expect(result.profitBreakdown.excludedFromProfit.reversedFixedPayouts).toBeCloseTo(900);
+    expect(result.profitBreakdown.excludedFromProfit.reversedAllocationPayouts).toBeCloseTo(750);
+  });
 });

@@ -11,4 +11,6 @@ export type JobProfitBreakdownExcludedFromProfit = {
   auditTrail: number;
   payrollLinkedExpenses: number;
   legacySubcontractorExpense: number;
+  reversedFixedPayouts: number;
+  reversedAllocationPayouts: number;
 };
