@@ -1171,6 +1171,7 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
   });
 
   it("keeps payroll and cached fuel values isolated across multiple batch jobs", async () => {
+    const liveRoute = vi.spyOn(RoutingEngine, "calculate");
     const cachedRoute = vi.spyOn(RoutingEngine, "getCachedRoute").mockImplementation(({ destination }) => ({
       miles: destination.includes("Oak") ? 10 : 25,
       durationMinutes: destination.includes("Oak") ? 20 : 50,
@@ -1227,6 +1228,7 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     cachedRoute.mockRestore();
 
     expect(res.status).toBe(200);
+    expect(liveRoute).not.toHaveBeenCalled();
     const firstJob = res.body[501];
     const secondJob = res.body[502];
 
@@ -1249,6 +1251,7 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expect(firstJob.netProfit).not.toBeCloseTo(secondJob.netProfit);
     expectSharedProfitCalculationFields(firstJob);
     expectSharedProfitCalculationFields(secondJob);
+    liveRoute.mockRestore();
   });
 
   it("does not leak a cached fuel estimate into a batch job with no cached route", async () => {
