@@ -1367,6 +1367,92 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expectSharedProfitCalculationFields(profit);
   });
 
+  it("keeps mileage reimbursement profit fields aligned between detail and batch routes", async () => {
+    const route = {
+      miles: 10,
+      durationMinutes: 20,
+      routeStatus: "ok" as const,
+      provider: "haversine" as const,
+      cached: true,
+    };
+    const liveRoute = vi.spyOn(RoutingEngine, "calculate").mockResolvedValue(route);
+    const cachedRoute = vi.spyOn(RoutingEngine, "getCachedRoute").mockReturnValue(route);
+    const reimbursement = {
+      id: 705,
+      amount: "125.00",
+      recipientType: "owner",
+      recipientName: "Willard",
+    };
+
+    pushProfitSelects({
+      invoices: [{ total: "1000.00", status: "paid" }],
+      mileageReimbursement: reimbursement,
+      sprRows: [{ compType: "fixed", total: "200.00" }],
+      hoursLaborCost: "300.00",
+      totalHours: "10.0",
+      accruedBonus: "50.00",
+      fuelSettings: {
+        companyAddress: "100 Main St",
+        companyCity: "Evansville",
+        companyState: "IN",
+      },
+      fuelVehicle: { avgMpg: 20, fuelPricePerGallon: "4.00" },
+      fuelJob: {
+        address: "200 Oak St",
+        city: "Evansville",
+        state: "IN",
+      },
+      fuelWorkDates: ["2026-09-01", "2026-09-02"],
+    });
+
+    const detailRes = await request(app).get("/jobs/5/profit");
+
+    pushSummarySelects({
+      jobId: 5,
+      invoices: [{ jobId: 5, total: "1000.00", status: "paid" }],
+      mileageReimbursement: { jobId: 5, amount: reimbursement.amount },
+      sprRows: [{ jobId: 5, compType: "fixed", total: "200.00" }],
+      hoursLaborCost: "300.00",
+      totalHours: "10.0",
+      accruedBonus: "50.00",
+      fuelSettings: {
+        companyAddress: "100 Main St",
+        companyCity: "Evansville",
+        companyState: "IN",
+      },
+      fuelVehicle: { avgMpg: 20, fuelPricePerGallon: "4.00" },
+      fuelJob: {
+        address: "200 Oak St",
+        city: "Evansville",
+        state: "IN",
+        workdayCount: 2,
+      },
+    });
+
+    const batchRes = await request(app).get("/jobs/profit-summary?jobIds=5");
+
+    expect(detailRes.status).toBe(200);
+    expect(batchRes.status).toBe(200);
+    expect(liveRoute).toHaveBeenCalledTimes(1);
+    expect(cachedRoute).toHaveBeenCalledTimes(1);
+
+    const detailProfit = detailRes.body;
+    const batchProfit = batchRes.body[5];
+    expect(detailProfit.mileageReimbursement.amount).toBeCloseTo(125);
+    expect(batchProfit.mileageReimbursement).toBeCloseTo(125);
+
+    for (const field of ["subLaborCost", "allocPaid", "includedCostTotal", "netProfit"] as const) {
+      expect(batchProfit[field]).toBeCloseTo(detailProfit[field]);
+    }
+    expect(batchProfit.profitBreakdown.includedCosts.splitPayouts)
+      .toBeCloseTo(detailProfit.profitBreakdown.includedCosts.splitPayouts);
+    expect(batchProfit.splitPool).toBeCloseTo(detailProfit.splitPool);
+    expectSharedProfitCalculationFields(detailProfit);
+    expectSharedProfitCalculationFields(batchProfit);
+    liveRoute.mockRestore();
+    cachedRoute.mockRestore();
+  });
+
   it("includes accrued_bonus per job in the batch result", async () => {
     pushSummarySelects({
       jobId:          5,
