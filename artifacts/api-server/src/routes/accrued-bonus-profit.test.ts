@@ -876,6 +876,62 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expectSharedProfitCalculationFields(batchRes.body[5]);
   });
 
+  it("excludes reversed fixed and allocation payouts consistently from both profit views", async () => {
+    pushProfitSelects({
+      invoices: [{ total: "1000.00", status: "paid" }],
+      sprRows: [
+        { compType: "fixed", total: "300.00" },
+        { compType: "allocation", total: "200.00" },
+      ],
+      reversedSprRows: [
+        { compType: "fixed", total: "900.00" },
+        { compType: "allocation", total: "800.00" },
+      ],
+    });
+
+    const detailRes = await request(app).get("/jobs/5/profit");
+
+    pushBatchSummarySelects({
+      invoices: [{ jobId: 5, total: "1000.00", status: "paid" }],
+      manHoursRows: [{ id: 5, manHours: null }],
+      sprPaymentRows: [
+        { jobId: 5, compType: "fixed", amount: "300.00", isReversal: false },
+        { jobId: 5, compType: "allocation", amount: "200.00", isReversal: null },
+        { jobId: 5, compType: "fixed", amount: "900.00", isReversal: true },
+        { jobId: 5, compType: "allocation", amount: "800.00", isReversal: true },
+      ],
+    });
+
+    const batchRes = await request(app).get("/jobs/profit-summary?jobIds=5");
+
+    expect(detailRes.status).toBe(200);
+    expect(batchRes.status).toBe(200);
+
+    const detail = detailRes.body;
+    const batch = batchRes.body[5];
+    for (const [label, detailValue, batchValue] of [
+      ["subLaborCost", detail.subLaborCost, batch.subLaborCost],
+      ["allocPaid", detail.allocPaid, batch.allocPaid],
+      ["includedCostTotal", detail.includedCostTotal, batch.includedCostTotal],
+      ["splitPayouts", detail.profitBreakdown.includedCosts.splitPayouts, batch.profitBreakdown.includedCosts.splitPayouts],
+      ["reversedFixedPayouts", detail.profitBreakdown.excludedFromProfit.reversedFixedPayouts, batch.profitBreakdown.excludedFromProfit.reversedFixedPayouts],
+      ["reversedAllocationPayouts", detail.profitBreakdown.excludedFromProfit.reversedAllocationPayouts, batch.profitBreakdown.excludedFromProfit.reversedAllocationPayouts],
+      ["netProfit", detail.netProfit, batch.netProfit],
+    ] as const) {
+      expect(batchValue, `${label} should match both profit views`).toBeCloseTo(detailValue);
+    }
+
+    expect(detail.subLaborCost).toBeCloseTo(300);
+    expect(detail.allocPaid).toBeCloseTo(200);
+    expect(detail.includedCostTotal).toBeCloseTo(500);
+    expect(detail.profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(200);
+    expect(detail.profitBreakdown.excludedFromProfit.reversedFixedPayouts).toBeCloseTo(900);
+    expect(detail.profitBreakdown.excludedFromProfit.reversedAllocationPayouts).toBeCloseTo(800);
+    expect(detail.netProfit).toBeCloseTo(500);
+    expectSharedProfitCalculationFields(detail);
+    expectSharedProfitCalculationFields(batch);
+  });
+
   it("keeps mixed fixed/allocation payout buckets equal across detail and cached-fuel batch views", async () => {
     const route = {
       miles: 10,
