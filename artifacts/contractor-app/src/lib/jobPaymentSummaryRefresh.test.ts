@@ -14,6 +14,7 @@ import {
   initialJobPaymentSummaryRefreshState,
   jobProfitSummaryRequestKey,
   jobPaymentSummaryRefreshReducer,
+  missingProfitSummaryJobIds,
   type JobPaymentSummaryRefreshAction,
 } from "./jobPaymentSummaryRefresh";
 
@@ -220,6 +221,17 @@ describe("Jobs payment summary refresh", () => {
     expect(hasCompleteProfitSummaries([1, 2], incomplete)).toBe(false);
     expect(hasPartialProfitSummaries([1, 2], complete)).toBe(false);
     expect(hasPartialProfitSummaries([1, 2], incomplete)).toBe(true);
+  });
+
+  it("identifies exactly which requested jobs are missing profit summaries", () => {
+    const profitMap = new Map<number, { netProfit: number } | null>([
+      [1, { netProfit: 100 }],
+      [2, null],
+      [3, { netProfit: 0 }],
+      [4, null],
+    ]);
+
+    expect(missingProfitSummaryJobIds([1, 2, 3, 4], profitMap)).toEqual([2, 4]);
   });
 
   it("only enables profit sorting after a complete ready response", () => {

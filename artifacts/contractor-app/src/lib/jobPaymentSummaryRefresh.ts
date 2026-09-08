@@ -51,6 +51,13 @@ export function hasPartialProfitSummaries<T>(
   return !hasCompleteProfitSummaries(jobIds, profitMap);
 }
 
+export function missingProfitSummaryJobIds<T>(
+  jobIds: number[],
+  profitMap: Map<number, T | null>,
+): number[] {
+  return jobIds.filter(jobId => profitMap.get(jobId) == null);
+}
+
 export function jobProfitSummaryRequestKey(jobIds: number[], financialKey: number): string {
   return `${jobIds.join(",")}:${financialKey}`;
 }

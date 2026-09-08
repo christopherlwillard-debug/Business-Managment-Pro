@@ -44,6 +44,7 @@ import {
   initialJobPaymentSummaryRefreshState,
   jobProfitSummaryRequestKey,
   jobPaymentSummaryRefreshReducer,
+  missingProfitSummaryJobIds,
   type JobProfitSummaryStatus,
   type JobPaymentSummaryRefreshAction,
 } from "@/lib/jobPaymentSummaryRefresh";
@@ -8009,6 +8010,14 @@ export default function Jobs() {
     (profitSummaryStatus === "ready" || profitSummaryStatus === "partial")
       ? profitMap.get(jobId)?.[field] ?? null
       : null;
+  const missingClosedProfitJobIds = missingProfitSummaryJobIds(
+    allClosedBase.map(job => job.id),
+    profitMap,
+  );
+  const missingClosedProfitJobIdSet = new Set(missingClosedProfitJobIds);
+  const missingClosedProfitJobLabels = allClosedBase
+    .filter(job => missingClosedProfitJobIdSet.has(job.id))
+    .map(job => job.title?.trim() || `Job #${job.jobNumber ?? job.id}`);
   const closedJobs = [...allClosedBase]
     .filter(j =>
       !archiveSearchLower ||
@@ -8858,6 +8867,14 @@ export default function Jobs() {
                     <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
                     Some closed-job profit summaries are unavailable. Available rows are shown, but totals and missing rows are marked unavailable.
                   </span>
+                  {missingClosedProfitJobLabels.length > 0 && (
+                    <span
+                      data-testid="closed-job-profit-missing-list"
+                      className="basis-full text-xs text-amber-800"
+                    >
+                      Missing profit data for: {missingClosedProfitJobLabels.join(", ")}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => setProfitSummaryRetryKey(key => key + 1)}

@@ -1959,6 +1959,7 @@ async function main() {
     const partialAvailableRow = partialClosedJobRows.find(row => row.includes(fixtures[0].title)) ?? "";
     const partialUnavailableRow = partialClosedJobRows.find(row => row.includes(fixtures[1].title)) ?? "";
     const partialWarningShown = partialClosedJobsText.includes("Some closed-job profit summaries are unavailable");
+    const partialMissingJobNamed = partialClosedJobsText.includes(`Missing profit data for: ${fixtures[1].title}`);
     const partialTotalsUnavailable = partialClosedJobsText.includes("Total Revenue: Unavailable")
       && partialClosedJobsText.includes("Total Net Profit: Unavailable");
     const partialAvailableRowUsable = partialAvailableRow.includes(closedExpectedRevenueLabel)
@@ -1968,10 +1969,11 @@ async function main() {
     record(
       "Closed Jobs explains partial summaries while keeping available rows usable",
       partialWarningShown
+        && partialMissingJobNamed
         && partialTotalsUnavailable
         && partialAvailableRowUsable
         && partialUnavailableRowMarked,
-      `warning=${partialWarningShown}, totalsUnavailable=${partialTotalsUnavailable}, availableRow=${partialAvailableRowUsable}, unavailableRow=${partialUnavailableRowMarked}`,
+      `warning=${partialWarningShown}, missingJobNamed=${partialMissingJobNamed}, totalsUnavailable=${partialTotalsUnavailable}, availableRow=${partialAvailableRowUsable}, unavailableRow=${partialUnavailableRowMarked}`,
     );
 
     profitSummaryPartialMode = false;
@@ -1982,6 +1984,7 @@ async function main() {
         return bodyText.includes(expectedRevenue)
           && bodyText.includes(expectedNetProfit)
           && bodyText.includes(missingJobTitle)
+          && !bodyText.includes(`Missing profit data for: ${missingJobTitle}`)
           && !bodyText.includes("Some closed-job profit summaries are unavailable")
           && !bodyText.includes("Total Revenue: Unavailable")
           && !bodyText.includes("Total Net Profit: Unavailable");
