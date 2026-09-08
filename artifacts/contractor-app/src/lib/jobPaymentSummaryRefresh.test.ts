@@ -5,6 +5,7 @@ import { JobMarginCard } from "../components/JobMarginCard";
 import { formatJobFinancialAmount } from "./jobFinancials";
 import { calculateJobMargin } from "./jobMargin";
 import {
+  canSortProfitSummaries,
   compareProfitSummaryValuesDescending,
   hasCompleteProfitSummaries,
   hasPartialProfitSummaries,
@@ -119,5 +120,22 @@ describe("Jobs payment summary refresh", () => {
     expect(hasCompleteProfitSummaries([1, 2], incomplete)).toBe(false);
     expect(hasPartialProfitSummaries([1, 2], complete)).toBe(false);
     expect(hasPartialProfitSummaries([1, 2], incomplete)).toBe(true);
+  });
+
+  it("only enables profit sorting after a complete ready response", () => {
+    const complete = new Map<number, { netProfit: number }>([
+      [1, { netProfit: 100 }],
+      [2, { netProfit: 0 }],
+    ]);
+    const incomplete = new Map<number, { netProfit: number } | null>([
+      [1, { netProfit: 100 }],
+      [2, null],
+    ]);
+
+    expect(canSortProfitSummaries([1, 2], "loading", complete)).toBe(false);
+    expect(canSortProfitSummaries([1, 2], "error", complete)).toBe(false);
+    expect(canSortProfitSummaries([1, 2], "partial", incomplete)).toBe(false);
+    expect(canSortProfitSummaries([1, 2], "ready", incomplete)).toBe(false);
+    expect(canSortProfitSummaries([1, 2], "ready", complete)).toBe(true);
   });
 });

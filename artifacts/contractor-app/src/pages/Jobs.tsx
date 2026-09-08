@@ -37,6 +37,7 @@ import {
   jobFinancialSummaryDetail,
 } from "@/lib/jobFinancials";
 import {
+  canSortProfitSummaries,
   compareProfitSummaryValuesDescending,
   hasCompleteProfitSummaries,
   hasPartialProfitSummaries,
@@ -7999,6 +8000,11 @@ export default function Jobs() {
 
   // Sorted/filtered closed jobs for the archive table (uses profitMap for sort)
   const archiveSearchLower = archiveSearch.toLowerCase().trim();
+  const canSortClosedJobsByProfit = canSortProfitSummaries(
+    allClosedBase.map(job => job.id),
+    profitSummaryStatus,
+    profitMap,
+  );
   const profitSummaryValue = (jobId: number, field: "grossInvoiced" | "netProfit") =>
     (profitSummaryStatus === "ready" || profitSummaryStatus === "partial")
       ? profitMap.get(jobId)?.[field] ?? null
@@ -8019,10 +8025,12 @@ export default function Jobs() {
           profitSummaryValue(a.id, "grossInvoiced"),
           profitSummaryValue(b.id, "grossInvoiced"),
         );
-        case "profit":  return compareProfitSummaryValuesDescending(
-          profitSummaryValue(a.id, "netProfit"),
-          profitSummaryValue(b.id, "netProfit"),
-        );
+        case "profit":
+          if (!canSortClosedJobsByProfit) return 0;
+          return compareProfitSummaryValuesDescending(
+            profitSummaryValue(a.id, "netProfit"),
+            profitSummaryValue(b.id, "netProfit"),
+          );
         case "hours": {
           const getHrs = (j: typeof a) => {
             const p = profitMap.get(j.id);

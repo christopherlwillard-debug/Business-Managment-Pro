@@ -34,6 +34,14 @@ export function hasCompleteProfitSummaries<T>(
   return jobIds.every(jobId => profitMap.get(jobId) != null);
 }
 
+export function canSortProfitSummaries<T>(
+  jobIds: number[],
+  status: JobProfitSummaryStatus,
+  profitMap: Map<number, T | null>,
+): boolean {
+  return status === "ready" && hasCompleteProfitSummaries(jobIds, profitMap);
+}
+
 export function hasPartialProfitSummaries<T>(
   jobIds: number[],
   profitMap: Map<number, T | null>,

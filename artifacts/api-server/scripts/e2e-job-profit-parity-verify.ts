@@ -239,6 +239,30 @@ async function setRouteSelectOption(page: Page, value: string): Promise<void> {
   }, value);
 }
 
+async function selectOptionByText(page: Page, optionText: string): Promise<boolean> {
+  return page.evaluate(text => {
+    const select = [...document.querySelectorAll<HTMLSelectElement>("select")]
+      .find(candidate => [...candidate.options].some(option => option.textContent?.trim() === text));
+    if (!select) return false;
+    const option = [...select.options].find(candidate => candidate.textContent?.trim() === text);
+    if (!option) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+    if (!setter) return false;
+    setter.call(select, option.value);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }, optionText);
+}
+
+async function readClosedJobTitles(page: Page): Promise<string[]> {
+  return page.$$eval(
+    "table tbody tr",
+    rows => rows
+      .map(row => row.querySelector("td:nth-child(3)")?.textContent?.trim() ?? "")
+      .filter(Boolean),
+  );
+}
+
 function routeProfitLabel(value: number): string {
   const amount = Math.abs(value).toLocaleString(undefined, { maximumFractionDigits: 0 });
   return `${value >= 0 ? "+" : "-"}$${amount}`;
@@ -1512,6 +1536,7 @@ async function main() {
       `clicked=${routeRetryClicked}, recovered=${routeRetryRecovered}, displayed=${routeRetryNetProfit ?? "missing"}, expected=${expectedRouteNetProfitAfterRetry}, navigationUnchanged=${mainFrameNavigationCount === routeNavigationCount}`,
     );
 
+    jobs.reverse();
     fixtures[0].job.status = "closed";
     fixtures[1].job.status = "closed";
     profitSummaryFailureMode = true;
@@ -1523,6 +1548,9 @@ async function main() {
     const closedJobTitleShown = await waitForText(page, fixtures[0].title);
     const closedJobsExpanded = await clickButtonContainingText(page, "Closed Jobs");
     const closedJobsErrorText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const closedJobsOrderBeforeProfitSort = await readClosedJobTitles(page);
+    const closedProfitSortSelected = await selectOptionByText(page, "Highest Profit");
+    const closedJobsOrderDuringFailure = await readClosedJobTitles(page);
     const closedExpectedRevenueLabel = formatMoneyLabel(fixtures[0].profit.grossInvoiced);
     const closedExpectedNetProfitLabel = formatMoneyLabel(fixtures[0].profit.netProfit);
     const closedJobsWarningShown = closedJobsErrorText.includes("Closed-job profit summaries are unavailable");
@@ -1542,6 +1570,14 @@ async function main() {
         && closedJobsBeforeRetryHasNoProfit,
       `heading=${closedJobsHeadingShown}, title=${closedJobTitleShown}, expanded=${closedJobsExpanded}, warning=${closedJobsWarningShown}, totalsUnavailable=${closedJobsTotalsUnavailable}, retry=${closedJobsRetryShown}`,
     );
+    record(
+      "Closed Jobs keeps its existing order when Highest Profit is unavailable",
+      closedProfitSortSelected
+        && JSON.stringify(closedJobsOrderDuringFailure) === JSON.stringify(closedJobsOrderBeforeProfitSort)
+        && closedJobsOrderDuringFailure.includes(fixtures[0].title)
+        && closedJobsOrderDuringFailure.includes(fixtures[1].title),
+      `selected=${closedProfitSortSelected}, before=${closedJobsOrderBeforeProfitSort.join(" | ")}, duringFailure=${closedJobsOrderDuringFailure.join(" | ")}`,
+    );
 
     profitSummaryFailureMode = false;
     const closedJobsRetryUrl = page.url();
@@ -1560,6 +1596,7 @@ async function main() {
       { expectedRevenue: closedExpectedRevenueLabel, expectedNetProfit: closedExpectedNetProfitLabel },
     ).then(() => true).catch(() => false);
     const closedJobsAfterRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const closedJobsOrderAfterRetry = await readClosedJobTitles(page);
     record(
       "Closed Jobs retry restores profit totals without leaving the Jobs list",
       closedJobsRetryClicked
@@ -1570,6 +1607,16 @@ async function main() {
         && closedJobsAfterRetryText.includes(fixtures[0].title)
         && !closedJobsAfterRetryText.includes("Closed-job profit summaries are unavailable"),
       `clicked=${closedJobsRetryClicked}, recovered=${closedJobsRetryRecovered}, urlUnchanged=${page.url() === closedJobsRetryUrl}, navigationUnchanged=${mainFrameNavigationCount === closedJobsNavigationCount}`,
+    );
+    record(
+      "Closed Jobs applies Highest Profit order only after canonical values return",
+      closedJobsRetryRecovered
+        && JSON.stringify(closedJobsOrderAfterRetry) === JSON.stringify([
+          fixtures[0].title,
+          fixtures[1].title,
+        ])
+        && JSON.stringify(closedJobsOrderAfterRetry) !== JSON.stringify(closedJobsOrderDuringFailure),
+      `duringFailure=${closedJobsOrderDuringFailure.join(" | ")}, afterRetry=${closedJobsOrderAfterRetry.join(" | ")}`,
     );
 
     profitSummaryPartialMode = true;
