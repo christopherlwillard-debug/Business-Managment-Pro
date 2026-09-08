@@ -1308,6 +1308,10 @@ async function main() {
       { timeout: 20_000 },
     ).then(() => true).catch(() => false);
     const financialsRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const financialsRetryPanelText = await page.$eval(
+      '[data-testid="job-financials-panel"]',
+      panel => panel.textContent?.replace(/\s+/g, " ").trim() ?? "",
+    );
     const financialsRetryValues = {
       revenue: readMoneyAfter(financialsRetryText, "Job Revenue"),
       costs: readMoneyAfter(financialsRetryText, "Job Costs"),
@@ -1326,6 +1330,8 @@ async function main() {
         && nearlyEqual(financialsRetryValues.splitPool, recoveredFirstExpected.splitPool)
         && nearlyEqual(financialsRetryValues.netProfit, recoveredFirstExpected.netProfit)
         && !nearlyEqual(financialsRetryValues.netProfit, firstExpected.netProfit)
+        && financialsRetryPanelText.includes(fixtures[0].title)
+        && !financialsRetryPanelText.includes(fixtures[1].title)
         && !financialsRetryText.includes("Unable to load job profit"),
       `clicked=${financialsRetryClicked}, recovered=${financialsRetryRecovered}, errorPanel=${financialsRetryErrorPanelShown}, values=${JSON.stringify(financialsRetryValues)}, navigationUnchanged=${mainFrameNavigationCount === financialsNavigationCount}`,
     );

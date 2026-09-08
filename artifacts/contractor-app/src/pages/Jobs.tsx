@@ -45,7 +45,7 @@ import {
   type JobProfitSummaryStatus,
   type JobPaymentSummaryRefreshAction,
 } from "@/lib/jobPaymentSummaryRefresh";
-import { getSavedMileageReimbursement } from "@/lib/jobProfitRequests";
+import { canApplyJobResponse, getSavedMileageReimbursement } from "@/lib/jobProfitRequests";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { Card } from "@/components/ui/card";
@@ -1746,6 +1746,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const [tab, setTab] = useState<"breakdown" | "hours">(initialTab);
   const [profit, setProfit] = useState<JobProfitResponse | null>(initialProfit ?? null);
   const detailedProfitLoaded = useRef(false);
+  const profitLoadKeyRef = useRef(0);
+  const currentJobIdRef = useRef(job.id);
+  currentJobIdRef.current = job.id;
   const [profitError, setProfitError] = useState(false);
   const [profitRetryKey, setProfitRetryKey] = useState(0);
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
@@ -2060,23 +2063,31 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   }, [settingsData]);
 
   useEffect(() => {
+    const requestedJobId = job.id;
+    const requestKey = ++profitLoadKeyRef.current;
     setLoading(true);
     setProfitError(false);
     setProfit(null);
     detailedProfitLoaded.current = false;
     const fetches: Promise<any>[] = [
-      fetch(`${BASE}/api/jobs/${job.id}/sub-payments`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
-      fetch(`${BASE}/api/jobs/${job.id}/sub-hours`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
-      fetch(`${BASE}/api/owner-capital?jobId=${job.id}`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/owner-capital?jobId=${requestedJobId}`, { credentials: "include" }).then(r => r.ok ? r.json() : []),
     ];
     // Always fetch the full per-job profit endpoint — the bulk profit-summary used by
     // the job list omits estimatedFuelCost/fuelStatus, so we must refresh here even
     // when initialProfit was passed from the parent (it's partial data).
-    fetches.push(fetch(`${BASE}/api/jobs/${job.id}/profit`, { credentials: "include" }).then(r => {
+    fetches.push(fetch(`${BASE}/api/jobs/${requestedJobId}/profit`, { credentials: "include" }).then(r => {
       if (!r.ok) throw new Error(`Profit request failed (${r.status})`);
       return r.json();
     }));
     Promise.allSettled(fetches).then(results => {
+      if (!canApplyJobResponse(
+        requestKey,
+        profitLoadKeyRef.current,
+        requestedJobId,
+        currentJobIdRef.current,
+      )) return;
       const [pRes, hRes, dRes, profRes] = results;
       if (pRes.status === "fulfilled" && Array.isArray(pRes.value)) {
         const rows = pRes.value as SubPaymentRow[];
@@ -2096,6 +2107,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       }
       setLoading(false);
     });
+    return () => {
+      profitLoadKeyRef.current += 1;
+    };
   }, [job.id, profitRetryKey]);
 
   const revenue = useCollected
@@ -2173,7 +2187,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const TAB_LABELS: Record<string, string> = { breakdown: "Profit Split", hours: "Sub Hours" };
 
   return (
-    <div className="fixed inset-0 z-50 flex">
+    <div data-testid="job-financials-panel" className="fixed inset-0 z-50 flex">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-card border-l border-border shadow-2xl flex flex-col">
         <div className="h-1 bg-gradient-to-r from-emerald-500 via-amber-500 to-orange-400 flex-shrink-0" />
@@ -6014,6 +6028,7 @@ function JobCard({
       )}
       {financialsPanelOpen && (
         <JobFinancialsPanel
+          key={job.id}
           job={job}
           profitData={displayProfit}
           initialTab={financialsInitialTab}
@@ -7949,7 +7964,6 @@ export default function Jobs() {
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profitSummaryRequestKey, profitSummaryRetryKey]);
-
 
 
   // Photo counts for closed jobs — single batch fetch
