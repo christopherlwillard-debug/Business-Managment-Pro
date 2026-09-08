@@ -515,6 +515,10 @@ async function main() {
   const unexpectedWrites: string[] = [];
   const routeWrites: string[] = [];
   const pageErrors: string[] = [];
+  const profitSummaryRequests: Array<{
+    mode: "failure" | "success";
+    jobIds: number[];
+  }> = [];
   let delayedProfitJobId: number | null = null;
   let delayedProfitResponseUsed = false;
   let profitSummaryFailureMode = false;
@@ -572,14 +576,18 @@ async function main() {
         return;
       }
       if (path === "/api/jobs/profit-summary") {
-        if (profitSummaryFailureMode) {
-          respondError("Profit service unavailable");
-          return;
-        }
         const jobIds = (url.searchParams.get("jobIds") ?? "")
           .split(",")
           .map(Number)
           .filter(jobId => Number.isInteger(jobId) && jobId > 0);
+        profitSummaryRequests.push({
+          mode: profitSummaryFailureMode ? "failure" : "success",
+          jobIds,
+        });
+        if (profitSummaryFailureMode) {
+          respondError("Profit service unavailable");
+          return;
+        }
         const summary = canonicalBatchProfitSummary(jobIds);
         if (profitSummaryPartialMode) {
           delete summary[secondJobId];
@@ -1540,6 +1548,7 @@ async function main() {
     fixtures[0].job.status = "closed";
     fixtures[1].job.status = "closed";
     profitSummaryFailureMode = true;
+    profitSummaryRequests.length = 0;
     await page.goto(`${BASE}/jobs`, {
       waitUntil: "networkidle2",
       timeout: 60_000,
@@ -1582,6 +1591,8 @@ async function main() {
     profitSummaryFailureMode = false;
     const closedJobsRetryUrl = page.url();
     const closedJobsNavigationCount = mainFrameNavigationCount;
+    const closedJobsInitialProfitRequestCount = profitSummaryRequests.length;
+    const closedJobsInitialProfitRequest = profitSummaryRequests[0];
     const closedJobsRetryClicked = await clickButtonByText(page, "Retry", "Closed-job profit summaries are unavailable");
     const closedJobsRetryRecovered = await page.waitForFunction(
       ({ expectedRevenue, expectedNetProfit }) => {
@@ -1593,10 +1604,20 @@ async function main() {
           && !bodyText.includes("Total Net Profit: Unavailable");
       },
       { timeout: 20_000 },
-      { expectedRevenue: closedExpectedRevenueLabel, expectedNetProfit: closedExpectedNetProfitLabel },
+      {
+        expectedRevenue: closedExpectedRevenueLabel,
+        expectedNetProfit: closedExpectedNetProfitLabel,
+      },
     ).then(() => true).catch(() => false);
     const closedJobsAfterRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const closedJobsOrderAfterRetry = await readClosedJobTitles(page);
+    const closedJobsRetryRequestCount = profitSummaryRequests.length;
+    const closedJobsRetryRequest = profitSummaryRequests[1];
+    const closedJobsProfitRequestSequenceValid = closedJobsInitialProfitRequestCount === 1
+      && closedJobsInitialProfitRequest?.mode === "failure"
+      && closedJobsRetryRequestCount === 2
+      && closedJobsRetryRequest?.mode === "success"
+      && JSON.stringify(closedJobsInitialProfitRequest?.jobIds) === JSON.stringify(closedJobsRetryRequest?.jobIds);
     record(
       "Closed Jobs retry restores profit totals without leaving the Jobs list",
       closedJobsRetryClicked
@@ -1606,7 +1627,12 @@ async function main() {
         && closedJobsAfterRetryText.includes("Closed Jobs")
         && closedJobsAfterRetryText.includes(fixtures[0].title)
         && !closedJobsAfterRetryText.includes("Closed-job profit summaries are unavailable"),
-      `clicked=${closedJobsRetryClicked}, recovered=${closedJobsRetryRecovered}, urlUnchanged=${page.url() === closedJobsRetryUrl}, navigationUnchanged=${mainFrameNavigationCount === closedJobsNavigationCount}`,
+      `clicked=${closedJobsRetryClicked}, recovered=${closedJobsRetryRecovered}, requests=${closedJobsRetryRequestCount}, urlUnchanged=${page.url() === closedJobsRetryUrl}, navigationUnchanged=${mainFrameNavigationCount === closedJobsNavigationCount}`,
+    );
+    record(
+      "Closed Jobs retry issues exactly one fresh profit-summary request",
+      closedJobsProfitRequestSequenceValid,
+      `initial=${closedJobsInitialProfitRequestCount}/${closedJobsInitialProfitRequest?.mode ?? "missing"}, retry=${closedJobsRetryRequestCount}/${closedJobsRetryRequest?.mode ?? "missing"}, sameJobIds=${closedJobsProfitRequestSequenceValid && JSON.stringify(closedJobsInitialProfitRequest?.jobIds) === JSON.stringify(closedJobsRetryRequest?.jobIds)}`,
     );
     record(
       "Closed Jobs applies Highest Profit order only after canonical values return",
