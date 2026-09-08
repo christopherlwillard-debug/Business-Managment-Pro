@@ -365,6 +365,8 @@ async function main() {
   const today = localDateString();
   const firstJobId = 92101;
   const secondJobId = 92102;
+  const firstRouteStopTitle = "E2E Profit Parity One - Stop A";
+  const duplicateRouteStopTitle = "E2E Profit Parity One - Stop B";
   const fixtures: JobFixture[] = [
     {
       id: firstJobId,
@@ -484,9 +486,14 @@ async function main() {
       unscheduledChecklistItems: [],
     })),
   };
-  const routeStops = fixtures.map((fixture, index) => ({
+  const routeStopFixtures = [
+    { fixture: fixtures[0], title: firstRouteStopTitle },
+    { fixture: fixtures[1], title: fixtures[1].title },
+    { fixture: fixtures[0], title: duplicateRouteStopTitle },
+  ];
+  const routeStops = routeStopFixtures.map(({ fixture, title }, index) => ({
     id: 93000 + index,
-    title: fixture.title,
+    title,
     address: "100 Test Street, Testville, KY",
     lat: null,
     lng: null,
@@ -913,18 +920,19 @@ async function main() {
       .sort((left, right) => left.sortOrder - right.sortOrder)
       .map(stop => stop.jobId);
     const reorderWriteStart = routeWrites.length;
-    const reorderDragged = await dragRouteStop(page, fixtures[0].title, fixtures[1].title);
+    const reorderDragged = await dragRouteStop(page, firstRouteStopTitle, fixtures[1].title);
     const reorderApplied = await waitForCondition(() => {
       const ordered = [...routeStops]
         .filter(stop => stop.scheduledDate === today)
         .sort((left, right) => left.sortOrder - right.sortOrder)
         .map(stop => stop.jobId);
-      return ordered.join(",") === `${secondJobId},${firstJobId}`;
+      return ordered.join(",") === `${secondJobId},${firstJobId},${firstJobId}`;
     });
     const reorderAfter = expectedRouteProfit(today);
     const reorderUiApplied = await waitForRouteStopOrder(page, [
       fixtures[1].title,
-      fixtures[0].title,
+      firstRouteStopTitle,
+      duplicateRouteStopTitle,
     ]);
     const reorderRefreshed = await waitForRouteProfit(page, reorderAfter.netProfit);
     const reorderText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
@@ -935,11 +943,14 @@ async function main() {
       .map(stop => stop.jobId);
     const afterReorderJobSet = [...new Set(afterReorderOrder)].sort((left, right) => (left ?? 0) - (right ?? 0));
     const reorderWrites = routeWrites.slice(reorderWriteStart);
-    const expectedReorderWritePaths = new Set([
-      `/api/route-stops/${routeStops.find(stop => stop.jobId === firstJobId)?.id}`,
-      `/api/route-stops/${routeStops.find(stop => stop.jobId === secondJobId)?.id}`,
-    ]);
-    const reorderWritesAreExpected = reorderWrites.length === 2
+    const expectedReorderWritePaths = new Set(
+      routeStops
+        .filter(stop => stop.scheduledDate === today)
+        .map(stop => `/api/route-stops/${stop.id}`),
+    );
+    const actualReorderWritePaths = reorderWrites.map(write => write.split(" ")[1]);
+    const reorderWritesAreExpected = reorderWrites.length === expectedReorderWritePaths.size
+      && new Set(actualReorderWritePaths).size === expectedReorderWritePaths.size
       && reorderWrites.every(write => {
         const [method, path] = write.split(" ");
         return method === "PUT" && expectedReorderWritePaths.has(path);
@@ -954,8 +965,8 @@ async function main() {
         && reorderRefreshed
         && reorderWritesAreExpected
         && reorderPreservedJobSet
-        && beforeReorderOrder.join(",") === `${firstJobId},${secondJobId}`
-        && afterReorderOrder.join(",") === `${secondJobId},${firstJobId}`
+        && beforeReorderOrder.join(",") === `${firstJobId},${secondJobId},${firstJobId}`
+        && afterReorderOrder.join(",") === `${secondJobId},${firstJobId},${firstJobId}`
         && JSON.stringify(beforeReorder.jobIds) === JSON.stringify(reorderAfter.jobIds)
         && nearlyEqual(reorderDisplayed, beforeReorder.netProfit)
         && nearlyEqual(reorderDisplayed, reorderAfter.netProfit),
@@ -1102,7 +1113,7 @@ async function main() {
         scheduledDate: today,
         status: "scheduled",
         estimatedDurationMinutes: 45,
-        sortOrder: 2,
+         sortOrder: Math.max(...routeStops.map(stop => stop.sortOrder), -1) + 1,
         blockNumber: null,
         crewLabel: null,
         clientId: 100,
@@ -1125,7 +1136,7 @@ async function main() {
         scheduledDate: weekMoveDate,
         status: "scheduled",
         estimatedDurationMinutes: 45,
-        sortOrder: 3,
+         sortOrder: Math.max(...routeStops.map(stop => stop.sortOrder), -1) + 1,
         blockNumber: null,
         crewLabel: null,
         clientId: 100,
