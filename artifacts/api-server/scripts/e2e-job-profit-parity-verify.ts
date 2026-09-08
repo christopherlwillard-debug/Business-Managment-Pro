@@ -1135,6 +1135,57 @@ async function main() {
     );
     await page.screenshot({ path: `${SHOTS}/04b-route-profit-week.png`, fullPage: true });
 
+    const nextWeekStart = startOfWeekSunday(weekMoveDate);
+    const nextWeekEnd = addDays(nextWeekStart, 6);
+    const nextWeekExpected = expectedRouteProfitBetween(nextWeekStart, nextWeekEnd);
+    const nextWeekSelected = await selectCalendarDate(page, weekMoveDate);
+    const nextWeekRefreshed = await page.waitForFunction(
+      ({ expectedLabel, staleLabel }) => {
+        const text = document.body.innerText;
+        return text.includes(expectedLabel) && !text.includes(staleLabel);
+      },
+      { timeout: 20_000 },
+      {
+        expectedLabel: routeProfitLabel(nextWeekExpected.netProfit),
+        staleLabel: routeProfitLabel(afterWeekMove.netProfit),
+      },
+    ).then(() => true).catch(() => false);
+    const nextWeekText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const nextWeekDisplayed = readMoneyAfter(nextWeekText, "Net Profit");
+    const nextWeekHasDifferentJobs = nextWeekExpected.jobIds.includes(secondJobId)
+      && !afterWeekMove.jobIds.includes(secondJobId);
+    record(
+      "Browsing to the next calendar week loads its canonical route profit",
+      nextWeekSelected
+        && nextWeekRefreshed
+        && nearlyEqual(nextWeekDisplayed, nextWeekExpected.netProfit)
+        && nextWeekHasDifferentJobs,
+      `jobIds=${nextWeekExpected.jobIds.join(",")}, displayed=${nextWeekDisplayed ?? "missing"}, canonical=${nextWeekExpected.netProfit}, differentJobSet=${nextWeekHasDifferentJobs}`,
+    );
+
+    const returnedWeekSelected = await selectCalendarDate(page, today);
+    const returnedWeekExpected = expectedRouteProfitBetween(visibleWeekStart, visibleWeekEnd);
+    const returnedWeekRefreshed = await page.waitForFunction(
+      ({ expectedLabel, staleLabel }) => {
+        const text = document.body.innerText;
+        return text.includes(expectedLabel) && !text.includes(staleLabel);
+      },
+      { timeout: 20_000 },
+      {
+        expectedLabel: routeProfitLabel(returnedWeekExpected.netProfit),
+        staleLabel: routeProfitLabel(nextWeekExpected.netProfit),
+      },
+    ).then(() => true).catch(() => false);
+    const returnedWeekText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const returnedWeekDisplayed = readMoneyAfter(returnedWeekText, "Net Profit");
+    record(
+      "Returning to the original calendar week restores its canonical route profit",
+      returnedWeekSelected
+        && returnedWeekRefreshed
+        && nearlyEqual(returnedWeekDisplayed, returnedWeekExpected.netProfit),
+      `jobIds=${returnedWeekExpected.jobIds.join(",")}, displayed=${returnedWeekDisplayed ?? "missing"}, canonical=${returnedWeekExpected.netProfit}`,
+    );
+
     delayedProfitJobId = firstJobId;
     delayedProfitResponseUsed = false;
     await page.goto(`${BASE}/jobs/${firstJobId}/payroll`, {
