@@ -24,6 +24,8 @@ const h = vi.hoisted(() => ({
   consumedSlots: 0,
   missingSlots: [] as number[],
   scenario: "no request",
+  failSecondInsert: false,
+  committedWrites: [] as any[],
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -61,6 +63,34 @@ vi.mock("@workspace/db", () => {
           onConflictDoNothing: () => ({ returning: () => Promise.resolve([]) }),
         }),
       }),
+      transaction: async (callback: (tx: any) => Promise<any>) => {
+        const pendingWrites: any[] = [];
+        let insertCount = 0;
+        const tx = {
+          insert: () => ({
+            values: (vals: any) => ({
+              returning: async () => {
+                if (h.failSecondInsert && insertCount === 1) {
+                  throw new Error("forced mileage insert failure");
+                }
+                insertCount += 1;
+                pendingWrites.push(vals);
+                return [{ id: insertCount, ...vals }];
+              },
+              onConflictDoNothing: () => ({ returning: async () => [] }),
+            }),
+          }),
+        };
+
+        try {
+          const result = await callback(tx);
+          h.committedWrites.push(...pendingWrites);
+          return result;
+        } catch (error) {
+          pendingWrites.length = 0;
+          throw error;
+        }
+      },
       update: () => ({
         set: (vals: any) => ({
           where: () => ({
@@ -105,6 +135,8 @@ beforeEach(() => {
   h.consumedSlots = 0;
   h.missingSlots.length = 0;
   h.scenario = "no request";
+  h.failSecondInsert = false;
+  h.committedWrites.length = 0;
 });
 
 afterEach(() => {
@@ -177,6 +209,22 @@ describe("POST /mileage — rate derived from trip date", () => {
     expect(res.status).toBe(201);
     // Personal trips have no deduction
     expect(res.body.deductionAmount).toBeCloseTo(0, 10);
+  });
+
+  it("rolls back the expense when the mileage log insert fails", async () => {
+    h.failSecondInsert = true;
+
+    const res = await request(app)
+      .post("/mileage")
+      .send({
+        date: "2026-07-01",
+        miles: 100,
+        classification: "business",
+        businessId: 1,
+      });
+
+    expect(res.status).toBe(500);
+    expect(h.committedWrites).toHaveLength(0);
   });
 
   it("H2 2026 deduction is higher than H1 deduction for same miles", async () => {

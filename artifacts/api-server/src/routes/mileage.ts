@@ -198,37 +198,41 @@ router.post("/", async (req, res) => {
     const { deduction: deductionAmount } = calculateMileageDeduction(milesNum, classification, date);
     const bizId = businessId ? parseInt(businessId) : null;
 
-    let expenseId: number | null = null;
+    const log = await db.transaction(async (tx) => {
+      let expenseId: number | null = null;
 
-    if (classification === "business" || classification == null) {
-      const description = purpose
-        ? `Mileage: ${purpose} (${milesNum.toFixed(2)} mi)`
-        : `Mileage: Business trip (${milesNum.toFixed(2)} mi)`;
-      const [expense] = await db.insert(expensesTable).values({
-        date,
-        description,
-        vendor: "IRS Mileage",
-        category: "mileage",
-        amount: deductionAmount.toFixed(2),
-        jobId: jobId || null,
+      if (classification === "business" || classification == null) {
+        const description = purpose
+          ? `Mileage: ${purpose} (${milesNum.toFixed(2)} mi)`
+          : `Mileage: Business trip (${milesNum.toFixed(2)} mi)`;
+        const [expense] = await tx.insert(expensesTable).values({
+          date,
+          description,
+          vendor: "IRS Mileage",
+          category: "mileage",
+          amount: deductionAmount.toFixed(2),
+          jobId: jobId || null,
+          businessId: bizId,
+          notes: `Auto-created. ${milesNum.toFixed(2)} mi × $${getIrsRateForDate(date)}/mi`,
+        }).returning();
+        expenseId = expense.id;
+      }
+
+      const [insertedLog] = await tx.insert(mileageLogsTable).values({
+        date, startLocation, endLocation,
+        miles: miles.toString(),
+        purpose, jobId: jobId || null,
         businessId: bizId,
-        notes: `Auto-created. ${milesNum.toFixed(2)} mi × $${getIrsRateForDate(date)}/mi`,
+        classification: classification || "business",
+        ratePerMile: getIrsRateForDate(date).toString(),
+        deductionAmount: deductionAmount.toString(),
+        notes,
+        source: source || "gps",
+        expenseId,
       }).returning();
-      expenseId = expense.id;
-    }
 
-    const [log] = await db.insert(mileageLogsTable).values({
-      date, startLocation, endLocation,
-      miles: miles.toString(),
-      purpose, jobId: jobId || null,
-      businessId: bizId,
-      classification: classification || "business",
-      ratePerMile: getIrsRateForDate(date).toString(),
-      deductionAmount: deductionAmount.toString(),
-      notes,
-      source: source || "gps",
-      expenseId,
-    }).returning();
+      return insertedLog;
+    });
 
     let jobTitle = null;
     if (log.jobId) {
