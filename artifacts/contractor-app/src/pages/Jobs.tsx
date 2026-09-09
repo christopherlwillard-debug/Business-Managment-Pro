@@ -1825,6 +1825,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   const [deletingPayId, setDeletingPayId] = useState<number | null>(null);
   const [subHours, setSubHours] = useState<SubHourEntry[]>([]);
   const [deletingHourId, setDeletingHourId] = useState<number | null>(null);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+  const [paymentsError, setPaymentsError] = useState(false);
+  const [reversalLedgerType, setReversalLedgerType] = useState<"fixed" | "allocation" | null>(null);
 
   function panelRequestOptions(): RequestInit {
     const controller = panelAbortControllerRef.current;
@@ -2198,8 +2201,14 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     setProfit(refreshState.profit);
     setProfitError(refreshState.profitError);
     detailedProfitLoaded.current = false;
+    setPaymentsLoading(true);
+    setPaymentsError(false);
+    setPayments([]);
     const fetches = [
-      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`, requestOptions).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`, requestOptions).then(r => {
+        if (!r.ok) throw new Error("Failed to load job payments");
+        return r.json();
+      }),
       fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`, requestOptions).then(r => r.ok ? r.json() : []),
       fetch(`${BASE}/api/owner-capital?jobId=${requestedJobId}`, requestOptions).then(r => r.ok ? r.json() : []),
       getJobProfit(requestedJobId, requestOptions),
@@ -2215,10 +2224,15 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
         currentJobIdRef.current,
       )) return;
       const [pRes, hRes, dRes, profRes] = results;
+       setPaymentsLoading(false);
       if (pRes.status === "fulfilled" && Array.isArray(pRes.value)) {
         const rows = pRes.value as SubPaymentRow[];
         setPayments(rows);
         notifySubsPaid(rows);
+         setPaymentsError(false);
+       } else {
+         setPayments([]);
+         setPaymentsError(true);
       }
       if (hRes.status === "fulfilled" && Array.isArray(hRes.value)) setSubHours(hRes.value as SubHourEntry[]);
       if (dRes.status === "fulfilled" && Array.isArray(dRes.value)) setDistributions(dRes.value);
@@ -2321,6 +2335,21 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   }
 
   const TAB_LABELS: Record<string, string> = { breakdown: "Profit Split", hours: "Sub Hours" };
+  const reversalLedgerRows = useMemo(() => {
+    if (!reversalLedgerType) return [];
+    return payments.flatMap(p =>
+      (p.paymentHistory ?? [])
+        .filter(entry => entry.isReversal && (entry.compensationType ?? p.compensationType) === reversalLedgerType)
+        .map(entry => ({
+          ...entry,
+          subcontractorName: p.subName ?? `Sub #${p.subcontractorId}`,
+          compensationType: entry.compensationType ?? p.compensationType,
+          originalPayment: (p.paymentHistory ?? []).find(original => original.id === entry.reversesPaymentId) ?? null,
+        })),
+    );
+  }, [payments, reversalLedgerType]);
+
+  const reversalLedgerLabel = reversalLedgerType === "fixed" ? "Fixed payout reversals" : "Split payout reversals";
 
   return (
     <div data-testid="job-financials-panel" className="fixed inset-0 z-50 flex">
@@ -2443,13 +2472,27 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                               {profitBreakdown.excludedFromProfit.reversedFixedPayouts > 0 && (
                                 <div className="flex items-center justify-between text-[11px] text-blue-700">
                                   <span>Fixed payout reversal</span>
-                                  <span className="font-semibold tabular-nums">{formatCurrency(profitBreakdown.excludedFromProfit.reversedFixedPayouts)}</span>
+                                   <button
+                                     type="button"
+                                     onClick={() => setReversalLedgerType("fixed")}
+                                     className="font-semibold tabular-nums underline decoration-dotted underline-offset-2 hover:text-blue-900"
+                                     aria-label="View fixed payout reversal payment ledger"
+                                   >
+                                     {formatCurrency(profitBreakdown.excludedFromProfit.reversedFixedPayouts)}
+                                   </button>
                                 </div>
                               )}
                               {profitBreakdown.excludedFromProfit.reversedAllocationPayouts > 0 && (
                                 <div className="flex items-center justify-between text-[11px] text-blue-700">
                                   <span>Split payout reversal</span>
-                                  <span className="font-semibold tabular-nums">{formatCurrency(profitBreakdown.excludedFromProfit.reversedAllocationPayouts)}</span>
+                                   <button
+                                     type="button"
+                                     onClick={() => setReversalLedgerType("allocation")}
+                                     className="font-semibold tabular-nums underline decoration-dotted underline-offset-2 hover:text-blue-900"
+                                     aria-label="View split payout reversal payment ledger"
+                                   >
+                                     {formatCurrency(profitBreakdown.excludedFromProfit.reversedAllocationPayouts)}
+                                   </button>
                                 </div>
                               )}
                               <p className="text-[10px] text-blue-700/80">Reversed payroll entries are shown for reconciliation and are not included in labor or split-payout costs.</p>
@@ -3148,6 +3191,97 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
           )}
         </div>
       </div>
+      {reversalLedgerType && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={reversalLedgerLabel}>
+          <button
+            type="button"
+            aria-label="Close reversal payment ledger"
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setReversalLedgerType(null)}
+          />
+          <div className="relative w-full max-w-lg max-h-[85vh] overflow-hidden rounded-2xl border border-blue-200 bg-card shadow-2xl">
+            <div className="flex items-center justify-between border-b border-blue-200/70 bg-blue-50/70 px-5 py-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Read-only payment ledger</p>
+                <h3 className="mt-0.5 text-base font-bold text-blue-950">{reversalLedgerLabel}</h3>
+                <p className="mt-1 text-xs text-blue-700/80">{job.title}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReversalLedgerType(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-700 hover:bg-blue-100"
+                aria-label="Close reversal payment ledger"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="max-h-[calc(85vh-105px)] overflow-y-auto p-4">
+              {paymentsLoading ? (
+                <div className="space-y-3 py-4">
+                  {[1, 2, 3].map(index => <div key={index} className="h-24 animate-pulse rounded-xl bg-muted/40" />)}
+                  <p className="text-center text-xs text-muted-foreground">Loading payment ledger…</p>
+                </div>
+              ) : paymentsError ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <AlertCircle className="mb-3 h-8 w-8 text-red-300" />
+                  <p className="text-sm font-semibold text-foreground">Payment ledger unavailable</p>
+                  <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                    The reversal amount is still visible, but the job-scoped payment records could not be loaded.
+                  </p>
+                </div>
+              ) : reversalLedgerRows.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <Receipt className="mb-3 h-8 w-8 text-blue-300" />
+                  <p className="text-sm font-semibold text-foreground">No matching reversal rows found</p>
+                  <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                    The profit summary has a reversal amount, but its job-scoped payment history is not available yet.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {reversalLedgerRows.map(entry => {
+                    const originalReference = entry.originalPaymentReference
+                      ?? entry.originalPayment?.referenceNumber
+                      ?? (entry.reversesPaymentId != null ? `Payment #${entry.reversesPaymentId}` : "Not linked");
+                    return (
+                      <div key={entry.id} className="rounded-xl border border-border/60 bg-background px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-foreground">{entry.subcontractorName}</p>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              {entry.date ? formatDate(entry.date) : "Payment date unavailable"}
+                              {" · "}
+                              {entry.compensationType === "allocation" ? "Split allocation" : "Fixed payout"}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-sm font-bold tabular-nums text-blue-700">
+                            {formatCurrency(entry.amount + (entry.advanceAmount ?? 0))}
+                          </span>
+                        </div>
+                        <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
+                          <dt className="text-muted-foreground">Reversal reason</dt>
+                          <dd className="text-right font-medium text-foreground">{entry.reversalReason || "No reason recorded"}</dd>
+                          <dt className="text-muted-foreground">Original payment</dt>
+                          <dd className="text-right font-medium text-foreground">
+                            {originalReference}
+                            {entry.originalPayment?.date ? ` · ${formatDate(entry.originalPayment.date)}` : ""}
+                          </dd>
+                          {entry.referenceNumber && (
+                            <>
+                              <dt className="text-muted-foreground">Reversal reference</dt>
+                              <dd className="text-right font-medium text-foreground">{entry.referenceNumber}</dd>
+                            </>
+                          )}
+                        </dl>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3561,7 +3695,27 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
 
 // ─── Sub Hours & Payments Panel ────────────────────────────────────────────────
 type SubHourEntry = { id: number; subcontractorId: number; subName: string | null; date: string; hours: number; hourType: "work" | "travel" | null; description: string | null; rateSnapshot: number | null };
-type SubPayHistoryEntry = { id: number; date: string; amount: number; workHours?: number; workRate?: number; travelHours?: number; travelRate?: number; bonusAmount?: number; bonusNote?: string | null; advanceAmount?: number; advanceNote?: string | null; netPaid?: number; paymentMethod?: string | null };
+type SubPayHistoryEntry = {
+  id: number;
+  date: string;
+  amount: number;
+  workHours?: number;
+  workRate?: number;
+  travelHours?: number;
+  travelRate?: number;
+  bonusAmount?: number;
+  bonusNote?: string | null;
+  advanceAmount?: number;
+  advanceNote?: string | null;
+  netPaid?: number;
+  paymentMethod?: string | null;
+  referenceNumber?: string | null;
+  isReversal?: boolean;
+  reversesPaymentId?: number | null;
+  reversalReason?: string | null;
+  compensationType?: string;
+  originalPaymentReference?: string | null;
+};
 type SubPaymentRow = { subcontractorId: number; subName: string | null; amountOwed: number | null; computedOwed: number; amountOwedIsManual?: boolean; amountPaid: number | null; balance: number | null; percentComplete: number | null; paidDate: string | null; paidNotes: string | null; totalHours: number; totalWorkHours: number; totalTravelHours: number; payRate: number | null; travelPayRate: number | null; payType: string | null; role: string | null; growthPct: number | null; compensationType: string; hourlyRate: number | null; travelRate: number | null; fixedAmount: number | null; allocationPct: number | null; paymentStatus: string; paidAt: string | null; lastPaidAt: string | null; paymentHistory?: SubPayHistoryEntry[] };
 type BenchmarkRow = { id: number; jobType: string; estimatedHours: number | null; estimatedLaborCost: number | null; estimatedMaterialCost: number | null; notes: string | null };
 

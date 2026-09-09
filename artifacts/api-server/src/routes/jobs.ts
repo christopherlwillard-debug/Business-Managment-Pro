@@ -2764,6 +2764,9 @@ router.get("/:id/sub-payments", async (req, res) => {
         netPaid: subPaymentRecordsTable.netPaid,
         paymentMethod: subPaymentRecordsTable.paymentMethod,
         referenceNumber: subPaymentRecordsTable.referenceNumber,
+         isReversal: subPaymentRecordsTable.isReversal,
+         reversesPaymentId: subPaymentRecordsTable.reversesPaymentId,
+         reversalReason: subPaymentRecordsTable.reversalReason,
       })
       .from(subPaymentRecordsTable)
       .where(eq(subPaymentRecordsTable.jobId, id))
@@ -2777,8 +2780,17 @@ router.get("/:id/sub-payments", async (req, res) => {
       bonusAmount?: number; bonusNote?: string | null;
       advanceAmount?: number; advanceNote?: string | null;
       netPaid?: number;
-      paymentMethod?: string; referenceNumber?: string;
+       paymentMethod?: string; referenceNumber?: string;
+       isReversal: boolean;
+       reversesPaymentId: number | null;
+       reversalReason: string | null;
+       compensationType: string;
+       originalPaymentReference: string | null;
     }[]> = {};
+    const paymentRecordById = new Map(paymentRecords.map(rec => [rec.id, rec]));
+    const compensationTypeBySubcontractorId = new Map(
+      rows.map(row => [row.subcontractorId, row.compensationType ?? "hourly"]),
+    );
     for (const rec of paymentRecords) {
       const subId = rec.subcontractorId;
       if (subId == null) continue;
@@ -2796,6 +2808,13 @@ router.get("/:id/sub-payments", async (req, res) => {
         ...(rec.netPaid  != null ? { netPaid: parseFloat(rec.netPaid) } : {}),
         ...(rec.paymentMethod    ? { paymentMethod:   rec.paymentMethod    } : {}),
         ...(rec.referenceNumber  ? { referenceNumber: rec.referenceNumber  } : {}),
+         isReversal: Boolean(rec.isReversal),
+         reversesPaymentId: rec.reversesPaymentId ?? null,
+         reversalReason: rec.reversalReason ?? null,
+         compensationType: compensationTypeBySubcontractorId.get(subId) ?? "hourly",
+         originalPaymentReference: rec.reversesPaymentId != null
+           ? paymentRecordById.get(rec.reversesPaymentId)?.referenceNumber ?? null
+           : null,
       });
     }
 

@@ -587,7 +587,95 @@ async function main() {
           workHours: 2,
           workRate: 25,
         }],
-      }],
+          }, {
+            subcontractorId: 7102,
+            subName: "Fixed Reversal Crew",
+            amountOwed: null,
+            computedOwed: 0,
+            amountPaid: 0,
+            balance: null,
+            percentComplete: null,
+            paidDate: null,
+            paidNotes: null,
+            totalHours: 0,
+            totalWorkHours: 0,
+            totalTravelHours: 0,
+            payRate: null,
+            travelPayRate: null,
+            payType: "fixed",
+            role: "subcontractor",
+            growthPct: null,
+            compensationType: "fixed",
+            hourlyRate: null,
+            travelRate: null,
+            fixedAmount: 900,
+            allocationPct: null,
+            paymentStatus: "paid",
+            paymentHistory: [{
+              id: 71021,
+              date: today,
+              amount: 900,
+              netPaid: 900,
+              paymentMethod: "Check",
+              referenceNumber: "FIX-ORIGINAL",
+            }, {
+              id: 71022,
+              date: today,
+              amount: 900,
+              netPaid: 900,
+              paymentMethod: "Reversal",
+              referenceNumber: "FIX-REVERSAL",
+              isReversal: true,
+              reversesPaymentId: 71021,
+              reversalReason: "Duplicate fixed payout",
+              compensationType: "fixed",
+              originalPaymentReference: "FIX-ORIGINAL",
+            }],
+          }, {
+            subcontractorId: 7103,
+            subName: "Split Reversal Crew",
+            amountOwed: null,
+            computedOwed: 0,
+            amountPaid: 0,
+            balance: null,
+            percentComplete: null,
+            paidDate: null,
+            paidNotes: null,
+            totalHours: 0,
+            totalWorkHours: 0,
+            totalTravelHours: 0,
+            payRate: null,
+            travelPayRate: null,
+            payType: "allocation",
+            role: "subcontractor",
+            growthPct: null,
+            compensationType: "allocation",
+            hourlyRate: null,
+            travelRate: null,
+            fixedAmount: null,
+            allocationPct: 25,
+            paymentStatus: "paid",
+            paymentHistory: [{
+              id: 71031,
+              date: today,
+              amount: 800,
+              netPaid: 800,
+              paymentMethod: "Check",
+              referenceNumber: "SPLIT-ORIGINAL",
+            }, {
+              id: 71032,
+              date: today,
+              amount: 800,
+              netPaid: 800,
+              paymentMethod: "Reversal",
+              referenceNumber: "SPLIT-REVERSAL",
+              isReversal: true,
+              reversesPaymentId: 71031,
+              reversalReason: "Allocation correction",
+              compensationType: "allocation",
+              originalPaymentReference: "SPLIT-ORIGINAL",
+            }],
+          }],
       hours: [{
         id: 7111,
         subcontractorId: 7101,
@@ -1112,6 +1200,59 @@ async function main() {
         && nearlyEqual(reversalValues.includedCostTotal, -firstExpected.profitBreakdown.includedCosts.total)
         && nearlyEqual(financialsValues.netProfit, firstExpected.netProfit),
       JSON.stringify(reversalValues),
+    );
+    const clickButtonByAriaLabel = async (label: string) => page.evaluate(buttonLabel => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>("button")]
+        .find(candidate => candidate.getAttribute("aria-label") === buttonLabel);
+      if (!button) return false;
+      button.click();
+      return true;
+    }, label);
+    const reversalLedgerUnexpectedWritesBefore = unexpectedWrites.length;
+    const fixedLedgerClicked = await clickButtonByAriaLabel("View fixed payout reversal payment ledger");
+    const fixedLedgerLoaded = await page.waitForFunction(
+      () => {
+        const text = document.querySelector('[role="dialog"]')?.textContent ?? "";
+        return text.includes("Fixed payout reversals")
+          && text.includes("Fixed Reversal Crew")
+          && text.includes("Duplicate fixed payout")
+          && text.includes("FIX-ORIGINAL")
+          && text.includes("$900.00");
+      },
+      { timeout: 20_000 },
+    ).then(() => true).catch(() => false);
+    const fixedLedgerText = await page.$eval('[role="dialog"]', dialog => dialog.textContent ?? "").catch(() => "");
+    const fixedLedgerClosed = await clickButtonByAriaLabel("Close reversal payment ledger");
+    const splitLedgerClicked = fixedLedgerClosed
+      && await clickButtonByAriaLabel("View split payout reversal payment ledger");
+    const splitLedgerLoaded = await page.waitForFunction(
+      () => {
+        const text = document.querySelector('[role="dialog"]')?.textContent ?? "";
+        return text.includes("Split payout reversals")
+          && text.includes("Split Reversal Crew")
+          && text.includes("Allocation correction")
+          && text.includes("SPLIT-ORIGINAL")
+          && text.includes("$800.00");
+      },
+      { timeout: 20_000 },
+    ).then(() => true).catch(() => false);
+    const splitLedgerText = await page.$eval('[role="dialog"]', dialog => dialog.textContent ?? "").catch(() => "");
+    const splitLedgerClosed = await clickButtonByAriaLabel("Close reversal payment ledger");
+    record(
+      "Reversal amounts open the matching read-only payment ledger rows",
+      fixedLedgerClicked
+        && fixedLedgerLoaded
+        && fixedLedgerText.includes("Fixed Reversal Crew")
+        && !fixedLedgerText.includes("Split Reversal Crew")
+        && fixedLedgerClosed
+        && splitLedgerClicked
+        && splitLedgerLoaded
+        && splitLedgerText.includes("Split Reversal Crew")
+        && !splitLedgerText.includes("Fixed Reversal Crew")
+        && splitLedgerClosed
+        && unexpectedWrites.length === reversalLedgerUnexpectedWritesBefore
+        && nearlyEqual(readMoneyAfter(financialsText, "Net Business Profit"), firstExpected.netProfit),
+      `fixed=${fixedLedgerLoaded}, split=${splitLedgerLoaded}, closed=${fixedLedgerClosed && splitLedgerClosed}, writes=${unexpectedWrites.length - reversalLedgerUnexpectedWritesBefore}, fixedText=${fixedLedgerText}, splitText=${splitLedgerText}`,
     );
     await page.screenshot({ path: `${SHOTS}/01-job-financials.png`, fullPage: true });
 
