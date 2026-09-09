@@ -197,6 +197,72 @@ describe("mileage import financial integrity — real database", () => {
     expect(finalExpenses.reduce((sum, expense) => sum + Number(expense.amount), 0)).toBeCloseTo(24.32, 2);
   });
 
+  it("voids the monthly aggregate when its final imported business drive is voided", async () => {
+    const businessId = await createBusiness("void-final-drive");
+    const sourceTripKey = "09/01/2026 11:00|09/01/2026 11:20";
+
+    const imported = await request(app)
+      .post("/mileage/bulk")
+      .send({
+        businessId,
+        source: "mileiq",
+        filename: "single-drive.csv",
+        fileHash: `single-drive-${businessId}`,
+        trips: [trip(sourceTripKey, 10)],
+      });
+
+    expect(imported.status).toBe(201);
+    expect(imported.body).toMatchObject({
+      imported: 1,
+      duplicatesSkipped: 0,
+      expensesCreated: 1,
+    });
+    expect(await activeLogs(businessId)).toHaveLength(1);
+    expect(await activeMileageExpenses(businessId)).toHaveLength(1);
+
+    const [log] = await db
+      .select()
+      .from(mileageLogsTable)
+      .where(and(
+        eq(mileageLogsTable.businessId, businessId),
+        eq(mileageLogsTable.sourceTripKey, sourceTripKey),
+      ));
+    expect(log).toBeDefined();
+
+    const voided = await request(app)
+      .post(`/mileage/${log!.id}/void`)
+      .send({ reason: "Final drive corrected" });
+
+    expect(voided.status).toBe(200);
+    expect(await activeLogs(businessId)).toHaveLength(0);
+    expect(await activeMileageExpenses(businessId)).toHaveLength(0);
+
+    const [preservedLog] = await db
+      .select()
+      .from(mileageLogsTable)
+      .where(eq(mileageLogsTable.id, log!.id));
+    expect(preservedLog).toMatchObject({
+      businessId,
+      sourceTripKey,
+      voidReason: "Final drive corrected",
+    });
+    expect(preservedLog?.voidedAt).toBeTruthy();
+
+    const preservedExpenses = await db
+      .select()
+      .from(expensesTable)
+      .where(eq(expensesTable.mileageImportId, imported.body.importId));
+    expect(preservedExpenses).toHaveLength(1);
+    expect(preservedExpenses[0]).toMatchObject({
+      businessId,
+      category: "mileage",
+      mileageImportId: imported.body.importId,
+      voidReason: "Mileage import aggregate no longer has active trips",
+    });
+    expect(preservedExpenses[0]?.voidedAt).toBeTruthy();
+    expect(Number(preservedExpenses[0]?.amount)).toBeCloseTo(7.6, 2);
+  });
+
   it("allows only one concurrent same-key insert and permits re-import after rollback", async () => {
     const businessId = await createBusiness("concurrency");
     const sourceTripKey = "09/01/2026 10:00|09/01/2026 10:20";
