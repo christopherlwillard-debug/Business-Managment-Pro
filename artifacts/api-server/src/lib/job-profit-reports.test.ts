@@ -16,6 +16,35 @@ function loaded(input: Parameters<typeof calculateJobProfit>[0]): LoadedJobProfi
 }
 
 describe("job profit report projections", () => {
+  it("keeps the historical Drywall repair and Martin Water Heater profits isolated", () => {
+    // These are the source-ledger values behind production jobs 38 and 45.
+    // The old Closed Jobs batch flow leaked a cross-job $4,340 labor aggregate
+    // into both rows, producing impossible negative profits.
+    const drywallRepair = loaded({
+      invoices: [{ total: "1406.27", status: "paid" }],
+      expenses: [
+        { id: 178, amount: "186.00", category: "Hotel/Lodging", countsTowardJobProfit: true },
+        { id: 179, amount: "21.25", category: "Meals", countsTowardJobProfit: true },
+        { id: 180, amount: "11.62", category: "Tools/Equipment", countsTowardJobProfit: true },
+        { id: 181, amount: "9.83", category: "Meals", countsTowardJobProfit: true },
+        { id: 182, amount: "20.60", category: "Tools/Equipment", countsTowardJobProfit: true },
+        { id: 183, amount: "8.43", category: "Meals", countsTowardJobProfit: true },
+        { id: 184, amount: "26.52", category: "Meals", countsTowardJobProfit: true },
+        { id: 194, amount: "59.15", category: "Meals", countsTowardJobProfit: true },
+        { id: 195, amount: "44.17", category: "Tools/Equipment", countsTowardJobProfit: true },
+      ],
+      hourlyLaborCost: 320,
+    });
+    const martinWaterHeater = loaded({
+      invoices: [{ total: "182.27", status: "paid" }],
+    });
+
+    expect(drywallRepair.calculation.netProfit).toBeCloseTo(698.70);
+    expect(martinWaterHeater.calculation.netProfit).toBeCloseTo(182.27);
+    expect(drywallRepair.calculation.netProfit).toBeGreaterThan(0);
+    expect(martinWaterHeater.calculation.netProfit).toBeGreaterThan(0);
+  });
+
   it("keeps export and owner-pay values isolated by job", () => {
     const jobA = loaded({
       invoices: [{ total: "1000.00", status: "paid" }],
