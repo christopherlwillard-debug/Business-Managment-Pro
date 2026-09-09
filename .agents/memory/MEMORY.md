@@ -69,3 +69,5 @@
 - [Database test timeouts](database-test-timeouts.md) — full Vitest runs need 15-second test and hook limits because parallel DB contention can exceed the 5-second defaults
 - [Profit verifier fixture invariants](profit-verifier-fixture-invariants.md) — nonzero cost buckets require coherent derived totals and ordering expectations across authenticated browser checks
 - [Closed Jobs release guard](closed-jobs-release-guard.md) — verify source, lazy-loaded build chunks, and live read-only API route presence separately after publish
+- [Job-profit response contract](job-profit-response-contract.md) — canonical profit responses carry a version; clients must reject missing or stale markers instead of rendering old arithmetic
+- [Client business scope](client-business-scope.md) — client list/profile reads use canonical business_id with business_line fallback; related owned rows stay scoped

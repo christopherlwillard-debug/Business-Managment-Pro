@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { useUserPermissions } from "@/contexts/UserPermissions";
+import { useBusiness } from "@/contexts/BusinessContext";
 import { useLocation } from "wouter";
 import { cn, formatCurrency } from "@/lib/utils";
 
@@ -26,8 +27,11 @@ function isDueSoon(dateStr: string | null | undefined): boolean {
 
 export default function Clients() {
   const { canEdit } = useUserPermissions();
+  const { activeBusiness } = useBusiness();
   const [, navigate] = useLocation();
-  const { data: clients, isLoading, refetch } = useListClients();
+  const { data: clients, isLoading, refetch } = useListClients(
+    activeBusiness?.id != null ? { businessId: activeBusiness.id } : undefined,
+  );
   const createMutation = useCreateClient();
   const updateMutation = useUpdateClient();
   const deleteMutation = useDeleteClient();

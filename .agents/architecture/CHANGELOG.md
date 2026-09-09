@@ -12,6 +12,18 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-09-09
+
+### Canonical profit release and business-scoped recovery safeguards
+
+- Added an explicit version marker to canonical individual and batch job-profit responses; clients reject missing or unsupported versions as unavailable rather than displaying stale arithmetic.
+- Extended the Closed Jobs release guard to require the version marker in source, generated client, and built frontend assets.
+- Extended client list/profile reads with active business ownership, preserving the legacy `business_line` fallback and scoping owned profile records where canonical ownership exists.
+- Added a Gmail reconnect path that clears the browser token, requests metadata permission again, and retries existing delivery verification without resending.
+- Verified API/frontend typechecks, OpenAPI codegen contract checks, focused profit regressions, production frontend build, release guard, and clean diff; the full API test wrapper remains blocked by the pre-existing development schema check for unrelated missing business columns.
+
+---
+
 ## 2026-08-05
 
 ### Task #1757 → #1760 — Owner Pay Architecture (two-phase correction)

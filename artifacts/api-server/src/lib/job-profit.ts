@@ -4,6 +4,11 @@ import type {
   JobProfitSummaryResponse,
 } from "@workspace/api-zod";
 
+// Increment when the canonical wire response changes in a way that can make
+// an older API/UI pair display a misleading financial value. Clients reject
+// responses without the current marker instead of rendering stale arithmetic.
+export const CANONICAL_JOB_PROFIT_RESPONSE_VERSION = 2;
+
 export type JobProfitExpenseRow = {
   id?: number | null;
   amount: string | number | null;
@@ -104,6 +109,7 @@ export function buildJobProfitResponse(
   } = calculation;
 
   return {
+    responseVersion: CANONICAL_JOB_PROFIT_RESPONSE_VERSION,
     ...calculationFields,
     ...extras,
     estimatedFuelCost,
@@ -140,6 +146,7 @@ export function buildJobProfitSummaryResponse(
   } = calculation;
 
   return {
+    responseVersion: CANONICAL_JOB_PROFIT_RESPONSE_VERSION,
     ...calculationFields,
     ...extras,
     estimatedFuelCost,

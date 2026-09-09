@@ -55,6 +55,7 @@ import {
   applyJobProfitRefresh,
   canApplyJobResponse,
   getSavedMileageReimbursement,
+  isCurrentJobProfitResponse,
   isAbortError,
   startJobProfitRefresh,
 } from "@/lib/jobProfitRequests";
@@ -7917,8 +7918,11 @@ export default function Jobs() {
   const canEditJobs = canEdit("jobs");
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
+  const { activeBusiness, businesses } = useBusiness();
   const { data: jobs = [],    isLoading } = useListJobs();
-  const { data: clients = [] }            = useListClients();
+  const { data: clients = [] }            = useListClients(
+    activeBusiness?.id != null ? { businessId: activeBusiness.id } : undefined,
+  );
   const { data: subcontractors = [] }     = useListSubcontractors();
   const deleteJobMutation                 = useDeleteJob();
   const updateJob                         = useUpdateJob();
@@ -7986,7 +7990,6 @@ export default function Jobs() {
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
   const [profileClientInitialTab, setProfileClientInitialTab] = useState<"overview" | "jobs" | "invoices" | "payments" | "route" | "billing" | undefined>(undefined);
 
-  const { activeBusiness, businesses } = useBusiness();
   // Include inactive so archived service names still resolve on existing job cards
   const { data: allProductionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id, true);
   const [jobSearch, setJobSearch]       = useState("");
@@ -8360,6 +8363,9 @@ export default function Jobs() {
     )
       .then(obj => {
         if (controller.signal.aborted) return;
+        if (!Object.values(obj).every(isCurrentJobProfitResponse)) {
+          throw new Error("Canonical job-profit response version is unavailable.");
+        }
         const entries = Object.entries(obj).map(
           ([id, p]) => [parseInt(id, 10), p] as const,
         );

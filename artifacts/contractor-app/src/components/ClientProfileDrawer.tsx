@@ -16,6 +16,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
+import { useBusiness } from "@/contexts/BusinessContext";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -66,13 +67,15 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
   const [chargingSquare, setChargingSquare] = useState(false);
   const { toast } = useToast();
   const { canEdit } = useUserPermissions();
+  const { activeBusiness } = useBusiness();
   const updateServiceDate = useUpdateClientServiceDate();
 
-  const { data, isLoading, refetch } = useClientProfile(clientId);
+  const { data, isLoading, isError, error, refetch } = useClientProfile(clientId, activeBusiness?.id);
   const { data: squareStatus } = useSquareStatus();
 
   const client = data?.client;
   const summary = data?.summary;
+  const profileError = error as { status?: number; data?: { error?: string } } | null;
 
   async function handleDeleteDraftInvoice(invoiceId: number, e: React.MouseEvent) {
     e.preventDefault();
@@ -348,8 +351,21 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
                 <div key={i} className="h-10 bg-muted animate-pulse rounded-lg" />
               ))}
             </div>
-          ) : !client ? (
-            <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Client not found</div>
+          ) : isError || !client ? (
+            <div className="flex flex-col items-center justify-center gap-3 h-40 px-6 text-center text-muted-foreground text-sm">
+              <p>
+                {profileError?.status === 404
+                  ? "This client is not available in the selected business."
+                  : profileError?.data?.error ?? "Client profile could not be loaded."}
+              </p>
+              <button
+                type="button"
+                onClick={() => void refetch()}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted"
+              >
+                Try again
+              </button>
+            </div>
           ) : (
             <>
               {tab === "overview" && (

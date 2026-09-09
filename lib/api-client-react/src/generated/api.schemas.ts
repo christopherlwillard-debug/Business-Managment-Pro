@@ -320,6 +320,7 @@ export const JobProfitResponseFuelReconciliation = {
 } as const;
 
 export interface JobProfitResponse {
+  responseVersion: number;
   grossInvoiced: number;
   collected: number;
   otherIncomeRevenue: number;
@@ -381,6 +382,7 @@ export const JobProfitSummaryResponseFuelReconciliation = {
 } as const;
 
 export interface JobProfitSummaryResponse {
+  responseVersion: number;
   grossInvoiced: number;
   collected: number;
   otherIncomeRevenue: number;
@@ -1655,6 +1657,13 @@ export type HandleBrowserLoginCallbackParams = {
   code?: string;
   state?: string;
   iss?: string;
+};
+
+export type ListClientsParams = {
+  /**
+   * Canonical business owner; legacy business_line rows matching the business remain visible
+   */
+  businessId?: number;
 };
 
 export type ListJobsParams = {

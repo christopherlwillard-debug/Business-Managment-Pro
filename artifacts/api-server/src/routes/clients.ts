@@ -1,10 +1,21 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable } from "@workspace/db/schema";
-import { eq, desc, or } from "drizzle-orm";
+import { and, eq, desc, isNull, or } from "drizzle-orm";
 import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
+
+function scopedOwnerPredicate(
+  columns: { businessId: any; businessLine: any },
+  scope: Awaited<ReturnType<typeof requestedBusiness>>,
+) {
+  if (!scope) return undefined;
+  return or(
+    eq(columns.businessId, scope.id),
+    and(isNull(columns.businessId), eq(columns.businessLine, scope.slug)),
+  );
+}
 
 router.param("id", (req, res, next, rawId) => {
   void (async () => {
@@ -23,16 +34,22 @@ function formatClient(c: typeof clientsTable.$inferSelect) {
   return { ...c, createdAt: c.createdAt.toISOString() };
 }
 
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
   try {
+    const scope = await requestedBusiness(req);
+    const clientScope = scopedOwnerPredicate(clientsTable, scope);
+    const invoiceScope = scopedOwnerPredicate(invoicesTable, scope);
     const [clients, openInvoices] = await Promise.all([
-      db.select().from(clientsTable).orderBy(clientsTable.createdAt),
+      db.select().from(clientsTable).where(clientScope).orderBy(clientsTable.createdAt),
       db.select({
         clientId: invoicesTable.clientId,
         total: invoicesTable.total,
         status: invoicesTable.status,
       }).from(invoicesTable).where(
-        or(eq(invoicesTable.status, "sent"), eq(invoicesTable.status, "overdue"))
+        and(
+          or(eq(invoicesTable.status, "sent"), eq(invoicesTable.status, "overdue")),
+          invoiceScope,
+        ),
       ),
     ]);
 
@@ -86,16 +103,17 @@ router.get("/:id/profile", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
 
+    const scope = await requestedBusiness(req);
     const client = res.locals.businessScopedClient ?? (await db.select().from(clientsTable).where(eq(clientsTable.id, id)))[0];
     if (!client) return res.status(404).json({ error: "Client not found" });
 
     const [jobs, invoices, squarePayments, linkedProspects, routeStops, otherIncome] = await Promise.all([
-      db.select().from(jobsTable).where(eq(jobsTable.clientId, id)).orderBy(desc(jobsTable.createdAt)),
-      db.select().from(invoicesTable).where(eq(invoicesTable.clientId, id)).orderBy(desc(invoicesTable.createdAt)),
+      db.select().from(jobsTable).where(and(eq(jobsTable.clientId, id), scopedOwnerPredicate(jobsTable, scope))).orderBy(desc(jobsTable.createdAt)),
+      db.select().from(invoicesTable).where(and(eq(invoicesTable.clientId, id), scopedOwnerPredicate(invoicesTable, scope))).orderBy(desc(invoicesTable.createdAt)),
       db.select().from(squarePaymentsTable).where(eq(squarePaymentsTable.clientId, id)).orderBy(desc(squarePaymentsTable.paidAt)),
-      db.select().from(prospectsTable).where(eq(prospectsTable.clientId, id)).orderBy(desc(prospectsTable.createdAt)),
+      db.select().from(prospectsTable).where(and(eq(prospectsTable.clientId, id), scopedOwnerPredicate(prospectsTable, scope))).orderBy(desc(prospectsTable.createdAt)),
       db.select().from(routeStopsTable).where(eq(routeStopsTable.clientId, id)).orderBy(desc(routeStopsTable.scheduledDate)),
-      db.select().from(otherIncomeTable).where(eq(otherIncomeTable.clientId, id)).orderBy(desc(otherIncomeTable.date)),
+      db.select().from(otherIncomeTable).where(and(eq(otherIncomeTable.clientId, id), scopedOwnerPredicate(otherIncomeTable, scope))).orderBy(desc(otherIncomeTable.date)),
     ]);
 
     const squareRevenueCents = squarePayments.reduce((sum, p) => sum + p.amountCents, 0);

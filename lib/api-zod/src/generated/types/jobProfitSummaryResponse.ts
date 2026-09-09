@@ -11,6 +11,7 @@ import type { JobProfitSummaryResponseFuelReconciliation } from "./jobProfitSumm
 import type { JobProfitSummaryResponseFuelStatus } from "./jobProfitSummaryResponseFuelStatus";
 
 export interface JobProfitSummaryResponse {
+  responseVersion: number;
   grossInvoiced: number;
   collected: number;
   otherIncomeRevenue: number;

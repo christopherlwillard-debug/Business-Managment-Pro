@@ -18,6 +18,8 @@ interface InvoiceDeliveryHistoryProps {
   isLoading?: boolean;
   isRepairingGmail?: boolean;
   onRepairGmail?: (eventId: number) => void;
+  needsGmailReconnect?: boolean;
+  onReconnectGmail?: () => void;
 }
 
 const LOCAL_TIMESTAMP_OPTIONS: Intl.DateTimeFormatOptions = {
@@ -94,6 +96,8 @@ export function InvoiceDeliveryHistory({
   isLoading = false,
   isRepairingGmail = false,
   onRepairGmail,
+  needsGmailReconnect = false,
+  onReconnectGmail,
 }: InvoiceDeliveryHistoryProps) {
   const orderedEvents = sortInvoiceCommunicationEvents(events);
 
@@ -159,15 +163,27 @@ export function InvoiceDeliveryHistory({
                   </p>
                 )}
                 {canRecoverPendingGmail && onRepairGmail && (
-                  <button
-                    type="button"
-                    onClick={() => onRepairGmail(event.id)}
-                    disabled={isRepairingGmail}
-                    className="mt-2 inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    {isRepairingGmail ? "Checking Gmail…" : "Find Sent Email & Repair"}
-                  </button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onRepairGmail(event.id)}
+                      disabled={isRepairingGmail}
+                      className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      {isRepairingGmail ? "Checking Gmail…" : "Find Sent Email & Repair"}
+                    </button>
+                    {needsGmailReconnect && onReconnectGmail && (
+                      <button
+                        type="button"
+                        onClick={onReconnectGmail}
+                        disabled={isRepairingGmail}
+                        className="inline-flex items-center gap-1 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        {isRepairingGmail ? "Reconnecting Gmail…" : "Reconnect Gmail & retry"}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

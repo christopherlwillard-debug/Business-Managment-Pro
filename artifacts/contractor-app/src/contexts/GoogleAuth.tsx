@@ -20,6 +20,7 @@ interface GoogleAuthContextValue {
   userEmail: string | null;
   token: string | null;
   signIn: (onSuccess?: () => void) => void;
+  reconnect: () => Promise<string>;
   signOut: () => void;
   getToken: () => Promise<string>;
 }
@@ -30,6 +31,7 @@ const GoogleAuthContext = createContext<GoogleAuthContextValue>({
   userEmail: null,
   token: null,
   signIn: () => {},
+  reconnect: () => Promise.reject(new Error("Google Auth not initialized")),
   signOut: () => {},
   getToken: () => Promise.reject(new Error("Google Auth not initialized")),
 });
@@ -157,6 +159,18 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
     setTokenInfo(null);
   }, [tokenInfo]);
 
+  const reconnect = useCallback((): Promise<string> => {
+    signOut();
+    return new Promise((resolve, reject) => {
+      if (!tokenClientRef.current) {
+        reject(new Error("Google Auth not initialized"));
+        return;
+      }
+      pendingTokenRef.current = { resolve, reject };
+      tokenClientRef.current.requestAccessToken({ prompt: "consent" });
+    });
+  }, [signOut]);
+
   const getToken = useCallback((): Promise<string> => {
     if (tokenInfo && tokenInfo.expiresAt > Date.now() + 60_000) {
       return Promise.resolve(tokenInfo.token);
@@ -178,6 +192,7 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
       userEmail: tokenInfo?.email ?? null,
       token: tokenInfo?.token ?? null,
       signIn,
+      reconnect,
       signOut,
       getToken,
     }}>

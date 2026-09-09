@@ -4,6 +4,17 @@ import type {
   JobProfitSummaryResponse,
 } from "@workspace/api-client-react";
 
+export const CANONICAL_JOB_PROFIT_RESPONSE_VERSION = 2;
+
+export function isCurrentJobProfitResponse(
+  value: unknown,
+): value is JobProfitResponse | JobProfitSummaryResponse {
+  return typeof value === "object"
+    && value !== null
+    && "responseVersion" in value
+    && (value as { responseVersion?: unknown }).responseVersion === CANONICAL_JOB_PROFIT_RESPONSE_VERSION;
+}
+
 export function canApplyJobResponse(
   requestKey: number,
   currentKey: number,
@@ -57,7 +68,7 @@ export function applyJobProfitRefresh<T>(
     return state;
   }
 
-  if (input.response.status === "fulfilled" && input.response.value != null) {
+  if (input.response.status === "fulfilled" && isCurrentJobProfitResponse(input.response.value)) {
     return {
       loading: false,
       profit: input.response.value,

@@ -173,6 +173,12 @@ paths:
       operationId: listClients
       tags: [clients]
       summary: List all clients
+      parameters:
+        - name: businessId
+          in: query
+          description: Canonical business owner; legacy business_line rows matching the business remain visible
+          schema:
+            type: integer
       responses:
         "200":
           description: List of clients
@@ -2139,6 +2145,7 @@ components:
     JobProfitResponse:
       type: object
       properties:
+        responseVersion: { type: integer }
         grossInvoiced: { type: number }
         collected: { type: number }
         otherIncomeRevenue: { type: number }
@@ -2191,6 +2198,7 @@ components:
         ownerSplitPct: { type: number }
         taxReservePct: { type: number }
       required:
+        - responseVersion
         - grossInvoiced
         - collected
         - otherIncomeRevenue
@@ -2217,6 +2225,7 @@ components:
     JobProfitSummaryResponse:
       type: object
       properties:
+        responseVersion: { type: integer }
         grossInvoiced: { type: number }
         collected: { type: number }
         otherIncomeRevenue: { type: number }
@@ -2269,6 +2278,7 @@ components:
         ownerSplitPct: { type: number }
         taxReservePct: { type: number }
       required:
+        - responseVersion
         - grossInvoiced
         - collected
         - otherIncomeRevenue

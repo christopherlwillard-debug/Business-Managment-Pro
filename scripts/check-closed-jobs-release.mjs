@@ -23,11 +23,14 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const frontendSourcePath = path.join(root, "artifacts/contractor-app/src/pages/Jobs.tsx");
 const apiSourcePath = path.join(root, "artifacts/api-server/src/routes/jobs.ts");
+const jobProfitSourcePath = path.join(root, "artifacts/api-server/src/lib/job-profit.ts");
 const generatedApiPath = path.join(root, "lib/api-client-react/src/generated/api.ts");
+const generatedApiSchemasPath = path.join(root, "lib/api-client-react/src/generated/api.schemas.ts");
 const frontendBuildDir = path.join(root, "artifacts/contractor-app/dist/public");
 
 const frontendSourceMarkers = [
   "getJobsProfitSummary(",
+  "isCurrentJobProfitResponse",
   "/api/jobs/financials-summary",
   "/api/jobs/outstanding-sub-balances",
   "/api/jobs/closed/export",
@@ -35,7 +38,8 @@ const frontendSourceMarkers = [
 ];
 const frontendBundleMarkers = [
   "/api/jobs/profit-summary",
-  ...frontendSourceMarkers.filter((marker) => marker !== "getJobsProfitSummary("),
+  "responseVersion",
+  ...frontendSourceMarkers.filter((marker) => !["getJobsProfitSummary(", "isCurrentJobProfitResponse"].includes(marker)),
 ];
 const apiMarkers = [
   'router.get("/profit-summary"',
@@ -43,11 +47,13 @@ const apiMarkers = [
   'router.get("/outstanding-sub-balances"',
   'router.get("/closed/export"',
   "calculateJobProfit(",
+  "CANONICAL_JOB_PROFIT_RESPONSE_VERSION",
 ];
 const generatedApiMarkers = [
   "getJobsProfitSummary",
   "/api/jobs/profit-summary",
 ];
+const generatedApiSchemaMarkers = ["responseVersion"];
 
 const failures = [];
 
@@ -90,12 +96,22 @@ function checkWorkspaceSources({ requireBuild }) {
   checkMarkers(
     "jobs.ts",
     readRequiredFile(apiSourcePath, "jobs.ts"),
-    apiMarkers,
+    apiMarkers.filter((marker) => marker !== "CANONICAL_JOB_PROFIT_RESPONSE_VERSION"),
+  );
+  checkMarkers(
+    "job-profit.ts",
+    readRequiredFile(jobProfitSourcePath, "job-profit.ts"),
+    ["CANONICAL_JOB_PROFIT_RESPONSE_VERSION"],
   );
   checkMarkers(
     "generated API client",
     readRequiredFile(generatedApiPath, "generated API client"),
     generatedApiMarkers,
+  );
+  checkMarkers(
+    "generated API schemas",
+    readRequiredFile(generatedApiSchemasPath, "generated API schemas"),
+    generatedApiSchemaMarkers,
   );
 
   const bundleFiles = listJavaScriptFiles(frontendBuildDir);

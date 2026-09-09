@@ -254,7 +254,9 @@ export default function PeopleAndProperties() {
   }
 
   const { data: prospects = [], isLoading: prospectsLoading, refetch: refetchProspects } = useListProspects();
-  const { data: clients, isLoading: clientsLoading, refetch: refetchClients } = useListClients();
+  const { data: clients, isLoading: clientsLoading, refetch: refetchClients } = useListClients(
+    activeBusiness?.id != null ? { businessId: activeBusiness.id } : undefined,
+  );
   const { data: revenue, isLoading: revenueLoading } = useProspectRevenueSummary();
 
   const createProspect = useCreateProspect();

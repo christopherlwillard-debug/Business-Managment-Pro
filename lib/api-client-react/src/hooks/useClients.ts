@@ -83,10 +83,11 @@ export interface ClientProfile {
   };
 }
 
-export function useClientProfile(id: number | null) {
+export function useClientProfile(id: number | null, businessId?: number | null) {
+  const query = businessId != null ? `?businessId=${encodeURIComponent(String(businessId))}` : "";
   return useQuery({
-    queryKey: ["/api/clients", id, "profile"],
-    queryFn: () => customFetch<ClientProfile>(`/api/clients/${id}/profile`, { method: "GET" }),
+    queryKey: ["/api/clients", id, "profile", businessId ?? null],
+    queryFn: () => customFetch<ClientProfile>(`/api/clients/${id}/profile${query}`, { method: "GET" }),
     enabled: id !== null && id > 0,
     staleTime: 30_000,
   });

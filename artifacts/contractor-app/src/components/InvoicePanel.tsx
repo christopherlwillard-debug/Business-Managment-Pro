@@ -87,7 +87,7 @@ export function InvoicePanel({
   const createClientMutation = useCreateClient();
   const createPaymentLink = useCreateInvoicePaymentLink();
   const deletePaymentLink = useDeleteInvoicePaymentLink();
-  const { isConfigured: googleConfigured, isConnected: googleConnected, getToken, signIn } = useGoogleAuth();
+  const { isConfigured: googleConfigured, isConnected: googleConnected, getToken, signIn, reconnect } = useGoogleAuth();
   const { toast } = useToast();
   const { activeBusiness, businesses, refresh: refreshBusinesses } = useBusiness();
 
@@ -236,6 +236,7 @@ export function InvoicePanel({
   const [gmailFinalizationRecovery, setGmailFinalizationRecovery] = useState<GmailFinalizationRecovery | null>(null);
   const [gmailDeliveryBlocked, setGmailDeliveryBlocked] = useState<string | null>(null);
   const [gmailPendingEventId, setGmailPendingEventId] = useState<number | null>(null);
+  const [gmailReconnectRequired, setGmailReconnectRequired] = useState(false);
   const [gmailSent, setGmailSent] = useState(false);
   const [gmailPreview, setGmailPreview] = useState(false);
   const [attachChecklist, setAttachChecklist] = useState(true);
@@ -304,6 +305,7 @@ export function InvoicePanel({
       setGmailMessage("");
       setGmailDeliveryBlocked(null);
       setGmailPendingEventId(null);
+      setGmailReconnectRequired(false);
       if (effectiveExistingInvoice) {
         const recoveryKey = `invoice-gmail-finalization:${effectiveExistingInvoice.id}`;
         try {
@@ -1046,6 +1048,9 @@ export function InvoicePanel({
       }
       const finalization = await finalizeGmailDelivery(recovery, token);
       if (!finalization.ok) {
+        if (/metadata|permission|insufficient|scope/i.test(finalization.result.error ?? "")) {
+          setGmailReconnectRequired(true);
+        }
         await communicationHistory.refetch();
         toast({
           title: "Email accepted by Gmail — history needs repair",
@@ -1100,6 +1105,7 @@ export function InvoicePanel({
         if (!response.ok) throw new Error(result.error ?? "Delivery history could not be recovered.");
         setGmailDeliveryBlocked(null);
         setGmailPendingEventId(null);
+        setGmailReconnectRequired(false);
         await queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
         await communicationHistory.refetch();
         toast({ title: "Delivery history repaired", description: "The existing Gmail message was verified. The invoice is now marked Sent." });
@@ -1112,17 +1118,38 @@ export function InvoicePanel({
       }
       window.localStorage.removeItem(`invoice-gmail-finalization:${effectiveExistingInvoice.id}`);
       setGmailFinalizationRecovery(null);
+      setGmailReconnectRequired(false);
       await queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
       await communicationHistory.refetch();
       toast({ title: "Delivery history repaired", description: "The invoice is now marked Sent." });
     } catch (err: any) {
+      const message = err?.message ?? "";
+      if (/metadata|permission|insufficient|scope/i.test(message)) {
+        setGmailReconnectRequired(true);
+      }
       toast({
         title: "History still needs repair",
-        description: err?.message ?? "Please reconnect Gmail and try again.",
+        description: message || "Please reconnect Gmail and try again.",
         variant: "destructive",
       });
     } finally {
       setGmailSending(false);
+    }
+  }
+
+  async function handleReconnectGmailAndRepair() {
+    if (!effectiveExistingInvoice || (!gmailFinalizationRecovery && !gmailPendingEventId)) return;
+    setGmailSending(true);
+    try {
+      await reconnect();
+      await handleRepairGmailHistory();
+    } catch (err: any) {
+      setGmailSending(false);
+      toast({
+        title: "Gmail reconnect failed",
+        description: err?.message ?? "Google authorization was not completed.",
+        variant: "destructive",
+      });
     }
   }
 
@@ -1611,6 +1638,16 @@ export function InvoicePanel({
                   <RotateCcw className="h-3 w-3" />
                   {gmailSending ? "Repairing…" : "Repair Delivery History"}
                 </button>
+                {gmailReconnectRequired && (
+                  <button
+                    type="button"
+                    onClick={() => void handleReconnectGmailAndRepair()}
+                    disabled={gmailSending}
+                    className="mt-2 inline-flex items-center gap-1 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {gmailSending ? "Reconnecting Gmail…" : "Reconnect Gmail & retry verification"}
+                  </button>
+                )}
               </div>
             ) : gmailDeliveryBlocked ? (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
@@ -1627,6 +1664,16 @@ export function InvoicePanel({
                       <RotateCcw className="h-3 w-3" />
                       {gmailSending ? "Checking Gmail…" : "Find Sent Email & Repair"}
                     </button>
+                    {gmailReconnectRequired && (
+                      <button
+                        type="button"
+                        onClick={() => void handleReconnectGmailAndRepair()}
+                        disabled={gmailSending}
+                        className="inline-flex items-center gap-1 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        {gmailSending ? "Reconnecting Gmail…" : "Reconnect Gmail & retry verification"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={handleResolvePendingGmailAttempt}
@@ -2234,6 +2281,8 @@ export function InvoicePanel({
             isLoading={communicationHistory.isLoading}
             isRepairingGmail={gmailSending}
             onRepairGmail={eventId => { void handleRepairGmailHistory(eventId); }}
+            needsGmailReconnect={gmailReconnectRequired}
+            onReconnectGmail={() => { void handleReconnectGmailAndRepair(); }}
           />
         )}
 

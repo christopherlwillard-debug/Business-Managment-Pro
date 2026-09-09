@@ -101,6 +101,15 @@ export const HealthCheckResponse = zod.object({
 /**
  * @summary List all clients
  */
+export const ListClientsQueryParams = zod.object({
+  businessId: zod.coerce
+    .number()
+    .optional()
+    .describe(
+      "Canonical business owner; legacy business_line rows matching the business remain visible",
+    ),
+});
+
 export const ListClientsResponseItem = zod.object({
   id: zod.number(),
   name: zod.string(),
@@ -417,6 +426,7 @@ export const GetJobProfitParams = zod.object({
 });
 
 export const GetJobProfitResponse = zod.object({
+  responseVersion: zod.number(),
   grossInvoiced: zod.number(),
   collected: zod.number(),
   otherIncomeRevenue: zod.number(),
@@ -527,6 +537,7 @@ export const GetJobsProfitSummaryQueryParams = zod.object({
 export const GetJobsProfitSummaryResponse = zod.record(
   zod.string(),
   zod.object({
+    responseVersion: zod.number(),
     grossInvoiced: zod.number(),
     collected: zod.number(),
     otherIncomeRevenue: zod.number(),

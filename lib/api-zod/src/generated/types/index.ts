@@ -108,6 +108,7 @@ export * from "./jobReadinessConditionReason";
 export * from "./jobResourceDemand";
 export * from "./jobStatus";
 export * from "./listClientBillingProfilesParams";
+export * from "./listClientsParams";
 export * from "./listDailyLogsParams";
 export * from "./listExpensesParams";
 export * from "./listInvoicesParams";
