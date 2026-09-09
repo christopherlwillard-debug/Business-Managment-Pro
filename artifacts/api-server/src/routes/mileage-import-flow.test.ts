@@ -324,4 +324,85 @@ describe("mileage import financial integrity — real database", () => {
       ));
     expect(activeKeyCount).toBe(1);
   });
+
+  it("isolates identical provider drive keys between businesses", async () => {
+    const firstBusinessId = await createBusiness("same-provider-key-first");
+    const secondBusinessId = await createBusiness("same-provider-key-second");
+    const sourceTripKey = "09/01/2026 11:00|09/01/2026 11:20";
+    const source = "mileiq";
+
+    const importForBusiness = (businessId: number, suffix: string) =>
+      request(app)
+        .post("/mileage/bulk")
+        .send({
+          businessId,
+          source,
+          filename: `same-provider-key-${suffix}.csv`,
+          fileHash: `same-provider-key-${suffix}`,
+          trips: [trip(sourceTripKey, 10)],
+        });
+
+    const firstImport = await importForBusiness(firstBusinessId, "first");
+    const secondImport = await importForBusiness(secondBusinessId, "second");
+
+    expect(firstImport.status).toBe(201);
+    expect(secondImport.status).toBe(201);
+    expect(firstImport.body).toMatchObject({
+      imported: 1,
+      duplicatesSkipped: 0,
+      estimatedDeduction: 7.6,
+      expensesCreated: 1,
+    });
+    expect(secondImport.body).toMatchObject({
+      imported: 1,
+      duplicatesSkipped: 0,
+      estimatedDeduction: 7.6,
+      expensesCreated: 1,
+    });
+
+    for (const [businessId, importId] of [
+      [firstBusinessId, firstImport.body.importId],
+      [secondBusinessId, secondImport.body.importId],
+    ] as const) {
+      const logs = await activeLogs(businessId);
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({
+        businessId,
+        source,
+        sourceTripKey,
+        importId,
+      });
+
+      const expenses = await activeMileageExpenses(businessId);
+      expect(expenses).toHaveLength(1);
+      expect(expenses[0]).toMatchObject({
+        businessId,
+        category: "mileage",
+        mileageImportId: importId,
+      });
+      expect(Number(expenses[0]?.amount)).toBeCloseTo(7.6, 2);
+    }
+
+    const repeatedFirstImport = await importForBusiness(firstBusinessId, "first-repeat");
+    const repeatedSecondImport = await importForBusiness(secondBusinessId, "second-repeat");
+
+    expect(repeatedFirstImport.status).toBe(201);
+    expect(repeatedSecondImport.status).toBe(201);
+    expect(repeatedFirstImport.body).toMatchObject({
+      imported: 0,
+      duplicatesSkipped: 1,
+      estimatedDeduction: 0,
+      expensesCreated: 0,
+    });
+    expect(repeatedSecondImport.body).toMatchObject({
+      imported: 0,
+      duplicatesSkipped: 1,
+      estimatedDeduction: 0,
+      expensesCreated: 0,
+    });
+    expect(await activeLogs(firstBusinessId)).toHaveLength(1);
+    expect(await activeLogs(secondBusinessId)).toHaveLength(1);
+    expect(await activeMileageExpenses(firstBusinessId)).toHaveLength(1);
+    expect(await activeMileageExpenses(secondBusinessId)).toHaveLength(1);
+  });
 });
