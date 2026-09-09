@@ -7,8 +7,11 @@ import type { JobProfitResponse } from "@workspace/api-client-react";
 
 import { computeSubOwed } from "@/lib/allocationUtils";
 import { calculateJobFinancialWaterfall } from "@/lib/jobFinancials";
-import { canApplyJobResponse } from "@/lib/jobProfitRequests";
-import { applyJobPayrollProfitRefresh } from "@/lib/jobPaymentSummaryRefresh";
+import {
+  applyJobProfitRefresh,
+  canApplyJobResponse,
+  startJobProfitRefresh,
+} from "@/lib/jobProfitRequests";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
 
@@ -1149,8 +1152,10 @@ export default function JobPayroll() {
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
-    setProfitError(false);
-    const requestKey = loadKeyRef.current;
+    const profitRefresh = startJobProfitRefresh<JobProfitResponse>();
+    setProfit(profitRefresh.profit);
+    setProfitError(profitRefresh.profitError);
+    const requestKey = ++loadKeyRef.current;
     const requestedJobId = jobId;
     const [pRes, profRes, hoursRes] = await Promise.allSettled([
       fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`,  { credentials: "include" }).then(r => r.ok ? r.json() : []),
@@ -1159,8 +1164,8 @@ export default function JobPayroll() {
     ]);
     if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) return;
     if (pRes.status    === "fulfilled") setPayments(pRes.value as SubPaymentRow[]);
-    const profitState = applyJobPayrollProfitRefresh(
-      { loading: true, profit, profitError },
+    const profitState = applyJobProfitRefresh(
+      profitRefresh,
       {
         requestKey,
         currentRequestKey: loadKeyRef.current,
@@ -1180,10 +1185,11 @@ export default function JobPayroll() {
   useEffect(() => {
     const requestedJobId = jobId;
     const requestKey = ++loadKeyRef.current;
+    const profitRefresh = startJobProfitRefresh<JobProfitResponse>();
     setLoading(true);
-    setProfitError(false);
     setJob(null);
-    setProfit(null);
+    setProfit(profitRefresh.profit);
+    setProfitError(profitRefresh.profitError);
     setPayments([]);
     setSubHours([]);
     dirtyCountRef.current = 0;
@@ -1199,8 +1205,8 @@ export default function JobPayroll() {
       if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) return;
       if (jobRes.status       === "fulfilled" && jobRes.value)     setJob(jobRes.value as Job);
       if (pRes.status         === "fulfilled")                     setPayments(pRes.value as SubPaymentRow[]);
-      const profitState = applyJobPayrollProfitRefresh(
-        { loading: true, profit: null, profitError: false },
+      const profitState = applyJobProfitRefresh(
+        profitRefresh,
         {
           requestKey,
           currentRequestKey: loadKeyRef.current,

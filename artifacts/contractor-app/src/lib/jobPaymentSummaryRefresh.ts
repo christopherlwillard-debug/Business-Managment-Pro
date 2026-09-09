@@ -1,5 +1,3 @@
-import { canApplyJobResponse } from "./jobProfitRequests";
-
 export type JobPaymentSummaryRefreshState = {
   invoiceKey: number;
   financialKey: number;
@@ -60,50 +58,6 @@ export function missingProfitSummaryJobIds<T>(
 
 export function jobProfitSummaryRequestKey(jobIds: number[], financialKey: number): string {
   return `${jobIds.join(",")}:${financialKey}`;
-}
-
-export type JobPayrollProfitRefreshState<T> = {
-  loading: boolean;
-  profit: T | null;
-  profitError: boolean;
-};
-
-export type JobPayrollProfitRefreshInput<T> = {
-  requestKey: number;
-  currentRequestKey: number;
-  requestedJobId: number;
-  currentJobId: number;
-  response:
-    | { status: "fulfilled"; value: T | null | undefined }
-    | { status: "rejected" };
-};
-
-export function applyJobPayrollProfitRefresh<T>(
-  state: JobPayrollProfitRefreshState<T>,
-  input: JobPayrollProfitRefreshInput<T>,
-): JobPayrollProfitRefreshState<T> {
-  if (!canApplyJobResponse(
-    input.requestKey,
-    input.currentRequestKey,
-    input.requestedJobId,
-    input.currentJobId,
-  )) {
-    return state;
-  }
-
-  if (input.response.status === "fulfilled" && input.response.value != null) {
-    return {
-      loading: false,
-      profit: input.response.value,
-      profitError: false,
-    };
-  }
-
-  return {
-    loading: false,
-    profit: null,
-    profitError: true,
-  };
 }
 
 export function jobPaymentSummaryRefreshReducer(

@@ -6,7 +6,6 @@ import type { JobProfitResponse } from "@workspace/api-client-react";
 import { formatJobFinancialAmount } from "./jobFinancials";
 import { calculateJobMargin } from "./jobMargin";
 import {
-  applyJobPayrollProfitRefresh,
   canSortProfitSummaries,
   compareProfitSummaryValuesDescending,
   hasCompleteProfitSummaries,
@@ -17,6 +16,10 @@ import {
   missingProfitSummaryJobIds,
   type JobPaymentSummaryRefreshAction,
 } from "./jobPaymentSummaryRefresh";
+import {
+  applyJobProfitRefresh,
+  startJobProfitRefresh,
+} from "./jobProfitRequests";
 
 type PayrollProfitSnapshot = Pick<
   JobProfitResponse,
@@ -115,8 +118,8 @@ describe("Jobs payment summary refresh", () => {
       netProfit: 1710.75,
     };
 
-    const next = applyJobPayrollProfitRefresh<PayrollProfitSnapshot>(
-      { loading: true, profit: null, profitError: false },
+    const next = applyJobProfitRefresh<PayrollProfitSnapshot>(
+      startJobProfitRefresh<PayrollProfitSnapshot>(),
       {
         requestKey: 8,
         currentRequestKey: 8,
@@ -147,8 +150,8 @@ describe("Jobs payment summary refresh", () => {
       netProfit: 1200,
     };
 
-    const next = applyJobPayrollProfitRefresh<PayrollProfitSnapshot>(
-      { loading: true, profit: previousProfit, profitError: false },
+    const next = applyJobProfitRefresh<PayrollProfitSnapshot>(
+      startJobProfitRefresh<PayrollProfitSnapshot>(),
       {
         requestKey: 9,
         currentRequestKey: 9,
@@ -184,7 +187,7 @@ describe("Jobs payment summary refresh", () => {
       profitError: false,
     };
 
-    const next = applyJobPayrollProfitRefresh(
+    const next = applyJobProfitRefresh(
       state,
       {
         requestKey: 10,

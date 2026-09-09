@@ -48,7 +48,13 @@ import {
   type JobProfitSummaryStatus,
   type JobPaymentSummaryRefreshAction,
 } from "@/lib/jobPaymentSummaryRefresh";
-import { canApplyJobResponse, getSavedMileageReimbursement, isAbortError } from "@/lib/jobProfitRequests";
+import {
+  applyJobProfitRefresh,
+  canApplyJobResponse,
+  getSavedMileageReimbursement,
+  isAbortError,
+  startJobProfitRefresh,
+} from "@/lib/jobProfitRequests";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { Card } from "@/components/ui/card";
@@ -1581,14 +1587,62 @@ function JobPaymentSummary({
 function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const [data, setData] = useState<JobProfitResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const requestKeyRef = useRef(0);
+  const currentJobIdRef = useRef(job.id);
+  currentJobIdRef.current = job.id;
 
   useEffect(() => {
-    setLoading(true);
-    getJobProfit(job.id, { credentials: "include" })
-      .then(d => { setData(d); })
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [job.id]);
+    const requestKey = ++requestKeyRef.current;
+    const refreshState = startJobProfitRefresh<JobProfitResponse>();
+    const controller = new AbortController();
+    setLoading(refreshState.loading);
+    setData(refreshState.profit);
+    setError(refreshState.profitError);
+    getJobProfit(job.id, { credentials: "include", signal: controller.signal })
+      .then(value => {
+        const next = applyJobProfitRefresh(refreshState, {
+          requestKey,
+          currentRequestKey: requestKeyRef.current,
+          requestedJobId: job.id,
+          currentJobId: currentJobIdRef.current,
+          response: { status: "fulfilled", value },
+        });
+        if (!canApplyJobResponse(
+          requestKey,
+          requestKeyRef.current,
+          job.id,
+          currentJobIdRef.current,
+        )) return;
+        setLoading(next.loading);
+        setData(next.profit);
+        setError(next.profitError);
+      })
+      .catch(fetchError => {
+        if (isAbortError(fetchError) && controller.signal.aborted) return;
+        const next = applyJobProfitRefresh(refreshState, {
+          requestKey,
+          currentRequestKey: requestKeyRef.current,
+          requestedJobId: job.id,
+          currentJobId: currentJobIdRef.current,
+          response: { status: "rejected" },
+        });
+        if (!canApplyJobResponse(
+          requestKey,
+          requestKeyRef.current,
+          job.id,
+          currentJobIdRef.current,
+        )) return;
+        setLoading(next.loading);
+        setData(next.profit);
+        setError(next.profitError);
+      });
+    return () => {
+      controller.abort();
+      requestKeyRef.current += 1;
+    };
+  }, [job.id, retryKey]);
 
   const net = data?.netProfit ?? 0;
   const isProfit = net > 0;
@@ -1619,6 +1673,18 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
           {loading ? (
             <div className="space-y-3">
               {[1, 2, 3, 4].map(i => <div key={i} className="h-16 rounded-xl bg-muted/40 animate-pulse" />)}
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center">
+              <TrendingUp className="w-10 h-10 text-muted-foreground/30 mb-3" />
+              <p className="text-sm text-muted-foreground">Profit data is unavailable</p>
+              <button
+                type="button"
+                onClick={() => setRetryKey(key => key + 1)}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/50"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Try again
+              </button>
             </div>
           ) : data == null ? (
             <div className="flex flex-col items-center justify-center h-40 text-center">
@@ -1767,6 +1833,62 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       : { credentials: "include" };
   }
 
+  async function refreshJobProfitAfterMutation(): Promise<boolean> {
+    const requestedJobId = job.id;
+    const requestKey = ++profitLoadKeyRef.current;
+    const refreshState = startJobProfitRefresh<JobProfitResponse>();
+    const controller = panelAbortControllerRef.current;
+    detailedProfitLoaded.current = true;
+    setLoading(refreshState.loading);
+    setProfit(refreshState.profit);
+    setProfitError(refreshState.profitError);
+
+    try {
+      const value = await getJobProfit(
+        requestedJobId,
+        controller
+          ? { credentials: "include", signal: controller.signal }
+          : { credentials: "include" },
+      );
+      const next = applyJobProfitRefresh(refreshState, {
+        requestKey,
+        currentRequestKey: profitLoadKeyRef.current,
+        requestedJobId,
+        currentJobId: currentJobIdRef.current,
+        response: { status: "fulfilled", value },
+      });
+      if (!canApplyJobResponse(
+        requestKey,
+        profitLoadKeyRef.current,
+        requestedJobId,
+        currentJobIdRef.current,
+      )) return false;
+      setLoading(next.loading);
+      setProfit(next.profit);
+      setProfitError(next.profitError);
+      return !next.profitError;
+    } catch (error) {
+      if (isAbortError(error) && controller?.signal.aborted) return false;
+      const next = applyJobProfitRefresh(refreshState, {
+        requestKey,
+        currentRequestKey: profitLoadKeyRef.current,
+        requestedJobId,
+        currentJobId: currentJobIdRef.current,
+        response: { status: "rejected" },
+      });
+      if (!canApplyJobResponse(
+        requestKey,
+        profitLoadKeyRef.current,
+        requestedJobId,
+        currentJobIdRef.current,
+      )) return false;
+      setLoading(next.loading);
+      setProfit(next.profit);
+      setProfitError(next.profitError);
+      return false;
+    }
+  }
+
   useEffect(() => {
     // The parent supplies the bulk profit-summary response, which intentionally
     // omits reimbursement and fuel-detail fields. It is useful for the first
@@ -1908,11 +2030,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Could not remove the allocation.");
       setExpenseItems(prev => prev?.filter(item => item.id !== allocationId) ?? prev);
-      const fresh = await getJobProfit(job.id, panelRequestOptions()).catch(() => null);
-      if (fresh) {
-        detailedProfitLoaded.current = true;
-        setProfit(fresh);
-      }
+      await refreshJobProfitAfterMutation();
       toast({ title: "Allocation removed", description: "The original expense was not changed." });
     } catch (err) {
       toast({ title: "Could not remove allocation", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
@@ -2033,15 +2151,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Could not save mileage reimbursement.");
-      const fresh = await getJobProfit(job.id, requestController
-        ? { credentials: "include", signal: requestController.signal }
-        : { credentials: "include" });
-      if (fresh) {
-        detailedProfitLoaded.current = true;
-        setProfit(fresh);
-        setExpenseItems(null);
-        if (expensesOpen) void loadExpenses();
-      }
+      await refreshJobProfitAfterMutation();
+      setExpenseItems(null);
+      if (expensesOpen) void loadExpenses();
       toast({ title: "Mileage reimbursement saved", description: "This amount is added to job costs and excluded from the percentage split." });
     } catch (err) {
       if (isAbortError(err) && requestController?.signal.aborted) return;
@@ -2081,9 +2193,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
     panelAbortControllerRef.current?.abort();
     panelAbortControllerRef.current = controller;
     const requestOptions: RequestInit = { credentials: "include", signal: controller.signal };
-    setLoading(true);
-    setProfitError(false);
-    setProfit(null);
+    const refreshState = startJobProfitRefresh<JobProfitResponse>();
+    setLoading(refreshState.loading);
+    setProfit(refreshState.profit);
+    setProfitError(refreshState.profitError);
     detailedProfitLoaded.current = false;
     const fetches = [
       fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`, requestOptions).then(r => r.ok ? r.json() : []),
@@ -2109,16 +2222,22 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       }
       if (hRes.status === "fulfilled" && Array.isArray(hRes.value)) setSubHours(hRes.value as SubHourEntry[]);
       if (dRes.status === "fulfilled" && Array.isArray(dRes.value)) setDistributions(dRes.value);
-      if (profRes?.status === "fulfilled" && profRes.value) {
-        detailedProfitLoaded.current = true;
-        setProfit(profRes.value);
-        setProfitError(false);
-      } else {
-        detailedProfitLoaded.current = true;
-        setProfit(null);
-        setProfitError(true);
-      }
-      setLoading(false);
+      const profitState = applyJobProfitRefresh(
+        refreshState,
+        {
+          requestKey,
+          currentRequestKey: profitLoadKeyRef.current,
+          requestedJobId,
+          currentJobId: currentJobIdRef.current,
+          response: profRes?.status === "fulfilled"
+            ? { status: "fulfilled", value: profRes.value }
+            : { status: "rejected" },
+        },
+      );
+      detailedProfitLoaded.current = true;
+      setLoading(profitState.loading);
+      setProfit(profitState.profit);
+      setProfitError(profitState.profitError);
     });
     return () => {
       controller.abort();
@@ -5272,6 +5391,12 @@ function JobCard({
   const [tripsPanelOpen, setTripsPanelOpen] = useState(false);
   const [compactExpanded, setCompactExpanded] = useState(false);
   const [localSubPaid, setLocalSubPaid] = useState(job.subPaid);
+  const [displayProfitLoading, setDisplayProfitLoading] = useState(false);
+  const [displayProfitError, setDisplayProfitError] = useState(false);
+  const displayProfitRequestKeyRef = useRef(0);
+  const displayProfitAbortControllerRef = useRef<AbortController | null>(null);
+  const currentDisplayProfitJobIdRef = useRef(job.id);
+  currentDisplayProfitJobIdRef.current = job.id;
   const jobWorkflow = getJobWorkflow(job);
   const isCompleted = displayStatus(job.status) === "completed";
   const today = localDateString();
@@ -5285,7 +5410,68 @@ function JobCard({
   const visibleProductionServiceIds = overviewOnly ? productionServiceIds.slice(0, 2) : productionServiceIds;
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
-  useEffect(() => { setDisplayProfit(profitData); }, [profitData]);
+  useEffect(() => {
+    setDisplayProfit(profitData);
+    setDisplayProfitError(false);
+  }, [profitData]);
+
+  async function refreshDisplayProfit() {
+    const requestedJobId = job.id;
+    const requestKey = ++displayProfitRequestKeyRef.current;
+    const refreshState = startJobProfitRefresh<JobProfitResponse>();
+    const controller = new AbortController();
+    displayProfitAbortControllerRef.current?.abort();
+    displayProfitAbortControllerRef.current = controller;
+    setDisplayProfitLoading(refreshState.loading);
+    setDisplayProfit(refreshState.profit);
+    setDisplayProfitError(refreshState.profitError);
+
+    try {
+      const value = await getJobProfit(requestedJobId, {
+        credentials: "include",
+        signal: controller.signal,
+      });
+      const next = applyJobProfitRefresh(refreshState, {
+        requestKey,
+        currentRequestKey: displayProfitRequestKeyRef.current,
+        requestedJobId,
+        currentJobId: currentDisplayProfitJobIdRef.current,
+        response: { status: "fulfilled", value },
+      });
+      if (!canApplyJobResponse(
+        requestKey,
+        displayProfitRequestKeyRef.current,
+        requestedJobId,
+        currentDisplayProfitJobIdRef.current,
+      )) return;
+      setDisplayProfitLoading(next.loading);
+      setDisplayProfit(next.profit);
+      setDisplayProfitError(next.profitError);
+    } catch (error) {
+      if (isAbortError(error) && controller.signal.aborted) return;
+      const next = applyJobProfitRefresh(refreshState, {
+        requestKey,
+        currentRequestKey: displayProfitRequestKeyRef.current,
+        requestedJobId,
+        currentJobId: currentDisplayProfitJobIdRef.current,
+        response: { status: "rejected" },
+      });
+      if (!canApplyJobResponse(
+        requestKey,
+        displayProfitRequestKeyRef.current,
+        requestedJobId,
+        currentDisplayProfitJobIdRef.current,
+      )) return;
+      setDisplayProfitLoading(next.loading);
+      setDisplayProfit(next.profit);
+      setDisplayProfitError(next.profitError);
+    }
+  }
+
+  useEffect(() => () => {
+    displayProfitAbortControllerRef.current?.abort();
+    displayProfitRequestKeyRef.current += 1;
+  }, [job.id]);
 
   type OutstandingSubRow = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null; computedOwed?: number; amountPaid?: number; paymentStatus?: string; totalHours?: number | null; accruedBonus?: number | null };
   const [unpaidSubs, setUnpaidSubs] = useState<OutstandingSubRow[] | null>(null);
@@ -5604,7 +5790,21 @@ function JobCard({
         {!overviewOnly ? (
         <>
         {/* Inline Job P&L card — tappable, opens Job Financials → Profit Split */}
-        {displayProfit != null && (displayProfit.grossInvoiced > 0 || displayProfit.jobExpenses > 0) && (
+         {displayProfitLoading && (
+           <div className="flex items-center justify-center gap-2 rounded-xl border border-border/50 bg-muted/20 p-3 text-xs text-muted-foreground">
+             <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Refreshing job P&amp;L…
+           </div>
+         )}
+         {displayProfitError && !displayProfitLoading && (
+           <button
+             type="button"
+             onClick={() => void refreshDisplayProfit()}
+             className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+           >
+             <RefreshCw className="w-3.5 h-3.5" /> Job P&amp;L unavailable — try again
+           </button>
+         )}
+         {displayProfit != null && !displayProfitLoading && (displayProfit.grossInvoiced > 0 || displayProfit.jobExpenses > 0) && (
           <button
             type="button"
             onClick={() => { setFinancialsInitialTab("breakdown"); setFinancialsPanelOpen(true); }}
@@ -6081,9 +6281,8 @@ function JobCard({
         job={job}
         open={jobExpenseOpen}
         onClose={() => setJobExpenseOpen(false)}
-        onSaved={async () => {
-          const fresh = await getJobProfit(job.id, { credentials: "include" }).catch(() => null);
-          if (fresh) setDisplayProfit(fresh);
+        onSaved={() => {
+          void refreshDisplayProfit();
           onPaymentSummaryChanged?.();
         }}
       />
