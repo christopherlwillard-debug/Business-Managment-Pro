@@ -25,6 +25,7 @@ const h = vi.hoisted(() => ({
   updates: [] as any[],
   inserts: [] as any[],
   mutationResolution: undefined as any,
+  updateReturningOverride: undefined as any[] | undefined,
   canonicalOwner: undefined as any,
   // Controls whether isSquareConfigured() returns true in a given test.
   squareConfigured: false,
@@ -54,7 +55,9 @@ vi.mock("@workspace/db", () => {
         return {
           where: () => {
             const result = Promise.resolve() as Promise<void> & { returning: () => Promise<any[]> };
-            result.returning = () => Promise.resolve([{ id: 42, ...data }]);
+            result.returning = () => Promise.resolve(
+              h.updateReturningOverride ?? [{ id: 42, ...data }],
+            );
             return result;
           },
         };
@@ -188,6 +191,7 @@ beforeEach(() => {
     explicit: false,
     business: { id: 1, slug: "general_contracting" },
   };
+  h.updateReturningOverride = undefined;
   h.canonicalOwner = { state: "blank" };
   h.squareConfigured = false;
   deleteSquarePaymentLink.mockClear();
@@ -684,7 +688,7 @@ describe("gmailRepairRequiredInvoiceIds", () => {
       { id: 45, status: "approved", acceptedAt: "2026-09-05T10:00:00.000Z" },
     ]);
 
-    expect([...result]).toEqual([45]);
+    expect([...result]).toEqual([44, 45]);
     expect(h.updates).toHaveLength(0);
   });
 });
@@ -719,6 +723,48 @@ describe("POST /:id/communications/:eventId/finalize", () => {
       },
       ...overrides,
     }),
+  });
+
+  const recoveredGmailResponses = (requestedAt: Date) => [
+    {
+      ok: true,
+      json: async () => ({
+        messages: [{ id: "gmail-message-1", threadId: "gmail-thread-1" }],
+      }),
+    },
+    {
+      ok: true,
+      json: async () => ({
+        id: "gmail-message-1",
+        threadId: "gmail-thread-1",
+        internalDate: String(requestedAt.getTime()),
+        labelIds: ["SENT"],
+        payload: {
+          headers: [
+            { name: "To", value: "client@example.com" },
+            { name: "Subject", value: "Invoice INV-1001" },
+            { name: "X-BuildPro-Delivery-ID", value: "77" },
+          ],
+        },
+      }),
+    },
+  ];
+
+  it("does not overwrite a pending Gmail event resolved during recovery", async () => {
+    const requestedAt = new Date("2026-09-05T12:00:00.000Z");
+    h.selectQueue.push([pendingEvent({ requestedAt })]);
+    h.updateReturningOverride = [];
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(recoveredGmailResponses(requestedAt)[0])
+      .mockResolvedValueOnce(recoveredGmailResponses(requestedAt)[1]));
+
+    const res = await request(app)
+      .post("/42/communications/77/recover-gmail")
+      .send({ gmailAccessToken: "gmail-token" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/already resolved/i);
+    expect(h.updates).not.toContainEqual(expect.objectContaining({ status: "sent" }));
   });
 
   it.each(["failed", "unknown"] as const)(

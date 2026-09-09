@@ -7,6 +7,7 @@ import {
   Link2,
   Mail,
   ReceiptText,
+  RotateCcw,
   Send,
 } from "lucide-react";
 import type { InvoiceCommunicationEvent } from "@workspace/api-client-react";
@@ -15,6 +16,8 @@ interface InvoiceDeliveryHistoryProps {
   invoiceNumber?: string | null;
   events: InvoiceCommunicationEvent[];
   isLoading?: boolean;
+  isRepairingGmail?: boolean;
+  onRepairGmail?: (eventId: number) => void;
 }
 
 const LOCAL_TIMESTAMP_OPTIONS: Intl.DateTimeFormatOptions = {
@@ -89,6 +92,8 @@ export function InvoiceDeliveryHistory({
   invoiceNumber,
   events,
   isLoading = false,
+  isRepairingGmail = false,
+  onRepairGmail,
 }: InvoiceDeliveryHistoryProps) {
   const orderedEvents = sortInvoiceCommunicationEvents(events);
 
@@ -120,7 +125,14 @@ export function InvoiceDeliveryHistory({
       ) : (
         <div className="relative space-y-3 pl-1">
           <div className="absolute bottom-2 left-[8px] top-2 w-px bg-gray-200" aria-hidden="true" />
-          {orderedEvents.map(event => (
+          {orderedEvents.map(event => {
+            const canRecoverPendingGmail = event.status === "pending"
+              && event.channel === "gmail"
+              && event.provider === "gmail"
+              && (event.eventType === "initial_invoice" || event.eventType === "resend_invoice")
+              && !event.providerMessageId
+              && Boolean(onRepairGmail);
+            return (
             <div className="relative flex gap-2.5" key={event.id}>
               <div className="relative z-10 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500">
                 {eventIcon(event.eventType)}
@@ -146,9 +158,21 @@ export function InvoiceDeliveryHistory({
                     Message ID: {event.providerMessageId}
                   </p>
                 )}
+                {canRecoverPendingGmail && onRepairGmail && (
+                  <button
+                    type="button"
+                    onClick={() => onRepairGmail(event.id)}
+                    disabled={isRepairingGmail}
+                    className="mt-2 inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    {isRepairingGmail ? "Checking Gmail…" : "Find Sent Email & Repair"}
+                  </button>
+                )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>

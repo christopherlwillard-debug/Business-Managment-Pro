@@ -7,6 +7,13 @@ import {
 } from "@workspace/db/schema";
 
 export type InvoiceCommunicationStatus = "pending" | "accepted" | "failed" | "unknown";
+
+export class InvoiceCommunicationConflictError extends Error {
+  constructor() {
+    super("Invoice communication is no longer pending");
+    this.name = "InvoiceCommunicationConflictError";
+  }
+}
 export type InvoiceCommunicationType =
   | "initial_invoice"
   | "resend_invoice"
@@ -61,6 +68,7 @@ export async function finalizeInvoiceCommunication(
     errorMessage?: string | null;
     metadata?: Record<string, unknown>;
   },
+  expectedStatus?: InvoiceCommunicationStatus,
 ): Promise<InvoiceCommunicationEvent> {
   const [event] = await db.update(invoiceCommunicationEventsTable)
     .set({
@@ -76,8 +84,10 @@ export async function finalizeInvoiceCommunication(
     .where(and(
       eq(invoiceCommunicationEventsTable.id, eventId),
       eq(invoiceCommunicationEventsTable.invoiceId, invoiceId),
+      ...(expectedStatus ? [eq(invoiceCommunicationEventsTable.status, expectedStatus)] : []),
     ))
     .returning();
+  if (!event && expectedStatus) throw new InvoiceCommunicationConflictError();
   if (!event) throw new Error("Invoice communication event not found");
   return event;
 }
@@ -136,7 +146,7 @@ export async function gmailRepairRequiredInvoiceIds(
       && (row.eventType === "initial_invoice" || row.eventType === "resend_invoice")
       && (row.status === "pending" || row.status === "accepted")
       && row.provider === "gmail"
-      && Boolean(row.providerMessageId)
+      && (row.status === "pending" || Boolean(row.providerMessageId))
       && metadata.gmailEvidenceVerified !== true
       && new Date(row.requestedAt).getTime() >= (acceptedAtByInvoiceId.get(row.invoiceId) ?? 0);
   }).map(row => row.invoiceId));

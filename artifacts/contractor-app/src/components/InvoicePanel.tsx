@@ -352,8 +352,9 @@ export function InvoicePanel({
   }, [form.businessLine]);
 
   useEffect(() => {
-    if (!open || !["approved", "sent", "overdue"].includes(effectiveExistingInvoice?.status ?? "")) return;
+    if (!open || !["approved", "sent", "overdue", "partiallyPaid"].includes(effectiveExistingInvoice?.status ?? "")) return;
     if (!effectiveExistingInvoice) return;
+    if (!communicationHistory.data) return;
     const acceptedAt = effectiveExistingInvoice.acceptedAt
       ? new Date(effectiveExistingInvoice.acceptedAt).getTime()
       : 0;
@@ -377,7 +378,12 @@ export function InvoicePanel({
         new Date(event.requestedAt).getTime() >= acceptedAt
       )
       .at(-1);
-    if (!unresolved) return;
+    if (!unresolved) {
+      setGmailFinalizationRecovery(null);
+      setGmailDeliveryBlocked(null);
+      setGmailPendingEventId(null);
+      return;
+    }
     if (unresolved.providerMessageId) {
       setGmailFinalizationRecovery({
         invoiceId: effectiveExistingInvoice.id,
@@ -387,9 +393,14 @@ export function InvoicePanel({
       });
       setGmailDeliveryBlocked(null);
       setGmailPendingEventId(null);
-    } else {
+    } else if (unresolved.status === "pending") {
+      setGmailFinalizationRecovery(null);
       setGmailDeliveryBlocked("A previous Gmail delivery attempt is still pending. Resolve its delivery history before sending again.");
       setGmailPendingEventId(unresolved.id);
+    } else {
+      setGmailFinalizationRecovery(null);
+      setGmailDeliveryBlocked("This Gmail delivery has no message evidence and cannot be marked Sent.");
+      setGmailPendingEventId(null);
     }
   }, [open, effectiveExistingInvoice?.id, effectiveExistingInvoice?.status, effectiveExistingInvoice?.acceptedAt, communicationHistory.data]);
 
@@ -1063,14 +1074,21 @@ export function InvoicePanel({
     }
   }
 
-  async function handleRepairGmailHistory() {
+  async function handleRepairGmailHistory(eventIdOverride?: unknown) {
     if (!effectiveExistingInvoice) return;
+    const pendingEventId = typeof eventIdOverride === "number"
+      ? eventIdOverride
+      : gmailPendingEventId;
     setGmailSending(true);
     try {
       const token = await getToken();
-      if (!gmailFinalizationRecovery && gmailPendingEventId) {
+      const directPendingEventId = typeof eventIdOverride === "number"
+        ? eventIdOverride
+        : null;
+      if (directPendingEventId || (!gmailFinalizationRecovery && pendingEventId)) {
+        const recoveryEventId = directPendingEventId ?? pendingEventId!;
         const response = await fetch(
-          `${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${gmailPendingEventId}/recover-gmail`,
+          `${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${recoveryEventId}/recover-gmail`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1242,7 +1260,7 @@ export function InvoicePanel({
         style={{ maxWidth: "min(96vw, 760px)", maxHeight: "96vh" }}>
 
         {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0 bg-white">
+        <div className="relative z-20 flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0 bg-white">
           <div className="flex items-center gap-2 min-w-0">
             <h2 className="text-sm font-bold text-gray-900 truncate">
               {isEdit ? (effectiveExistingInvoice!.invoiceNumber ? `Invoice ${effectiveExistingInvoice!.invoiceNumber}` : "Draft Invoice") : "New Invoice"}
@@ -2214,6 +2232,8 @@ export function InvoicePanel({
             invoiceNumber={effectiveExistingInvoice.invoiceNumber}
             events={communicationHistory.data ?? []}
             isLoading={communicationHistory.isLoading}
+            isRepairingGmail={gmailSending}
+            onRepairGmail={eventId => { void handleRepairGmailHistory(eventId); }}
           />
         )}
 

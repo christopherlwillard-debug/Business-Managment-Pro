@@ -25,6 +25,7 @@ import { calculateInvoiceTotals } from "@workspace/api-zod";
 import {
   createPendingInvoiceCommunication,
   finalizeInvoiceCommunication,
+  InvoiceCommunicationConflictError,
   confirmedGmailInvoiceIds,
   sendAndRecordInvoiceCommunication,
   updateCompatibilitySentFields,
@@ -932,11 +933,16 @@ router.post("/:id/communications/:eventId/recover-gmail", async (req, res) => {
         gmailEvidenceVerifiedAt: new Date().toISOString(),
         gmailEvidenceRecovered: true,
       },
-    });
+    }, "pending");
     await updateCompatibilitySentFields(invoiceId, "gmail", event.completedAt);
     res.json(event);
   } catch (err) {
     console.error("Recover Gmail invoice communication error:", err);
+    if (err instanceof InvoiceCommunicationConflictError) {
+      return res.status(409).json({
+        error: "This Gmail delivery was already resolved. Refresh the invoice before trying again.",
+      });
+    }
     res.status(400).json({
       error: err instanceof Error ? err.message : "Gmail delivery history could not be recovered.",
     });

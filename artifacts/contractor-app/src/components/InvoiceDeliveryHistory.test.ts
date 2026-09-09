@@ -95,4 +95,47 @@ describe("InvoiceDeliveryHistory", () => {
 
     expect(markup.indexOf("gmail-message-1")).toBeLessThan(markup.indexOf("later-message"));
   });
+
+  it("puts the existing Gmail recovery action on the matching pending event", () => {
+    const pendingEvent = {
+      ...event,
+      status: "pending",
+      completedAt: null,
+      providerMessageId: null,
+    } satisfies InvoiceCommunicationEvent;
+    const markup = renderToStaticMarkup(InvoiceDeliveryHistory({
+      events: [pendingEvent],
+      onRepairGmail: () => undefined,
+    }));
+
+    expect(markup).toContain("Find Sent Email &amp; Repair");
+  });
+
+  it("does not offer pending-message recovery for an accepted event", () => {
+    const acceptedWithoutEvidence = {
+      ...event,
+      providerMessageId: null,
+    } satisfies InvoiceCommunicationEvent;
+    const markup = renderToStaticMarkup(InvoiceDeliveryHistory({
+      events: [acceptedWithoutEvidence],
+      onRepairGmail: () => undefined,
+    }));
+
+    expect(markup).not.toContain("Find Sent Email &amp; Repair");
+  });
+
+  it("offers recovery from the event's own pending state", () => {
+    const pendingEvent = {
+      ...event,
+      status: "pending",
+      completedAt: null,
+      providerMessageId: null,
+    } satisfies InvoiceCommunicationEvent;
+    const markup = renderToStaticMarkup(InvoiceDeliveryHistory({
+      events: [pendingEvent],
+      onRepairGmail: () => undefined,
+    }));
+
+    expect(markup).toContain("Find Sent Email &amp; Repair");
+  });
 });
