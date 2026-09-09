@@ -116,6 +116,54 @@ router.post("/", async (req, res) => {
   }
 });
 
+router.post("/reorder", async (req, res) => {
+  try {
+    const { date, stopIds } = req.body as { date?: unknown; stopIds?: unknown };
+    if (typeof date !== "string" || !date) {
+      return res.status(400).json({ error: "date is required" });
+    }
+    if (
+      !Array.isArray(stopIds)
+      || stopIds.length === 0
+      || stopIds.some(id => !Number.isInteger(id) || id <= 0)
+      || new Set(stopIds).size !== stopIds.length
+    ) {
+      return res.status(400).json({ error: "stopIds must be a non-empty list of unique stop IDs" });
+    }
+
+    const updated = await db.transaction(async tx => {
+      const stops = await tx
+        .select({ id: routeStopsTable.id })
+        .from(routeStopsTable)
+        .where(eq(routeStopsTable.scheduledDate, date));
+      const requestedIds = stopIds as number[];
+      const existingIds = new Set(stops.map(stop => stop.id));
+      if (
+        existingIds.size !== requestedIds.length
+        || requestedIds.some(id => !existingIds.has(id))
+      ) {
+        return null;
+      }
+
+      for (const [sortOrder, id] of requestedIds.entries()) {
+        await tx
+          .update(routeStopsTable)
+          .set({ sortOrder })
+          .where(and(eq(routeStopsTable.id, id), eq(routeStopsTable.scheduledDate, date)));
+      }
+      return requestedIds.length;
+    });
+
+    if (updated == null) {
+      return res.status(400).json({ error: "stopIds must contain every route stop for the selected date" });
+    }
+    res.json({ updated });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to reorder route stops" });
+  }
+});
+
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);

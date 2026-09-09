@@ -834,6 +834,8 @@ async function main() {
   let profitDetailFailureJobId: number | null = null;
   let panelResponseDelayMs = 0;
   let panelResponseDelayJobId: number | null = null;
+  let routeReorderFailureMode = false;
+  const routeReorderRequests: { date?: unknown; stopIds?: unknown }[] = [];
   let sessionId: string | undefined;
   const browser = await launchBrowser();
 
@@ -874,7 +876,8 @@ async function main() {
       );
       if (isPanelRead) panelReadRequests.push(path);
       const routeStopMatch = path.match(/^\/api\/route-stops(?:\/(\d+))?$/);
-      const isRouteStopMutation = routeStopMatch != null
+      const isRouteReorder = path === "/api/route-stops/reorder";
+      const isRouteStopMutation = (routeStopMatch != null || isRouteReorder)
         && method !== "GET"
         && method !== "HEAD"
         && method !== "OPTIONS";
@@ -977,6 +980,34 @@ async function main() {
       }
       if (routeStopMatch && method === "GET") {
         respondJson([...routeStops].sort((left, right) => left.sortOrder - right.sortOrder));
+        return;
+      }
+      if (isRouteReorder && method === "POST") {
+        const body = JSON.parse(request.postData() ?? "{}") as Record<string, unknown>;
+        routeReorderRequests.push({ date: body.date, stopIds: body.stopIds });
+        if (routeReorderFailureMode) {
+          respondError("Route order save unavailable");
+          return;
+        }
+        const stopIds = Array.isArray(body.stopIds)
+          ? body.stopIds.filter((id): id is number => typeof id === "number")
+          : [];
+        const selectedDate = typeof body.date === "string" ? body.date : "";
+        const datedStops = routeStops.filter(stop => stop.scheduledDate === selectedDate);
+        const datedStopIds = new Set(datedStops.map(stop => stop.id));
+        if (
+          stopIds.length !== datedStops.length
+          || new Set(stopIds).size !== stopIds.length
+          || stopIds.some(id => !datedStopIds.has(id))
+        ) {
+          respondJson({ error: "Invalid route order" }, 400);
+          return;
+        }
+        stopIds.forEach((stopId, sortOrder) => {
+          const stop = routeStops.find(candidate => candidate.id === stopId);
+          if (stop) stop.sortOrder = sortOrder;
+        });
+        respondJson({ updated: stopIds.length });
         return;
       }
       if (routeStopMatch && method === "POST") {
@@ -1330,7 +1361,21 @@ async function main() {
       .sort((left, right) => left.sortOrder - right.sortOrder)
       .map(stop => stop.jobId);
     const reorderWriteStart = routeWrites.length;
+    routeReorderFailureMode = true;
     const reorderDragged = await dragRouteStop(page, firstRouteStopTitle, fixtures[1].title);
+    const reorderFailureShown = await page.waitForSelector('[data-testid="route-order-save-failed"]', { timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false);
+    const reorderServerOrderRestored = await waitForRouteStopOrder(page, [
+      firstRouteStopTitle,
+      fixtures[1].title,
+      duplicateRouteStopTitle,
+    ]);
+    const reorderFailureText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    routeReorderFailureMode = false;
+    const retryClicked = await page.click('[data-testid="route-order-retry"]')
+      .then(() => true)
+      .catch(() => false);
     const reorderApplied = await waitForCondition(() => {
       const ordered = [...routeStops]
         .filter(stop => stop.scheduledDate === today)
@@ -1353,27 +1398,24 @@ async function main() {
       .map(stop => stop.jobId);
     const afterReorderJobSet = [...new Set(afterReorderOrder)].sort((left, right) => (left ?? 0) - (right ?? 0));
     const reorderWrites = routeWrites.slice(reorderWriteStart);
-    const expectedReorderWritePaths = new Set(
-      routeStops
-        .filter(stop => stop.scheduledDate === today)
-        .map(stop => `/api/route-stops/${stop.id}`),
-    );
-    const actualReorderWritePaths = reorderWrites.map(write => write.split(" ")[1]);
-    const reorderWritesAreExpected = reorderWrites.length === expectedReorderWritePaths.size
-      && new Set(actualReorderWritePaths).size === expectedReorderWritePaths.size
-      && reorderWrites.every(write => {
-        const [method, path] = write.split(" ");
-        return method === "PUT" && expectedReorderWritePaths.has(path);
-      });
+    const reorderWritesAreExpected = reorderWrites.length === 2
+      && retryClicked
+      && reorderWrites.filter(write => write === "POST /api/route-stops/reorder").length === 2;
+    const retryUsedExactPayload = routeReorderRequests.length >= 2
+      && JSON.stringify(routeReorderRequests[0]) === JSON.stringify(routeReorderRequests[1]);
     const reorderPreservedJobSet =
       JSON.stringify(afterReorderJobSet) === JSON.stringify(beforeReorder.jobIds);
     record(
       "Dragging route stops preserves the canonical job set and net profit",
       reorderDragged
+        && reorderFailureShown
+        && reorderServerOrderRestored
+        && reorderFailureText.includes("Route order was not saved")
         && reorderApplied
         && reorderUiApplied
         && reorderRefreshed
         && reorderWritesAreExpected
+        && retryUsedExactPayload
         && reorderPreservedJobSet
         && beforeReorderOrder.join(",") === `${firstJobId},${secondJobId},${firstJobId}`
         && afterReorderOrder.join(",") === `${secondJobId},${firstJobId},${firstJobId}`
@@ -1383,7 +1425,8 @@ async function main() {
       `beforeJobs=${beforeReorder.jobIds.join(",")}, afterJobs=${reorderAfter.jobIds.join(",")}, ` +
       `order=${afterReorderOrder.join(",")}, displayed=${reorderDisplayed ?? "missing"}, ` +
       `canonicalBefore=${beforeReorder.netProfit}, canonicalAfter=${reorderAfter.netProfit}, ` +
-      `writes=${reorderWrites.join(";")}, dragged=${reorderDragged}`,
+      `writes=${reorderWrites.join(";")}, dragged=${reorderDragged}, retry=${retryClicked}, ` +
+      `serverOrderRestored=${reorderServerOrderRestored}, exactRetry=${retryUsedExactPayload}`,
     );
     await page.screenshot({ path: `${SHOTS}/03b-route-profit-reordered.png`, fullPage: true });
 

@@ -23,6 +23,7 @@ import type {
 } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { aggregateCanonicalJobProfit } from "@/lib/jobFinancials";
 import { formatSundaySaturdayWeekRange, getSundaySaturdayWeekRange } from "@/lib/dateUtils";
 import {
@@ -312,6 +313,7 @@ export default function RoutePlanner() {
   const [geocoding, setGeocoding] = useState(false);
   const [retryingGeocodeId, setRetryingGeocodeId] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [pendingRouteOrder, setPendingRouteOrder] = useState<{ date: string; stopIds: number[] } | null>(null);
   const [formLinkVal, setFormLinkVal] = useState<string>("");
   const [isSplitting, setIsSplitting] = useState(false);
   const [blockSize, setBlockSize] = useState(9);
@@ -647,15 +649,54 @@ export default function RoutePlanner() {
   }
 
   async function persistSortOrder(ordered: RouteStop[]) {
+    const stopIds = ordered.map(stop => stop.id);
     try {
-      await Promise.all(
-        ordered.map((stop, i) =>
-          apiFetch(`/route-stops/${stop.id}`, { method: "PUT", body: JSON.stringify({ sortOrder: i }) })
-        )
-      );
+      await apiFetch("/route-stops/reorder", {
+        method: "POST",
+        body: JSON.stringify({ date: selectedDateStr, stopIds }),
+      });
       await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+      setPendingRouteOrder(null);
+      setOptimizedOrder(null);
     } catch {
-      toast({ title: "Order saved locally — couldn't sync to server", variant: "destructive" });
+      setPendingRouteOrder({ date: selectedDateStr, stopIds });
+      setOptimizedOrder(null);
+      await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+      toast({
+        title: "Route order was not saved",
+        description: "Showing the server order. Retry to apply the same reorder.",
+        variant: "destructive",
+        action: (
+          <ToastAction altText="Retry saving route order" onClick={() => void persistRouteOrder(selectedDateStr, stopIds)}>
+            Retry
+          </ToastAction>
+        ),
+      });
+    }
+  }
+
+  async function persistRouteOrder(date: string, stopIds: number[]) {
+    try {
+      await apiFetch("/route-stops/reorder", {
+        method: "POST",
+        body: JSON.stringify({ date, stopIds }),
+      });
+      await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+      setPendingRouteOrder(null);
+      setOptimizedOrder(null);
+      toast({ title: "Route order saved" });
+    } catch {
+      await qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
+      toast({
+        title: "Route order was not saved",
+        description: "Showing the server order. Retry to apply the same reorder.",
+        variant: "destructive",
+        action: (
+          <ToastAction altText="Retry saving route order" onClick={() => void persistRouteOrder(date, stopIds)}>
+            Retry
+          </ToastAction>
+        ),
+      });
     }
   }
 
@@ -1222,6 +1263,21 @@ export default function RoutePlanner() {
             <p className="text-[10px] text-muted-foreground mt-1">
               Optimize and drag-reorder apply to {format(selectedDate, "MMM d")} — switch to Day view to reorder
             </p>
+          )}
+          {pendingRouteOrder?.date === selectedDateStr && (
+            <div data-testid="route-order-save-failed" className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+              <p className="text-[11px] font-medium text-red-700">
+                Route order was not saved. Showing the server order.
+              </p>
+              <button
+                type="button"
+                data-testid="route-order-retry"
+                onClick={() => void persistRouteOrder(pendingRouteOrder.date, pendingRouteOrder.stopIds)}
+                className="shrink-0 rounded-md border border-red-300 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-red-700 hover:bg-red-100"
+              >
+                Retry save
+              </button>
+            </div>
           )}
         </div>
 
