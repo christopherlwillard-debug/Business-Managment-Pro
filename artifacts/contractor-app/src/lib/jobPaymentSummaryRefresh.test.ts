@@ -169,6 +169,62 @@ describe("Jobs payment summary refresh", () => {
     });
   });
 
+  it("clears every shared payroll field during an outage and restores them together after recovery", () => {
+    const recoveredProfit: PayrollProfitSnapshot = {
+      subLaborCost: 487.5,
+      estimatedFuelCost: 71.25,
+      growthReservePct: 6,
+      netProfit: 1842.25,
+    };
+    const loaded = applyJobProfitRefresh<PayrollProfitSnapshot>(
+      startJobProfitRefresh<PayrollProfitSnapshot>(),
+      {
+        requestKey: 1,
+        currentRequestKey: 1,
+        requestedJobId: 42,
+        currentJobId: 42,
+        response: { status: "fulfilled", value: recoveredProfit },
+      },
+    );
+    const unavailable = applyJobProfitRefresh(
+      loaded,
+      {
+        requestKey: 2,
+        currentRequestKey: 2,
+        requestedJobId: 42,
+        currentJobId: 42,
+        response: { status: "rejected" },
+      },
+    );
+    const restored = applyJobProfitRefresh(
+      unavailable,
+      {
+        requestKey: 3,
+        currentRequestKey: 3,
+        requestedJobId: 42,
+        currentJobId: 42,
+        response: { status: "fulfilled", value: recoveredProfit },
+      },
+    );
+
+    expect(unavailable).toEqual({
+      loading: false,
+      profit: null,
+      profitError: true,
+    });
+    expect(restored).toEqual({
+      loading: false,
+      profit: recoveredProfit,
+      profitError: false,
+    });
+    expect(restored.profit).toMatchObject({
+      subLaborCost: 487.5,
+      estimatedFuelCost: 71.25,
+      growthReservePct: 6,
+      netProfit: 1842.25,
+    });
+  });
+
   it("gives same-job refreshes distinct generations and keeps the newer success", () => {
     const firstRequestKey = nextJobPaymentSummaryRefreshGeneration(0);
     const secondRequestKey = nextJobPaymentSummaryRefreshGeneration(firstRequestKey);

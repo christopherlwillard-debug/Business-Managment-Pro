@@ -99,7 +99,7 @@ function WorkerPayCard({
 }: {
   p: SubPaymentRow;
   jobId: number;
-  splitPool: number;
+  splitPool: number | null;
   subHours: SubHourEntry[];
   onRefresh: () => Promise<void>;
   onDirtyChange?: (isDirty: boolean) => void;
@@ -109,9 +109,11 @@ function WorkerPayCard({
   const isFixed  = p.compensationType === "fixed";
   const isAlloc  = p.compensationType === "allocation";
 
-  const owed = computeSubOwed(p, splitPool) ?? p.computedOwed ?? 0;
+  const owed = isAlloc && splitPool == null && p.amountOwed == null
+    ? null
+    : computeSubOwed(p, splitPool ?? 0) ?? p.computedOwed ?? null;
   const paid    = p.amountPaid ?? 0;
-  const balance = Math.max(0, owed - paid);
+  const balance = owed == null ? null : Math.max(0, owed - paid);
   const isFullyPaid = p.paymentStatus === "paid" || p.paymentStatus === "overpaid";
   const isOvpd      = p.paymentStatus === "overpaid";
   const isPartial   = p.paymentStatus === "partial";
@@ -192,10 +194,21 @@ function WorkerPayCard({
   const advancementDeduction = parseFloat(advancementAmt) || 0;
 
   // Fixed/alloc simple amount
+  const getAutoSimpleAmount = useCallback(() => {
+    const bal = balance ?? 0;
+    return bal > 0.01 ? bal.toFixed(2) : (owed ?? 0) > 0 ? (owed ?? 0).toFixed(2) : "";
+  }, [balance, owed]);
   const [simpleAmount, setSimpleAmount] = useState(() => {
-    const bal = balance;
-    return bal > 0.01 ? bal.toFixed(2) : owed > 0 ? owed.toFixed(2) : "";
+    const bal = balance ?? 0;
+    return bal > 0.01 ? bal.toFixed(2) : (owed ?? 0) > 0 ? (owed ?? 0).toFixed(2) : "";
   });
+  const autoSimpleAmount = useRef(simpleAmount);
+  useEffect(() => {
+    if (isHourly) return;
+    const nextAutoAmount = getAutoSimpleAmount();
+    setSimpleAmount(current => current === autoSimpleAmount.current ? nextAutoAmount : current);
+    autoSimpleAmount.current = nextAutoAmount;
+  }, [getAutoSimpleAmount, isHourly]);
 
   const grossPay = isHourly ? workPay + travelPay + bonusAmt : parseFloat(simpleAmount) || 0;
   const netToPay = Math.max(0, grossPay - advancementDeduction);
@@ -203,7 +216,9 @@ function WorkerPayCard({
   // Earnings summary figures (for the 3-column summary strip)
   // Gross Earned = computed hours earnings (from DB snapshots) + accrued bonus as saved
   const savedBonusAmt = p.accruedBonus ?? 0;
-  const grossEarned   = isHourly ? (p.computedOwed ?? 0) + savedBonusAmt : (owed > 0 ? owed : 0);
+  const grossEarned   = isHourly
+    ? (p.computedOwed ?? 0) + savedBonusAmt
+    : (owed ?? 0) > 0 ? owed ?? 0 : 0;
 
   const [historyOpen, setHistoryOpen] = useState(() => (p.paymentHistory?.length ?? 0) > 0);
   const [paying,      setPaying]      = useState(false);
@@ -414,6 +429,14 @@ function WorkerPayCard({
   }
 
   async function submitPayment(draft: ReviewDraft) {
+    if (isAlloc && owed == null) {
+      toast({
+        title: "Profit data is unavailable",
+        description: "Retry before recording an allocation payment so its split amount can be verified.",
+        variant: "destructive",
+      });
+      return;
+    }
     const draftBonus  = parseFloat(draft.bonus) || 0;
     const draftGross  = isHourly ? workPay + travelPay + draftBonus : (parseFloat(simpleAmount) || 0);
     const draftNet    = Math.max(0, draftGross - advancementDeduction);
@@ -426,7 +449,7 @@ function WorkerPayCard({
       const body: Record<string, unknown> = {
         subName: p.subName,
         idempotencyKey: crypto.randomUUID(),
-        agreedOwed: owed > 0 ? owed : undefined,
+        agreedOwed: owed != null && owed > 0 ? owed : undefined,
         ...(draft.paymentMethod    ? { paymentMethod: draft.paymentMethod }       : {}),
         ...(draft.paymentReference ? { paymentReference: draft.paymentReference } : {}),
       };
@@ -472,7 +495,11 @@ function WorkerPayCard({
 
   // Whether to show the sticky "Review & Record" action bar
   const hasHours = (parseFloat(workHours) || 0) > 0;
-  const canReview = !isFullyPaid && (isHourly ? hasHours : true) && netToPay > 0;
+  const allocationOwedUnavailable = isAlloc && owed == null;
+  const canReview = !isFullyPaid
+    && (isHourly ? hasHours : true)
+    && netToPay > 0
+    && !allocationOwedUnavailable;
 
   return (
     // NOTE: no overflow-hidden so the sticky action bar can escape the card's clip
@@ -491,13 +518,17 @@ function WorkerPayCard({
             )}
           </div>
           {isAlloc   && <p className="text-xs text-purple-600">{(p.allocationPct ?? 0).toFixed(1)}% of split pool</p>}
-          {isPartial && <p className="text-xs text-muted-foreground">Paid ${fmt(paid)} · Balance ${fmt(balance)}</p>}
-          {isOvpd    && <p className="text-xs text-amber-600">Payroll correction on file — ${fmt(Math.max(0, paid - owed))} overpaid</p>}
+          {isPartial && balance != null && <p className="text-xs text-muted-foreground">Paid ${fmt(paid)} · Balance ${fmt(balance)}</p>}
+          {isOvpd && owed != null && (
+            <p className="text-xs text-amber-600">Payroll correction on file — ${fmt(Math.max(0, paid - owed))} overpaid</p>
+          )}
           {isFullyPaid && !isOvpd && paid > 0 && <p className="text-xs text-emerald-600">Settled — ${fmt(paid)} paid</p>}
         </div>
         <div className="text-right flex-shrink-0">
-          <p className="text-xl font-black text-foreground">${fmt(owed)}</p>
-          {isPartial && balance > 0 && <p className="text-xs text-orange-500">Due: ${fmt(balance)}</p>}
+          <p className="text-xl font-black text-foreground">
+            {owed == null ? "Unavailable" : `$${fmt(owed)}`}
+          </p>
+          {isPartial && balance != null && balance > 0 && <p className="text-xs text-orange-500">Due: ${fmt(balance)}</p>}
         </div>
       </div>
 
@@ -705,7 +736,13 @@ function WorkerPayCard({
                 </label>
                 <input type="number" value={simpleAmount} onChange={e => setSimpleAmount(e.target.value)}
                   className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="0.00" />
-                {isAlloc && <p className="text-xs text-purple-600 mt-1">Calc: ${fmt(computeSubOwed({ compensationType: "allocation", amountOwed: null, fixedAmount: null, allocationPct: p.allocationPct }, splitPool) ?? 0)}</p>}
+                {isAlloc && (
+                  <p className="text-xs text-purple-600 mt-1">
+                    {owed == null
+                      ? "Calc unavailable until job profit recovers"
+                      : `Calc: $${fmt(owed)}`}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -855,10 +892,12 @@ function WorkerPayCard({
                 <div className={`${canReview ? "sticky bottom-0 z-10" : ""} -mx-5 px-5 pb-1 pt-1 bg-white`}>
                   <button
                     onClick={openReview}
-                    disabled={netToPay <= 0}
+                    disabled={netToPay <= 0 || allocationOwedUnavailable}
                     className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted text-white font-bold rounded-2xl text-base transition-colors disabled:opacity-50 shadow-sm"
                   >
-                    Review &amp; Record Payment — ${fmt(netToPay)}
+                    {allocationOwedUnavailable
+                      ? "Profit unavailable — retry to record"
+                      : `Review & Record Payment — $${fmt(netToPay)}`}
                   </button>
                 </div>
                 {isHourly && (
@@ -1087,7 +1126,7 @@ function WorkerPayCard({
 
               <button
                 onClick={() => reviewDraft && submitPayment(reviewDraft)}
-                disabled={paying || draftNetToPay <= 0}
+                disabled={paying || draftNetToPay <= 0 || allocationOwedUnavailable}
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted text-white font-bold rounded-2xl text-base transition-colors disabled:opacity-50 shadow-sm flex items-center justify-center gap-2"
               >
                 {paying ? (
@@ -1097,8 +1136,14 @@ function WorkerPayCard({
                   </>
                 ) : (
                   <>
-                    <CheckCircle2 className="w-5 h-5" />
-                    Confirm &amp; Record — ${fmt(draftNetToPay)}
+                    {allocationOwedUnavailable ? (
+                      "Profit unavailable — retry to record"
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-5 h-5" />
+                        Confirm &amp; Record — ${fmt(draftNetToPay)}
+                      </>
+                    )}
                   </>
                 )}
               </button>
@@ -1132,6 +1177,7 @@ export default function JobPayroll() {
   const [payments, setPayments] = useState<SubPaymentRow[]>([]);
   const [subHours, setSubHours] = useState<SubHourEntry[]>([]);
   const [loading,  setLoading]  = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [ownerSplitPct,    setOwnerSplitPct]    = useState(50);
   const [taxReservePct,    setTaxReservePct]    = useState(25);
@@ -1152,7 +1198,7 @@ export default function JobPayroll() {
   }
 
   const refreshAll = useCallback(async () => {
-    setLoading(true);
+    setRefreshing(true);
     const profitRefresh = startJobProfitRefresh<JobProfitResponse>();
     setProfit(profitRefresh.profit);
     setProfitError(profitRefresh.profitError);
@@ -1160,11 +1206,20 @@ export default function JobPayroll() {
     loadKeyRef.current = requestKey;
     const requestedJobId = jobId;
     const [pRes, profRes, hoursRes] = await Promise.allSettled([
-      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`,  { credentials: "include" }).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`,  { credentials: "include" }).then(r => {
+        if (!r.ok) throw new Error("Failed to load payroll rows");
+        return r.json();
+      }),
       getJobProfit(requestedJobId, { credentials: "include" }),
-      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`,     { credentials: "include" }).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`,     { credentials: "include" }).then(r => {
+        if (!r.ok) throw new Error("Failed to load logged hours");
+        return r.json();
+      }),
     ]);
-    if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) return;
+    if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) {
+      setRefreshing(false);
+      return;
+    }
     if (pRes.status    === "fulfilled") setPayments(pRes.value as SubPaymentRow[]);
     const profitState = applyJobProfitRefresh(
       profitRefresh,
@@ -1181,7 +1236,7 @@ export default function JobPayroll() {
     setProfit(profitState.profit);
     setProfitError(profitState.profitError);
     if (hoursRes.status === "fulfilled") setSubHours(hoursRes.value as SubHourEntry[]);
-    setLoading(false);
+    setRefreshing(false);
   }, [jobId]);
 
   useEffect(() => {
@@ -1200,10 +1255,16 @@ export default function JobPayroll() {
     const load = async () => {
       const [jobRes, pRes, profRes, settingsRes, hoursInitRes] = await Promise.allSettled([
         fetch(`${BASE}/api/jobs/${requestedJobId}`,             { credentials: "include" }).then(r => r.ok ? r.json() : null),
-        fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`,{ credentials: "include" }).then(r => r.ok ? r.json() : []),
+        fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`,{ credentials: "include" }).then(r => {
+          if (!r.ok) throw new Error("Failed to load payroll rows");
+          return r.json();
+        }),
         getJobProfit(requestedJobId, { credentials: "include" }),
         fetch(`${BASE}/api/settings`,                  { credentials: "include" }).then(r => r.ok ? r.json() : null),
-        fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`,   { credentials: "include" }).then(r => r.ok ? r.json() : []),
+        fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`,   { credentials: "include" }).then(r => {
+          if (!r.ok) throw new Error("Failed to load logged hours");
+          return r.json();
+        }),
       ]);
       if (!canApplyJobResponse(requestKey, loadKeyRef.current, requestedJobId, currentJobIdRef.current)) return;
       if (jobRes.status       === "fulfilled" && jobRes.value)     setJob(jobRes.value as Job);
@@ -1314,24 +1375,30 @@ export default function JobPayroll() {
         <div className="flex items-center justify-center py-20">
           <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : profitError ? (
-        <div className="max-w-2xl mx-auto px-4 py-16 text-center">
-          <AlertCircle className="w-10 h-10 mx-auto text-red-500 mb-3" />
-          <h2 className="text-base font-bold text-foreground">Unable to load job profit</h2>
-          <p className="text-sm text-muted-foreground mt-2">
-            The latest profit data could not be loaded, so no financial values are shown.
-          </p>
-          <button
-            type="button"
-            onClick={refreshAll}
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Try again
-          </button>
-        </div>
       ) : (
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-5 pb-36">
+          {profitError && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-500 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm font-bold text-red-900">Job profit is temporarily unavailable</h2>
+                  <p className="text-xs text-red-800/80 mt-1">
+                    Payroll rows and saved drafts remain available. Financial cards will return when the latest profit data loads.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={refreshAll}
+                  disabled={refreshing}
+                  className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-xl bg-white border border-red-200 px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                  {refreshing ? "Retrying…" : "Try again"}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* ── Job Summary (P&L Waterfall) ── */}
           {profit != null && (
@@ -1413,7 +1480,7 @@ export default function JobPayroll() {
                 key={p.subcontractorId}
                 p={p}
                 jobId={jobId}
-                splitPool={toSplit}
+                splitPool={profit?.splitPool != null ? toSplit : null}
                 subHours={subHours.filter(h => h.subcontractorId === p.subcontractorId)}
                 onRefresh={refreshAll}
                 onDirtyChange={handleCardDirtyChange}
