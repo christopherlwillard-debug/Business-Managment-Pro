@@ -1804,12 +1804,13 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 }
 
 // ─── Unified Job Financials Panel ─────────────────────────────────────────────
-function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "breakdown", onClose, onSubsPaidChanged }: {
+function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "breakdown", onClose, onSubsPaidChanged, onProfitUpdated }: {
   job: Job;
   profitData?: JobProfitResponse | null;
   initialTab?: "breakdown" | "hours";
   onClose: () => void;
   onSubsPaidChanged?: (allPaid: boolean) => void;
+  onProfitUpdated?: (profit: JobProfitResponse) => void;
 }) {
   const [tab, setTab] = useState<"breakdown" | "hours">(initialTab);
   const [profit, setProfit] = useState<JobProfitResponse | null>(initialProfit ?? null);
@@ -1836,7 +1837,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       : { credentials: "include" };
   }
 
-  async function refreshJobProfitAfterMutation(): Promise<boolean> {
+  async function refreshJobProfitAfterMutation(): Promise<JobProfitResponse | null> {
     const requestedJobId = job.id;
     const requestKey = ++profitLoadKeyRef.current;
     const refreshState = startJobProfitRefresh<JobProfitResponse>();
@@ -1865,13 +1866,14 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
         profitLoadKeyRef.current,
         requestedJobId,
         currentJobIdRef.current,
-      )) return false;
+      )) return null;
       setLoading(next.loading);
       setProfit(next.profit);
       setProfitError(next.profitError);
-      return !next.profitError;
+      if (next.profit) onProfitUpdated?.(next.profit);
+      return next.profitError ? null : next.profit;
     } catch (error) {
-      if (isAbortError(error) && controller?.signal.aborted) return false;
+      if (isAbortError(error) && controller?.signal.aborted) return null;
       const next = applyJobProfitRefresh(refreshState, {
         requestKey,
         currentRequestKey: profitLoadKeyRef.current,
@@ -1884,11 +1886,11 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
         profitLoadKeyRef.current,
         requestedJobId,
         currentJobIdRef.current,
-      )) return false;
+      )) return null;
       setLoading(next.loading);
       setProfit(next.profit);
       setProfitError(next.profitError);
-      return false;
+      return null;
     }
   }
 
@@ -2154,7 +2156,10 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Could not save mileage reimbursement.");
-      await refreshJobProfitAfterMutation();
+      const refreshedProfit = await refreshJobProfitAfterMutation();
+      if (!refreshedProfit) {
+        throw new Error("The reimbursement was saved, but the updated job financials could not be loaded.");
+      }
       setExpenseItems(null);
       if (expensesOpen) void loadExpenses();
       toast({ title: "Mileage reimbursement saved", description: "This amount is added to job costs and excluded from the percentage split." });
@@ -6425,6 +6430,7 @@ function JobCard({
           profitData={displayProfit}
           initialTab={financialsInitialTab}
           onClose={() => setFinancialsPanelOpen(false)}
+          onProfitUpdated={setDisplayProfit}
           onSubsPaidChanged={allPaid => {
             setLocalSubPaid(allPaid);
             onPaymentSummaryChanged?.();

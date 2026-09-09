@@ -188,13 +188,69 @@ async function readMileageReimbursementEditor(page: Page) {
     const recipientNameInput = panel.querySelector(
       'input[placeholder="Name of person who paid"]',
     ) as HTMLInputElement | null;
+    const recipientType = recipientTypeSelect?.value ?? "";
     return {
       amount: amountInput?.value ?? "",
-      recipientType: recipientTypeSelect?.value ?? "",
-      recipientName: recipientNameInput?.value ?? "",
+      recipientType,
+      recipientName: recipientType === "owner" ? "Business owner" : recipientNameInput?.value ?? "",
       status: statusSelect?.value ?? "",
     };
   });
+}
+
+async function updateMileageReimbursementEditor(page: Page, values: {
+  amount: string;
+  recipientType: "owner" | "subcontractor" | "other";
+  recipientName: string;
+  status: "owed" | "paid";
+}): Promise<boolean> {
+  const recipientTypeUpdated = await page.evaluate(next => {
+    const panel = document.querySelector('[data-testid="job-financials-panel"]');
+    if (!panel) return false;
+    const labels = [...panel.querySelectorAll("label")];
+    const recipientTypeLabel = labels.find(element =>
+      element.textContent?.replace(/\s+/g, " ").trim().startsWith("Paid to"));
+    const recipientTypeSelect = recipientTypeLabel?.querySelector("select") as HTMLSelectElement | null;
+    if (!recipientTypeSelect) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+    if (!setter) return false;
+    setter.call(recipientTypeSelect, next);
+    recipientTypeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }, values.recipientType);
+  if (!recipientTypeUpdated) return false;
+
+  await page.waitForSelector(
+    '[data-testid="job-financials-panel"] input[placeholder="Name of person who paid"]',
+    { timeout: 10_000 },
+  );
+  return page.evaluate(next => {
+    const panel = document.querySelector('[data-testid="job-financials-panel"]');
+    if (!panel) return false;
+    const labels = [...panel.querySelectorAll("label")];
+    const amountLabel = labels.find(element =>
+      element.textContent?.replace(/\s+/g, " ").trim().startsWith("Reimbursement amount"));
+    const statusLabel = labels.find(element =>
+      element.textContent?.replace(/\s+/g, " ").trim().startsWith("Status"));
+    const amountInput = amountLabel?.querySelector("input") as HTMLInputElement | null;
+    const statusSelect = statusLabel?.querySelector("select") as HTMLSelectElement | null;
+    const recipientNameInput = panel.querySelector(
+      'input[placeholder="Name of person who paid"]',
+    ) as HTMLInputElement | null;
+    if (!amountInput || !statusSelect || !recipientNameInput) return false;
+    const amountSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    const selectSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+    if (!amountSetter || !selectSetter) return false;
+    amountSetter.call(amountInput, next.amount);
+    amountInput.dispatchEvent(new Event("input", { bubbles: true }));
+    amountInput.dispatchEvent(new Event("change", { bubbles: true }));
+    selectSetter.call(statusSelect, next.status);
+    statusSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    amountSetter.call(recipientNameInput, next.recipientName);
+    recipientNameInput.dispatchEvent(new Event("input", { bubbles: true }));
+    recipientNameInput.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }, values);
 }
 
 async function main() {
@@ -388,9 +444,9 @@ async function main() {
       reimbursement: {
         amount: "177.80",
         estimatedAmount: "35.56",
-        recipientType: "other",
-        recipientName: "E2E Mileage Recipient",
-        status: "paid",
+        recipientType: "owner",
+        recipientName: "Business owner",
+        status: "owed",
       },
       profit: {
         grossInvoiced: 1000,
@@ -469,16 +525,69 @@ async function main() {
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 1200 });
     await page.setRequestInterception(true);
+    const reimbursementSavePath = `/api/jobs/${reimbursementFixture.jobId}/mileage-reimbursement`;
+    let allowedReimbursementSaveCount = 0;
     page.on("request", request => {
       if (request.isInterceptResolutionHandled()) return;
       const method = request.method().toUpperCase();
+      const url = new URL(request.url());
+      if (method === "PUT" && url.pathname === reimbursementSavePath) {
+        allowedReimbursementSaveCount += 1;
+        const saved = reimbursementFixture.profit.mileageReimbursement;
+        if (!saved) {
+          void request.abort();
+          return;
+        }
+        let body: Record<string, unknown>;
+        try {
+          body = JSON.parse(request.postData() ?? "{}") as Record<string, unknown>;
+        } catch {
+          void request.abort();
+          return;
+        }
+        const nextAmount = Number(body.amount);
+        if (!Number.isFinite(nextAmount) || nextAmount < 0) {
+          void request.abort();
+          return;
+        }
+        const previousAmount = saved.amount;
+        const nextRecipientType = body.recipientType === "owner"
+          || body.recipientType === "subcontractor"
+          || body.recipientType === "other"
+          ? body.recipientType
+          : saved.recipientType;
+        const nextStatus = body.status === "paid" ? "paid" : "owed";
+        const nextRecipientName = typeof body.recipientName === "string" && body.recipientName.trim()
+          ? body.recipientName.trim()
+          : saved.recipientName;
+        reimbursementFixture.profit.mileageReimbursement = {
+          ...saved,
+          amount: nextAmount,
+          estimatedAmount: body.estimatedAmount == null ? null : Number(body.estimatedAmount),
+          recipientType: nextRecipientType,
+          recipientName: nextRecipientName,
+          status: nextStatus,
+        };
+        reimbursementFixture.profit.jobExpenses += nextAmount - previousAmount;
+        reimbursementFixture.profit.netProfit -= nextAmount - previousAmount;
+        void request.respond({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ...reimbursementFixture.profit.mileageReimbursement,
+            paidAt: nextStatus === "paid" ? body.paidAt ?? null : null,
+            recipientSubcontractorId: null,
+            notes: body.notes ?? null,
+          }),
+        });
+        return;
+      }
       if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
         unexpectedWrites.push(`${method} ${request.url()}`);
         void request.abort();
         return;
       }
 
-      const url = new URL(request.url());
       const jobProfitMatch = url.pathname.match(/\/api\/jobs\/(\d+)\/profit$/);
       const isSummaryRequest = url.pathname.endsWith("/api/jobs/profit-summary");
       if (!jobProfitMatch && !isSummaryRequest) {
@@ -726,30 +835,114 @@ async function main() {
       "02-saved-reimbursement.png",
     );
 
-    const savedReimbursement = reimbursementFixture.profit.mileageReimbursement;
-    if (!savedReimbursement) {
+    const initialSavedReimbursement = reimbursementFixture.profit.mileageReimbursement;
+    if (!initialSavedReimbursement) {
       throw new Error("Saved reimbursement fixture did not include a reimbursement object");
     }
-    await page.waitForFunction(
-      expectedName => {
-        const panel = document.querySelector('[data-testid="job-financials-panel"]');
-        return (panel?.querySelector(
-          'input[placeholder="Name of person who paid"]',
-        ) as HTMLInputElement | null)?.value === expectedName;
-      },
-      { timeout: 10_000 },
-      savedReimbursement.recipientName,
-    );
     const initialEditor = await readMileageReimbursementEditor(page);
     record(
       "Saved reimbursement: object response populates the scoped editor",
-      initialEditor.amount === money(savedReimbursement.amount)
-        && initialEditor.recipientType === savedReimbursement.recipientType
-        && initialEditor.recipientName === savedReimbursement.recipientName
-        && initialEditor.status === savedReimbursement.status,
+      initialEditor.amount === money(initialSavedReimbursement.amount)
+        && initialEditor.recipientType === initialSavedReimbursement.recipientType
+        && initialEditor.recipientName === initialSavedReimbursement.recipientName
+        && initialEditor.status === initialSavedReimbursement.status,
       JSON.stringify(initialEditor),
     );
 
+    const editedReimbursement = {
+      amount: "244.18",
+      recipientType: "other" as const,
+      recipientName: "Alex Rivera",
+      status: "paid" as const,
+    };
+    const editorUpdated = await updateMileageReimbursementEditor(page, editedReimbursement);
+    record("Saved reimbursement edit: amount, recipient, and status can be changed", editorUpdated);
+    const clickedSave = await clickButtonContaining(page, "Save reimbursement changes");
+    record("Saved reimbursement edit: save button submits", clickedSave);
+    await page.waitForFunction(
+      expected => {
+        const panel = document.querySelector('[data-testid="job-financials-panel"]');
+        const amount = panel?.querySelector('input[type="number"]') as HTMLInputElement | null;
+        const status = [...(panel?.querySelectorAll("select") ?? [])]
+          .find(select => [...select.options].some(option => option.value === "paid")) as HTMLSelectElement | undefined;
+        const recipientType = [...(panel?.querySelectorAll("select") ?? [])]
+          .find(select => [...select.options].some(option => option.value === "other")) as HTMLSelectElement | undefined;
+        const recipient = panel?.querySelector(
+          'input[placeholder="Name of person who paid"]',
+        ) as HTMLInputElement | null;
+        return amount?.value === expected.amount
+          && status?.value === expected.status
+          && recipientType?.value === expected.recipientType
+          && recipient?.value === expected.recipientName;
+      },
+      { timeout: 10_000 },
+      editedReimbursement,
+    );
+    record(
+      "Saved reimbursement edit: refreshed detail response contains updated fields",
+      allowedReimbursementSaveCount === 1
+        && reimbursementFixture.profit.mileageReimbursement?.amount === Number(editedReimbursement.amount)
+        && reimbursementFixture.profit.mileageReimbursement?.recipientType === editedReimbursement.recipientType
+        && reimbursementFixture.profit.mileageReimbursement?.recipientName === editedReimbursement.recipientName
+        && reimbursementFixture.profit.mileageReimbursement?.status === editedReimbursement.status,
+      JSON.stringify(reimbursementFixture.profit.mileageReimbursement),
+    );
+    const updatedEditor = await readMileageReimbursementEditor(page);
+    record(
+      "Saved reimbursement edit: updated editor values match the detail response",
+      JSON.stringify(updatedEditor) === JSON.stringify({
+        amount: editedReimbursement.amount,
+        recipientType: editedReimbursement.recipientType,
+        recipientName: editedReimbursement.recipientName,
+        status: editedReimbursement.status,
+      }),
+      JSON.stringify(updatedEditor),
+    );
+
+    const closeFinancials = await page.$eval(
+      '[data-testid="job-financials-panel"] button',
+      button => {
+        (button as HTMLButtonElement).click();
+        return true;
+      },
+    ).catch(() => false);
+    record("Saved reimbursement edit: financials panel closes", closeFinancials);
+    await page.waitForFunction(
+      () => !document.querySelector('[data-testid="job-financials-panel"]'),
+      { timeout: 10_000 },
+    );
+    const reopenedFinancialsAfterEdit = await clickButtonInJobCard(page, reimbursementFixture.title, "Job P&L");
+    record("Saved reimbursement edit: financials panel reopens", reopenedFinancialsAfterEdit);
+    await page.waitForFunction(
+      () => Boolean(document.querySelector('[data-testid="job-financials-panel"]')),
+      { timeout: 10_000 },
+    );
+    await page.waitForFunction(
+      expected => {
+        const panel = document.querySelector('[data-testid="job-financials-panel"]');
+        const recipient = panel?.querySelector(
+          'input[placeholder="Name of person who paid"]',
+        ) as HTMLInputElement | null;
+        return recipient?.value === expected.recipientName;
+      },
+      { timeout: 10_000 },
+      editedReimbursement,
+    );
+    record(
+      "Saved reimbursement after close and reopen: all edited fields persist",
+      JSON.stringify(await readMileageReimbursementEditor(page)) === JSON.stringify({
+        amount: editedReimbursement.amount,
+        recipientType: editedReimbursement.recipientType,
+        recipientName: editedReimbursement.recipientName,
+        status: editedReimbursement.status,
+      }),
+      JSON.stringify(await readMileageReimbursementEditor(page)),
+    );
+
+    const updatedSavedReimbursement = reimbursementFixture.profit.mileageReimbursement;
+    if (!updatedSavedReimbursement) {
+      throw new Error("Edited reimbursement fixture did not include an updated reimbursement object");
+    }
     await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
     await page.waitForFunction(
       title => document.body.innerText.includes(title),
@@ -782,23 +975,23 @@ async function main() {
         ) as HTMLInputElement | null)?.value === expectedName;
       },
       { timeout: 10_000 },
-      savedReimbursement.recipientName,
+      updatedSavedReimbursement.recipientName,
     );
     const refreshedEditor = await readMileageReimbursementEditor(page);
     record(
       "Saved reimbursement after refresh: amount, recipient, and status persist",
-      refreshedEditor.amount === money(savedReimbursement.amount)
-        && refreshedEditor.recipientType === savedReimbursement.recipientType
-        && refreshedEditor.recipientName === savedReimbursement.recipientName
-        && refreshedEditor.status === savedReimbursement.status,
+      refreshedEditor.amount === money(updatedSavedReimbursement.amount)
+        && refreshedEditor.recipientType === updatedSavedReimbursement.recipientType
+        && refreshedEditor.recipientName === updatedSavedReimbursement.recipientName
+        && refreshedEditor.status === updatedSavedReimbursement.status,
       JSON.stringify(refreshedEditor),
     );
     record(
       "Saved reimbursement after refresh: numeric batch value does not overwrite detail fields",
-      refreshedEditor.recipientName === savedReimbursement.recipientName
-        && refreshedEditor.recipientType === savedReimbursement.recipientType
-        && refreshedEditor.status === savedReimbursement.status,
-      `batch=${savedReimbursement.amount}, editor=${JSON.stringify(refreshedEditor)}`,
+      refreshedEditor.recipientName === updatedSavedReimbursement.recipientName
+        && refreshedEditor.recipientType === updatedSavedReimbursement.recipientType
+        && refreshedEditor.status === updatedSavedReimbursement.status,
+      `batch=${initialSavedReimbursement.amount}, editor=${JSON.stringify(refreshedEditor)}`,
     );
 
     await verifyFixture(
