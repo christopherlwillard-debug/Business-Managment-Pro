@@ -2010,6 +2010,7 @@ function StopCard({
   return (
     <div
       draggable
+      data-route-stop-job-id={stop.jobId ?? undefined}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}

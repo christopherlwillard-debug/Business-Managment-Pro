@@ -1387,6 +1387,51 @@ async function main() {
     );
     await page.screenshot({ path: `${SHOTS}/03b-route-profit-reordered.png`, fullPage: true });
 
+    const routeOrderRefreshUrl = page.url();
+    const routeOrderRefreshUnexpectedWritesStart = unexpectedWrites.length;
+    const routeOrderRefreshRouteWritesStart = routeWrites.length;
+    await page.reload({
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    const routeOrderRefreshOrderRestored = await waitForRouteStopOrder(page, [
+      fixtures[1].title,
+      firstRouteStopTitle,
+      duplicateRouteStopTitle,
+    ]);
+    const routeOrderRefreshJobIds = await page.$$eval(
+      "[draggable='true'][data-route-stop-job-id]",
+      cards => cards
+        .map(card => Number(card.getAttribute("data-route-stop-job-id")))
+        .filter(jobId => Number.isInteger(jobId)),
+    );
+    const routeOrderRefreshJobSet = [...new Set(routeOrderRefreshJobIds)].sort((left, right) => left - right);
+    const routeOrderRefreshExpected = expectedRouteProfit(today);
+    const routeOrderRefreshProfitRestored = await waitForRouteProfit(
+      page,
+      routeOrderRefreshExpected.netProfit,
+    );
+    const routeOrderRefreshText = await page.evaluate(
+      () => document.body.innerText.replace(/\s+/g, " ").trim(),
+    );
+    const routeOrderRefreshDisplayed = readMoneyAfter(routeOrderRefreshText, "Net Profit");
+    const routeOrderRefreshWritesStayedScoped =
+      unexpectedWrites.length === routeOrderRefreshUnexpectedWritesStart
+      && routeWrites.length === routeOrderRefreshRouteWritesStart;
+    record(
+      "Route Planner restores dragged order and canonical profit after a full page refresh",
+      routeOrderRefreshOrderRestored
+        && JSON.stringify(routeOrderRefreshJobSet) === JSON.stringify(routeOrderRefreshExpected.jobIds)
+        && routeOrderRefreshProfitRestored
+        && page.url() === routeOrderRefreshUrl
+        && nearlyEqual(routeOrderRefreshDisplayed, routeOrderRefreshExpected.netProfit)
+        && routeOrderRefreshWritesStayedScoped,
+      `orderRestored=${routeOrderRefreshOrderRestored}, jobIds=${routeOrderRefreshJobSet.join(",")}, ` +
+      `expectedJobIds=${routeOrderRefreshExpected.jobIds.join(",")}, displayed=${routeOrderRefreshDisplayed ?? "missing"}, ` +
+      `canonical=${routeOrderRefreshExpected.netProfit}, urlUnchanged=${page.url() === routeOrderRefreshUrl}, ` +
+      `writesUnchanged=${routeOrderRefreshWritesStayedScoped}`,
+    );
+
     const removedJobId = secondJobId;
     const deleted = await clickRouteStopAction(page, fixtures[1].title, "Delete");
     const removalApplied = await waitForCondition(

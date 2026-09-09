@@ -34,7 +34,7 @@ Running `pnpm --filter @workspace/api-spec codegen` now reproduces all types wit
 api-server validates request bodies with zod from `@workspace/db/schema`, not from `@workspace/api-zod`. The frontend does not import api-zod at all. So api-zod generated files can be left at HEAD when adding endpoints — billing/serviceBilling work needs nothing there.
 
 ## lib/db dist rebuild
-`lib/api-client-react` and `lib/db` export from `src` directly, so no build is needed for runtime. But `lib/db` has a `dist` of `.d.ts` used by api-server's TS project references — rebuild it with `pnpm exec tsc -p tsconfig.json` in `lib/db` after schema changes, or api-server typecheck will report the new columns/exports as missing.
+`lib/api-client-react`, `lib/api-zod`, and `lib/db` export from `src` directly, so no build is needed for runtime. Leaf TypeScript checks can still resolve stale declaration output from referenced libraries: rebuild the affected libraries with `pnpm exec tsc -b ...` before diagnosing missing generated types or schema exports as source errors.
 
 ## Migration convention
 Despite drizzle using `push` (no `generate` script, no `out` in drizzle.config), there IS a numbered hand-written SQL log under `lib/db/src/migrations/` (latest is the MFH series, 0044+). New schema changes should add the next numbered `.sql` there (idempotent: `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`). There is a second divergent dir `lib/db/migrations/` (lower numbers) — `src/migrations/` is the one carrying recent feature work.
