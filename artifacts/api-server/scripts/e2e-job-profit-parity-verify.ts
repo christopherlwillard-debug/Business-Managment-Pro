@@ -721,6 +721,7 @@ async function main() {
   let delayedProfitResponseUsed = false;
   let profitSummaryFailureMode = false;
   let profitSummaryPartialMode = false;
+  let profitSummaryMissingJobId: number | null = null;
   let profitSummaryResponseDelayMs = 0;
   let profitDetailFailureMode = false;
   let profitDetailFailureJobId: number | null = null;
@@ -814,6 +815,9 @@ async function main() {
         const summary = canonicalBatchProfitSummary(jobIds);
         if (profitSummaryPartialMode) {
           delete summary[secondJobId];
+        }
+        if (profitSummaryMissingJobId != null) {
+          delete summary[profitSummaryMissingJobId];
         }
         if (profitSummaryResponseDelayMs > 0) {
           setTimeout(() => respondJson(summary), profitSummaryResponseDelayMs);
@@ -2308,6 +2312,7 @@ async function main() {
       waitUntil: "networkidle2",
       timeout: 60_000,
     });
+    const monthBoundaryNavigationCount = mainFrameNavigationCount;
     const monthBoundaryWeekSelected = await clickButtonByText(page, "Week");
     const oldMonthWeekStart = startOfWeekSunday(monthBoundaryOldDate);
     const oldMonthWeekEnd = addDays(oldMonthWeekStart, 6);
@@ -2327,19 +2332,78 @@ async function main() {
     const newMonthWeekStart = startOfWeekSunday(monthBoundaryNewDate);
     const newMonthWeekEnd = addDays(newMonthWeekStart, 6);
     const newMonthExpected = expectedRouteProfitBetween(newMonthWeekStart, newMonthWeekEnd);
+    profitSummaryMissingJobId = secondJobId;
     const newMonthDateSelected = await selectCalendarDate(page, monthBoundaryNewDate);
-    const newMonthRefreshed = await waitForRoutePanelNetProfit(
-      page,
-      newMonthExpected.netProfit,
-      oldMonthExpected.netProfit,
-    );
+    const newMonthUnavailable = await page.waitForFunction(
+      ({ jobId }) => {
+        const incompletePanel = document.querySelector('[data-testid="route-profit-incomplete"]');
+        const unavailableRow = document.querySelector(`[data-testid="route-profit-job-contribution-${jobId}"]`);
+        const netProfit = document.querySelector('[data-testid="route-profit-net-profit"]');
+        return incompletePanel != null
+          && unavailableRow?.textContent?.includes("Profit unavailable") === true
+          && netProfit == null;
+      },
+      { timeout: 20_000 },
+      { jobId: secondJobId },
+    ).then(() => true).catch(() => false);
     const newMonthDisplayed = await readRoutePanelNetProfit(page);
+    const newMonthSelectedMonth = await page.$eval(
+      '[data-testid="route-planner-current-month"]',
+      element => element.textContent?.trim() ?? "",
+    ).catch(() => "");
     record(
-      "Week view crosses into the next month with the canonical total",
+      "Week view hides a partial total when month-boundary profit is unavailable",
       newMonthDateSelected
-        && newMonthRefreshed
-        && nearlyEqual(newMonthDisplayed, newMonthExpected.netProfit),
-      `date=${monthBoundaryNewDate}, range=${newMonthWeekStart}..${newMonthWeekEnd}, jobIds=${newMonthExpected.jobIds.join(",")}, displayed=${newMonthDisplayed ?? "missing"}, canonical=${newMonthExpected.netProfit}`,
+        && newMonthUnavailable
+        && newMonthSelectedMonth.toLowerCase().includes(
+          new Date(`${monthBoundaryNewDate}T12:00:00`).toLocaleString("en-US", { month: "long" }).toLowerCase(),
+        )
+        && newMonthExpected.jobIds.includes(secondJobId)
+        && newMonthDisplayed == null
+        && newMonthSelectedMonth.length > 0,
+      `date=${monthBoundaryNewDate}, range=${newMonthWeekStart}..${newMonthWeekEnd}, jobIds=${newMonthExpected.jobIds.join(",")}, unavailable=${newMonthUnavailable}, selectedMonth=${newMonthSelectedMonth}, displayed=${newMonthDisplayed ?? "hidden"}`,
+    );
+
+    profitSummaryMissingJobId = null;
+    const newMonthRetryRequestStart = profitSummaryRequests.length;
+    const newMonthRetryClicked = await clickButtonByText(
+      page,
+      "Try again",
+      "Some linked job profit data is unavailable",
+    );
+    const newMonthRetryRequestIssued = await waitForCondition(
+      () => profitSummaryRequests.length > newMonthRetryRequestStart,
+    );
+    const newMonthRetryRecovered = await page.waitForFunction(
+      ({ expectedLabel, jobId }) => {
+        const panelText = document.querySelector('[data-testid="route-profit-panel"]')?.innerText ?? "";
+        return panelText.includes(expectedLabel)
+          && document.querySelector('[data-testid="route-profit-incomplete"]') == null
+          && document.querySelector(`[data-testid="route-profit-job-contribution-${jobId}"]`)?.textContent?.includes("Profit unavailable") !== true;
+      },
+      { timeout: 20_000 },
+      {
+        expectedLabel: routeProfitLabel(newMonthExpected.netProfit),
+        jobId: secondJobId,
+      },
+    ).then(() => true).catch(() => false);
+    const newMonthRetryRequest = profitSummaryRequests[newMonthRetryRequestStart];
+    const newMonthRetryDisplayed = await readRoutePanelNetProfit(page);
+    const newMonthRetrySelectedMonth = await page.$eval(
+      '[data-testid="route-planner-current-month"]',
+      element => element.textContent?.trim() ?? "",
+    ).catch(() => "");
+    record(
+      "Retry restores the month-boundary Week total without navigation or writes",
+      newMonthRetryClicked
+        && newMonthRetryRequestIssued
+        && newMonthRetryRecovered
+        && newMonthRetryRequest?.jobIds.includes(secondJobId) === true
+        && nearlyEqual(newMonthRetryDisplayed, newMonthExpected.netProfit)
+        && newMonthRetrySelectedMonth === newMonthSelectedMonth
+        && mainFrameNavigationCount === monthBoundaryNavigationCount
+        && unexpectedWrites.length === 0,
+      `clicked=${newMonthRetryClicked}, recovered=${newMonthRetryRecovered}, requestIds=${newMonthRetryRequest?.jobIds.join(",") ?? "missing"}, displayed=${newMonthRetryDisplayed ?? "missing"}, selectedMonthUnchanged=${newMonthRetrySelectedMonth === newMonthSelectedMonth}, navigationUnchanged=${mainFrameNavigationCount === monthBoundaryNavigationCount}`,
     );
 
     const returnedMonthDateSelected = await selectCalendarDate(page, monthBoundaryOldDate);

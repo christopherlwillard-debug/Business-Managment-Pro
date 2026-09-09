@@ -475,6 +475,9 @@ export default function RoutePlanner() {
     [viewStops.map(s => s.jobId).join(",")],
   );
   const visibleJobIdsKey = visibleJobIds.join(",");
+  const profitScopeKey = viewMode === "week"
+    ? `${weekStart}:${weekEnd}`
+    : selectedDateStr;
 
   const {
     data: profitSummary = {},
@@ -482,7 +485,7 @@ export default function RoutePlanner() {
     isError: isProfitError,
     refetch: refetchProfit,
   } = useQuery<Record<number, JobProfitData>>({
-    queryKey: ["job-profit-summary", visibleJobIdsKey],
+    queryKey: ["job-profit-summary", profitScopeKey, visibleJobIdsKey],
     queryFn: () =>
       apiFetch(`/jobs/profit-summary?jobIds=${visibleJobIdsKey}`) as unknown as Promise<Record<number, JobProfitData>>,
     staleTime: 60_000,
@@ -1095,7 +1098,7 @@ export default function RoutePlanner() {
             <button onClick={() => setCalMonth(m => subMonths(m, 1))} className="p-1 rounded hover:bg-muted transition-colors">
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-sm font-semibold">{format(calMonth, "MMMM yyyy")}</span>
+            <span data-testid="route-planner-current-month" className="text-sm font-semibold">{format(calMonth, "MMMM yyyy")}</span>
             <button onClick={() => setCalMonth(m => addMonths(m, 1))} className="p-1 rounded hover:bg-muted transition-colors">
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -1225,7 +1228,7 @@ export default function RoutePlanner() {
               {isLoadingProfit && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
             </div>
             {routeProfitStats.profitUnavailable ? (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+              <div data-testid="route-profit-unavailable" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
                 <p className="text-[11px] font-semibold text-red-700">Profit data unavailable</p>
                 <p className="text-[10px] text-red-600/80 mt-1">
                   The route total is hidden until the latest job profit data loads.
@@ -1240,7 +1243,7 @@ export default function RoutePlanner() {
                 </button>
               </div>
             ) : routeProfitStats.profitDataIncomplete ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <div data-testid="route-profit-incomplete" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
                 <p className="text-[11px] font-semibold text-amber-700">Some linked job profit data is unavailable</p>
                 <p className="text-[10px] text-amber-700/80 mt-1">
                   The route total is hidden until every visible linked job has canonical profit data.
