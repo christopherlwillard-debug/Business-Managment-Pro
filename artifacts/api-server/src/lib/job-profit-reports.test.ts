@@ -89,4 +89,53 @@ describe("job profit report projections", () => {
     expect(row.netProfit).toBeCloseTo(940);
     expect(source.calculation.auditTrailTotal).toBe(75);
   });
+
+  it("keeps reversed fixed/allocation payouts out of closed export and owner pay", () => {
+    const active = loaded({
+      invoices: [{ total: "2400.00", status: "paid" }],
+      expenses: [
+        { id: 21, amount: "300.00", category: "Materials", countsTowardJobProfit: true },
+      ],
+      fixedSubCost: 400,
+      allocPaid: 250,
+    });
+    const withReversals = loaded({
+      invoices: [{ total: "2400.00", status: "paid" }],
+      expenses: [
+        { id: 21, amount: "300.00", category: "Materials", countsTowardJobProfit: true },
+      ],
+      fixedSubCost: 400,
+      allocPaid: 250,
+      reversedFixedPayout: 900,
+      reversedAllocationPayout: 750,
+    });
+
+    const exportRow = buildClosedJobExportRow({
+      dateOpened: "2026-08-10",
+      dateClosed: "2026-08-12",
+      jobNumber: 104,
+      businessLine: "general",
+      jobName: "Reversal-aware job",
+      customer: "Customer",
+      location: "A",
+      invoiceStatus: "paid",
+      subStatus: "Settled",
+    }, withReversals);
+    const pay = calculateOwnerPayFromJobProfit(withReversals, 25, 5, 20);
+    const activePay = calculateOwnerPayFromJobProfit(active, 25, 5, 20);
+
+    expect(withReversals.calculation.profitBreakdown.includedCosts.total).toBeCloseTo(950);
+    expect(withReversals.calculation.profitBreakdown.includedCosts.splitPayouts).toBeCloseTo(250);
+    expect(withReversals.calculation.profitBreakdown.excludedFromProfit.reversedFixedPayouts).toBeCloseTo(900);
+    expect(withReversals.calculation.profitBreakdown.excludedFromProfit.reversedAllocationPayouts).toBeCloseTo(750);
+    expect(exportRow.materials).toBeCloseTo(300);
+    expect(exportRow.labor).toBeCloseTo(650);
+    expect(exportRow.netProfit).toBeCloseTo(1450);
+
+    expect(pay.splitPool).toBeCloseTo(1595);
+    expect(pay.ownerShare).toBeCloseTo(1196.25);
+    expect(pay.taxReserve).toBeCloseTo(239.25);
+    expect(pay.takeHome).toBeCloseTo(957);
+    expect(pay).toEqual(activePay);
+  });
 });
