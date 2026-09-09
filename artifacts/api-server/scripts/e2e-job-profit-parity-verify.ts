@@ -54,6 +54,11 @@ function lastDayOfMonthOffset(dateString: string, monthOffset: number): string {
   return localDateString(new Date(year, month - 1 + monthOffset + 1, 0, 12));
 }
 
+function lastDayOfYearOffset(dateString: string, yearOffset: number): string {
+  const [year] = dateString.split("-").map(Number);
+  return localDateString(new Date(year + yearOffset, 11, 31, 12));
+}
+
 function startOfWeekSunday(dateString: string): string {
   const [year, month, day] = dateString.split("-").map(Number);
   const date = new Date(year, month - 1, day, 12);
@@ -2419,6 +2424,110 @@ async function main() {
         && returnedMonthRefreshed
         && nearlyEqual(returnedMonthDisplayed, oldMonthExpected.netProfit),
       `date=${monthBoundaryOldDate}, displayed=${returnedMonthDisplayed ?? "missing"}, canonical=${oldMonthExpected.netProfit}`,
+    );
+
+    const yearBoundaryOldDate = lastDayOfYearOffset(today, -1);
+    const yearBoundaryNewDate = addDays(yearBoundaryOldDate, 8);
+    const yearBoundaryOldTemplate = routeStops.find(stop => stop.jobId === firstJobId);
+    const yearBoundaryNewTemplate = routeStops.find(stop => stop.jobId === secondJobId);
+    if (!yearBoundaryOldTemplate || !yearBoundaryNewTemplate) {
+      throw new Error("Year-boundary route fixtures require both profit jobs");
+    }
+    routeStops.push(
+      {
+        ...yearBoundaryOldTemplate,
+        id: 95101,
+        title: "E2E Year Boundary December",
+        scheduledDate: yearBoundaryOldDate,
+        sortOrder: Math.max(...routeStops.map(stop => stop.sortOrder), -1) + 1,
+      },
+      {
+        ...yearBoundaryNewTemplate,
+        id: 95102,
+        title: "E2E Year Boundary January",
+        scheduledDate: yearBoundaryNewDate,
+        sortOrder: Math.max(...routeStops.map(stop => stop.sortOrder), -1) + 1,
+      },
+    );
+    await page.reload({
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    const yearBoundaryNavigationCount = mainFrameNavigationCount;
+    const yearBoundaryWeekSelected = await clickButtonByText(page, "Week");
+    const decemberWeekStart = startOfWeekSunday(yearBoundaryOldDate);
+    const decemberWeekEnd = addDays(decemberWeekStart, 6);
+    const decemberExpected = expectedRouteProfitBetween(decemberWeekStart, decemberWeekEnd);
+    const decemberDateSelected = await selectCalendarDate(page, yearBoundaryOldDate);
+    const decemberRefreshed = await waitForRoutePanelNetProfit(page, decemberExpected.netProfit);
+    const decemberDisplayed = await readRoutePanelNetProfit(page);
+    const decemberMonthLabel = await page.$eval(
+      '[data-testid="route-planner-current-month"]',
+      element => element.textContent?.trim() ?? "",
+    ).catch(() => "");
+    const decemberExpectedMonthLabel = new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      year: "numeric",
+    }).format(new Date(`${yearBoundaryOldDate}T12:00:00`));
+    record(
+      "Week view loads the canonical total on December 31 before the year boundary",
+      yearBoundaryWeekSelected
+        && decemberDateSelected
+        && decemberRefreshed
+        && nearlyEqual(decemberDisplayed, decemberExpected.netProfit)
+        && decemberMonthLabel === decemberExpectedMonthLabel,
+      `date=${yearBoundaryOldDate}, range=${decemberWeekStart}..${decemberWeekEnd}, jobIds=${decemberExpected.jobIds.join(",")}, displayed=${decemberDisplayed ?? "missing"}, canonical=${decemberExpected.netProfit}, month=${decemberMonthLabel}`,
+    );
+
+    const januaryWeekStart = startOfWeekSunday(yearBoundaryNewDate);
+    const januaryWeekEnd = addDays(januaryWeekStart, 6);
+    const januaryExpected = expectedRouteProfitBetween(januaryWeekStart, januaryWeekEnd);
+    const januaryDateSelected = await selectCalendarDate(page, yearBoundaryNewDate);
+    const januaryRefreshed = await waitForRoutePanelNetProfit(
+      page,
+      januaryExpected.netProfit,
+      decemberExpected.netProfit,
+    );
+    const januaryDisplayed = await readRoutePanelNetProfit(page);
+    const januaryMonthLabel = await page.$eval(
+      '[data-testid="route-planner-current-month"]',
+      element => element.textContent?.trim() ?? "",
+    ).catch(() => "");
+    const januaryExpectedMonthLabel = new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      year: "numeric",
+    }).format(new Date(`${yearBoundaryNewDate}T12:00:00`));
+    record(
+      "Week view crosses from December into January with the canonical total",
+      januaryDateSelected
+        && januaryRefreshed
+        && nearlyEqual(januaryDisplayed, januaryExpected.netProfit)
+        && januaryExpected.jobIds.includes(secondJobId)
+        && januaryMonthLabel === januaryExpectedMonthLabel
+        && januaryMonthLabel !== decemberMonthLabel,
+      `date=${yearBoundaryNewDate}, range=${januaryWeekStart}..${januaryWeekEnd}, jobIds=${januaryExpected.jobIds.join(",")}, displayed=${januaryDisplayed ?? "missing"}, canonical=${januaryExpected.netProfit}, month=${januaryMonthLabel}`,
+    );
+
+    const returnedYearBoundaryDateSelected = await selectCalendarDate(page, yearBoundaryOldDate);
+    const returnedYearBoundaryRefreshed = await waitForRoutePanelNetProfit(
+      page,
+      decemberExpected.netProfit,
+      januaryExpected.netProfit,
+    );
+    const returnedYearBoundaryDisplayed = await readRoutePanelNetProfit(page);
+    const returnedYearBoundaryMonthLabel = await page.$eval(
+      '[data-testid="route-planner-current-month"]',
+      element => element.textContent?.trim() ?? "",
+    ).catch(() => "");
+    record(
+      "Returning to December restores the original year-boundary Week total",
+      returnedYearBoundaryDateSelected
+        && returnedYearBoundaryRefreshed
+        && nearlyEqual(returnedYearBoundaryDisplayed, decemberExpected.netProfit)
+        && returnedYearBoundaryMonthLabel === decemberExpectedMonthLabel
+        && mainFrameNavigationCount === yearBoundaryNavigationCount
+        && unexpectedWrites.length === 0,
+      `date=${yearBoundaryOldDate}, displayed=${returnedYearBoundaryDisplayed ?? "missing"}, canonical=${decemberExpected.netProfit}, month=${returnedYearBoundaryMonthLabel}, navigationUnchanged=${mainFrameNavigationCount === yearBoundaryNavigationCount}, unexpectedWrites=${unexpectedWrites.length}`,
     );
 
     jobs.reverse();

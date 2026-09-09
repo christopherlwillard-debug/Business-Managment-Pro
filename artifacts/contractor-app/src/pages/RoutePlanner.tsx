@@ -20,7 +20,7 @@ import { aggregateCanonicalJobProfit } from "@/lib/jobFinancials";
 import { formatSundaySaturdayWeekRange, getSundaySaturdayWeekRange } from "@/lib/dateUtils";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay,
-  isToday, parseISO, startOfWeek, endOfWeek, addMonths, subMonths,
+  isSameMonth, isToday, parseISO, startOfWeek, endOfWeek, addMonths, subMonths,
 } from "date-fns";
 
 // Fix Leaflet default marker icon without using `any`
@@ -1113,7 +1113,7 @@ export default function RoutePlanner() {
               <div key={wi} className="grid grid-cols-7 gap-0.5">
                 {week.map((day, di) => {
                   const dayStr = format(day, "yyyy-MM-dd");
-                  const inMonth = day.getMonth() === calMonth.getMonth();
+                  const inMonth = isSameMonth(day, calMonth);
                   return (
                     <div key={di} className={cn(!inMonth && "opacity-25")}>
                       <CalDay
