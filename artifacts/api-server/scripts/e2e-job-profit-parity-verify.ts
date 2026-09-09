@@ -3,8 +3,9 @@
  * Run:
  *   pnpm --filter @workspace/api-server run verify:job-profit-parity
  *
- * The browser uses read-only fixture responses for two jobs and two route
- * stops. This keeps the check deterministic while exercising the real Jobs,
+ * The browser uses read-only fixture responses for two jobs and three route
+ * stops, including two stops linked to the first job. This keeps the check
+ * deterministic while exercising the real Jobs,
  * Job Payroll, and Route Planner screens through the authenticated app shell.
  * Every browser write is aborted and the temporary test session is removed.
  */
@@ -99,6 +100,7 @@ function nearlyEqual(left: number | null, right: number | null): boolean {
 }
 
 type ProfitFixture = {
+  responseVersion: 2;
   grossInvoiced: number;
   collected: number;
   jobExpenses: number;
@@ -200,6 +202,18 @@ async function clickRouteStopAction(page: Page, title: string, action: string): 
     }
     return false;
   }, { stopTitle: title, buttonTitle: action });
+}
+
+async function clickRouteStopActionById(page: Page, stopId: number, action: string): Promise<boolean> {
+  return page.evaluate(({ routeStopId, buttonTitle }) => {
+    const stop = document.querySelector<HTMLElement>(
+      `[data-route-stop-id="${routeStopId}"]`,
+    );
+    const button = stop?.querySelector<HTMLButtonElement>(`button[title="${buttonTitle}"]`);
+    if (!button) return false;
+    button.click();
+    return true;
+  }, { routeStopId: stopId, buttonTitle: action });
 }
 
 async function dragRouteStop(page: Page, sourceTitle: string, targetTitle: string): Promise<boolean> {
@@ -446,6 +460,7 @@ async function main() {
       id: firstJobId,
       title: "E2E Profit Parity One",
       profit: {
+        responseVersion: 2,
         grossInvoiced: 1200,
         collected: 1200,
         jobExpenses: 125,
@@ -489,6 +504,7 @@ async function main() {
       id: secondJobId,
       title: "E2E Profit Parity Two",
       profit: {
+        responseVersion: 2,
         grossInvoiced: 800,
         collected: 800,
         jobExpenses: 80,
@@ -1180,8 +1196,9 @@ async function main() {
     const openFinancials = async (fixture: JobFixture) => {
       await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
       const visible = await waitForText(page, fixture.title);
-      const openedCard = visible && await clickJobCardAction(page, fixture.title, "Open Job Card");
-      const openedPanel = openedCard && await clickJobCardAction(page, fixture.title, "Job P&L");
+      const openedCard = visible && await clickJobCardHeadingAction(page, fixture.title, "Open Job Card");
+      const pnlReady = openedCard && await waitForText(page, "Job P&L");
+      const openedPanel = pnlReady && await clickJobCardHeadingAction(page, fixture.title, "Job P&L");
       record(`${fixture.title}: Job Financials opens from the job card`, Boolean(openedPanel));
       await waitForText(page, "Financial Summary");
       await page.waitForFunction(
@@ -1475,8 +1492,61 @@ async function main() {
       `writesUnchanged=${routeOrderRefreshWritesStayedScoped}`,
     );
 
+    const duplicateStop = routeStops.find(stop =>
+      stop.jobId === firstJobId
+      && stop.title === duplicateRouteStopTitle
+      && stop.scheduledDate === today,
+    );
+    if (!duplicateStop) {
+      throw new Error("Duplicate route-stop fixture was removed before duplicate deletion coverage");
+    }
+    const beforeDuplicateRemoval = expectedRouteProfit(today);
+    const duplicateRemovalWriteStart = routeWrites.length;
+    const duplicateDeleted = await clickRouteStopActionById(page, duplicateStop.id, "Delete");
+    const duplicateRemovalApplied = await waitForCondition(
+      () => !routeStops.some(stop => stop.id === duplicateStop.id),
+    );
+    const duplicateRemovalUiApplied = await page.waitForFunction(
+      stopId => document.querySelector(`[data-route-stop-id="${stopId}"]`) == null,
+      { timeout: 20_000 },
+      duplicateStop.id,
+    ).then(() => true).catch(() => false);
+    const afterDuplicateRemoval = expectedRouteProfit(today);
+    const duplicateRemovalRefreshed = await waitForRoutePanelNetProfit(
+      page,
+      afterDuplicateRemoval.netProfit,
+    );
+    const duplicateRemovalText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const duplicateRemovalDisplayed = readMoneyAfter(duplicateRemovalText, "Net Profit");
+    const duplicateRemovalWrites = routeWrites.slice(duplicateRemovalWriteStart);
+    const duplicateRemovalWritesAreExpected =
+      duplicateRemovalWrites.length === 1
+      && duplicateRemovalWrites[0] === `DELETE /api/route-stops/${duplicateStop.id}`;
+    record(
+      "Removing one duplicate route stop preserves the canonical job set and net profit",
+      duplicateDeleted
+        && duplicateRemovalApplied
+        && duplicateRemovalUiApplied
+        && duplicateRemovalRefreshed
+        && duplicateRemovalWritesAreExpected
+        && JSON.stringify(afterDuplicateRemoval.jobIds) === JSON.stringify(beforeDuplicateRemoval.jobIds)
+        && nearlyEqual(duplicateRemovalDisplayed, beforeDuplicateRemoval.netProfit)
+        && nearlyEqual(duplicateRemovalDisplayed, afterDuplicateRemoval.netProfit),
+      `beforeJobs=${beforeDuplicateRemoval.jobIds.join(",")}, afterJobs=${afterDuplicateRemoval.jobIds.join(",")}, ` +
+      `displayed=${duplicateRemovalDisplayed ?? "missing"}, canonicalBefore=${beforeDuplicateRemoval.netProfit}, ` +
+      `canonicalAfter=${afterDuplicateRemoval.netProfit}, writes=${duplicateRemovalWrites.join(";")}`,
+    );
+
     const removedJobId = secondJobId;
-    const deleted = await clickRouteStopAction(page, fixtures[1].title, "Delete");
+    const distinctStop = routeStops.find(stop =>
+      stop.jobId === removedJobId
+      && stop.scheduledDate === today,
+    );
+    if (!distinctStop) {
+      throw new Error("Distinct route-stop fixture was removed before distinct deletion coverage");
+    }
+    const distinctRemovalWriteStart = routeWrites.length;
+    const deleted = await clickRouteStopActionById(page, distinctStop.id, "Delete");
     const removalApplied = await waitForCondition(
       () => !routeStops.some(stop => stop.jobId === removedJobId && stop.scheduledDate === today),
     );
@@ -1484,13 +1554,61 @@ async function main() {
     const removalRefreshed = await waitForRouteProfit(page, afterRemoval.netProfit);
     const removalText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const removalDisplayed = readMoneyAfter(removalText, "Net Profit");
+    const distinctRemovalWrites = routeWrites.slice(distinctRemovalWriteStart);
+    const removedStopWasExpected = distinctRemovalWrites.length === 1
+      && distinctRemovalWrites[0] === `DELETE /api/route-stops/${distinctStop.id}`;
     record(
       "Removing a route job refreshes the displayed canonical net profit",
       deleted
         && removalApplied
         && removalRefreshed
+        && removedStopWasExpected
         && nearlyEqual(removalDisplayed, afterRemoval.netProfit),
       `jobIds=${afterRemoval.jobIds.join(",")}, displayed=${removalDisplayed ?? "missing"}, canonical=${afterRemoval.netProfit}`,
+    );
+
+    const finalDuplicateStop = routeStops.find(stop =>
+      stop.jobId === firstJobId
+      && stop.scheduledDate === today,
+    );
+    if (!finalDuplicateStop) {
+      throw new Error("Final duplicate route-stop fixture was removed before final deletion coverage");
+    }
+    const beforeFinalDuplicateRemoval = expectedRouteProfit(today);
+    const finalDuplicateRemovalWriteStart = routeWrites.length;
+    const finalDuplicateDeleted = await clickRouteStopActionById(page, finalDuplicateStop.id, "Delete");
+    const finalDuplicateRemovalApplied = await waitForCondition(
+      () => !routeStops.some(stop => stop.id === finalDuplicateStop.id),
+    );
+    const finalDuplicateRemovalUiApplied = await page.waitForFunction(
+      stopId => document.querySelector(`[data-route-stop-id="${stopId}"]`) == null,
+      { timeout: 20_000 },
+      finalDuplicateStop.id,
+    ).then(() => true).catch(() => false);
+    const afterFinalDuplicateRemoval = expectedRouteProfit(today);
+    const finalDuplicatePanelCleared = await page.waitForFunction(
+      () => document.querySelector('[data-testid="route-profit-panel"]') == null,
+      { timeout: 20_000 },
+    ).then(() => true).catch(() => false);
+    const finalDuplicateRemovalText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
+    const finalDuplicateRemovalDisplayed = readMoneyAfter(finalDuplicateRemovalText, "Net Profit");
+    const finalDuplicateRemovalWrites = routeWrites.slice(finalDuplicateRemovalWriteStart);
+    const finalDuplicateRemovalWritesAreExpected = finalDuplicateRemovalWrites.length === 1
+      && finalDuplicateRemovalWrites[0] === `DELETE /api/route-stops/${finalDuplicateStop.id}`;
+    record(
+      "Removing the final duplicate route stop removes that job's profit exactly once",
+      finalDuplicateDeleted
+        && finalDuplicateRemovalApplied
+        && finalDuplicateRemovalUiApplied
+        && finalDuplicatePanelCleared
+        && finalDuplicateRemovalWritesAreExpected
+        && JSON.stringify(afterFinalDuplicateRemoval.jobIds) === JSON.stringify([])
+        && afterFinalDuplicateRemoval.netProfit === 0
+        && beforeFinalDuplicateRemoval.netProfit - afterFinalDuplicateRemoval.netProfit === fixtures[0].profit.netProfit
+        && finalDuplicateRemovalDisplayed == null,
+      `beforeJobs=${beforeFinalDuplicateRemoval.jobIds.join(",")}, afterJobs=${afterFinalDuplicateRemoval.jobIds.join(",")}, ` +
+      `displayed=${finalDuplicateRemovalDisplayed ?? "missing"}, canonicalBefore=${beforeFinalDuplicateRemoval.netProfit}, ` +
+      `canonicalAfter=${afterFinalDuplicateRemoval.netProfit}, writes=${finalDuplicateRemovalWrites.join(";")}`,
     );
 
     await page.evaluate(() => {

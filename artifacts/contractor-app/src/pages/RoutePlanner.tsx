@@ -2066,6 +2066,7 @@ function StopCard({
   return (
     <div
       draggable
+      data-route-stop-id={stop.id}
       data-route-stop-job-id={stop.jobId ?? undefined}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
