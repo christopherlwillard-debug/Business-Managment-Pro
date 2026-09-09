@@ -5,6 +5,11 @@ import {
   isAbortError,
 } from "./jobProfitRequests";
 import type { JobProfitResponse } from "@workspace/api-client-react";
+import { findProfitClientViolations } from "../../scripts/check-job-profit-client-usage.mjs";
+
+function violationsFor(source: string) {
+  return findProfitClientViolations("src/pages/Jobs.tsx", source);
+}
 
 describe("canApplyJobResponse", () => {
   it("rejects a response from an earlier job after navigation", () => {
@@ -56,5 +61,51 @@ describe("isAbortError", () => {
     expect(isAbortError(new Error("Network unavailable"))).toBe(false);
     expect(isAbortError(null)).toBe(false);
     expect(isAbortError({ name: "TypeError" })).toBe(false);
+  });
+});
+
+describe("job profit client usage guard", () => {
+  it("accepts generated client calls", () => {
+    expect(violationsFor(`
+      const detail = await getJobProfit(job.id);
+      const summary = await getJobsProfitSummary({ businessId });
+    `)).toEqual([]);
+  });
+
+  it("rejects direct individual profit URLs with the owning file and line", () => {
+    const violations = violationsFor([
+      "function loadProfit(jobId: number) {",
+      "  return fetch(`/api/jobs/${jobId}/profit`);",
+      "}",
+    ].join("\n"));
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain("src/pages/Jobs.tsx:2:");
+  });
+
+  it("rejects direct batch profit URLs with the owning file and line", () => {
+    const violations = violationsFor([
+      "function loadProfitSummary() {",
+      "  return fetch('/api/jobs/profit-summary?businessId=1');",
+      "}",
+    ].join("\n"));
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain("src/pages/Jobs.tsx:2:");
+  });
+
+  it("rejects local JSON response casts with the owning file and line", () => {
+    const violations = violationsFor([
+      "async function loadProfit(jobId: number) {",
+      "  const response = await fetch(`/api/jobs/${jobId}/profit`);",
+      "  return response.json() as JobProfitResponse;",
+      "}",
+    ].join("\n"));
+
+    expect(violations).toHaveLength(2);
+    expect(violations.every((violation) => violation.includes("src/pages/Jobs.tsx:2:"))).toBe(true);
+    expect(violations.some((violation) =>
+      violation.includes("do not parse and cast a profit response locally"),
+    )).toBe(true);
   });
 });

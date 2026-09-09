@@ -28,11 +28,8 @@ function addViolation(violations, relativePath, source, index, message) {
   violations.push(`${relativePath}:${line}: ${message}${snippet ? `\n  ${snippet}` : ""}`);
 }
 
-const violations = [];
-
-for (const relativePath of targetFiles) {
-  const absolutePath = path.join(appDir, relativePath);
-  const source = fs.readFileSync(absolutePath, "utf8");
+export function findProfitClientViolations(relativePath, source) {
+  const violations = [];
 
   const directUrlMatch = directProfitUrlPattern.exec(source);
   if (directUrlMatch) {
@@ -77,14 +74,24 @@ for (const relativePath of targetFiles) {
       "do not parse and cast a profit response locally; use the generated client method",
     );
   }
+  return violations;
 }
 
-if (violations.length > 0) {
-  console.error("[job-profit-client] validation failed:");
-  for (const violation of violations) console.error(`- ${violation}`);
-  process.exitCode = 1;
-} else {
-  console.log(
-    `[job-profit-client] passed: ${targetFiles.join(", ")} use generated profit client methods without local route casts`,
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const violations = targetFiles.flatMap((relativePath) =>
+    findProfitClientViolations(
+      relativePath,
+      fs.readFileSync(path.join(appDir, relativePath), "utf8"),
+    ),
   );
+
+  if (violations.length > 0) {
+    console.error("[job-profit-client] validation failed:");
+    for (const violation of violations) console.error(`- ${violation}`);
+    process.exitCode = 1;
+  } else {
+    console.log(
+      `[job-profit-client] passed: ${targetFiles.join(", ")} use generated profit client methods without local route casts`,
+    );
+  }
 }
