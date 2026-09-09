@@ -2854,6 +2854,7 @@ async function main() {
       timeout: 60_000,
     });
     await clickButtonContainingText(page, "Closed Jobs");
+    const partialRevenueSortSelected = await selectOptionByText(page, "Highest Revenue");
     const partialClosedJobsText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const partialInitialProfitRequest = profitSummaryRequests[partialProfitRequestStart];
     const partialSortWaitingShown = await page.$('[data-testid="closed-job-sort-waiting"]') !== null;
@@ -2878,9 +2879,10 @@ async function main() {
         && partialTotalsUnavailable
         && partialAvailableRowUsable
         && partialUnavailableRowMarked
+        && partialRevenueSortSelected
         && partialSortWaitingShown
         && partialClosedJobsText.includes("Highest Revenue sorting is waiting for all canonical values."),
-      `warning=${partialWarningShown}, missingJobNamed=${partialMissingJobNamed}, totalsUnavailable=${partialTotalsUnavailable}, availableRow=${partialAvailableRowUsable}, unavailableRow=${partialUnavailableRowMarked}, sortWaiting=${partialSortWaitingShown}`,
+      `warning=${partialWarningShown}, missingJobNamed=${partialMissingJobNamed}, totalsUnavailable=${partialTotalsUnavailable}, availableRow=${partialAvailableRowUsable}, unavailableRow=${partialUnavailableRowMarked}, revenueSelected=${partialRevenueSortSelected}, sortWaiting=${partialSortWaitingShown}`,
     );
 
     profitSummaryPartialMode = false;
