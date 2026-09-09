@@ -252,6 +252,31 @@ function compareGeneratedOutputs(temporaryRoot) {
   return errors;
 }
 
+function mutateGeneratedProfitOutput(temporaryRoot) {
+  const generatedPath = path.join(
+    temporaryRoot,
+    "api-client-react",
+    "src",
+    "generated",
+    "api.schemas.ts",
+  );
+  const original = fs.readFileSync(generatedPath, "utf8");
+  const expectedText = "splitPool: number;";
+  const replacementText = "splitPool: string;";
+  const occurrences = original.split(expectedText).length - 1;
+
+  if (occurrences !== 1) {
+    throw new Error(
+      `The splitPool regression fixture expected one "${expectedText}" occurrence in ${generatedPath}, found ${occurrences}.`,
+    );
+  }
+
+  fs.writeFileSync(
+    generatedPath,
+    original.replace(expectedText, replacementText),
+  );
+}
+
 function verifyServerResponseContract() {
   const zodBuild = spawnSync(
     "pnpm",
@@ -286,7 +311,7 @@ function verifyServerResponseContract() {
   return null;
 }
 
-function main() {
+function main({ mutateGeneratedOutput = false } = {}) {
   if (!fs.existsSync(openapiPath)) {
     throw new Error(`OpenAPI spec is missing: ${openapiPath}`);
   }
@@ -299,6 +324,9 @@ function main() {
     const temporaryConfig = writeTemporaryConfig(temporaryRoot);
     configDirectory = temporaryConfig.configDirectory;
     runCodegen(temporaryConfig.configPath);
+    if (mutateGeneratedOutput) {
+      mutateGeneratedProfitOutput(temporaryRoot);
+    }
 
     const errors = compareGeneratedOutputs(temporaryRoot);
     const serverError = verifyServerResponseContract();
@@ -328,7 +356,14 @@ function main() {
 }
 
 try {
-  main();
+  const args = new Set(process.argv.slice(2));
+  const supportedArgs = new Set(["--test-mutate-split-pool"]);
+  const unsupportedArgs = [...args].filter((arg) => !supportedArgs.has(arg));
+  if (unsupportedArgs.length) {
+    throw new Error(`Unsupported argument(s): ${unsupportedArgs.join(", ")}`);
+  }
+
+  main({ mutateGeneratedOutput: args.has("--test-mutate-split-pool") });
 } catch (error) {
   console.error(
     `Job-profit API contract check could not complete: ${
