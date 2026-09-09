@@ -13,7 +13,7 @@
     "schema-contract:check": "node scripts/schema-contract-inventory.mjs --check",
     "schema-contract:live-check": "node scripts/schema-contract-live-check.mjs",
     "system-registry:check": "node scripts/system-registry-check.mjs",
-    "accounting:gate": "pnpm run schema-contract:live-check && pnpm run schema-contract:check && pnpm exec tsc -b lib/db lib/api-zod lib/integrations-openai-ai-server && pnpm --filter @workspace/api-server run typecheck && pnpm exec tsc -b lib/api-client-react lib/replit-auth-web && pnpm --filter contractor-app run typecheck && pnpm --filter @workspace/api-server test"
+    "accounting:gate": "pnpm run job-profit-contract:check && pnpm run schema-contract:live-check && pnpm run schema-contract:check && pnpm exec tsc -b lib/db lib/api-zod lib/integrations-openai-ai-server && pnpm --filter @workspace/api-server run typecheck && pnpm exec tsc -b lib/api-client-react lib/replit-auth-web && pnpm --filter contractor-app run typecheck && pnpm --filter @workspace/api-server test"
   },
   "private": true,
   "devDependencies": {

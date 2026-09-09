@@ -43,8 +43,8 @@ accounting test/release gate, run the read-only development metadata check:
 pnpm run schema-contract:live-check
 ```
 
-For the complete accounting release gate, which intentionally runs the live
-check first, use:
+For the complete accounting release gate, which first verifies the canonical
+job-profit contract and then runs the live schema check, use:
 
 ```sh
 pnpm run accounting:gate

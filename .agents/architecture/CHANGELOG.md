@@ -82,6 +82,16 @@ Created the four-document architecture governance system:
 
 *Add new entries here as architectural changes are completed and verified.*
 
+## 2026-09-09
+
+### Accounting gate includes the canonical job-profit contract check
+
+- The `accounting:gate` release validation sequence now runs the read-only
+  job-profit OpenAPI/generated-output/server-response contract check first.
+- The existing schema, typecheck, and API test stages remain fail-fast behind
+  the contract check, so contract drift blocks the gate before later release
+  validation or publishing.
+
 ## 2026-09-06
 
 ### Unified alternate job-profit report paths
