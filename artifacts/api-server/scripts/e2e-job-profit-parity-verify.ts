@@ -2723,8 +2723,12 @@ async function main() {
     const closedJobsOrderBeforeProfitSort = await readClosedJobTitles(page);
     const closedProfitSortSelected = await selectOptionByText(page, "Highest Profit");
     const closedJobsOrderDuringFailure = await readClosedJobTitles(page);
+    const closedProfitSortWaitingShown = await page.$('[data-testid="closed-job-sort-waiting"]') !== null;
+    const closedProfitSortWaitingText = await page.evaluate(() => document.body.innerText);
     const closedRevenueSortSelected = await selectOptionByText(page, "Highest Revenue");
     const closedJobsRevenueOrderDuringFailure = await readClosedJobTitles(page);
+    const closedRevenueSortWaitingShown = await page.$('[data-testid="closed-job-sort-waiting"]') !== null;
+    const closedRevenueSortWaitingText = await page.evaluate(() => document.body.innerText);
     const closedExpectedRevenueLabel = formatMoneyLabel(fixtures[0].profit.grossInvoiced);
     const closedExpectedNetProfitLabel = formatMoneyLabel(fixtures[0].profit.netProfit);
     const closedJobsWarningShown = closedJobsErrorText.includes("Closed-job profit summaries are unavailable");
@@ -2760,6 +2764,14 @@ async function main() {
         && closedJobsRevenueOrderDuringFailure.includes(fixtures[1].title),
       `selected=${closedRevenueSortSelected}, before=${closedJobsOrderBeforeProfitSort.join(" | ")}, duringFailure=${closedJobsRevenueOrderDuringFailure.join(" | ")}`,
     );
+    record(
+      "Closed Jobs explains why canonical sorting is waiting during an outage",
+      closedProfitSortWaitingShown
+        && closedRevenueSortWaitingShown
+        && closedProfitSortWaitingText.includes("Highest Profit sorting is unavailable until canonical data returns.")
+        && closedRevenueSortWaitingText.includes("Highest Revenue sorting is unavailable until canonical data returns."),
+      `profitShown=${closedProfitSortWaitingShown}, revenueShown=${closedRevenueSortWaitingShown}`,
+    );
 
     profitSummaryFailureMode = false;
     const closedJobsRetryUrl = page.url();
@@ -2785,6 +2797,7 @@ async function main() {
     const closedJobsAfterRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const closedJobsOrderAfterRetry = await readClosedJobTitles(page);
     const closedRevenueOrderAfterRetry = await readClosedJobTitles(page);
+    const closedJobSortWaitingClearedAfterRetry = await page.$('[data-testid="closed-job-sort-waiting"]') === null;
     const closedJobsRetryRequestCount = profitSummaryRequests.length;
     const closedJobsRetryRequest = profitSummaryRequests[1];
     const closedJobsProfitRequestSequenceValid = closedJobsInitialProfitRequestCount === 1
@@ -2828,6 +2841,11 @@ async function main() {
         && JSON.stringify(closedRevenueOrderAfterRetry) !== JSON.stringify(closedJobsRevenueOrderDuringFailure),
       `duringFailure=${closedJobsRevenueOrderDuringFailure.join(" | ")}, afterRetry=${closedRevenueOrderAfterRetry.join(" | ")}`,
     );
+    record(
+      "Closed Jobs clears the sorting status after canonical values return",
+      closedJobsRetryRecovered && closedJobSortWaitingClearedAfterRetry,
+      `recovered=${closedJobsRetryRecovered}, waitingCleared=${closedJobSortWaitingClearedAfterRetry}`,
+    );
 
     profitSummaryPartialMode = true;
     const partialProfitRequestStart = profitSummaryRequests.length;
@@ -2838,6 +2856,7 @@ async function main() {
     await clickButtonContainingText(page, "Closed Jobs");
     const partialClosedJobsText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const partialInitialProfitRequest = profitSummaryRequests[partialProfitRequestStart];
+    const partialSortWaitingShown = await page.$('[data-testid="closed-job-sort-waiting"]') !== null;
     const partialClosedJobRows = await page.$$eval(
       "table tbody tr",
       rows => rows.map(row => row.textContent?.replace(/\s+/g, " ").trim() ?? ""),
@@ -2858,8 +2877,10 @@ async function main() {
         && partialMissingJobNamed
         && partialTotalsUnavailable
         && partialAvailableRowUsable
-        && partialUnavailableRowMarked,
-      `warning=${partialWarningShown}, missingJobNamed=${partialMissingJobNamed}, totalsUnavailable=${partialTotalsUnavailable}, availableRow=${partialAvailableRowUsable}, unavailableRow=${partialUnavailableRowMarked}`,
+        && partialUnavailableRowMarked
+        && partialSortWaitingShown
+        && partialClosedJobsText.includes("Highest Revenue sorting is waiting for all canonical values."),
+      `warning=${partialWarningShown}, missingJobNamed=${partialMissingJobNamed}, totalsUnavailable=${partialTotalsUnavailable}, availableRow=${partialAvailableRowUsable}, unavailableRow=${partialUnavailableRowMarked}, sortWaiting=${partialSortWaitingShown}`,
     );
 
     profitSummaryPartialMode = false;

@@ -8407,6 +8407,21 @@ export default function Jobs() {
     profitSummaryStatus,
     profitMap,
   );
+  const canonicalSortLabel = archiveSort === "profit"
+    ? "Highest Profit"
+    : archiveSort === "revenue"
+      ? "Highest Revenue"
+      : null;
+  const closedJobSortWaiting = canonicalSortLabel != null
+    && allClosedBase.length > 0
+    && !canSortClosedJobsByCanonicalSummary;
+  const closedJobSortWaitingMessage = canonicalSortLabel == null
+    ? ""
+    : profitSummaryStatus === "loading"
+      ? `${canonicalSortLabel} sorting is waiting for canonical data.`
+      : profitSummaryStatus === "error"
+        ? `${canonicalSortLabel} sorting is unavailable until canonical data returns.`
+        : `${canonicalSortLabel} sorting is waiting for all canonical values.`;
   const profitSummaryValue = (jobId: number, field: "grossInvoiced" | "netProfit") =>
     (profitSummaryStatus === "ready" || profitSummaryStatus === "partial")
       ? profitMap.get(jobId)?.[field] ?? null
@@ -9360,7 +9375,7 @@ export default function Jobs() {
               {closedExpanded && (
                 <>
                   {/* Search + Sort controls */}
-                  <div className="flex gap-2 mb-3">
+                   <div className="flex flex-wrap items-center gap-2 mb-3">
                     <div className="relative flex-1">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                       <input
@@ -9382,6 +9397,16 @@ export default function Jobs() {
                       <option value="profit">Highest Profit</option>
                       <option value="hours">Most Man-Hours</option>
                     </select>
+                     {closedJobSortWaiting && (
+                       <span
+                         role="status"
+                         data-testid="closed-job-sort-waiting"
+                         className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-800"
+                       >
+                         <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                         {closedJobSortWaitingMessage} Current order is preserved.
+                       </span>
+                     )}
                   </div>
 
                   {closedJobs.length === 0 ? (
