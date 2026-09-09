@@ -5,10 +5,14 @@ import {
   isAbortError,
 } from "./jobProfitRequests";
 import type { JobProfitResponse } from "@workspace/api-client-react";
-import { findProfitClientViolations } from "../../scripts/check-job-profit-client-usage.mjs";
+import {
+  approvedProfitClientConsumers,
+  findProfitClientViolations,
+  listProfitClientSourceFiles,
+} from "../../scripts/check-job-profit-client-usage.mjs";
 
-function violationsFor(source: string) {
-  return findProfitClientViolations("src/pages/Jobs.tsx", source);
+function violationsFor(relativePath: string, source: string) {
+  return findProfitClientViolations(relativePath, source);
 }
 
 describe("canApplyJobResponse", () => {
@@ -65,42 +69,68 @@ describe("isAbortError", () => {
 });
 
 describe("job profit client usage guard", () => {
-  it("accepts generated client calls", () => {
-    expect(violationsFor(`
+  it("keeps the known profit consumers on generated client calls", () => {
+    expect(approvedProfitClientConsumers).toEqual([
+      "src/pages/Jobs.tsx",
+      "src/pages/JobPayroll.tsx",
+      "src/pages/RoutePlanner.tsx",
+    ]);
+
+    for (const relativePath of approvedProfitClientConsumers) {
+      expect(violationsFor(relativePath, `
       const detail = await getJobProfit(job.id);
       const summary = await getJobsProfitSummary({ businessId });
-    `)).toEqual([]);
+      `)).toEqual([]);
+    }
+  });
+
+  it("discovers all frontend source files instead of relying on a page list", () => {
+    const sourceFiles = listProfitClientSourceFiles();
+
+    expect(sourceFiles).toContain("src/pages/Jobs.tsx");
+    expect(sourceFiles).toContain("src/pages/JobPayroll.tsx");
+    expect(sourceFiles).toContain("src/pages/RoutePlanner.tsx");
+    expect(sourceFiles).not.toContain("src/lib/jobProfitRequests.test.ts");
   });
 
   it("rejects direct individual profit URLs with the owning file and line", () => {
-    const violations = violationsFor([
-      "function loadProfit(jobId: number) {",
-      "  return fetch(`/api/jobs/${jobId}/profit`);",
-      "}",
-    ].join("\n"));
+    const violations = violationsFor(
+      "src/pages/NewJobFinancials.tsx",
+      [
+        "function loadProfit(jobId: number) {",
+        "  return fetch(`/api/jobs/${jobId}/profit`);",
+        "}",
+      ].join("\n"),
+    );
 
     expect(violations).toHaveLength(1);
-    expect(violations[0]).toContain("src/pages/Jobs.tsx:2:");
+    expect(violations[0]).toContain("src/pages/NewJobFinancials.tsx:2:");
   });
 
   it("rejects direct batch profit URLs with the owning file and line", () => {
-    const violations = violationsFor([
-      "function loadProfitSummary() {",
-      "  return fetch('/api/jobs/profit-summary?businessId=1');",
-      "}",
-    ].join("\n"));
+    const violations = violationsFor(
+      "src/pages/NewJobFinancials.tsx",
+      [
+        "function loadProfitSummary() {",
+        "  return fetch('/api/jobs/profit-summary?businessId=1');",
+        "}",
+      ].join("\n"),
+    );
 
     expect(violations).toHaveLength(1);
-    expect(violations[0]).toContain("src/pages/Jobs.tsx:2:");
+    expect(violations[0]).toContain("src/pages/NewJobFinancials.tsx:2:");
   });
 
   it("rejects local JSON response casts with the owning file and line", () => {
-    const violations = violationsFor([
-      "async function loadProfit(jobId: number) {",
-      "  const response = await fetch(`/api/jobs/${jobId}/profit`);",
-      "  return response.json() as JobProfitResponse;",
-      "}",
-    ].join("\n"));
+    const violations = violationsFor(
+      "src/pages/Jobs.tsx",
+      [
+        "async function loadProfit(jobId: number) {",
+        "  const response = await fetch(`/api/jobs/${jobId}/profit`);",
+        "  return response.json() as JobProfitResponse;",
+        "}",
+      ].join("\n"),
+    );
 
     expect(violations).toHaveLength(2);
     expect(violations.every((violation) => violation.includes("src/pages/Jobs.tsx:2:"))).toBe(true);

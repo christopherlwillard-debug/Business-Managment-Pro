@@ -20,3 +20,9 @@ Profit route response extras must not reintroduce a suppressed operational fuel 
 **Why:** Detail and batch routes can calculate the correct included costs while still exposing a misleading estimate if route-specific response enrichment overwrites the shared result.
 
 **How to apply:** When an actual included fuel expense is present, skip routing estimation, expose actual fuel in the canonical field, report no applied reimbursement, and keep estimated fuel unavailable in both detail and batch responses.
+
+Client-side profit requests must use generated API-client methods, and the guard must scan the full frontend source tree rather than a fixed page list; test fixtures are the exception because they intentionally contain forbidden examples.
+
+**Why:** A route-planning screen had bypassed the generated contract while the old checker silently skipped it because only two pages were scanned.
+
+**How to apply:** Keep the approved consumer registry beside the repository-wide scanner, and make violations report the exact source path and line so new financial screens cannot introduce a parallel request or response-casting path unnoticed.

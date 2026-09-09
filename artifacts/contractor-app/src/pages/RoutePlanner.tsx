@@ -13,7 +13,14 @@ import {
   Droplets, AlertTriangle, Info, Settings2, CheckCircle2, SquareStack,
   TrendingUp,
 } from "lucide-react";
-import { useListJobs } from "@workspace/api-client-react";
+import {
+  getJobsProfitSummary,
+  useListJobs,
+} from "@workspace/api-client-react";
+import type {
+  GetJobsProfitSummary200,
+  JobProfitResponse,
+} from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { aggregateCanonicalJobProfit } from "@/lib/jobFinancials";
@@ -94,13 +101,10 @@ interface ClientOption {
   zip: string | null;
 }
 
-interface JobProfitData {
-  grossInvoiced: number;
-  collected: number;
-  jobExpenses: number;
-  includedCostTotal: number;
-  netProfit: number;
-}
+type JobProfitData = Pick<
+  JobProfitResponse,
+  "grossInvoiced" | "collected" | "jobExpenses" | "includedCostTotal" | "netProfit"
+>;
 
 function formatRouteProfitContribution(value: number): string {
   if (value === 0) return "$0";
@@ -484,10 +488,13 @@ export default function RoutePlanner() {
     isLoading: isLoadingProfit,
     isError: isProfitError,
     refetch: refetchProfit,
-  } = useQuery<Record<number, JobProfitData>>({
+  } = useQuery<GetJobsProfitSummary200>({
     queryKey: ["job-profit-summary", profitScopeKey, visibleJobIdsKey],
-    queryFn: () =>
-      apiFetch(`/jobs/profit-summary?jobIds=${visibleJobIdsKey}`) as unknown as Promise<Record<number, JobProfitData>>,
+    queryFn: ({ signal }) =>
+      getJobsProfitSummary(
+        { jobIds: visibleJobIdsKey },
+        { credentials: "include", signal },
+      ),
     staleTime: 60_000,
     enabled: visibleJobIds.length > 0,
   });
@@ -525,7 +532,7 @@ export default function RoutePlanner() {
     let totalAdjSqFt = 0;
     const profitRows = linkedJobs
       .map(job => profitSummary[job.id])
-      .filter((profit): profit is JobProfitData => profit != null);
+      .filter((profit): profit is JobProfitResponse => profit != null);
     for (const job of linkedJobs) {
       const stop = stopsWithJobs.find(candidate => candidate.jobId === job.id);
       if (stop) {
