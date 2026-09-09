@@ -130,11 +130,14 @@ export function InvoiceDeliveryHistory({
         <div className="relative space-y-3 pl-1">
           <div className="absolute bottom-2 left-[8px] top-2 w-px bg-gray-200" aria-hidden="true" />
           {orderedEvents.map(event => {
-            const canRecoverPendingGmail = event.status === "pending"
+            const gmailEvidenceVerified = event.metadata
+              && typeof event.metadata === "object"
+              && (event.metadata as Record<string, unknown>).gmailEvidenceVerified === true;
+            const canRecoverPendingGmail = (event.status === "pending"
+              || (event.status === "accepted" && !gmailEvidenceVerified))
               && event.channel === "gmail"
               && event.provider === "gmail"
               && (event.eventType === "initial_invoice" || event.eventType === "resend_invoice")
-              && !event.providerMessageId
               && Boolean(onRepairGmail);
             return (
             <div className="relative flex gap-2.5" key={event.id}>

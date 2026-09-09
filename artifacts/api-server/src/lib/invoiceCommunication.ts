@@ -14,6 +14,12 @@ export class InvoiceCommunicationConflictError extends Error {
     this.name = "InvoiceCommunicationConflictError";
   }
 }
+export class GmailPermissionError extends Error {
+  constructor() {
+    super("Gmail metadata permission is required to repair this delivery.");
+    this.name = "GmailPermissionError";
+  }
+}
 export type InvoiceCommunicationType =
   | "initial_invoice"
   | "resend_invoice"
@@ -301,7 +307,10 @@ export async function verifyGmailSentMessage(input: {
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=metadata&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=X-BuildPro-Delivery-ID&fields=id,labelIds,payload/headers`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
-  if (!response.ok) return false;
+   if (!response.ok) {
+     if (response.status === 401 || response.status === 403) throw new GmailPermissionError();
+     return false;
+   }
   const message = await response.json().catch(() => null) as GmailMessageMetadata | null;
   return matchesGmailSentMessage(message, { messageId, deliveryId, recipient, subject });
 }
@@ -328,9 +337,10 @@ export async function recoverGmailSentMessage(input: {
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=50&fields=messages(id,threadId)`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
-  if (!listResponse.ok) {
-    throw new Error("Gmail metadata permission is required to repair this delivery.");
-  }
+   if (!listResponse.ok) {
+     if (listResponse.status === 401 || listResponse.status === 403) throw new GmailPermissionError();
+     throw new Error("Gmail metadata search failed while repairing this delivery.");
+   }
   const list = await listResponse.json().catch(() => null) as {
     messages?: Array<{ id?: string; threadId?: string }>;
   } | null;
@@ -342,7 +352,10 @@ export async function recoverGmailSentMessage(input: {
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(candidate.id)}?format=metadata&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=X-BuildPro-Delivery-ID&fields=id,threadId,internalDate,labelIds,payload/headers`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
-    if (!response.ok) continue;
+     if (!response.ok) {
+       if (response.status === 401 || response.status === 403) throw new GmailPermissionError();
+       continue;
+     }
     const message = await response.json().catch(() => null) as GmailMessageMetadata | null;
     const sentMs = Number(message?.internalDate);
     if (!Number.isFinite(sentMs) || Math.abs(sentMs - requestedMs) > windowMs) continue;

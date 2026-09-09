@@ -15,6 +15,8 @@ import { calculateJobProfit, type JobProfitAllocationRow, type JobProfitCalculat
 
 export type LoadedJobProfit = {
   calculation: JobProfitCalculation;
+  /** Canonical source inputs, retained for optional informational enrichment. */
+  input: Parameters<typeof calculateJobProfit>[0];
   expenses: JobProfitExpenseRow[];
   allocations: (JobProfitAllocationRow & { category?: string | null })[];
   invoiceStatus: string;
@@ -240,6 +242,25 @@ export async function loadJobProfitByJob(jobIds: number[]): Promise<Map<number, 
     });
     byJob.set(jobId, {
       calculation,
+      input: {
+        invoices: invoiceRows.filter((row) => row.jobId === jobId),
+        otherIncome: otherIncomeRows.filter((row) => row.jobId === jobId),
+        expenses,
+        allocations,
+        mileageReimbursement: reimbursement?.amount == null ? null : Number(reimbursement.amount),
+        hasMileageReimbursement: reimbursement != null,
+        includeMileageInJobCosts: settings?.includeMileageInJobCosts ?? true,
+        hasActualFuelExpense: expenses.some(
+          (row) => row.category === "Fuel/Travel" && row.countsTowardJobProfit !== false,
+        ),
+        hourlyLaborCost: hoursMap.get(jobId) ?? 0,
+        totalSubHours: hoursCountMap.get(jobId) ?? 0,
+        fixedSubCost: fixedPaymentMap.get(jobId) ?? 0,
+        accruedBonus: accruedBonusMap.get(jobId) ?? 0,
+        allocPaid: allocationPaymentMap.get(jobId) ?? 0,
+        reversedFixedPayout: reversedFixedPaymentMap.get(jobId) ?? 0,
+        reversedAllocationPayout: reversedAllocationPaymentMap.get(jobId) ?? 0,
+      },
       expenses,
       allocations,
       invoiceStatus,

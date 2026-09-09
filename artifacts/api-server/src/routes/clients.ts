@@ -3,6 +3,10 @@ import { db } from "@workspace/db";
 import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable } from "@workspace/db/schema";
 import { and, eq, desc, isNull, or } from "drizzle-orm";
 import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import {
+  clientProfileRouteStopColumns,
+  clientProfileSquarePaymentColumns,
+} from "../lib/client-profile-projections.js";
 
 const router = Router();
 
@@ -110,9 +114,9 @@ router.get("/:id/profile", async (req, res) => {
     const [jobs, invoices, squarePayments, linkedProspects, routeStops, otherIncome] = await Promise.all([
       db.select().from(jobsTable).where(and(eq(jobsTable.clientId, id), scopedOwnerPredicate(jobsTable, scope))).orderBy(desc(jobsTable.createdAt)),
       db.select().from(invoicesTable).where(and(eq(invoicesTable.clientId, id), scopedOwnerPredicate(invoicesTable, scope))).orderBy(desc(invoicesTable.createdAt)),
-      db.select().from(squarePaymentsTable).where(eq(squarePaymentsTable.clientId, id)).orderBy(desc(squarePaymentsTable.paidAt)),
+      db.select(clientProfileSquarePaymentColumns).from(squarePaymentsTable).where(eq(squarePaymentsTable.clientId, id)).orderBy(desc(squarePaymentsTable.paidAt)),
       db.select().from(prospectsTable).where(and(eq(prospectsTable.clientId, id), scopedOwnerPredicate(prospectsTable, scope))).orderBy(desc(prospectsTable.createdAt)),
-      db.select().from(routeStopsTable).where(eq(routeStopsTable.clientId, id)).orderBy(desc(routeStopsTable.scheduledDate)),
+      db.select(clientProfileRouteStopColumns).from(routeStopsTable).where(eq(routeStopsTable.clientId, id)).orderBy(desc(routeStopsTable.scheduledDate)),
       db.select().from(otherIncomeTable).where(and(eq(otherIncomeTable.clientId, id), scopedOwnerPredicate(otherIncomeTable, scope))).orderBy(desc(otherIncomeTable.date)),
     ]);
 

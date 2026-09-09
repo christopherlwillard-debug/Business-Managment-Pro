@@ -13,9 +13,14 @@ The client profile endpoint must not fail because a related legacy table has a
 new Drizzle-only column that is not present in production yet. Related profile
 queries will use explicit legacy-safe projections for `square_payments` and
 `route_stops`, whose production tables do not carry the new ownership column.
-The projections will list only their existing fields; `select().from(...)` is
-not allowed for these tables. Canonical client ownership remains enforced by
-the client row, and related records from tables without ownership columns are
+The `square_payments` projection is limited to `id`, `squarePaymentId`,
+`amountCents`, `description`, `invoiceId`, `invoiceNumber`, `clientName`,
+`clientId`, `paidAt`, and `createdAt`. The `route_stops` projection is limited
+to `id`, `title`, `address`, `lat`, `lng`, `notes`, `scheduledDate`, `status`,
+`estimatedDurationMinutes`, `sortOrder`, `blockNumber`, `crewLabel`,
+`clientId`, `prospectId`, `jobId`, and `createdAt`. `select().from(...)` is not
+allowed for these tables. Canonical client ownership remains enforced by the
+client row, and related records from tables without ownership columns are
 constrained through their foreign key to that already-authorized client.
 Tables with ownership fields retain explicit scoped predicates. When a
 business scope exists, no unscoped client fallback is allowed.
@@ -38,8 +43,10 @@ errors remain visible as application errors rather than being labeled as Gmail
 failures. Reconnect/recovery may only verify or finalize the existing
 communication event. It must never call the send operation, create a
 `resend_invoice` event, or send a second email. A provider message ID alone is
-not sufficient; the server-written evidence marker and exact provider
-verification conditions are required.
+not sufficient. A verified repair requires the matched Gmail message ID, the
+Gmail `SENT` label, the exact recipient, the exact subject, the
+`X-BuildPro-Delivery-ID` header matching the event delivery ID, and the
+server-written `gmailEvidenceVerified` marker.
 
 The invoice drawer header and action row will remain fixed/non-scrolling while
 the invoice document and communication history use an independently scrollable

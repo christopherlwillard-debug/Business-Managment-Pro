@@ -1147,163 +1147,23 @@ router.get("/profit-summary", async (req, res) => {
     if (!jobIdsParam || typeof jobIdsParam !== "string") return res.json({});
     const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
-
-    const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, hoursRows, hoursCountRows, manHoursRows, sprNonHoursRows, reversedSprNonHoursRows, accruedBonusRows, allocationSplitPools] = await Promise.all([
-      db.select({ jobId: invoicesTable.jobId, total: invoicesTable.total, status: invoicesTable.status })
-        .from(invoicesTable).where(and(inArray(invoicesTable.jobId, jobIds), isNull(invoicesTable.voidedAt))),
-      db.select({ jobId: otherIncomeTable.jobId, amount: otherIncomeTable.amount })
-        .from(otherIncomeTable).where(and(inArray(otherIncomeTable.jobId, jobIds), isNull(otherIncomeTable.voidedAt))),
-      // Exclude auto-linked sub-hour expenses; payroll-linked rows are not job costs
-      db.select({ jobId: expensesTable.jobId, id: expensesTable.id, amount: expensesTable.amount, category: expensesTable.category, subcontractorId: expensesTable.subcontractorId, countsTowardJobProfit: expensesTable.countsTowardJobProfit, tripId: expensesTable.tripId })
-        .from(expensesTable).where(and(inArray(expensesTable.jobId, jobIds), isNull(expensesTable.jobSubHoursId), isNull(expensesTable.voidedAt))),
-      db.select({ jobId: jobExpenseAllocationsTable.jobId, expenseId: jobExpenseAllocationsTable.expenseId, amount: jobExpenseAllocationsTable.amount })
-        .from(jobExpenseAllocationsTable)
-        .innerJoin(expensesTable, eq(jobExpenseAllocationsTable.expenseId, expensesTable.id))
-        .where(and(inArray(jobExpenseAllocationsTable.jobId, jobIds), isNull(expensesTable.voidedAt))),
-      db.select({ jobId: jobMileageReimbursementsTable.jobId, amount: jobMileageReimbursementsTable.amount })
-        .from(jobMileageReimbursementsTable)
-        .where(inArray(jobMileageReimbursementsTable.jobId, jobIds)),
-      db.select({
-        jobId: jobSubcontractorsTable.jobId,
-        // Match the per-job profit route: a saved hourly agreed amount wins
-        // over the raw hours × rate total for that worker.
-        total: sql<string>`COALESCE(SUM(
-          CASE
-            WHEN ${jobSubcontractorsTable.compensationType} = 'hourly'
-              AND ${jobSubcontractorsTable.amountOwed} IS NOT NULL
-            THEN ${jobSubcontractorsTable.amountOwed}
-            WHEN ${jobSubcontractorsTable.compensationType} = 'hourly'
-            THEN COALESCE((
-              SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
-              FROM job_sub_hours h
-              WHERE h.job_id = ${jobSubcontractorsTable.jobId}
-                AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
-            ), 0)
-            ELSE 0
-          END
-        ), 0)`,
-      })
-        .from(jobSubcontractorsTable)
-        .where(inArray(jobSubcontractorsTable.jobId, jobIds))
-        .groupBy(jobSubcontractorsTable.jobId),
-      // Raw hour count (not cost) — used for man-hours display in the archive table
-      db.select({
-        jobId: jobSubHoursTable.jobId,
-        totalHours: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)`,
-      })
-        .from(jobSubHoursTable)
-        .where(inArray(jobSubHoursTable.jobId, jobIds))
-        .groupBy(jobSubHoursTable.jobId),
-      // Manually-entered man-hours from the job form (fallback when no sub hours tracked)
-      db.select({ id: jobsTable.id, manHours: jobsTable.manHours, includeMileageInJobCosts: jobsTable.includeMileageInJobCosts })
-        .from(jobsTable)
-        .where(inArray(jobsTable.id, jobIds)),
-      // sub_payment_records for non-hourly (fixed/allocation) subs — new ledger since Task #892.
-      // Grouped by comp type: 'fixed' feeds subLaborCost, 'allocation' → allocPaid.
-      db.select({
-        jobId: subPaymentRecordsTable.jobId,
-        compType: jobSubcontractorsTable.compensationType,
-        total: sql<string>`COALESCE(SUM(
-          ${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)
-        ), 0)`,
-      })
-        .from(subPaymentRecordsTable)
-        .innerJoin(jobSubcontractorsTable, and(
-          eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
-          eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
-        ))
-        .where(and(
-          inArray(subPaymentRecordsTable.jobId, jobIds),
-          sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
-          sql`${jobSubcontractorsTable.compensationType} IN ('fixed', 'allocation')`,
-        ))
-        .groupBy(subPaymentRecordsTable.jobId, jobSubcontractorsTable.compensationType),
-      // Keep reversed payroll corrections separate from the active-only totals.
-      db.select({
-        jobId: subPaymentRecordsTable.jobId,
-        compType: jobSubcontractorsTable.compensationType,
-        total: sql<string>`COALESCE(SUM(
-          ${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)
-        ), 0)`,
-      })
-        .from(subPaymentRecordsTable)
-        .innerJoin(jobSubcontractorsTable, and(
-          eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
-          eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
-        ))
-        .where(and(
-          inArray(subPaymentRecordsTable.jobId, jobIds),
-          eq(subPaymentRecordsTable.isReversal, true),
-          sql`${jobSubcontractorsTable.compensationType} IN ('fixed', 'allocation')`,
-        ))
-        .groupBy(subPaymentRecordsTable.jobId, jobSubcontractorsTable.compensationType),
-      // Accrued bonuses (saved without payment) — always count as labor cost on all job views
-      db.select({
-        jobId: jobSubcontractorsTable.jobId,
-        total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.accruedBonus}), 0)`,
-      })
-        .from(jobSubcontractorsTable)
-        .where(inArray(jobSubcontractorsTable.jobId, jobIds))
-        .groupBy(jobSubcontractorsTable.jobId),
-      // Keep the compact job-card allocation amount on the same server-owned
-      // split-pool calculation as the full Job Financials panel and
-      // outstanding-payment endpoint.
+    const [profitByJob, allocationSplitPools] = await Promise.all([
+      loadJobProfitByJob(jobIds),
       computeAllocationSplitPools(jobIds),
     ]);
-
-    const hoursMap = new Map(hoursRows.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
-    const hoursCountMap = new Map(hoursCountRows.map(r => [r.jobId, parseFloat(r.totalHours ?? "0")]));
-    const manHoursMap = new Map(manHoursRows.map(r => [r.id, r.manHours != null ? parseFloat(r.manHours) : null]));
-    const mileageIncludedMap = new Map(manHoursRows.map(r => [r.id, r.includeMileageInJobCosts !== false]));
-    const sprFixedMap = new Map<number, number>();
-    const sprAllocMap = new Map<number, number>();
-    for (const r of sprNonHoursRows) {
-      if (r.jobId == null) continue;
-      const total = parseFloat(r.total ?? "0");
-      if (r.compType === "fixed") sprFixedMap.set(r.jobId, (sprFixedMap.get(r.jobId) ?? 0) + total);
-      else if (r.compType === "allocation") sprAllocMap.set(r.jobId, (sprAllocMap.get(r.jobId) ?? 0) + total);
-    }
-    const reversedFixedMap = new Map<number, number>();
-    const reversedAllocMap = new Map<number, number>();
-    for (const r of reversedSprNonHoursRows) {
-      if (r.jobId == null) continue;
-      const total = parseFloat(r.total ?? "0");
-      if (r.compType === "fixed") reversedFixedMap.set(r.jobId, (reversedFixedMap.get(r.jobId) ?? 0) + total);
-      else if (r.compType === "allocation") reversedAllocMap.set(r.jobId, (reversedAllocMap.get(r.jobId) ?? 0) + total);
-    }
-    const accruedBonusMap = new Map(accruedBonusRows.map(r => [r.jobId, parseFloat(r.total ?? "0")]));
-    const actualFuelJobIds = new Set(
-      expRows
-        .filter(e => e.category === "Fuel/Travel" && e.countsTowardJobProfit !== false && e.jobId != null)
-        .map(e => e.jobId as number)
-    );
     const result: Record<number, JobProfitSummaryResponse> = {};
     for (const id of jobIds) {
-      const calculation = calculateJobProfit({
-        invoices: invRows.filter(row => row.jobId === id),
-        otherIncome: otherIncomeRows.filter(row => row.jobId === id),
-        expenses: expRows.filter(row => row.jobId === id),
-        allocations: allocationRows.filter(row => row.jobId === id),
-        mileageReimbursement: reimbursementRows.find(row => row.jobId === id)?.amount == null
-          ? null
-          : parseFloat(reimbursementRows.find(row => row.jobId === id)!.amount),
-        hasMileageReimbursement: reimbursementRows.some(row => row.jobId === id),
-        includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true,
-        hasActualFuelExpense: actualFuelJobIds.has(id),
-        hourlyLaborCost: hoursMap.get(id) ?? 0,
-        totalSubHours: hoursCountMap.get(id) ?? 0,
-        fixedSubCost: sprFixedMap.get(id) ?? 0,
-        accruedBonus: accruedBonusMap.get(id) ?? 0,
-        allocPaid: sprAllocMap.get(id) ?? 0,
-        reversedFixedPayout: reversedFixedMap.get(id) ?? 0,
-        reversedAllocationPayout: reversedAllocMap.get(id) ?? 0,
-      });
+      const loaded = profitByJob.get(id);
+      if (!loaded) continue;
+      const { calculation } = loaded;
       result[id] = buildJobProfitSummaryResponse(calculation, {
-        manHours: manHoursMap.get(id) ?? null,
+        manHours: loaded.manHours,
         splitPool: allocationSplitPools.get(id)?.splitPool ?? 0,
-        includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true,
-        estimatedFuelCost: actualFuelJobIds.has(id) ? null : calculation.estimatedFuelCost,
-        mileageReimbursementApplied: (mileageIncludedMap.get(id) ?? true) && !actualFuelJobIds.has(id),
+        includeMileageInJobCosts: loaded.includeMileageInJobCosts,
+        estimatedFuelCost: loaded.calculation.estimatedFuelCost > 0 ? loaded.calculation.estimatedFuelCost : null,
+        mileageReimbursementApplied: loaded.includeMileageInJobCosts &&
+          !loaded.input.hasActualFuelExpense &&
+          Boolean(loaded.input.hasMileageReimbursement),
       });
     }
 
@@ -1366,34 +1226,20 @@ router.get("/profit-summary", async (req, res) => {
             daysOnJob,
             vehicleProfile: { avgMpg: mpg, fuelPricePerGallon: fuelPrice },
           });
+           const loaded = profitByJob.get(jobRow.id);
+           if (!loaded) continue;
            const calculation = calculateJobProfit({
-             invoices: invRows.filter(item => item.jobId === jobRow.id),
-             otherIncome: otherIncomeRows.filter(item => item.jobId === jobRow.id),
-             expenses: expRows.filter(item => item.jobId === jobRow.id),
-             allocations: allocationRows.filter(item => item.jobId === jobRow.id),
-             mileageReimbursement: reimbursementRows.find(item => item.jobId === jobRow.id)?.amount == null
-               ? null
-               : parseFloat(reimbursementRows.find(item => item.jobId === jobRow.id)!.amount),
-             hasMileageReimbursement: reimbursementRows.some(item => item.jobId === jobRow.id),
+             ...loaded.input,
              estimatedFuelCost: vehicleCost.fuelCost,
-             includeMileageInJobCosts: jobRow.includeMileageInJobCosts !== false,
-             hasActualFuelExpense: actualFuelJobIds.has(jobRow.id),
-             hourlyLaborCost: hoursMap.get(jobRow.id) ?? 0,
-             totalSubHours: hoursCountMap.get(jobRow.id) ?? 0,
-             fixedSubCost: sprFixedMap.get(jobRow.id) ?? 0,
-             accruedBonus: accruedBonusMap.get(jobRow.id) ?? 0,
-             allocPaid: sprAllocMap.get(jobRow.id) ?? 0,
-              reversedFixedPayout: reversedFixedMap.get(jobRow.id) ?? 0,
-              reversedAllocationPayout: reversedAllocMap.get(jobRow.id) ?? 0,
            });
             const existing = result[jobRow.id];
             if (!existing) continue;
             result[jobRow.id] = buildJobProfitSummaryResponse(calculation, {
               manHours: existing.manHours,
               splitPool: existing.splitPool,
-              includeMileageInJobCosts: jobRow.includeMileageInJobCosts !== false,
-              estimatedFuelCost: actualFuelJobIds.has(jobRow.id) ? null : calculation.estimatedFuelCost,
-              mileageReimbursementApplied: (jobRow.includeMileageInJobCosts ?? true) && !actualFuelJobIds.has(jobRow.id),
+               includeMileageInJobCosts: loaded.includeMileageInJobCosts,
+               estimatedFuelCost: loaded.input.hasActualFuelExpense ? null : calculation.estimatedFuelCost,
+               mileageReimbursementApplied: loaded.includeMileageInJobCosts && !loaded.input.hasActualFuelExpense,
             });
         }
       }

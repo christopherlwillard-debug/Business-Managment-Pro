@@ -6,6 +6,7 @@ import type { LoadedJobProfit } from "./job-profit-loader.js";
 function loaded(input: Parameters<typeof calculateJobProfit>[0]): LoadedJobProfit {
   return {
     calculation: calculateJobProfit(input),
+    input,
     expenses: input.expenses ?? [],
     allocations: input.allocations ?? [],
     invoiceStatus: "paid",

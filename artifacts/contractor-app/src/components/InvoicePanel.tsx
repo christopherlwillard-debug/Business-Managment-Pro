@@ -38,7 +38,7 @@ function emptyLine(): LineItem { return { description: "", quantity: 1, unitPric
 type GmailFinalizationRecovery = {
   invoiceId: number;
   eventId: number;
-  providerMessageId: string;
+  providerMessageId: string | null;
   providerThreadId: string | null;
 };
 
@@ -386,11 +386,11 @@ export function InvoicePanel({
       setGmailPendingEventId(null);
       return;
     }
-    if (unresolved.providerMessageId) {
+    if (unresolved.status === "accepted" || unresolved.providerMessageId) {
       setGmailFinalizationRecovery({
         invoiceId: effectiveExistingInvoice.id,
         eventId: unresolved.id,
-        providerMessageId: unresolved.providerMessageId,
+        providerMessageId: unresolved.providerMessageId ?? null,
         providerThreadId: unresolved.providerThreadId ?? null,
       });
       setGmailDeliveryBlocked(null);
@@ -1090,7 +1090,29 @@ export function InvoicePanel({
       const directPendingEventId = typeof eventIdOverride === "number"
         ? eventIdOverride
         : null;
+      const directEvent = directPendingEventId
+        ? communicationHistory.data?.find(event => event.id === directPendingEventId)
+        : undefined;
+      const directRecovery = directEvent?.providerMessageId
+        ? {
+            invoiceId: effectiveExistingInvoice.id,
+            eventId: directEvent.id,
+            providerMessageId: directEvent.providerMessageId,
+            providerThreadId: directEvent.providerThreadId ?? null,
+          }
+        : null;
       if (directPendingEventId || (!gmailFinalizationRecovery && pendingEventId)) {
+        if (directRecovery) {
+          const finalization = await finalizeGmailDelivery(directRecovery, token);
+          if (!finalization.ok) {
+            const error = new Error(finalization.result.error ?? "Delivery history could not be repaired.") as Error & { gmailPermission?: boolean };
+            error.gmailPermission = finalization.result.errorCode === "gmail_metadata_permission";
+            throw error;
+          }
+          await communicationHistory.refetch();
+          toast({ title: "Delivery history repaired", description: "The invoice is now marked Sent." });
+          return;
+        }
         const recoveryEventId = directPendingEventId ?? pendingEventId!;
         const response = await fetch(
           `${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${recoveryEventId}/recover-gmail`,
@@ -1102,7 +1124,11 @@ export function InvoicePanel({
           },
         );
         const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error ?? "Delivery history could not be recovered.");
+        if (!response.ok) {
+          const error = new Error(result.error ?? "Delivery history could not be recovered.") as Error & { gmailPermission?: boolean };
+          error.gmailPermission = result.errorCode === "gmail_metadata_permission";
+          throw error;
+        }
         setGmailDeliveryBlocked(null);
         setGmailPendingEventId(null);
         setGmailReconnectRequired(false);
@@ -1112,9 +1138,35 @@ export function InvoicePanel({
         return;
       }
       if (!gmailFinalizationRecovery) return;
+      if (!gmailFinalizationRecovery.providerMessageId) {
+        const response = await fetch(
+          `${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${gmailFinalizationRecovery.eventId}/recover-gmail`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ gmailAccessToken: token }),
+          },
+        );
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const error = new Error(result.error ?? "Delivery history could not be recovered.") as Error & { gmailPermission?: boolean };
+          error.gmailPermission = result.errorCode === "gmail_metadata_permission";
+          throw error;
+        }
+        window.localStorage.removeItem(`invoice-gmail-finalization:${effectiveExistingInvoice.id}`);
+        setGmailFinalizationRecovery(null);
+        setGmailReconnectRequired(false);
+        await queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+        await communicationHistory.refetch();
+        toast({ title: "Delivery history repaired", description: "The existing Gmail message was verified. The invoice is now marked Sent." });
+        return;
+      }
       const finalization = await finalizeGmailDelivery(gmailFinalizationRecovery, token);
       if (!finalization.ok) {
-        throw new Error(finalization.result.error ?? "Delivery history could not be repaired.");
+        const error = new Error(finalization.result.error ?? "Delivery history could not be repaired.") as Error & { gmailPermission?: boolean };
+        error.gmailPermission = finalization.result.errorCode === "gmail_metadata_permission";
+        throw error;
       }
       window.localStorage.removeItem(`invoice-gmail-finalization:${effectiveExistingInvoice.id}`);
       setGmailFinalizationRecovery(null);
@@ -1124,7 +1176,7 @@ export function InvoicePanel({
       toast({ title: "Delivery history repaired", description: "The invoice is now marked Sent." });
     } catch (err: any) {
       const message = err?.message ?? "";
-      if (/metadata|permission|insufficient|scope/i.test(message)) {
+      if (err?.gmailPermission === true) {
         setGmailReconnectRequired(true);
       }
       toast({
@@ -1218,7 +1270,9 @@ export function InvoicePanel({
     ["initial_invoice", "resend_invoice"].includes(event.eventType) &&
     event.status === "accepted" &&
     event.provider === "gmail" &&
-    Boolean(event.providerMessageId)
+    Boolean(event.providerMessageId) &&
+    Boolean(event.metadata && typeof event.metadata === "object"
+      && (event.metadata as Record<string, unknown>).gmailEvidenceVerified === true)
   ));
   const invoiceHasBeenSent = effectiveExistingInvoice?.status !== "approved"
     || Boolean(effectiveExistingInvoice?.sentAt)
@@ -1283,12 +1337,12 @@ export function InvoicePanel({
     <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !submitting && onOpenChange(false)} />
-      <div className="relative w-full bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden"
+         <div className="relative w-full bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden min-h-0"
         style={{ maxWidth: "min(96vw, 760px)", maxHeight: "96vh" }}>
 
         {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
-        <div className="relative z-20 flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0 bg-white">
-          <div className="flex items-center gap-2 min-w-0">
+         <div className="relative z-20 flex flex-wrap items-center gap-2 px-4 py-3 border-b border-gray-100 flex-shrink-0 bg-white">
+           <div className="flex items-center gap-2 min-w-0 flex-1">
             <h2 className="text-sm font-bold text-gray-900 truncate">
               {isEdit ? (effectiveExistingInvoice!.invoiceNumber ? `Invoice ${effectiveExistingInvoice!.invoiceNumber}` : "Draft Invoice") : "New Invoice"}
             </h2>
@@ -1299,7 +1353,7 @@ export function InvoicePanel({
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+           <div className="flex items-center justify-end gap-1.5 flex-wrap w-full sm:w-auto sm:flex-nowrap">
             <button type="button" onClick={handlePrint}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-100 transition-colors">
               <Printer className="w-3.5 h-3.5" />
@@ -1307,12 +1361,25 @@ export function InvoicePanel({
             </button>
 
             {googleConfigured && isEdit && ["approved", "sent", "overdue"].includes(effectiveExistingInvoice?.status ?? "") && (
-              <button type="button" onClick={handleGmailButtonClick}
+              <button type="button"
+                onClick={() => {
+                  if (gmailFinalizationRecovery || gmailDeliveryBlocked) {
+                    void handleRepairGmailHistory();
+                  } else {
+                    handleGmailButtonClick();
+                  }
+                }}
                 className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${showGmailCompose ? "bg-blue-100 text-blue-700" : "text-gray-500 hover:bg-gray-100"}`}
-                title={googleConnected ? "Send via Gmail" : "Connect Google to send via Gmail"}>
-                <Send className="w-3.5 h-3.5" />
+                title={gmailFinalizationRecovery || gmailDeliveryBlocked
+                  ? "Repair the existing Gmail delivery"
+                  : googleConnected ? "Send via Gmail" : "Connect Google to send via Gmail"}>
+                {gmailFinalizationRecovery || gmailDeliveryBlocked
+                  ? <RotateCcw className="w-3.5 h-3.5" />
+                  : <Send className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">
-                  {invoiceHasBeenSent ? "Resend Invoice" : "Send Invoice"}
+                  {gmailFinalizationRecovery || gmailDeliveryBlocked
+                    ? "Repair Delivery"
+                    : invoiceHasBeenSent ? "Resend Invoice" : "Send Invoice"}
                 </span>
               </button>
             )}
@@ -1401,25 +1468,6 @@ export function InvoicePanel({
             </button>
           </div>
         </div>
-
-        {googleConfigured
-          && isEdit
-          && ["approved", "sent", "overdue"].includes(effectiveExistingInvoice?.status ?? "")
-          && !showGmailCompose
-          && !gmailFinalizationRecovery
-          && !gmailDeliveryBlocked && (
-          <div className="border-b border-blue-100 bg-blue-50 px-4 py-2 sm:hidden">
-            <button
-              type="button"
-              onClick={handleGmailButtonClick}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white shadow-sm"
-              aria-label={invoiceHasBeenSent ? "Resend invoice via Gmail" : "Send invoice via Gmail"}
-            >
-              <Send className="h-4 w-4" />
-              {invoiceHasBeenSent ? "Resend Invoice" : "Send Invoice"}
-            </button>
-          </div>
-        )}
 
         {/* Voided banner */}
         {isVoided && (
@@ -1866,7 +1914,7 @@ export function InvoicePanel({
         )}
 
         {/* ── Single scrollable invoice document ──────────────────────────────── */}
-        <div className={`flex-1 overflow-y-auto bg-gray-50 ${isVoided ? "pointer-events-none select-none opacity-70" : ""}`}>
+         <div className={`min-h-0 flex-1 overflow-y-auto bg-gray-50 ${isVoided ? "pointer-events-none select-none opacity-70" : ""}`}>
           <div className="p-4 sm:p-6">
 
             {/* Business line toggle */}
@@ -2272,19 +2320,31 @@ export function InvoicePanel({
             </div>
 
           </div>
-        </div>
-
-        {isEdit && effectiveExistingInvoice && (
+         {isEdit && effectiveExistingInvoice && (
           <InvoiceDeliveryHistory
             invoiceNumber={effectiveExistingInvoice.invoiceNumber}
             events={communicationHistory.data ?? []}
             isLoading={communicationHistory.isLoading}
             isRepairingGmail={gmailSending}
-            onRepairGmail={eventId => { void handleRepairGmailHistory(eventId); }}
+            onRepairGmail={eventId => {
+              const event = communicationHistory.data?.find(item => item.id === eventId);
+              if (event?.providerMessageId) {
+                setGmailFinalizationRecovery({
+                  invoiceId: effectiveExistingInvoice.id,
+                  eventId,
+                  providerMessageId: event.providerMessageId,
+                  providerThreadId: event.providerThreadId ?? null,
+                });
+                void handleRepairGmailHistory();
+              } else {
+                void handleRepairGmailHistory(eventId);
+              }
+            }}
             needsGmailReconnect={gmailReconnectRequired}
             onReconnectGmail={() => { void handleReconnectGmailAndRepair(); }}
           />
         )}
+         </div>
 
       </div>
     </div>

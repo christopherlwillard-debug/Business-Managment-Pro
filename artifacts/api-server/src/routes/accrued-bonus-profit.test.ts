@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
 import { calculateJobProfit } from "../lib/job-profit.js";
+import { CANONICAL_JOB_PROFIT_RESPONSE_VERSION } from "../lib/job-profit.js";
 import { RoutingEngine } from "../lib/routing-engine.js";
 
 // ── Hoisted mutable state ─────────────────────────────────────────────────────
@@ -910,6 +911,8 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
 
     const detail = detailRes.body;
     const batch = batchRes.body[5];
+    expect(detail.responseVersion).toBe(CANONICAL_JOB_PROFIT_RESPONSE_VERSION);
+    expect(batch.responseVersion).toBe(CANONICAL_JOB_PROFIT_RESPONSE_VERSION);
     for (const [label, detailValue, batchValue] of [
       ["subLaborCost", detail.subLaborCost, batch.subLaborCost],
       ["allocPaid", detail.allocPaid, batch.allocPaid],

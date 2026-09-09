@@ -26,6 +26,7 @@ import {
   createPendingInvoiceCommunication,
   finalizeInvoiceCommunication,
   InvoiceCommunicationConflictError,
+  GmailPermissionError,
   confirmedGmailInvoiceIds,
   sendAndRecordInvoiceCommunication,
   updateCompatibilitySentFields,
@@ -868,6 +869,12 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
     res.json(event);
   } catch (err) {
     console.error("Finalize invoice communication error:", err);
+    if (err instanceof GmailPermissionError) {
+      return res.status(403).json({
+        errorCode: "gmail_metadata_permission",
+        error: err.message,
+      });
+    }
     res.status(500).json({ error: "Failed to finalize invoice communication" });
   }
 });
@@ -892,8 +899,8 @@ router.post("/:id/communications/:eventId/recover-gmail", async (req, res) => {
     ) {
       return res.status(409).json({ error: "This event is not a Gmail invoice delivery." });
     }
-    if (existing.status !== "pending") {
-      return res.status(409).json({ error: "Only a pending Gmail delivery can be recovered." });
+    if (existing.status !== "pending" && existing.status !== "accepted") {
+      return res.status(409).json({ error: "Only an unresolved Gmail delivery can be recovered." });
     }
     if (existing.providerMessageId) {
       return res.status(409).json({
@@ -933,7 +940,7 @@ router.post("/:id/communications/:eventId/recover-gmail", async (req, res) => {
         gmailEvidenceVerifiedAt: new Date().toISOString(),
         gmailEvidenceRecovered: true,
       },
-    }, "pending");
+    }, existing.status);
     await updateCompatibilitySentFields(invoiceId, "gmail", event.completedAt);
     res.json(event);
   } catch (err) {
@@ -941,6 +948,12 @@ router.post("/:id/communications/:eventId/recover-gmail", async (req, res) => {
     if (err instanceof InvoiceCommunicationConflictError) {
       return res.status(409).json({
         error: "This Gmail delivery was already resolved. Refresh the invoice before trying again.",
+      });
+    }
+    if (err instanceof GmailPermissionError) {
+      return res.status(403).json({
+        errorCode: "gmail_metadata_permission",
+        error: err.message,
       });
     }
     res.status(400).json({
