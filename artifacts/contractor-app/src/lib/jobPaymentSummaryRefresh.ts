@@ -15,6 +15,10 @@ export const initialJobPaymentSummaryRefreshState: JobPaymentSummaryRefreshState
   financialKey: 0,
 };
 
+export function nextJobPaymentSummaryRefreshGeneration(currentGeneration: number): number {
+  return currentGeneration + 1;
+}
+
 export type JobProfitSummaryStatus = "loading" | "ready" | "partial" | "error";
 
 export function compareProfitSummaryValuesDescending(

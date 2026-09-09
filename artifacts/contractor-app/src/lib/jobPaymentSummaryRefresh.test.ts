@@ -14,6 +14,7 @@ import {
   jobProfitSummaryRequestKey,
   jobPaymentSummaryRefreshReducer,
   missingProfitSummaryJobIds,
+  nextJobPaymentSummaryRefreshGeneration,
   type JobPaymentSummaryRefreshAction,
 } from "./jobPaymentSummaryRefresh";
 import {
@@ -166,6 +167,89 @@ describe("Jobs payment summary refresh", () => {
       profit: null,
       profitError: true,
     });
+  });
+
+  it("gives same-job refreshes distinct generations and keeps the newer success", () => {
+    const firstRequestKey = nextJobPaymentSummaryRefreshGeneration(0);
+    const secondRequestKey = nextJobPaymentSummaryRefreshGeneration(firstRequestKey);
+    const newerProfit: PayrollProfitSnapshot = {
+      subLaborCost: 425,
+      estimatedFuelCost: 64,
+      growthReservePct: 6,
+      netProfit: 1725,
+    };
+    const olderProfit: PayrollProfitSnapshot = {
+      subLaborCost: 300,
+      estimatedFuelCost: 40,
+      growthReservePct: 5,
+      netProfit: 1200,
+    };
+
+    expect(secondRequestKey).not.toBe(firstRequestKey);
+
+    const afterNewerResponse = applyJobProfitRefresh(
+      startJobProfitRefresh<PayrollProfitSnapshot>(),
+      {
+        requestKey: secondRequestKey,
+        currentRequestKey: secondRequestKey,
+        requestedJobId: 42,
+        currentJobId: 42,
+        response: { status: "fulfilled", value: newerProfit },
+      },
+    );
+    const afterOlderResponse = applyJobProfitRefresh(
+      afterNewerResponse,
+      {
+        requestKey: firstRequestKey,
+        currentRequestKey: secondRequestKey,
+        requestedJobId: 42,
+        currentJobId: 42,
+        response: { status: "fulfilled", value: olderProfit },
+      },
+    );
+
+    expect(afterOlderResponse).toBe(afterNewerResponse);
+    expect(afterOlderResponse).toEqual({
+      loading: false,
+      profit: newerProfit,
+      profitError: false,
+    });
+  });
+
+  it("keeps a newer success when an older same-job refresh fails later", () => {
+    const firstRequestKey = nextJobPaymentSummaryRefreshGeneration(10);
+    const secondRequestKey = nextJobPaymentSummaryRefreshGeneration(firstRequestKey);
+    const newerProfit: PayrollProfitSnapshot = {
+      subLaborCost: 450,
+      estimatedFuelCost: 70,
+      growthReservePct: 7,
+      netProfit: 1800,
+    };
+
+    const afterNewerResponse = applyJobProfitRefresh(
+      startJobProfitRefresh<PayrollProfitSnapshot>(),
+      {
+        requestKey: secondRequestKey,
+        currentRequestKey: secondRequestKey,
+        requestedJobId: 42,
+        currentJobId: 42,
+        response: { status: "fulfilled", value: newerProfit },
+      },
+    );
+    const afterOlderResponse = applyJobProfitRefresh(
+      afterNewerResponse,
+      {
+        requestKey: firstRequestKey,
+        currentRequestKey: secondRequestKey,
+        requestedJobId: 42,
+        currentJobId: 42,
+        response: { status: "rejected" },
+      },
+    );
+
+    expect(afterOlderResponse).toBe(afterNewerResponse);
+    expect(afterOlderResponse.profit).toEqual(newerProfit);
+    expect(afterOlderResponse.profitError).toBe(false);
   });
 
   it("ignores a refreshed response for a job that is no longer selected", () => {

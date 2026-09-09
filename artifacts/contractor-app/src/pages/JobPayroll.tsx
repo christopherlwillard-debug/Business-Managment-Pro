@@ -12,6 +12,7 @@ import {
   canApplyJobResponse,
   startJobProfitRefresh,
 } from "@/lib/jobProfitRequests";
+import { nextJobPaymentSummaryRefreshGeneration } from "@/lib/jobPaymentSummaryRefresh";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
 
@@ -1155,7 +1156,8 @@ export default function JobPayroll() {
     const profitRefresh = startJobProfitRefresh<JobProfitResponse>();
     setProfit(profitRefresh.profit);
     setProfitError(profitRefresh.profitError);
-    const requestKey = ++loadKeyRef.current;
+    const requestKey = nextJobPaymentSummaryRefreshGeneration(loadKeyRef.current);
+    loadKeyRef.current = requestKey;
     const requestedJobId = jobId;
     const [pRes, profRes, hoursRes] = await Promise.allSettled([
       fetch(`${BASE}/api/jobs/${requestedJobId}/sub-payments`,  { credentials: "include" }).then(r => r.ok ? r.json() : []),
@@ -1184,7 +1186,8 @@ export default function JobPayroll() {
 
   useEffect(() => {
     const requestedJobId = jobId;
-    const requestKey = ++loadKeyRef.current;
+    const requestKey = nextJobPaymentSummaryRefreshGeneration(loadKeyRef.current);
+    loadKeyRef.current = requestKey;
     const profitRefresh = startJobProfitRefresh<JobProfitResponse>();
     setLoading(true);
     setJob(null);
