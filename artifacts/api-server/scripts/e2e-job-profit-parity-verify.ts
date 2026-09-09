@@ -124,6 +124,8 @@ type ProfitFixture = {
       auditTrail: number;
       payrollLinkedExpenses: number;
       legacySubcontractorExpense: number;
+      reversedFixedPayouts: number;
+      reversedAllocationPayouts: number;
     };
   };
 };
@@ -439,11 +441,11 @@ async function main() {
         grossInvoiced: 1200,
         collected: 1200,
         jobExpenses: 125,
-        subLaborCost: 0,
-        allocPaid: 0,
+        subLaborCost: 200,
+        allocPaid: 100,
         totalSubHours: 0,
-        netProfit: 1075,
-        splitPool: 1012,
+        netProfit: 775,
+        splitPool: 821.25,
         includeMileageInJobCosts: true,
         mileageReimbursementApplied: false,
         mileageReimbursement: null,
@@ -457,17 +459,19 @@ async function main() {
           includedCosts: {
             directExpenses: 125,
             allocatedExpenses: 0,
-            subLabor: 0,
-            splitPayouts: 0,
+            subLabor: 200,
+            splitPayouts: 100,
             mileageReimbursement: 0,
             estimatedFuel: 0,
-            total: 125,
+            total: 425,
           },
           excludedFromProfit: {
             ownerWithdrawals: 0,
             auditTrail: 0,
             payrollLinkedExpenses: 0,
             legacySubcontractorExpense: 0,
+            reversedFixedPayouts: 900,
+            reversedAllocationPayouts: 800,
           },
         },
       },
@@ -509,6 +513,8 @@ async function main() {
             auditTrail: 0,
             payrollLinkedExpenses: 0,
             legacySubcontractorExpense: 0,
+            reversedFixedPayouts: 0,
+            reversedAllocationPayouts: 0,
           },
         },
       },
@@ -1071,14 +1077,14 @@ async function main() {
       grossInvoiced: 1350,
       collected: 1350,
       jobExpenses: 200,
-      netProfit: 1150,
-      splitPool: 1092.5,
+      netProfit: 850,
+      splitPool: 892.5,
       profitBreakdown: {
         ...firstExpected.profitBreakdown,
         includedCosts: {
           ...firstExpected.profitBreakdown.includedCosts,
           directExpenses: 200,
-          total: 200,
+          total: 500,
         },
       },
     };
@@ -1089,6 +1095,23 @@ async function main() {
         && nearlyEqual(financialsValues.splitPool, firstExpected.splitPool)
         && nearlyEqual(financialsValues.netProfit, firstExpected.netProfit),
       JSON.stringify(financialsValues),
+    );
+    const reversalValues = {
+      fixed: readMoneyAfter(financialsText, "Fixed payout reversal"),
+      allocation: readMoneyAfter(financialsText, "Split payout reversal"),
+      subLabor: readMoneyAfter(financialsText, "Sub labor"),
+      splitPayouts: readMoneyAfter(financialsText, "Split payouts"),
+      includedCostTotal: readMoneyAfter(financialsText, "Included costs total"),
+    };
+    record(
+      "Job Financials explains reversed fixed and split payouts without changing active profit",
+      nearlyEqual(reversalValues.fixed, firstExpected.profitBreakdown.excludedFromProfit.reversedFixedPayouts)
+        && nearlyEqual(reversalValues.allocation, firstExpected.profitBreakdown.excludedFromProfit.reversedAllocationPayouts)
+        && nearlyEqual(reversalValues.subLabor, -firstExpected.profitBreakdown.includedCosts.subLabor)
+        && nearlyEqual(reversalValues.splitPayouts, -firstExpected.profitBreakdown.includedCosts.splitPayouts)
+        && nearlyEqual(reversalValues.includedCostTotal, -firstExpected.profitBreakdown.includedCosts.total)
+        && nearlyEqual(financialsValues.netProfit, firstExpected.netProfit),
+      JSON.stringify(reversalValues),
     );
     await page.screenshot({ path: `${SHOTS}/01-job-financials.png`, fullPage: true });
 
@@ -1138,8 +1161,9 @@ async function main() {
     });
     const routeProfitLoaded = await waitForText(page, "Route Profit");
     await page.waitForFunction(
-      () => document.body.innerText.includes("Net Profit") && document.body.innerText.includes("+$1,795"),
+      expected => document.body.innerText.includes("Net Profit") && document.body.innerText.includes(expected),
       { timeout: 20_000 },
+      routeProfitLabel(expectedRouteProfit(today).netProfit),
     );
     const routeText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const routeNetProfit = readMoneyAfter(routeText, "Net Profit");
@@ -1757,7 +1781,7 @@ async function main() {
     profitDetailFailureMode = false;
     const financialsRetryClicked = await clickButtonByText(page, "Try again", "Unable to load job profit");
     const financialsRetryRecovered = await page.waitForFunction(
-      () => {
+      ({ revenueLabel, netProfitLabel }) => {
         const panel = [...document.querySelectorAll<HTMLElement>("div.fixed.inset-0")]
           .find(candidate => [...candidate.querySelectorAll("h2")]
             .some(heading => heading.textContent?.trim() === "Job Financials"));
@@ -1765,10 +1789,14 @@ async function main() {
         return document.querySelector('[data-testid="job-financials-profit-error"]') == null
           && panelText.includes("job revenue")
           && panelText.includes("net business profit")
-          && panelText.includes("$1,350.00")
-          && panelText.includes("$1,150.00");
+          && panelText.includes(revenueLabel.toLowerCase())
+          && panelText.includes(netProfitLabel.toLowerCase());
       },
       { timeout: 20_000 },
+      {
+        revenueLabel: formatMoneyLabel(recoveredFirstExpected.grossInvoiced),
+        netProfitLabel: formatMoneyLabel(recoveredFirstExpected.netProfit),
+      },
     ).then(() => true).catch(() => false);
     const financialsRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const financialsRetryPanelText = await page.$eval(
@@ -1962,15 +1990,19 @@ async function main() {
     ));
     const reopenedAfterAbort = await clickJobCardAction(page, fixtures[0].title, "Job P&L");
     const activePanelRecoveredAfterAbort = await page.waitForFunction(
-      () => {
+      ({ revenueLabel, netProfitLabel }) => {
         const panel = document.querySelector('[data-testid="job-financials-panel"]');
         const text = panel?.textContent ?? "";
         return panel != null
           && text.includes("Job Revenue")
-          && text.includes("$1,350.00")
-          && text.includes("$1,150.00");
+          && text.includes(revenueLabel)
+          && text.includes(netProfitLabel);
       },
       { timeout: 20_000 },
+      {
+        revenueLabel: formatMoneyLabel(recoveredFirstExpected.grossInvoiced),
+        netProfitLabel: formatMoneyLabel(recoveredFirstExpected.netProfit),
+      },
     ).then(() => true).catch(() => false);
     record(
       "Closing Job Financials aborts all pending panel reads without an error toast",
@@ -2148,14 +2180,18 @@ async function main() {
     profitDetailFailureMode = false;
     const payrollRetryClicked = await clickButtonByText(page, "Try again", "Unable to load job profit");
     const payrollRetryRecovered = await page.waitForFunction(
-      () => {
+      ({ revenueLabel, netProfitLabel }) => {
         const bodyText = document.body.innerText.toLowerCase();
         return !bodyText.includes("unable to load job profit")
-          && bodyText.includes("$1,350.00")
-          && bodyText.includes("$1,150.00")
+          && bodyText.includes(revenueLabel.toLowerCase())
+          && bodyText.includes(netProfitLabel.toLowerCase())
           && bodyText.includes("net profit");
       },
       { timeout: 20_000 },
+      {
+        revenueLabel: formatMoneyLabel(recoveredFirstExpected.grossInvoiced),
+        netProfitLabel: formatMoneyLabel(recoveredFirstExpected.netProfit),
+      },
     ).then(() => true).catch(() => false);
     const payrollRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const payrollRetryValues = {
@@ -2226,7 +2262,7 @@ async function main() {
     record(
       "Route Planner distinguishes unavailable profit from a zero-profit route",
       routeErrorShown
-        && !routeErrorText.includes("+$1,795")
+        && !routeErrorText.includes(routeProfitLabel(expectedRouteProfit(today).netProfit))
         && !routeErrorText.includes("$0"),
     );
     profitSummaryFailureMode = false;
