@@ -17,6 +17,7 @@ import { useListJobs } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { aggregateCanonicalJobProfit } from "@/lib/jobFinancials";
+import { formatSundaySaturdayWeekRange, getSundaySaturdayWeekRange } from "@/lib/dateUtils";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay,
   isToday, parseISO, startOfWeek, endOfWeek, addMonths, subMonths,
@@ -444,8 +445,9 @@ export default function RoutePlanner() {
   }
 
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
-  const weekStart = format(startOfWeek(selectedDate, { weekStartsOn: 0 }), "yyyy-MM-dd");
-  const weekEnd = format(endOfWeek(selectedDate, { weekStartsOn: 0 }), "yyyy-MM-dd");
+  const selectedWeek = getSundaySaturdayWeekRange(selectedDate);
+  const weekStart = format(selectedWeek.start, "yyyy-MM-dd");
+  const weekEnd = format(selectedWeek.end, "yyyy-MM-dd");
 
   const { data: allStops = [], isLoading } = useQuery<RouteStop[]>({
     queryKey: ["/api/route-stops"],
@@ -852,7 +854,7 @@ export default function RoutePlanner() {
   const totalEstDuration = displayStops.reduce((sum, s) => sum + (s.estimatedDurationMinutes ?? 60), 0);
   const viewLabel = viewMode === "day"
     ? format(selectedDate, "EEEE, MMM d")
-    : `Week of ${format(startOfWeek(selectedDate, { weekStartsOn: 0 }), "MMM d")}`;
+    : formatSundaySaturdayWeekRange(selectedDate);
 
   return (
     <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-130px)] gap-0 -m-4 sm:-m-6 lg:-m-8 lg:overflow-hidden">
