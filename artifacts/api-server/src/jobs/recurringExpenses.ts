@@ -30,6 +30,7 @@ async function processRecurringExpenses() {
         notes: template.notes,
         date: template.nextDueDate,
         recurringExpenseId: template.id,
+        businessId: template.businessId,
       });
 
       const next = advanceDate(template.nextDueDate, template.frequency);

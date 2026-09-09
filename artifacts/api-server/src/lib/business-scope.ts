@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { db } from "@workspace/db";
 import { businessesTable } from "@workspace/db/schema";
-import { eq, or } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 export type BusinessScope = {
   id: number;
@@ -159,4 +159,23 @@ export function businessPredicate(
   if (!scope) return undefined;
   if (columns.businessId) return eq(columns.businessId, scope.id);
   return eq(columns.businessLine, scope.slug);
+}
+
+/**
+ * Predicate for a write that has already resolved its canonical owner.
+ * Legacy rows can still be edited in their selected business while every
+ * resulting write is expected to populate businessId.
+ */
+export function mutationBusinessPredicate(
+  columns: { businessId?: any; businessLine?: any },
+  business: BusinessScope,
+) {
+  if (columns.businessId && columns.businessLine) {
+    return or(
+      eq(columns.businessId, business.id),
+      and(isNull(columns.businessId), eq(columns.businessLine, business.slug)),
+    );
+  }
+  if (columns.businessId) return eq(columns.businessId, business.id);
+  return eq(columns.businessLine, business.slug);
 }

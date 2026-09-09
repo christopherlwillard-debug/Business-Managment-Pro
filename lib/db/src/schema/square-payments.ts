@@ -3,9 +3,11 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { invoicesTable } from "./invoices";
 import { clientsTable } from "./clients";
+import { businessesTable } from "./businesses";
 
 export const squarePaymentsTable = pgTable("square_payments", {
   id: serial("id").primaryKey(),
+  businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "set null" }),
   squarePaymentId: text("square_payment_id").notNull().unique(),
   amountCents: integer("amount_cents").notNull(),
   description: text("description"),

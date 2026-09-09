@@ -3,12 +3,29 @@ import { db } from "@workspace/db";
 import {
   invoicesTable, quickChargesTable, prospectsTable, estimatesTable,
   prospectEventsTable, otherIncomeTable, squarePaymentsTable, clientsTable,
-  depositSubmissionsTable,
+  depositSubmissionsTable, businessesTable,
 } from "@workspace/db/schema";
 import { eq, and, ne, asc, ilike, or } from "drizzle-orm";
 import { verifySquareWebhookSignature } from "../lib/square";
 
 const router = Router();
+
+async function resolveWebhookBusinessId(candidateId?: number | null, candidateSlug?: string | null): Promise<number> {
+  if (candidateId != null) {
+    const [row] = await db.select({ id: businessesTable.id }).from(businessesTable)
+      .where(eq(businessesTable.id, candidateId)).limit(1);
+    if (row) return row.id;
+  }
+  if (candidateSlug) {
+    const [row] = await db.select({ id: businessesTable.id }).from(businessesTable)
+      .where(eq(businessesTable.slug, candidateSlug)).limit(1);
+    if (row) return row.id;
+  }
+  const [fallback] = await db.select({ id: businessesTable.id }).from(businessesTable)
+    .where(eq(businessesTable.slug, "general_contracting")).limit(1);
+  if (!fallback) throw new Error("General Contracting business is not configured");
+  return fallback.id;
+}
 
 async function handleSquarePayment(opts: {
   referenceId: string | null;
@@ -96,10 +113,12 @@ async function handleSquarePayment(opts: {
     }
     const amountDollars = (amountMoney / 100).toFixed(2);
     const dateStr = paidAt.toISOString().split("T")[0];
+    const businessId = await resolveWebhookBusinessId(null, siteSlug);
 
     const inserted = await db.insert(squarePaymentsTable).values({
       squarePaymentId,
       amountCents: amountMoney,
+      businessId,
       description: `Website Deposit — ${siteSlug}`,
       clientId: null,
       clientName: buyerName ?? null,
@@ -118,6 +137,7 @@ async function handleSquarePayment(opts: {
       source: "website_deposit",
       paymentMethod: "card",
       clientId: null,
+      businessId: String(businessId),
       businessLine: siteSlug,
     });
 
@@ -182,6 +202,7 @@ async function handleSquarePayment(opts: {
     }
 
     const clientId = client?.id ?? null;
+    const businessId = await resolveWebhookBusinessId(client?.businessId, client?.businessLine);
 
     const amountDollars = (amountMoney / 100).toFixed(2);
     const dateStr = paidAt.toISOString().split("T")[0];
@@ -192,6 +213,7 @@ async function handleSquarePayment(opts: {
     const inserted = await db.insert(squarePaymentsTable).values({
       squarePaymentId,
       amountCents: amountMoney,
+      businessId,
       description: "Square Payment",
       clientId: null,
       clientName: buyerName ?? null,
@@ -234,8 +256,8 @@ async function handleSquarePayment(opts: {
       source: "square_tap_to_pay",
       paymentMethod: "card",
       clientId,
-      businessId: client?.businessId != null ? String(client.businessId) : null,
-      businessLine: client?.businessLine ?? null,
+      businessId: String(businessId),
+      businessLine: client?.businessLine ?? "general_contracting",
     });
 
     console.log(

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { paymentsTable, subcontractorsTable } from "@workspace/db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { resolveMutationBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -99,10 +100,13 @@ router.post("/", async (req, res) => {
     if (!subcontractorId || !amount || !paymentDate || !year) {
       return res.status(400).json({ error: "Missing required fields" });
     }
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
 
     const [payment] = await db
       .insert(paymentsTable)
       .values({
+         businessId: ownership.business.id,
         subcontractorId,
         amount: amount.toString(),
         paymentDate,
@@ -136,6 +140,8 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const { amount, paymentDate, year, description, invoiceNumber, notes, paymentMethod } = req.body;
 
     const [payment] = await db
@@ -149,7 +155,7 @@ router.put("/:id", async (req, res) => {
         ...(notes !== undefined && { notes: notes || null }),
         ...(paymentMethod !== undefined && { paymentMethod: paymentMethod || null }),
       })
-      .where(eq(paymentsTable.id, id))
+      .where(and(eq(paymentsTable.id, id), mutationBusinessPredicate(paymentsTable, ownership.business)))
       .returning();
 
     if (!payment) {
@@ -178,9 +184,11 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const [deleted] = await db
       .delete(paymentsTable)
-      .where(eq(paymentsTable.id, id))
+      .where(and(eq(paymentsTable.id, id), mutationBusinessPredicate(paymentsTable, ownership.business)))
       .returning();
 
     if (!deleted) {

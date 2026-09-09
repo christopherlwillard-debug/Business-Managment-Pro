@@ -5,6 +5,7 @@ import { eq, and, gte, lte, sum } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { calculateMileageDeduction } from "../lib/irs-rates.js";
 import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
+import { resolveMutationBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -239,7 +240,10 @@ router.post("/", wrapAsync(async (req, res) => {
     res.status(400).json({ error: "level must be federal, state, or combined" });
     return;
   }
+  const ownership = await resolveMutationBusiness(req);
+  if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
   const [row] = await db.insert(estimatedTaxPaymentsTable).values({
+    businessId: ownership.business.id,
     year: parseInt(year),
     quarter: parseInt(quarter),
     level,
@@ -256,6 +260,8 @@ router.post("/", wrapAsync(async (req, res) => {
 router.put("/:id", wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const ownership = await resolveMutationBusiness(req);
+  if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
   const { amountDue, amountPaid, paidDate, paymentMethod, notes, level } = req.body;
   const updates: Partial<typeof estimatedTaxPaymentsTable.$inferInsert> = {};
   if (amountDue !== undefined) updates.amountDue = String(amountDue);
@@ -264,7 +270,9 @@ router.put("/:id", wrapAsync(async (req, res) => {
   if (paymentMethod !== undefined) updates.paymentMethod = paymentMethod;
   if (notes !== undefined) updates.notes = notes;
   if (level !== undefined) updates.level = level;
-  const [row] = await db.update(estimatedTaxPaymentsTable).set(updates).where(eq(estimatedTaxPaymentsTable.id, id)).returning();
+  const [row] = await db.update(estimatedTaxPaymentsTable).set(updates)
+    .where(and(eq(estimatedTaxPaymentsTable.id, id), mutationBusinessPredicate(estimatedTaxPaymentsTable, ownership.business)))
+    .returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
   res.json(row);
 }));
@@ -273,7 +281,10 @@ router.put("/:id", wrapAsync(async (req, res) => {
 router.delete("/:id", wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  await db.delete(estimatedTaxPaymentsTable).where(eq(estimatedTaxPaymentsTable.id, id));
+  const ownership = await resolveMutationBusiness(req);
+  if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
+  await db.delete(estimatedTaxPaymentsTable)
+    .where(and(eq(estimatedTaxPaymentsTable.id, id), mutationBusinessPredicate(estimatedTaxPaymentsTable, ownership.business)));
   res.status(204).end();
 }));
 

@@ -2,10 +2,12 @@ import { pgTable, serial, text, timestamp, integer, numeric } from "drizzle-orm/
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { subcontractorsTable } from "./subcontractors";
+import { businessesTable } from "./businesses";
 
 export const paymentsTable = pgTable("payments", {
   id: serial("id").primaryKey(),
   subcontractorId: integer("subcontractor_id").references(() => subcontractorsTable.id),
+  businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "set null" }),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   paymentDate: text("payment_date").notNull(), // YYYY-MM-DD
   year: integer("year").notNull(), // Tax year

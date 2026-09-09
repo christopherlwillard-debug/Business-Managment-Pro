@@ -17,7 +17,7 @@ vi.mock("@workspace/db", () => {
   return { db: { select: () => chain } };
 });
 
-const { resolveMutationBusiness, canonicalRecordBusiness } = await import("./business-scope");
+const { resolveMutationBusiness, canonicalRecordBusiness, belongsToBusiness } = await import("./business-scope");
 
 function request(body: Record<string, unknown> = {}, query: Record<string, unknown> = {}) {
   return { body, query } as never;
@@ -90,5 +90,25 @@ describe("canonicalRecordBusiness", () => {
       businessId: 9,
       businessLine: "general_contracting",
     })).resolves.toEqual({ state: "invalid" });
+  });
+});
+
+describe("canonical ownership precedence", () => {
+  it("uses businessId as authoritative over the legacy slug", () => {
+    expect(belongsToBusiness(
+      { businessId: 9, businessLine: "general_contracting" },
+      { id: 9, slug: "asphalt_sealing" },
+    )).toBe(true);
+    expect(belongsToBusiness(
+      { businessId: 7, businessLine: "asphalt_sealing" },
+      { id: 9, slug: "asphalt_sealing" },
+    )).toBe(false);
+  });
+
+  it("uses the legacy slug only when canonical ownership is absent", () => {
+    expect(belongsToBusiness(
+      { businessId: null, businessLine: "asphalt_sealing" },
+      { id: 9, slug: "asphalt_sealing" },
+    )).toBe(true);
   });
 });

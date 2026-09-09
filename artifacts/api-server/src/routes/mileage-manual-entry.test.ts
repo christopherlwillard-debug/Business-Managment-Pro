@@ -150,6 +150,9 @@ afterEach(() => {
 // ── POST /mileage — create manual trip ───────────────────────────────────────
 
 describe("POST /mileage — rate derived from trip date", () => {
+  beforeEach(() => {
+    h.selectQueue.push([{ id: 1, slug: "general_contracting" }]);
+  });
 
   it("H1 2026 trip (Jun 30) uses $0.725/mile and correct deductionAmount", async () => {
     const miles = 100;
@@ -234,6 +237,7 @@ describe("POST /mileage — rate derived from trip date", () => {
       .post("/mileage")
       .send({ date: "2026-06-30", miles: milesValue, classification: "business", businessId: 1 });
 
+    h.selectQueue.push([{ id: 1, slug: "general_contracting" }]);
     const h2Res = await request(app)
       .post("/mileage")
       .send({ date: "2026-07-01", miles: milesValue, classification: "business", businessId: 1 });
@@ -322,6 +326,9 @@ describe("GET /mileage/summary — split-year aggregate deduction", () => {
 // ── PUT /mileage/:id — edit manual trip ──────────────────────────────────────
 
 describe("PUT /mileage/:id — rate re-derived from the new trip date", () => {
+  beforeEach(() => {
+    h.selectQueue.push([{ id: 1, slug: "general_contracting" }]);
+  });
 
   it("editing a trip to 2026-07-01 yields $0.760/mile", async () => {
     // select queue: [1] existing log (no expenseId → skip expense update), [2] no jobId lookup

@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { otherIncomeTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, isNull, or } from "drizzle-orm";
 import { jobsTable } from "@workspace/db/schema";
-import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { requestedBusiness, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -62,19 +62,21 @@ router.post("/", async (req, res) => {
   try {
     const data = parseBody(req.body);
     if (!data) { res.status(400).json({ error: "Invalid payload" }); return; }
-    const scope = await requestedBusiness(req);
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
     if (data.jobId != null) {
       const [job] = await db.select({ id: jobsTable.id, businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
         .from(jobsTable).where(eq(jobsTable.id, data.jobId));
-      if (!job || !belongsToBusiness(job, scope)) {
+      if (!job || !belongsToBusiness(job, owner)) {
         res.status(404).json({ error: "Job not found" });
         return;
       }
-      data.businessId = job.businessId != null ? String(job.businessId) : scope?.id != null ? String(scope.id) : null;
-      data.businessLine = scope?.slug ?? job.businessLine ?? data.businessLine ?? null;
+      data.businessId = job.businessId != null ? String(job.businessId) : String(owner.id);
+      data.businessLine = owner.slug;
     }
-    data.businessId = data.businessId ?? (scope?.id != null ? String(scope.id) : null);
-    data.businessLine = scope?.slug ?? data.businessLine ?? null;
+    data.businessId = data.businessId ?? String(owner.id);
+    data.businessLine = owner.slug;
     const [row] = await db.insert(otherIncomeTable).values(data).returning();
     res.status(201).json(row);
   } catch (err) {
@@ -89,29 +91,27 @@ router.put("/:id", async (req, res) => {
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const data = parseBody(req.body);
     if (!data) { res.status(400).json({ error: "Invalid payload" }); return; }
-    const scope = await requestedBusiness(req);
-    const [existing] = await db.select().from(otherIncomeTable).where(eq(otherIncomeTable.id, id));
-    if (!existing || !belongsToBusiness(existing, scope)) { res.status(404).json({ error: "Not found" }); return; }
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
+    const [existing] = await db.select().from(otherIncomeTable)
+      .where(and(eq(otherIncomeTable.id, id), mutationBusinessPredicate(otherIncomeTable, owner)));
+    if (!existing) { res.status(404).json({ error: "Not found" }); return; }
     if (existing.voidedAt) { res.status(400).json({ error: "Voided income entries cannot be edited." }); return; }
     if (data.jobId != null) {
       const [job] = await db.select({ id: jobsTable.id, businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
         .from(jobsTable).where(eq(jobsTable.id, data.jobId));
-      if (!job || !belongsToBusiness(job, scope)) {
+      if (!job || !belongsToBusiness(job, owner)) {
         res.status(404).json({ error: "Job not found" });
         return;
       }
-      data.businessId = job.businessId != null ? String(job.businessId) : scope?.id != null ? String(scope.id) : null;
-      data.businessLine = scope?.slug ?? job.businessLine ?? data.businessLine ?? null;
+      data.businessId = job.businessId != null ? String(job.businessId) : String(owner.id);
+      data.businessLine = owner.slug;
     }
-    data.businessId = data.businessId ?? existing.businessId ?? (scope?.id != null ? String(scope.id) : null);
-    data.businessLine = scope?.slug ?? existing.businessLine;
-    const ownership = scope
-      ? or(
-          eq(otherIncomeTable.businessId, String(scope.id)),
-          and(isNull(otherIncomeTable.businessId), eq(otherIncomeTable.businessLine, scope.slug)),
-        )
-      : undefined;
-    const [row] = await db.update(otherIncomeTable).set(data).where(and(eq(otherIncomeTable.id, id), ownership)).returning();
+    data.businessId = data.businessId ?? existing.businessId ?? String(owner.id);
+    data.businessLine = owner.slug;
+    const [row] = await db.update(otherIncomeTable).set(data)
+      .where(and(eq(otherIncomeTable.id, id), mutationBusinessPredicate(otherIncomeTable, owner))).returning();
     if (!row) { res.status(404).json({ error: "Not found" }); return; }
     res.json(row);
   } catch (err) {
@@ -127,12 +127,6 @@ router.delete("/:id", async (req, res) => {
     const scope = await requestedBusiness(req);
     const [existing] = await db.select().from(otherIncomeTable).where(eq(otherIncomeTable.id, id));
     if (!existing || !belongsToBusiness(existing, scope)) { res.status(404).json({ error: "Not found" }); return; }
-    const ownership = scope
-      ? or(
-          eq(otherIncomeTable.businessId, String(scope.id)),
-          and(isNull(otherIncomeTable.businessId), eq(otherIncomeTable.businessLine, scope.slug)),
-        )
-      : undefined;
     return res.status(409).json({ error: "Posted income cannot be deleted. Use the void action to preserve financial history." });
   } catch (err) {
     console.error(err);
@@ -146,9 +140,15 @@ router.post("/:id/void", async (req, res) => {
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
     if (!reason) return res.status(400).json({ error: "A void reason is required" });
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const [updated] = await db.update(otherIncomeTable)
       .set({ voidedAt: new Date(), voidReason: reason })
-      .where(and(eq(otherIncomeTable.id, id), isNull(otherIncomeTable.voidedAt)))
+      .where(and(
+        eq(otherIncomeTable.id, id),
+        mutationBusinessPredicate(otherIncomeTable, ownership.business),
+        isNull(otherIncomeTable.voidedAt),
+      ))
       .returning();
     if (!updated) return res.status(404).json({ error: "Income entry not found or already voided" });
     res.json(updated);

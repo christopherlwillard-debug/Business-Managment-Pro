@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { recurringExpensesTable, expensesTable, jobsTable } from "@workspace/db/schema";
 import { eq, and, or, isNull, getTableColumns } from "drizzle-orm";
+import { resolveMutationBusiness, mutationBusinessPredicate, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -60,12 +61,20 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { description, amount, category, vendor, jobId, notes, frequency, startDate, endDate, businessId } = req.body;
+    const { description, amount, category, vendor, jobId, notes, frequency, startDate, endDate } = req.body;
     if (!description || !amount || !category || !frequency || !startDate) {
       return res.status(400).json({ error: "Missing required fields" });
     }
     if (!FREQUENCIES.includes(frequency)) {
       return res.status(400).json({ error: "Invalid frequency" });
+    }
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
+    if (jobId) {
+      const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+        .from(jobsTable).where(eq(jobsTable.id, parseInt(String(jobId)))).limit(1);
+      if (!job || !belongsToBusiness(job, owner)) return res.status(404).json({ error: "Job not found" });
     }
 
     const today = localDateStr();
@@ -75,7 +84,7 @@ router.post("/", async (req, res) => {
       description, amount: amount.toString(), category,
       vendor: vendor || null, jobId: jobId || null, notes: notes || null,
       frequency, startDate, endDate: endDate || null, nextDueDate, active: true,
-      businessId: businessId ? parseInt(businessId) : null,
+       businessId: owner.id,
     }).returning();
 
     // If the start date is today or in the past, immediately generate the
@@ -91,6 +100,7 @@ router.post("/", async (req, res) => {
         date: template.nextDueDate,
         recurringExpenseId: template.id,
         businessId: template.businessId,
+         businessLine: owner.slug,
       });
       const nextNext = advanceDate(template.nextDueDate, template.frequency);
       const shouldDeactivate = template.endDate && nextNext > template.endDate;
@@ -117,11 +127,13 @@ router.post("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const [row] = await db
       .select({ ...getTableColumns(recurringExpensesTable), jobTitle: jobsTable.title })
       .from(recurringExpensesTable)
       .leftJoin(jobsTable, eq(recurringExpensesTable.jobId, jobsTable.id))
-      .where(eq(recurringExpensesTable.id, id));
+      .where(and(eq(recurringExpensesTable.id, id), eq(recurringExpensesTable.businessId, ownership.business.id)));
     if (!row) return res.status(404).json({ error: "Recurring expense not found" });
     res.json(formatTemplate(row as any, (row as any).jobTitle));
   } catch (err) {
@@ -134,6 +146,17 @@ router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { description, amount, category, vendor, jobId, notes, frequency, startDate, endDate, active } = req.body;
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
+    const [current] = await db.select().from(recurringExpensesTable)
+      .where(and(eq(recurringExpensesTable.id, id), eq(recurringExpensesTable.businessId, owner.id)));
+    if (!current) return res.status(404).json({ error: "Recurring expense not found" });
+    if (jobId) {
+      const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+        .from(jobsTable).where(eq(jobsTable.id, parseInt(String(jobId)))).limit(1);
+      if (!job || !belongsToBusiness(job, owner)) return res.status(404).json({ error: "Job not found" });
+    }
     if (frequency && !FREQUENCIES.includes(frequency)) {
       return res.status(400).json({ error: "Invalid frequency" });
     }
@@ -141,10 +164,6 @@ router.put("/:id", async (req, res) => {
     const scheduleChanged = frequency !== undefined || startDate !== undefined;
     let nextDueDate: string | undefined;
     if (scheduleChanged) {
-      const [current] = await db
-        .select()
-        .from(recurringExpensesTable)
-        .where(eq(recurringExpensesTable.id, id));
       if (current) {
         const effectiveStart = startDate ?? current.startDate;
         const effectiveFreq  = frequency ?? current.frequency;
@@ -167,7 +186,8 @@ router.put("/:id", async (req, res) => {
       ...(endDate !== undefined && { endDate: endDate || null }),
       ...(active !== undefined && { active }),
       ...(nextDueDate !== undefined && { nextDueDate }),
-    }).where(eq(recurringExpensesTable.id, id)).returning();
+      businessId: current.businessId ?? owner.id,
+    }).where(and(eq(recurringExpensesTable.id, id), eq(recurringExpensesTable.businessId, owner.id))).returning();
 
     if (!updated) return res.status(404).json({ error: "Recurring expense not found" });
 
@@ -187,7 +207,9 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await db.delete(recurringExpensesTable).where(eq(recurringExpensesTable.id, id));
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    await db.delete(recurringExpensesTable).where(and(eq(recurringExpensesTable.id, id), eq(recurringExpensesTable.businessId, ownership.business.id)));
     res.status(204).send();
   } catch (err) {
     console.error(err);

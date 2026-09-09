@@ -1,11 +1,12 @@
 import { Router } from "express";
+import { jobsTable, expensesTable } from "@workspace/db/schema";
+import { db } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
+import { resolveMutationBusiness, belongsToBusiness } from "../lib/business-scope.js";
 import multer from "multer";
 import ExcelJS from "exceljs";
 import { parseReceiptFile, CATEGORIES, guessCategory, normalizeAmount } from "./receipt-parser";
 import { Readable } from "stream";
-import { db } from "@workspace/db";
-import { expensesTable, jobsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -136,19 +137,36 @@ router.post("/bulk", async (req, res) => {
     if (!Array.isArray(rows) || rows.length === 0)
       return res.status(400).json({ error: "No expense rows provided" });
 
-    const parsedBusinessId = businessId ? parseInt(String(businessId)) : null;
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
     const today = new Date().toISOString().slice(0, 10);
-    const values = rows.map(r => ({
+    const values = [];
+    for (const r of rows) {
+      const jobId = r.jobId ? parseInt(String(r.jobId)) : null;
+      if (jobId) {
+        const [job] = await db.select({
+          id: jobsTable.id,
+          businessId: jobsTable.businessId,
+          businessLine: jobsTable.businessLine,
+        }).from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+        if (!job || !belongsToBusiness(job, owner)) {
+          return res.status(404).json({ error: "Job not found" });
+        }
+      }
+      values.push({
       description: String(r.description ?? "Imported expense").slice(0, 255),
       amount:      String(normalizeAmount(r.amount)),
       category:    (CATEGORIES as readonly string[]).includes(r.category) ? r.category : "Other",
       date:        r.date ?? today,
       vendor:      r.vendor ? String(r.vendor).slice(0, 255) : null,
       notes:       r.notes ? String(r.notes).slice(0, 1000) : null,
-      jobId:       r.jobId ? parseInt(r.jobId) : null,
+      jobId,
       receiptUrl:  null,
-      businessId:  parsedBusinessId,
-    }));
+      businessId:  owner.id,
+      businessLine: owner.slug,
+      });
+    }
 
     const created = await db.insert(expensesTable).values(values).returning();
     res.status(201).json({ count: created.length, expenses: created });

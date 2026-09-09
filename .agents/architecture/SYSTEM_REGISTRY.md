@@ -238,6 +238,14 @@ Before implementing any financial, schema, or business logic feature — consult
 - **API:** `artifacts/api-server/src/routes/businesses.ts`
 - **UI:** `artifacts/contractor-app/src/pages/BusinessSelector.tsx`, `src/contexts/BusinessContext.tsx`
 - **Reports:** Yes — multi-business filtering in reports
+
+### Financial mutation ownership contract
+
+- **Canonical owner:** Every financial create/update route resolves `businessId` through `business-scope.ts`; an omitted selector defaults by the stable `general_contracting` slug.
+- **Inheritance:** Job-linked rows inherit the job's canonical owner and reject a conflicting explicit selector. Recurring-generated expenses inherit the recurring template owner. Portal and provider-import rows use their linked job/client owner or General Contracting.
+- **Compatibility:** `businessLine` is retained as a read-only compatibility/fallback value for legacy rows. It never overrides a non-null `businessId`, and new writes populate both values.
+- **Scope:** All Businesses is a read-only reporting scope. It is never an owner value for a mutation; update, void, rollback, receipt, reversal, and delete boundaries use the resolved owner predicate.
+- **Covered ledgers:** expenses, mileage, other income, recurring expenses, subcontractor payments/advances/hours, owner capital, estimated tax payments, assets, growth fund deployments, bank-filed rows, portal rows, Square mirrors, and legacy payments.
 - **Source of truth:** `businesses`. Supports parent/child structure (`parentBusinessId`) for shell companies and DBAs.
 
 ### Business ownership policy

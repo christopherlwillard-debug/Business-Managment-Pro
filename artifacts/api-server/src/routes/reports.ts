@@ -10,6 +10,7 @@ import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { calculateOwnerPayFromJobProfit } from "../lib/job-profit-reports.js";
 import { loadJobProfitByJob } from "../lib/job-profit-loader.js";
+import { resolveMutationBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 import {
   filterCashReceipts,
   filterDashboardRevenueInvoices,
@@ -2657,8 +2658,14 @@ router.get("/growth-fund-deployments", sectionGuard("jobs"), async (req, res) =>
     const year = parseInt(req.query.year as string) || new Date().getFullYear();
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
+    const rawBusinessId = req.query.businessId;
+    const businessFilter = rawBusinessId != null ? Number.parseInt(String(rawBusinessId), 10) : null;
+    const conditions = [gte(growthFundDeploymentsTable.date, startDate), lte(growthFundDeploymentsTable.date, endDate)];
+    if (businessFilter != null && Number.isFinite(businessFilter)) {
+      conditions.push(eq(growthFundDeploymentsTable.businessId, businessFilter));
+    }
     const rows = await db.select().from(growthFundDeploymentsTable)
-      .where(and(gte(growthFundDeploymentsTable.date, startDate), lte(growthFundDeploymentsTable.date, endDate)))
+      .where(and(...conditions))
       .orderBy(growthFundDeploymentsTable.date);
     res.json(rows.map(r => ({ ...r, amount: parseFloat(r.amount ?? "0") })));
   } catch (err) {
@@ -2677,6 +2684,9 @@ router.post("/growth-fund-deployments", sectionGuard("jobs"), async (req, res) =
     if (isNaN(newAmount) || newAmount <= 0) {
       return res.status(400).json({ error: "amount must be a positive number" });
     }
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
 
     const year = parseInt((date as string).substring(0, 4));
     const startDate = `${year}-01-01`;
@@ -2692,7 +2702,12 @@ router.post("/growth-fund-deployments", sectionGuard("jobs"), async (req, res) =
       status: invoicesTable.status,
       issueDate: invoicesTable.issueDate,
     }).from(invoicesTable)
-      .where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), ne(invoicesTable.status, "draft")));
+      .where(and(
+        gte(invoicesTable.issueDate, startDate),
+        lte(invoicesTable.issueDate, endDate),
+        ne(invoicesTable.status, "draft"),
+        mutationBusinessPredicate(invoicesTable, owner),
+      ));
 
     const jobIds = [...new Set(invoices.map(i => i.jobId).filter((id): id is number => id != null))];
     let accumulated = 0;
@@ -2713,7 +2728,11 @@ router.post("/growth-fund-deployments", sectionGuard("jobs"), async (req, res) =
 
     const existingRows = await db.select({ amount: growthFundDeploymentsTable.amount })
       .from(growthFundDeploymentsTable)
-      .where(and(gte(growthFundDeploymentsTable.date, startDate), lte(growthFundDeploymentsTable.date, endDate)));
+      .where(and(
+        gte(growthFundDeploymentsTable.date, startDate),
+        lte(growthFundDeploymentsTable.date, endDate),
+        mutationBusinessPredicate(growthFundDeploymentsTable, owner),
+      ));
     const totalInvested = existingRows.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
     const available = accumulated - totalInvested;
 
@@ -2729,6 +2748,7 @@ router.post("/growth-fund-deployments", sectionGuard("jobs"), async (req, res) =
       amount: String(newAmount),
       notes: notes ?? null,
       createdBy: user?.username ?? user?.email ?? null,
+      businessId: owner.id,
     }).returning();
 
     res.status(201).json({ ...inserted, amount: parseFloat(inserted.amount ?? "0") });
@@ -2742,7 +2762,12 @@ router.delete("/growth-fund-deployments/:id", sectionGuard("jobs"), async (req, 
   try {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
-    await db.delete(growthFundDeploymentsTable).where(eq(growthFundDeploymentsTable.id, id));
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    await db.delete(growthFundDeploymentsTable).where(and(
+      eq(growthFundDeploymentsTable.id, id),
+      mutationBusinessPredicate(growthFundDeploymentsTable, ownership.business),
+    ));
     res.json({ ok: true });
   } catch (err) {
     console.error("[growth-fund-deployments DELETE]", err);

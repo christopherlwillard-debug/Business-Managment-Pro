@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { sectionGuard } from "./guards";
 import { db } from "@workspace/db";
-import { subcontractorsTable, jobsTable, jobSubcontractorsTable, jobSubHoursTable, expensesTable, mileageLogsTable, vendorsTable, generated1099sTable, paymentsTable, dailyLogsTable, materialListsTable, subPaymentRecordsTable, jobChecklistsTable, jobChecklistSectionsTable, jobChecklistItemsTable, jobChecklistItemPartsTable } from "@workspace/db/schema";
+import { subcontractorsTable, jobsTable, jobSubcontractorsTable, jobSubHoursTable, expensesTable, mileageLogsTable, vendorsTable, generated1099sTable, paymentsTable, dailyLogsTable, materialListsTable, subPaymentRecordsTable, jobChecklistsTable, jobChecklistSectionsTable, jobChecklistItemsTable, jobChecklistItemPartsTable, businessesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, or, inArray, sql, asc } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
@@ -44,6 +44,18 @@ const router = Router();
 async function getSubByToken(token: string) {
   const [sub] = await db.select().from(subcontractorsTable).where(eq(subcontractorsTable.portalToken, token));
   return sub ?? null;
+}
+
+async function portalBusiness(jobId?: number | null) {
+  if (jobId) {
+    const [job] = await db.select({ businessId: jobsTable.businessId }).from(jobsTable)
+      .where(eq(jobsTable.id, jobId)).limit(1);
+    if (job?.businessId != null) return job.businessId;
+  }
+  const [business] = await db.select({ id: businessesTable.id }).from(businessesTable)
+    .where(eq(businessesTable.slug, "general_contracting")).limit(1);
+  if (!business) throw new Error("General Contracting business is not configured");
+  return business.id;
 }
 
 // ─── PIN Security ─────────────────────────────────────────────────────────────
@@ -865,10 +877,13 @@ tokenRouter.post("/expenses", async (req, res) => {
     if (!sub) return res.status(404).json({ error: "Invalid portal link" });
     const { description, amount, category, date, vendor, jobId, notes, receiptUrl } = req.body;
     if (!description || !amount || !category || !date) return res.status(400).json({ error: "Missing required fields" });
+    const parsedJobId = jobId ? parseInt(String(jobId)) : null;
+    const businessId = await portalBusiness(parsedJobId);
     const [expense] = await db.insert(expensesTable).values({
-      description, amount: amount.toString(), category, date, vendor, jobId: jobId || null, notes,
+      description, amount: amount.toString(), category, date, vendor, jobId: parsedJobId, notes,
       receiptUrl: receiptUrl || null,
       subcontractorId: sub.id,
+      businessId,
     }).returning();
     res.status(201).json({ ...expense, amount: parseFloat(expense.amount) });
   } catch (err) {
@@ -998,9 +1013,11 @@ tokenRouter.post("/mileage", async (req, res) => {
     const milesNum = parseFloat(miles);
     const resolvedClassification = classification || "business";
     const { rate, deduction: deductionAmount } = calculateMileageDeduction(milesNum, resolvedClassification, date);
+    const parsedJobId = jobId ? parseInt(String(jobId)) : null;
+    const businessId = await portalBusiness(parsedJobId);
     const [log] = await db.insert(mileageLogsTable).values({
       date, miles: milesNum.toString(), startLocation, endLocation,
-      purpose, jobId: jobId || null, classification: resolvedClassification,
+      purpose, jobId: parsedJobId, businessId, classification: resolvedClassification,
       ratePerMile: rate.toString(), deductionAmount: deductionAmount.toString(),
       notes, subcontractorId: sub.id,
     }).returning();
@@ -1069,6 +1086,7 @@ tokenRouter.post("/mileage/import", async (req, res) => {
     }
 
     if (toInsert.length > 0) {
+      const businessId = await portalBusiness(null);
       const rows = toInsert.map(t => {
         const cls = (t.classification ?? "business").toLowerCase() === "personal" ? "personal" : "business";
         const { rate, deduction } = calculateMileageDeduction(t.miles, cls, t.date);
@@ -1083,6 +1101,7 @@ tokenRouter.post("/mileage/import", async (req, res) => {
           deductionAmount: deduction.toString(),
           source: "csv_import",
           subcontractorId: sub.id,
+          businessId,
         };
       });
       await db.insert(mileageLogsTable).values(rows);

@@ -5,6 +5,7 @@ import { eq, and, gte, lte, isNull, inArray, getTableColumns } from "drizzle-orm
 import { getRequestUserId } from "./guards";
 import { calculateMileageDeduction, getIrsRateForDate, summarizeMileageRecords } from "../lib/irs-rates.js";
 import { partitionMileageImportTrips, type MileageImportTrip } from "../lib/mileage-import-dedup.js";
+import { resolveMutationBusiness, mutationBusinessPredicate, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -196,7 +197,16 @@ router.post("/", async (req, res) => {
     // getIrsRateForDate() is the authoritative rate table — not the settings override.
     const milesNum = parseFloat(miles);
     const { deduction: deductionAmount } = calculateMileageDeduction(milesNum, classification, date);
-    const bizId = businessId ? parseInt(businessId) : null;
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
+    const bizId = owner.id;
+
+    if (jobId) {
+      const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+        .from(jobsTable).where(eq(jobsTable.id, parseInt(String(jobId)))).limit(1);
+      if (!job || !belongsToBusiness(job, owner)) return res.status(404).json({ error: "Job not found" });
+    }
 
     const log = await db.transaction(async (tx) => {
       let expenseId: number | null = null;
@@ -213,6 +223,7 @@ router.post("/", async (req, res) => {
           amount: deductionAmount.toFixed(2),
           jobId: jobId || null,
           businessId: bizId,
+          businessLine: owner.slug,
           notes: `Auto-created. ${milesNum.toFixed(2)} mi × $${getIrsRateForDate(date)}/mi`,
         }).returning();
         expenseId = expense.id;
@@ -254,8 +265,19 @@ router.put("/:id", async (req, res) => {
     const milesNum = parseFloat(miles);
     const { deduction: deductionAmount } = calculateMileageDeduction(milesNum, classification, date);
 
-    const [existing] = await db.select().from(mileageLogsTable).where(eq(mileageLogsTable.id, id));
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
+    const [existing] = await db.select().from(mileageLogsTable)
+      .where(and(eq(mileageLogsTable.id, id), mutationBusinessPredicate(mileageLogsTable, owner)));
+    if (!existing) return res.status(404).json({ error: "Mileage log not found" });
     if (existing?.voidedAt) return res.status(400).json({ error: "Voided mileage records cannot be edited." });
+
+    if (jobId) {
+      const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+        .from(jobsTable).where(eq(jobsTable.id, parseInt(String(jobId)))).limit(1);
+      if (!job || !belongsToBusiness(job, owner)) return res.status(404).json({ error: "Job not found" });
+    }
 
     if (existing?.expenseId) {
       await db.update(expensesTable).set({
@@ -266,7 +288,9 @@ router.put("/:id", async (req, res) => {
         amount: deductionAmount.toFixed(2),
         jobId: jobId || null,
         notes: `Auto-created. ${milesNum.toFixed(2)} mi × $${getIrsRateForDate(date)}/mi`,
-      }).where(eq(expensesTable.id, existing.expenseId));
+        businessId: owner.id,
+        businessLine: owner.slug,
+      }).where(and(eq(expensesTable.id, existing.expenseId), mutationBusinessPredicate(expensesTable, owner)));
     }
 
     const [log] = await db.update(mileageLogsTable).set({
@@ -274,10 +298,11 @@ router.put("/:id", async (req, res) => {
       miles: miles?.toString(),
       purpose, jobId: jobId || null,
       classification,
+      businessId: owner.id,
       ratePerMile: getIrsRateForDate(date).toString(),
       deductionAmount: deductionAmount.toString(),
       notes,
-    }).where(eq(mileageLogsTable.id, id)).returning();
+    }).where(and(eq(mileageLogsTable.id, id), mutationBusinessPredicate(mileageLogsTable, owner))).returning();
     if (!log) return res.status(404).json({ error: "Mileage log not found" });
 
     // Imported logs (no per-log expense): recalculate the monthly aggregate expense
@@ -312,12 +337,15 @@ router.post("/:id/void", async (req, res) => {
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
     if (!reason) return res.status(400).json({ error: "A void reason is required" });
-    const [log] = await db.select().from(mileageLogsTable).where(eq(mileageLogsTable.id, id));
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const [log] = await db.select().from(mileageLogsTable)
+      .where(and(eq(mileageLogsTable.id, id), mutationBusinessPredicate(mileageLogsTable, ownership.business)));
     if (!log) return res.status(404).json({ error: "Mileage record not found" });
     if (log.voidedAt) return res.status(404).json({ error: "Mileage record is already voided" });
     const [updated] = await db.update(mileageLogsTable)
       .set({ voidedAt: new Date(), voidReason: reason })
-      .where(eq(mileageLogsTable.id, id))
+      .where(and(eq(mileageLogsTable.id, id), mutationBusinessPredicate(mileageLogsTable, ownership.business)))
       .returning();
     if (updated?.expenseId) {
       await db.update(expensesTable).set({ voidedAt: new Date(), voidReason: reason })
@@ -385,7 +413,10 @@ router.get("/imports/:id/recalculate/preview", async (req, res) => {
   try {
     const importId = parseInt(req.params.id);
     if (isNaN(importId)) return res.status(400).json({ error: "Invalid import id" });
-    const [record] = await db.select().from(mileageImportsTable).where(eq(mileageImportsTable.id, importId));
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const [record] = await db.select().from(mileageImportsTable)
+      .where(and(eq(mileageImportsTable.id, importId), eq(mileageImportsTable.businessId, ownership.business.id)));
     if (!record) return res.status(404).json({ error: "Import not found" });
     res.json(await getImportRecalculation(importId));
   } catch (err) {
@@ -401,7 +432,10 @@ router.post("/imports/:id/recalculate", async (req, res) => {
     if (req.body?.confirm !== true) {
       return res.status(400).json({ error: "Explicit confirmation is required. Preview the recalculation first." });
     }
-    const [record] = await db.select().from(mileageImportsTable).where(eq(mileageImportsTable.id, importId));
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const [record] = await db.select().from(mileageImportsTable)
+      .where(and(eq(mileageImportsTable.id, importId), eq(mileageImportsTable.businessId, ownership.business.id)));
     if (!record) return res.status(404).json({ error: "Import not found" });
     res.json(await recalculateMileageImport(importId));
   } catch (err) {
@@ -454,7 +488,9 @@ router.post("/bulk", async (req, res) => {
       return res.status(400).json({ error: "businessId is required" });
     }
 
-    const bizId = parseInt(String(businessId));
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const bizId = ownership.business.id;
     const userId = getRequestUserId(req) ?? null;
 
     let fileAlreadyImported = false;
@@ -610,10 +646,12 @@ router.delete("/imports/:id/rollback", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
 
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const [importRecord] = await db
       .select()
       .from(mileageImportsTable)
-      .where(eq(mileageImportsTable.id, id));
+      .where(and(eq(mileageImportsTable.id, id), eq(mileageImportsTable.businessId, ownership.business.id)));
 
     if (!importRecord) {
       return res.status(404).json({ error: "Import not found" });
@@ -634,24 +672,27 @@ router.delete("/imports/:id/rollback", async (req, res) => {
     const linkedLogs = await db
       .select({ id: mileageLogsTable.id, expenseId: mileageLogsTable.expenseId })
       .from(mileageLogsTable)
-      .where(eq(mileageLogsTable.importId, id));
+      .where(and(eq(mileageLogsTable.importId, id), eq(mileageLogsTable.businessId, ownership.business.id)));
 
     const expenseIds = linkedLogs.map(l => l.expenseId).filter((eid): eid is number => eid != null);
 
     if (linkedLogs.length > 0) {
-      await db.update(mileageLogsTable).set({ voidedAt: new Date(), voidReason: "Mileage import rollback" }).where(eq(mileageLogsTable.importId, id));
+      await db.update(mileageLogsTable).set({ voidedAt: new Date(), voidReason: "Mileage import rollback" })
+        .where(and(eq(mileageLogsTable.importId, id), eq(mileageLogsTable.businessId, ownership.business.id)));
     }
     // Legacy per-trip expenses (pre-consolidation imports)
     if (expenseIds.length > 0) {
-      await db.update(expensesTable).set({ voidedAt: new Date(), voidReason: "Mileage import rollback" }).where(inArray(expensesTable.id, expenseIds));
+      await db.update(expensesTable).set({ voidedAt: new Date(), voidReason: "Mileage import rollback" })
+        .where(and(inArray(expensesTable.id, expenseIds), eq(expensesTable.businessId, ownership.business.id)));
     }
     // Monthly aggregate expenses linked to this import
-    await db.update(expensesTable).set({ voidedAt: new Date(), voidReason: "Mileage import rollback" }).where(eq(expensesTable.mileageImportId, id));
+    await db.update(expensesTable).set({ voidedAt: new Date(), voidReason: "Mileage import rollback" })
+      .where(and(eq(expensesTable.mileageImportId, id), eq(expensesTable.businessId, ownership.business.id)));
 
     const [updated] = await db
       .update(mileageImportsTable)
       .set({ rolledBackAt: new Date(), status: "rolled_back" })
-      .where(eq(mileageImportsTable.id, id))
+      .where(and(eq(mileageImportsTable.id, id), eq(mileageImportsTable.businessId, ownership.business.id)))
       .returning();
 
     res.json({

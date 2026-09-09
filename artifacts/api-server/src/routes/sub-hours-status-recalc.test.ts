@@ -139,6 +139,11 @@ function setupPutSelects(opts: {
   computedOwed?: string;
   hasExistingExpense?: boolean;
 }) {
+  // Ownership resolution and the object-level job check precede the
+  // pre-existing sub-hours queries.
+  h.selectQueue.push([{ id: 1, slug: "general_contracting" }]);
+  h.selectQueue.push([{ id: 10, jobId: 1, subcontractorId: 7 }]);
+  h.selectQueue.push([{ businessId: 1, businessLine: "general_contracting" }]);
   h.selectQueue.push([{ name: opts.subName }]);
   h.selectQueue.push([{ businessLine: null }]);
   h.selectQueue.push(opts.hasExistingExpense !== false ? [{ id: 200 }] : []);

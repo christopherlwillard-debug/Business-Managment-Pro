@@ -14,6 +14,7 @@ import { getSuggestions, attemptAutoMatch } from "../lib/matchingEngine.js";
 import { getPlaidClient, isPlaidConfigured, extractPlaidError } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
 import { wrapAsync, getOwnerId, getRequestUserId } from "./guards.js";
+import { resolveMutationBusiness, belongsToBusiness } from "../lib/business-scope.js";
 
 // Extract a payment reference code from a description (e.g. "JPM99clqfe2r" from Zelle).
 function extractRefCode(desc: string): string | null {
@@ -540,6 +541,9 @@ router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) =
     notes?: string | null;
     countsTowardJobProfit?: boolean;
   };
+  const ownership = await resolveMutationBusiness(req);
+  if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
+  const owner = ownership.business;
 
   const VALID_CATEGORIES = [
     "Materials", "Advertising", "Fuel/Travel", "Travel/Lodging", "Meals", "Parking/Tolls",
@@ -566,6 +570,11 @@ router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) =
   if (!txn) {
     res.status(404).json({ error: "Transaction not found" });
     return;
+  }
+  if (jobId) {
+    const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+      .from(jobsTable).where(eq(jobsTable.id, Number(jobId))).limit(1);
+    if (!job || !belongsToBusiness(job, owner)) { res.status(404).json({ error: "Job not found" }); return; }
   }
 
   if (txn.status === "matched") {
@@ -597,7 +606,8 @@ router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) =
         date: txn.date,
         vendor: vendor?.trim() || null,
         jobId: jobId || null,
-        businessLine: businessLine || null,
+        businessLine: owner.slug,
+        businessId: owner.id,
         notes: notes?.trim() || null,
         countsTowardJobProfit: countsTowardJobProfit === false ? false : true,
       })
@@ -634,6 +644,9 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
     businessLine?: string | null;
     jobId?: number | null;
   };
+  const ownership = await resolveMutationBusiness(req);
+  if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
+  const owner = ownership.business;
 
   const [txn] = await db
     .select()
@@ -732,7 +745,8 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
           source: source?.trim() || null,
           paymentMethod: "bank_transfer",
           notes: notes?.trim() || null,
-          businessLine: businessLine || null,
+          businessLine: owner.slug,
+          businessId: String(owner.id),
           jobId: jobId ?? null,
         })
         .returning();

@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { jobSubHoursTable, subcontractorsTable, jobSubcontractorsTable, expensesTable, jobsTable, subPaymentRecordsTable } from "@workspace/db/schema";
 import { eq, and, inArray, getTableColumns, sql } from "drizzle-orm";
 import { recomputeSubPaid } from "./jobs";
+import { resolveMutationBusiness, mutationBusinessPredicate, belongsToBusiness, type BusinessScope } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -25,11 +26,12 @@ function buildExpenseDescription(hours: number, rate: number | null, subName: st
   return `${subName ?? "Subcontractor"} — ${h}h labor`;
 }
 
-async function upsertLinkedExpense(hoursId: number, jobId: number, subcontractorId: number, date: string, hours: number, rate: number | null, subName: string | null): Promise<void> {
+async function upsertLinkedExpense(hoursId: number, jobId: number, subcontractorId: number, date: string, hours: number, rate: number | null, subName: string | null, owner: BusinessScope): Promise<void> {
   const amount = rate != null && rate > 0 ? hours * rate : 0;
   const description = buildExpenseDescription(hours, rate, subName);
 
-  const [job] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
+  const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+    .from(jobsTable).where(eq(jobsTable.id, jobId));
 
   const existing = await db.select({ id: expensesTable.id })
     .from(expensesTable)
@@ -37,8 +39,15 @@ async function upsertLinkedExpense(hoursId: number, jobId: number, subcontractor
 
   if (existing.length > 0) {
     await db.update(expensesTable)
-      .set({ description, amount: String(amount.toFixed(2)), date, jobSubHoursId: hoursId })
-      .where(eq(expensesTable.jobSubHoursId, hoursId));
+      .set({
+        description,
+        amount: String(amount.toFixed(2)),
+        date,
+        jobSubHoursId: hoursId,
+        businessId: owner.id,
+        businessLine: owner.slug,
+      })
+      .where(and(eq(expensesTable.jobSubHoursId, hoursId), mutationBusinessPredicate(expensesTable, owner)));
   } else {
     await db.insert(expensesTable).values({
       description,
@@ -48,14 +57,18 @@ async function upsertLinkedExpense(hoursId: number, jobId: number, subcontractor
       jobId,
       subcontractorId,
       jobSubHoursId: hoursId,
-      businessLine: job?.businessLine ?? null,
+      businessId: job?.businessId ?? owner.id,
+      businessLine: owner.slug,
       notes: "Auto-created from job card sub hours",
     });
   }
 }
 
-async function deleteLinkedExpense(hoursId: number): Promise<void> {
-  await db.delete(expensesTable).where(eq(expensesTable.jobSubHoursId, hoursId));
+async function deleteLinkedExpense(hoursId: number, owner: BusinessScope): Promise<void> {
+  await db.delete(expensesTable).where(and(
+    eq(expensesTable.jobSubHoursId, hoursId),
+    mutationBusinessPredicate(expensesTable, owner),
+  ));
 }
 
 // Recompute and persist paymentStatus for one sub on one job after hours change.
@@ -158,6 +171,12 @@ router.post("/:jobId/sub-hours", async (req, res) => {
       return res.status(400).json({ error: "subcontractorId, date, and hours are required" });
     }
     const validHourType = hourType === "travel" ? "travel" : hourType === "work" ? "work" : null;
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
+    const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+      .from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+    if (!job || !belongsToBusiness(job, owner)) return res.status(404).json({ error: "Job not found" });
 
     // Enforce: sub must be assigned to this job
     const [link] = await db.select({ jobId: jobSubcontractorsTable.jobId })
@@ -188,7 +207,7 @@ router.post("/:jobId/sub-hours", async (req, res) => {
       .from(subcontractorsTable).where(eq(subcontractorsTable.id, row.subcontractorId));
 
     const rateNum = resolvedRate != null ? parseFloat(resolvedRate) : null;
-    await upsertLinkedExpense(row.id, jobId, row.subcontractorId, date, parseFloat(String(hours)), rateNum, sub?.name ?? null).catch(e => {
+    await upsertLinkedExpense(row.id, jobId, row.subcontractorId, date, parseFloat(String(hours)), rateNum, sub?.name ?? null, owner).catch(e => {
       console.error("Auto-expense creation failed:", e.message);
     });
 
@@ -204,6 +223,9 @@ router.post("/:jobId/sub-hours", async (req, res) => {
 router.put("/sub-hours/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
     const { date, hours, description, rateSnapshot, hourType } = req.body;
     const updates: Record<string, unknown> = {};
     if (date !== undefined) updates.date = date;
@@ -212,6 +234,11 @@ router.put("/sub-hours/:id", async (req, res) => {
     if (rateSnapshot !== undefined) updates.rateSnapshot = rateSnapshot != null ? String(rateSnapshot) : null;
     if (hourType !== undefined) updates.hourType = hourType === "travel" ? "travel" : hourType === "work" ? "work" : null;
 
+    const [before] = await db.select().from(jobSubHoursTable).where(eq(jobSubHoursTable.id, id));
+    if (!before) return res.status(404).json({ error: "Entry not found" });
+    const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+      .from(jobsTable).where(eq(jobsTable.id, before.jobId)).limit(1);
+    if (!job || !belongsToBusiness(job, owner)) return res.status(404).json({ error: "Entry not found" });
     const [row] = await db.update(jobSubHoursTable).set(updates).where(eq(jobSubHoursTable.id, id)).returning();
     if (!row) return res.status(404).json({ error: "Entry not found" });
 
@@ -220,7 +247,7 @@ router.put("/sub-hours/:id", async (req, res) => {
 
     const rateNum = row.rateSnapshot != null ? parseFloat(row.rateSnapshot) : null;
     const hoursNum = parseFloat(row.hours ?? "0");
-    await upsertLinkedExpense(row.id, row.jobId, row.subcontractorId, row.date, hoursNum, rateNum, sub?.name ?? null).catch(e => {
+    await upsertLinkedExpense(row.id, row.jobId, row.subcontractorId, row.date, hoursNum, rateNum, sub?.name ?? null, owner).catch(e => {
       console.error("Auto-expense update failed:", e.message);
     });
 
@@ -239,6 +266,12 @@ router.delete("/:jobId/sub-hours", async (req, res) => {
   try {
     const jobId = parseInt(req.params.jobId);
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid job id" });
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
+    const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+      .from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+    if (!job || !belongsToBusiness(job, owner)) return res.status(404).json({ error: "Job not found" });
     const subIds: number[] = Array.isArray(req.body.subIds)
       ? (req.body.subIds as unknown[]).map(Number).filter((n: number) => !isNaN(n) && n > 0)
       : [];
@@ -253,7 +286,7 @@ router.delete("/:jobId/sub-hours", async (req, res) => {
       ));
 
     for (const row of rows) {
-      await deleteLinkedExpense(row.id).catch(e => console.error("Auto-expense deletion failed:", e.message));
+      await deleteLinkedExpense(row.id, owner).catch(e => console.error("Auto-expense deletion failed:", e.message));
     }
 
     const hoursIds = rows.map(r => r.id);
@@ -275,7 +308,15 @@ router.delete("/:jobId/sub-hours", async (req, res) => {
 router.delete("/sub-hours/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await deleteLinkedExpense(id).catch(e => {
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
+    const [before] = await db.select().from(jobSubHoursTable).where(eq(jobSubHoursTable.id, id));
+    if (!before) return res.status(404).json({ error: "Entry not found" });
+    const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+      .from(jobsTable).where(eq(jobsTable.id, before.jobId)).limit(1);
+    if (!job || !belongsToBusiness(job, owner)) return res.status(404).json({ error: "Entry not found" });
+    await deleteLinkedExpense(id, owner).catch(e => {
       console.error("Auto-expense deletion failed:", e.message);
     });
     const [deleted] = await db.delete(jobSubHoursTable).where(eq(jobSubHoursTable.id, id)).returning();

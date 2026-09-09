@@ -155,7 +155,7 @@ describe("mileage import financial integrity — real database", () => {
 
     const voided = await request(app)
       .post(`/mileage/${logToCorrect!.id}/void`)
-      .send({ reason: "Corrected provider export" });
+      .send({ businessId, reason: "Corrected provider export" });
 
     expect(voided.status).toBe(200);
     expenses = await activeMileageExpenses(businessId);
@@ -231,7 +231,7 @@ describe("mileage import financial integrity — real database", () => {
 
     const voided = await request(app)
       .post(`/mileage/${log!.id}/void`)
-      .send({ reason: "Final drive corrected" });
+      .send({ businessId, reason: "Final drive corrected" });
 
     expect(voided.status).toBe(200);
     expect(await activeLogs(businessId)).toHaveLength(0);
@@ -292,7 +292,7 @@ describe("mileage import financial integrity — real database", () => {
     expect(await activeMileageExpenses(businessId)).toHaveLength(1);
 
     const winningImportId = first.body.imported === 1 ? first.body.importId : second.body.importId;
-    const rollback = await request(app).delete(`/mileage/imports/${winningImportId}/rollback`);
+    const rollback = await request(app).delete(`/mileage/imports/${winningImportId}/rollback`).send({ businessId });
     expect(rollback.status).toBe(200);
     expect(await activeLogs(businessId)).toHaveLength(0);
     expect(await activeMileageExpenses(businessId)).toHaveLength(0);

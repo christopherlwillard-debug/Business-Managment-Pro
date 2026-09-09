@@ -35,3 +35,5 @@ General Contracting is the permanent parent and default financial owner. Asphalt
 **Why:** Treating workflows as businesses produced ownerless and inconsistently scoped jobs and invoices. Ownership must remain stable even when an operational workflow or DBA is inactive.
 
 **How to apply:** Mutations without an explicit DBA resolve the business with stable slug `general_contracting`; never hardcode its numeric ID. Linked invoices inherit the job owner and reject conflicts, and a job with linked invoices cannot be reassigned. “All businesses” remains read-only scope, and historical DBA ownership is preserved.
+
+Financial mutation routes follow the same contract: canonical `businessId` is authoritative, legacy `businessLine` is fallback-only, and child rows inherit ownership from jobs/templates/providers rather than accepting a client-selected conflicting owner.

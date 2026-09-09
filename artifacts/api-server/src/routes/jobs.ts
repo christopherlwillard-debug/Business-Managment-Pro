@@ -3022,8 +3022,9 @@ router.post("/:id/advances", async (req, res) => {
     // Look up sub name + job businessLine so the expense is properly tagged
     const [[sub], [job]] = await Promise.all([
       db.select({ name: subcontractorsTable.name }).from(subcontractorsTable).where(eq(subcontractorsTable.id, subId)),
-      db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId)),
+      db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId)),
     ]);
+    if (!job || job.businessId == null) return res.status(404).json({ error: "Job not found" });
 
     const [row] = await db.insert(subAdvancesTable).values({
       jobId, subcontractorId: subId,
@@ -3044,7 +3045,8 @@ router.post("/:id/advances", async (req, res) => {
         notes: descTrimmed,
         jobId,
         subcontractorId: subId,
-        businessLine: job?.businessLine ?? null,
+        businessId: job.businessId,
+        businessLine: job.businessLine,
         isWageAdvance: true,
       }).returning({ id: expensesTable.id });
       expenseId = expense.id;
@@ -3081,7 +3083,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     const subId = parseInt(req.params.subId);
     if (isNaN(jobId) || isNaN(subId)) return res.status(400).json({ error: "Invalid ids" });
 
-    const [job] = await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
+      const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, jobId));
     if (!job) return res.status(404).json({ error: "Job not found" });
 
     // Breakdown fields (hourly subs with dual rates / bonus / advance)
@@ -3218,6 +3220,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
       const [spr] = await tx.insert(subPaymentRecordsTable).values({
         jobId,
         subcontractorId: subId,
+         businessId: job.businessId,
         businessLine: job.businessLine,
         amount: paymentAmount.toFixed(2),
         paymentDate: paymentDateStr,

@@ -84,6 +84,13 @@ Created the four-document architecture governance system:
 
 ## 2026-09-09
 
+### Canonical ownership for remaining financial mutations
+
+- Financial mutation routes now resolve a canonical business owner before creating or changing expenses, income, mileage, recurring costs, payroll records, owner capital, tax payments, assets, growth-fund deployments, provider mirrors, portal rows, and legacy payments.
+- Job-linked and recurring-generated rows inherit their parent's owner; omitted selectors resolve General Contracting by slug; explicit DBA ownership remains preserved.
+- Added canonical `business_id` columns and development backfill migration for legacy payment, Square mirror, subcontractor payment, and estimated-tax ledgers.
+- Legacy `businessLine` remains compatibility-only, and All Businesses remains a read-only scope.
+
 ### Accounting gate includes the canonical job-profit contract check
 
 - The `accounting:gate` release validation sequence now runs the read-only

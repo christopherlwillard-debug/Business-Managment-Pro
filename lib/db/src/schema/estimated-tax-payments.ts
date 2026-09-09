@@ -1,7 +1,9 @@
 import { pgTable, serial, integer, text, numeric, timestamp } from "drizzle-orm/pg-core";
+import { businessesTable } from "./businesses";
 
 export const estimatedTaxPaymentsTable = pgTable("estimated_tax_payments", {
   id: serial("id").primaryKey(),
+  businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "set null" }),
   year: integer("year").notNull(),
   quarter: integer("quarter").notNull(),
   level: text("level").notNull().default("federal"),

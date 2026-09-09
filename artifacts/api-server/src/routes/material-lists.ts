@@ -41,6 +41,9 @@ async function createMaterialExpense(params: {
   sourceId: number;
 }): Promise<number> {
   const amount = (params.unitCostSnapshot * params.qty).toFixed(2);
+  const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+    .from(jobsTable).where(eq(jobsTable.id, params.jobId)).limit(1);
+  if (!job || job.businessId == null) throw new Error("Material expense requires an owned job");
   const [exp] = await db.insert(expensesTable).values({
     description: params.nameSnapshot,
     amount,
@@ -49,6 +52,8 @@ async function createMaterialExpense(params: {
     jobId: params.jobId,
     sourceType: SOURCE_TYPE,
     sourceId: params.sourceId,
+    businessId: job.businessId,
+    businessLine: job.businessLine,
   }).returning({ id: expensesTable.id });
   return exp.id;
 }

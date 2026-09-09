@@ -7,7 +7,7 @@ import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { reconcileExpense } from "../lib/matchingEngine.js";
-import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { requestedBusiness, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 import { getTaxAssumptions } from "../lib/tax-estimate.js";
 import { settingsTable } from "@workspace/db/schema";
 
@@ -336,7 +336,7 @@ router.post("/", async (req, res) => {
   try {
     const {
       description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes,
-      excludeFromNetProfit, countsTowardJobProfit, businessLine, businessId,
+       excludeFromNetProfit, countsTowardJobProfit,
       tripId, overnightTravel, isPotentiallyNondeductible,
       mealTotal, deductibleAmount, nonDeductibleAmount, tipAmount, taxAmount,
       numPeople, paidBy, receiptStatus, receiptMissingExplanation,
@@ -350,7 +350,9 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "receiptMissingExplanation is required when receiptStatus is 'missing'" });
     }
 
-    const validBusinessLines = ["general_contracting", "asphalt_sealing"];
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
     const isMealCategory = category?.toLowerCase() === "meals";
     const parsedMealTotal = mealTotal ? parseFloat(mealTotal) : (isMealCategory ? parseFloat(amount) : null);
     const [taxSettings] = await db.select({ taxAssumptions: settingsTable.taxAssumptions }).from(settingsTable).limit(1);
@@ -369,29 +371,23 @@ router.post("/", async (req, res) => {
       if (!resolvedNotes && parentTrip.businessPurpose) resolvedNotes = parentTrip.businessPurpose;
     }
 
-    // If businessLine is given but no explicit businessId, resolve the slug → id
-    let resolvedBusinessId: number | null = businessId ? parseInt(businessId) : null;
-    const resolvedBusinessLine = validBusinessLines.includes(businessLine) ? businessLine : null;
+    let resolvedBusinessId: number | null = owner.id;
     if (jobId) {
       const [job] = await db.select({
         businessId: jobsTable.businessId,
         businessLine: jobsTable.businessLine,
       }).from(jobsTable).where(eq(jobsTable.id, parseInt(String(jobId)))).limit(1);
       if (!job) return res.status(404).json({ error: "Job not found" });
-      const scope = await requestedBusiness(req);
-      if (scope && !belongsToBusiness(job, scope)) {
+      if (!belongsToBusiness(job, owner)) {
         return res.status(404).json({ error: "Job not found" });
       }
       // A job-linked expense always inherits the job's business. Never let a
       // client-provided businessId reclassify a job cost into another business.
-      if (job.businessId) resolvedBusinessId = job.businessId;
-    }
-    if (resolvedBusinessLine && !resolvedBusinessId) {
-      const [biz] = await db.select({ id: businessesTable.id })
-        .from(businessesTable)
-        .where(eq(businessesTable.slug, resolvedBusinessLine))
-        .limit(1);
-      if (biz) resolvedBusinessId = biz.id;
+      if (job.businessId != null) {
+        resolvedBusinessId = job.businessId;
+      } else {
+        resolvedBusinessId = owner.id;
+      }
     }
 
     if (isOwnerPayCategory(category)) {
@@ -405,8 +401,8 @@ router.post("/", async (req, res) => {
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes: resolvedNotes,
       excludeFromNetProfit: excludeFromNetProfit === true,
       countsTowardJobProfit: countsTowardJobProfit === false ? false : true,
-      businessLine: resolvedBusinessLine,
-      businessId: resolvedBusinessId,
+      businessLine: owner.slug,
+      businessId: resolvedBusinessId ?? owner.id,
       tripId: tripId ? parseInt(tripId) : null,
       overnightTravel: overnightTravel === true ? true : (overnightTravel === false ? false : null),
       isPotentiallyNondeductible: isPotentiallyNondeductible === true,
@@ -453,14 +449,18 @@ router.put("/:id", async (req, res) => {
     const id = parseInt(req.params.id as string);
     const {
       description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes,
-      excludeFromNetProfit, countsTowardJobProfit, businessLine, businessId,
+       excludeFromNetProfit, countsTowardJobProfit,
       tripId, overnightTravel, isPotentiallyNondeductible,
       mealTotal, deductibleAmount, nonDeductibleAmount, tipAmount, taxAmount,
       numPeople, paidBy, receiptStatus, receiptMissingExplanation,
     } = req.body;
 
     // Capture old values before updating
-    const [before] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
+    const [before] = await db.select().from(expensesTable)
+      .where(and(eq(expensesTable.id, id), mutationBusinessPredicate(expensesTable, owner)));
     if (!before) return res.status(404).json({ error: "Expense not found" });
 
     // Validate receipt proof: check resulting status (request value or existing)
@@ -499,8 +499,6 @@ router.put("/:id", async (req, res) => {
       }
     }
 
-    const validBusinessLines = ["general_contracting", "asphalt_sealing"];
-
     const effectiveCat = category !== undefined ? category : (before.category ?? "");
     if (isOwnerPayCategory(effectiveCat)) {
       return res.status(400).json({
@@ -531,8 +529,8 @@ router.put("/:id", async (req, res) => {
       ...(notes !== undefined && { notes }),
       excludeFromNetProfit: excludeFromNetProfit !== undefined ? excludeFromNetProfit === true : (before.excludeFromNetProfit ?? false),
       ...(countsTowardJobProfit !== undefined && { countsTowardJobProfit: countsTowardJobProfit === false ? false : true }),
-      ...(businessLine !== undefined && { businessLine: validBusinessLines.includes(businessLine) ? businessLine : null }),
-      ...(businessId !== undefined && { businessId: businessId ? parseInt(String(businessId)) : null }),
+      businessLine: before.businessLine ?? owner.slug,
+      businessId: before.businessId ?? owner.id,
       ...(tripId !== undefined && { tripId: tripId ? parseInt(tripId) : null }),
       ...(overnightTravel !== undefined && { overnightTravel }),
       ...(isPotentiallyNondeductible !== undefined && { isPotentiallyNondeductible: isPotentiallyNondeductible === true }),
@@ -547,7 +545,7 @@ router.put("/:id", async (req, res) => {
       ...(paidBy !== undefined && { paidBy: paidBy || null }),
       ...(receiptStatus !== undefined && { receiptStatus }),
       ...(receiptMissingExplanation !== undefined && { receiptMissingExplanation: receiptMissingExplanation || null }),
-    }).where(eq(expensesTable.id, id)).returning();
+    }).where(and(eq(expensesTable.id, id), mutationBusinessPredicate(expensesTable, owner))).returning();
     if (!updated) return res.status(404).json({ error: "Expense not found" });
 
     // Recompute sub payment totals for any affected (jobId, subcontractorId) pairs.
@@ -593,9 +591,15 @@ router.post("/spr/:sprId/reverse", async (req, res) => {
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
     if (isNaN(sprId)) return res.status(400).json({ error: "Invalid id" });
     if (!reason) return res.status(400).json({ error: "A reversal reason is required" });
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const [updated] = await db.update(subPaymentRecordsTable)
       .set({ isReversal: true, reversalReason: reason })
-      .where(and(eq(subPaymentRecordsTable.id, sprId), sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`))
+      .where(and(
+        eq(subPaymentRecordsTable.id, sprId),
+        mutationBusinessPredicate(subPaymentRecordsTable, ownership.business),
+        sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+      ))
       .returning();
     if (!updated) return res.status(404).json({ error: "Payment record not found or already reversed" });
     res.json(updated);
@@ -620,9 +624,11 @@ router.post("/:id/void", async (req, res) => {
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
     if (!reason) return res.status(400).json({ error: "A void reason is required" });
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const [updated] = await db.update(expensesTable)
       .set({ voidedAt: new Date(), voidReason: reason })
-      .where(and(eq(expensesTable.id, id), isNull(expensesTable.voidedAt)))
+      .where(and(eq(expensesTable.id, id), mutationBusinessPredicate(expensesTable, ownership.business), isNull(expensesTable.voidedAt)))
       .returning();
     if (!updated) return res.status(404).json({ error: "Expense not found or already voided" });
     res.json(formatExpense(updated));
@@ -676,7 +682,12 @@ router.post("/:id/receipt", (req, res, next) => {
       originalFilename
     );
 
-    const [updated] = await db.update(expensesTable).set({ receiptUrl: objectPath }).where(eq(expensesTable.id, id)).returning();
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const [updated] = await db.update(expensesTable)
+      .set({ receiptUrl: objectPath })
+      .where(and(eq(expensesTable.id, id), mutationBusinessPredicate(expensesTable, ownership.business)))
+      .returning();
     if (!updated) return res.status(404).json({ error: "Expense not found" });
 
     const [joined] = await buildExpenseQuery().where(eq(expensesTable.id, updated.id));

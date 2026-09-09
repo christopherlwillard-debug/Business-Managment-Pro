@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { businessesTable, jobsTable, ownerCapitalEntriesTable } from "@workspace/db/schema";
 import { eq, desc, and, isNull } from "drizzle-orm";
 import { ownerGuard } from "./guards.js";
+import { resolveMutationBusiness, mutationBusinessPredicate, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 router.use(ownerGuard());
@@ -84,7 +85,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { date, description, amount, businessId, jobId, type } = req.body;
+    const { date, description, amount, jobId, type } = req.body;
     if (!date || typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       res.status(400).json({ error: "Invalid or missing date" });
       return;
@@ -98,28 +99,22 @@ router.post("/", async (req, res) => {
       res.status(400).json({ error: "Amount must be greater than zero" });
       return;
     }
-    let parsedBusinessId = businessId != null && !isNaN(parseInt(String(businessId)))
-      ? parseInt(String(businessId))
-      : null;
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
+    let parsedBusinessId = owner.id;
     // Optional job link — set when recording pay from a job's Pay Breakdown tab
     const parsedJobId = jobId != null && !isNaN(parseInt(String(jobId)))
       ? parseInt(String(jobId))
       : null;
     if (parsedJobId != null) {
-      const [job] = await db.select({ businessId: jobsTable.businessId }).from(jobsTable)
+      const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine }).from(jobsTable)
         .where(eq(jobsTable.id, parsedJobId)).limit(1);
-      if (!job || job.businessId == null || (parsedBusinessId != null && job.businessId !== parsedBusinessId)) {
+      if (!job || !belongsToBusiness(job, owner) || job.businessId == null) {
         return res.status(404).json({ error: "Job not found" });
       }
       parsedBusinessId = job.businessId;
     }
-    if (parsedBusinessId == null) {
-      res.status(400).json({ error: "A valid business is required" });
-      return;
-    }
-    const [business] = await db.select({ id: businessesTable.id }).from(businessesTable)
-      .where(eq(businessesTable.id, parsedBusinessId)).limit(1);
-    if (!business) return res.status(404).json({ error: "Business not found" });
 
      // New user-facing transactions are withdrawals only. Historical positive
      // contribution rows remain readable in this ledger, but callers may not
@@ -174,9 +169,15 @@ router.post("/:id/void", async (req, res) => {
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
     if (!reason) return res.status(400).json({ error: "A void reason is required" });
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const [updated] = await db.update(ownerCapitalEntriesTable)
       .set({ voidedAt: new Date(), voidReason: reason })
-      .where(and(eq(ownerCapitalEntriesTable.id, id), isNull(ownerCapitalEntriesTable.voidedAt)))
+      .where(and(
+        eq(ownerCapitalEntriesTable.id, id),
+        mutationBusinessPredicate(ownerCapitalEntriesTable, ownership.business),
+        isNull(ownerCapitalEntriesTable.voidedAt),
+      ))
       .returning();
     if (!updated) return res.status(404).json({ error: "Owner-capital entry not found or already voided" });
     res.json(formatEntry(updated));

@@ -6,7 +6,7 @@ import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendEmail } from "../lib/sendEmail";
-import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { requestedBusiness, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
@@ -86,7 +86,9 @@ router.post("/", async (req, res) => {
       notes, receiptUrl, section179Eligible, status, saleDate, salePrice,
       usefulLifeYears, salvageValue, depreciationMethod, bonusDepreciationPct,
     } = req.body;
-    const scope = await requestedBusiness(req);
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const scope = ownership.business;
 
     if (!name || !purchaseDate || purchasePrice == null) {
       return res.status(400).json({ error: "name, purchaseDate, and purchasePrice are required" });
@@ -103,7 +105,7 @@ router.post("/", async (req, res) => {
       receiptUrl: receiptUrl ?? null,
       section179Eligible: section179Eligible === true,
       status: status ?? "active",
-       businessId: scope?.id ?? null,
+       businessId: scope.id,
       saleDate: saleDate ?? null,
       salePrice: salePrice != null ? salePrice.toString() : null,
       usefulLifeYears: usefulLifeYears != null ? parseInt(usefulLifeYears) : null,
@@ -141,7 +143,9 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const scope = await requestedBusiness(req);
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const scope = ownership.business;
     const {
       name, assetType, purchaseDate, purchasePrice, vendor, serialNumber,
       notes, receiptUrl, section179Eligible, status, saleDate, salePrice,
@@ -165,7 +169,8 @@ router.put("/:id", async (req, res) => {
       ...(salvageValue !== undefined && { salvageValue: salvageValue != null ? salvageValue.toString() : "0" }),
       ...(depreciationMethod !== undefined && { depreciationMethod }),
       ...(bonusDepreciationPct !== undefined && { bonusDepreciationPct: bonusDepreciationPct != null ? parseInt(bonusDepreciationPct) : 60 }),
-    }).where(and(eq(assetsTable.id, id), ...(scope ? [eq(assetsTable.businessId, scope.id)] : []))).returning();
+      businessId: scope.id,
+    }).where(and(eq(assetsTable.id, id), mutationBusinessPredicate(assetsTable, scope))).returning();
 
     if (!updated) return res.status(404).json({ error: "Asset not found" });
     res.json(formatAsset(updated));
@@ -177,8 +182,12 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    const scope = await requestedBusiness(req);
-    await db.delete(assetsTable).where(and(eq(assetsTable.id, parseInt(req.params.id)), ...(scope ? [eq(assetsTable.businessId, scope.id)] : [])));
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    await db.delete(assetsTable).where(and(
+      eq(assetsTable.id, parseInt(req.params.id)),
+      mutationBusinessPredicate(assetsTable, ownership.business),
+    ));
     res.status(204).send();
   } catch (err) {
     console.error(err);
@@ -203,7 +212,9 @@ router.get("/:id/business-use", async (req, res) => {
 router.put("/:id/business-use", async (req, res) => {
   try {
     const assetId = parseInt(req.params.id);
-    const scope = await requestedBusiness(req);
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const scope = ownership.business;
     if (isNaN(assetId)) return res.status(400).json({ error: "Invalid asset id" });
     const { year, businessUsePct } = req.body;
     const yearInt = parseInt(year);
