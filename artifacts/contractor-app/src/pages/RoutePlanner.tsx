@@ -101,6 +101,12 @@ interface JobProfitData {
   netProfit: number;
 }
 
+function formatRouteProfitContribution(value: number): string {
+  if (value === 0) return "$0";
+  const amount = Math.abs(value).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  return `${value > 0 ? "+" : "-"}$${amount}`;
+}
+
 interface ProspectOption {
   id: number;
   contactName: string | null;
@@ -490,6 +496,7 @@ export default function RoutePlanner() {
       title: string;
       stopCount: number;
       profitAvailable: boolean;
+      profitContribution: number | null;
     }>();
     for (const stop of stopsWithJobs) {
       const jobId = stop.jobId!;
@@ -505,6 +512,7 @@ export default function RoutePlanner() {
             || `Job #${jobId}`,
           stopCount: 1,
           profitAvailable: profitSummary[jobId] != null,
+          profitContribution: profitSummary[jobId]?.netProfit ?? null,
         });
       }
     }
@@ -1275,12 +1283,15 @@ export default function RoutePlanner() {
                 <div className="grid grid-cols-2 gap-1.5">
                   <div className="text-center px-1.5 py-1.5 rounded-lg border border-border bg-card">
                     <div className="text-[9px] text-muted-foreground mb-0.5">Net Profit</div>
-                    <div className={cn(
+                    <div
+                      data-testid="route-profit-net-profit"
+                      className={cn(
                       "text-[11px] font-semibold",
                       routeProfitStats.netProfit != null && routeProfitStats.netProfit !== 0
                         ? routeProfitStats.netProfit > 0 ? "text-emerald-600" : "text-red-600"
                         : "text-muted-foreground"
-                    )}>
+                      )}
+                    >
                       {routeProfitStats.netProfit != null
                         ? routeProfitStats.netProfit > 0
                           ? `+$${routeProfitStats.netProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
@@ -1316,12 +1327,31 @@ export default function RoutePlanner() {
                 </p>
                 <ul className="mt-1.5 space-y-1 text-[10px] text-blue-900">
                   {routeProfitStats.linkedJobs.map(job => (
-                    <li key={job.id} className="flex items-center justify-between gap-2">
+                    <li
+                      key={job.id}
+                      data-testid={`route-profit-job-row-${job.id}`}
+                      data-job-id={job.id}
+                      className="flex items-center justify-between gap-2"
+                    >
                       <span className="truncate">
                         {job.title}{job.stopCount > 1 ? ` (${job.stopCount} stops)` : ""}
                       </span>
-                      <span className="shrink-0 font-semibold">
-                        {job.profitAvailable ? "Included" : "Profit unavailable"}
+                      <span
+                        data-testid={`route-profit-job-contribution-${job.id}`}
+                        className={cn(
+                          "shrink-0 font-semibold",
+                          job.profitAvailable && job.profitContribution != null
+                            ? job.profitContribution > 0
+                              ? "text-emerald-700"
+                              : job.profitContribution < 0
+                                ? "text-red-700"
+                                : "text-blue-900"
+                            : "text-amber-700",
+                        )}
+                      >
+                        {job.profitAvailable && job.profitContribution != null
+                          ? `Included · ${formatRouteProfitContribution(job.profitContribution)}`
+                          : "Profit unavailable"}
                       </span>
                     </li>
                   ))}

@@ -305,12 +305,28 @@ function routeProfitLabel(value: number): string {
   return `${value >= 0 ? "+" : "-"}$${amount}`;
 }
 
+function parseDisplayedMoney(text: string): number | null {
+  const match = text.replace(/−/g, "-").match(/([+-])?\$([0-9,]+(?:\.\d{2})?)/);
+  if (!match) return null;
+  const amount = Number(match[2].replace(/,/g, ""));
+  if (!Number.isFinite(amount)) return null;
+  return match[1] === "-" ? -amount : amount;
+}
+
 async function waitForRouteProfit(page: Page, expected: number): Promise<boolean> {
   return page.waitForFunction(
     label => document.body.innerText.includes(label),
     { timeout: 20_000 },
     routeProfitLabel(expected),
   ).then(() => true).catch(() => false);
+}
+
+async function readRoutePanelNetProfit(page: Page): Promise<number | null> {
+  const text = await page.$eval(
+    '[data-testid="route-profit-net-profit"]',
+    node => node.textContent?.trim() ?? "",
+  ).catch(() => "");
+  return parseDisplayedMoney(text);
 }
 
 async function waitForCondition(
@@ -1342,6 +1358,23 @@ async function main() {
     const beforeWeekMoveRefreshed = await waitForRouteProfit(page, beforeWeekMove.netProfit);
     const beforeWeekMoveText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const beforeWeekMoveDisplayed = readMoneyAfter(beforeWeekMoveText, "Net Profit");
+    const weekScopeJobIds = await page.$$eval(
+      '[data-testid^="route-profit-job-row-"]',
+      rows => rows.map(row => Number(row.getAttribute("data-job-id"))),
+    );
+    const weekScopeContributions = await page.$$eval(
+      '[data-testid^="route-profit-job-contribution-"]',
+      nodes => nodes.map(node => node.textContent?.trim() ?? ""),
+    );
+    const displayedContributions = weekScopeContributions.map(parseDisplayedMoney);
+    const contributionsSum = displayedContributions.every(value => value != null)
+      ? displayedContributions.reduce((total, value) => total + (value ?? 0), 0)
+      : null;
+    const weekContributionsMatchCanonicalTotal =
+      JSON.stringify([...new Set(weekScopeJobIds)].sort((a, b) => a - b)) === JSON.stringify(beforeWeekMove.jobIds)
+      && weekScopeJobIds.length === beforeWeekMove.jobIds.length
+      && contributionsSum != null
+      && nearlyEqual(contributionsSum, beforeWeekMove.netProfit);
     const weekScopeExplained = beforeWeekMoveText.includes("Included in this week's total")
       && beforeWeekMoveText.includes(fixtures[0].title)
       && beforeWeekMoveText.includes(fixtures[1].title)
@@ -1355,8 +1388,11 @@ async function main() {
         && weekViewSelected
         && beforeWeekMoveRefreshed
         && nearlyEqual(beforeWeekMoveDisplayed, beforeWeekMove.netProfit)
+        && weekContributionsMatchCanonicalTotal
         && weekScopeExplained,
-      `jobIds=${beforeWeekMove.jobIds.join(",")}, displayed=${beforeWeekMoveDisplayed ?? "missing"}, canonical=${beforeWeekMove.netProfit}, scopeExplained=${weekScopeExplained}`,
+      `jobIds=${beforeWeekMove.jobIds.join(",")}, displayed=${beforeWeekMoveDisplayed ?? "missing"}, canonical=${beforeWeekMove.netProfit}, ` +
+      `rowJobIds=${weekScopeJobIds.join(",")}, contributions=${weekScopeContributions.join("|")}, ` +
+      `contributionSum=${contributionsSum ?? "missing"}, contributionsMatch=${weekContributionsMatchCanonicalTotal}, scopeExplained=${weekScopeExplained}`,
     );
 
     profitSummaryPartialMode = true;
@@ -1383,10 +1419,8 @@ async function main() {
       && partialWeekScopeText.includes("Profit unavailable");
     const partialWeekReturnedJobIncluded = partialWeekScopeText.includes(fixtures[0].title)
       && partialWeekScopeText.includes("Included");
-    const partialWeekDisplayed = readMoneyAfter(partialWeekPanelText, "Net Profit");
-    const partialWeekTotalHidden = partialWeekDisplayed == null
-      && !partialWeekPanelText.includes(routeProfitLabel(fixtures[0].profit.netProfit))
-      && !partialWeekPanelText.includes(routeProfitLabel(beforeWeekMove.netProfit));
+    const partialWeekDisplayed = await readRoutePanelNetProfit(page);
+    const partialWeekTotalHidden = partialWeekDisplayed == null;
     record(
       "Week view marks an omitted linked job unavailable and hides the partial route total",
       partialWeekDateSelected
@@ -1431,7 +1465,7 @@ async function main() {
       '[data-testid="route-profit-panel"]',
       panel => panel.textContent?.replace(/\s+/g, " ").trim() ?? "",
     );
-    const partialWeekRetryDisplayed = readMoneyAfter(partialWeekRetryPanelText, "Net Profit");
+    const partialWeekRetryDisplayed = await readRoutePanelNetProfit(page);
     const partialWeekRetryScopeText = await page.$eval(
       '[data-testid="route-profit-week-scope"]',
       scope => scope.textContent?.replace(/\s+/g, " ").trim() ?? "",
@@ -1467,7 +1501,7 @@ async function main() {
     const afterWeekMove = expectedRouteProfitBetween(visibleWeekStart, visibleWeekEnd);
     const afterWeekMoveRefreshed = await waitForRouteProfit(page, afterWeekMove.netProfit);
     const afterWeekMoveText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
-    const afterWeekMoveDisplayed = readMoneyAfter(afterWeekMoveText, "Net Profit");
+    const afterWeekMoveDisplayed = await readRoutePanelNetProfit(page);
     record(
       "Moving a route job out of the visible week refreshes Week view against its canonical total",
       weekMoveClicked
@@ -1485,7 +1519,7 @@ async function main() {
     const nextWeekSelected = await selectCalendarDate(page, weekMoveDate);
     const nextWeekRefreshed = await page.waitForFunction(
       ({ expectedLabel, staleLabel }) => {
-        const text = document.body.innerText;
+        const text = document.querySelector<HTMLElement>('[data-testid="route-profit-net-profit"]')?.innerText ?? "";
         return text.includes(expectedLabel) && !text.includes(staleLabel);
       },
       { timeout: 20_000 },
@@ -1495,7 +1529,7 @@ async function main() {
       },
     ).then(() => true).catch(() => false);
     const nextWeekText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
-    const nextWeekDisplayed = readMoneyAfter(nextWeekText, "Net Profit");
+    const nextWeekDisplayed = await readRoutePanelNetProfit(page);
     const nextWeekHasDifferentJobs = nextWeekExpected.jobIds.includes(secondJobId)
       && !afterWeekMove.jobIds.includes(secondJobId);
     record(
@@ -1521,7 +1555,7 @@ async function main() {
       },
     ).then(() => true).catch(() => false);
     const returnedWeekText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
-    const returnedWeekDisplayed = readMoneyAfter(returnedWeekText, "Net Profit");
+    const returnedWeekDisplayed = await readRoutePanelNetProfit(page);
     record(
       "Returning to the original calendar week restores its canonical route profit",
       returnedWeekSelected
