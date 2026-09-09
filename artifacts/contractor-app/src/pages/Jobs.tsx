@@ -8402,7 +8402,7 @@ export default function Jobs() {
 
   // Sorted/filtered closed jobs for the archive table (uses profitMap for sort)
   const archiveSearchLower = archiveSearch.toLowerCase().trim();
-  const canSortClosedJobsByProfit = canSortProfitSummaries(
+  const canSortClosedJobsByCanonicalSummary = canSortProfitSummaries(
     allClosedBase.map(job => job.id),
     profitSummaryStatus,
     profitMap,
@@ -8442,12 +8442,14 @@ export default function Jobs() {
     .sort((a, b) => {
       switch (archiveSort) {
         case "oldest":  return (a.closedAt ?? a.endDate ?? "").localeCompare(b.closedAt ?? b.endDate ?? "");
-        case "revenue": return compareProfitSummaryValuesDescending(
+        case "revenue":
+          if (!canSortClosedJobsByCanonicalSummary) return 0;
+          return compareProfitSummaryValuesDescending(
           profitSummaryValue(a.id, "grossInvoiced"),
           profitSummaryValue(b.id, "grossInvoiced"),
-        );
+          );
         case "profit":
-          if (!canSortClosedJobsByProfit) return 0;
+          if (!canSortClosedJobsByCanonicalSummary) return 0;
           return compareProfitSummaryValuesDescending(
             profitSummaryValue(a.id, "netProfit"),
             profitSummaryValue(b.id, "netProfit"),

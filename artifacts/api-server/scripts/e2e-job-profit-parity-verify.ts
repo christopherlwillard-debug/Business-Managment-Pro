@@ -2723,6 +2723,8 @@ async function main() {
     const closedJobsOrderBeforeProfitSort = await readClosedJobTitles(page);
     const closedProfitSortSelected = await selectOptionByText(page, "Highest Profit");
     const closedJobsOrderDuringFailure = await readClosedJobTitles(page);
+    const closedRevenueSortSelected = await selectOptionByText(page, "Highest Revenue");
+    const closedJobsRevenueOrderDuringFailure = await readClosedJobTitles(page);
     const closedExpectedRevenueLabel = formatMoneyLabel(fixtures[0].profit.grossInvoiced);
     const closedExpectedNetProfitLabel = formatMoneyLabel(fixtures[0].profit.netProfit);
     const closedJobsWarningShown = closedJobsErrorText.includes("Closed-job profit summaries are unavailable");
@@ -2750,6 +2752,14 @@ async function main() {
         && closedJobsOrderDuringFailure.includes(fixtures[1].title),
       `selected=${closedProfitSortSelected}, before=${closedJobsOrderBeforeProfitSort.join(" | ")}, duringFailure=${closedJobsOrderDuringFailure.join(" | ")}`,
     );
+    record(
+      "Closed Jobs keeps its existing order when Highest Revenue is unavailable",
+      closedRevenueSortSelected
+        && JSON.stringify(closedJobsRevenueOrderDuringFailure) === JSON.stringify(closedJobsOrderBeforeProfitSort)
+        && closedJobsRevenueOrderDuringFailure.includes(fixtures[0].title)
+        && closedJobsRevenueOrderDuringFailure.includes(fixtures[1].title),
+      `selected=${closedRevenueSortSelected}, before=${closedJobsOrderBeforeProfitSort.join(" | ")}, duringFailure=${closedJobsRevenueOrderDuringFailure.join(" | ")}`,
+    );
 
     profitSummaryFailureMode = false;
     const closedJobsRetryUrl = page.url();
@@ -2774,6 +2784,7 @@ async function main() {
     ).then(() => true).catch(() => false);
     const closedJobsAfterRetryText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").trim());
     const closedJobsOrderAfterRetry = await readClosedJobTitles(page);
+    const closedRevenueOrderAfterRetry = await readClosedJobTitles(page);
     const closedJobsRetryRequestCount = profitSummaryRequests.length;
     const closedJobsRetryRequest = profitSummaryRequests[1];
     const closedJobsProfitRequestSequenceValid = closedJobsInitialProfitRequestCount === 1
@@ -2806,6 +2817,16 @@ async function main() {
         ])
         && JSON.stringify(closedJobsOrderAfterRetry) !== JSON.stringify(closedJobsOrderDuringFailure),
       `duringFailure=${closedJobsOrderDuringFailure.join(" | ")}, afterRetry=${closedJobsOrderAfterRetry.join(" | ")}`,
+    );
+    record(
+      "Closed Jobs applies Highest Revenue order only after canonical values return",
+      closedJobsRetryRecovered
+        && JSON.stringify(closedRevenueOrderAfterRetry) === JSON.stringify([
+          fixtures[0].title,
+          fixtures[1].title,
+        ])
+        && JSON.stringify(closedRevenueOrderAfterRetry) !== JSON.stringify(closedJobsRevenueOrderDuringFailure),
+      `duringFailure=${closedJobsRevenueOrderDuringFailure.join(" | ")}, afterRetry=${closedRevenueOrderAfterRetry.join(" | ")}`,
     );
 
     profitSummaryPartialMode = true;
