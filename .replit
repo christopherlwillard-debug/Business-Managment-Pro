@@ -50,6 +50,10 @@ args = "close-job"
 task = "workflow.run"
 args = "job-profit-contract"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "job-profit-client"
+
 [[workflows.workflow]]
 name = "Contractor App"
 author = "agent"
@@ -124,6 +128,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm run job-profit-contract:check"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "job-profit-client"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/contractor-app run check:profit-client"
 
 [workflows.workflow.metadata]
 isValidation = true
