@@ -1,6 +1,7 @@
 import { isOwnerWithdrawalExpenseCategory } from "./owner-withdrawals.js";
 import type {
   JobProfitResponse,
+  JobProfitSummaryResponse,
 } from "@workspace/api-zod";
 
 export type JobProfitExpenseRow = {
@@ -66,10 +67,9 @@ export type JobProfitCalculation = {
   };
 };
 
-export type JobProfitResponseExtras = Pick<JobProfitResponse, "splitPool"> & Partial<
+export type JobProfitResponseExtras = Pick<JobProfitResponse, "splitPool" | "mileageReimbursement"> & Partial<
   Pick<
     JobProfitResponse,
-    | "mileageReimbursement"
     | "estimatedFuelCost"
     | "actualFuelCost"
     | "manHours"
@@ -105,10 +105,45 @@ export function buildJobProfitResponse(
 
   return {
     ...calculationFields,
-    mileageReimbursement,
+    ...extras,
     estimatedFuelCost,
     actualFuelCost,
+  };
+}
+
+export type JobProfitSummaryResponseExtras = Pick<JobProfitSummaryResponse, "splitPool"> & Partial<
+  Pick<
+    JobProfitSummaryResponse,
+    | "estimatedFuelCost"
+    | "actualFuelCost"
+    | "manHours"
+    | "includeMileageInJobCosts"
+    | "mileageReimbursementApplied"
+    | "fuelStatus"
+    | "fuelReconciliation"
+    | "operationalProfit"
+    | "fuelBreakdown"
+    | "growthReservePct"
+    | "ownerSplitPct"
+    | "taxReservePct"
+  >
+>;
+
+export function buildJobProfitSummaryResponse(
+  calculation: JobProfitCalculation,
+  extras: JobProfitSummaryResponseExtras,
+): JobProfitSummaryResponse {
+  const {
+    estimatedFuelCost,
+    actualFuelCost,
+    ...calculationFields
+  } = calculation;
+
+  return {
+    ...calculationFields,
     ...extras,
+    estimatedFuelCost,
+    actualFuelCost,
   };
 }
 

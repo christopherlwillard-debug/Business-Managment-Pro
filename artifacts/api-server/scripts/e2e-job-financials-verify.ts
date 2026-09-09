@@ -133,6 +133,36 @@ async function openJobsSection(page: Page, heading: string): Promise<boolean> {
   }, heading);
 }
 
+async function openClosedJobFinancials(page: Page, jobTitle: string): Promise<boolean> {
+  const expanded = await page.evaluate(title => {
+    const titleCell = [...document.querySelectorAll("td")]
+      .find(element => element.textContent?.trim() === title);
+    const row = titleCell?.closest("tr");
+    if (!row) return false;
+    if (row.nextElementSibling?.textContent?.includes("Job P&L")) return true;
+    (row as HTMLElement).click();
+    return true;
+  }, jobTitle);
+  if (!expanded) return false;
+  await page.waitForFunction(
+    title => [...document.querySelectorAll("td")]
+      .some(element => element.textContent?.trim() === title
+        && element.closest("tr")?.nextElementSibling?.textContent?.includes("Job P&L")),
+    { timeout: 10_000 },
+    jobTitle,
+  );
+  return page.evaluate(title => {
+    const titleCell = [...document.querySelectorAll("td")]
+      .find(element => element.textContent?.trim() === title);
+    const actionRow = titleCell?.closest("tr")?.nextElementSibling;
+    const button = [...(actionRow?.querySelectorAll("button") ?? [])]
+      .find(candidate => (candidate.textContent ?? "").includes("Job P&L"));
+    if (!button) return false;
+    (button as HTMLButtonElement).click();
+    return true;
+  }, jobTitle);
+}
+
 async function readCompactSubcontractorAmount(page: Page, jobTitle: string): Promise<string> {
   return page.evaluate(title => {
     let best = "";
@@ -279,6 +309,7 @@ async function main() {
 
     async function createFixture(input: {
       title: string;
+      status?: "scheduled" | "closed";
       reimbursement?: {
         amount: string;
         estimatedAmount: string;
@@ -295,7 +326,7 @@ async function main() {
     }): Promise<JobFixture> {
       const [job] = await db.insert(jobsTable).values({
         title: input.title,
-        status: "scheduled",
+        status: input.status ?? "scheduled",
         businessLine: business.slug,
         businessId: business.id,
         planningState: "ready",
@@ -441,6 +472,7 @@ async function main() {
 
     const reimbursementFixture = await createFixture({
       title: `E2E Saved Reimbursement ${Date.now()}`,
+      status: "closed",
       reimbursement: {
         amount: "177.80",
         estimatedAmount: "35.56",
@@ -627,7 +659,7 @@ async function main() {
     const cookies = await page.cookies();
     sessionId = cookies.find(cookie => cookie.name === "sid")?.value;
     await page.waitForFunction(
-      title => document.body.innerText.includes(title),
+      title => document.body.innerText.includes(title) || document.body.innerText.includes("Closed Jobs"),
       { timeout: 30_000 },
       reimbursementFixture.title,
     );
@@ -642,6 +674,7 @@ async function main() {
       fixture: JobFixture,
       checks: {
         name: string;
+        flow?: "active" | "closed";
         requiredCategories: string[];
         forbiddenCategories: string[];
         requiredText?: string;
@@ -654,14 +687,22 @@ async function main() {
         timeout: 60_000,
       });
       await page.waitForFunction(
-        title => document.body.innerText.includes(title),
+        title => document.body.innerText.includes(title)
+          || (document.body.innerText.includes("Closed Jobs") && document.body.innerText.includes("Jobs")),
         { timeout: 30_000 },
         fixture.title,
       );
 
-      const expandedJobCard = await clickButtonInJobCard(page, fixture.title, "Open Job Card");
-      record(`${checks.name}: job card opens`, expandedJobCard);
-      const clickedPnl = await clickButtonInJobCard(page, fixture.title, "Job P&L");
+      let clickedPnl: boolean;
+      if (checks.flow === "closed") {
+        const openedClosedJobs = await openJobsSection(page, "Closed Jobs");
+        record(`${checks.name}: Closed Jobs section opens`, openedClosedJobs);
+        clickedPnl = await openClosedJobFinancials(page, fixture.title);
+      } else {
+        const expandedJobCard = await clickButtonInJobCard(page, fixture.title, "Open Job Card");
+        record(`${checks.name}: job card opens`, expandedJobCard);
+        clickedPnl = await clickButtonInJobCard(page, fixture.title, "Job P&L");
+      }
       record(`${checks.name}: Job Financials panel opens`, clickedPnl);
       await page.waitForFunction(
         () => [...document.querySelectorAll("h2")]
@@ -828,6 +869,7 @@ async function main() {
       reimbursementFixture,
       {
         name: "Saved reimbursement",
+        flow: "closed",
         requiredCategories: ["Mileage Reimbursement"],
         forbiddenCategories: ["Estimated Fuel", "Fuel/Travel"],
         requiredText: "current route estimate is $35.56 and is reference-only",
@@ -859,6 +901,9 @@ async function main() {
     record("Saved reimbursement edit: amount, recipient, and status can be changed", editorUpdated);
     const clickedSave = await clickButtonContaining(page, "Save reimbursement changes");
     record("Saved reimbursement edit: save button submits", clickedSave);
+    for (let attempt = 0; attempt < 100 && allowedReimbursementSaveCount === 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
     await page.waitForFunction(
       expected => {
         const panel = document.querySelector('[data-testid="job-financials-panel"]');
@@ -870,7 +915,10 @@ async function main() {
         const recipient = panel?.querySelector(
           'input[placeholder="Name of person who paid"]',
         ) as HTMLInputElement | null;
-        return amount?.value === expected.amount
+        const saveButton = [...(panel?.querySelectorAll("button") ?? [])]
+          .find(button => (button.textContent ?? "").includes("Save reimbursement changes"));
+        return saveButton != null
+          && amount?.value === expected.amount
           && status?.value === expected.status
           && recipientType?.value === expected.recipientType
           && recipient?.value === expected.recipientName;
@@ -911,7 +959,7 @@ async function main() {
       () => !document.querySelector('[data-testid="job-financials-panel"]'),
       { timeout: 10_000 },
     );
-    const reopenedFinancialsAfterEdit = await clickButtonInJobCard(page, reimbursementFixture.title, "Job P&L");
+    const reopenedFinancialsAfterEdit = await openClosedJobFinancials(page, reimbursementFixture.title);
     record("Saved reimbursement edit: financials panel reopens", reopenedFinancialsAfterEdit);
     await page.waitForFunction(
       () => Boolean(document.querySelector('[data-testid="job-financials-panel"]')),
@@ -945,7 +993,7 @@ async function main() {
     }
     await page.reload({ waitUntil: "networkidle2", timeout: 60_000 });
     await page.waitForFunction(
-      title => document.body.innerText.includes(title),
+      title => document.body.innerText.includes(title) || document.body.innerText.includes("Closed Jobs"),
       { timeout: 30_000 },
       reimbursementFixture.title,
     );
@@ -959,9 +1007,9 @@ async function main() {
       unexpectedWrites.length === 0,
       unexpectedWrites.join("; "),
     );
-    const reopenedJobCard = await clickButtonInJobCard(page, reimbursementFixture.title, "Open Job Card");
-    record("Saved reimbursement after refresh: job card opens", reopenedJobCard);
-    const reopenedFinancials = await clickButtonInJobCard(page, reimbursementFixture.title, "Job P&L");
+    const openedClosedJobsAfterRefresh = await openJobsSection(page, "Closed Jobs");
+    record("Saved reimbursement after refresh: Closed Jobs section opens", openedClosedJobsAfterRefresh);
+    const reopenedFinancials = await openClosedJobFinancials(page, reimbursementFixture.title);
     record("Saved reimbursement after refresh: Job Financials panel opens", reopenedFinancials);
     await page.waitForFunction(
       () => Boolean(document.querySelector('[data-testid="job-financials-panel"]')),

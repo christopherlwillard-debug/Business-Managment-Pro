@@ -19,7 +19,7 @@ import {
 } from "@workspace/api-client-react";
 import type {
   GetJobsProfitSummary200,
-  JobProfitResponse,
+  JobProfitSummaryResponse,
 } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -102,7 +102,7 @@ interface ClientOption {
 }
 
 type JobProfitData = Pick<
-  JobProfitResponse,
+  JobProfitSummaryResponse,
   "grossInvoiced" | "collected" | "jobExpenses" | "includedCostTotal" | "netProfit"
 >;
 
@@ -532,7 +532,7 @@ export default function RoutePlanner() {
     let totalAdjSqFt = 0;
     const profitRows = linkedJobs
       .map(job => profitSummary[job.id])
-      .filter((profit): profit is JobProfitResponse => profit != null);
+      .filter((profit): profit is JobProfitSummaryResponse => profit != null);
     for (const job of linkedJobs) {
       const stop = stopsWithJobs.find(candidate => candidate.jobId === job.id);
       if (stop) {

@@ -13,8 +13,16 @@ import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/pr
 import { z } from "zod/v4";
 import { requestedBusiness, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
-import { buildJobProfitResponse, calculateJobProfit } from "../lib/job-profit.js";
-import type { JobProfitResponse, JobProfitMileageReimbursement } from "@workspace/api-zod";
+import {
+  buildJobProfitResponse,
+  buildJobProfitSummaryResponse,
+  calculateJobProfit,
+} from "../lib/job-profit.js";
+import type {
+  JobProfitResponse,
+  JobProfitMileageReimbursement,
+  JobProfitSummaryResponse,
+} from "@workspace/api-zod";
 import { loadJobProfitByJob } from "../lib/job-profit-loader.js";
 import { buildClosedJobExportRow } from "../lib/job-profit-reports.js";
 import { getRequestUser } from "./guards";
@@ -1269,7 +1277,7 @@ router.get("/profit-summary", async (req, res) => {
         .filter(e => e.category === "Fuel/Travel" && e.countsTowardJobProfit !== false && e.jobId != null)
         .map(e => e.jobId as number)
     );
-    const result: Record<number, JobProfitResponse> = {};
+    const result: Record<number, JobProfitSummaryResponse> = {};
     for (const id of jobIds) {
       const calculation = calculateJobProfit({
         invoices: invRows.filter(row => row.jobId === id),
@@ -1290,7 +1298,7 @@ router.get("/profit-summary", async (req, res) => {
         reversedFixedPayout: reversedFixedMap.get(id) ?? 0,
         reversedAllocationPayout: reversedAllocMap.get(id) ?? 0,
       });
-      result[id] = buildJobProfitResponse(calculation, {
+      result[id] = buildJobProfitSummaryResponse(calculation, {
         manHours: manHoursMap.get(id) ?? null,
         splitPool: allocationSplitPools.get(id)?.splitPool ?? 0,
         includeMileageInJobCosts: mileageIncludedMap.get(id) ?? true,
@@ -1380,7 +1388,7 @@ router.get("/profit-summary", async (req, res) => {
            });
             const existing = result[jobRow.id];
             if (!existing) continue;
-            result[jobRow.id] = buildJobProfitResponse(calculation, {
+            result[jobRow.id] = buildJobProfitSummaryResponse(calculation, {
               manHours: existing.manHours,
               splitPool: existing.splitPool,
               includeMileageInJobCosts: jobRow.includeMileageInJobCosts !== false,

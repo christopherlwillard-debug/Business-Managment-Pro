@@ -24,7 +24,10 @@ import {
   useUpdateProductionServiceType, useDeleteProductionServiceType,
   useListServiceAddonPrompts, type ServiceAddonPrompt,
 } from "@workspace/api-client-react";
-import type { JobProfitResponse } from "@workspace/api-client-react";
+import type {
+  JobProfitResponse,
+  JobProfitSummaryResponse,
+} from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { EstimateModal } from "./Estimates";
@@ -78,6 +81,8 @@ import { LaborSummaryPanel } from "@/components/LaborSummaryPanel";
 import { ServiceBillingPanel } from "@/components/ServiceBillingPanel";
 import { calculateSurchargeDays, isMileageSurchargeLine, mergeMileageSurchargeLine } from "@/lib/mileageSurcharge";
 import { isMaterialInvoiceLine } from "@/lib/invoiceLineItems";
+
+type JobProfitClientData = JobProfitResponse | JobProfitSummaryResponse;
 import { calculateJobMargin } from "@/lib/jobMargin";
 import { sumIncludedJobCostDetails } from "@/lib/jobExpenseDisplay";
 import { belongsToSelectedBusiness } from "@/lib/businessOwnership";
@@ -1806,14 +1811,14 @@ function JobProfitPanel({ job, onClose }: { job: Job; onClose: () => void }) {
 // ─── Unified Job Financials Panel ─────────────────────────────────────────────
 function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "breakdown", onClose, onSubsPaidChanged, onProfitUpdated }: {
   job: Job;
-  profitData?: JobProfitResponse | null;
+  profitData?: JobProfitClientData | null;
   initialTab?: "breakdown" | "hours";
   onClose: () => void;
   onSubsPaidChanged?: (allPaid: boolean) => void;
   onProfitUpdated?: (profit: JobProfitResponse) => void;
 }) {
   const [tab, setTab] = useState<"breakdown" | "hours">(initialTab);
-  const [profit, setProfit] = useState<JobProfitResponse | null>(initialProfit ?? null);
+  const [profit, setProfit] = useState<JobProfitClientData | null>(initialProfit ?? null);
   const detailedProfitLoaded = useRef(false);
   const profitLoadKeyRef = useRef(0);
   const panelAbortControllerRef = useRef<AbortController | null>(null);
@@ -5492,7 +5497,7 @@ function JobCard({
   onCreateInvoice?: () => void;
   onClientClick?: (clientId: number) => void;
   hasSubExpenses?: boolean;
-  profitData?: JobProfitResponse | null;
+  profitData?: JobProfitClientData | null;
   onSendPaymentLink?: (invoiceId: number, invoiceNumber: string, currentTotal: number, jobId: number) => void;
   onGoToInvoices?: () => void;
   generatingLinkId?: number | null;
@@ -5542,7 +5547,7 @@ function JobCard({
   const [financialsPanelOpen, setFinancialsPanelOpen] = useState(false);
   const [financialsInitialTab, setFinancialsInitialTab] = useState<"breakdown" | "hours">("breakdown");
   const [jobExpenseOpen, setJobExpenseOpen] = useState(false);
-  const [displayProfit, setDisplayProfit] = useState<JobProfitResponse | null | undefined>(profitData);
+  const [displayProfit, setDisplayProfit] = useState<JobProfitClientData | null | undefined>(profitData);
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
   const [checklistPanelOpen, setChecklistPanelOpen] = useState(false);
   const [mfhPanelOpen, setMfhPanelOpen] = useState(false);
@@ -5577,7 +5582,7 @@ function JobCard({
   async function refreshDisplayProfit() {
     const requestedJobId = job.id;
     const requestKey = ++displayProfitRequestKeyRef.current;
-    const refreshState = startJobProfitRefresh<JobProfitResponse>();
+    const refreshState = startJobProfitRefresh<JobProfitClientData>();
     const controller = new AbortController();
     displayProfitAbortControllerRef.current?.abort();
     displayProfitAbortControllerRef.current = controller;
@@ -7994,6 +7999,7 @@ export default function Jobs() {
   const [archiveSearch, setArchiveSearch] = useState("");
   const [archiveSort, setArchiveSort] = useState<"newest" | "oldest" | "revenue" | "profit" | "hours">("newest");
   const [archiveExpandedId, setArchiveExpandedId] = useState<number | null>(null);
+  const [closedFinancialsJob, setClosedFinancialsJob] = useState<Job | null>(null);
   const [csvPopoverOpen, setCsvPopoverOpen] = useState(false);
   const [csvExporting, setCsvExporting] = useState(false);
   const [csvPreset, setCsvPreset] = useState<"month" | "quarter" | "year" | "custom">("year");
@@ -8320,7 +8326,7 @@ export default function Jobs() {
   }, [visibleJobIds.join(","), invoiceSummaryRefreshKey]);
 
   // Fetch the full visible set initially, then retry only missing closed jobs.
-  const [profitMap, setProfitMap] = useState<Map<number, JobProfitResponse | null>>(new Map());
+  const [profitMap, setProfitMap] = useState<Map<number, JobProfitSummaryResponse | null>>(new Map());
   const [profitSummaryStatus, setProfitSummaryStatus] = useState<JobProfitSummaryStatus>("loading");
   const [profitSummaryRetryKey, setProfitSummaryRetryKey] = useState(0);
   const profitSummaryRetryJobIdsRef = useRef<number[] | null>(null);
@@ -9532,6 +9538,12 @@ export default function Jobs() {
                                       </div>
                                       <div className="flex gap-2">
                                         <button
+                                          type="button"
+                                          onClick={e => { e.stopPropagation(); setClosedFinancialsJob(job); }}
+                                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 text-xs font-bold hover:bg-violet-100 transition-colors">
+                                          <TrendingUp className="w-3 h-3" /> Job P&amp;L
+                                        </button>
+                                        <button
                                           onClick={e => { e.stopPropagation(); openEditJob(job); }}
                                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors">
                                           <Eye className="w-3 h-3" /> Open Full Job
@@ -9586,6 +9598,14 @@ export default function Jobs() {
           clients={clients}
           subcontractors={subcontractors}
           onSaved={() => queryClient.invalidateQueries()}
+        />
+      )}
+
+      {closedFinancialsJob && (
+        <JobFinancialsPanel
+          key={closedFinancialsJob.id}
+          job={closedFinancialsJob}
+          onClose={() => setClosedFinancialsJob(null)}
         />
       )}
 

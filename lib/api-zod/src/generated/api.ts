@@ -424,7 +424,6 @@ export const GetJobProfitResponse = zod.object({
   directExpenseTotal: zod.number(),
   allocatedExpenseTotal: zod.number(),
   mileageReimbursement: zod.union([
-    zod.number(),
     zod.object({
       id: zod.number(),
       amount: zod.number(),
@@ -534,21 +533,7 @@ export const GetJobsProfitSummaryResponse = zod.record(
     jobExpenses: zod.number(),
     directExpenseTotal: zod.number(),
     allocatedExpenseTotal: zod.number(),
-    mileageReimbursement: zod.union([
-      zod.number(),
-      zod.object({
-        id: zod.number(),
-        amount: zod.number(),
-        estimatedAmount: zod.number().nullable(),
-        recipientType: zod.enum(["owner", "subcontractor", "other"]),
-        recipientName: zod.string(),
-        recipientSubcontractorId: zod.number().nullish(),
-        status: zod.enum(["owed", "paid"]),
-        paidAt: zod.string().nullish(),
-        notes: zod.string().nullish(),
-      }),
-      zod.null(),
-    ]),
+    mileageReimbursement: zod.union([zod.number(), zod.null()]),
     estimatedFuelCost: zod.number().nullable(),
     actualFuelCost: zod.number().nullable(),
     auditTrailTotal: zod.number(),

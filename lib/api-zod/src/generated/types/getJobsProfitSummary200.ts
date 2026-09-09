@@ -5,6 +5,8 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
-import type { JobProfitResponse } from "./jobProfitResponse";
+import type { JobProfitSummaryResponse } from "./jobProfitSummaryResponse";
 
-export type GetJobsProfitSummary200 = { [key: string]: JobProfitResponse };
+export type GetJobsProfitSummary200 = {
+  [key: string]: JobProfitSummaryResponse;
+};

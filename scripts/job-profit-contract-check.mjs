@@ -263,7 +263,11 @@ function mutateGeneratedProfitOutput(temporaryRoot) {
   const original = fs.readFileSync(generatedPath, "utf8");
   const expectedText = "splitPool: number;";
   const replacementText = "splitPool: string;";
-  const occurrences = original.split(expectedText).length - 1;
+  const detailSchemaMatch = original.match(
+    /export interface JobProfitResponse \{[\s\S]*?\n\}/,
+  );
+  const detailSchema = detailSchemaMatch?.[0] ?? "";
+  const occurrences = detailSchema.split(expectedText).length - 1;
 
   if (occurrences !== 1) {
     throw new Error(
@@ -271,9 +275,10 @@ function mutateGeneratedProfitOutput(temporaryRoot) {
     );
   }
 
+  const mutatedDetailSchema = detailSchema.replace(expectedText, replacementText);
   fs.writeFileSync(
     generatedPath,
-    original.replace(expectedText, replacementText),
+    original.replace(detailSchema, mutatedDetailSchema),
   );
 }
 

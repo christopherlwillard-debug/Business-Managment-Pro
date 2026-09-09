@@ -336,7 +336,7 @@ paths:
               schema:
                 type: object
                 additionalProperties:
-                  $ref: "#/components/schemas/JobProfitResponse"
+                  $ref: "#/components/schemas/JobProfitSummaryResponse"
 
   /jobs/trim-out-catalog:
     get:
@@ -2147,8 +2147,85 @@ components:
         allocatedExpenseTotal: { type: number }
         mileageReimbursement:
           oneOf:
-            - type: number
             - $ref: "#/components/schemas/JobProfitMileageReimbursement"
+            - type: "null"
+        estimatedFuelCost: { type: number, nullable: true }
+        actualFuelCost: { type: number, nullable: true }
+        auditTrailTotal: { type: number }
+        tripTravelTotal: { type: number }
+        tripMealsDeductible: { type: number }
+        ownerDrawTaken: { type: number }
+        payrollLinkedExcluded: { type: number }
+        legacySubcontractorExpense: { type: number }
+        subLaborCost: { type: number }
+        allocPaid: { type: number }
+        totalSubHours: { type: number }
+        netProfit: { type: number }
+        includedCostTotal: { type: number }
+        profitBreakdown:
+          $ref: "#/components/schemas/JobProfitBreakdown"
+        splitPool: { type: number }
+        manHours: { type: number, nullable: true }
+        includeMileageInJobCosts: { type: boolean }
+        mileageReimbursementApplied: { type: boolean }
+        fuelStatus:
+          type: string
+          enum: [ok, missing_address, geocoding_failed, workdays_missing, error]
+        fuelReconciliation:
+          type: string
+          enum:
+            - estimate_only
+            - reimbursement_matches_estimate
+            - reimbursement_differs_from_estimate
+            - reimbursement_without_estimate
+            - actual_fuel_expense
+            - actual_fuel_expense_replaces_reimbursement
+            - excluded_from_job_costs
+            - estimate_unavailable
+        operationalProfit: { type: number, nullable: true }
+        fuelBreakdown:
+          allOf:
+            - $ref: "#/components/schemas/JobProfitFuelBreakdown"
+          nullable: true
+        growthReservePct: { type: number }
+        ownerSplitPct: { type: number }
+        taxReservePct: { type: number }
+      required:
+        - grossInvoiced
+        - collected
+        - otherIncomeRevenue
+        - jobExpenses
+        - directExpenseTotal
+        - allocatedExpenseTotal
+        - mileageReimbursement
+        - estimatedFuelCost
+        - actualFuelCost
+        - auditTrailTotal
+        - tripTravelTotal
+        - tripMealsDeductible
+        - ownerDrawTaken
+        - payrollLinkedExcluded
+        - legacySubcontractorExpense
+        - subLaborCost
+        - allocPaid
+        - totalSubHours
+        - netProfit
+        - includedCostTotal
+        - profitBreakdown
+        - splitPool
+
+    JobProfitSummaryResponse:
+      type: object
+      properties:
+        grossInvoiced: { type: number }
+        collected: { type: number }
+        otherIncomeRevenue: { type: number }
+        jobExpenses: { type: number }
+        directExpenseTotal: { type: number }
+        allocatedExpenseTotal: { type: number }
+        mileageReimbursement:
+          oneOf:
+            - type: number
             - type: "null"
         estimatedFuelCost: { type: number, nullable: true }
         actualFuelCost: { type: number, nullable: true }

@@ -1,6 +1,7 @@
 import type {
   JobProfitMileageReimbursement,
   JobProfitResponse,
+  JobProfitSummaryResponse,
 } from "@workspace/api-client-react";
 
 export function canApplyJobResponse(
@@ -77,7 +78,7 @@ export function applyJobProfitRefresh<T>(
  * Only the saved record can populate the reimbursement editor.
  */
 export function getSavedMileageReimbursement(
-  profit: JobProfitResponse | null | undefined,
+  profit: JobProfitResponse | JobProfitSummaryResponse | null | undefined,
 ): JobProfitMileageReimbursement | null {
   const reimbursement = profit?.mileageReimbursement;
   return reimbursement && typeof reimbursement === "object" ? reimbursement : null;

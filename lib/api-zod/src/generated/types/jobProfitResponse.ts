@@ -18,7 +18,7 @@ export interface JobProfitResponse {
   jobExpenses: number;
   directExpenseTotal: number;
   allocatedExpenseTotal: number;
-  mileageReimbursement: number | JobProfitMileageReimbursement | null;
+  mileageReimbursement: JobProfitMileageReimbursement | null;
   estimatedFuelCost: number | null;
   actualFuelCost: number | null;
   auditTrailTotal: number;

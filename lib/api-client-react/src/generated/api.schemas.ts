@@ -326,7 +326,7 @@ export interface JobProfitResponse {
   jobExpenses: number;
   directExpenseTotal: number;
   allocatedExpenseTotal: number;
-  mileageReimbursement: number | JobProfitMileageReimbursement | null;
+  mileageReimbursement: JobProfitMileageReimbursement | null;
   estimatedFuelCost: number | null;
   actualFuelCost: number | null;
   auditTrailTotal: number;
@@ -347,6 +347,67 @@ export interface JobProfitResponse {
   mileageReimbursementApplied?: boolean;
   fuelStatus?: JobProfitResponseFuelStatus;
   fuelReconciliation?: JobProfitResponseFuelReconciliation;
+  operationalProfit?: number | null;
+  fuelBreakdown?: JobProfitFuelBreakdown | null;
+  growthReservePct?: number;
+  ownerSplitPct?: number;
+  taxReservePct?: number;
+}
+
+export type JobProfitSummaryResponseFuelStatus =
+  (typeof JobProfitSummaryResponseFuelStatus)[keyof typeof JobProfitSummaryResponseFuelStatus];
+
+export const JobProfitSummaryResponseFuelStatus = {
+  ok: "ok",
+  missing_address: "missing_address",
+  geocoding_failed: "geocoding_failed",
+  workdays_missing: "workdays_missing",
+  error: "error",
+} as const;
+
+export type JobProfitSummaryResponseFuelReconciliation =
+  (typeof JobProfitSummaryResponseFuelReconciliation)[keyof typeof JobProfitSummaryResponseFuelReconciliation];
+
+export const JobProfitSummaryResponseFuelReconciliation = {
+  estimate_only: "estimate_only",
+  reimbursement_matches_estimate: "reimbursement_matches_estimate",
+  reimbursement_differs_from_estimate: "reimbursement_differs_from_estimate",
+  reimbursement_without_estimate: "reimbursement_without_estimate",
+  actual_fuel_expense: "actual_fuel_expense",
+  actual_fuel_expense_replaces_reimbursement:
+    "actual_fuel_expense_replaces_reimbursement",
+  excluded_from_job_costs: "excluded_from_job_costs",
+  estimate_unavailable: "estimate_unavailable",
+} as const;
+
+export interface JobProfitSummaryResponse {
+  grossInvoiced: number;
+  collected: number;
+  otherIncomeRevenue: number;
+  jobExpenses: number;
+  directExpenseTotal: number;
+  allocatedExpenseTotal: number;
+  mileageReimbursement: number | null;
+  estimatedFuelCost: number | null;
+  actualFuelCost: number | null;
+  auditTrailTotal: number;
+  tripTravelTotal: number;
+  tripMealsDeductible: number;
+  ownerDrawTaken: number;
+  payrollLinkedExcluded: number;
+  legacySubcontractorExpense: number;
+  subLaborCost: number;
+  allocPaid: number;
+  totalSubHours: number;
+  netProfit: number;
+  includedCostTotal: number;
+  profitBreakdown: JobProfitBreakdown;
+  splitPool: number;
+  manHours?: number | null;
+  includeMileageInJobCosts?: boolean;
+  mileageReimbursementApplied?: boolean;
+  fuelStatus?: JobProfitSummaryResponseFuelStatus;
+  fuelReconciliation?: JobProfitSummaryResponseFuelReconciliation;
   operationalProfit?: number | null;
   fuelBreakdown?: JobProfitFuelBreakdown | null;
   growthReservePct?: number;
@@ -1608,7 +1669,9 @@ export type GetJobsProfitSummaryParams = {
   jobIds: string;
 };
 
-export type GetJobsProfitSummary200 = { [key: string]: JobProfitResponse };
+export type GetJobsProfitSummary200 = {
+  [key: string]: JobProfitSummaryResponse;
+};
 
 export type GetTrimOutCatalogParams = {
   /**

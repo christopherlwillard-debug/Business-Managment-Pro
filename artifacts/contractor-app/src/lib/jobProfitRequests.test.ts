@@ -4,7 +4,10 @@ import {
   getSavedMileageReimbursement,
   isAbortError,
 } from "./jobProfitRequests";
-import type { JobProfitResponse } from "@workspace/api-client-react";
+import type {
+  JobProfitResponse,
+  JobProfitSummaryResponse,
+} from "@workspace/api-client-react";
 import {
   approvedProfitClientConsumers,
   findProfitClientViolations,
@@ -48,10 +51,10 @@ describe("getSavedMileageReimbursement", () => {
   it("does not treat the batch numeric compatibility value as an editable record", () => {
     expect(getSavedMileageReimbursement({
       mileageReimbursement: 125,
-    } as JobProfitResponse)).toBeNull();
+    } as JobProfitSummaryResponse)).toBeNull();
     expect(getSavedMileageReimbursement({
       mileageReimbursement: null,
-    } as JobProfitResponse)).toBeNull();
+    } as JobProfitSummaryResponse)).toBeNull();
   });
 });
 
