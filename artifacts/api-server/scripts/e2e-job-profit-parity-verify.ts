@@ -49,6 +49,11 @@ function addDays(dateString: string, days: number): string {
   return localDateString(new Date(year, month - 1, day + days, 12));
 }
 
+function lastDayOfMonthOffset(dateString: string, monthOffset: number): string {
+  const [year, month] = dateString.split("-").map(Number);
+  return localDateString(new Date(year, month - 1 + monthOffset + 1, 0, 12));
+}
+
 function startOfWeekSunday(dateString: string): string {
   const [year, month, day] = dateString.split("-").map(Number);
   const date = new Date(year, month - 1, day, 12);
@@ -329,6 +334,24 @@ async function readRoutePanelNetProfit(page: Page): Promise<number | null> {
   return parseDisplayedMoney(text);
 }
 
+async function waitForRoutePanelNetProfit(
+  page: Page,
+  expected: number,
+  stale?: number,
+): Promise<boolean> {
+  return page.waitForFunction(
+    ({ expectedLabel, staleLabel }) => {
+      const text = document.querySelector<HTMLElement>('[data-testid="route-profit-net-profit"]')?.innerText ?? "";
+      return text.includes(expectedLabel) && (staleLabel == null || !text.includes(staleLabel));
+    },
+    { timeout: 20_000 },
+    {
+      expectedLabel: routeProfitLabel(expected),
+      staleLabel: stale == null ? null : routeProfitLabel(stale),
+    },
+  ).then(() => true).catch(() => false);
+}
+
 async function waitForCondition(
   predicate: () => boolean,
   timeout = 20_000,
@@ -342,21 +365,22 @@ async function waitForCondition(
 
 async function selectCalendarDate(page: Page, date: string): Promise<boolean> {
   const [year, month, day] = date.split("-").map(Number);
-  const targetMonthLabel = new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    year: "numeric",
-  }).format(new Date(year, month - 1, day, 12));
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 24; attempt += 1) {
     const selected = await page.evaluate(({ targetDay, monthLabel }) => {
-      const monthText = [...document.querySelectorAll<HTMLElement>("span")]
-        .find(element => element.textContent?.trim() === monthLabel);
       const currentMonthText = [...document.querySelectorAll<HTMLElement>("span")]
         .find(element => /^[A-Za-z]+ \d{4}$/.test(element.textContent?.trim() ?? ""));
       const monthHeader = currentMonthText?.parentElement;
-      if (!monthText && monthHeader) {
+      if (!currentMonthText || !monthHeader) {
+        return false;
+      }
+
+      const currentMonth = new Date(`${currentMonthText.textContent?.trim()} 1`);
+      const targetMonth = new Date(`${monthLabel} 1`);
+      if (currentMonth.getTime() !== targetMonth.getTime()) {
         const buttons = monthHeader.querySelectorAll<HTMLButtonElement>("button");
-        buttons[buttons.length - 1]?.click();
+        const targetIsEarlier = currentMonth.getTime() > targetMonth.getTime();
+        buttons[targetIsEarlier ? 0 : buttons.length - 1]?.click();
         return false;
       }
 
@@ -373,7 +397,13 @@ async function selectCalendarDate(page: Page, date: string): Promise<boolean> {
       }
       dayButton.click();
       return true;
-    }, { targetDay: day, monthLabel: targetMonthLabel });
+    }, {
+      targetDay: day,
+      monthLabel: new Intl.DateTimeFormat("en-US", {
+        month: "long",
+        year: "numeric",
+      }).format(new Date(year, month - 1, day, 12)),
+    });
     if (selected) return true;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
@@ -2249,6 +2279,82 @@ async function main() {
         && !nearlyEqual(routeRefreshNetProfit, expectedRouteNetProfitBeforeRecovery)
         && !routeRefreshText.includes("Profit data unavailable"),
       `loaded=${routeRefreshLoaded}, displayed=${routeRefreshNetProfit ?? "missing"}, recovered=${expectedRouteNetProfitAfterRetry}, preRecovery=${expectedRouteNetProfitBeforeRecovery}`,
+    );
+
+    const monthBoundaryOldDate = lastDayOfMonthOffset(today, -2);
+    const monthBoundaryNewDate = addDays(monthBoundaryOldDate, 8);
+    const monthBoundaryOldTemplate = routeStops.find(stop => stop.jobId === firstJobId);
+    const monthBoundaryNewTemplate = routeStops.find(stop => stop.jobId === secondJobId);
+    if (!monthBoundaryOldTemplate || !monthBoundaryNewTemplate) {
+      throw new Error("Month-boundary route fixtures require both profit jobs");
+    }
+    routeStops.push(
+      {
+        ...monthBoundaryOldTemplate,
+        id: 95001,
+        title: "E2E Month Boundary Old Month",
+        scheduledDate: monthBoundaryOldDate,
+        sortOrder: Math.max(...routeStops.map(stop => stop.sortOrder), -1) + 1,
+      },
+      {
+        ...monthBoundaryNewTemplate,
+        id: 95002,
+        title: "E2E Month Boundary New Month",
+        scheduledDate: monthBoundaryNewDate,
+        sortOrder: Math.max(...routeStops.map(stop => stop.sortOrder), -1) + 1,
+      },
+    );
+    await page.reload({
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    const monthBoundaryWeekSelected = await clickButtonByText(page, "Week");
+    const oldMonthWeekStart = startOfWeekSunday(monthBoundaryOldDate);
+    const oldMonthWeekEnd = addDays(oldMonthWeekStart, 6);
+    const oldMonthExpected = expectedRouteProfitBetween(oldMonthWeekStart, oldMonthWeekEnd);
+    const oldMonthDateSelected = await selectCalendarDate(page, monthBoundaryOldDate);
+    const oldMonthRefreshed = await waitForRoutePanelNetProfit(page, oldMonthExpected.netProfit);
+    const oldMonthDisplayed = await readRoutePanelNetProfit(page);
+    record(
+      "Week view loads the canonical total before a month boundary",
+      monthBoundaryWeekSelected
+        && oldMonthDateSelected
+        && oldMonthRefreshed
+        && nearlyEqual(oldMonthDisplayed, oldMonthExpected.netProfit),
+      `date=${monthBoundaryOldDate}, range=${oldMonthWeekStart}..${oldMonthWeekEnd}, jobIds=${oldMonthExpected.jobIds.join(",")}, displayed=${oldMonthDisplayed ?? "missing"}, canonical=${oldMonthExpected.netProfit}`,
+    );
+
+    const newMonthWeekStart = startOfWeekSunday(monthBoundaryNewDate);
+    const newMonthWeekEnd = addDays(newMonthWeekStart, 6);
+    const newMonthExpected = expectedRouteProfitBetween(newMonthWeekStart, newMonthWeekEnd);
+    const newMonthDateSelected = await selectCalendarDate(page, monthBoundaryNewDate);
+    const newMonthRefreshed = await waitForRoutePanelNetProfit(
+      page,
+      newMonthExpected.netProfit,
+      oldMonthExpected.netProfit,
+    );
+    const newMonthDisplayed = await readRoutePanelNetProfit(page);
+    record(
+      "Week view crosses into the next month with the canonical total",
+      newMonthDateSelected
+        && newMonthRefreshed
+        && nearlyEqual(newMonthDisplayed, newMonthExpected.netProfit),
+      `date=${monthBoundaryNewDate}, range=${newMonthWeekStart}..${newMonthWeekEnd}, jobIds=${newMonthExpected.jobIds.join(",")}, displayed=${newMonthDisplayed ?? "missing"}, canonical=${newMonthExpected.netProfit}`,
+    );
+
+    const returnedMonthDateSelected = await selectCalendarDate(page, monthBoundaryOldDate);
+    const returnedMonthRefreshed = await waitForRoutePanelNetProfit(
+      page,
+      oldMonthExpected.netProfit,
+      newMonthExpected.netProfit,
+    );
+    const returnedMonthDisplayed = await readRoutePanelNetProfit(page);
+    record(
+      "Week view restores the original total after returning across the month boundary",
+      returnedMonthDateSelected
+        && returnedMonthRefreshed
+        && nearlyEqual(returnedMonthDisplayed, oldMonthExpected.netProfit),
+      `date=${monthBoundaryOldDate}, displayed=${returnedMonthDisplayed ?? "missing"}, canonical=${oldMonthExpected.netProfit}`,
     );
 
     jobs.reverse();
