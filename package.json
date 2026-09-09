@@ -9,6 +9,7 @@
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
     "job-profit-contract:check": "node scripts/job-profit-contract-check.mjs",
+    "check:closed-jobs-release": "node scripts/check-closed-jobs-release.mjs",
     "schema-contract:inventory": "node scripts/schema-contract-inventory.mjs",
     "schema-contract:check": "node scripts/schema-contract-inventory.mjs --check",
     "schema-contract:live-check": "node scripts/schema-contract-live-check.mjs",

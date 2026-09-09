@@ -9,6 +9,9 @@
  * Every browser write is aborted and the temporary test session is removed.
  */
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Page } from "puppeteer";
 import { eq } from "drizzle-orm";
 import { db } from "@workspace/db";
@@ -18,6 +21,10 @@ import { launchBrowser } from "../src/lib/launchBrowser";
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:80";
 const SHOTS = "/tmp/e2e-job-profit-parity";
+const RELEASE_CHECK = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../scripts/check-closed-jobs-release.mjs",
+);
 
 if (process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT) {
   throw new Error("Refusing to run job-profit parity verification against a production deployment");
@@ -426,6 +433,7 @@ async function waitForText(page: Page, text: string, timeout = 20_000): Promise<
 }
 
 async function main() {
+  execFileSync(process.execPath, [RELEASE_CHECK], { stdio: "inherit" });
   fs.mkdirSync(SHOTS, { recursive: true });
 
   const today = localDateString();

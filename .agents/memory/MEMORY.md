@@ -68,3 +68,4 @@
 - [Job detail browser fixtures](job-detail-browser-fixtures.md) — title-only card clicks can select the wrong job; scope authenticated verifier actions to the card heading
 - [Database test timeouts](database-test-timeouts.md) — full Vitest runs need 15-second test and hook limits because parallel DB contention can exceed the 5-second defaults
 - [Profit verifier fixture invariants](profit-verifier-fixture-invariants.md) — nonzero cost buckets require coherent derived totals and ordering expectations across authenticated browser checks
+- [Closed Jobs release guard](closed-jobs-release-guard.md) — verify source, lazy-loaded build chunks, and live read-only API route presence separately after publish
