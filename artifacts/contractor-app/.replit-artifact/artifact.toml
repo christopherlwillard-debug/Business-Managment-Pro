@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "Contractor Management App"
+title = "Willard’s GC Public Website"
 version = "1.0.0"
 id = "artifacts/contractor-app"
 router = "path"
