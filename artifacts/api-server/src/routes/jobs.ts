@@ -1039,18 +1039,11 @@ router.get("/:id/profit", async (req, res) => {
       ownerSplitPct: settingsTable.ownerSplitPct,
       taxReservePct: settingsTable.taxReservePct,
     }).from(settingsTable).limit(1);
-    // Allocation pay must use the same server-side split pool as the compact
-    // job-card outstanding-payments route. The job status is intentionally not
-    // an input to this calculation.
-    const allocationSplitPool = calculateAllocationSplitPool({
-      revenue: grossInvoiced,
-      directExpenses: jobExpenses,
-      allocatedExpenses: 0,
-      subLaborCost,
-      growthReservePct: financialSettings?.growthReservePct != null
-        ? parseFloat(String(financialSettings.growthReservePct))
-        : 5,
-    }).splitPool;
+    // Allocation pay must use the same canonical job-assignment inputs as the
+    // compact card, Job Payroll, and close-job flows. In particular, an unpaid
+    // hourly worker's agreed amount still reduces the pool before percentage
+    // shares are calculated.
+    const allocationSplitPool = (await computeAllocationSplitPool(id)).splitPool;
 
     res.json(buildJobProfitResponse(profit, {
       splitPool: allocationSplitPool,

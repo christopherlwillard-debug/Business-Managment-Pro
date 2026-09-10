@@ -43,6 +43,30 @@ describe("calculateJobFinancialWaterfall", () => {
     expect(result.ownerTakeHome).toBeCloseTo(508.35, 2);
   });
 
+  it("matches the Pope waterfall after hourly worker pay reduces the split pool", () => {
+    const result = calculateJobFinancialWaterfall({
+      revenue: 2500,
+      jobExpenses: 0,
+      mileageReimbursementCost: 0,
+      subLaborCost: 800,
+      hourlyFixedCost: 800,
+      allocationPcts: [50],
+      growthReservePct: 5,
+      ownerSplitPct: 50,
+      taxReservePct: 25,
+      authoritativeSplitPool: 1575,
+    });
+
+    expect(result.growthReserve).toBeCloseTo(125, 2);
+    expect(result.hourlyWorkers).toBeCloseTo(800, 2);
+    expect(result.afterWorkers).toBeCloseTo(1575, 2);
+    expect(result.toSplit).toBeCloseTo(1575, 2);
+    expect(result.subShare).toBeCloseTo(787.50, 2);
+    expect(result.ownerShare).toBeCloseTo(787.50, 2);
+    expect(result.taxReserve).toBeCloseTo(196.875, 3);
+    expect(result.ownerTakeHome).toBeCloseTo(590.625, 3);
+  });
+
   it("warns only when team allocations exceed the available split", () => {
     expect(calculateJobFinancialWaterfall({ ...base, allocationPcts: [100] }).allocationWarning).toBe(false);
     expect(calculateJobFinancialWaterfall({ ...base, allocationPcts: [60, 41] }).allocationWarning).toBe(true);

@@ -43,6 +43,27 @@ describe("computeSubOwed", () => {
 });
 
 describe("calculateAllocationSplitPool", () => {
+  it("deducts agreed hourly worker pay before calculating 50% shares", () => {
+    const result = calculateAllocationSplitPool({
+      revenue: 2500,
+      directExpenses: 0,
+      allocatedExpenses: 0,
+      subLaborCost: 800,
+      growthReservePct: 5,
+    });
+
+    const jamesDue = computeSubOwed({
+      compensationType: "allocation",
+      amountOwed: null,
+      fixedAmount: null,
+      allocationPct: "50",
+    }, result.splitPool);
+
+    expect(result.growthReserve).toBeCloseTo(125, 2);
+    expect(result.splitPool).toBeCloseTo(1575, 2);
+    expect(jamesDue).toBeCloseTo(787.50, 2);
+  });
+
   it("includes job-only allocations in the same expense base as Job Financials", () => {
     const result = calculateAllocationSplitPool({
       revenue: 5000.30,

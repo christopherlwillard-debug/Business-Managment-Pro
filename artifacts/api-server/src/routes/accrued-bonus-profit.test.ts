@@ -27,6 +27,7 @@ const h = vi.hoisted(() => ({
   selectQueue: [] as any[][],
   updates:     [] as any[],
   inserts:     [] as any[],
+  allocationPools: new Map<number, number>(),
   consumedSlots: 0,
   missingSlots: [] as number[],
   scenario: "no request",
@@ -126,7 +127,14 @@ vi.mock("../lib/allocation.js",        () => ({
       splitPool: Math.max(0, income - growthReserve - input.subLaborCost),
     };
   },
-  computeAllocationSplitPool: vi.fn(),
+  computeAllocationSplitPool: vi.fn(async (jobId: number) => ({
+    revenue: 0,
+    expenses: 0,
+    subLaborCost: 0,
+    growthReservePct: 5,
+    growthReserve: 0,
+    splitPool: h.allocationPools.get(jobId) ?? 0,
+  })),
   computeAllocationSplitPools: vi.fn().mockResolvedValue(new Map()),
   computeSubOwed: vi.fn(),
 }));
@@ -150,6 +158,7 @@ beforeEach(() => {
   h.selectQueue.length = 0;
   h.updates.length = 0;
   h.inserts.length = 0;
+  h.allocationPools.clear();
   h.consumedSlots = 0;
   h.missingSlots.length = 0;
   h.scenario = "no request";
@@ -691,6 +700,20 @@ describe("PATCH /jobs/:jobId/sub-payment-draft/:subId — draft save", () => {
 });
 
 describe("GET /jobs/:id/profit — accrued bonus included in subLaborCost", () => {
+  it("uses the canonical post-hourly-worker split pool for Pope", async () => {
+    h.allocationPools.set(58, 1575);
+    pushProfitSelects({
+      invoices: [{ total: "2500.00", status: "paid" }],
+      hoursLaborCost: "0",
+    });
+
+    const res = await request(app).get("/jobs/58/profit");
+
+    expect(res.status).toBe(200);
+    expect(res.body.grossInvoiced).toBeCloseTo(2500, 2);
+    expect(res.body.subLaborCost).toBe(0);
+    expect(res.body.splitPool).toBeCloseTo(1575, 2);
+  });
 
   it("adds accrued_bonus to hours-based labor cost", async () => {
     // 4h @ $50 = $200 hours + $75 bonus = $275 subLaborCost
@@ -1595,6 +1618,7 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
       recipientName: "Willard",
     };
 
+    h.allocationPools.set(5, 400);
     pushProfitSelects({
       invoices: [{ total: "1000.00", status: "paid" }],
       mileageReimbursement: reimbursement,
