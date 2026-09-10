@@ -1436,6 +1436,22 @@ export default function RoutePlanner() {
             )}
           </div>
         )}
+        {viewMode === "week" && !isLoading && visibleJobIds.length === 0 && (
+          <div
+            data-testid="route-profit-empty-week"
+            className="px-4 py-3 border-b border-border bg-muted/20"
+          >
+            <div className="rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2.5">
+              <p className="text-[11px] font-semibold text-blue-800 flex items-center gap-1.5">
+                <Info className="w-3 h-3" />
+                No linked jobs scheduled this week
+              </p>
+              <p className="mt-1 text-[10px] text-blue-800/80">
+                Route profit will appear when a stop linked to a job is scheduled in this week.
+              </p>
+            </div>
+          </div>
+        )}
 
         {showAddForm ? (
           <form onSubmit={handleAddStop} className="px-4 py-3 border-b border-border bg-muted/20 space-y-2">

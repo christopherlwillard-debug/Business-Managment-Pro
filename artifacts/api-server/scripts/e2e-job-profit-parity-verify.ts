@@ -2162,6 +2162,10 @@ async function main() {
       () => document.querySelector('[data-testid="route-profit-panel"]') == null,
       { timeout: 20_000 },
     ).then(() => true).catch(() => false);
+    const afterFinalWeekEmptyStateShown = await page.waitForSelector(
+      '[data-testid="route-profit-empty-week"]',
+      { timeout: 20_000 },
+    ).then(() => true).catch(() => false);
     const afterFinalWeekDuplicateRows = await page.$$eval(
       '[data-testid^="route-profit-job-row-"]',
       (rows, jobId) => rows.filter(row => Number(row.getAttribute("data-job-id")) === jobId).length,
@@ -2171,23 +2175,30 @@ async function main() {
     const afterFinalWeekDuplicateText = await page.evaluate(
       () => document.body.innerText.replace(/\s+/g, " ").trim(),
     );
+    const afterFinalWeekEmptyStateText = await page.$eval(
+      '[data-testid="route-profit-empty-week"]',
+      element => element.textContent?.replace(/\s+/g, " ").trim() ?? "",
+    );
     record(
-      "Moving the final duplicate out of the source Week clears stale profit rows",
+      "Moving the final duplicate out of the source Week explains the empty profit scope",
       monthBoundarySourceReturned
         && monthBoundarySourceRestored
         && finalWeekDuplicateMoved
         && finalWeekDuplicateMoveApplied
         && afterFinalWeekDuplicatePanelCleared
+        && afterFinalWeekEmptyStateShown
         && afterFinalWeekDuplicateMove.jobIds.length === 0
         && afterFinalWeekDuplicateMove.netProfit === 0
         && !afterFinalWeekDuplicateMove.jobIds.includes(firstJobId)
         && afterFinalWeekDuplicateRows === 0
         && afterFinalWeekDuplicateDisplayed == null
-        && !afterFinalWeekDuplicateText.includes("E2E Profit Parity One"),
+        && !afterFinalWeekDuplicateText.includes("E2E Profit Parity One")
+        && afterFinalWeekEmptyStateText.includes("No linked jobs scheduled this week")
+        && !afterFinalWeekEmptyStateText.toLowerCase().includes("unavailable"),
       `sourceWeek=${monthBoundarySourceWeekStart}..${monthBoundarySourceWeekEnd}, ` +
       `jobIds=${afterFinalWeekDuplicateMove.jobIds.join(",")}, rowsForFirstJob=${afterFinalWeekDuplicateRows}, ` +
       `displayed=${afterFinalWeekDuplicateDisplayed ?? "missing"}, canonical=${afterFinalWeekDuplicateMove.netProfit}, ` +
-      `panelCleared=${afterFinalWeekDuplicatePanelCleared}`,
+      `panelCleared=${afterFinalWeekDuplicatePanelCleared}, emptyState=${afterFinalWeekEmptyStateText}`,
     );
 
     delayedProfitJobId = firstJobId;
