@@ -14,6 +14,15 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ## 2026-09-10
 
+### Production Intelligence Phase 1: read-only schedule history
+
+- Added a separate, business-scoped schedule-history read route using existing
+  terminal job dates and checklist scheduled dates.
+- Added a separate Schedule History view with selectable past date ranges.
+- Active Schedule remains on its existing current/future route and filtering;
+  no presence records, production-day records, component snapshots, work
+  sessions, learning, or financial behavior was added.
+
 ### Production Intelligence Phase 0 contract
 
 - Established the pure contract for Willard's production vocabulary: Interior

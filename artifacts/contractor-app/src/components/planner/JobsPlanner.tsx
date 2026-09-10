@@ -13,6 +13,7 @@ import {
 import type { Job } from "@workspace/api-client-react";
 import type { ScheduleJob } from "@/pages/Jobs";
 import { localDateString } from "@/lib/utils";
+import { JobScheduleHistory } from "./JobScheduleHistory";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -173,12 +174,14 @@ export function JobsPlanner({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const [scheduleMode, setScheduleMode] = useState<"active" | "history">("active");
   const [view, setView] = useState<PlannerView>("week");
   const [cursor, setCursor] = useState(today);
   const [selectedDate, setSelectedDate] = useState(today);
   const requestEnd = addScheduleDays(today, 180);
 
   useEffect(() => {
+    if (scheduleMode !== "active") return;
     const controller = new AbortController();
     const params = new URLSearchParams({ from: today, to: requestEnd });
     if (businessId != null) params.set("businessId", String(businessId));
@@ -210,7 +213,7 @@ export function JobsPlanner({
     return () => controller.abort();
     // onLoaded is intentionally excluded so parent renders do not refetch the schedule.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [businessId, today, requestEnd, retryKey, refreshKey]);
+  }, [businessId, today, requestEnd, retryKey, refreshKey, scheduleMode]);
 
   const scheduleJobs = schedule?.jobs ?? [];
   const entries = useMemo(() => createPlannerEntries(scheduleJobs), [scheduleJobs]);
@@ -310,6 +313,15 @@ export function JobsPlanner({
     const higherDemand = weekJobs.filter(job => job.resourceDemand && job.resourceDemand !== "standard").length;
     return { jobCount: weekJobs.length, scheduledDays, higherDemand };
   }, [scheduleJobs, weekDates]);
+
+  if (scheduleMode === "history") {
+    return (
+      <JobScheduleHistory
+        businessId={businessId}
+        onOpenActive={() => setScheduleMode("active")}
+      />
+    );
+  }
 
   function shiftPlanner(amount: number) {
     const date = scheduleDate(cursor);
@@ -415,6 +427,27 @@ export function JobsPlanner({
             </div>
           </div>
           <div className="flex items-center gap-2 self-start lg:self-auto">
+            <div className="flex items-center rounded-xl border border-white/15 bg-white/10 p-1" role="tablist" aria-label="Schedule view">
+              <button
+                type="button"
+                role="tab"
+                aria-selected="true"
+                data-testid="schedule-active-tab"
+                className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-950 shadow-sm"
+              >
+                Active Schedule
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected="false"
+                data-testid="schedule-history-tab"
+                onClick={() => setScheduleMode("history")}
+                className="rounded-lg px-3 py-2 text-xs font-bold text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                Schedule History
+              </button>
+            </div>
             <div className="flex items-center rounded-xl border border-white/15 bg-white/10 p-1">
               {(["week", "month", "agenda"] as const).map(option => (
                 <button

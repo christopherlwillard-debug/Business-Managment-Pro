@@ -64,6 +64,23 @@ function scheduleItemShape(item: typeof jobChecklistItemsTable.$inferSelect, sec
   };
 }
 
+function jobDatesOverlapRange(
+  job: typeof jobsTable.$inferSelect,
+  from: string,
+  to: string,
+): boolean {
+  const rawStart = job.startDate ?? job.endDate;
+  const rawEnd = job.endDate ?? job.startDate;
+  if (!rawStart || !rawEnd) return false;
+  const start = rawStart <= rawEnd ? rawStart : rawEnd;
+  const end = rawStart <= rawEnd ? rawEnd : rawStart;
+  return end >= from && start <= to;
+}
+
+function isHistoricalJob(job: typeof jobsTable.$inferSelect): boolean {
+  return job.status === "completed" || job.status === "invoiced" || job.status === "closed";
+}
+
 // ── Helper: recalc parent item's completed from its parts ─────────────────────
 async function recalcItemFromParts(itemId: number): Promise<void> {
   const parts = await db
@@ -331,6 +348,72 @@ router.get("/schedule-overview", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load schedule overview" });
+  }
+});
+
+// ── GET /schedule-history?from=YYYY-MM-DD&to=YYYY-MM-DD ─────────────────────────
+// Read-only historical view. It intentionally uses the existing job dates and
+// checklist scheduled dates; it does not create or reinterpret production days.
+router.get("/schedule-history", async (req, res) => {
+  try {
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    if (!isDateOnly(from) || !isDateOnly(to) || from > to) {
+      return res.status(400).json({ error: "from and to must be valid YYYY-MM-DD dates" });
+    }
+
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+
+    const allJobs = await db.select().from(jobsTable);
+    const candidateJobs = allJobs.filter(job =>
+      belongsToBusiness(job, scope) && isHistoricalJob(job),
+    );
+    if (candidateJobs.length === 0) return res.json({ from, to, jobs: [] });
+
+    const jobIds = candidateJobs.map(job => job.id);
+    const checklists = await db
+      .select({ id: jobChecklistsTable.id, jobId: jobChecklistsTable.jobId })
+      .from(jobChecklistsTable)
+      .where(inArray(jobChecklistsTable.jobId, jobIds));
+    const checklistIds = checklists.map(checklist => checklist.id);
+
+    const historicalRows = checklistIds.length > 0
+      ? await db
+        .select({
+          item: jobChecklistItemsTable,
+          sectionName: jobChecklistSectionsTable.name,
+          assignedSubcontractorName: subcontractorsTable.name,
+        })
+        .from(jobChecklistItemsTable)
+        .leftJoin(jobChecklistSectionsTable, eq(jobChecklistItemsTable.jobChecklistSectionId, jobChecklistSectionsTable.id))
+        .leftJoin(subcontractorsTable, eq(jobChecklistItemsTable.assignedSubcontractorId, subcontractorsTable.id))
+        .where(inArray(jobChecklistItemsTable.jobChecklistId, checklistIds))
+      : [];
+
+    const checklistJobById = new Map(checklists.map(checklist => [checklist.id, checklist.jobId]));
+    const itemsByJob = new Map<number, ReturnType<typeof scheduleItemShape>[]>();
+    for (const row of historicalRows) {
+      const jobId = checklistJobById.get(row.item.jobChecklistId);
+      const scheduledDate = row.item.scheduledDate;
+      if (!jobId || !scheduledDate || scheduledDate < from || scheduledDate > to) continue;
+      const list = itemsByJob.get(jobId) ?? [];
+      list.push(scheduleItemShape(row.item, row.sectionName, row.assignedSubcontractorName));
+      itemsByJob.set(jobId, list);
+    }
+
+    const jobs = candidateJobs
+      .filter(job => jobDatesOverlapRange(job, from, to) || (itemsByJob.get(job.id)?.length ?? 0) > 0)
+      .map(job => ({
+        ...job,
+        checklistItems: itemsByJob.get(job.id) ?? [],
+        unscheduledChecklistItems: [],
+      }));
+
+    res.json({ from, to, jobs });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load schedule history" });
   }
 });
 

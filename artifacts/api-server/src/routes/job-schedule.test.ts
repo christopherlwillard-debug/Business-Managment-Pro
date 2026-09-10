@@ -217,6 +217,123 @@ describe("GET /jobs/schedule-overview", () => {
   });
 });
 
+describe("GET /jobs/schedule-history", () => {
+  it("returns completed history by existing job/checklist dates while excluding active and other-business jobs", async () => {
+    h.selectQueue.push([
+      {
+        id: 5,
+        title: "Completed history",
+        status: "completed",
+        businessId: 1,
+        businessLine: "general_contracting",
+        startDate: "2026-08-27",
+        endDate: "2026-08-29",
+      },
+      {
+        id: 6,
+        title: "Still active",
+        status: "scheduled",
+        businessId: 1,
+        businessLine: "general_contracting",
+        startDate: "2026-08-27",
+        endDate: "2026-08-29",
+      },
+      {
+        id: 7,
+        title: "Other business history",
+        status: "closed",
+        businessId: 2,
+        businessLine: "general_contracting",
+        startDate: "2026-08-27",
+        endDate: "2026-08-29",
+      },
+    ]);
+    h.selectQueue.push([{ id: 50, jobId: 5 }]);
+    h.selectQueue.push([
+      {
+        item: {
+          id: 501,
+          jobChecklistId: 50,
+          title: "Historical closeout",
+          completed: true,
+          skipped: false,
+          scheduledDate: "2026-08-28",
+          assignedSubcontractorId: null,
+        },
+        sectionName: "Closeout",
+        assignedSubcontractorName: null,
+      },
+      {
+        item: {
+          id: 502,
+          jobChecklistId: 50,
+          title: "Outside range",
+          completed: true,
+          skipped: false,
+          scheduledDate: "2026-09-10",
+          assignedSubcontractorId: null,
+        },
+        sectionName: "Closeout",
+        assignedSubcontractorName: null,
+      },
+    ]);
+
+    const response = await request(app)
+      .get("/jobs/schedule-history?from=2026-08-27&to=2026-08-29");
+
+    expect(response.status).toBe(200);
+    expect(response.body.jobs).toHaveLength(1);
+    expect(response.body.jobs[0].id).toBe(5);
+    expect(response.body.jobs[0].title).toBe("Completed history");
+    expect(response.body.jobs[0].checklistItems.map((item: any) => item.id)).toEqual([501]);
+    expect(response.body.jobs[0].checklistItems[0].scheduledDate).toBe("2026-08-28");
+    expect(response.body.jobs[0].unscheduledChecklistItems).toEqual([]);
+    expect(h.updatePayloads).toHaveLength(0);
+  });
+
+  it("includes a terminal job when a checklist date is in range even if job dates are absent", async () => {
+    h.selectQueue.push([{
+      id: 8,
+      title: "Checklist-dated history",
+      status: "invoiced",
+      businessId: 1,
+      businessLine: "general_contracting",
+      startDate: null,
+      endDate: null,
+    }]);
+    h.selectQueue.push([{ id: 80, jobId: 8 }]);
+    h.selectQueue.push([{
+      item: {
+        id: 801,
+        jobChecklistId: 80,
+        title: "Historical item",
+        completed: true,
+        skipped: false,
+        scheduledDate: "2026-08-28",
+        assignedSubcontractorId: null,
+      },
+      sectionName: "Production",
+      assignedSubcontractorName: null,
+    }]);
+
+    const response = await request(app)
+      .get("/jobs/schedule-history?from=2026-08-27&to=2026-08-29");
+
+    expect(response.status).toBe(200);
+    expect(response.body.jobs.map((job: any) => job.id)).toEqual([8]);
+    expect(response.body.jobs[0].checklistItems[0].scheduledDate).toBe("2026-08-28");
+  });
+
+  it("rejects invalid historical ranges before querying schedule data", async () => {
+    const response = await request(app)
+      .get("/jobs/schedule-history?from=2026-08-30&to=2026-08-29");
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("valid YYYY-MM-DD");
+    expect(h.consumedSlots).toBe(0);
+  });
+});
+
 describe("PATCH /jobs/:jobId/checklist/items/:itemId", () => {
   it("rejects a subcontractor who is not assigned to the job", async () => {
     h.selectQueue.push(
