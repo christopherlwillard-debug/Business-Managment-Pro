@@ -1034,7 +1034,18 @@ async function main() {
             element.textContent?.includes("Sep 3, 2026") === true,
         ),
     );
+    delayNextHistoryRange = DATES[0];
     await page.click('[data-testid="schedule-history-error"] button');
+    await page.waitForSelector('[data-testid="schedule-history-loading-range"]', { timeout: 15_000 });
+    recordResult(
+      "Schedule History retry shows loading status for the applied range",
+      await page.$('[data-testid="schedule-history-error"]') === null &&
+        await page.$eval(
+          '[data-testid="schedule-history-loading-range"]',
+          element => element.textContent?.includes("Sep 1, 2026") === true &&
+            element.textContent?.includes("Sep 3, 2026") === true,
+        ),
+    );
     await waitForText(page, "Sep 1, 2026");
     await page.waitForSelector(`[data-testid="job-presence-day-${DATES[0]}"]`, { timeout: 15_000 });
     await waitForText(page, "Confirmed manually");
