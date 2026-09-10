@@ -394,3 +394,22 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-09-05
+
+## ADR-022
+
+**Title:** Production Intelligence separates operational history from knowledge learning
+
+**Decision:** Keep Knowledge Center and Scheduling/Operations as separate systems connected through production facts. Scheduling owns actual daily presence and historical operational records; Knowledge Center owns reusable production definitions and owner-approved learning. Willard's initial production configuration is Interior Finish with VOG/Hybrid/Drywall variants, Siding, Plumbing, Skirting, and Custom. Service remains a separate future work type and is excluded from production learning.
+
+**Reason:** A simple daily presence record provides useful calendar-span, actual-production-day, pause-day, and completed-job history without forcing detailed time tracking. Separating those facts from reusable knowledge prevents the Knowledge Center from becoming a calendar source of truth and prevents scheduling from becoming a second pricing, payroll, expense, or profit system.
+
+**Rejected Alternatives:**
+- Merging Knowledge Center and Scheduling into one subsystem
+- Treating completed jobs as deleted from schedule history
+- Making exact start/end labor sessions mandatory
+- Creating top-level Finish Carpentry, Drywall, Electrical, HVAC, Inspection, or Cleanup components for Willard
+- Mixing Service calls into production averages or baselines
+- Creating a parallel production payroll, expense, or profit ledger
+
+**Status:** Accepted
+**Date:** 2026-09-10

@@ -71,3 +71,4 @@
 - [Closed Jobs release guard](closed-jobs-release-guard.md) — verify source, lazy-loaded build chunks, and live read-only API route presence separately after publish
 - [Job-profit response contract](job-profit-response-contract.md) — canonical profit responses carry a version; clients must reject missing or stale markers instead of rendering old arithmetic
 - [Client business scope](client-business-scope.md) — client list/profile reads use canonical business_id with business_line fallback; related owned rows stay scoped
+- [Production intelligence boundaries](production-intelligence-boundaries.md) — Scheduling owns presence/history; Knowledge Center learns from it; Willard has five production components and Service stays separate

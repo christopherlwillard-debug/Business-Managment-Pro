@@ -14,6 +14,19 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ## 2026-09-10
 
+### Production Intelligence Phase 0 contract
+
+- Established the pure contract for Willard's production vocabulary: Interior
+  Finish with VOG/Hybrid/Drywall variants, Siding, Plumbing, Skirting, and
+  Custom.
+- Explicitly excluded Finish Carpentry, top-level Drywall, Electrical, HVAC,
+  Inspection, and Cleanup; reserved Service as a separate future work type
+  outside production learning.
+- Defined daily presence states, optional not-here reasons, source versus
+  provenance, module ownership, Active Schedule versus Schedule History, and
+  learning eligibility without changing runtime behavior, schema, routes, UI,
+  or financial systems.
+
 ### Target-schema guard covers subcontractor payments
 
 - The existing read-only release schema contract now verifies every column used
