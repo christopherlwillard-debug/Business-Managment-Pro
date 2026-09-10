@@ -116,6 +116,24 @@ export function filterDashboardRevenueInvoices<T extends CashRevenueInvoice>(
   return invoices.filter(invoice => isDashboardRevenueInPeriod(invoice, startDate, endDate));
 }
 
+export function summarizeDashboardRevenueDateBasis(
+  invoices: CashRevenueInvoice[],
+  startDate: string,
+  endDate: string,
+): {
+  paidInvoiceCount: number;
+  verifiedDeliveryCount: number;
+  issueDateFallbackCount: number;
+} {
+  const periodInvoices = filterDashboardRevenueInvoices(invoices, startDate, endDate);
+  const issueDateFallbackCount = periodInvoices.filter(isDashboardRevenueDateEstimated).length;
+  return {
+    paidInvoiceCount: periodInvoices.length,
+    verifiedDeliveryCount: periodInvoices.length - issueDateFallbackCount,
+    issueDateFallbackCount,
+  };
+}
+
 export function sumDashboardRevenue(
   invoices: CashRevenueInvoice[],
   startDate: string,

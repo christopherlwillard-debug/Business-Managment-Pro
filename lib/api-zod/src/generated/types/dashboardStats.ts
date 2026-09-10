@@ -7,11 +7,13 @@
  */
 import type { DashboardStatsByBusinessLineItem } from "./dashboardStatsByBusinessLineItem";
 import type { DashboardStatsMonthlyRevenueItem } from "./dashboardStatsMonthlyRevenueItem";
+import type { DashboardStatsRevenueDateBasis } from "./dashboardStatsRevenueDateBasis";
 import type { Invoice } from "./invoice";
 import type { Job } from "./job";
 
 export interface DashboardStats {
   totalRevenue: number;
+  revenueDateBasis: DashboardStatsRevenueDateBasis;
   pendingInvoices: number;
   activeJobs: number;
   totalExpenses: number;

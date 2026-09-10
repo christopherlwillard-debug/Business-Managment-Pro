@@ -3627,6 +3627,16 @@ components:
       properties:
         totalRevenue:
           type: number
+        revenueDateBasis:
+          type: object
+          properties:
+            paidInvoiceCount:
+              type: integer
+            verifiedDeliveryCount:
+              type: integer
+            issueDateFallbackCount:
+              type: integer
+          required: [paidInvoiceCount, verifiedDeliveryCount, issueDateFallbackCount]
         pendingInvoices:
           type: number
         activeJobs:
@@ -3701,7 +3711,7 @@ components:
               activeJobs:
                 type: integer
             required: [businessLine, label, totalRevenue, totalExpenses, operationalNetProfit, activeJobs]
-      required: [totalRevenue, pendingInvoices, activeJobs, totalExpenses, mileageDeduction, overdueInvoices, recentJobs, recentInvoices, monthlyRevenue]
+      required: [totalRevenue, revenueDateBasis, pendingInvoices, activeJobs, totalExpenses, mileageDeduction, overdueInvoices, recentJobs, recentInvoices, monthlyRevenue]
 
     ComplianceReport:
       type: object

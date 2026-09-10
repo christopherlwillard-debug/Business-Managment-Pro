@@ -123,12 +123,14 @@ const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 export default function Invoices() {
   const queryClient = useQueryClient();
   const { activeBusiness, businesses } = useBusiness();
-  const [activeTab, setActiveTab] = useState<"all" | "tax" | "audit">("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<"all" | "tax" | "audit">(
+    searchParams.get("tab") === "audit" ? "audit" : searchParams.get("tab") === "tax" ? "tax" : "all",
+  );
   const [exportingAudit, setExportingAudit] = useState(false);
   const [filterStatus, setFilterStatus] = useState<"active" | "all" | "approved" | "sent" | "partiallyPaid" | "overdue" | "paid">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [searchParams, setSearchParams] = useSearchParams();
 
   const { toast } = useToast();
   const prevInvoiceStatuses = useRef<Record<number, string>>({});
@@ -170,10 +172,21 @@ export default function Invoices() {
     }>;
     totalCount: number;
   }>({
-    queryKey: ["/api/reports/invoice-send-date-audit", activeBusiness?.id ?? null],
+    queryKey: [
+      "/api/reports/invoice-send-date-audit",
+      activeBusiness?.id ?? null,
+      activeBusiness ? null : searchParams.get("businessLine"),
+    ],
     queryFn: async ({ signal }) => {
-      const params = activeBusiness ? `?businessId=${activeBusiness.id}` : "";
-      const response = await fetch(`${BASE_URL}/api/reports/invoice-send-date-audit${params}`, {
+      const params = new URLSearchParams();
+      if (activeBusiness) {
+        params.set("businessId", String(activeBusiness.id));
+      } else {
+        const requestedBusinessLine = searchParams.get("businessLine");
+        if (requestedBusinessLine) params.set("businessLine", requestedBusinessLine);
+      }
+      const query = params.size > 0 ? `?${params.toString()}` : "";
+      const response = await fetch(`${BASE_URL}/api/reports/invoice-send-date-audit${query}`, {
         credentials: "include",
         signal,
       });
@@ -196,8 +209,15 @@ export default function Invoices() {
   async function handleExportRevenueDateAudit() {
     setExportingAudit(true);
     try {
-      const params = activeBusiness ? `?businessId=${activeBusiness.id}` : "";
-      const response = await fetch(`${BASE_URL}/api/reports/invoice-send-date-audit.csv${params}`, {
+      const params = new URLSearchParams();
+      if (activeBusiness) {
+        params.set("businessId", String(activeBusiness.id));
+      } else {
+        const requestedBusinessLine = searchParams.get("businessLine");
+        if (requestedBusinessLine) params.set("businessLine", requestedBusinessLine);
+      }
+      const query = params.size > 0 ? `?${params.toString()}` : "";
+      const response = await fetch(`${BASE_URL}/api/reports/invoice-send-date-audit.csv${query}`, {
         credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to export revenue date audit");
@@ -520,7 +540,15 @@ export default function Invoices() {
       {/* Tabs */}
       <div className="flex p-1 bg-muted/50 rounded-xl w-fit border border-border/50">
         {(["all", "tax", "audit"] as const).map(t => (
-          <button key={t} onClick={() => setActiveTab(t)}
+          <button key={t} onClick={() => {
+            setActiveTab(t);
+            setSearchParams(previous => {
+              const next = new URLSearchParams(previous);
+              if (t === "all") next.delete("tab");
+              else next.set("tab", t);
+              return next;
+            }, { replace: true });
+          }}
             className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${
               activeTab === t ? "bg-card text-foreground shadow-sm border border-border/50" : "text-muted-foreground hover:text-foreground"
             }`}>

@@ -2822,6 +2822,11 @@ export const GetDashboardStatsQueryParams = zod.object({
 
 export const GetDashboardStatsResponse = zod.object({
   totalRevenue: zod.number(),
+  revenueDateBasis: zod.object({
+    paidInvoiceCount: zod.number(),
+    verifiedDeliveryCount: zod.number(),
+    issueDateFallbackCount: zod.number(),
+  }),
   pendingInvoices: zod.number(),
   activeJobs: zod.number(),
   totalExpenses: zod.number(),

@@ -33,13 +33,25 @@ function BusinessStatsCard({ business, period }: { business: Business; period: "
   if (isLoading) return <div className={`rounded-xl border ${colors.border} overflow-hidden animate-pulse h-40`} />;
   if (!stats) return null;
   const net = (stats as any).operationalNetProfit ?? (stats.totalRevenue - stats.totalExpenses);
+  const revenueDateBasis = stats.revenueDateBasis;
   return (
     <div className={`rounded-xl border ${colors.border} overflow-hidden`}>
       <div className={`px-4 py-2.5 ${colors.header}`}>
         <p className={`font-semibold text-sm ${colors.text}`}>{business.name}</p>
       </div>
       <div className="p-4 grid grid-cols-2 gap-3">
-        <div><p className="text-xs text-muted-foreground mb-0.5">Revenue</p><p className="font-bold text-foreground text-sm">{formatCurrency(stats.totalRevenue)}</p></div>
+        <div>
+          <p className="text-xs text-muted-foreground mb-0.5">Revenue</p>
+          <p className="font-bold text-foreground text-sm">{formatCurrency(stats.totalRevenue)}</p>
+          {revenueDateBasis && (
+            <Link
+              href={`/invoices?tab=audit&businessLine=${encodeURIComponent(business.slug)}`}
+              className="mt-1 block text-[10px] font-semibold text-primary hover:underline"
+            >
+              {revenueDateBasis.verifiedDeliveryCount} verified · {revenueDateBasis.issueDateFallbackCount} fallback
+            </Link>
+          )}
+        </div>
         <div><p className="text-xs text-muted-foreground mb-0.5">Expenses</p><p className="font-bold text-foreground text-sm">{formatCurrency((stats as any).businessExpenses ?? stats.totalExpenses)}</p></div>
         <div><p className="text-xs text-muted-foreground mb-0.5">Active Jobs</p><p className="font-bold text-foreground text-sm">{stats.activeJobs}</p></div>
         <div><p className="text-xs text-muted-foreground mb-0.5">Net Profit</p><p className={`font-bold text-sm ${net >= 0 ? "text-emerald-600" : "text-red-600"}`}>{formatCurrency(net)}</p></div>
@@ -637,6 +649,7 @@ function BusinessHealthCard({ stats, period, onPeriodChange, businessLine, busin
     pft: m.profit ?? (m.revenue - m.expenses),
     out: m.outstanding ?? 0,
   }));
+  const auditHref = `/invoices?tab=audit${businessLine ? `&businessLine=${encodeURIComponent(businessLine)}` : ""}`;
 
   return (
     <div>
@@ -670,6 +683,31 @@ function BusinessHealthCard({ stats, period, onPeriodChange, businessLine, busin
               </button>
             ))}
           </div>
+          {stats.revenueDateBasis && (
+            <div
+              data-testid="dashboard-revenue-date-basis"
+              className="flex flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50/60 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-800">
+                  Paid invoice revenue dates
+                </p>
+                <p className="mt-0.5 text-xs text-blue-900">
+                  {stats.revenueDateBasis.verifiedDeliveryCount} verified delivery
+                  {" · "}
+                  {stats.revenueDateBasis.issueDateFallbackCount} issue-date fallback
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate(auditHref)}
+                className="inline-flex items-center gap-1 self-start text-xs font-semibold text-primary hover:underline sm:self-auto"
+              >
+                Review revenue date audit
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Chart + Score */}
           <div className="flex gap-4 items-start">

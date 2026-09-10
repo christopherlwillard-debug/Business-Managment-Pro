@@ -1282,6 +1282,12 @@ export interface AppSettings {
   [key: string]: unknown;
 }
 
+export type DashboardStatsRevenueDateBasis = {
+  paidInvoiceCount: number;
+  verifiedDeliveryCount: number;
+  issueDateFallbackCount: number;
+};
+
 export type DashboardStatsMonthlyRevenueItem = {
   month: string;
   revenue: number;
@@ -1299,6 +1305,7 @@ export type DashboardStatsByBusinessLineItem = {
 
 export interface DashboardStats {
   totalRevenue: number;
+  revenueDateBasis: DashboardStatsRevenueDateBasis;
   pendingInvoices: number;
   activeJobs: number;
   totalExpenses: number;

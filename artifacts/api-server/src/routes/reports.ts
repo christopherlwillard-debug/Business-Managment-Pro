@@ -17,6 +17,7 @@ import {
   getCashReceiptAmount,
   getDashboardRevenueDate,
   isDashboardRevenueDateEstimated,
+  summarizeDashboardRevenueDateBasis,
   sumCashReceipts,
   sumDashboardRevenue,
 } from "../lib/cash-revenue.js";
@@ -260,6 +261,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // Dashboard operating revenue is attributed to the invoice's verified send period.
     // Payment status still controls recognition: unpaid sent/overdue invoices remain outstanding.
     const invoiceRevenue = sumDashboardRevenue(kpiInvoices, startDate, endDate);
+    const revenueDateBasis = summarizeDashboardRevenueDateBasis(kpiPaidInvoices, startDate, endDate);
     const otherIncomeTotal = kpiOtherIncome.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
     const totalRevenue = invoiceRevenue + otherIncomeTotal;
     const pendingInvoices = kpiInvoices.filter(i => i.status === "sent").reduce((s, i) => s + parseFloat(i.total ?? "0"), 0);
@@ -510,6 +512,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
 
     res.json({
       totalRevenue,
+      revenueDateBasis,
       pendingInvoices,
       activeJobs: kpiActiveJobs.length,
       totalExpenses,

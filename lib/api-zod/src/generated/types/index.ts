@@ -52,6 +52,7 @@ export * from "./dailyLog";
 export * from "./dashboardStats";
 export * from "./dashboardStatsByBusinessLineItem";
 export * from "./dashboardStatsMonthlyRevenueItem";
+export * from "./dashboardStatsRevenueDateBasis";
 export * from "./depreciationMethod";
 export * from "./draftLineItem";
 export * from "./errorEnvelope";

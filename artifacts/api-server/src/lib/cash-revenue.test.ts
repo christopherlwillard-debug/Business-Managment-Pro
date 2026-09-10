@@ -6,6 +6,7 @@ import {
   getCashReceiptAmount,
   hasVerifiedDashboardRevenueDate,
   isDashboardRevenueDateEstimated,
+  summarizeDashboardRevenueDateBasis,
   sumDashboardRevenue,
   sumCashReceipts,
   sumCashReceiptEvents,
@@ -71,6 +72,41 @@ describe("cash revenue reconciliation", () => {
     expect(hasVerifiedDashboardRevenueDate(invoice)).toBe(false);
     expect(isDashboardRevenueDateEstimated(invoice)).toBe(true);
     expect(getDashboardRevenueDate(invoice)).toBe(`${YEAR}-08-01`);
+  });
+
+  it("summarizes only paid invoices attributed to the selected Dashboard period", () => {
+    const invoices = [
+      {
+        status: "paid",
+        issueDate: `${YEAR}-01-10`,
+        verifiedSentAt: new Date(`${YEAR}-02-02T12:00:00.000Z`),
+      },
+      {
+        status: "paid",
+        issueDate: `${YEAR}-02-03`,
+        verifiedSentAt: null,
+      },
+      {
+        status: "paid",
+        issueDate: `${YEAR}-01-15`,
+        verifiedSentAt: new Date(`${YEAR}-01-15T12:00:00.000Z`),
+      },
+      {
+        status: "sent",
+        issueDate: `${YEAR}-02-04`,
+        verifiedSentAt: null,
+      },
+    ];
+
+    expect(summarizeDashboardRevenueDateBasis(
+      invoices,
+      `${YEAR}-02-01`,
+      `${YEAR}-02-28`,
+    )).toEqual({
+      paidInvoiceCount: 2,
+      verifiedDeliveryCount: 1,
+      issueDateFallbackCount: 1,
+    });
   });
 
   it("uses Square before the issue-date fallback and excludes unpaid invoices", () => {
