@@ -175,6 +175,8 @@ export function JobScheduleHistory({
       setPresenceByJob({});
       setPresenceLoading(false);
       setPresenceError(false);
+      setPresenceRefreshStale(false);
+      setPresenceLastRefreshedAt(null);
       return;
     }
     const controller = new AbortController();

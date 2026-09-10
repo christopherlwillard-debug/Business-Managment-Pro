@@ -79,6 +79,7 @@ const blockedWrites: string[] = [];
 let nextRecordId = 1;
 let failNextSave = false;
 let failNextPresenceRefresh = false;
+let failNextHistoryLoad = false;
 let remoteRefreshState: PresenceState | null = null;
 let remoteRefreshDate = ACTIVE_DATE;
 let presenceRefreshRequests = 0;
@@ -419,6 +420,15 @@ async function main() {
       }
 
       if (url.includes("/api/jobs/schedule-history?")) {
+        if (failNextHistoryLoad) {
+          failNextHistoryLoad = false;
+          void request.respond({
+            status: 503,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "simulated schedule history failure" }),
+          });
+          return;
+        }
         const historyRange = new URL(url).searchParams.get("from");
         void request.respond({
           status: 200,
@@ -793,6 +803,51 @@ async function main() {
     recordResult(
       "Schedule History establishes a new refresh age for the new range",
       secondRangeRefreshTimestamp !== "" && secondRangeRefreshTimestamp !== firstRangeRefreshTimestamp,
+    );
+    remoteRefreshState = "here";
+    await page.click('[data-testid="job-presence-refresh-retry"]');
+    await page.waitForFunction(
+      selector => !document.querySelector(selector),
+      { timeout: 15_000 },
+      '[data-testid="job-presence-refresh-stale"]',
+    );
+
+    remoteRefreshDate = DATES[0];
+    remoteRefreshState = "here";
+    failNextHistoryLoad = true;
+    await setDateInput(page, '[data-testid="schedule-history-from"]', DATES[0]);
+    await setDateInput(page, '[data-testid="schedule-history-to"]', DATES[2]);
+    await page.click('[data-testid="schedule-history-load"]');
+    await waitForText(page, "Could not load schedule history.");
+    await page.waitForFunction(
+      () =>
+        !document.querySelector('[data-testid="job-presence-refresh-stale"]') &&
+        !document.querySelector('[data-testid="job-presence-last-refreshed"]'),
+      { timeout: 15_000 },
+    );
+    recordResult(
+      "Failed Schedule History range clears the previous refresh age",
+      secondRangeRefreshTimestamp !== "" &&
+        await page.$('[data-testid="job-presence-refresh-stale"]') === null &&
+        await page.$('[data-testid="job-presence-last-refreshed"]') === null,
+    );
+
+    await page.click('[data-testid="schedule-history-load"]');
+    await waitForText(page, "Sep 1, 2026");
+    await page.waitForSelector(`[data-testid="job-presence-day-${DATES[0]}"]`, { timeout: 15_000 });
+    await waitForText(page, "Confirmed manually");
+    await new Promise(resolve => setTimeout(resolve, 25));
+    remoteRefreshState = "not_here";
+    failNextPresenceRefresh = true;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.waitForSelector('[data-testid="job-presence-refresh-stale"]', { timeout: 15_000 });
+    const recoveredRangeRefreshTimestamp = await page.$eval(
+      '[data-testid="job-presence-last-refreshed"] [data-last-refreshed-at]',
+      element => element.getAttribute("data-last-refreshed-at") ?? "",
+    );
+    recordResult(
+      "Successful Schedule History range establishes a new refresh age",
+      recoveredRangeRefreshTimestamp !== "" && recoveredRangeRefreshTimestamp !== secondRangeRefreshTimestamp,
     );
     remoteRefreshState = "here";
     await page.click('[data-testid="job-presence-refresh-retry"]');
