@@ -124,6 +124,7 @@ export default function Invoices() {
   const queryClient = useQueryClient();
   const { activeBusiness, businesses } = useBusiness();
   const [activeTab, setActiveTab] = useState<"all" | "tax" | "audit">("all");
+  const [exportingAudit, setExportingAudit] = useState(false);
   const [filterStatus, setFilterStatus] = useState<"active" | "all" | "approved" | "sent" | "partiallyPaid" | "overdue" | "paid">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -191,6 +192,35 @@ export default function Invoices() {
   const [sendingReminderId, setSendingReminderId] = useState<number | null>(null);
   const [issuingInvoiceId, setIssuingInvoiceId] = useState<number | null>(null);
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  async function handleExportRevenueDateAudit() {
+    setExportingAudit(true);
+    try {
+      const params = activeBusiness ? `?businessId=${activeBusiness.id}` : "";
+      const response = await fetch(`${BASE_URL}/api/reports/invoice-send-date-audit.csv${params}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to export revenue date audit");
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "revenue-date-audit.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({
+        title: "Unable to export revenue date audit",
+        description: "Try again after the audit records finish loading.",
+        variant: "destructive",
+      });
+    } finally {
+      setExportingAudit(false);
+    }
+  }
 
   async function handleGetPaymentLink(invoiceId: number, invoiceNumber: string) {
     setGeneratingLinkId(invoiceId);
@@ -460,6 +490,22 @@ export default function Invoices() {
               className="flex items-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download className="w-4 h-4 mr-2" /> Export CSV
+            </button>
+          )}
+          {activeTab === "audit" && (
+            <button
+              type="button"
+              onClick={() => void handleExportRevenueDateAudit()}
+              disabled={
+                exportingAudit
+                || invoiceSendDateAudit.isLoading
+                || invoiceSendDateAudit.isError
+                || !invoiceSendDateAudit.data?.estimatedSendDateInvoices.length
+              }
+              className="flex items-center px-4 py-2.5 rounded-xl font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              {exportingAudit ? "Exporting…" : "Export CSV"}
             </button>
           )}
           <button

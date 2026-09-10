@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, invoicesTable, invoiceCommunicationEventsTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable, growthFundDeploymentsTable, recurringExpensesTable, subPaymentRecordsTable } from "@workspace/db/schema";
 import { plaidConnectionsTable } from "@workspace/db";
@@ -26,6 +26,10 @@ import {
   OWNER_WITHDRAWAL_EXPENSE_CATEGORIES,
   isOwnerWithdrawalExpenseCategory,
 } from "../lib/owner-withdrawals.js";
+import {
+  buildInvoiceRevenueDateAuditCsv,
+  type InvoiceRevenueDateAuditRow,
+} from "../lib/invoice-revenue-date-audit.js";
 
 const router = Router();
 
@@ -46,14 +50,16 @@ const dashboardInvoiceSelection = {
   )`.as("verified_sent_at"),
 };
 
-router.get("/invoice-send-date-audit", sectionGuard("invoices"), async (req, res) => {
-  try {
-    const requestedScope = req.query.businessId != null || req.query.businessLine != null;
-    const scope = await requestedBusiness(req);
-    if (requestedScope && !scope) return res.status(400).json({ error: "Unknown business" });
+async function loadInvoiceSendDateAudit(req: Request, res: Response): Promise<InvoiceRevenueDateAuditRow[] | null> {
+  const requestedScope = req.query.businessId != null || req.query.businessLine != null;
+  const scope = await requestedBusiness(req);
+  if (requestedScope && !scope) {
+    res.status(400).json({ error: "Unknown business" });
+    return null;
+  }
 
-    const rows = await db
-      .select({
+  const rows = await db
+    .select({
         id: invoicesTable.id,
         invoiceNumber: invoicesTable.invoiceNumber,
         status: invoicesTable.status,
@@ -73,21 +79,27 @@ router.get("/invoice-send-date-audit", sectionGuard("invoices"), async (req, res
         eq(invoicesTable.status, "paid"),
         scope ? mutationBusinessPredicate(invoicesTable, scope) : undefined,
       ))
-      .orderBy(desc(invoicesTable.issueDate), desc(invoicesTable.id));
+    .orderBy(desc(invoicesTable.issueDate), desc(invoicesTable.id));
 
-    const estimatedSendDateInvoices = rows
-      .filter(isDashboardRevenueDateEstimated)
-      .map(invoice => ({
-        id: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
-        clientName: invoice.clientName,
-        jobTitle: invoice.jobTitle,
-        issueDate: invoice.issueDate,
-        dashboardRevenueDate: getDashboardRevenueDate(invoice),
-        amount: getCashReceiptAmount(invoice),
-        businessId: invoice.businessId,
-        businessLine: invoice.businessLine,
-      }));
+  return rows
+    .filter(isDashboardRevenueDateEstimated)
+    .map(invoice => ({
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      clientName: invoice.clientName,
+      jobTitle: invoice.jobTitle,
+      issueDate: invoice.issueDate,
+      dashboardRevenueDate: getDashboardRevenueDate(invoice),
+      amount: getCashReceiptAmount(invoice),
+      businessId: invoice.businessId,
+      businessLine: invoice.businessLine,
+    }));
+}
+
+router.get("/invoice-send-date-audit", sectionGuard("invoices"), async (req, res) => {
+  try {
+    const estimatedSendDateInvoices = await loadInvoiceSendDateAudit(req, res);
+    if (estimatedSendDateInvoices == null) return;
 
     res.json({
       estimatedSendDateInvoices,
@@ -96,6 +108,20 @@ router.get("/invoice-send-date-audit", sectionGuard("invoices"), async (req, res
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to get invoice send-date audit" });
+  }
+});
+
+router.get("/invoice-send-date-audit.csv", sectionGuard("invoices"), async (req, res) => {
+  try {
+    const estimatedSendDateInvoices = await loadInvoiceSendDateAudit(req, res);
+    if (estimatedSendDateInvoices == null) return;
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="revenue-date-audit.csv"');
+    res.send(buildInvoiceRevenueDateAuditCsv(estimatedSendDateInvoices));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to export invoice send-date audit" });
   }
 });
 
