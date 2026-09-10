@@ -333,12 +333,14 @@ describe("Jobs payment summary refresh", () => {
 
   it("ignores a refreshed response for a job that is no longer selected", () => {
     const selectedProfit: PayrollProfitSnapshot = {
+      responseVersion: 4,
       subLaborCost: 275,
       estimatedFuelCost: 35,
       growthReservePct: 5,
       netProfit: 980,
     };
     const staleProfit: PayrollProfitSnapshot = {
+      responseVersion: 4,
       subLaborCost: 999,
       estimatedFuelCost: 88,
       growthReservePct: 10,
