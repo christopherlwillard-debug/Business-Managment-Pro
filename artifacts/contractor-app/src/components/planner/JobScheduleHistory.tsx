@@ -65,6 +65,8 @@ export function JobScheduleHistory({
   const [presenceByJob, setPresenceByJob] = useState<Record<number, JobPresenceSnapshot>>({});
   const [presenceLoading, setPresenceLoading] = useState(false);
   const [presenceError, setPresenceError] = useState(false);
+  const [presenceRefreshStale, setPresenceRefreshStale] = useState(false);
+  const [presenceRetrying, setPresenceRetrying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [rangeError, setRangeError] = useState<string | null>(null);
@@ -94,6 +96,7 @@ export function JobScheduleHistory({
     if (!response.ok) throw new Error("Production presence request failed");
     const data = await response.json() as { jobs: JobPresenceSnapshot[] };
     if (signal.aborted) return;
+    setPresenceRefreshStale(false);
     setPresenceByJob(current => {
       const next = { ...current };
       for (const snapshot of data.jobs) {
@@ -102,6 +105,26 @@ export function JobScheduleHistory({
       return next;
     });
   }, [jobs]);
+
+  const refreshPresenceInBackground = useCallback(async (signal: AbortSignal) => {
+    try {
+      await refreshPresence(signal);
+    } catch {
+      if (!signal.aborted) setPresenceRefreshStale(true);
+    }
+  }, [refreshPresence]);
+
+  const retryPresenceRefresh = useCallback(async () => {
+    const controller = new AbortController();
+    setPresenceRetrying(true);
+    try {
+      await refreshPresence(controller.signal);
+    } catch {
+      if (!controller.signal.aborted) setPresenceRefreshStale(true);
+    } finally {
+      setPresenceRetrying(false);
+    }
+  }, [refreshPresence]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -147,6 +170,7 @@ export function JobScheduleHistory({
     const controller = new AbortController();
     setPresenceLoading(true);
     setPresenceError(false);
+    setPresenceRefreshStale(false);
     refreshPresence(controller.signal)
       .catch(() => {
         if (!controller.signal.aborted) {
@@ -174,19 +198,19 @@ export function JobScheduleHistory({
         return;
       }
       if (interval === null) interval = window.setInterval(() => {
-        void refreshPresence(controller.signal).catch(() => undefined);
+        void refreshPresenceInBackground(controller.signal);
       }, 30_000);
-      void refreshPresence(controller.signal).catch(() => undefined);
+      void refreshPresenceInBackground(controller.signal);
     };
     const refreshOnFocus = () => {
-      if (document.visibilityState !== "hidden") void refreshPresence(controller.signal).catch(() => undefined);
+      if (document.visibilityState !== "hidden") void refreshPresenceInBackground(controller.signal);
     };
 
     window.addEventListener("focus", refreshOnFocus);
     document.addEventListener("visibilitychange", refreshOnVisibility);
     if (document.visibilityState !== "hidden") {
       interval = window.setInterval(() => {
-        void refreshPresence(controller.signal).catch(() => undefined);
+        void refreshPresenceInBackground(controller.signal);
       }, 30_000);
     }
     return () => {
@@ -195,7 +219,7 @@ export function JobScheduleHistory({
       document.removeEventListener("visibilitychange", refreshOnVisibility);
       if (interval !== null) window.clearInterval(interval);
     };
-  }, [jobs.length, refreshPresence]);
+  }, [jobs.length, refreshPresenceInBackground]);
 
   const updatePresenceSnapshot = useCallback((snapshot: JobPresenceSnapshot) => {
     setPresenceByJob(current => ({ ...current, [snapshot.jobId]: snapshot }));
@@ -311,6 +335,27 @@ export function JobScheduleHistory({
       </div>
 
       <div className="px-4 py-5 sm:px-7">
+        {presenceRefreshStale && (
+          <div
+            className="mb-4 flex flex-col gap-3 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-950 sm:flex-row sm:items-center sm:justify-between"
+            role="alert"
+            data-testid="job-presence-refresh-stale"
+          >
+            <div>
+              <p className="font-bold">Historical presence may be out of date.</p>
+              <p className="mt-0.5 text-xs text-orange-900/75">The last successful snapshot is still shown.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void retryPresenceRefresh()}
+              disabled={presenceRetrying}
+              data-testid="job-presence-refresh-retry"
+              className="rounded-xl border border-orange-300 bg-white px-3 py-2 text-xs font-bold text-orange-900 hover:bg-orange-100 disabled:cursor-wait disabled:opacity-60"
+            >
+              {presenceRetrying ? "Retrying…" : "Retry presence"}
+            </button>
+          </div>
+        )}
         {error ? (
           <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
             <span>Could not load schedule history.</span>

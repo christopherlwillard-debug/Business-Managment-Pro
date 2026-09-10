@@ -77,6 +77,7 @@ const allowedWrites: { method: string; url: string; body: Record<string, unknown
 const blockedWrites: string[] = [];
 let nextRecordId = 1;
 let failNextSave = false;
+let failNextPresenceRefresh = false;
 let remoteRefreshState: PresenceState | null = null;
 let remoteRefreshDate = ACTIVE_DATE;
 let presenceRefreshRequests = 0;
@@ -419,6 +420,16 @@ async function main() {
           .map(value => Number(value))
           .filter(Number.isInteger);
         const isActiveScheduleBatch = requestedIds.length > 1;
+        if (!isActiveScheduleBatch && failNextPresenceRefresh) {
+          failNextPresenceRefresh = false;
+          presenceRefreshRequests += 1;
+          void request.respond({
+            status: 503,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "simulated presence refresh failure" }),
+          });
+          return;
+        }
         void request.respond({
           status: 200,
           contentType: "application/json",
@@ -516,8 +527,37 @@ async function main() {
         await page.$eval(dayOne, element => element.textContent?.includes("Not here") ?? false),
     );
 
-    const historyRefreshCountBeforeHidden = presenceRefreshRequests;
+    const historyRefreshCountBeforeFailure = presenceRefreshRequests;
+    failNextPresenceRefresh = true;
     remoteRefreshState = "here";
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.waitForSelector('[data-testid="job-presence-refresh-stale"]', { timeout: 15_000 });
+    recordResult(
+      "Schedule History shows a stale warning after refresh failure",
+      presenceRefreshRequests > historyRefreshCountBeforeFailure &&
+        await page.$eval(
+          dayOne,
+          element => element.querySelector('button[data-state="not_here"]')?.className.includes("bg-orange-600") ?? false,
+        ) &&
+        await page.$eval(
+          '[data-testid="job-presence-refresh-stale"]',
+          element => element.textContent?.includes("last successful snapshot is still shown") ?? false,
+        ),
+    );
+
+    await page.click('[data-testid="job-presence-refresh-retry"]');
+    await page.waitForFunction(
+      selector => !document.querySelector(selector),
+      { timeout: 15_000 },
+      '[data-testid="job-presence-refresh-stale"]',
+    );
+    recordResult(
+      "Schedule History retry clears the stale warning",
+      await page.$eval(dayOne, element => element.querySelector('button[data-state="here"]')?.className.includes("bg-emerald-600") ?? false),
+    );
+
+    const historyRefreshCountBeforeHidden = presenceRefreshRequests;
+    remoteRefreshState = "not_here";
     await page.evaluate(() => {
       Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
       document.dispatchEvent(new Event("visibilitychange"));
@@ -527,7 +567,7 @@ async function main() {
     recordResult(
       "Hidden Schedule History skips presence refreshes",
       presenceRefreshRequests === historyRefreshCountBeforeHidden &&
-        await page.$eval(dayOne, element => element.querySelector('button[data-state="not_here"]')?.className.includes("bg-orange-600") ?? false),
+        await page.$eval(dayOne, element => element.querySelector('button[data-state="here"]')?.className.includes("bg-emerald-600") ?? false),
     );
 
     const historyRefreshCountBeforeVisible = presenceRefreshRequests;
