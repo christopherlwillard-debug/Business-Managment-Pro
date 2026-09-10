@@ -1,10 +1,11 @@
-/* Authenticated browser regression check for Schedule History daily presence.
+/* Authenticated browser regression check for planner and Schedule History daily presence.
  *
  * Run:
  *   pnpm --filter @workspace/api-server run verify:production-presence
  *
- * Schedule History and presence responses are served as read-only in-memory
- * fixtures. The only browser write allowed is the presence PUT under test.
+ * Active Schedule, Schedule History, and presence responses are served as
+ * read-only in-memory fixtures. The only browser write allowed is the
+ * presence PUT under test.
  */
 import fs from "node:fs";
 import type { HTTPRequest, Page } from "puppeteer";
@@ -15,6 +16,9 @@ const BASE = process.env.BUILDPRO_E2E_BASE_URL ?? "http://localhost:80";
 const SHOTS = "/tmp/e2e-production-presence";
 const JOB_ID = 9201;
 const JOB_TITLE = "Production Presence Browser Fixture";
+const CHECKLIST_ONLY_JOB_ID = 9202;
+const CHECKLIST_ONLY_JOB_TITLE = "Checklist-only Presence Browser Fixture";
+const CHECKLIST_ONLY_ENTRY_ID = 92021;
 const DATES = ["2026-09-01", "2026-09-02", "2026-09-03"];
 const ACTIVE_DATE = (() => {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -138,12 +142,33 @@ function activeScheduleFixture() {
   return {
     from: ACTIVE_DATE,
     to: ACTIVE_DATE,
-    jobs: [{
-      ...job,
-      status: "in_progress",
-      startDate: ACTIVE_DATE,
-      endDate: ACTIVE_DATE,
-    }],
+    jobs: [
+      {
+        ...job,
+        status: "in_progress",
+        startDate: ACTIVE_DATE,
+        endDate: ACTIVE_DATE,
+      },
+      {
+        ...job,
+        id: CHECKLIST_ONLY_JOB_ID,
+        title: CHECKLIST_ONLY_JOB_TITLE,
+        startDate: null,
+        endDate: null,
+        daysOnJob: 0,
+        checklistItems: [{
+          id: CHECKLIST_ONLY_ENTRY_ID,
+          title: "Checklist-only scheduled work",
+          completed: false,
+          skipped: false,
+          scheduledDate: ACTIVE_DATE,
+          assignedSubcontractorId: null,
+          assignedSubcontractorName: null,
+          sectionName: "Checklist work",
+        }],
+        unscheduledChecklistItems: [],
+      },
+    ],
   };
 }
 
@@ -174,6 +199,39 @@ async function waitForText(page: Page, text: string) {
     { timeout: 15_000 },
     text,
   );
+}
+
+async function verifyActivePlannerView(page: Page, view: "week" | "month" | "agenda", label: string) {
+  await page.click(`[data-testid="planner-view-${view}"]`);
+  await page.waitForFunction(
+    expectedView => document.querySelector('[data-testid="jobs-planner"]')?.getAttribute("data-planner-view") === expectedView,
+    { timeout: 15_000 },
+    view,
+  );
+
+  const presenceToggle = `[data-testid="job-presence-toggle-${JOB_ID}"]`;
+  const checklistToggle = `[data-testid="job-presence-toggle-${CHECKLIST_ONLY_JOB_ID}"]`;
+  const checklistEntry = `[data-planner-entry-key="item-${CHECKLIST_ONLY_ENTRY_ID}"]`;
+  await page.waitForSelector(presenceToggle, { timeout: 20_000 });
+  await waitForText(page, CHECKLIST_ONLY_JOB_TITLE);
+  if (view === "week") await page.waitForSelector(checklistEntry, { timeout: 20_000 });
+  recordResult(
+    `${label} shows Presence for a job entry only`,
+    await page.$(presenceToggle) !== null &&
+      await page.$(checklistToggle) === null &&
+      (view !== "week" || await page.$(checklistEntry) !== null),
+  );
+
+  await page.click(presenceToggle);
+  const panel = `[data-testid="job-presence-panel-${JOB_ID}"]`;
+  await page.waitForSelector(panel, { timeout: 20_000 });
+  recordResult(
+    `${label} opens the shared presence panel`,
+    await page.$(panel) !== null &&
+      await page.$eval(panel, element => element.textContent?.includes("Daily production presence") ?? false),
+  );
+  await page.click(presenceToggle);
+  await page.waitForSelector(panel, { hidden: true, timeout: 20_000 });
 }
 
 async function main() {
@@ -259,23 +317,13 @@ async function main() {
     if (!sessionId) throw new Error("Development login did not create a session cookie");
 
     await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
-    const activePresenceToggle = `[data-testid="job-presence-toggle-${JOB_ID}"]`;
-    await page.waitForSelector(activePresenceToggle, { timeout: 20_000 });
-    recordResult(
-      "Active Schedule exposes the daily presence entry point",
-      await page.$(activePresenceToggle) !== null,
-    );
-    await page.click(activePresenceToggle);
-    await page.waitForSelector(`[data-testid="job-presence-panel-${JOB_ID}"]`, { timeout: 20_000 });
-    recordResult(
-      "Active Schedule opens the shared presence panel",
-      await page.$(`[data-testid="job-presence-panel-${JOB_ID}"]`) !== null &&
-        await page.$eval(
-          `[data-testid="job-presence-panel-${JOB_ID}"]`,
-          element => element.textContent?.includes("Daily production presence") ?? false,
-        ),
-    );
-    await page.click(activePresenceToggle);
+    await verifyActivePlannerView(page, "week", "Active Schedule week view");
+    await verifyActivePlannerView(page, "agenda", "Active Schedule agenda view");
+    await verifyActivePlannerView(page, "month", "Active Schedule month view");
+
+    await page.setViewport({ width: 390, height: 844 });
+    await verifyActivePlannerView(page, "agenda", "Narrow Active Schedule agenda view");
+    await page.setViewport({ width: 1440, height: 1200 });
 
     await page.waitForSelector('[data-testid="schedule-history-tab"]', { timeout: 20_000 });
     await page.click('[data-testid="schedule-history-tab"]');
