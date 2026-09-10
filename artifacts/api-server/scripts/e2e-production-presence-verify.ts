@@ -83,6 +83,7 @@ let failNextHistoryLoad = false;
 let failHistoryRange: string | null = null;
 let delayNextHistoryRange: string | null = null;
 let failDelayedHistoryRange = false;
+let historyRangeRequests = 0;
 let remoteRefreshState: PresenceState | null = null;
 let remoteRefreshDate = ACTIVE_DATE;
 let presenceRefreshRequests = 0;
@@ -423,6 +424,7 @@ async function main() {
       }
 
       if (url.includes("/api/jobs/schedule-history?")) {
+        historyRangeRequests += 1;
         const historyRange = new URL(url).searchParams.get("from");
         if (failNextHistoryLoad) {
           failNextHistoryLoad = false;
@@ -1035,11 +1037,19 @@ async function main() {
         ),
     );
     delayNextHistoryRange = DATES[0];
-    await page.click('[data-testid="schedule-history-error"] button');
+    const retryHistoryRequestCount = historyRangeRequests;
+    await page.$eval(
+      '[data-testid="schedule-history-error"] button',
+      element => {
+        (element as HTMLButtonElement).click();
+        (element as HTMLButtonElement).click();
+      },
+    );
     await page.waitForSelector('[data-testid="schedule-history-loading-range"]', { timeout: 15_000 });
     recordResult(
-      "Schedule History retry shows loading status for the applied range",
+      "Schedule History retry blocks competing loads and shows the applied range",
       await page.$('[data-testid="schedule-history-error"]') === null &&
+        historyRangeRequests - retryHistoryRequestCount === 1 &&
         await page.$eval(
           '[data-testid="schedule-history-loading-range"]',
           element => element.textContent?.includes("Sep 1, 2026") === true &&
@@ -1049,6 +1059,31 @@ async function main() {
     await waitForText(page, "Sep 1, 2026");
     await page.waitForSelector(`[data-testid="job-presence-day-${DATES[0]}"]`, { timeout: 15_000 });
     await waitForText(page, "Confirmed manually");
+
+    failHistoryRange = DATES[0];
+    await page.click('[data-testid="schedule-history-load"]');
+    await page.waitForSelector('[data-testid="schedule-history-error"]', { timeout: 15_000 });
+    delayNextHistoryRange = DATES[0];
+    await page.click('[data-testid="schedule-history-error"] button');
+    await page.waitForSelector('[data-testid="schedule-history-loading-range"]', { timeout: 15_000 });
+    await setDateInput(page, '[data-testid="schedule-history-from"]', ALTERNATE_DATES[0]);
+    await setDateInput(page, '[data-testid="schedule-history-to"]', ALTERNATE_DATES[2]);
+    await page.click('[data-testid="schedule-history-load"]');
+    await waitForText(page, "Jul 1, 2026");
+    await page.waitForSelector(`[data-testid="job-presence-day-${ALTERNATE_DATES[0]}"]`, { timeout: 15_000 });
+    await new Promise(resolve => setTimeout(resolve, 400));
+    recordResult(
+      "History retry cannot overwrite a newer applied range",
+      await page.$(`[data-testid="job-presence-day-${ALTERNATE_DATES[0]}"]`) !== null &&
+        await page.$(`[data-testid="job-presence-day-${DATES[0]}"]`) === null &&
+        await page.$('[data-testid="schedule-history-error"]') === null &&
+        await page.$('[data-testid="schedule-history-loading-range"]') === null &&
+        await page.$eval(
+          '[data-testid="schedule-history-applied-range"]',
+          element => element.textContent?.includes("Jul 1, 2026") === true &&
+            element.textContent?.includes("Jul 3, 2026") === true,
+        ),
+    );
 
     await page.screenshot({ path: `${SHOTS}/02-presence-error.png`, fullPage: true });
   } finally {

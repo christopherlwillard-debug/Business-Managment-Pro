@@ -78,8 +78,10 @@ export function JobScheduleHistory({
   const [presenceRetrying, setPresenceRetrying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [historyRetrying, setHistoryRetrying] = useState(false);
   const [rangeError, setRangeError] = useState<string | null>(null);
   const presenceBusyRef = useRef(new Set<number>());
+  const historyRetryingRef = useRef(false);
 
   const updatePresenceBusy = useCallback((jobId: number, isBusy: boolean) => {
     const next = new Set(presenceBusyRef.current);
@@ -163,7 +165,11 @@ export function JobScheduleHistory({
         }
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          historyRetryingRef.current = false;
+          setHistoryRetrying(false);
+        }
       });
 
     return () => controller.abort();
@@ -407,7 +413,20 @@ export function JobScheduleHistory({
             data-testid="schedule-history-error"
           >
             <span>Could not load schedule history.</span>
-            <button type="button" onClick={() => setAppliedRange(range => ({ ...range }))} className="font-bold underline">Retry</button>
+            <button
+              type="button"
+              disabled={historyRetrying || loading}
+              aria-busy={historyRetrying || loading}
+              onClick={() => {
+                if (historyRetryingRef.current || historyRetrying || loading) return;
+                historyRetryingRef.current = true;
+                setHistoryRetrying(true);
+                setAppliedRange(range => ({ ...range }));
+              }}
+              className="font-bold underline disabled:cursor-wait disabled:opacity-60"
+            >
+              {historyRetrying || loading ? "Retrying…" : "Retry"}
+            </button>
           </div>
         ) : loading ? (
           <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-dashed border-border bg-muted/10 text-sm text-muted-foreground">
