@@ -248,6 +248,7 @@ export function JobScheduleHistory({
 
   function submitRange(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (loading && from === appliedRange.from && to === appliedRange.to) return;
     if (!from || !to || from > to) {
       setRangeError("Choose a valid start and end date.");
       return;
@@ -259,11 +260,15 @@ export function JobScheduleHistory({
   function applyPreset(days: number) {
     const nextTo = addScheduleDays(today, -1);
     const nextFrom = addScheduleDays(nextTo, -(days - 1));
+    if (loading && nextFrom === appliedRange.from && nextTo === appliedRange.to) return;
     setFrom(nextFrom);
     setTo(nextTo);
     setRangeError(null);
     setAppliedRange({ from: nextFrom, to: nextTo });
   }
+
+  const duplicateRangeSubmissionBlocked =
+    loading && from === appliedRange.from && to === appliedRange.to;
 
   return (
     <section
@@ -338,8 +343,14 @@ export function JobScheduleHistory({
             <button type="button" onClick={() => applyPreset(365)} className="rounded-xl border border-border px-3 py-2.5 text-xs font-bold text-muted-foreground hover:bg-background hover:text-foreground">
               Last year
             </button>
-            <button type="submit" data-testid="schedule-history-load" className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800">
-              Load history
+            <button
+              type="submit"
+              disabled={duplicateRangeSubmissionBlocked}
+              aria-busy={duplicateRangeSubmissionBlocked}
+              data-testid="schedule-history-load"
+              className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60"
+            >
+              {duplicateRangeSubmissionBlocked ? "Loading history…" : "Load history"}
             </button>
           </div>
         </form>

@@ -883,8 +883,21 @@ async function main() {
     await setDateInput(page, '[data-testid="schedule-history-from"]', ALTERNATE_DATES[0]);
     await setDateInput(page, '[data-testid="schedule-history-to"]', ALTERNATE_DATES[2]);
     await page.click('[data-testid="schedule-history-load"]');
+    await page.waitForSelector('[data-testid="schedule-history-loading-range"]', { timeout: 15_000 });
+    const duplicateRangeButtonDisabled = await page.$eval(
+      '[data-testid="schedule-history-load"]',
+      element => (element as HTMLButtonElement).disabled,
+    );
     await setDateInput(page, '[data-testid="schedule-history-from"]', DATES[0]);
     await setDateInput(page, '[data-testid="schedule-history-to"]', DATES[2]);
+    const newerRangeButtonEnabled = await page.$eval(
+      '[data-testid="schedule-history-load"]',
+      element => !(element as HTMLButtonElement).disabled,
+    );
+    recordResult(
+      "Schedule History blocks duplicate loads but allows a newer range",
+      duplicateRangeButtonDisabled && newerRangeButtonEnabled,
+    );
     delayNextHistoryRange = DATES[0];
     await page.click('[data-testid="schedule-history-load"]');
     await page.waitForSelector('[data-testid="schedule-history-loading-range"]', { timeout: 15_000 });
