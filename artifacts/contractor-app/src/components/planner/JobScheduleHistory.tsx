@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, CalendarDays, CheckCircle2, Clock3, History, Loader2 } from "lucide-react";
 import type { ScheduleJob } from "@/pages/Jobs";
 import { localDateString } from "@/lib/utils";
@@ -68,6 +68,40 @@ export function JobScheduleHistory({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [rangeError, setRangeError] = useState<string | null>(null);
+  const presenceBusyRef = useRef(new Set<number>());
+
+  const updatePresenceBusy = useCallback((jobId: number, isBusy: boolean) => {
+    const next = new Set(presenceBusyRef.current);
+    if (isBusy) next.add(jobId);
+    else next.delete(jobId);
+    presenceBusyRef.current = next;
+  }, []);
+
+  useEffect(() => {
+    const activeJobIds = new Set(jobs.map(job => job.id));
+    presenceBusyRef.current = new Set(
+      [...presenceBusyRef.current].filter(jobId => activeJobIds.has(jobId)),
+    );
+  }, [jobs]);
+
+  const refreshPresence = useCallback(async (signal: AbortSignal) => {
+    const jobIds = jobs.map(job => job.id);
+    if (jobIds.length === 0 || jobIds.every(jobId => presenceBusyRef.current.has(jobId))) return;
+    const response = await fetch(`${BASE}/api/jobs/production-presence?jobIds=${jobIds.join(",")}`, {
+      credentials: "include",
+      signal,
+    });
+    if (!response.ok) throw new Error("Production presence request failed");
+    const data = await response.json() as { jobs: JobPresenceSnapshot[] };
+    if (signal.aborted) return;
+    setPresenceByJob(current => {
+      const next = { ...current };
+      for (const snapshot of data.jobs) {
+        if (!presenceBusyRef.current.has(snapshot.jobId)) next[snapshot.jobId] = snapshot;
+      }
+      return next;
+    });
+  }, [jobs]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -113,20 +147,7 @@ export function JobScheduleHistory({
     const controller = new AbortController();
     setPresenceLoading(true);
     setPresenceError(false);
-    fetch(`${BASE}/api/jobs/production-presence?jobIds=${jobIds.join(",")}`, {
-      credentials: "include",
-      signal: controller.signal,
-    })
-      .then(response =>
-        response.ok
-          ? response.json() as Promise<{ jobs: JobPresenceSnapshot[] }>
-          : Promise.reject(new Error("Production presence request failed"))
-      )
-      .then(data => {
-        const next: Record<number, JobPresenceSnapshot> = {};
-        for (const snapshot of data.jobs) next[snapshot.jobId] = snapshot;
-        setPresenceByJob(next);
-      })
+    refreshPresence(controller.signal)
       .catch(() => {
         if (!controller.signal.aborted) {
           setPresenceByJob({});
@@ -137,7 +158,48 @@ export function JobScheduleHistory({
         if (!controller.signal.aborted) setPresenceLoading(false);
       });
     return () => controller.abort();
-  }, [jobs]);
+  }, [jobs, refreshPresence]);
+
+  useEffect(() => {
+    if (jobs.length === 0) return;
+    const controller = new AbortController();
+    let interval: number | null = null;
+
+    const refreshOnVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        if (interval !== null) {
+          window.clearInterval(interval);
+          interval = null;
+        }
+        return;
+      }
+      if (interval === null) interval = window.setInterval(() => {
+        void refreshPresence(controller.signal).catch(() => undefined);
+      }, 30_000);
+      void refreshPresence(controller.signal).catch(() => undefined);
+    };
+    const refreshOnFocus = () => {
+      if (document.visibilityState !== "hidden") void refreshPresence(controller.signal).catch(() => undefined);
+    };
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnVisibility);
+    if (document.visibilityState !== "hidden") {
+      interval = window.setInterval(() => {
+        void refreshPresence(controller.signal).catch(() => undefined);
+      }, 30_000);
+    }
+    return () => {
+      controller.abort();
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
+      if (interval !== null) window.clearInterval(interval);
+    };
+  }, [jobs.length, refreshPresence]);
+
+  const updatePresenceSnapshot = useCallback((snapshot: JobPresenceSnapshot) => {
+    setPresenceByJob(current => ({ ...current, [snapshot.jobId]: snapshot }));
+  }, []);
 
   const sortedJobs = useMemo(
     () => [...jobs].sort((a, b) =>
@@ -312,7 +374,8 @@ export function JobScheduleHistory({
                      snapshot={presenceByJob[job.id] ?? null}
                      loading={presenceLoading}
                      error={presenceError}
-                     onSnapshotChange={snapshot => setPresenceByJob(current => ({ ...current, [job.id]: snapshot }))}
+                      onSnapshotChange={updatePresenceSnapshot}
+                      onInteractionStateChange={isBusy => updatePresenceBusy(job.id, isBusy)}
                    />
                 </article>
               );

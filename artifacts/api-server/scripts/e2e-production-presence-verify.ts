@@ -78,6 +78,7 @@ const blockedWrites: string[] = [];
 let nextRecordId = 1;
 let failNextSave = false;
 let remoteRefreshState: PresenceState | null = null;
+let remoteRefreshDate = ACTIVE_DATE;
 let presenceRefreshRequests = 0;
 
 const results: { name: string; pass: boolean; detail?: string }[] = [];
@@ -179,11 +180,11 @@ function activeScheduleFixture() {
   };
 }
 
-function activeStatusSnapshot(jobId: number, state: PresenceState) {
+function activeStatusSnapshot(jobId: number, state: PresenceState, date = ACTIVE_DATE) {
   const record: PresenceRecord = {
     id: 10_000 + jobId,
     jobId,
-    date: ACTIVE_DATE,
+    date,
     state,
     notHereReason: state === "not_here" ? "weather" : null,
     notes: state === "not_here" ? "Weather stopped production" : null,
@@ -201,8 +202,8 @@ function activeStatusSnapshot(jobId: number, state: PresenceState) {
     records: state === "unrecorded" ? [] : [record],
     timing: {
       expectedDurationDays: 3,
-      actualProductionStartDate: state === "here" ? ACTIVE_DATE : null,
-      lastWorkDate: state === "here" ? ACTIVE_DATE : null,
+      actualProductionStartDate: state === "here" ? date : null,
+      lastWorkDate: state === "here" ? date : null,
       calendarSpanDays: state === "here" ? 1 : null,
       actualProductionDays: state === "here" ? 1 : 0,
       pausedNotHereDays: state === "not_here" ? 1 : 0,
@@ -428,7 +429,7 @@ async function main() {
                 jobId === JOB_ID ? "here" : jobId === NOT_HERE_JOB_ID ? "not_here" : "unrecorded",
               ))
               : [remoteRefreshState && requestedIds[0] === JOB_ID
-                ? activeStatusSnapshot(JOB_ID, remoteRefreshState)
+                ? activeStatusSnapshot(JOB_ID, remoteRefreshState, remoteRefreshDate)
                 : snapshot()],
           }),
         });
@@ -504,6 +505,39 @@ async function main() {
     await page.screenshot({ path: `${SHOTS}/01-history-presence.png`, fullPage: true });
 
     const dayOne = `[data-testid="job-presence-day-${DATES[0]}"]`;
+    remoteRefreshDate = DATES[0];
+    remoteRefreshState = "not_here";
+    const historyRefreshCountBeforeFocus = presenceRefreshRequests;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await waitForText(page, "Weather stopped production");
+    recordResult(
+      "Schedule History presence panel refreshes after window focus",
+      presenceRefreshRequests > historyRefreshCountBeforeFocus &&
+        await page.$eval(dayOne, element => element.textContent?.includes("Not here") ?? false),
+    );
+
+    await page.click(`${dayOne} button[data-state="not_here"]`);
+    await page.click('[data-testid="job-presence-notes"]');
+    await page.keyboard.down("Control");
+    await page.keyboard.press("A");
+    await page.keyboard.up("Control");
+    await page.type('[data-testid="job-presence-notes"]', "History local draft");
+    const historyRefreshCountBeforeEdit = presenceRefreshRequests;
+    remoteRefreshState = "here";
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await new Promise(resolve => setTimeout(resolve, 250));
+    recordResult(
+      "Schedule History refresh preserves a local edit",
+      presenceRefreshRequests === historyRefreshCountBeforeEdit &&
+        await page.$eval(
+          '[data-testid="job-presence-notes"]',
+          element => (element as HTMLInputElement).value === "History local draft",
+        ),
+    );
+    await page.click('[aria-label="Close not-here editor"]');
+    remoteRefreshState = null;
+    remoteRefreshDate = ACTIVE_DATE;
+
     await page.click(`${dayOne} button[data-state="here"]`);
     await waitForText(page, "1 production days");
     recordResult(
