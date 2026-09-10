@@ -77,6 +77,8 @@ const allowedWrites: { method: string; url: string; body: Record<string, unknown
 const blockedWrites: string[] = [];
 let nextRecordId = 1;
 let failNextSave = false;
+let remoteRefreshState: PresenceState | null = null;
+let presenceRefreshRequests = 0;
 
 const results: { name: string; pass: boolean; detail?: string }[] = [];
 
@@ -250,6 +252,48 @@ async function clickVisible(page: Page, selector: string) {
   throw new Error(`No visible element found for ${selector}`);
 }
 
+async function verifyOpenPanelRefresh(page: Page) {
+  const presenceToggle = `[data-testid="job-presence-toggle-${JOB_ID}"]`;
+  const panel = `[data-testid="job-presence-panel-${JOB_ID}"]`;
+  const day = `[data-testid="job-presence-day-${ACTIVE_DATE}"]`;
+  const notes = '[data-testid="job-presence-notes"]';
+
+  await clickVisible(page, presenceToggle);
+  await page.waitForSelector(panel, { timeout: 20_000 });
+
+  remoteRefreshState = "not_here";
+  const refreshCountBeforeFocus = presenceRefreshRequests;
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await waitForText(page, "Weather stopped production");
+  recordResult(
+    "Open presence panel refreshes after window focus",
+    presenceRefreshRequests > refreshCountBeforeFocus &&
+      await page.$eval(day, element => element.textContent?.includes("Not here") ?? false),
+  );
+
+  await page.click(`${day} button[data-state="not_here"]`);
+  await page.click(notes);
+  await page.keyboard.down("Control");
+  await page.keyboard.press("A");
+  await page.keyboard.up("Control");
+  await page.type(notes, "Local draft");
+
+  const refreshCountBeforeEditFocus = presenceRefreshRequests;
+  remoteRefreshState = "here";
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await new Promise(resolve => setTimeout(resolve, 250));
+  recordResult(
+    "Presence refresh pauses while a local edit is in progress",
+    presenceRefreshRequests === refreshCountBeforeEditFocus &&
+      await page.$eval(notes, element => (element as HTMLInputElement).value === "Local draft"),
+  );
+
+  await page.click('[aria-label="Close not-here editor"]');
+  await clickVisible(page, presenceToggle);
+  await page.waitForSelector(panel, { hidden: true, timeout: 20_000 });
+  remoteRefreshState = null;
+}
+
 async function verifyActivePlannerView(page: Page, view: "week" | "month" | "agenda", label: string) {
   await page.click(`[data-testid="planner-view-${view}"]`);
   await page.waitForFunction(
@@ -354,9 +398,12 @@ async function main() {
                 jobId,
                 jobId === JOB_ID ? "here" : jobId === NOT_HERE_JOB_ID ? "not_here" : "unrecorded",
               ))
-              : [snapshot()],
+              : [remoteRefreshState && requestedIds[0] === JOB_ID
+                ? activeStatusSnapshot(JOB_ID, remoteRefreshState)
+                : snapshot()],
           }),
         });
+        if (!isActiveScheduleBatch) presenceRefreshRequests += 1;
         return;
       }
 
@@ -405,6 +452,7 @@ async function main() {
 
     await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
     await verifyActivePlannerView(page, "week", "Active Schedule week view");
+    await verifyOpenPanelRefresh(page);
     await verifyActivePlannerView(page, "agenda", "Active Schedule agenda view");
     await verifyActivePlannerView(page, "month", "Active Schedule month view");
 

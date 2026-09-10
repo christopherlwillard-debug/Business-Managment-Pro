@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck2, Check, CircleHelp, Loader2, Save, X } from "lucide-react";
 import type { ScheduleJob } from "@/pages/Jobs";
 
@@ -95,12 +95,14 @@ export function JobPresencePanel({
   loading,
   error,
   onSnapshotChange,
+  onInteractionStateChange,
 }: {
   job: ScheduleJob;
   snapshot: JobPresenceSnapshot | null;
   loading: boolean;
   error: boolean;
   onSnapshotChange: (snapshot: JobPresenceSnapshot) => void;
+  onInteractionStateChange?: (isBusy: boolean) => void;
 }) {
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const [draftReason, setDraftReason] = useState<NotHereReason | "">("");
@@ -108,6 +110,10 @@ export function JobPresencePanel({
   const [newDate, setNewDate] = useState("");
   const [savingDate, setSavingDate] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    onInteractionStateChange?.(editingDate !== null || savingDate !== null);
+  }, [editingDate, onInteractionStateChange, savingDate]);
 
   const recordByDate = useMemo(
     () => new Map((snapshot?.records ?? []).map(record => [record.date, record])),

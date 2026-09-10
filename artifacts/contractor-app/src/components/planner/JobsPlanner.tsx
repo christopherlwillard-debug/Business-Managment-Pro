@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CalendarDays,
@@ -165,6 +165,44 @@ function ActiveJobPresence({
   error: boolean;
   onSnapshotChange: (snapshot: JobPresenceSnapshot) => void;
 }) {
+  const [isInteractionBusy, setIsInteractionBusy] = useState(false);
+  const interactionBusyRef = useRef(false);
+  const handleInteractionStateChange = useCallback((isBusy: boolean) => {
+    interactionBusyRef.current = isBusy;
+    setIsInteractionBusy(isBusy);
+  }, []);
+
+  useEffect(() => {
+    if (loading || error || isInteractionBusy) return;
+    const controller = new AbortController();
+
+    async function refreshSnapshot() {
+      if (interactionBusyRef.current) return;
+      try {
+        const response = await fetch(`${BASE}/api/jobs/production-presence?jobIds=${job.id}`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Production presence refresh failed");
+        const data = await response.json() as { jobs: JobPresenceSnapshot[] };
+        const nextSnapshot = data.jobs.find(candidate => candidate.jobId === job.id);
+        if (!nextSnapshot || controller.signal.aborted || interactionBusyRef.current) return;
+        onSnapshotChange(nextSnapshot);
+      } catch {
+        // Keep the last known snapshot when a background refresh fails.
+      }
+    }
+
+    const refreshOnFocus = () => { void refreshSnapshot(); };
+    window.addEventListener("focus", refreshOnFocus);
+    const interval = window.setInterval(refreshOnFocus, 30_000);
+    return () => {
+      controller.abort();
+      window.removeEventListener("focus", refreshOnFocus);
+      window.clearInterval(interval);
+    };
+  }, [error, isInteractionBusy, job.id, loading, onSnapshotChange]);
+
   return (
     <JobPresencePanel
       job={job}
@@ -172,6 +210,7 @@ function ActiveJobPresence({
       loading={loading}
       error={error}
       onSnapshotChange={onSnapshotChange}
+      onInteractionStateChange={handleInteractionStateChange}
     />
   );
 }
@@ -228,6 +267,12 @@ export function JobsPlanner({
   const [presenceLoading, setPresenceLoading] = useState(false);
   const [presenceError, setPresenceError] = useState(false);
   const requestEnd = addScheduleDays(today, 180);
+  const updatePresenceSnapshot = useCallback((nextSnapshot: JobPresenceSnapshot) => {
+    setPresenceSnapshots(current => ({
+      ...current,
+      [nextSnapshot.jobId]: nextSnapshot,
+    }));
+  }, []);
 
   useEffect(() => {
     if (scheduleMode !== "active") return;
@@ -526,10 +571,7 @@ export function JobsPlanner({
             snapshot={presenceSnapshot ?? null}
             loading={presenceLoading && !presenceSnapshot}
             error={presenceError}
-            onSnapshotChange={nextSnapshot => setPresenceSnapshots(current => ({
-              ...current,
-              [nextSnapshot.jobId]: nextSnapshot,
-            }))}
+            onSnapshotChange={updatePresenceSnapshot}
           />
         )}
       </div>
