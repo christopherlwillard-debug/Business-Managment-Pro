@@ -22,6 +22,7 @@ import {
   shouldEnterInvoiceLogoLayoutMode,
 } from "@/lib/invoiceLogoConstants";
 import { sendViaGmail, buildInvoiceEmailHtml, dataUriToInlineImage } from "@/lib/gmailSend";
+import { reconnectAndRepairInvoiceGmail } from "@/lib/invoiceGmailRepair";
 import { buildInvoiceHtml } from "@/lib/printInvoice";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -432,6 +433,38 @@ export function InvoicePanel({
         && /could not verify/i.test(String(result.error ?? ""));
       if (!verificationMayBeDelayed || attempt === 2) break;
       await new Promise(resolve => window.setTimeout(resolve, 700 * (attempt + 1)));
+    }
+    return { ok: false, result };
+  }
+
+  async function checkpointGmailProviderEvidence(
+    recovery: GmailFinalizationRecovery,
+  ): Promise<{ ok: boolean; result: Record<string, any> }> {
+    let result: Record<string, any> = {};
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const response = await fetch(
+          `${base}/api/invoices/${recovery.invoiceId}/communications/${recovery.eventId}/finalize`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              status: "pending",
+              providerMessageId: recovery.providerMessageId,
+              providerThreadId: recovery.providerThreadId,
+            }),
+          },
+        );
+        result = await response.json().catch(() => ({}));
+        if (response.ok) return { ok: true, result };
+        if (response.status === 409) break;
+      } catch (error) {
+        result = { error: error instanceof Error ? error.message : String(error) };
+      }
+      if (attempt < 2) {
+        await new Promise(resolve => window.setTimeout(resolve, 350 * (attempt + 1)));
+      }
     }
     return { ok: false, result };
   }
@@ -1046,9 +1079,20 @@ export function InvoicePanel({
         // React state still blocks another send in this browser. The prepared
         // event also makes the server block duplicate sends across sessions.
       }
+      const checkpoint = await checkpointGmailProviderEvidence(recovery);
+      if (!checkpoint.ok) {
+        await communicationHistory.refetch();
+        toast({
+          title: "Email accepted by Gmail — evidence checkpoint needs repair",
+          description: checkpoint.result.error
+            ?? "BuildPro retained the Gmail message in this browser but could not durably checkpoint it. Do not resend; retry delivery repair.",
+          variant: "destructive",
+        });
+        return;
+      }
       const finalization = await finalizeGmailDelivery(recovery, token);
       if (!finalization.ok) {
-        if (/metadata|permission|insufficient|scope/i.test(finalization.result.error ?? "")) {
+        if (["gmail_authentication_required", "gmail_metadata_permission"].includes(finalization.result.errorCode)) {
           setGmailReconnectRequired(true);
         }
         await communicationHistory.refetch();
@@ -1079,14 +1123,17 @@ export function InvoicePanel({
     }
   }
 
-  async function handleRepairGmailHistory(eventIdOverride?: unknown) {
+  async function handleRepairGmailHistory(
+    eventIdOverride?: unknown,
+    gmailAccessTokenOverride?: string,
+  ) {
     if (!effectiveExistingInvoice) return;
     const pendingEventId = typeof eventIdOverride === "number"
       ? eventIdOverride
       : gmailPendingEventId;
     setGmailSending(true);
     try {
-      const token = await getToken();
+      const token = gmailAccessTokenOverride ?? await getToken();
       const directPendingEventId = typeof eventIdOverride === "number"
         ? eventIdOverride
         : null;
@@ -1106,7 +1153,8 @@ export function InvoicePanel({
           const finalization = await finalizeGmailDelivery(directRecovery, token);
           if (!finalization.ok) {
             const error = new Error(finalization.result.error ?? "Delivery history could not be repaired.") as Error & { gmailPermission?: boolean };
-            error.gmailPermission = finalization.result.errorCode === "gmail_metadata_permission";
+            error.gmailPermission = ["gmail_authentication_required", "gmail_metadata_permission"]
+              .includes(finalization.result.errorCode);
             throw error;
           }
           await communicationHistory.refetch();
@@ -1126,7 +1174,8 @@ export function InvoicePanel({
         const result = await response.json().catch(() => ({}));
         if (!response.ok) {
           const error = new Error(result.error ?? "Delivery history could not be recovered.") as Error & { gmailPermission?: boolean };
-          error.gmailPermission = result.errorCode === "gmail_metadata_permission";
+          error.gmailPermission = ["gmail_authentication_required", "gmail_metadata_permission"]
+            .includes(result.errorCode);
           throw error;
         }
         setGmailDeliveryBlocked(null);
@@ -1159,7 +1208,8 @@ export function InvoicePanel({
         const result = await response.json().catch(() => ({}));
         if (!response.ok) {
           const error = new Error(result.error ?? "Delivery history could not be recovered.") as Error & { gmailPermission?: boolean };
-          error.gmailPermission = result.errorCode === "gmail_metadata_permission";
+          error.gmailPermission = ["gmail_authentication_required", "gmail_metadata_permission"]
+            .includes(result.errorCode);
           throw error;
         }
         window.localStorage.removeItem(`invoice-gmail-finalization:${effectiveExistingInvoice.id}`);
@@ -1181,7 +1231,8 @@ export function InvoicePanel({
       const finalization = await finalizeGmailDelivery(gmailFinalizationRecovery, token);
       if (!finalization.ok) {
         const error = new Error(finalization.result.error ?? "Delivery history could not be repaired.") as Error & { gmailPermission?: boolean };
-        error.gmailPermission = finalization.result.errorCode === "gmail_metadata_permission";
+        error.gmailPermission = ["gmail_authentication_required", "gmail_metadata_permission"]
+          .includes(finalization.result.errorCode);
         throw error;
       }
       window.localStorage.removeItem(`invoice-gmail-finalization:${effectiveExistingInvoice.id}`);
@@ -1205,12 +1256,15 @@ export function InvoicePanel({
     }
   }
 
-  async function handleReconnectGmailAndRepair() {
+  async function handleReconnectGmailAndRepair(eventIdOverride?: number) {
     if (!effectiveExistingInvoice || (!gmailFinalizationRecovery && !gmailPendingEventId)) return;
     setGmailSending(true);
     try {
-      await reconnect();
-      await handleRepairGmailHistory();
+      await reconnectAndRepairInvoiceGmail(
+        reconnect,
+        (eventId, freshToken) => handleRepairGmailHistory(eventId, freshToken),
+        eventIdOverride,
+      );
     } catch (err: any) {
       setGmailSending(false);
       toast({
@@ -2369,7 +2423,7 @@ export function InvoicePanel({
               }
             }}
             needsGmailReconnect={gmailReconnectRequired}
-            onReconnectGmail={() => { void handleReconnectGmailAndRepair(); }}
+            onReconnectGmail={(eventId) => { void handleReconnectGmailAndRepair(eventId); }}
           />
         )}
          </div>

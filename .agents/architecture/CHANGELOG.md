@@ -484,3 +484,14 @@ Created the four-document architecture governance system:
   allocation is present, preventing one source cost from being counted twice.
 - Both responses expose a source-level included-cost and excluded-row breakdown
   so displayed profit can be explained without changing production records.
+
+### Recoverable Gmail invoice finalization
+
+- Gmail message and thread identifiers are checkpointed on the existing pending
+  communication event before strict Sent-folder verification begins.
+- Finalization and repair reuse that event idempotently, including in-place
+  verification of legacy accepted events that lack the evidence marker.
+- Expired Gmail authentication is distinguished from missing metadata scope,
+  and reconnect hands the fresh token directly to repair without resending.
+- Invoice compatibility status still changes only after the exact Gmail message,
+  Sent label, delivery header, recipient, and subject have been verified.

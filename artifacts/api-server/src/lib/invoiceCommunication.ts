@@ -14,10 +14,16 @@ export class InvoiceCommunicationConflictError extends Error {
     this.name = "InvoiceCommunicationConflictError";
   }
 }
-export class GmailPermissionError extends Error {
+export class GmailAuthenticationError extends Error {
   constructor() {
-    super("Gmail metadata permission is required to repair this delivery.");
-    this.name = "GmailPermissionError";
+    super("The Gmail connection is invalid or expired. Reconnect Gmail and retry this delivery verification.");
+    this.name = "GmailAuthenticationError";
+  }
+}
+export class GmailMetadataPermissionError extends Error {
+  constructor() {
+    super("Gmail metadata permission is required to verify this delivery.");
+    this.name = "GmailMetadataPermissionError";
   }
 }
 export type InvoiceCommunicationType =
@@ -274,6 +280,34 @@ type GmailMessageMetadata = {
   payload?: { headers?: Array<{ name?: string; value?: string }> };
 };
 
+async function throwForGmailMetadataAccess(response: Response): Promise<void> {
+  if (response.status === 401) {
+    throw new GmailAuthenticationError();
+  }
+  if (response.status !== 403) return;
+
+  const body = await response.clone().json().catch(() => null) as {
+    error?: {
+      message?: string;
+      errors?: Array<{ reason?: string }>;
+      status?: string;
+    };
+  } | null;
+  const reasons = body?.error?.errors?.map(error => error.reason?.toLowerCase() ?? "") ?? [];
+  const message = body?.error?.message?.toLowerCase() ?? "";
+  const status = body?.error?.status?.toLowerCase() ?? "";
+  const insufficientScope = reasons.some(reason =>
+    reason === "insufficientpermissions" || reason === "forbidden"
+  ) || message.includes("insufficient authentication scopes")
+    || message.includes("insufficient permission")
+    || status === "permission_denied";
+
+  if (insufficientScope) {
+    throw new GmailMetadataPermissionError();
+  }
+  throw new Error("Gmail denied the metadata verification request.");
+}
+
 function matchesGmailSentMessage(
   message: GmailMessageMetadata | null,
   input: {
@@ -307,9 +341,9 @@ export async function verifyGmailSentMessage(input: {
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=metadata&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=X-BuildPro-Delivery-ID&fields=id,labelIds,payload/headers`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
-   if (!response.ok) {
-     if (response.status === 401 || response.status === 403) throw new GmailPermissionError();
-     return false;
+  if (!response.ok) {
+    await throwForGmailMetadataAccess(response);
+    return false;
    }
   const message = await response.json().catch(() => null) as GmailMessageMetadata | null;
   return matchesGmailSentMessage(message, { messageId, deliveryId, recipient, subject });
@@ -337,9 +371,9 @@ export async function recoverGmailSentMessage(input: {
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=50&fields=messages(id,threadId)`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
-   if (!listResponse.ok) {
-     if (listResponse.status === 401 || listResponse.status === 403) throw new GmailPermissionError();
-     throw new Error("Gmail metadata search failed while repairing this delivery.");
+  if (!listResponse.ok) {
+    await throwForGmailMetadataAccess(listResponse);
+    throw new Error("Gmail metadata search failed while repairing this delivery.");
    }
   const list = await listResponse.json().catch(() => null) as {
     messages?: Array<{ id?: string; threadId?: string }>;
@@ -352,9 +386,9 @@ export async function recoverGmailSentMessage(input: {
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(candidate.id)}?format=metadata&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=X-BuildPro-Delivery-ID&fields=id,threadId,internalDate,labelIds,payload/headers`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
-     if (!response.ok) {
-       if (response.status === 401 || response.status === 403) throw new GmailPermissionError();
-       continue;
+    if (!response.ok) {
+      await throwForGmailMetadataAccess(response);
+      continue;
      }
     const message = await response.json().catch(() => null) as GmailMessageMetadata | null;
     const sentMs = Number(message?.internalDate);

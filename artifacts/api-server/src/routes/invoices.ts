@@ -26,7 +26,8 @@ import {
   createPendingInvoiceCommunication,
   finalizeInvoiceCommunication,
   InvoiceCommunicationConflictError,
-  GmailPermissionError,
+  GmailAuthenticationError,
+  GmailMetadataPermissionError,
   confirmedGmailInvoiceIds,
   sendAndRecordInvoiceCommunication,
   updateCompatibilitySentFields,
@@ -708,9 +709,9 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
     if (!Number.isInteger(invoiceId) || !Number.isInteger(eventId)) {
       return res.status(400).json({ error: "Invalid invoice or communication id" });
     }
-    const status = req.body?.status as "accepted" | "failed" | "unknown";
-    if (!["accepted", "failed", "unknown"].includes(status)) {
-      return res.status(400).json({ error: "Communication status must be accepted, failed, or unknown." });
+    const status = req.body?.status as "pending" | "accepted" | "failed" | "unknown";
+    if (!["pending", "accepted", "failed", "unknown"].includes(status)) {
+      return res.status(400).json({ error: "Communication status must be pending, accepted, failed, or unknown." });
     }
     const [existing] = await db.select().from(invoiceCommunicationEventsTable)
       .where(and(
@@ -725,6 +726,42 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
       return res.status(409).json({
         error: "This delivery event was already linked to a different Gmail message.",
       });
+    }
+    if (status === "pending") {
+      if (
+        existing.channel !== "gmail"
+        || existing.provider !== "gmail"
+        || !["initial_invoice", "resend_invoice"].includes(existing.eventType)
+      ) {
+        return res.status(409).json({ error: "Provider evidence can only be retained for a Gmail invoice delivery." });
+      }
+      if (!providerMessageId) {
+        return res.status(400).json({ error: "Gmail provider evidence requires a message ID." });
+      }
+      if (existing.status !== "pending") {
+        if (existing.providerMessageId === providerMessageId) {
+          return res.json({ ...existing, evidenceRetained: true });
+        }
+        return res.status(409).json({ error: "This invoice delivery was already resolved." });
+      }
+      const [checkpointed] = await db.update(invoiceCommunicationEventsTable)
+        .set({
+          provider: "gmail",
+          providerMessageId,
+          providerThreadId: typeof req.body?.providerThreadId === "string"
+            ? req.body.providerThreadId
+            : existing.providerThreadId,
+        })
+        .where(and(
+          eq(invoiceCommunicationEventsTable.id, eventId),
+          eq(invoiceCommunicationEventsTable.invoiceId, invoiceId),
+          eq(invoiceCommunicationEventsTable.status, "pending"),
+        ))
+        .returning();
+      if (!checkpointed) {
+        return res.status(409).json({ error: "This invoice delivery was already resolved." });
+      }
+      return res.json({ ...checkpointed, evidenceRetained: true });
     }
     if (existing.status !== "pending") {
       if (
@@ -869,7 +906,13 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
     res.json(event);
   } catch (err) {
     console.error("Finalize invoice communication error:", err);
-    if (err instanceof GmailPermissionError) {
+    if (err instanceof GmailAuthenticationError) {
+      return res.status(401).json({
+        errorCode: "gmail_authentication_required",
+        error: err.message,
+      });
+    }
+    if (err instanceof GmailMetadataPermissionError) {
       return res.status(403).json({
         errorCode: "gmail_metadata_permission",
         error: err.message,
@@ -966,7 +1009,13 @@ router.post("/:id/communications/:eventId/recover-gmail", async (req, res) => {
         error: "This Gmail delivery was already resolved. Refresh the invoice before trying again.",
       });
     }
-    if (err instanceof GmailPermissionError) {
+    if (err instanceof GmailAuthenticationError) {
+      return res.status(401).json({
+        errorCode: "gmail_authentication_required",
+        error: err.message,
+      });
+    }
+    if (err instanceof GmailMetadataPermissionError) {
       return res.status(403).json({
         errorCode: "gmail_metadata_permission",
         error: err.message,

@@ -19,7 +19,7 @@ interface InvoiceDeliveryHistoryProps {
   isRepairingGmail?: boolean;
   onRepairGmail?: (eventId: number) => void;
   needsGmailReconnect?: boolean;
-  onReconnectGmail?: () => void;
+  onReconnectGmail?: (eventId: number) => void;
 }
 
 const LOCAL_TIMESTAMP_OPTIONS: Intl.DateTimeFormatOptions = {
@@ -50,8 +50,6 @@ export function sortReminderTimestamps(timestamps: string[]) {
 }
 
 const EVENT_LABELS: Record<string, string> = {
-  initial_invoice: "Invoice sent",
-  resend_invoice: "Invoice resent",
   manual_reminder: "Manual reminder sent",
   automatic_reminder: "Automatic reminder sent",
   payment_link_email: "Payment link emailed",
@@ -59,6 +57,14 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 function eventLabel(event: InvoiceCommunicationEvent) {
+  if (event.eventType === "initial_invoice" || event.eventType === "resend_invoice") {
+    const metadata = event.metadata && typeof event.metadata === "object"
+      ? event.metadata as Record<string, unknown>
+      : {};
+    return event.status === "accepted" && metadata.gmailEvidenceVerified === true
+      ? (event.eventType === "resend_invoice" ? "Invoice resent" : "Invoice sent")
+      : "Invoice delivery attempt";
+  }
   return EVENT_LABELS[event.eventType] ?? "Invoice communication";
 }
 
@@ -179,7 +185,7 @@ export function InvoiceDeliveryHistory({
                     {needsGmailReconnect && onReconnectGmail && (
                       <button
                         type="button"
-                        onClick={onReconnectGmail}
+                        onClick={() => onReconnectGmail(event.id)}
                         disabled={isRepairingGmail}
                         className="inline-flex items-center gap-1 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                       >

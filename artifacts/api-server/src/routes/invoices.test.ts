@@ -750,6 +750,32 @@ describe("POST /:id/communications/:eventId/finalize", () => {
     },
   ];
 
+  it("idempotently checkpoints provider evidence without finalizing the event or invoice", async () => {
+    h.selectQueue.push([pendingEvent()]);
+    h.updateReturningOverride = [pendingEvent({
+      providerMessageId: "gmail-message-1",
+      providerThreadId: "gmail-thread-1",
+    })];
+
+    const res = await request(app)
+      .post("/42/communications/77/finalize")
+      .send({
+        status: "pending",
+        providerMessageId: "gmail-message-1",
+        providerThreadId: "gmail-thread-1",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.evidenceRetained).toBe(true);
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      providerMessageId: "gmail-message-1",
+      providerThreadId: "gmail-thread-1",
+    }));
+    expect(h.updates).not.toContainEqual(expect.objectContaining({ status: "accepted" }));
+    expect(h.updates).not.toContainEqual(expect.objectContaining({ status: "sent" }));
+    expect(h.inserts).toHaveLength(0);
+  });
+
   it("does not overwrite a pending Gmail event resolved during recovery", async () => {
     const requestedAt = new Date("2026-09-05T12:00:00.000Z");
     h.selectQueue.push([pendingEvent({ requestedAt })]);
@@ -787,6 +813,8 @@ describe("POST /:id/communications/:eventId/finalize", () => {
       errorCode: "gmail_message_not_found",
     }));
     expect(h.updates).not.toContainEqual(expect.objectContaining({ status: "sent" }));
+    expect(h.inserts).toHaveLength(0);
+    expect(vi.mocked(fetch).mock.calls.every(([url]) => !String(url).includes("/send"))).toBe(true);
   });
 
   it.each(["failed", "unknown"] as const)(

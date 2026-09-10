@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { recoverGmailSentMessage, verifyGmailSentMessage } from "./invoiceCommunication";
+import {
+  GmailAuthenticationError,
+  GmailMetadataPermissionError,
+  recoverGmailSentMessage,
+  verifyGmailSentMessage,
+} from "./invoiceCommunication";
 
 describe("verifyGmailSentMessage", () => {
   afterEach(() => {
@@ -37,7 +42,7 @@ describe("verifyGmailSentMessage", () => {
   });
 
   it.each([
-    [{ ok: false, json: async () => ({}) }, false],
+    [{ ok: false, status: 500, clone() { return this; }, json: async () => ({}) }, false],
     [{ ok: true, json: async () => ({ id: "different-message", labelIds: ["SENT"] }) }, false],
     [{ ok: true, json: async () => ({ id: "gmail-message-1", labelIds: ["INBOX"] }) }, false],
   ])("rejects unverified Gmail responses", async (response, expected) => {
@@ -50,6 +55,31 @@ describe("verifyGmailSentMessage", () => {
       recipient: "client@example.com",
       subject: "Invoice INV-100",
     })).resolves.toBe(expected);
+  });
+
+  it("distinguishes an expired Gmail token from missing metadata scope", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: {
+          status: "PERMISSION_DENIED",
+          message: "Request had insufficient authentication scopes.",
+          errors: [{ reason: "insufficientPermissions" }],
+        },
+      }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })));
+
+    const input = {
+      accessToken: "access-token",
+      messageId: "gmail-message-1",
+      deliveryId: "42",
+      recipient: "client@example.com",
+      subject: "Invoice INV-100",
+    };
+    await expect(verifyGmailSentMessage(input)).rejects.toBeInstanceOf(GmailAuthenticationError);
+    await expect(verifyGmailSentMessage(input)).rejects.toBeInstanceOf(GmailMetadataPermissionError);
   });
 });
 
@@ -120,7 +150,16 @@ describe("recoverGmailSentMessage", () => {
   });
 
   it("requires Gmail metadata permission for recovery", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: {
+        status: "PERMISSION_DENIED",
+        message: "Request had insufficient authentication scopes.",
+        errors: [{ reason: "insufficientPermissions" }],
+      },
+    }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    })));
     await expect(recoverGmailSentMessage({
       accessToken: "send-only-token",
       deliveryId: "7",

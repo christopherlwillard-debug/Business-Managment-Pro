@@ -20,6 +20,7 @@ const event: InvoiceCommunicationEvent = {
   recipient: "client@example.com",
   subject: "Invoice INV-100",
   providerMessageId: "gmail-message-1",
+  metadata: { gmailEvidenceVerified: true },
   createdAt: "2026-08-24T10:30:00.000Z",
 };
 
@@ -122,6 +123,22 @@ describe("InvoiceDeliveryHistory", () => {
     }));
 
     expect(markup).not.toContain("Find Sent Email &amp; Repair");
+  });
+
+  it("labels pending, failed, and unverified accepted sends as delivery attempts", () => {
+    for (const status of ["pending", "failed", "accepted"] as const) {
+      const markup = renderToStaticMarkup(InvoiceDeliveryHistory({
+        events: [{
+          ...event,
+          status,
+          completedAt: status === "pending" ? null : event.completedAt,
+          metadata: {},
+        }],
+      }));
+
+      expect(markup).toContain("Invoice delivery attempt");
+      expect(markup).not.toContain("Invoice sent");
+    }
   });
 
   it("offers recovery from the event's own pending state", () => {
