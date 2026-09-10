@@ -177,7 +177,7 @@ function ActiveJobPresence({
     const controller = new AbortController();
 
     async function refreshSnapshot() {
-      if (interactionBusyRef.current) return;
+      if (interactionBusyRef.current || document.visibilityState === "hidden") return;
       try {
         const response = await fetch(`${BASE}/api/jobs/production-presence?jobIds=${job.id}`, {
           credentials: "include",
@@ -193,13 +193,36 @@ function ActiveJobPresence({
       }
     }
 
+    let interval: number | null = null;
+    const stopInterval = () => {
+      if (interval !== null) {
+        window.clearInterval(interval);
+        interval = null;
+      }
+    };
+    const startInterval = () => {
+      stopInterval();
+      if (document.visibilityState !== "hidden") {
+        interval = window.setInterval(() => { void refreshSnapshot(); }, 30_000);
+      }
+    };
     const refreshOnFocus = () => { void refreshSnapshot(); };
+    const refreshOnVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopInterval();
+      } else {
+        startInterval();
+        void refreshSnapshot();
+      }
+    };
     window.addEventListener("focus", refreshOnFocus);
-    const interval = window.setInterval(refreshOnFocus, 30_000);
+    document.addEventListener("visibilitychange", refreshOnVisibilityChange);
+    startInterval();
     return () => {
       controller.abort();
       window.removeEventListener("focus", refreshOnFocus);
-      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshOnVisibilityChange);
+      stopInterval();
     };
   }, [error, isInteractionBusy, job.id, loading, onSnapshotChange]);
 
