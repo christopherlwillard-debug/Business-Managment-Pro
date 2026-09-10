@@ -1134,7 +1134,15 @@ export function InvoicePanel({
         setGmailReconnectRequired(false);
         await queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
         await communicationHistory.refetch();
-        toast({ title: "Delivery history repaired", description: "The existing Gmail message was verified. The invoice is now marked Sent." });
+        toast(result.recovered === false
+          ? {
+              title: "Stale delivery attempt cleared",
+              description: "No matching sent email was found. The invoice status was not changed.",
+            }
+          : {
+              title: "Delivery history repaired",
+              description: "The existing Gmail message was verified. The invoice is now marked Sent.",
+            });
         return;
       }
       if (!gmailFinalizationRecovery) return;
@@ -1159,7 +1167,15 @@ export function InvoicePanel({
         setGmailReconnectRequired(false);
         await queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
         await communicationHistory.refetch();
-        toast({ title: "Delivery history repaired", description: "The existing Gmail message was verified. The invoice is now marked Sent." });
+        toast(result.recovered === false
+          ? {
+              title: "Stale delivery attempt cleared",
+              description: "No matching sent email was found. The invoice status was not changed.",
+            }
+          : {
+              title: "Delivery history repaired",
+              description: "The existing Gmail message was verified. The invoice is now marked Sent.",
+            });
         return;
       }
       const finalization = await finalizeGmailDelivery(gmailFinalizationRecovery, token);

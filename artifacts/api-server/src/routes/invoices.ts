@@ -921,8 +921,24 @@ router.post("/:id/communications/:eventId/recover-gmail", async (req, res) => {
       requestedAt: existing.requestedAt,
     });
     if (!recovered) {
-      return res.status(404).json({
-        error: "No exact Gmail Sent message matched this delivery. The invoice remains unsent.",
+      const existingMetadata = existing.metadata && typeof existing.metadata === "object"
+        ? existing.metadata as Record<string, unknown>
+        : {};
+      const event = await finalizeInvoiceCommunication(eventId, invoiceId, {
+        status: "failed",
+        provider: "gmail",
+        errorCode: "gmail_message_not_found",
+        errorMessage: "No exact Gmail Sent message matched this delivery.",
+        metadata: {
+          ...existingMetadata,
+          gmailEvidenceVerified: false,
+          gmailRecoveryCheckedAt: new Date().toISOString(),
+        },
+      }, existing.status);
+      return res.json({
+        ...event,
+        recovered: false,
+        invoiceStatusUnchanged: true,
       });
     }
 
@@ -942,7 +958,7 @@ router.post("/:id/communications/:eventId/recover-gmail", async (req, res) => {
       },
     }, existing.status);
     await updateCompatibilitySentFields(invoiceId, "gmail", event.completedAt);
-    res.json(event);
+    res.json({ ...event, recovered: true });
   } catch (err) {
     console.error("Recover Gmail invoice communication error:", err);
     if (err instanceof InvoiceCommunicationConflictError) {

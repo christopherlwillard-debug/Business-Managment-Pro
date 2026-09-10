@@ -767,6 +767,28 @@ describe("POST /:id/communications/:eventId/finalize", () => {
     expect(h.updates).not.toContainEqual(expect.objectContaining({ status: "sent" }));
   });
 
+  it("clears a stale pending event when no exact Gmail message exists", async () => {
+    const requestedAt = new Date("2026-09-05T12:00:00.000Z");
+    h.selectQueue.push([pendingEvent({ requestedAt })]);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ messages: [] }),
+    }));
+
+    const res = await request(app)
+      .post("/42/communications/77/recover-gmail")
+      .send({ gmailAccessToken: "gmail-token" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.recovered).toBe(false);
+    expect(res.body.invoiceStatusUnchanged).toBe(true);
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "failed",
+      errorCode: "gmail_message_not_found",
+    }));
+    expect(h.updates).not.toContainEqual(expect.objectContaining({ status: "sent" }));
+  });
+
   it.each(["failed", "unknown"] as const)(
     "records a %s attempt even after the invoice becomes paid or voided",
     async status => {

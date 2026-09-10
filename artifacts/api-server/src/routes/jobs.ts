@@ -1160,10 +1160,8 @@ router.get("/profit-summary", async (req, res) => {
         manHours: loaded.manHours,
         splitPool: allocationSplitPools.get(id)?.splitPool ?? 0,
         includeMileageInJobCosts: loaded.includeMileageInJobCosts,
-        estimatedFuelCost: loaded.calculation.estimatedFuelCost > 0 ? loaded.calculation.estimatedFuelCost : null,
-        mileageReimbursementApplied: loaded.includeMileageInJobCosts &&
-          !loaded.input.hasActualFuelExpense &&
-          Boolean(loaded.input.hasMileageReimbursement),
+        estimatedFuelCost: loaded.input.hasActualFuelExpense ? null : loaded.calculation.estimatedFuelCost,
+        mileageReimbursementApplied: loaded.includeMileageInJobCosts && !loaded.input.hasActualFuelExpense,
       });
     }
 

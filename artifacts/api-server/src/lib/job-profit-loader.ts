@@ -221,7 +221,7 @@ export async function loadJobProfitByJob(jobIds: number[]): Promise<Map<number, 
         (invoiceStatusRank[row.status ?? "draft"] ?? 0) > (invoiceStatusRank[best] ?? 0)
           ? row.status ?? best
           : best, "draft");
-    const calculation = calculateJobProfit({
+    const input: Parameters<typeof calculateJobProfit>[0] = {
       invoices: invoiceRows.filter((row) => row.jobId === jobId),
       otherIncome: otherIncomeRows.filter((row) => row.jobId === jobId),
       expenses,
@@ -239,28 +239,11 @@ export async function loadJobProfitByJob(jobIds: number[]): Promise<Map<number, 
       allocPaid: allocationPaymentMap.get(jobId) ?? 0,
       reversedFixedPayout: reversedFixedPaymentMap.get(jobId) ?? 0,
       reversedAllocationPayout: reversedAllocationPaymentMap.get(jobId) ?? 0,
-    });
+    };
+    const calculation = calculateJobProfit(input);
     byJob.set(jobId, {
       calculation,
-      input: {
-        invoices: invoiceRows.filter((row) => row.jobId === jobId),
-        otherIncome: otherIncomeRows.filter((row) => row.jobId === jobId),
-        expenses,
-        allocations,
-        mileageReimbursement: reimbursement?.amount == null ? null : Number(reimbursement.amount),
-        hasMileageReimbursement: reimbursement != null,
-        includeMileageInJobCosts: settings?.includeMileageInJobCosts ?? true,
-        hasActualFuelExpense: expenses.some(
-          (row) => row.category === "Fuel/Travel" && row.countsTowardJobProfit !== false,
-        ),
-        hourlyLaborCost: hoursMap.get(jobId) ?? 0,
-        totalSubHours: hoursCountMap.get(jobId) ?? 0,
-        fixedSubCost: fixedPaymentMap.get(jobId) ?? 0,
-        accruedBonus: accruedBonusMap.get(jobId) ?? 0,
-        allocPaid: allocationPaymentMap.get(jobId) ?? 0,
-        reversedFixedPayout: reversedFixedPaymentMap.get(jobId) ?? 0,
-        reversedAllocationPayout: reversedAllocationPaymentMap.get(jobId) ?? 0,
-      },
+      input,
       expenses,
       allocations,
       invoiceStatus,

@@ -20,6 +20,10 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 - Extended the Closed Jobs release guard to require the version marker in source, generated client, and built frontend assets.
 - Extended client list/profile reads with active business ownership, preserving the legacy `business_line` fallback and scoping owned profile records where canonical ownership exists.
 - Added a Gmail reconnect path that clears the browser token, requests metadata permission again, and retries existing delivery verification without resending.
+- Routed Closed Jobs batch profit through the same keyed source loader used by reports, eliminating route-local source aggregation that could leak one job's labor into another.
+- Made client profiles compatible with legacy production `square_payments` by explicitly projecting existing fields while retaining client-level business authorization.
+- Allowed unresolved Gmail events to be verified or safely cleared as failed when no exact Sent message exists; invoice status remains unchanged without evidence.
+- Reworked the invoice drawer into a fixed responsive action header with independently scrollable invoice and delivery content.
 - Verified API/frontend typechecks, OpenAPI codegen contract checks, focused profit regressions, production frontend build, release guard, and clean diff; the full API test wrapper remains blocked by the pre-existing development schema check for unrelated missing business columns.
 
 ---

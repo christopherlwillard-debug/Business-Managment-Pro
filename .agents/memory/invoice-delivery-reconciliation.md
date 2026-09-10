@@ -9,6 +9,8 @@ Operating-performance revenue views are a deliberate exception to cash-basis per
 
 When verification fails because the browser token lacks Gmail metadata permission, the UI must clear the stored token, request consent again with metadata scope, and retry only the existing event verification. Reconnect must never resend the invoice.
 
+If a metadata search succeeds but finds no exact Sent message, resolve the stale communication event as failed and leave invoice status unchanged. This removes a false blocker without inventing delivery evidence or sending again.
+
 **Why:** A production invoice was visibly accepted by Gmail in its communication timeline while the legacy invoice status remained `approved`, causing the UI to offer the initial-send action again. Treating provider acceptance without verified message evidence as sent would create the opposite trust failure. The dashboard is intended to show operating performance for the period work was billed, while formal reports must preserve cash-basis receipt timing.
 
 **How to apply:** Keep the append-only communication timeline and `invoices` compatibility fields aligned through existing invoice routes. Write the verification marker only after the server confirms the exact Gmail message ID, Sent label, delivery header, recipient, and subject. If an interrupted browser send loses the message ID, recover it only from a bounded Sent-folder metadata search that matches the stored delivery header, recipient, and exact subject; never resend during recovery. Preserve resend/reminder behavior for genuinely sent invoices. Use the shared operating-performance send-date calculation only for Dashboard-style performance views; never reuse it in cash-basis reports or ledgers.
