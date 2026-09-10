@@ -762,12 +762,39 @@ Each engine owns exactly one business domain. Routing determines routes. Vehicle
 
 ---
 
+### Rule 55 — Controlled Repair Protocol / No Unrelated Changes
+
+Every repair must have exactly one named repair scope owned by one existing system. Before implementation, produce a diagnosis report that identifies:
+
+1. The user-visible problem and the owning system.
+2. The source of truth, affected tables, APIs, engines, UI, and reports.
+3. The complete execution path and exact failing line, query, filter, calculation, or state transition.
+4. Confirmed evidence versus remaining hypotheses.
+5. The smallest proposed repair, its direct dependencies, and its validation plan.
+
+No implementation may begin until the diagnosis report is complete. A diagnosis request is not approval to implement a repair.
+
+Explicit user approval is required before implementing any repair that changes:
+
+- Domain, hostname, public-site, dashboard, or other routing behavior.
+- Business ownership, tenant scope, or record assignment.
+- Financial, accounting, payroll, tax, profit, revenue, or ledger logic.
+- Database schema, migrations, or source-of-truth tables.
+- Existing functionality by removing, disabling, or materially changing it.
+- More than one system through a cross-system refactor.
+
+The repair must make the smallest change that addresses the confirmed root cause. Do not hide, clamp, rewrite, replace, or manually correct records to make a symptom disappear.
+
+Issues discovered outside the named repair scope must be reported separately and must not be fixed automatically. If new evidence changes the scope or architecture, stop and return to the Architecture Review Gate before continuing.
+
+---
+
 ## Rule Tiers
 
 Rules are classified into three tiers. Higher tiers require explicit approval to override.
 
 **Tier 1 — Non-Negotiable** *(explicit approval required to override)*
-Rules 0, 1, 4, 8, 19, 20, 28, 29, 30, 40, 50, 51
+Rules 0, 1, 4, 8, 19, 20, 28, 29, 30, 40, 50, 51, 55
 
 **Tier 2 — Architecture Standards** *(normal engineering rules; deviations must be documented in DECISIONS.md)*
 Rules 2, 3, 5, 6, 7, 9, 10, 13, 15, 21, 24, 25, 26, 27, 33, 34, 35, 36, 38, 41, 42, 44, 49, 52, 53, 54
@@ -777,7 +804,7 @@ Rules 11, 12, 14, 16, 17, 18, 22, 23, 31, 32, 37, 39, 43, 45, 46, 47, 48
 
 ---
 
-*Constitution v1.1 — Amended 2026-08-05*  
-*55 rules (0–54) + 10 Core Principles + 7 Engineering Priorities + 3-tier classification*  
-*Amendment: Added Rules 51–54 (engine architecture: One Service Per Domain, One Engine Many Workflows, One Engine Owns All Calculations, Engines Have One Responsibility). Prompted by RoutingEngine + VehicleEngine consolidation task.*  
+*Constitution v1.2 — Amended 2026-09-10*
+*56 rules (0–55) + 10 Core Principles + 7 Engineering Priorities + 3-tier classification*
+*Amendment: Added Rule 55 (Controlled Repair Protocol / No Unrelated Changes) to require one named repair scope, diagnosis before implementation, explicit approval for high-risk boundaries, and separate reporting of unrelated discoveries.*
 *To amend: revise an existing rule if it needs clarification; add a new rule only if a recurring problem demonstrably falls outside all existing rules. Version the document when amended (v1.1, v1.2, ...).*

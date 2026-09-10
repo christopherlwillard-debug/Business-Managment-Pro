@@ -29,7 +29,7 @@
 - [Bank reconciliation engine](bank-reconciliation-engine.md) — matchingEngine.ts has provider registry (expense/invoice/sub_payment/recurring); attemptAutoMatch only uses expense provider; reconcileExpense fires on expense create/edit; ScoredMatch.expense is now optional; sub_payment matching is informational only (no link endpoint yet)
 - [Studio 2.0 Phase 2 milestones](studio-phase2-milestones.md) — all 9 milestones done; M8 multi-select uses ReadonlySet in WebsiteEditor state; M9 canvas-first hint in both inspector IIFE blocks (replace_all)
 - [Fuel/Travel audit-trail auto-flag](fuel-travel-audit-flag.md) — isTravelCategory() auto-sets countsTowardJobProfit=false for job-linked travel expenses; fuel/travel was wrongly included; removed in Aug 2026
-- [Architecture Constitution](./../architecture/CONSTITUTION.md) — v1.0 FROZEN: 51 rules (0–50), 10 Core Principles, 7 Engineering Priorities, 3-tier classification; READ BEFORE any financial/schema/business logic task
+- [Architecture Constitution](./../architecture/CONSTITUTION.md) — v1.2: 56 rules (0–55), including Controlled Repair Protocol; READ BEFORE any financial/schema/business logic task
 - [Architecture Patterns](./../architecture/PATTERNS.md) — 6 proven patterns: financial ledger, calculation engine, configurable rule, extending a module, debugging workflow, schema migration
 - [System Registry](./../architecture/SYSTEM_REGISTRY.md) — authoritative table/route/UI for every core system; read-only except via architecture review
 - [Architecture Decisions](./../architecture/DECISIONS.md) — ADR log (ADR-001 through ADR-005); consult before touching any existing system
