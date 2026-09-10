@@ -532,6 +532,14 @@ async function main() {
     remoteRefreshState = "here";
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await page.waitForSelector('[data-testid="job-presence-refresh-stale"]', { timeout: 15_000 });
+    const retainedRefreshTimestamp = await page.$eval(
+      '[data-testid="job-presence-last-refreshed"]',
+      element => element.textContent?.trim() ?? "",
+    );
+    const retainedRefreshTimestampValue = await page.$eval(
+      '[data-testid="job-presence-last-refreshed"] [data-last-refreshed-at]',
+      element => element.getAttribute("data-last-refreshed-at") ?? "",
+    );
     recordResult(
       "Schedule History shows a stale warning after refresh failure",
       presenceRefreshRequests > historyRefreshCountBeforeFailure &&
@@ -542,7 +550,8 @@ async function main() {
         await page.$eval(
           '[data-testid="job-presence-refresh-stale"]',
           element => element.textContent?.includes("last successful snapshot is still shown") ?? false,
-        ),
+        ) &&
+        retainedRefreshTimestamp.includes("Last successful refresh:"),
     );
 
     failNextPresenceRefresh = true;
@@ -562,6 +571,16 @@ async function main() {
         await page.$eval(
           dayOne,
           element => element.querySelector('button[data-state="not_here"]')?.className.includes("bg-orange-600") ?? false,
+        ) &&
+        await page.$eval(
+          '[data-testid="job-presence-last-refreshed"]',
+          (element, expected) => element.textContent?.trim() === expected,
+          retainedRefreshTimestamp,
+        ),
+        await page.$eval(
+          '[data-testid="job-presence-last-refreshed"] [data-last-refreshed-at]',
+          (element, expected) => element.getAttribute("data-last-refreshed-at") === expected,
+          retainedRefreshTimestampValue,
         ),
     );
 
@@ -574,6 +593,28 @@ async function main() {
     recordResult(
       "Schedule History retry clears the stale warning",
       await page.$eval(dayOne, element => element.querySelector('button[data-state="here"]')?.className.includes("bg-emerald-600") ?? false),
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 25));
+    failNextPresenceRefresh = true;
+    remoteRefreshState = "not_here";
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.waitForSelector('[data-testid="job-presence-refresh-stale"]', { timeout: 15_000 });
+    recordResult(
+      "Schedule History timestamp updates after a successful retry",
+      await page.$eval(
+        '[data-testid="job-presence-last-refreshed"] [data-last-refreshed-at]',
+        (element, expected) => element.getAttribute("data-last-refreshed-at") !== expected,
+        retainedRefreshTimestampValue,
+      ),
+    );
+
+    remoteRefreshState = "here";
+    await page.click('[data-testid="job-presence-refresh-retry"]');
+    await page.waitForFunction(
+      selector => !document.querySelector(selector),
+      { timeout: 15_000 },
+      '[data-testid="job-presence-refresh-stale"]',
     );
 
     const historyRefreshCountBeforeHidden = presenceRefreshRequests;

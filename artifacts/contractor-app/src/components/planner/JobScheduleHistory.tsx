@@ -45,6 +45,14 @@ function jobDateLabel(job: ScheduleJob): string {
   return formatScheduleDate(job.startDate ?? job.endDate);
 }
 
+function formatPresenceRefreshTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 export function JobScheduleHistory({
   businessId,
   onOpenActive,
@@ -66,6 +74,7 @@ export function JobScheduleHistory({
   const [presenceLoading, setPresenceLoading] = useState(false);
   const [presenceError, setPresenceError] = useState(false);
   const [presenceRefreshStale, setPresenceRefreshStale] = useState(false);
+  const [presenceLastRefreshedAt, setPresenceLastRefreshedAt] = useState<number | null>(null);
   const [presenceRetrying, setPresenceRetrying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -96,6 +105,7 @@ export function JobScheduleHistory({
     if (!response.ok) throw new Error("Production presence request failed");
     const data = await response.json() as { jobs: JobPresenceSnapshot[] };
     if (signal.aborted) return;
+    setPresenceLastRefreshedAt(Date.now());
     setPresenceRefreshStale(false);
     setPresenceByJob(current => {
       const next = { ...current };
@@ -171,6 +181,7 @@ export function JobScheduleHistory({
     setPresenceLoading(true);
     setPresenceError(false);
     setPresenceRefreshStale(false);
+    setPresenceLastRefreshedAt(null);
     refreshPresence(controller.signal)
       .catch(() => {
         if (!controller.signal.aborted) {
@@ -344,6 +355,13 @@ export function JobScheduleHistory({
             <div>
               <p className="font-bold">Historical presence may be out of date.</p>
               <p className="mt-0.5 text-xs text-orange-900/75">The last successful snapshot is still shown.</p>
+              {presenceLastRefreshedAt != null && (
+                <p className="mt-1 text-xs font-semibold text-orange-900/75" data-testid="job-presence-last-refreshed">
+                  <span data-last-refreshed-at={presenceLastRefreshedAt}>
+                  Last successful refresh: {formatPresenceRefreshTime(presenceLastRefreshedAt)}
+                  </span>
+                </p>
+              )}
             </div>
             <button
               type="button"
