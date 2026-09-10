@@ -545,6 +545,26 @@ async function main() {
         ),
     );
 
+    failNextPresenceRefresh = true;
+    const historyRefreshCountBeforeRetryFailure = presenceRefreshRequests;
+    await page.click('[data-testid="job-presence-refresh-retry"]');
+    await page.waitForFunction(
+      () => {
+        const banner = document.querySelector('[data-testid="job-presence-refresh-stale"]');
+        const retry = document.querySelector('[data-testid="job-presence-refresh-retry"]') as HTMLButtonElement | null;
+        return Boolean(banner && retry && !retry.disabled);
+      },
+      { timeout: 15_000 },
+    );
+    recordResult(
+      "Schedule History keeps stale warning after retry failure",
+      presenceRefreshRequests > historyRefreshCountBeforeRetryFailure &&
+        await page.$eval(
+          dayOne,
+          element => element.querySelector('button[data-state="not_here"]')?.className.includes("bg-orange-600") ?? false,
+        ),
+    );
+
     await page.click('[data-testid="job-presence-refresh-retry"]');
     await page.waitForFunction(
       selector => !document.querySelector(selector),
