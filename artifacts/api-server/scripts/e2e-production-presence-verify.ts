@@ -516,6 +516,35 @@ async function main() {
         await page.$eval(dayOne, element => element.textContent?.includes("Not here") ?? false),
     );
 
+    const historyRefreshCountBeforeHidden = presenceRefreshRequests;
+    remoteRefreshState = "here";
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    await new Promise(resolve => setTimeout(resolve, 250));
+    recordResult(
+      "Hidden Schedule History skips presence refreshes",
+      presenceRefreshRequests === historyRefreshCountBeforeHidden &&
+        await page.$eval(dayOne, element => element.querySelector('button[data-state="not_here"]')?.className.includes("bg-orange-600") ?? false),
+    );
+
+    const historyRefreshCountBeforeVisible = presenceRefreshRequests;
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.waitForFunction(
+      selector => document.querySelector(`${selector} button[data-state="here"]`)?.className.includes("bg-emerald-600") ?? false,
+      { timeout: 15_000 },
+      dayOne,
+    );
+    recordResult(
+      "Visible Schedule History resumes with an immediate refresh",
+      presenceRefreshRequests > historyRefreshCountBeforeVisible,
+    );
+
     await page.click(`${dayOne} button[data-state="not_here"]`);
     await page.click('[data-testid="job-presence-notes"]');
     await page.keyboard.down("Control");
