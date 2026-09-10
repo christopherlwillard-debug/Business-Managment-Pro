@@ -2004,11 +2004,29 @@ async function main() {
     if (!weekDuplicateSource) {
       throw new Error("Week duplicate route-stop source was removed before Week deduplication coverage");
     }
+    const monthBoundarySourceDate = lastDayOfMonthOffset(today, 2);
+    const monthBoundarySourceWeekStart = startOfWeekSunday(monthBoundarySourceDate);
+    const monthBoundarySourceWeekEnd = addDays(monthBoundarySourceWeekStart, 6);
+    const monthBoundaryDestinationDate = addDays(monthBoundarySourceWeekEnd, 1);
+    const monthBoundaryDestinationWeekStart = startOfWeekSunday(monthBoundaryDestinationDate);
+    const monthBoundaryDestinationWeekEnd = addDays(monthBoundaryDestinationWeekStart, 6);
+    const collidingBoundaryFixtures = routeStops.filter(stop =>
+      stop.jobId === firstJobId
+      && stop.scheduledDate >= monthBoundarySourceWeekStart
+      && stop.scheduledDate <= monthBoundaryDestinationWeekEnd
+    );
+    if (collidingBoundaryFixtures.length > 0) {
+      throw new Error(
+        `Month-boundary duplicate coverage overlaps existing first-job fixtures: ${collidingBoundaryFixtures
+          .map(stop => `${stop.id}@${stop.scheduledDate}`)
+          .join(",")}`,
+      );
+    }
     const weekDuplicateStops = [94001, 94002].map((id, index) => ({
       ...weekDuplicateSource,
       id,
       title: `E2E Week Duplicate ${index + 1}`,
-      scheduledDate: today,
+      scheduledDate: monthBoundarySourceDate,
       sortOrder: Math.max(...routeStops.map(stop => stop.sortOrder), -1) + index + 1,
     }));
     routeStops.push(...weekDuplicateStops);
@@ -2016,9 +2034,12 @@ async function main() {
       waitUntil: "networkidle2",
       timeout: 60_000,
     });
-    const weekDuplicateDateSelected = await selectCalendarDate(page, today);
+    const weekDuplicateDateSelected = await selectCalendarDate(page, monthBoundarySourceDate);
     const weekDuplicateViewSelected = await clickButtonByText(page, "Week");
-    const beforeWeekDuplicateMove = expectedRouteProfitBetween(visibleWeekStart, visibleWeekEnd);
+    const beforeWeekDuplicateMove = expectedRouteProfitBetween(
+      monthBoundarySourceWeekStart,
+      monthBoundarySourceWeekEnd,
+    );
     const beforeWeekDuplicateRefreshed = await waitForRouteProfit(page, beforeWeekDuplicateMove.netProfit);
     const beforeWeekDuplicateRows = await page.$$eval(
       '[data-testid^="route-profit-job-row-"]',
@@ -2030,7 +2051,7 @@ async function main() {
       scope => scope.textContent?.replace(/\s+/g, " ").trim() ?? "",
     );
     record(
-      "Week view deduplicates duplicate linked stops before date moves",
+      "Week view deduplicates duplicate linked stops at a month boundary",
       weekDuplicateDateSelected
         && weekDuplicateViewSelected
         && beforeWeekDuplicateRefreshed
@@ -2038,15 +2059,26 @@ async function main() {
         && beforeWeekDuplicateRows === 1
         && beforeWeekDuplicateText.includes("E2E Profit Parity One")
         && beforeWeekDuplicateText.includes("Included"),
+      `sourceDate=${monthBoundarySourceDate}, sourceWeek=${monthBoundarySourceWeekStart}..${monthBoundarySourceWeekEnd}, ` +
       `jobIds=${beforeWeekDuplicateMove.jobIds.join(",")}, displayedRowsForFirstJob=${beforeWeekDuplicateRows}, ` +
       `canonical=${beforeWeekDuplicateMove.netProfit}, scope=${beforeWeekDuplicateText}`,
     );
 
-    const oneWeekDuplicateMoved = await moveRouteStopToDate(page, weekDuplicateStops[0].id, weekMoveDate);
-    const oneWeekDuplicateMoveApplied = await waitForCondition(
-      () => routeStops.some(stop => stop.id === weekDuplicateStops[0].id && stop.scheduledDate === weekMoveDate),
+    const oneWeekDuplicateMoved = await moveRouteStopToDate(
+      page,
+      weekDuplicateStops[0].id,
+      monthBoundaryDestinationDate,
     );
-    const afterOneWeekDuplicateMove = expectedRouteProfitBetween(visibleWeekStart, visibleWeekEnd);
+    const oneWeekDuplicateMoveApplied = await waitForCondition(
+      () => routeStops.some(stop =>
+        stop.id === weekDuplicateStops[0].id
+        && stop.scheduledDate === monthBoundaryDestinationDate
+      ),
+    );
+    const afterOneWeekDuplicateMove = expectedRouteProfitBetween(
+      monthBoundarySourceWeekStart,
+      monthBoundarySourceWeekEnd,
+    );
     const afterOneWeekDuplicateRefreshed = await waitForRouteProfit(page, afterOneWeekDuplicateMove.netProfit);
     const afterOneWeekDuplicateRows = await page.$$eval(
       '[data-testid^="route-profit-job-row-"]',
@@ -2059,7 +2091,7 @@ async function main() {
       scope => scope.textContent?.replace(/\s+/g, " ").trim() ?? "",
     );
     record(
-      "Moving one Week duplicate outside the selected week keeps that job included once",
+      "Moving one duplicate across the month boundary keeps the source Week job included once",
       oneWeekDuplicateMoved
         && oneWeekDuplicateMoveApplied
         && afterOneWeekDuplicateRefreshed
@@ -2069,40 +2101,93 @@ async function main() {
         && nearlyEqual(afterOneWeekDuplicateDisplayed, afterOneWeekDuplicateMove.netProfit)
         && afterOneWeekDuplicateText.includes("E2E Profit Parity One")
         && afterOneWeekDuplicateText.includes("Included"),
+      `sourceDate=${monthBoundarySourceDate}, destinationDate=${monthBoundaryDestinationDate}, ` +
       `jobIds=${afterOneWeekDuplicateMove.jobIds.join(",")}, rowsForFirstJob=${afterOneWeekDuplicateRows}, ` +
       `displayed=${afterOneWeekDuplicateDisplayed ?? "missing"}, canonicalBefore=${beforeWeekDuplicateMove.netProfit}, ` +
       `canonicalAfter=${afterOneWeekDuplicateMove.netProfit}, scope=${afterOneWeekDuplicateText}`,
     );
 
-    const finalWeekDuplicateMoved = await moveRouteStopToDate(page, weekDuplicateStops[1].id, weekMoveDate);
-    const finalWeekDuplicateMoveApplied = await waitForCondition(
-      () => routeStops.some(stop => stop.id === weekDuplicateStops[1].id && stop.scheduledDate === weekMoveDate),
+    const monthBoundaryDestinationSelected = await selectCalendarDate(page, monthBoundaryDestinationDate);
+    const destinationAfterOneMove = expectedRouteProfitBetween(
+      monthBoundaryDestinationWeekStart,
+      monthBoundaryDestinationWeekEnd,
     );
-    const afterFinalWeekDuplicateMove = expectedRouteProfitBetween(visibleWeekStart, visibleWeekEnd);
-    const afterFinalWeekDuplicateRefreshed = await waitForRouteProfit(page, afterFinalWeekDuplicateMove.netProfit);
+    const destinationAfterOneMoveRefreshed = await waitForRouteProfit(
+      page,
+      destinationAfterOneMove.netProfit,
+    );
+    const destinationAfterOneMoveRows = await page.$$eval(
+      '[data-testid^="route-profit-job-row-"]',
+      (rows, jobId) => rows.filter(row => Number(row.getAttribute("data-job-id")) === jobId).length,
+      firstJobId,
+    );
+    const destinationAfterOneMoveDisplayed = await readRoutePanelNetProfit(page);
+    record(
+      "The destination Week includes the moved duplicate job exactly once",
+      monthBoundaryDestinationSelected
+        && destinationAfterOneMoveRefreshed
+        && destinationAfterOneMove.jobIds.includes(firstJobId)
+        && destinationAfterOneMoveRows === 1
+        && nearlyEqual(destinationAfterOneMoveDisplayed, destinationAfterOneMove.netProfit),
+      `destinationWeek=${monthBoundaryDestinationWeekStart}..${monthBoundaryDestinationWeekEnd}, ` +
+      `jobIds=${destinationAfterOneMove.jobIds.join(",")}, rowsForFirstJob=${destinationAfterOneMoveRows}, ` +
+      `displayed=${destinationAfterOneMoveDisplayed ?? "missing"}, canonical=${destinationAfterOneMove.netProfit}`,
+    );
+
+    const monthBoundarySourceReturned = await selectCalendarDate(page, monthBoundarySourceDate);
+    const sourceAfterDestinationVisit = expectedRouteProfitBetween(
+      monthBoundarySourceWeekStart,
+      monthBoundarySourceWeekEnd,
+    );
+    const monthBoundarySourceRestored = await waitForRouteProfit(
+      page,
+      sourceAfterDestinationVisit.netProfit,
+    );
+    const finalWeekDuplicateMoved = await moveRouteStopToDate(
+      page,
+      weekDuplicateStops[1].id,
+      monthBoundaryDestinationDate,
+    );
+    const finalWeekDuplicateMoveApplied = await waitForCondition(
+      () => routeStops.some(stop =>
+        stop.id === weekDuplicateStops[1].id
+        && stop.scheduledDate === monthBoundaryDestinationDate
+      ),
+    );
+    const afterFinalWeekDuplicateMove = expectedRouteProfitBetween(
+      monthBoundarySourceWeekStart,
+      monthBoundarySourceWeekEnd,
+    );
+    const afterFinalWeekDuplicatePanelCleared = await page.waitForFunction(
+      () => document.querySelector('[data-testid="route-profit-panel"]') == null,
+      { timeout: 20_000 },
+    ).then(() => true).catch(() => false);
     const afterFinalWeekDuplicateRows = await page.$$eval(
       '[data-testid^="route-profit-job-row-"]',
       (rows, jobId) => rows.filter(row => Number(row.getAttribute("data-job-id")) === jobId).length,
       firstJobId,
     );
     const afterFinalWeekDuplicateDisplayed = await readRoutePanelNetProfit(page);
-    const afterFinalWeekDuplicateText = await page.$eval(
-      '[data-testid="route-profit-week-scope"]',
-      scope => scope.textContent?.replace(/\s+/g, " ").trim() ?? "",
+    const afterFinalWeekDuplicateText = await page.evaluate(
+      () => document.body.innerText.replace(/\s+/g, " ").trim(),
     );
     record(
-      "Moving the final Week duplicate outside removes that job and refreshes the canonical total",
-      finalWeekDuplicateMoved
+      "Moving the final duplicate out of the source Week clears stale profit rows",
+      monthBoundarySourceReturned
+        && monthBoundarySourceRestored
+        && finalWeekDuplicateMoved
         && finalWeekDuplicateMoveApplied
-        && afterFinalWeekDuplicateRefreshed
+        && afterFinalWeekDuplicatePanelCleared
+        && afterFinalWeekDuplicateMove.jobIds.length === 0
+        && afterFinalWeekDuplicateMove.netProfit === 0
         && !afterFinalWeekDuplicateMove.jobIds.includes(firstJobId)
         && afterFinalWeekDuplicateRows === 0
-        && nearlyEqual(afterFinalWeekDuplicateDisplayed, afterFinalWeekDuplicateMove.netProfit)
-        && !afterFinalWeekDuplicateText.includes("E2E Profit Parity One")
-        && afterFinalWeekDuplicateText.includes("Stops outside this week excluded."),
+        && afterFinalWeekDuplicateDisplayed == null
+        && !afterFinalWeekDuplicateText.includes("E2E Profit Parity One"),
+      `sourceWeek=${monthBoundarySourceWeekStart}..${monthBoundarySourceWeekEnd}, ` +
       `jobIds=${afterFinalWeekDuplicateMove.jobIds.join(",")}, rowsForFirstJob=${afterFinalWeekDuplicateRows}, ` +
       `displayed=${afterFinalWeekDuplicateDisplayed ?? "missing"}, canonical=${afterFinalWeekDuplicateMove.netProfit}, ` +
-      `scope=${afterFinalWeekDuplicateText}`,
+      `panelCleared=${afterFinalWeekDuplicatePanelCleared}`,
     );
 
     delayedProfitJobId = firstJobId;
