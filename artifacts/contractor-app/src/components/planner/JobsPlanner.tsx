@@ -152,51 +152,47 @@ function rangeLabel(entry: PlannerEntry): string {
   return `${formatScheduleDate(entry.startDate)} – ${formatScheduleDate(entry.endDate)}`;
 }
 
-function ActiveJobPresence({ job }: { job: ScheduleJob }) {
-  const [snapshot, setSnapshot] = useState<JobPresenceSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError(false);
-    fetch(`${BASE}/api/jobs/production-presence?jobIds=${job.id}`, {
-      credentials: "include",
-      signal: controller.signal,
-    })
-      .then(response =>
-        response.ok
-          ? response.json() as Promise<{ jobs: JobPresenceSnapshot[] }>
-          : Promise.reject(new Error("Production presence request failed"))
-      )
-      .then(data => {
-        const nextSnapshot = data.jobs.find(candidate => candidate.jobId === job.id);
-        if (!nextSnapshot) throw new Error("Production presence snapshot missing");
-        setSnapshot(nextSnapshot);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setSnapshot(null);
-          setError(true);
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-
-    return () => controller.abort();
-  }, [job.id]);
-
+function ActiveJobPresence({
+  job,
+  snapshot,
+  loading,
+  error,
+  onSnapshotChange,
+}: {
+  job: ScheduleJob;
+  snapshot: JobPresenceSnapshot | null;
+  loading: boolean;
+  error: boolean;
+  onSnapshotChange: (snapshot: JobPresenceSnapshot) => void;
+}) {
   return (
     <JobPresencePanel
       job={job}
       snapshot={snapshot}
       loading={loading}
       error={error}
-      onSnapshotChange={setSnapshot}
+      onSnapshotChange={onSnapshotChange}
     />
   );
+}
+
+type PresenceState = "unrecorded" | "here" | "not_here";
+
+function todayPresenceState(snapshot: JobPresenceSnapshot | undefined, today: string): PresenceState | null {
+  if (!snapshot) return null;
+  return snapshot.records.find(record => record.date === today)?.state ?? "unrecorded";
+}
+
+function presenceStatusLabel(state: PresenceState): string {
+  if (state === "here") return "Here today";
+  if (state === "not_here") return "Not here today";
+  return "Unrecorded today";
+}
+
+function presenceStatusClassName(state: PresenceState): string {
+  if (state === "here") return "bg-emerald-100 text-emerald-800";
+  if (state === "not_here") return "bg-orange-100 text-orange-800";
+  return "bg-slate-100 text-slate-700";
 }
 
 export function JobsPlanner({
@@ -228,6 +224,9 @@ export function JobsPlanner({
   const [cursor, setCursor] = useState(today);
   const [selectedDate, setSelectedDate] = useState(today);
   const [presenceJobId, setPresenceJobId] = useState<number | null>(null);
+  const [presenceSnapshots, setPresenceSnapshots] = useState<Record<number, JobPresenceSnapshot>>({});
+  const [presenceLoading, setPresenceLoading] = useState(false);
+  const [presenceError, setPresenceError] = useState(false);
   const requestEnd = addScheduleDays(today, 180);
 
   useEffect(() => {
@@ -237,6 +236,9 @@ export function JobsPlanner({
     if (businessId != null) params.set("businessId", String(businessId));
     setLoading(true);
     setError(false);
+    setPresenceLoading(true);
+    setPresenceError(false);
+    setPresenceSnapshots({});
     fetch(`${BASE}/api/jobs/schedule-overview?${params.toString()}`, {
       credentials: "include",
       signal: controller.signal,
@@ -249,16 +251,54 @@ export function JobsPlanner({
       .then(data => {
         setSchedule(data);
         onLoaded(data.jobs);
+
+        const jobIds = Array.from(new Set(data.jobs.map(job => job.id)));
+        if (jobIds.length === 0) {
+          setPresenceSnapshots({});
+          setPresenceLoading(false);
+          return;
+        }
+
+        const chunks: number[][] = [];
+        for (let index = 0; index < jobIds.length; index += 100) {
+          chunks.push(jobIds.slice(index, index + 100));
+        }
+        return Promise.all(chunks.map(chunk =>
+          fetch(`${BASE}/api/jobs/production-presence?jobIds=${chunk.join(",")}`, {
+            credentials: "include",
+            signal: controller.signal,
+          }).then(response =>
+            response.ok
+              ? response.json() as Promise<{ jobs: JobPresenceSnapshot[] }>
+              : Promise.reject(new Error("Production presence request failed"))
+          )
+        )).then(payloads => {
+          const nextSnapshots: Record<number, JobPresenceSnapshot> = {};
+          for (const payload of payloads) {
+            for (const snapshot of payload.jobs) nextSnapshots[snapshot.jobId] = snapshot;
+          }
+          if (!controller.signal.aborted) setPresenceSnapshots(nextSnapshots);
+        }).catch(() => {
+          if (!controller.signal.aborted) {
+            setPresenceSnapshots({});
+            setPresenceError(true);
+          }
+        });
       })
       .catch(() => {
         if (!controller.signal.aborted) {
           setSchedule(null);
           onLoaded([]);
           setError(true);
+          setPresenceSnapshots({});
+          setPresenceError(true);
         }
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          setPresenceLoading(false);
+        }
       });
     return () => controller.abort();
     // onLoaded is intentionally excluded so parent renders do not refetch the schedule.
@@ -402,6 +442,8 @@ export function JobsPlanner({
     const resourceDemand = formatResourceDemand(entry.job.resourceDemand);
     const sourceJob = baseJobsById.get(entry.job.id) ?? entry.job;
     const blocker = getBlocker(sourceJob);
+    const presenceSnapshot = presenceSnapshots[entry.job.id];
+    const presenceState = isChecklist ? null : todayPresenceState(presenceSnapshot, today);
     return (
       <div key={entry.key} className="min-w-0">
         <div
@@ -442,18 +484,29 @@ export function JobsPlanner({
             )}
           </button>
           {!isChecklist && (
-            <button
-              type="button"
-              onClick={() => setPresenceJobId(current => current === entry.job.id ? null : entry.job.id)}
-              className="inline-flex min-w-9 items-center justify-center gap-1 px-2 text-muted-foreground transition-colors hover:bg-amber-50 hover:text-amber-700"
-              aria-expanded={presenceJobId === entry.job.id}
-              aria-label={`${presenceJobId === entry.job.id ? "Hide" : "Record"} daily presence for ${entry.job.title}`}
-              title="Record daily presence"
-              data-testid={`job-presence-toggle-${entry.job.id}`}
-            >
-              <CalendarCheck2 className="h-4 w-4" />
-              {!compact && <span className="hidden text-[10px] font-bold uppercase tracking-wide sm:inline">Presence</span>}
-            </button>
+            <div className="flex shrink-0 items-stretch">
+              {presenceState && (
+                <span
+                  className={`inline-flex items-center px-1.5 text-center text-[10px] font-bold leading-tight ${presenceStatusClassName(presenceState)}`}
+                  data-testid={`job-presence-status-${entry.job.id}`}
+                  title={presenceStatusLabel(presenceState)}
+                >
+                  {presenceStatusLabel(presenceState)}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setPresenceJobId(current => current === entry.job.id ? null : entry.job.id)}
+                className="inline-flex min-w-9 items-center justify-center gap-1 px-2 text-muted-foreground transition-colors hover:bg-amber-50 hover:text-amber-700"
+                aria-expanded={presenceJobId === entry.job.id}
+                aria-label={`${presenceJobId === entry.job.id ? "Hide" : "Record"} daily presence for ${entry.job.title}`}
+                title="Record daily presence"
+                data-testid={`job-presence-toggle-${entry.job.id}`}
+              >
+                <CalendarCheck2 className="h-4 w-4" />
+                {!compact && <span className="hidden text-[10px] font-bold uppercase tracking-wide sm:inline">Presence</span>}
+              </button>
+            </div>
           )}
           {!compact && (
             <button
@@ -467,7 +520,18 @@ export function JobsPlanner({
             </button>
           )}
         </div>
-        {!isChecklist && presenceJobId === entry.job.id && <ActiveJobPresence job={entry.job} />}
+        {!isChecklist && presenceJobId === entry.job.id && (
+          <ActiveJobPresence
+            job={entry.job}
+            snapshot={presenceSnapshot ?? null}
+            loading={presenceLoading && !presenceSnapshot}
+            error={presenceError}
+            onSnapshotChange={nextSnapshot => setPresenceSnapshots(current => ({
+              ...current,
+              [nextSnapshot.jobId]: nextSnapshot,
+            }))}
+          />
+        )}
       </div>
     );
   }

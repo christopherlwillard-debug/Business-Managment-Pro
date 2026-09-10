@@ -19,6 +19,8 @@ const JOB_TITLE = "Production Presence Browser Fixture";
 const CHECKLIST_ONLY_JOB_ID = 9202;
 const CHECKLIST_ONLY_JOB_TITLE = "Checklist-only Presence Browser Fixture";
 const CHECKLIST_ONLY_ENTRY_ID = 92021;
+const NOT_HERE_JOB_ID = 9203;
+const UNRECORDED_JOB_ID = 9204;
 const DATES = ["2026-09-01", "2026-09-02", "2026-09-03"];
 const ACTIVE_DATE = (() => {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -139,16 +141,19 @@ function scheduleFixture() {
 function activeScheduleFixture() {
   const fixture = scheduleFixture();
   const job = fixture.jobs[0];
+  const activeJob = {
+    ...job,
+    status: "in_progress",
+    startDate: ACTIVE_DATE,
+    endDate: ACTIVE_DATE,
+  };
   return {
     from: ACTIVE_DATE,
     to: ACTIVE_DATE,
     jobs: [
-      {
-        ...job,
-        status: "in_progress",
-        startDate: ACTIVE_DATE,
-        endDate: ACTIVE_DATE,
-      },
+      activeJob,
+      { ...activeJob, id: NOT_HERE_JOB_ID, title: "Not-here Presence Browser Fixture" },
+      { ...activeJob, id: UNRECORDED_JOB_ID, title: "Unrecorded Presence Browser Fixture" },
       {
         ...job,
         id: CHECKLIST_ONLY_JOB_ID,
@@ -169,6 +174,38 @@ function activeScheduleFixture() {
         unscheduledChecklistItems: [],
       },
     ],
+  };
+}
+
+function activeStatusSnapshot(jobId: number, state: PresenceState) {
+  const record: PresenceRecord = {
+    id: 10_000 + jobId,
+    jobId,
+    date: ACTIVE_DATE,
+    state,
+    notHereReason: state === "not_here" ? "weather" : null,
+    notes: state === "not_here" ? "Weather stopped production" : null,
+    source: "manual_presence",
+    provenance: "confirmed",
+    createdAt: "2026-09-10T00:00:00.000Z",
+    createdByUserId: "browser-test-user",
+    createdByName: "Browser Test",
+    updatedAt: "2026-09-10T00:00:00.000Z",
+    updatedByUserId: "browser-test-user",
+    updatedByName: "Browser Test",
+  };
+  return {
+    jobId,
+    records: state === "unrecorded" ? [] : [record],
+    timing: {
+      expectedDurationDays: 3,
+      actualProductionStartDate: state === "here" ? ACTIVE_DATE : null,
+      lastWorkDate: state === "here" ? ACTIVE_DATE : null,
+      calendarSpanDays: state === "here" ? 1 : null,
+      actualProductionDays: state === "here" ? 1 : 0,
+      pausedNotHereDays: state === "not_here" ? 1 : 0,
+      productionDayVariance: state === "here" ? -2 : -3,
+    },
   };
 }
 
@@ -201,6 +238,18 @@ async function waitForText(page: Page, text: string) {
   );
 }
 
+async function clickVisible(page: Page, selector: string) {
+  const elements = await page.$$(selector);
+  for (const element of elements) {
+    const box = await element.boundingBox();
+    if (box && box.width > 0 && box.height > 0) {
+      await element.evaluate(target => (target as HTMLElement).click());
+      return;
+    }
+  }
+  throw new Error(`No visible element found for ${selector}`);
+}
+
 async function verifyActivePlannerView(page: Page, view: "week" | "month" | "agenda", label: string) {
   await page.click(`[data-testid="planner-view-${view}"]`);
   await page.waitForFunction(
@@ -212,9 +261,34 @@ async function verifyActivePlannerView(page: Page, view: "week" | "month" | "age
   const presenceToggle = `[data-testid="job-presence-toggle-${JOB_ID}"]`;
   const checklistToggle = `[data-testid="job-presence-toggle-${CHECKLIST_ONLY_JOB_ID}"]`;
   const checklistEntry = `[data-planner-entry-key="item-${CHECKLIST_ONLY_ENTRY_ID}"]`;
-  await page.waitForSelector(presenceToggle, { timeout: 20_000 });
+  await page.waitForFunction(
+    selector => Array.from(document.querySelectorAll(selector)).some(element => {
+      const rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    }),
+    { timeout: 20_000 },
+    presenceToggle,
+  );
   await waitForText(page, CHECKLIST_ONLY_JOB_TITLE);
   if (view === "week") await page.waitForSelector(checklistEntry, { timeout: 20_000 });
+  if (view === "week") {
+    for (const [jobId, expectedLabel] of [
+      [JOB_ID, "Here today"],
+      [NOT_HERE_JOB_ID, "Not here today"],
+      [UNRECORDED_JOB_ID, "Unrecorded today"],
+    ] as const) {
+      const status = `[data-testid="job-presence-status-${jobId}"]`;
+      await page.waitForSelector(status, { timeout: 20_000 });
+      recordResult(
+        `Active job card shows ${expectedLabel}`,
+        await page.$eval(
+          status,
+          (element, expected) => element.textContent?.trim() === expected,
+          expectedLabel,
+        ),
+      );
+    }
+  }
   recordResult(
     `${label} shows Presence for a job entry only`,
     await page.$(presenceToggle) !== null &&
@@ -222,7 +296,7 @@ async function verifyActivePlannerView(page: Page, view: "week" | "month" | "age
       (view !== "week" || await page.$(checklistEntry) !== null),
   );
 
-  await page.click(presenceToggle);
+  await clickVisible(page, presenceToggle);
   const panel = `[data-testid="job-presence-panel-${JOB_ID}"]`;
   await page.waitForSelector(panel, { timeout: 20_000 });
   recordResult(
@@ -230,7 +304,7 @@ async function verifyActivePlannerView(page: Page, view: "week" | "month" | "age
     await page.$(panel) !== null &&
       await page.$eval(panel, element => element.textContent?.includes("Daily production presence") ?? false),
   );
-  await page.click(presenceToggle);
+  await clickVisible(page, presenceToggle);
   await page.waitForSelector(panel, { hidden: true, timeout: 20_000 });
 }
 
@@ -264,11 +338,24 @@ async function main() {
         return;
       }
 
-      if (url.includes(`/api/jobs/production-presence?jobIds=${JOB_ID}`)) {
+      const presenceQuery = url.match(/\/api\/jobs\/production-presence\?jobIds=([^&]+)/);
+      if (presenceQuery) {
+        const requestedIds = decodeURIComponent(presenceQuery[1])
+          .split(",")
+          .map(value => Number(value))
+          .filter(Number.isInteger);
+        const isActiveScheduleBatch = requestedIds.length > 1;
         void request.respond({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ jobs: [snapshot()] }),
+          body: JSON.stringify({
+            jobs: isActiveScheduleBatch
+              ? requestedIds.map(jobId => activeStatusSnapshot(
+                jobId,
+                jobId === JOB_ID ? "here" : jobId === NOT_HERE_JOB_ID ? "not_here" : "unrecorded",
+              ))
+              : [snapshot()],
+          }),
         });
         return;
       }
