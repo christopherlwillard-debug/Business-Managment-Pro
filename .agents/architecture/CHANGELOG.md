@@ -30,6 +30,17 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 - Kept Active Schedule, checklist scheduling, daily logs, labor hours,
   financial behavior, and Knowledge Center learning unchanged.
 
+### Production Intelligence Phase 2 follow-up: Active Schedule entry point
+
+- Reused the existing `JobPresencePanel` and business-scoped production-presence
+  API from Active Schedule job cards, loading a job's snapshot only when the
+  user opens the compact Presence control.
+- Checklist entries remain separate and do not render duplicate presence
+  controls; presence writes remain limited to `job_daily_presence` and do not
+  affect checklist scheduling, labor, payroll, or financial behavior.
+- The authenticated browser regression now covers both Active Schedule and
+  Schedule History presence entry points.
+
 ### Production Intelligence Phase 1: read-only schedule history
 
 - Added a separate, business-scoped schedule-history read route using existing

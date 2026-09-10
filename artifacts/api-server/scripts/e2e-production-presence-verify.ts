@@ -16,6 +16,16 @@ const SHOTS = "/tmp/e2e-production-presence";
 const JOB_ID = 9201;
 const JOB_TITLE = "Production Presence Browser Fixture";
 const DATES = ["2026-09-01", "2026-09-02", "2026-09-03"];
+const ACTIVE_DATE = (() => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+})();
 
 if (process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT) {
   throw new Error("Refusing to run Production Presence E2E verification against a production deployment");
@@ -122,6 +132,21 @@ function scheduleFixture() {
   };
 }
 
+function activeScheduleFixture() {
+  const fixture = scheduleFixture();
+  const job = fixture.jobs[0];
+  return {
+    from: ACTIVE_DATE,
+    to: ACTIVE_DATE,
+    jobs: [{
+      ...job,
+      status: "in_progress",
+      startDate: ACTIVE_DATE,
+      endDate: ACTIVE_DATE,
+    }],
+  };
+}
+
 function buildRecord(date: string, body: Record<string, unknown>): PresenceRecord {
   const now = new Date().toISOString();
   const state = body.state as PresenceState;
@@ -162,6 +187,15 @@ async function main() {
     page.on("request", (request: HTTPRequest) => {
       const url = request.url();
       const method = request.method().toUpperCase();
+
+      if (url.includes("/api/jobs/schedule-overview?")) {
+        void request.respond({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(activeScheduleFixture()),
+        });
+        return;
+      }
 
       if (url.includes("/api/jobs/schedule-history?")) {
         void request.respond({
@@ -225,6 +259,24 @@ async function main() {
     if (!sessionId) throw new Error("Development login did not create a session cookie");
 
     await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
+    const activePresenceToggle = `[data-testid="job-presence-toggle-${JOB_ID}"]`;
+    await page.waitForSelector(activePresenceToggle, { timeout: 20_000 });
+    recordResult(
+      "Active Schedule exposes the daily presence entry point",
+      await page.$(activePresenceToggle) !== null,
+    );
+    await page.click(activePresenceToggle);
+    await page.waitForSelector(`[data-testid="job-presence-panel-${JOB_ID}"]`, { timeout: 20_000 });
+    recordResult(
+      "Active Schedule opens the shared presence panel",
+      await page.$(`[data-testid="job-presence-panel-${JOB_ID}"]`) !== null &&
+        await page.$eval(
+          `[data-testid="job-presence-panel-${JOB_ID}"]`,
+          element => element.textContent?.includes("Daily production presence") ?? false,
+        ),
+    );
+    await page.click(activePresenceToggle);
+
     await page.waitForSelector('[data-testid="schedule-history-tab"]', { timeout: 20_000 });
     await page.click('[data-testid="schedule-history-tab"]');
     await page.waitForSelector(`[data-testid="job-presence-panel-${JOB_ID}"]`, { timeout: 20_000 });

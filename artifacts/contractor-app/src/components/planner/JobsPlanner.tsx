@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   CalendarDays,
+  CalendarCheck2,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -13,6 +14,7 @@ import {
 import type { Job } from "@workspace/api-client-react";
 import type { ScheduleJob } from "@/pages/Jobs";
 import { localDateString } from "@/lib/utils";
+import { JobPresencePanel, type JobPresenceSnapshot } from "./JobPresencePanel";
 import { JobScheduleHistory } from "./JobScheduleHistory";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -150,6 +152,53 @@ function rangeLabel(entry: PlannerEntry): string {
   return `${formatScheduleDate(entry.startDate)} – ${formatScheduleDate(entry.endDate)}`;
 }
 
+function ActiveJobPresence({ job }: { job: ScheduleJob }) {
+  const [snapshot, setSnapshot] = useState<JobPresenceSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(false);
+    fetch(`${BASE}/api/jobs/production-presence?jobIds=${job.id}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(response =>
+        response.ok
+          ? response.json() as Promise<{ jobs: JobPresenceSnapshot[] }>
+          : Promise.reject(new Error("Production presence request failed"))
+      )
+      .then(data => {
+        const nextSnapshot = data.jobs.find(candidate => candidate.jobId === job.id);
+        if (!nextSnapshot) throw new Error("Production presence snapshot missing");
+        setSnapshot(nextSnapshot);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setSnapshot(null);
+          setError(true);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [job.id]);
+
+  return (
+    <JobPresencePanel
+      job={job}
+      snapshot={snapshot}
+      loading={loading}
+      error={error}
+      onSnapshotChange={setSnapshot}
+    />
+  );
+}
+
 export function JobsPlanner({
   businessId,
   allJobs,
@@ -178,6 +227,7 @@ export function JobsPlanner({
   const [view, setView] = useState<PlannerView>("week");
   const [cursor, setCursor] = useState(today);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [presenceJobId, setPresenceJobId] = useState<number | null>(null);
   const requestEnd = addScheduleDays(today, 180);
 
   useEffect(() => {
@@ -353,55 +403,71 @@ export function JobsPlanner({
     const sourceJob = baseJobsById.get(entry.job.id) ?? entry.job;
     const blocker = getBlocker(sourceJob);
     return (
-      <div
-        key={entry.key}
-        className={`group flex min-w-0 items-stretch overflow-hidden rounded-xl border bg-background shadow-sm transition-all hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md ${
-          isChecklist ? "border-blue-200" : "border-border"
-        } ${compact ? "rounded-lg" : ""}`}
-      >
-        <button
-          type="button"
-          onClick={() => openEntry(entry)}
-          className={`min-w-0 flex-1 text-left ${compact ? "px-2 py-1.5" : "px-3 py-2.5"}`}
+      <div key={entry.key} className="min-w-0">
+        <div
+          className={`group flex min-w-0 items-stretch overflow-hidden rounded-xl border bg-background shadow-sm transition-all hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md ${
+            isChecklist ? "border-blue-200" : "border-border"
+          } ${compact ? "rounded-lg" : ""}`}
         >
-          <span className="flex min-w-0 items-center gap-2">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${isChecklist ? "bg-blue-500" : "bg-amber-500"}`} />
-            <span className="min-w-0 truncate text-sm font-bold text-foreground">{entry.job.title}</span>
-          </span>
-          <span className={`mt-1 block truncate text-xs text-muted-foreground ${compact ? "text-[11px]" : ""}`}>
-            {secondaryLabel}
-          </span>
-          {!compact && (
-            <span className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
-              {progress != null && <span>· {Math.round(progress)}% complete</span>}
-              {entry.startDate !== entry.endDate && <span>· {rangeLabel(entry)}</span>}
-            </span>
-          )}
-          {(priority || resourceDemand || blocker) && !compact && (
-            <span className="mt-2 flex flex-wrap gap-1.5">
-              {priority && (
-                <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${
-                  priority === "urgent" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"
-                }`}>
-                  {priority}
-                </span>
-              )}
-              {resourceDemand && <span className="rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">{resourceDemand}</span>}
-              {blocker && <span className="max-w-full truncate rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">{blocker}</span>}
-            </span>
-          )}
-        </button>
-        {!compact && (
           <button
             type="button"
-            onClick={() => onOpenPlanning(entry.job)}
-            className="px-2 text-muted-foreground opacity-60 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
-            aria-label={`Open planning settings for ${entry.job.title}`}
-            title="Planning settings"
+            onClick={() => openEntry(entry)}
+            className={`min-w-0 flex-1 text-left ${compact ? "px-2 py-1.5" : "px-3 py-2.5"}`}
           >
-            <Settings2 className="h-4 w-4" />
+            <span className="flex min-w-0 items-center gap-2">
+              <span className={`h-2 w-2 shrink-0 rounded-full ${isChecklist ? "bg-blue-500" : "bg-amber-500"}`} />
+              <span className="min-w-0 truncate text-sm font-bold text-foreground">{entry.job.title}</span>
+            </span>
+            <span className={`mt-1 block truncate text-xs text-muted-foreground ${compact ? "text-[11px]" : ""}`}>
+              {secondaryLabel}
+            </span>
+            {!compact && (
+              <span className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
+                {progress != null && <span>· {Math.round(progress)}% complete</span>}
+                {entry.startDate !== entry.endDate && <span>· {rangeLabel(entry)}</span>}
+              </span>
+            )}
+            {(priority || resourceDemand || blocker) && !compact && (
+              <span className="mt-2 flex flex-wrap gap-1.5">
+                {priority && (
+                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                    priority === "urgent" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"
+                  }`}>
+                    {priority}
+                  </span>
+                )}
+                {resourceDemand && <span className="rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">{resourceDemand}</span>}
+                {blocker && <span className="max-w-full truncate rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">{blocker}</span>}
+              </span>
+            )}
           </button>
-        )}
+          {!isChecklist && (
+            <button
+              type="button"
+              onClick={() => setPresenceJobId(current => current === entry.job.id ? null : entry.job.id)}
+              className="inline-flex min-w-9 items-center justify-center gap-1 px-2 text-muted-foreground transition-colors hover:bg-amber-50 hover:text-amber-700"
+              aria-expanded={presenceJobId === entry.job.id}
+              aria-label={`${presenceJobId === entry.job.id ? "Hide" : "Record"} daily presence for ${entry.job.title}`}
+              title="Record daily presence"
+              data-testid={`job-presence-toggle-${entry.job.id}`}
+            >
+              <CalendarCheck2 className="h-4 w-4" />
+              {!compact && <span className="hidden text-[10px] font-bold uppercase tracking-wide sm:inline">Presence</span>}
+            </button>
+          )}
+          {!compact && (
+            <button
+              type="button"
+              onClick={() => onOpenPlanning(entry.job)}
+              className="px-2 text-muted-foreground opacity-60 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+              aria-label={`Open planning settings for ${entry.job.title}`}
+              title="Planning settings"
+            >
+              <Settings2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        {!isChecklist && presenceJobId === entry.job.id && <ActiveJobPresence job={entry.job} />}
       </div>
     );
   }
