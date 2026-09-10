@@ -12,6 +12,22 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-09-10
+
+### One-app Website Studio deployment identity
+
+- Renamed the web artifact to `Contractor Management App + Website Studio` to make clear that Website Studio is an internal module of the same multi-business application.
+- Documented `business-managment-pro.replit.app` as the authenticated dashboard URL and `willardsgc.com` as the public Website Studio URL.
+- Explicitly kept DNS, custom dashboard domains, project splitting, and data duplication out of scope.
+
+### Stale profit deployment protection and browser Gmail entry point
+
+- Bumped the canonical job-profit response marker to version 3 so a previously deployed API cannot be accepted by the current Closed Jobs client after the keyed batch calculation change.
+- Added an explicit browser link to Gmail Sent in the invoice compose panel; Gmail API sending and evidence-only recovery remain unchanged.
+- Verified API typecheck, focused API regressions, frontend typecheck/build, profit contract checks, client consumer checks, release guard, and local workflow startup.
+
+---
+
 ## 2026-09-09
 
 ### Canonical profit release and business-scoped recovery safeguards
@@ -25,16 +41,6 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 - Allowed unresolved Gmail events to be verified or safely cleared as failed when no exact Sent message exists; invoice status remains unchanged without evidence.
 - Reworked the invoice drawer into a fixed responsive action header with independently scrollable invoice and delivery content.
 - Verified API/frontend typechecks, OpenAPI codegen contract checks, focused profit regressions, production frontend build, release guard, and clean diff; the full API test wrapper remains blocked by the pre-existing development schema check for unrelated missing business columns.
-
----
-
-## 2026-09-10
-
-### Stale profit deployment protection and browser Gmail entry point
-
-- Bumped the canonical job-profit response marker to version 3 so a previously deployed API cannot be accepted by the current Closed Jobs client after the keyed batch calculation change.
-- Added an explicit browser link to Gmail Sent in the invoice compose panel; Gmail API sending and evidence-only recovery remain unchanged.
-- Verified API typecheck, focused API regressions, frontend typecheck/build, profit contract checks, client consumer checks, release guard, and local workflow startup.
 
 ---
 

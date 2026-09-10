@@ -55,7 +55,7 @@ The gas reimbursement remains separate from the profit split and must not be dup
 
 ## Overview
 
-This project is a full-stack Contractor Management App designed for general contractors. It provides comprehensive tools for managing various aspects of a contracting business, including job tracking, invoicing, expense management, subcontractor coordination, and financial reporting. The application aims to streamline operations, improve financial oversight, and enhance compliance for contractors.
+This project is a full-stack Contractor Management App with Website Studio for general contractors. It provides comprehensive tools for managing multiple businesses from one application, including job tracking, invoicing, expense management, subcontractor coordination, financial reporting, and creating public websites for each managed business. The authenticated Contractor Management App is served at `business-managment-pro.replit.app`; connected public business domains such as `willardsgc.com` render the matching published Website Studio site. Website Studio is an internal module of this same application, not a separate project.
 
 Key capabilities include:
 - Unified Jobs and Invoicing workflow.

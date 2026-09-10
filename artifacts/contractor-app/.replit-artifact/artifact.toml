@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "Contractor Management App"
+title = "Contractor Management App + Website Studio"
 version = "1.0.0"
 id = "artifacts/contractor-app"
 router = "path"
