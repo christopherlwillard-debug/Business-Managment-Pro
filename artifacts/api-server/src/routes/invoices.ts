@@ -35,6 +35,7 @@ import {
   reconcileConfirmedGmailInvoiceDelivery,
   reconcileConfirmedGmailInvoiceDeliveries,
   gmailRepairRequiredInvoiceIds,
+  recoverGmailSentMessage,
   recoverGmailSentMessageFromConnector,
   verifyGmailSentMessage,
   type InvoiceCommunicationType,
@@ -888,12 +889,23 @@ router.post("/:id/communications/:eventId/recover-gmail", async (req, res) => {
       });
     }
 
-    const recovered = await recoverGmailSentMessageFromConnector({
-      deliveryId: String(existing.id),
-      recipient: existing.recipient ?? "",
-      subject: existing.subject ?? "",
-      requestedAt: existing.requestedAt,
-    });
+    const accessToken = typeof req.body?.accessToken === "string"
+      ? req.body.accessToken.trim()
+      : "";
+    const recovered = accessToken
+      ? await recoverGmailSentMessage({
+          accessToken,
+          deliveryId: String(existing.id),
+          recipient: existing.recipient ?? "",
+          subject: existing.subject ?? "",
+          requestedAt: existing.requestedAt,
+        })
+      : await recoverGmailSentMessageFromConnector({
+          deliveryId: String(existing.id),
+          recipient: existing.recipient ?? "",
+          subject: existing.subject ?? "",
+          requestedAt: existing.requestedAt,
+        });
     if (!recovered) {
       const existingMetadata = existing.metadata && typeof existing.metadata === "object"
         ? existing.metadata as Record<string, unknown>

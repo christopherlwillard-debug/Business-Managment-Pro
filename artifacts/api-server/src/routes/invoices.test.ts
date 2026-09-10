@@ -832,6 +832,53 @@ describe("POST /:id/communications/:eventId/finalize", () => {
     expect(h.gmailProxy.mock.calls.every(([, path]) => !String(path).includes("/send"))).toBe(true);
   });
 
+  it("retries metadata recovery with a reconnected token without sending a new invoice", async () => {
+    const requestedAt = new Date("2026-09-05T12:00:00.000Z");
+    h.selectQueue.push([pendingEvent({ requestedAt })]);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ messages: [{ id: "gmail-message-1", threadId: "gmail-thread-1" }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: "gmail-message-1",
+          threadId: "gmail-thread-1",
+          internalDate: String(requestedAt.getTime() + 2_000),
+          labelIds: ["SENT"],
+          payload: {
+            headers: [
+              { name: "To", value: "client@example.com" },
+              { name: "Subject", value: "Invoice INV-1001" },
+              { name: "X-BuildPro-Delivery-ID", value: "77" },
+            ],
+          },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/42/communications/77/recover-gmail")
+      .send({ accessToken: "fresh-gmail-token" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.recovered).toBe(true);
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      headers: { Authorization: "Bearer fresh-gmail-token" },
+    }));
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).includes("/send"))).toBe(true);
+    expect(h.gmailProxy).not.toHaveBeenCalled();
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "accepted",
+      providerMessageId: "gmail-message-1",
+    }));
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "sent",
+      sentMethod: "gmail",
+    }));
+  });
+
   it("clears a stale pending event when no exact Gmail message exists", async () => {
     const requestedAt = new Date("2026-09-05T12:00:00.000Z");
     h.selectQueue.push([pendingEvent({ requestedAt })]);

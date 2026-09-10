@@ -16,6 +16,17 @@ describe("reconnectAndRepairInvoiceGmail", () => {
     expect(repair).toHaveBeenCalledWith(77, "fresh-gmail-token");
   });
 
+  it("propagates metadata denial from the recovery-only verifier", async () => {
+    const reconnect = vi.fn().mockResolvedValue("fresh-gmail-token");
+    const repair = vi.fn().mockRejectedValue(new Error("Gmail metadata permission is required"));
+
+    await expect(reconnectAndRepairInvoiceGmail(reconnect, repair, 77))
+      .rejects.toThrow("Gmail metadata permission is required");
+
+    expect(reconnect).toHaveBeenCalledOnce();
+    expect(repair).toHaveBeenCalledWith(77, "fresh-gmail-token");
+  });
+
   it("returns a validated message identity for the matching invoice", () => {
     const storage = {
       getItem: vi.fn().mockReturnValue(JSON.stringify({

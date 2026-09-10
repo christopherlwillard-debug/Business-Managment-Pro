@@ -24,6 +24,7 @@ import {
 import { sendViaGmail, buildInvoiceEmailHtml, dataUriToInlineImage } from "@/lib/gmailSend";
 import {
   readStoredInvoiceGmailRecovery,
+  reconnectAndRepairInvoiceGmail,
   type InvoiceGmailFinalizationRecovery,
 } from "@/lib/invoiceGmailRepair";
 import { buildInvoiceHtml } from "@/lib/printInvoice";
@@ -84,7 +85,7 @@ export function InvoicePanel({
   const createClientMutation = useCreateClient();
   const createPaymentLink = useCreateInvoicePaymentLink();
   const deletePaymentLink = useDeleteInvoicePaymentLink();
-  const { isConfigured: googleConfigured, isConnected: googleConnected, getToken, signIn } = useGoogleAuth();
+  const { isConfigured: googleConfigured, isConnected: googleConnected, getToken, reconnect, signIn } = useGoogleAuth();
   const { toast } = useToast();
   const { activeBusiness, businesses, refresh: refreshBusinesses } = useBusiness();
 
@@ -233,6 +234,7 @@ export function InvoicePanel({
   const [gmailFinalizationRecovery, setGmailFinalizationRecovery] = useState<InvoiceGmailFinalizationRecovery | null>(null);
   const [gmailDeliveryBlocked, setGmailDeliveryBlocked] = useState<string | null>(null);
   const [gmailPendingEventId, setGmailPendingEventId] = useState<number | null>(null);
+  const [gmailReconnectRequired, setGmailReconnectRequired] = useState(false);
   const [gmailSent, setGmailSent] = useState(false);
   const [gmailPreview, setGmailPreview] = useState(false);
   const [attachChecklist, setAttachChecklist] = useState(true);
@@ -301,6 +303,7 @@ export function InvoicePanel({
       setGmailMessage("");
       setGmailDeliveryBlocked(null);
       setGmailPendingEventId(null);
+      setGmailReconnectRequired(false);
       if (effectiveExistingInvoice) {
         setGmailFinalizationRecovery(
           readStoredInvoiceGmailRecovery(window.localStorage, effectiveExistingInvoice.id),
@@ -363,6 +366,7 @@ export function InvoicePanel({
       setGmailFinalizationRecovery(null);
       setGmailDeliveryBlocked(null);
       setGmailPendingEventId(null);
+      setGmailReconnectRequired(false);
       return;
     }
     const storedRecovery = readStoredInvoiceGmailRecovery(
@@ -380,6 +384,7 @@ export function InvoicePanel({
         setGmailFinalizationRecovery(matchingBrowserRecovery);
       }
       setGmailDeliveryBlocked(null);
+      setGmailReconnectRequired(false);
       setGmailPendingEventId(unresolved.id);
       return;
     }
@@ -391,15 +396,18 @@ export function InvoicePanel({
         providerThreadId: unresolved.providerThreadId ?? null,
       });
       setGmailDeliveryBlocked(null);
+      setGmailReconnectRequired(false);
       setGmailPendingEventId(null);
     } else if (unresolved.status === "pending") {
       setGmailFinalizationRecovery(null);
       setGmailDeliveryBlocked("A previous Gmail delivery attempt is still pending. Resolve its delivery history before sending again.");
       setGmailPendingEventId(unresolved.id);
+      setGmailReconnectRequired(false);
     } else {
       setGmailFinalizationRecovery(null);
       setGmailDeliveryBlocked("This Gmail delivery has no message evidence and cannot be marked Sent.");
       setGmailPendingEventId(null);
+      setGmailReconnectRequired(false);
     }
   }, [
     open,
@@ -1166,6 +1174,7 @@ export function InvoicePanel({
           setGmailFinalizationRecovery(null);
           setGmailDeliveryBlocked(null);
           setGmailPendingEventId(null);
+          setGmailReconnectRequired(false);
           toast({ title: "Delivery history repaired", description: "The invoice is now marked Sent." });
           return;
         }
@@ -1187,6 +1196,7 @@ export function InvoicePanel({
           throw error;
         }
         setGmailDeliveryBlocked(null);
+        setGmailReconnectRequired(false);
         setGmailPendingEventId(null);
         await queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
         await communicationHistory.refetch();
@@ -1248,9 +1258,51 @@ export function InvoicePanel({
       toast({ title: "Delivery history repaired", description: "The invoice is now marked Sent." });
     } catch (err: any) {
       const message = err?.message ?? "";
+      if (err?.gmailPermission) setGmailReconnectRequired(true);
       toast({
         title: "History still needs repair",
         description: message || "The server could not verify the existing Gmail message.",
+        variant: "destructive",
+      });
+    } finally {
+      setGmailSending(false);
+    }
+  }
+
+  async function handleReconnectAndRepairGmail() {
+    const eventId = gmailPendingEventId;
+    if (!effectiveExistingInvoice || !eventId) return;
+    setGmailSending(true);
+    try {
+      await reconnectAndRepairInvoiceGmail(reconnect, async (recoveryEventId, accessToken) => {
+        const response = await fetch(
+          `${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${recoveryEventId}/recover-gmail`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ accessToken }),
+          },
+        );
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const error = new Error(result.error ?? "Delivery history could not be recovered.") as Error & { gmailPermission?: boolean };
+          error.gmailPermission = ["gmail_authentication_required", "gmail_metadata_permission"]
+            .includes(result.errorCode);
+          throw error;
+        }
+      }, eventId);
+      setGmailReconnectRequired(false);
+      setGmailDeliveryBlocked(null);
+      setGmailPendingEventId(null);
+      await queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
+      await communicationHistory.refetch();
+      toast({ title: "Delivery history repaired", description: "The existing Gmail message was verified. The invoice is now marked Sent." });
+    } catch (err: any) {
+      if (err?.gmailPermission) setGmailReconnectRequired(true);
+      toast({
+        title: "History still needs repair",
+        description: err?.message ?? "Reconnect Gmail and try again.",
         variant: "destructive",
       });
     } finally {
@@ -1773,6 +1825,17 @@ export function InvoicePanel({
                     >
                       I Checked Gmail — Not Sent
                     </button>
+                    {gmailReconnectRequired && (
+                      <button
+                        type="button"
+                        onClick={handleReconnectAndRepairGmail}
+                        disabled={gmailSending}
+                        className="inline-flex items-center gap-1 rounded-lg border border-blue-400 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        {gmailSending ? "Reconnecting…" : "Reconnect Gmail & Verify"}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
