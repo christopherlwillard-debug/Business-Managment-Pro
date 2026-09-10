@@ -1,0 +1,92 @@
+im telling you its not google everything has been find up till the last visit we did to invoiucing 
+
+Yes — I see what you're saying now, and I agree with you. The screenshots actually make the problem much clearer.
+
+This is not Gmail randomly stopping working.
+
+What changed
+
+Your invoice screen now has this new behavior:
+
+5 delivery events
+Some are Accepted by provider
+Some are Pending
+One says Failed — Load failed
+New buttons:
+Find Sent Email & Repair
+Reconnect Gmail & retry
+And the app itself is reporting:
+
+“Gmail metadata permission is required to verify this delivery.”
+
+That is the important part.
+
+The last invoice work changed the application's delivery verification system so that after Gmail accepts the email, the app now tries to go back into Gmail and verify the message metadata before it considers the invoice successfully sent.
+
+That is why everything worked before we touched the invoice system.
+
+The Google warning you're seeing is a symptom of that change. The app is now asking Google for additional access because we changed what the invoice system does with Gmail.
+
+And there is another big clue
+
+Your Wil-1046 invoice is already showing:
+
+Automatic reminder sent → Accepted by provider
+
+with a Gmail message ID.
+
+And the other delivery attempts are still sitting there.
+
+So the emails are getting to Gmail.
+
+The problem is the application's new verification/reconciliation layer, not the actual ability to send invoices.
+
+I would NOT keep clicking around in Google yet
+
+I don't want you chasing Google settings and potentially changing things we don't need to change.
+
+We should go back to Replit and have it investigate exactly what we changed in the invoice system and why it introduced this new metadata requirement.
+
+I'd send Replit this:
+
+STOP — DO NOT CHANGE GOOGLE, GMAIL, OR ANY OTHER SYSTEM YET.
+
+The screenshots from production confirm the invoice problem began after our recent invoice delivery changes.
+
+Before implementing anything else, diagnose the invoice delivery code changes that introduced the Gmail metadata verification requirement.
+
+We previously had working invoice sending. After the recent invoice work, the app began creating delivery events that remain Pending/Failed even though the messages exist in Gmail Sent and have Gmail message IDs.
+
+Production currently shows Wil-1046 with 5 delivery events, including:
+
+Accepted by provider
+Failed — Load failed
+Accepted by provider with message ID
+Pending
+Pending
+
+The repair UI now reports:
+“Gmail metadata permission is required to verify this delivery.”
+
+The Google OAuth warning appearing now is a consequence of the application requesting additional Gmail access for the new verification behavior. Do NOT treat this as a generic Google/Gmail account problem.
+
+Diagnosis only. Do not modify code, database, OAuth configuration, invoice records, or production.
+
+Trace the invoice send flow from:
+
+Create/persist delivery event
+Gmail send
+Gmail response/message ID
+Metadata verification
+Final invoice status update
+Repair/reconciliation
+
+Identify exactly which commit/change introduced the metadata verification requirement and explain why the original successful send flow was changed.
+
+Also determine whether we can reliably finalize delivery using the Gmail send response/message ID without requiring a separate metadata-read operation.
+
+Return a diagnosis only. Do not repair or publish anything until I approve the specific fix.
+
+That's the next move I recommend.
+
+And importantly: don't click Continue on that Google screen yet. Let's first have Replit explain why its new invoice code is asking for this additional permission.
