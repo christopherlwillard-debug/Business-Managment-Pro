@@ -224,7 +224,7 @@ export function JobPresencePanel({
                 const state = record?.state ?? "unrecorded";
                 const isSaving = savingDate === date;
                 return (
-                  <div key={date} className="rounded-xl border border-amber-200 bg-white/80 p-2.5">
+                    <div key={date} className="rounded-xl border border-amber-200 bg-white/80 p-2.5" data-testid={`job-presence-day-${date}`}>
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-bold text-foreground">{formatDate(date)}</p>
                       {record && <span className="text-[10px] font-semibold text-amber-800">{provenanceLabel(record)}</span>}
@@ -235,6 +235,8 @@ export function JobPresencePanel({
                           key={option}
                           type="button"
                           disabled={Boolean(savingDate)}
+                          data-state={option}
+                          aria-label={`${stateLabel(option)} on ${formatDate(date)}`}
                           onClick={() => option === "not_here"
                             ? beginNotHere(date)
                             : savePresence(date, option)}
@@ -277,7 +279,7 @@ export function JobPresencePanel({
           )}
 
           {editingDate && (
-            <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3">
+            <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3" data-testid="job-presence-editor">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-bold text-orange-950">Not here on {formatDate(editingDate)}</p>
                 <button type="button" onClick={() => setEditingDate(null)} className="rounded-md p-1 text-orange-800 hover:bg-orange-100" aria-label="Close not-here editor"><X className="h-3.5 w-3.5" /></button>
@@ -285,16 +287,16 @@ export function JobPresencePanel({
               <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1.5fr_auto] sm:items-end">
                 <label className="text-[11px] font-bold text-orange-950">
                   Reason
-                  <select value={draftReason} onChange={event => setDraftReason(event.target.value as NotHereReason | "")} className="mt-1 w-full rounded-lg border border-orange-200 bg-white px-2 py-1.5 text-xs font-normal">
+                  <select data-testid="job-presence-reason" value={draftReason} onChange={event => setDraftReason(event.target.value as NotHereReason | "")} className="mt-1 w-full rounded-lg border border-orange-200 bg-white px-2 py-1.5 text-xs font-normal">
                     <option value="">No reason recorded</option>
                     {Object.entries(REASON_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
                 </label>
                 <label className="text-[11px] font-bold text-orange-950">
                   Notes
-                  <input value={draftNotes} onChange={event => setDraftNotes(event.target.value)} maxLength={2000} placeholder="Optional note" className="mt-1 w-full rounded-lg border border-orange-200 bg-white px-2 py-1.5 text-xs font-normal" />
+                  <input data-testid="job-presence-notes" value={draftNotes} onChange={event => setDraftNotes(event.target.value)} maxLength={2000} placeholder="Optional note" className="mt-1 w-full rounded-lg border border-orange-200 bg-white px-2 py-1.5 text-xs font-normal" />
                 </label>
-                <button type="button" disabled={Boolean(savingDate)} onClick={() => savePresence(editingDate, "not_here", draftReason || null, draftNotes.trim() || null)} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                <button type="button" data-testid="job-presence-save" disabled={Boolean(savingDate)} onClick={() => savePresence(editingDate, "not_here", draftReason || null, draftNotes.trim() || null)} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
                   {savingDate === editingDate ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                   Save
                 </button>
@@ -302,7 +304,7 @@ export function JobPresencePanel({
               {activeRecord?.provenance && <p className="mt-2 text-[10px] text-orange-900/70">Saving will retain confirmed manual provenance for this day.</p>}
             </div>
           )}
-          {saveError && <p className="mt-2 text-xs font-semibold text-red-700">{saveError}</p>}
+          {saveError && <p data-testid="job-presence-save-error" className="mt-2 text-xs font-semibold text-red-700">{saveError}</p>}
           <p className="mt-3 flex items-center gap-1.5 text-[10px] text-muted-foreground">
             <CircleHelp className="h-3 w-3" /> Only Here days count as actual production days. No hours are required or created.
           </p>
