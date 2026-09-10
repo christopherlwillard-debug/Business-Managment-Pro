@@ -60,6 +60,7 @@ import {
   startJobProfitRefresh,
 } from "@/lib/jobProfitRequests";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
+import { requireSuccessfulPaymentResponse } from "@/lib/paymentResponse";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
 import { Card } from "@/components/ui/card";
 import { InvoicePanel } from "@/components/InvoicePanel";
@@ -3383,7 +3384,7 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify(body),
       });
-      if (!r.ok) throw new Error();
+      await requireSuccessfulPaymentResponse(r);
       const data = await r.json();
       await onRefresh();
       const isPartial = data.status === "partial";
@@ -3393,8 +3394,12 @@ function SubPaymentRowCard({ p, jobId, owed, calculatedOwed, onRefresh }: {
           ? `${p.subName ?? "Sub"}: $${fmt(amount)} paid — $${fmt(owed - (data.accumulated ?? 0))} remaining`
           : `${p.subName ?? "Sub"} fully paid`,
       });
-    } catch {
-      toast({ title: "Failed to record payment", variant: "destructive" });
+    } catch (err) {
+      toast({
+        title: "Failed to record payment",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
     } finally {
       setPaying(false);
     }
@@ -3883,15 +3888,20 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
   async function handleQuickPay(subId: number, amount: number, subName?: string | null) {
     setMarkingPaidId(subId);
     try {
-      await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${subId}`, {
+      const response = await fetch(`${BASE}/api/jobs/${job.id}/pay-worker/${subId}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount, subName, idempotencyKey: crypto.randomUUID() }),
       });
+      await requireSuccessfulPaymentResponse(response);
       await loadData();
       qc.invalidateQueries({ queryKey: ["/api/jobs"] });
       toast({ title: "Marked as paid", description: `${formatCurrency(amount)} recorded` });
-    } catch {
-      toast({ title: "Failed to record payment", variant: "destructive" });
+    } catch (err) {
+      toast({
+        title: "Failed to record payment",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
     } finally {
       setMarkingPaidId(null);
     }
@@ -5688,7 +5698,7 @@ function JobCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount, agreedOwed: agreedOwed > 0 ? agreedOwed : undefined, subName: sub.subName, idempotencyKey: crypto.randomUUID() }),
       });
-      if (!res.ok) throw new Error();
+      await requireSuccessfulPaymentResponse(res);
       toast({ title: "Marked paid", description: `${sub.subName} — ${formatCurrency(amount)} recorded.` });
       // Refresh outstanding list; if empty, update localSubPaid
       const updated: OutstandingSubRow[] = await fetch(`${BASE}/api/jobs/${job.id}/outstanding-sub-payments`, { credentials: "include" })
@@ -5696,8 +5706,12 @@ function JobCard({
       setUnpaidSubs(updated);
       if (updated.length === 0) setLocalSubPaid(true);
       onPaymentSummaryChanged?.();
-    } catch {
-      toast({ title: "Failed to record payment", variant: "destructive" });
+    } catch (err) {
+      toast({
+        title: "Failed to record payment",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
     } finally {
       setMarkingSubId(null);
     }
@@ -8068,9 +8082,12 @@ export default function Jobs() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ amount, subName: sub.subName, idempotencyKey: crypto.randomUUID() }),
         });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({})) as { error?: string };
-          throw new Error(data.error ?? `Payment failed for ${sub.subName}`);
+        try {
+          await requireSuccessfulPaymentResponse(res);
+        } catch (err) {
+          throw new Error(err instanceof Error && err.message !== "Failed to record payment"
+            ? `${sub.subName}: ${err.message}`
+            : `Payment failed for ${sub.subName}`);
         }
       }));
       await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });

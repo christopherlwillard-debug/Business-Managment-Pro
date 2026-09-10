@@ -13,6 +13,7 @@ import {
   startJobProfitRefresh,
 } from "@/lib/jobProfitRequests";
 import { nextJobPaymentSummaryRefreshGeneration } from "@/lib/jobPaymentSummaryRefresh";
+import { requireSuccessfulPaymentResponse } from "@/lib/paymentResponse";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
 
@@ -471,7 +472,7 @@ function WorkerPayCard({
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify(body),
       });
-      if (!r.ok) throw new Error();
+      await requireSuccessfulPaymentResponse(r);
       await onRefresh();
       closeReview();
       // Reset draft refs after payment so dirty clears
@@ -481,7 +482,13 @@ function WorkerPayCard({
       initialMethod.current    = paymentMethod;
       initialRef.current       = paymentReference;
       toast({ title: "Payment recorded", description: `${p.subName ?? "Sub"}: $${fmt(draftNet)} paid` });
-    } catch { toast({ title: "Failed to record payment", variant: "destructive" }); }
+    } catch (err) {
+      toast({
+        title: "Failed to record payment",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
+    }
     finally { setPaying(false); }
   }
 
