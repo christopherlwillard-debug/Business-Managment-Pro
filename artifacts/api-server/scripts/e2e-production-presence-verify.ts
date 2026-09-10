@@ -80,6 +80,7 @@ let nextRecordId = 1;
 let failNextSave = false;
 let failNextPresenceRefresh = false;
 let failNextHistoryLoad = false;
+let delayNextHistoryRange: string | null = null;
 let remoteRefreshState: PresenceState | null = null;
 let remoteRefreshDate = ACTIVE_DATE;
 let presenceRefreshRequests = 0;
@@ -430,11 +431,19 @@ async function main() {
           return;
         }
         const historyRange = new URL(url).searchParams.get("from");
-        void request.respond({
+        const historyResponse = {
           status: 200,
           contentType: "application/json",
           body: JSON.stringify(scheduleFixture(historyRange === ALTERNATE_DATES[0] ? ALTERNATE_DATES : DATES)),
-        });
+        };
+        if (delayNextHistoryRange === historyRange) {
+          delayNextHistoryRange = null;
+          setTimeout(() => {
+            void request.respond(historyResponse).catch(() => undefined);
+          }, 250);
+          return;
+        }
+        void request.respond(historyResponse);
         return;
       }
 
@@ -848,6 +857,49 @@ async function main() {
     recordResult(
       "Successful Schedule History range establishes a new refresh age",
       recoveredRangeRefreshTimestamp !== "" && recoveredRangeRefreshTimestamp !== secondRangeRefreshTimestamp,
+    );
+    remoteRefreshState = "here";
+    await page.click('[data-testid="job-presence-refresh-retry"]');
+    await page.waitForFunction(
+      selector => !document.querySelector(selector),
+      { timeout: 15_000 },
+      '[data-testid="job-presence-refresh-stale"]',
+    );
+
+    remoteRefreshDate = DATES[0];
+    remoteRefreshState = "here";
+    delayNextHistoryRange = ALTERNATE_DATES[0];
+    await setDateInput(page, '[data-testid="schedule-history-from"]', ALTERNATE_DATES[0]);
+    await setDateInput(page, '[data-testid="schedule-history-to"]', ALTERNATE_DATES[2]);
+    await page.click('[data-testid="schedule-history-load"]');
+    await setDateInput(page, '[data-testid="schedule-history-from"]', DATES[0]);
+    await setDateInput(page, '[data-testid="schedule-history-to"]', DATES[2]);
+    await page.click('[data-testid="schedule-history-load"]');
+    await waitForText(page, "Sep 1, 2026");
+    await waitForText(page, "Confirmed manually");
+    await new Promise(resolve => setTimeout(resolve, 400));
+    recordResult(
+      "Rapid Schedule History changes keep the newest range",
+      await page.$(`[data-testid="job-presence-day-${DATES[0]}"]`) !== null &&
+        await page.$(`[data-testid="job-presence-day-${ALTERNATE_DATES[0]}"]`) === null &&
+        await page.$eval(`[data-testid="schedule-history-job-${JOB_ID}"]`, element => element.textContent?.includes("Sep 1, 2026") ?? false),
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 25));
+    remoteRefreshState = "not_here";
+    failNextPresenceRefresh = true;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.waitForSelector('[data-testid="job-presence-refresh-stale"]', { timeout: 15_000 });
+    const rapidRangeRefreshTimestamp = await page.$eval(
+      '[data-testid="job-presence-last-refreshed"] [data-last-refreshed-at]',
+      element => element.getAttribute("data-last-refreshed-at") ?? "",
+    );
+    recordResult(
+      "Rapid Schedule History changes re-establish newest-range refresh age",
+      rapidRangeRefreshTimestamp !== "" &&
+        rapidRangeRefreshTimestamp !== recoveredRangeRefreshTimestamp &&
+        await page.$(`[data-testid="job-presence-day-${DATES[0]}"]`) !== null &&
+        await page.$(`[data-testid="job-presence-day-${ALTERNATE_DATES[0]}"]`) === null,
     );
     remoteRefreshState = "here";
     await page.click('[data-testid="job-presence-refresh-retry"]');
