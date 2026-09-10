@@ -1,29 +1,33 @@
 /* Authenticated browser regression check for Schedule History daily presence.
  *
  * Run:
- *   SID=<approved-development-session-id> pnpm --filter @workspace/api-server run verify:production-presence
+ *   pnpm --filter @workspace/api-server run verify:production-presence
  *
  * Schedule History and presence responses are served as read-only in-memory
  * fixtures. The only browser write allowed is the presence PUT under test.
  */
 import fs from "node:fs";
-import type { Page } from "puppeteer";
+import type { HTTPRequest, Page } from "puppeteer";
+import { createTestLoginProof, deleteSession, SESSION_COOKIE } from "../src/lib/auth";
 import { launchBrowser } from "../src/lib/launchBrowser";
 
-const BASE = "http://localhost:80";
+const BASE = process.env.BUILDPRO_E2E_BASE_URL ?? "http://localhost:80";
 const SHOTS = "/tmp/e2e-production-presence";
-const SID = process.env.SID;
 const JOB_ID = 9201;
 const JOB_TITLE = "Production Presence Browser Fixture";
 const DATES = ["2026-09-01", "2026-09-02", "2026-09-03"];
 
-if (!SID) {
-  console.error("FATAL: SID env var required");
-  process.exit(1);
-}
-
 if (process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT) {
   throw new Error("Refusing to run Production Presence E2E verification against a production deployment");
+}
+
+const baseUrl = new URL(BASE);
+const baseHostname = baseUrl.hostname.replace(/^\[|\]$/g, "");
+if (baseUrl.protocol !== "http:" || !["localhost", "127.0.0.1", "::1"].includes(baseHostname)) {
+  throw new Error(
+    `Refusing to run Production Presence E2E verification against non-local target ${baseUrl.origin}. ` +
+    "Set BUILDPRO_E2E_BASE_URL to a local development server.",
+  );
 }
 
 type PresenceState = "unrecorded" | "here" | "not_here";
@@ -150,12 +154,12 @@ async function waitForText(page: Page, text: string) {
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
   const browser = await launchBrowser();
+  let sessionId: string | undefined;
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 1200 });
-    await page.setCookie({ name: "sid", value: SID!, domain: "localhost", path: "/" });
     await page.setRequestInterception(true);
-    page.on("request", request => {
+    page.on("request", (request: HTTPRequest) => {
       const url = request.url();
       const method = request.method().toUpperCase();
 
@@ -209,6 +213,16 @@ async function main() {
       blockedWrites.push(`${method} ${url}`);
       void request.abort("blockedbyclient");
     });
+
+    const returnTo = "/jobs";
+    const proof = createTestLoginProof(returnTo);
+    const loginParams = new URLSearchParams({ returnTo, ...proof });
+    await page.goto(`${BASE}/api/dev-test-login?${loginParams}`, {
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    sessionId = (await page.cookies()).find(cookie => cookie.name === SESSION_COOKIE)?.value;
+    if (!sessionId) throw new Error("Development login did not create a session cookie");
 
     await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
     await page.waitForSelector('[data-testid="schedule-history-tab"]', { timeout: 20_000 });
@@ -285,6 +299,7 @@ async function main() {
     );
     await page.screenshot({ path: `${SHOTS}/02-presence-error.png`, fullPage: true });
   } finally {
+    if (sessionId) await deleteSession(sessionId).catch(() => undefined);
     await browser.close();
   }
 

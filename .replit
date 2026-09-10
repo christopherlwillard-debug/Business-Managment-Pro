@@ -54,6 +54,10 @@ args = "job-profit-contract"
 task = "workflow.run"
 args = "job-profit-client"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "production-presence"
+
 [[workflows.workflow]]
 name = "Contractor App"
 author = "agent"
@@ -139,6 +143,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/contractor-app run check:profit-client"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "production-presence"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/api-server run verify:production-presence"
 
 [workflows.workflow.metadata]
 isValidation = true
