@@ -1,4 +1,3 @@
-import puppeteer from "puppeteer";
 import { existsSync } from "node:fs";
 import { execSync, execFileSync } from "node:child_process";
 import { join } from "node:path";
@@ -32,6 +31,10 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 async function ensureChrome(): Promise<void> {
+  // Defer Puppeteer's large module graph until after the HTTP listener is
+  // bound. Autoscale can otherwise probe /api before the process is ready.
+  const { default: puppeteer } = await import("puppeteer");
+
   // Prefer the bundled Chromium that ships with the `puppeteer` package — it is
   // version-matched and reliably launches in containerised production environments.
   // The Nix system binary passes an existence check but cannot start its DevTools
