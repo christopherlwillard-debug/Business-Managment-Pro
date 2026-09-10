@@ -8,7 +8,8 @@ export type JobPaymentSummaryRefreshAction =
   | { type: "invoice-accepted" }
   | { type: "payment-link-synced" }
   | { type: "production-pricing-applied" }
-  | { type: "worker-payment-recorded" };
+  | { type: "worker-payment-recorded" }
+  | { type: "profit-source-changed" };
 
 export const initialJobPaymentSummaryRefreshState: JobPaymentSummaryRefreshState = {
   invoiceKey: 0,
@@ -68,7 +69,7 @@ export function jobPaymentSummaryRefreshReducer(
   state: JobPaymentSummaryRefreshState,
   action: JobPaymentSummaryRefreshAction,
 ): JobPaymentSummaryRefreshState {
-  if (action.type === "worker-payment-recorded") {
+  if (action.type === "worker-payment-recorded" || action.type === "profit-source-changed") {
     return { ...state, financialKey: state.financialKey + 1 };
   }
 

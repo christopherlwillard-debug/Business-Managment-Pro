@@ -24,7 +24,7 @@ import {
 
 type PayrollProfitSnapshot = Pick<
   JobProfitResponse,
-  "subLaborCost" | "estimatedFuelCost" | "growthReservePct" | "netProfit"
+  "responseVersion" | "subLaborCost" | "estimatedFuelCost" | "growthReservePct" | "netProfit"
 >;
 
 describe("Jobs payment summary refresh", () => {
@@ -82,6 +82,23 @@ describe("Jobs payment summary refresh", () => {
       .toBe("Unavailable");
   });
 
+  it("invalidates the existing profit-summary request after a profit source changes", () => {
+    const initialRequestKey = jobProfitSummaryRequestKey(
+      [38, 45],
+      initialJobPaymentSummaryRefreshState.financialKey,
+    );
+
+    const next = jobPaymentSummaryRefreshReducer(
+      initialJobPaymentSummaryRefreshState,
+      { type: "profit-source-changed" },
+    );
+    const refreshedRequestKey = jobProfitSummaryRequestKey([38, 45], next.financialKey);
+
+    expect(next.invoiceKey).toBe(0);
+    expect(next.financialKey).toBe(1);
+    expect(refreshedRequestKey).not.toBe(initialRequestKey);
+  });
+
   it("refreshes the visible margin after collected revenue changes", () => {
     const profitSnapshots = new Map([
       [0, { netProfit: 250, collected: 0 }],
@@ -113,6 +130,7 @@ describe("Jobs payment summary refresh", () => {
 
   it("applies the complete payroll profit response after a successful refresh", () => {
     const refreshedProfit: PayrollProfitSnapshot = {
+      responseVersion: 4,
       subLaborCost: 412.5,
       estimatedFuelCost: 63.25,
       growthReservePct: 5,
@@ -145,6 +163,7 @@ describe("Jobs payment summary refresh", () => {
 
   it("clears an old payroll profit and exposes the actionable error state after failure", () => {
     const previousProfit: PayrollProfitSnapshot = {
+      responseVersion: 4,
       subLaborCost: 300,
       estimatedFuelCost: 40,
       growthReservePct: 5,
@@ -171,6 +190,7 @@ describe("Jobs payment summary refresh", () => {
 
   it("clears every shared payroll field during an outage and restores them together after recovery", () => {
     const recoveredProfit: PayrollProfitSnapshot = {
+      responseVersion: 4,
       subLaborCost: 487.5,
       estimatedFuelCost: 71.25,
       growthReservePct: 6,
@@ -229,12 +249,14 @@ describe("Jobs payment summary refresh", () => {
     const firstRequestKey = nextJobPaymentSummaryRefreshGeneration(0);
     const secondRequestKey = nextJobPaymentSummaryRefreshGeneration(firstRequestKey);
     const newerProfit: PayrollProfitSnapshot = {
+      responseVersion: 4,
       subLaborCost: 425,
       estimatedFuelCost: 64,
       growthReservePct: 6,
       netProfit: 1725,
     };
     const olderProfit: PayrollProfitSnapshot = {
+      responseVersion: 4,
       subLaborCost: 300,
       estimatedFuelCost: 40,
       growthReservePct: 5,
@@ -276,6 +298,7 @@ describe("Jobs payment summary refresh", () => {
     const firstRequestKey = nextJobPaymentSummaryRefreshGeneration(10);
     const secondRequestKey = nextJobPaymentSummaryRefreshGeneration(firstRequestKey);
     const newerProfit: PayrollProfitSnapshot = {
+      responseVersion: 4,
       subLaborCost: 450,
       estimatedFuelCost: 70,
       growthReservePct: 7,

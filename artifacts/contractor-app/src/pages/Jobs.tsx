@@ -2095,6 +2095,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       });
       if (!r.ok) throw new Error(await r.text());
       await refreshPayments();
+      await refreshJobProfitAfterMutation();
       toast({ title: "Payment deleted", description: "Balance has been recalculated." });
     } catch {
       toast({ title: "Failed to delete payment", variant: "destructive" });
@@ -2183,6 +2184,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       const r = await fetch(`${BASE}/api/jobs/sub-hours/${id}`, { method: "DELETE", credentials: "include" });
       if (!r.ok) throw new Error();
       setSubHours(prev => prev.filter(h => h.id !== id));
+      await refreshJobProfitAfterMutation();
       toast({ title: "Hours entry deleted" });
     } catch {
       toast({ title: "Failed to delete hours entry", variant: "destructive" });
@@ -6436,7 +6438,10 @@ function JobCard({
           profitData={displayProfit}
           initialTab={financialsInitialTab}
           onClose={() => setFinancialsPanelOpen(false)}
-          onProfitUpdated={setDisplayProfit}
+          onProfitUpdated={updatedProfit => {
+            setDisplayProfit(updatedProfit);
+            onPaymentSummaryChanged?.();
+          }}
           onSubsPaidChanged={allPaid => {
             setLocalSubPaid(allPaid);
             onPaymentSummaryChanged?.();
@@ -8193,7 +8198,7 @@ export default function Jobs() {
   }
 
   function refreshJobFinancialSummary() {
-    dispatchPaymentSummaryRefresh({ type: "worker-payment-recorded" });
+    dispatchPaymentSummaryRefresh({ type: "profit-source-changed" });
   }
 
   const searchLower   = jobSearch.toLowerCase().trim();
@@ -9603,7 +9608,10 @@ export default function Jobs() {
           editJob={editJob}
           clients={clients}
           subcontractors={subcontractors}
-          onSaved={() => queryClient.invalidateQueries()}
+          onSaved={() => {
+            queryClient.invalidateQueries();
+            refreshJobFinancialSummary();
+          }}
         />
       )}
 
@@ -9612,6 +9620,7 @@ export default function Jobs() {
           key={closedFinancialsJob.id}
           job={closedFinancialsJob}
           onClose={() => setClosedFinancialsJob(null)}
+          onProfitUpdated={() => refreshJobFinancialSummary()}
         />
       )}
 
