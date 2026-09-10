@@ -382,7 +382,10 @@ export function JobScheduleHistory({
           </div>
         )}
         {error ? (
-          <div className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
+          <div
+            className="flex items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700"
+            data-testid="schedule-history-error"
+          >
             <span>Could not load schedule history.</span>
             <button type="button" onClick={() => setAppliedRange(range => ({ ...range }))} className="font-bold underline">Retry</button>
           </div>

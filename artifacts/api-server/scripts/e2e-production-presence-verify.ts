@@ -81,6 +81,7 @@ let failNextSave = false;
 let failNextPresenceRefresh = false;
 let failNextHistoryLoad = false;
 let delayNextHistoryRange: string | null = null;
+let failDelayedHistoryRange = false;
 let remoteRefreshState: PresenceState | null = null;
 let remoteRefreshDate = ACTIVE_DATE;
 let presenceRefreshRequests = 0;
@@ -438,8 +439,18 @@ async function main() {
         };
         if (delayNextHistoryRange === historyRange) {
           delayNextHistoryRange = null;
+          const shouldFail = failDelayedHistoryRange;
+          failDelayedHistoryRange = false;
           setTimeout(() => {
-            void request.respond(historyResponse).catch(() => undefined);
+            void request.respond(
+              shouldFail
+                ? {
+                    status: 503,
+                    contentType: "application/json",
+                    body: JSON.stringify({ error: "simulated obsolete schedule history failure" }),
+                  }
+                : historyResponse,
+            ).catch(() => undefined);
           }, 250);
           return;
         }
@@ -898,6 +909,44 @@ async function main() {
       "Rapid Schedule History changes re-establish newest-range refresh age",
       rapidRangeRefreshTimestamp !== "" &&
         rapidRangeRefreshTimestamp !== recoveredRangeRefreshTimestamp &&
+        await page.$(`[data-testid="job-presence-day-${DATES[0]}"]`) !== null &&
+        await page.$(`[data-testid="job-presence-day-${ALTERNATE_DATES[0]}"]`) === null,
+    );
+    remoteRefreshState = "here";
+    await page.click('[data-testid="job-presence-refresh-retry"]');
+    await page.waitForFunction(
+      selector => !document.querySelector(selector),
+      { timeout: 15_000 },
+      '[data-testid="job-presence-refresh-stale"]',
+    );
+
+    remoteRefreshDate = DATES[0];
+    remoteRefreshState = "here";
+    delayNextHistoryRange = ALTERNATE_DATES[0];
+    failDelayedHistoryRange = true;
+    await setDateInput(page, '[data-testid="schedule-history-from"]', ALTERNATE_DATES[0]);
+    await setDateInput(page, '[data-testid="schedule-history-to"]', ALTERNATE_DATES[2]);
+    await page.click('[data-testid="schedule-history-load"]');
+    await setDateInput(page, '[data-testid="schedule-history-from"]', DATES[0]);
+    await setDateInput(page, '[data-testid="schedule-history-to"]', DATES[2]);
+    await page.click('[data-testid="schedule-history-load"]');
+    await waitForText(page, "Sep 1, 2026");
+    await waitForText(page, "Confirmed manually");
+    await new Promise(resolve => setTimeout(resolve, 400));
+    await new Promise(resolve => setTimeout(resolve, 25));
+    remoteRefreshState = "not_here";
+    failNextPresenceRefresh = true;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.waitForSelector('[data-testid="job-presence-refresh-stale"]', { timeout: 15_000 });
+    const obsoleteFailureRangeRefreshTimestamp = await page.$eval(
+      '[data-testid="job-presence-last-refreshed"] [data-last-refreshed-at]',
+      element => element.getAttribute("data-last-refreshed-at") ?? "",
+    );
+    recordResult(
+      "Failed obsolete History response does not replace the newest range",
+      obsoleteFailureRangeRefreshTimestamp !== "" &&
+        obsoleteFailureRangeRefreshTimestamp !== rapidRangeRefreshTimestamp &&
+        await page.$('[data-testid="schedule-history-error"]') === null &&
         await page.$(`[data-testid="job-presence-day-${DATES[0]}"]`) !== null &&
         await page.$(`[data-testid="job-presence-day-${ALTERNATE_DATES[0]}"]`) === null,
     );
