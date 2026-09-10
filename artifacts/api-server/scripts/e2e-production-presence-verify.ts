@@ -540,6 +540,13 @@ async function main() {
       '[data-testid="job-presence-last-refreshed"] [data-last-refreshed-at]',
       element => element.getAttribute("data-last-refreshed-at") ?? "",
     );
+    const retainedRefreshSemanticTime = await page.$eval(
+      '[data-testid="job-presence-last-refreshed"] [data-last-refreshed-at]',
+      element => ({
+        tagName: element.tagName,
+        dateTime: (element as HTMLTimeElement).dateTime,
+      }),
+    );
     recordResult(
       "Schedule History shows a stale warning after refresh failure",
       presenceRefreshRequests > historyRefreshCountBeforeFailure &&
@@ -552,6 +559,11 @@ async function main() {
           element => element.textContent?.includes("last successful snapshot is still shown") ?? false,
         ) &&
         retainedRefreshTimestamp.includes("Last successful refresh:"),
+    );
+    recordResult(
+      "Schedule History refresh time uses an ISO semantic time",
+      retainedRefreshSemanticTime.tagName === "TIME" &&
+        retainedRefreshSemanticTime.dateTime === new Date(Number(retainedRefreshTimestampValue)).toISOString(),
     );
 
     failNextPresenceRefresh = true;

@@ -357,9 +357,12 @@ export function JobScheduleHistory({
               <p className="mt-0.5 text-xs text-orange-900/75">The last successful snapshot is still shown.</p>
               {presenceLastRefreshedAt != null && (
                 <p className="mt-1 text-xs font-semibold text-orange-900/75" data-testid="job-presence-last-refreshed">
-                  <span data-last-refreshed-at={presenceLastRefreshedAt}>
-                  Last successful refresh: {formatPresenceRefreshTime(presenceLastRefreshedAt)}
-                  </span>
+                  <time
+                    dateTime={new Date(presenceLastRefreshedAt).toISOString()}
+                    data-last-refreshed-at={presenceLastRefreshedAt}
+                  >
+                    Last successful refresh: {formatPresenceRefreshTime(presenceLastRefreshedAt)}
+                  </time>
                 </p>
               )}
             </div>
