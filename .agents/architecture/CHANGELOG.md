@@ -28,6 +28,16 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-09-10
+
+### Stale profit deployment protection and browser Gmail entry point
+
+- Bumped the canonical job-profit response marker to version 3 so a previously deployed API cannot be accepted by the current Closed Jobs client after the keyed batch calculation change.
+- Added an explicit browser link to Gmail Sent in the invoice compose panel; Gmail API sending and evidence-only recovery remain unchanged.
+- Verified API typecheck, focused API regressions, frontend typecheck/build, profit contract checks, client consumer checks, release guard, and local workflow startup.
+
+---
+
 ## 2026-08-05
 
 ### Task #1757 → #1760 — Owner Pay Architecture (two-phase correction)

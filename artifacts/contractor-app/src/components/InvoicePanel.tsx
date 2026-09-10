@@ -28,7 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { InvoiceDeliveryHistory } from "@/components/InvoiceDeliveryHistory";
 import {
-  Building2, MapPin, Check, X, Plus, Trash2, Printer,
+  Building2, MapPin, Check, X, Plus, Trash2, Printer, ExternalLink,
   Send, Mail, CreditCard, Copy, Eye, ChevronDown, ChevronUp, Paperclip, Upload,
   ChevronLeft, ChevronRight, RotateCcw,
 } from "lucide-react";
@@ -1684,10 +1684,22 @@ export function InvoicePanel({
                   </span>
                 )}
               </p>
-              <button onClick={() => { setShowGmailCompose(false); setGmailSent(false); setGmailPreview(false); }}
-                className="w-6 h-6 flex items-center justify-center rounded text-blue-400 hover:bg-blue-100 hover:text-blue-600 transition-colors">
-                <X className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <a
+                  href="https://mail.google.com/mail/u/0/#sent"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-white px-2 py-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                  title="Open Gmail Sent in your browser"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Open Gmail
+                </a>
+                <button onClick={() => { setShowGmailCompose(false); setGmailSent(false); setGmailPreview(false); }}
+                  className="w-6 h-6 flex items-center justify-center rounded text-blue-400 hover:bg-blue-100 hover:text-blue-600 transition-colors">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
             {gmailFinalizationRecovery ? (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">

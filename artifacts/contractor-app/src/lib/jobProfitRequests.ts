@@ -4,7 +4,7 @@ import type {
   JobProfitSummaryResponse,
 } from "@workspace/api-client-react";
 
-export const CANONICAL_JOB_PROFIT_RESPONSE_VERSION = 2;
+export const CANONICAL_JOB_PROFIT_RESPONSE_VERSION = 3;
 
 export function isCurrentJobProfitResponse(
   value: unknown,
