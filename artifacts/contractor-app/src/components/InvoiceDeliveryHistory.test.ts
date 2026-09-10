@@ -112,6 +112,26 @@ describe("InvoiceDeliveryHistory", () => {
     expect(markup).toContain("Find Sent Email &amp; Repair");
   });
 
+  it("uses the known-message repair action without offering Gmail reconnect", () => {
+    const pendingEvent = {
+      ...event,
+      status: "pending",
+      completedAt: null,
+      providerMessageId: null,
+    } satisfies InvoiceCommunicationEvent;
+    const markup = renderToStaticMarkup(InvoiceDeliveryHistory({
+      events: [pendingEvent],
+      knownGmailRecoveryEventId: pendingEvent.id,
+      needsGmailReconnect: true,
+      onRepairGmail: () => undefined,
+      onReconnectGmail: () => undefined,
+    }));
+
+    expect(markup).toContain("Repair delivery history");
+    expect(markup).not.toContain("Find Sent Email &amp; Repair");
+    expect(markup).not.toContain("Reconnect Gmail");
+  });
+
   it("offers recovery for an accepted event that has no Gmail message ID", () => {
     const acceptedWithoutEvidence = {
       ...event,

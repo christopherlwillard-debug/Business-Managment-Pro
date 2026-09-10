@@ -22,7 +22,11 @@ import {
   shouldEnterInvoiceLogoLayoutMode,
 } from "@/lib/invoiceLogoConstants";
 import { sendViaGmail, buildInvoiceEmailHtml, dataUriToInlineImage } from "@/lib/gmailSend";
-import { reconnectAndRepairInvoiceGmail } from "@/lib/invoiceGmailRepair";
+import {
+  readStoredInvoiceGmailRecovery,
+  reconnectAndRepairInvoiceGmail,
+  type InvoiceGmailFinalizationRecovery,
+} from "@/lib/invoiceGmailRepair";
 import { buildInvoiceHtml } from "@/lib/printInvoice";
 import { useGoogleAuth } from "@/contexts/GoogleAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -36,13 +40,6 @@ import {
 
 interface LineItem { description: string; quantity: number; unitPrice: number; }
 function emptyLine(): LineItem { return { description: "", quantity: 1, unitPrice: 0 }; }
-type GmailFinalizationRecovery = {
-  invoiceId: number;
-  eventId: number;
-  providerMessageId: string | null;
-  providerThreadId: string | null;
-};
-
 interface FormState {
   clientId: string;
   jobId: string;
@@ -234,7 +231,7 @@ export function InvoicePanel({
   );
   const [gmailMessage, setGmailMessage] = useState("");
   const [gmailSending, setGmailSending] = useState(false);
-  const [gmailFinalizationRecovery, setGmailFinalizationRecovery] = useState<GmailFinalizationRecovery | null>(null);
+  const [gmailFinalizationRecovery, setGmailFinalizationRecovery] = useState<InvoiceGmailFinalizationRecovery | null>(null);
   const [gmailDeliveryBlocked, setGmailDeliveryBlocked] = useState<string | null>(null);
   const [gmailPendingEventId, setGmailPendingEventId] = useState<number | null>(null);
   const [gmailReconnectRequired, setGmailReconnectRequired] = useState(false);
@@ -308,14 +305,9 @@ export function InvoicePanel({
       setGmailPendingEventId(null);
       setGmailReconnectRequired(false);
       if (effectiveExistingInvoice) {
-        const recoveryKey = `invoice-gmail-finalization:${effectiveExistingInvoice.id}`;
-        try {
-          const stored = window.localStorage.getItem(recoveryKey);
-          setGmailFinalizationRecovery(stored ? JSON.parse(stored) as GmailFinalizationRecovery : null);
-        } catch {
-          window.localStorage.removeItem(recoveryKey);
-          setGmailFinalizationRecovery(null);
-        }
+        setGmailFinalizationRecovery(
+          readStoredInvoiceGmailRecovery(window.localStorage, effectiveExistingInvoice.id),
+        );
       } else {
         setGmailFinalizationRecovery(null);
       }
@@ -376,11 +368,30 @@ export function InvoicePanel({
       setGmailPendingEventId(null);
       return;
     }
-    if (unresolved.status === "accepted" || unresolved.providerMessageId) {
+    const storedRecovery = readStoredInvoiceGmailRecovery(
+      window.localStorage,
+      effectiveExistingInvoice.id,
+    );
+    const matchingBrowserRecovery = [gmailFinalizationRecovery, storedRecovery]
+      .find(recovery =>
+        recovery?.invoiceId === effectiveExistingInvoice.id
+        && recovery.eventId === unresolved.id
+        && Boolean(recovery.providerMessageId)
+      ) ?? null;
+    if (matchingBrowserRecovery) {
+      if (gmailFinalizationRecovery?.providerMessageId !== matchingBrowserRecovery.providerMessageId) {
+        setGmailFinalizationRecovery(matchingBrowserRecovery);
+      }
+      setGmailDeliveryBlocked(null);
+      setGmailPendingEventId(unresolved.id);
+      setGmailReconnectRequired(false);
+      return;
+    }
+    if (unresolved.providerMessageId) {
       setGmailFinalizationRecovery({
         invoiceId: effectiveExistingInvoice.id,
         eventId: unresolved.id,
-        providerMessageId: unresolved.providerMessageId ?? null,
+        providerMessageId: unresolved.providerMessageId,
         providerThreadId: unresolved.providerThreadId ?? null,
       });
       setGmailDeliveryBlocked(null);
@@ -394,10 +405,17 @@ export function InvoicePanel({
       setGmailDeliveryBlocked("This Gmail delivery has no message evidence and cannot be marked Sent.");
       setGmailPendingEventId(null);
     }
-  }, [open, effectiveExistingInvoice?.id, effectiveExistingInvoice?.status, effectiveExistingInvoice?.acceptedAt, communicationHistory.data]);
+  }, [
+    open,
+    effectiveExistingInvoice?.id,
+    effectiveExistingInvoice?.status,
+    effectiveExistingInvoice?.acceptedAt,
+    communicationHistory.data,
+    gmailFinalizationRecovery,
+  ]);
 
   async function finalizeGmailDelivery(
-    recovery: GmailFinalizationRecovery,
+    recovery: InvoiceGmailFinalizationRecovery,
   ): Promise<{ ok: boolean; result: Record<string, any> }> {
     let result: Record<string, any> = {};
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -423,7 +441,7 @@ export function InvoicePanel({
   }
 
   async function checkpointGmailProviderEvidence(
-    recovery: GmailFinalizationRecovery,
+    recovery: InvoiceGmailFinalizationRecovery,
   ): Promise<{ ok: boolean; result: Record<string, any> }> {
     let result: Record<string, any> = {};
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -1050,7 +1068,7 @@ export function InvoicePanel({
       if (!gmailResult.messageId) {
         throw new Error("Gmail did not return a message ID, so delivery could not be verified.");
       }
-      const recovery: GmailFinalizationRecovery = {
+      const recovery: InvoiceGmailFinalizationRecovery = {
         invoiceId: effectiveExistingInvoice.id,
         eventId: pendingEvent.id,
         providerMessageId: gmailResult.messageId,
@@ -1124,6 +1142,16 @@ export function InvoicePanel({
       const directEvent = directPendingEventId
         ? communicationHistory.data?.find(event => event.id === directPendingEventId)
         : undefined;
+      const storedRecovery = readStoredInvoiceGmailRecovery(
+        window.localStorage,
+        effectiveExistingInvoice.id,
+      );
+      const matchingStoredRecovery = [gmailFinalizationRecovery, storedRecovery]
+        .find(recovery =>
+          recovery?.invoiceId === effectiveExistingInvoice.id
+          && recovery.eventId === directPendingEventId
+          && Boolean(recovery.providerMessageId)
+        ) ?? null;
       const directRecovery = directEvent?.providerMessageId
         ? {
             invoiceId: effectiveExistingInvoice.id,
@@ -1131,7 +1159,7 @@ export function InvoicePanel({
             providerMessageId: directEvent.providerMessageId,
             providerThreadId: directEvent.providerThreadId ?? null,
           }
-        : null;
+        : matchingStoredRecovery;
       if (directPendingEventId || (!gmailFinalizationRecovery && pendingEventId)) {
         if (directRecovery) {
           const finalization = await finalizeGmailDelivery(directRecovery);
@@ -1142,6 +1170,11 @@ export function InvoicePanel({
             throw error;
           }
           await communicationHistory.refetch();
+          window.localStorage.removeItem(`invoice-gmail-finalization:${effectiveExistingInvoice.id}`);
+          setGmailFinalizationRecovery(null);
+          setGmailDeliveryBlocked(null);
+          setGmailPendingEventId(null);
+          setGmailReconnectRequired(false);
           toast({ title: "Delivery history repaired", description: "The invoice is now marked Sent." });
           return;
         }
@@ -2392,6 +2425,9 @@ export function InvoicePanel({
             events={communicationHistory.data ?? []}
             isLoading={communicationHistory.isLoading}
             isRepairingGmail={gmailSending}
+            knownGmailRecoveryEventId={gmailFinalizationRecovery?.providerMessageId
+              ? gmailFinalizationRecovery.eventId
+              : null}
             onRepairGmail={eventId => {
               const event = communicationHistory.data?.find(item => item.id === eventId);
               if (event?.providerMessageId) {

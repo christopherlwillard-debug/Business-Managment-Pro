@@ -29,6 +29,18 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
   frontend test typecheck remains blocked by unrelated stale profit fixtures
   missing the required response version.
 
+### Browser-checkpoint invoice history repair
+
+- Pending invoice events that missed the server checkpoint now retain and use
+  the matching Gmail message identity already saved by the sending browser.
+- The event-specific repair action finalizes that same event through the normal
+  acceptance route without requesting a Gmail token, metadata permission, or a
+  second send.
+- Gmail metadata search and reconnect remain available only when neither the
+  event nor the browser checkpoint contains a known message identity.
+- Focused delivery-history tests and the contractor application source
+  typecheck pass.
+
 ### One-app Website Studio deployment identity
 
 - Renamed the web artifact to `Contractor Management App + Website Studio` to make clear that Website Studio is an internal module of the same multi-business application.

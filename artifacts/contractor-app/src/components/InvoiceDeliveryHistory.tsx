@@ -17,6 +17,7 @@ interface InvoiceDeliveryHistoryProps {
   events: InvoiceCommunicationEvent[];
   isLoading?: boolean;
   isRepairingGmail?: boolean;
+  knownGmailRecoveryEventId?: number | null;
   onRepairGmail?: (eventId: number) => void;
   needsGmailReconnect?: boolean;
   onReconnectGmail?: (eventId: number) => void;
@@ -98,6 +99,7 @@ export function InvoiceDeliveryHistory({
   events,
   isLoading = false,
   isRepairingGmail = false,
+  knownGmailRecoveryEventId = null,
   onRepairGmail,
   needsGmailReconnect = false,
   onReconnectGmail,
@@ -133,6 +135,7 @@ export function InvoiceDeliveryHistory({
         <div className="relative space-y-3 pl-1">
           <div className="absolute bottom-2 left-[8px] top-2 w-px bg-gray-200" aria-hidden="true" />
           {orderedEvents.map(event => {
+            const hasKnownMessageIdentity = knownGmailRecoveryEventId === event.id;
             const canRecoverPendingGmail = (event.status === "pending"
               || (event.status === "accepted" && !event.providerMessageId))
               && event.channel === "gmail"
@@ -174,9 +177,11 @@ export function InvoiceDeliveryHistory({
                       className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
                     >
                       <RotateCcw className="h-3 w-3" />
-                      {isRepairingGmail ? "Checking Gmail…" : "Find Sent Email & Repair"}
+                      {isRepairingGmail
+                        ? (hasKnownMessageIdentity ? "Repairing history…" : "Checking Gmail…")
+                        : (hasKnownMessageIdentity ? "Repair delivery history" : "Find Sent Email & Repair")}
                     </button>
-                    {needsGmailReconnect && onReconnectGmail && (
+                    {!hasKnownMessageIdentity && needsGmailReconnect && onReconnectGmail && (
                       <button
                         type="button"
                         onClick={() => onReconnectGmail(event.id)}
