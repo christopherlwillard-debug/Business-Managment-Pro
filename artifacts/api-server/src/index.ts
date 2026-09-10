@@ -1,20 +1,38 @@
 import { existsSync } from "node:fs";
 import { execSync, execFileSync } from "node:child_process";
 import { join } from "node:path";
-import app from "./app";
-import { startRecurringExpensesJob } from "./jobs/recurringExpenses.js";
-import { startInvoiceReminderJob } from "./jobs/invoiceReminders.js";
-import { startPlaidSyncJob } from "./jobs/plaidSync.js";
-import { startBidSyncJob } from "./jobs/bidSync.js";
-import { seedBidSourceCatalog } from "./lib/bidSourceSeeds.js";
-import { seedGrantSourceCatalog } from "./lib/grantSourceSeeds.js";
-import { startComplianceReminderJob } from "./jobs/complianceReminders.js";
-import { db } from "@workspace/db";
-import { businessesTable, mileageLogsTable, expensesTable, clientsTable, clientBillingProfilesTable } from "@workspace/db/schema";
-import { invoicesTable, jobSubcontractorsTable, subPaymentRecordsTable, settingsTable, bidOpportunitiesTable } from "@workspace/db/schema";
-import { isNull, isNotNull, and, inArray, asc, sql, ilike, eq } from "drizzle-orm";
-import { classifyOpportunityScope, isScopeCompatibleWithBusiness } from "./lib/bidScopeClassifier.js";
-import { quarantineOrphanBidOpportunities } from "./lib/bid-ownership.js";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+
+let app: typeof import("./app").default;
+let startRecurringExpensesJob: typeof import("./jobs/recurringExpenses.js").startRecurringExpensesJob;
+let startInvoiceReminderJob: typeof import("./jobs/invoiceReminders.js").startInvoiceReminderJob;
+let startPlaidSyncJob: typeof import("./jobs/plaidSync.js").startPlaidSyncJob;
+let startBidSyncJob: typeof import("./jobs/bidSync.js").startBidSyncJob;
+let seedBidSourceCatalog: typeof import("./lib/bidSourceSeeds.js").seedBidSourceCatalog;
+let seedGrantSourceCatalog: typeof import("./lib/grantSourceSeeds.js").seedGrantSourceCatalog;
+let startComplianceReminderJob: typeof import("./jobs/complianceReminders.js").startComplianceReminderJob;
+let db: typeof import("@workspace/db").db;
+let businessesTable: typeof import("@workspace/db/schema").businessesTable;
+let mileageLogsTable: typeof import("@workspace/db/schema").mileageLogsTable;
+let expensesTable: typeof import("@workspace/db/schema").expensesTable;
+let clientsTable: typeof import("@workspace/db/schema").clientsTable;
+let clientBillingProfilesTable: typeof import("@workspace/db/schema").clientBillingProfilesTable;
+let invoicesTable: typeof import("@workspace/db/schema").invoicesTable;
+let jobSubcontractorsTable: typeof import("@workspace/db/schema").jobSubcontractorsTable;
+let subPaymentRecordsTable: typeof import("@workspace/db/schema").subPaymentRecordsTable;
+let settingsTable: typeof import("@workspace/db/schema").settingsTable;
+let bidOpportunitiesTable: typeof import("@workspace/db/schema").bidOpportunitiesTable;
+let isNull: typeof import("drizzle-orm").isNull;
+let isNotNull: typeof import("drizzle-orm").isNotNull;
+let and: typeof import("drizzle-orm").and;
+let inArray: typeof import("drizzle-orm").inArray;
+let asc: typeof import("drizzle-orm").asc;
+let sql: typeof import("drizzle-orm").sql;
+let ilike: typeof import("drizzle-orm").ilike;
+let eq: typeof import("drizzle-orm").eq;
+let classifyOpportunityScope: typeof import("./lib/bidScopeClassifier.js").classifyOpportunityScope;
+let isScopeCompatibleWithBusiness: typeof import("./lib/bidScopeClassifier.js").isScopeCompatibleWithBusiness;
+let quarantineOrphanBidOpportunities: typeof import("./lib/bid-ownership.js").quarantineOrphanBidOpportunities;
 
 const rawPort = process.env["PORT"];
 
@@ -674,13 +692,109 @@ async function backfillUsaSpendingOpportunityType(): Promise<void> {
   }
 }
 
+type RequestHandler = (req: IncomingMessage, res: ServerResponse) => void;
+
+function sendEarlyHealthResponse(_req: IncomingMessage, res: ServerResponse): void {
+  const body = JSON.stringify({ status: "ok" });
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Length", Buffer.byteLength(body));
+  res.end(body);
+}
+
+function sendStartupUnavailableResponse(_req: IncomingMessage, res: ServerResponse): void {
+  res.statusCode = 503;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.end(JSON.stringify({ error: "API is starting" }));
+}
+
 async function start() {
-  // Bind before the startup backfills and seed checks. Autoscale probes the
-  // service while it is starting; the lightweight health route must be able to
-  // answer before database initialization finishes.
-  app.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
+  // Bind a dependency-free listener before loading the Express app and its
+  // route graph. Autoscale probes the service path (/api) while it starts.
+  let requestHandler: RequestHandler = (req, res) => {
+    const pathname = (req.url ?? "/").split("?", 1)[0];
+    if (pathname === "/api" || pathname === "/api/" || pathname === "/api/healthz") {
+      sendEarlyHealthResponse(req, res);
+      return;
+    }
+    sendStartupUnavailableResponse(req, res);
+  };
+
+  const server = createServer((req, res) => requestHandler(req, res));
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, () => {
+      console.log(`Server listening on port ${port}`);
+      resolve();
+    });
   });
+
+  // Load the application and startup dependencies only after the port is
+  // accepting the lightweight readiness response.
+  const [
+    appModule,
+    recurringExpensesModule,
+    invoiceReminderModule,
+    plaidSyncModule,
+    bidSyncModule,
+    bidSourceSeedsModule,
+    grantSourceSeedsModule,
+    complianceReminderModule,
+    dbModule,
+    schemaModule,
+    drizzleModule,
+    bidScopeClassifierModule,
+    bidOwnershipModule,
+  ] = await Promise.all([
+    import("./app.js"),
+    import("./jobs/recurringExpenses.js"),
+    import("./jobs/invoiceReminders.js"),
+    import("./jobs/plaidSync.js"),
+    import("./jobs/bidSync.js"),
+    import("./lib/bidSourceSeeds.js"),
+    import("./lib/grantSourceSeeds.js"),
+    import("./jobs/complianceReminders.js"),
+    import("@workspace/db"),
+    import("@workspace/db/schema"),
+    import("drizzle-orm"),
+    import("./lib/bidScopeClassifier.js"),
+    import("./lib/bid-ownership.js"),
+  ]);
+
+  app = appModule.default;
+  startRecurringExpensesJob = recurringExpensesModule.startRecurringExpensesJob;
+  startInvoiceReminderJob = invoiceReminderModule.startInvoiceReminderJob;
+  startPlaidSyncJob = plaidSyncModule.startPlaidSyncJob;
+  startBidSyncJob = bidSyncModule.startBidSyncJob;
+  seedBidSourceCatalog = bidSourceSeedsModule.seedBidSourceCatalog;
+  seedGrantSourceCatalog = grantSourceSeedsModule.seedGrantSourceCatalog;
+  startComplianceReminderJob = complianceReminderModule.startComplianceReminderJob;
+  db = dbModule.db;
+  businessesTable = schemaModule.businessesTable;
+  mileageLogsTable = schemaModule.mileageLogsTable;
+  expensesTable = schemaModule.expensesTable;
+  clientsTable = schemaModule.clientsTable;
+  clientBillingProfilesTable = schemaModule.clientBillingProfilesTable;
+  invoicesTable = schemaModule.invoicesTable;
+  jobSubcontractorsTable = schemaModule.jobSubcontractorsTable;
+  subPaymentRecordsTable = schemaModule.subPaymentRecordsTable;
+  settingsTable = schemaModule.settingsTable;
+  bidOpportunitiesTable = schemaModule.bidOpportunitiesTable;
+  isNull = drizzleModule.isNull;
+  isNotNull = drizzleModule.isNotNull;
+  and = drizzleModule.and;
+  inArray = drizzleModule.inArray;
+  asc = drizzleModule.asc;
+  sql = drizzleModule.sql;
+  ilike = drizzleModule.ilike;
+  eq = drizzleModule.eq;
+  classifyOpportunityScope = bidScopeClassifierModule.classifyOpportunityScope;
+  isScopeCompatibleWithBusiness = bidScopeClassifierModule.isScopeCompatibleWithBusiness;
+  quarantineOrphanBidOpportunities = bidOwnershipModule.quarantineOrphanBidOpportunities;
+
+  // Express now owns all normal traffic. Its existing dependency-free health
+  // routes remain the steady-state implementation.
+  requestHandler = app as unknown as RequestHandler;
 
   // Load encrypted API credentials from DB into memory before any routes use them.
   // Non-fatal: if the table doesn't exist yet (pre-migration), getCredential falls back to process.env.
