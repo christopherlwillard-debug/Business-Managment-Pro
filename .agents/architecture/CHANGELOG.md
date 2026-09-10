@@ -14,6 +14,22 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ## 2026-09-10
 
+### Production Intelligence Phase 2: persistent daily presence
+
+- Added the Jobs-owned `job_daily_presence` raw fact table with one unique
+  job/date row, the approved three-state presence model, optional not-here
+  reason/notes, and source/provenance fields.
+- Added authenticated, business-scoped presence reads and idempotent daily
+  writes. Timing is calculated live for actual start, last work date, calendar
+  span, actual production days, explicit pause days, and expected-duration
+  variance.
+- Added compact daily presence controls to Schedule History. Here days count as
+  production days; unrecorded days remain distinct from not-here days; no
+  hours, payroll, expenses, mileage, invoices, payments, or profit rows are
+  created.
+- Kept Active Schedule, checklist scheduling, daily logs, labor hours,
+  financial behavior, and Knowledge Center learning unchanged.
+
 ### Production Intelligence Phase 1: read-only schedule history
 
 - Added a separate, business-scoped schedule-history read route using existing

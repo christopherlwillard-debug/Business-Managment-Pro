@@ -172,6 +172,16 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Active financial visibility:** unavailable worker, subcontractor, and Owner Pay balances remain `null` and include server-derived missing-input reasons; clients must not invent fallback amounts or explanations.
 - **Planning:** `jobs.planning_state`, `priority`, `resource_demand`, and `queue_position` hold raw planning inputs. `job_readiness_conditions` owns immutable internal blocker history; active conditions are returned with job list/detail responses. Checklist section completion uses the existing applied checklist tables and status log.
 
+## Production Intelligence / Daily Presence
+
+- **Table:** `job_daily_presence`
+- **Schema:** `lib/db/src/schema/job-daily-presence.ts`
+- **API:** `artifacts/api-server/src/routes/job-presence.ts`
+- **UI:** `artifacts/contractor-app/src/components/planner/JobPresencePanel.tsx` within Schedule History
+- **Reports:** None yet; the raw operational facts are available to future reporting and Knowledge Center consumers.
+- **Source of truth:** `job_daily_presence` owns explicitly recorded per-job/per-day presence state, not-here reason, optional notes, source, and provenance. Timing concepts are calculated live from this table plus existing job dates and expected-duration input.
+- **Rule:** `unrecorded`, `here`, and `not_here` remain distinct. Presence never creates or updates payroll, expenses, mileage, invoices, payments, profit, checklists, daily logs, or labor-hour rows.
+
 ---
 
 ## Clients / Customers
@@ -440,5 +450,5 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ---
 
-*Last updated: 2026-08-20*
+*Last updated: 2026-09-10*
 *To update this file, an architecture review must explicitly approve the change.*

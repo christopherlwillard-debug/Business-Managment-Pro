@@ -413,3 +413,22 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-09-10
+
+## ADR-023
+
+**Title:** Persistent daily production presence is a Jobs-owned operational fact
+
+**Decision:** Store one raw `job_daily_presence` row per job/date when presence is explicitly recorded. The row supports exactly `unrecorded`, `here`, and `not_here`; not-here reasons and notes are allowed only as operational detail, and every stored fact carries source and provenance. Missing rows and explicit `unrecorded` rows both remain distinct from `not_here`; neither is inferred as absence. Production timing is calculated live from presence rows and existing job dates. The existing `jobs.days_on_job` value may be exposed as an expected-duration input when present, but no financial or vehicle calculation may consume presence data.
+
+**Reason:** Daily presence is a new raw operational fact that cannot be represented safely in daily narrative logs, labor-hour rows, checklists, or the jobs date span. A unique job/date row provides persistence and idempotent edits without creating a duplicate labor, payroll, schedule, or financial source of truth. Live timing derivation prevents stale calculated values.
+
+**Rejected Alternatives:**
+- Treating missing presence rows as `not_here`
+- Using `daily_logs` as a presence ledger
+- Using `job_sub_hours` or worker hours to infer presence
+- Writing presence into checklist scheduling or status history
+- Persisting derived timing values
+- Creating payroll, expense, mileage, invoice, payment, or profit records from presence
+
+**Status:** Accepted
+**Date:** 2026-09-10

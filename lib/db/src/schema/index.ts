@@ -52,6 +52,7 @@ export * from "./sub-payment-records";
 export * from "./sub-advances";
 export * from "./job-checklists";
 export * from "./job-readiness-conditions";
+export * from "./job-daily-presence";
 export * from "./mfh";
 export * from "./client-billing-profiles";
 export * from "./growth-fund-deployments";

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Archive, CalendarDays, CheckCircle2, Clock3, History, Loader2 } from "lucide-react";
 import type { ScheduleJob } from "@/pages/Jobs";
 import { localDateString } from "@/lib/utils";
+import { JobPresencePanel, type JobPresenceSnapshot } from "./JobPresencePanel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -61,6 +62,9 @@ export function JobScheduleHistory({
     to: defaultTo,
   });
   const [jobs, setJobs] = useState<ScheduleJob[]>([]);
+  const [presenceByJob, setPresenceByJob] = useState<Record<number, JobPresenceSnapshot>>({});
+  const [presenceLoading, setPresenceLoading] = useState(false);
+  const [presenceError, setPresenceError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [rangeError, setRangeError] = useState<string | null>(null);
@@ -97,6 +101,43 @@ export function JobScheduleHistory({
 
     return () => controller.abort();
   }, [businessId, appliedRange]);
+
+  useEffect(() => {
+    const jobIds = jobs.map(job => job.id);
+    if (jobIds.length === 0) {
+      setPresenceByJob({});
+      setPresenceLoading(false);
+      setPresenceError(false);
+      return;
+    }
+    const controller = new AbortController();
+    setPresenceLoading(true);
+    setPresenceError(false);
+    fetch(`${BASE}/api/jobs/production-presence?jobIds=${jobIds.join(",")}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(response =>
+        response.ok
+          ? response.json() as Promise<{ jobs: JobPresenceSnapshot[] }>
+          : Promise.reject(new Error("Production presence request failed"))
+      )
+      .then(data => {
+        const next: Record<number, JobPresenceSnapshot> = {};
+        for (const snapshot of data.jobs) next[snapshot.jobId] = snapshot;
+        setPresenceByJob(next);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setPresenceByJob({});
+          setPresenceError(true);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setPresenceLoading(false);
+      });
+    return () => controller.abort();
+  }, [jobs]);
 
   const sortedJobs = useMemo(
     () => [...jobs].sort((a, b) =>
@@ -248,7 +289,7 @@ export function JobScheduleHistory({
                     </span>
                   </div>
 
-                  {datedItems.length > 0 && (
+                   {datedItems.length > 0 && (
                     <div className="mt-4 border-t border-border pt-3">
                       <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
                         <Clock3 className="h-3.5 w-3.5" /> Scheduled checklist history
@@ -266,6 +307,13 @@ export function JobScheduleHistory({
                       </div>
                     </div>
                   )}
+                   <JobPresencePanel
+                     job={job}
+                     snapshot={presenceByJob[job.id] ?? null}
+                     loading={presenceLoading}
+                     error={presenceError}
+                     onSnapshotChange={snapshot => setPresenceByJob(current => ({ ...current, [job.id]: snapshot }))}
+                   />
                 </article>
               );
             })}

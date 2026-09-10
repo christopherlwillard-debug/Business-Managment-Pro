@@ -74,6 +74,7 @@ import adminMigrationsRouter from "./admin-migrations";
 import ownerCapitalRouter from "./owner-capital";
 import checklistTemplatesRouter from "./checklist-templates";
 import jobChecklistsRouter from "./job-checklists";
+import jobPresenceRouter from "./job-presence";
 import { mfhLibraryRouter, mfhJobRouter } from "./mfh";
 import laborEntriesRouter from "./mfh-labor";
 import productionServiceTypesRouter from "./production-service-types";
@@ -276,6 +277,7 @@ router.use("/clients", sectionGuard("clients"), clientsRouter);
 // Keep checklist collection routes before the generic /jobs/:id router so
 // /jobs/schedule-overview and /jobs/checklist-summaries are not parsed as IDs.
 router.use("/jobs", sectionGuard("jobs"), jobChecklistsRouter);
+router.use("/jobs", sectionGuard("jobs"), jobPresenceRouter);
 router.use("/jobs", sectionGuard("jobs"), jobsRouter);
 router.use("/invoices", sectionGuard("invoices"), invoicesRouter);
 router.use("/expenses", sectionGuard("expenses"), expensesRouter);
