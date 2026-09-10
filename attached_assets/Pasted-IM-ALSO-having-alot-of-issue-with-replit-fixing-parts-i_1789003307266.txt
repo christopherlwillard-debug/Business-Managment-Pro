@@ -1,0 +1,96 @@
+IM ALSO having alot of issue with replit fixing parts in my app 
+
+Yes — and based on what you've been building, I think the problem is less about Replit being unable to code the feature and more about the app becoming difficult for the agent to safely modify.
+
+You've got a fairly large platform now: core business management, multiple businesses, Website Studio, domains, financial logic, invoices, expenses, etc. When you ask Replit to “fix X,” it can touch something that X depends on and accidentally break another part.
+
+I would change how you work with Replit
+
+Instead of giving it broad instructions like:
+
+“Fix the invoice system.”
+
+Give it a controlled repair process:
+
+1. Diagnose
+2. Identify the exact files/components involved
+3. Explain the root cause
+4. List what will be changed
+5. DO NOT change anything yet
+6. Wait for approval
+7. Make the smallest possible change
+8. Test the affected feature
+9. Test related features
+10. Report exactly what changed
+
+The big one is #5.
+
+You don't want Replit immediately “fixing” things before it understands the architecture.
+
+I'd also establish a hard rule for your app
+
+Something like:
+
+NO UNRELATED CHANGES
+
+If you're fixing Website Studio, it shouldn't decide to refactor your invoices.
+
+If you're fixing expenses, it shouldn't restructure your database.
+
+If you're fixing the dashboard, it shouldn't redesign the navigation.
+
+If it discovers another problem, it should report it separately instead of fixing it automatically.
+
+And your architecture documentation should become the agent's guardrail
+
+You've already started moving in this direction with your architecture constitution and system registry.
+
+I'd make Replit follow something like:
+
+Core Platform
+
+Authentication
+Businesses
+Dashboard
+Clients
+Expenses
+Invoices
+Reports
+Settings
+
+Business Capabilities
+
+Website Studio
+Industry-specific tools
+Future apps/modules
+
+Rules
+
+One source of truth
+No duplicate database tables
+No duplicate business records
+No feature may require an unrelated feature to function
+Don't modify working systems unless required
+Don't change database structure without approval
+Don't change routing/domain behavior without approval
+Don't remove existing functionality without approval
+
+That would make a huge difference as the project gets bigger.
+
+Most importantly
+
+I wouldn't have Replit keep “fixing” things blindly right now.
+
+If you're getting a lot of problems, I'd have it perform a stabilization/audit pass first and identify:
+
+What's actually broken
+What was changed recently
+Which systems depend on each other
+Where duplicate logic exists
+Which parts are stable and should be locked down
+Which parts need refactoring
+What should not be touched
+
+Then we fix things one system at a time.
+
+If you want, I can help you write a single master instruction for Replit that turns its behavior from “make changes until it looks fixed” into a controlled diagnose → approve → repair → test workflow.
