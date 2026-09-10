@@ -48,6 +48,10 @@ function sleep(ms: number) {
 type Fixture = {
   clientId: number;
   invoiceIds: number[];
+  pendingInvoiceId: number;
+  pendingEventId: number;
+  pendingMessageId: string;
+  pendingThreadId: string;
   acceptedNumber: string;
   pendingNumber: string;
   unsentNumber: string;
@@ -115,39 +119,44 @@ async function createFixture(business: VerificationBusiness): Promise<Fixture> {
   if (!accepted || !pending || !unsent) throw new Error("Unable to create invoice delivery fixtures");
 
   const requestedAt = new Date(Date.now() - 5_000);
-  await db.insert(invoiceCommunicationEventsTable).values([
-    {
-      invoiceId: accepted.id,
-      businessId: business.id,
-      eventType: "initial_invoice",
-      channel: "gmail",
-      provider: "gmail",
-      status: "accepted",
-      recipient: "invoice-delivery-e2e@example.invalid",
-      subject: `Invoice ${numbers.accepted}`,
-      requestedAt,
-      completedAt: new Date(Date.now() - 4_000),
-      source: "e2e-invoice-delivery-verify",
-      providerMessageId: `e2e-gmail-message-${randomUUID()}`,
-      providerThreadId: `e2e-gmail-thread-${randomUUID()}`,
-    },
-    {
-      invoiceId: pending.id,
-      businessId: business.id,
-      eventType: "initial_invoice",
-      channel: "gmail",
-      provider: "gmail",
-      status: "pending",
-      recipient: "invoice-delivery-e2e@example.invalid",
-      subject: `Invoice ${numbers.pending}`,
-      requestedAt: new Date(Date.now() - 3_000),
-      source: "e2e-invoice-delivery-verify",
-    },
-  ]);
+  await db.insert(invoiceCommunicationEventsTable).values({
+    invoiceId: accepted.id,
+    businessId: business.id,
+    eventType: "initial_invoice",
+    channel: "gmail",
+    provider: "gmail",
+    status: "accepted",
+    recipient: "invoice-delivery-e2e@example.invalid",
+    subject: `Invoice ${numbers.accepted}`,
+    requestedAt,
+    completedAt: new Date(Date.now() - 4_000),
+    source: "e2e-invoice-delivery-verify",
+    providerMessageId: `e2e-gmail-message-${randomUUID()}`,
+    providerThreadId: `e2e-gmail-thread-${randomUUID()}`,
+  });
+  const pendingMessageId = `e2e-gmail-message-${randomUUID()}`;
+  const pendingThreadId = `e2e-gmail-thread-${randomUUID()}`;
+  const [pendingEvent] = await db.insert(invoiceCommunicationEventsTable).values({
+    invoiceId: pending.id,
+    businessId: business.id,
+    eventType: "initial_invoice",
+    channel: "gmail",
+    provider: "gmail",
+    status: "pending",
+    recipient: "invoice-delivery-e2e@example.invalid",
+    subject: `Invoice ${numbers.pending}`,
+    requestedAt: new Date(Date.now() - 3_000),
+    source: "e2e-invoice-delivery-verify",
+  }).returning({ id: invoiceCommunicationEventsTable.id });
+  if (!pendingEvent) throw new Error("Unable to create pending invoice delivery event");
 
   return {
     clientId: client.id,
     invoiceIds: [accepted.id, pending.id, unsent.id],
+    pendingInvoiceId: pending.id,
+    pendingEventId: pendingEvent.id,
+    pendingMessageId,
+    pendingThreadId,
     acceptedNumber: numbers.accepted,
     pendingNumber: numbers.pending,
     unsentNumber: numbers.unsent,
@@ -202,7 +211,7 @@ async function clickGmailToolbarButton(page: Page, expectedText: string) {
   return page.evaluate(text => {
     const button = [...document.querySelectorAll("button")]
       .find(candidate =>
-        candidate.getAttribute("title") === "Send via Gmail"
+        candidate.getAttribute("title")?.includes("Gmail")
         && (candidate.textContent ?? "").includes(text),
       );
     if (!button) return false;
@@ -227,6 +236,8 @@ async function main() {
   let sessionId: string | undefined;
   let browser: Awaited<ReturnType<typeof launchBrowser>> | undefined;
   const unexpectedWrites: string[] = [];
+  const finalizeRequests: { url: string; body: Record<string, unknown> }[] = [];
+  const prohibitedInvoiceDeliveryRequests: string[] = [];
 
   try {
     fixture = await createFixture(business);
@@ -236,23 +247,52 @@ async function main() {
     await page.setRequestInterception(true);
     page.on("request", request => {
       const method = request.method().toUpperCase();
+      const url = request.url();
       if (["GET", "HEAD", "OPTIONS"].includes(method)) {
         void request.continue();
         return;
       }
-      unexpectedWrites.push(`${method} ${request.url()}`);
+      const expectedFinalizePath = `/api/invoices/${fixture!.pendingInvoiceId}/communications/${fixture!.pendingEventId}/finalize`;
+      if (method === "POST" && new URL(url).pathname === expectedFinalizePath) {
+        let body: Record<string, unknown> = {};
+        try {
+          body = JSON.parse(request.postData() ?? "{}") as Record<string, unknown>;
+        } catch {
+          body = { parseError: true };
+        }
+        finalizeRequests.push({ url, body });
+        void request.continue();
+        return;
+      }
+      if (
+        url.includes("/recover-gmail")
+        || url.includes("/communications/prepare")
+        || url.includes("googleapis.com")
+        || url.includes("/api/auth/google")
+      ) {
+        prohibitedInvoiceDeliveryRequests.push(`${method} ${url}`);
+      }
+      unexpectedWrites.push(`${method} ${url}`);
       void request.abort("blockedbyclient");
     });
 
-    // This synthetic token makes the Gmail controls render as connected. The
-    // test never calls the send or finalize endpoints, so it cannot send mail.
-    await page.evaluateOnNewDocument(() => {
+    // The matching durable browser checkpoint is the evidence under test.
+    // The inert token keeps the existing connected-state UI assertions
+    // available; request interception still proves repair never refreshes
+    // authorization, searches Gmail metadata, prepares, or sends.
+    await page.evaluateOnNewDocument((invoiceId, eventId, messageId, threadId) => {
       localStorage.setItem("bp_gauth_v1", JSON.stringify({
         token: "e2e-no-send-token",
         email: "invoice-delivery-e2e@example.invalid",
         expiresAt: Date.now() + 3_600_000,
       }));
-    });
+      localStorage.setItem(`invoice-gmail-finalization:${invoiceId}`, JSON.stringify({
+        invoiceId,
+        eventId,
+        providerMessageId: messageId,
+        providerThreadId: threadId,
+      }));
+    }, fixture.pendingInvoiceId, fixture.pendingEventId, fixture.pendingMessageId, fixture.pendingThreadId);
 
     const returnTo = "/invoices";
     const proof = createTestLoginProof(returnTo);
@@ -324,37 +364,56 @@ async function main() {
 
     await openInvoice(page, fixture.pendingNumber);
     await sleep(1_000);
-    const openedPendingCompose = await clickGmailToolbarButton(page, "Send Invoice");
     await page.waitForFunction(
-      () => document.body.innerText.includes("A previous Gmail delivery attempt is still pending"),
+      () => document.body.innerText.includes("Repair delivery history"),
       { timeout: 15_000 },
     );
-    const pendingUi = await page.evaluate(() => {
-      const body = document.body.innerText;
-      const sendButtons = [...document.querySelectorAll("button")]
-        .filter(button => (button.textContent ?? "").trim() === "Send Invoice")
-        .map(button => ({
-          disabled: (button as HTMLButtonElement).disabled,
-          inFixed: Boolean(button.closest(".fixed")),
-          className: button.className,
-        }));
-      const composeSendButtonCount = [...document.querySelectorAll("div.bg-blue-50 button")]
-        .filter(button => (button.textContent ?? "").trim() === "Send Invoice")
-        .length;
-      return {
-        body,
-        sendButtons,
-        composeSendButtonCount,
-      };
+    const clickedRepair = await page.evaluate(() => {
+      const button = [...document.querySelectorAll("button")]
+        .find(candidate => (candidate.textContent ?? "").trim() === "Repair delivery history");
+      if (!button) return false;
+      (button as HTMLButtonElement).click();
+      return true;
     });
+    await page.waitForFunction(
+      () => document.body.innerText.includes("The invoice is now marked Sent."),
+      { timeout: 15_000 },
+    );
     record(
-      "Pending Gmail attempt visibly blocks another send",
-      openedPendingCompose
-        && pendingUi.body.includes("Delivery history needs review")
-        && pendingUi.body.includes("A previous Gmail delivery attempt is still pending")
-        && pendingUi.body.includes("I Checked Gmail — Not Sent")
-        && pendingUi.composeSendButtonCount === 0,
-      `compose=${openedPendingCompose}, composeSendButtons=${pendingUi.composeSendButtonCount}, buttons=${JSON.stringify(pendingUi.sendButtons)}`,
+      "Known-message repair uses the stored browser checkpoint",
+      clickedRepair
+        && finalizeRequests.length === 1
+        && finalizeRequests[0]?.body.status === "accepted"
+        && finalizeRequests[0]?.body.providerMessageId === fixture.pendingMessageId
+        && finalizeRequests[0]?.body.providerThreadId === fixture.pendingThreadId,
+      JSON.stringify({ clickedRepair, finalizeRequests }),
+    );
+    record(
+      "Known-message repair avoids Gmail permission and resend paths",
+      prohibitedInvoiceDeliveryRequests.length === 0,
+      prohibitedInvoiceDeliveryRequests.join(", "),
+    );
+    const [[repairedEvent], [repairedInvoice]] = await Promise.all([
+      db.select({
+        status: invoiceCommunicationEventsTable.status,
+        providerMessageId: invoiceCommunicationEventsTable.providerMessageId,
+      }).from(invoiceCommunicationEventsTable)
+        .where(eq(invoiceCommunicationEventsTable.id, fixture.pendingEventId))
+        .limit(1),
+      db.select({
+        status: invoicesTable.status,
+        sentAt: invoicesTable.sentAt,
+      }).from(invoicesTable)
+        .where(eq(invoicesTable.id, fixture.pendingInvoiceId))
+        .limit(1),
+    ]);
+    record(
+      "Existing event becomes accepted and invoice becomes Sent",
+      repairedEvent?.status === "accepted"
+        && repairedEvent.providerMessageId === fixture.pendingMessageId
+        && repairedInvoice?.status === "sent"
+        && Boolean(repairedInvoice.sentAt),
+      JSON.stringify({ repairedEvent, repairedInvoice }),
     );
     await page.screenshot({ path: `${SHOTS}/invoice-delivery-states.png`, fullPage: true });
     record(
