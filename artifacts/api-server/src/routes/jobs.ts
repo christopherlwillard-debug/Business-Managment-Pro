@@ -750,7 +750,19 @@ router.get("/:id/profit", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
 
-    const [invRows, otherIncomeRows, expRows, allocationRows, reimbursementRows, sprRows, reversedSprRows, subHoursRow, subHoursSum, accruedBonusRow] = await Promise.all([
+    const [
+      invRows,
+      otherIncomeRows,
+      expRows,
+      allocationRows,
+      reimbursementRows,
+      sprRows,
+      reversedSprRows,
+      subHoursRow,
+      subHoursSum,
+      hourlyPaymentFallbackRow,
+      accruedBonusRow,
+    ] = await Promise.all([
       db.select({ total: invoicesTable.total, status: invoicesTable.status })
         .from(invoicesTable).where(and(eq(invoicesTable.jobId, id), isNull(invoicesTable.voidedAt))),
       // Job-linked other income is standalone cash revenue only when it has an
@@ -780,7 +792,8 @@ router.get("/:id/profit", async (req, res) => {
         .where(eq(jobMileageReimbursementsTable.jobId, id)),
       // sub_payment_records is the authoritative ledger for fixed/allocation sub payments
       // (pay-worker stopped writing to expenses in Task #892).
-      // Only include non-hourly subs — hourly costs are already captured via job_sub_hours.
+      // Hourly payment fallback is queried separately below so it can be included
+      // only when the linked hourly assignment has no authoritative accrual.
       // Grouped by compensation type: 'fixed' feeds subLaborCost, 'allocation' is
       // reported separately as allocPaid so Pay Breakdown (which treats allocation
       // subs as profit split, not labor) keeps its inputs unchanged.
@@ -836,6 +849,28 @@ router.get("/:id/profit", async (req, res) => {
         .from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, id)),
       db.select({ total: sql<string>`COALESCE(SUM(${jobSubHoursTable.hours}), 0)` })
         .from(jobSubHoursTable).where(eq(jobSubHoursTable.jobId, id)),
+      db.select({
+        total: sql<string>`COALESCE(SUM(
+          ${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)
+        ), 0)`,
+      })
+        .from(subPaymentRecordsTable)
+        .innerJoin(jobSubcontractorsTable, and(
+          eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+          eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+        ))
+        .where(and(
+          eq(subPaymentRecordsTable.jobId, id),
+          sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+          eq(jobSubcontractorsTable.compensationType, "hourly"),
+          isNull(jobSubcontractorsTable.amountOwed),
+          sql`NOT EXISTS (
+            SELECT 1
+            FROM job_sub_hours h
+            WHERE h.job_id = ${subPaymentRecordsTable.jobId}
+              AND h.subcontractor_id = ${subPaymentRecordsTable.subcontractorId}
+          )`,
+        )),
       // Accrued bonuses saved via Save Changes — counted as labor cost even before payment
       db.select({ total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.accruedBonus}), 0)` })
         .from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, id)),
@@ -983,6 +1018,7 @@ router.get("/:id/profit", async (req, res) => {
       includeMileageInJobCosts,
       hasActualFuelExpense,
       hourlyLaborCost: parseFloat(subHoursRow?.[0]?.total ?? "0"),
+      hourlySubcontractorPaymentFallbackCost: parseFloat(hourlyPaymentFallbackRow?.[0]?.total ?? "0"),
       totalSubHours: parseFloat(subHoursSum?.[0]?.total ?? "0"),
       fixedSubCost: parseFloat(sprRows.find(r => r.compType === "fixed")?.total ?? "0"),
       accruedBonus: parseFloat(accruedBonusRow?.[0]?.total ?? "0"),

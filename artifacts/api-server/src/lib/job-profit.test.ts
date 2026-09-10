@@ -14,6 +14,20 @@ describe("calculateJobProfit", () => {
     expect(result.netProfit).toBeCloseTo(698.70);
   });
 
+  it("uses a paid hourly subcontractor fallback without changing raw job-hour totals", () => {
+    const result = calculateJobProfit({
+      invoices: [{ total: "1406.27", status: "paid" }],
+      expenses: [{ id: 1, amount: "387.57", category: "Tools/Equipment", countsTowardJobProfit: true }],
+      hourlySubcontractorPaymentFallbackCost: 320,
+      totalSubHours: 0,
+    });
+
+    expect(result.subLaborCost).toBeCloseTo(320);
+    expect(result.totalSubHours).toBe(0);
+    expect(result.includedCostTotal).toBeCloseTo(707.57);
+    expect(result.netProfit).toBeCloseTo(698.70);
+  });
+
   it("does not treat owner withdrawals, audit rows, or payroll-linked rows as job costs", () => {
     const result = calculateJobProfit({
       invoices: [{ total: "1000.00", status: "paid" }],

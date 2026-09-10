@@ -170,7 +170,8 @@ afterEach(() => {
  * Push the select results that GET /jobs/:id/profit issues:
  *   [0] invoices      [1] other income [2] expenses [3] job allocations
  *   [4] mileage reimbursement [5] active spr rows [6] reversed spr rows
- *   [7] hours cost [8] hours cnt [9] accrued bonus [10-12] fuel inputs [13] settings
+ *   [7] hours cost [8] hours cnt [9] hourly payment fallback [10] accrued bonus
+ *   [11-13] fuel inputs [14] settings
  */
 function pushProfitSelects(opts: {
   invoices?:       { total: string; status: string }[];
@@ -181,6 +182,7 @@ function pushProfitSelects(opts: {
   reversedSprRows?: { compType: string; total: string }[];
   hoursLaborCost?: string;
   totalHours?:     string;
+  hourlyPaymentFallback?: string;
   accruedBonus?:   string;
   fuelSettings?:   { companyAddress?: string | null; companyCity?: string | null; companyState?: string | null };
   fuelVehicle?:    { avgMpg: number; fuelPricePerGallon: string };
@@ -197,6 +199,9 @@ function pushProfitSelects(opts: {
   h.selectQueue.push(opts.reversedSprRows ?? []);
   h.selectQueue.push([{ total: opts.hoursLaborCost ?? "0" }]);
   h.selectQueue.push([{ total: opts.totalHours     ?? "0" }]);
+  h.selectQueue.push(opts.hourlyPaymentFallback
+    ? [{ total: opts.hourlyPaymentFallback }]
+    : []);
   h.selectQueue.push([{ total: opts.accruedBonus   ?? "0" }]);
   // Fuel estimation performs settings, vehicle, and job selects after the
   // profit waterfall. When the job has addresses and a vehicle, it also reads
@@ -214,8 +219,8 @@ function pushProfitSelects(opts: {
 /**
  * Push the select results that GET /jobs/profit-summary issues via Promise.all:
  *   [0] invoices  [1] other income [2] expenses [3] job allocations
-   *   [4] hours cost rows [5] hours count rows [6] manHours [7] active spr rows
-   *   [8] reversed spr rows [9] accrued bonus rows
+ *   [4] hours cost rows [5] hours count rows [6] manHours [7] active spr rows
+ *   [8] reversed spr rows [9] hourly payment fallback rows [10] accrued bonus rows
  *
  * All arrays are grouped by jobId on the real DB; the mock just returns the
  * raw rows — the route code maps them by jobId.
@@ -230,6 +235,7 @@ function pushSummarySelects(opts: {
   totalHours?:    string;
   sprRows?:       { jobId: number; compType: string; total: string }[];
   reversedSprRows?: { jobId: number; compType: string; total: string }[];
+  hourlyPaymentFallbackRows?: { jobId: number; total: string }[];
   accruedBonus?:  string;
   fuelSettings?:  { companyAddress?: string | null; companyCity?: string | null; companyState?: string | null };
   fuelVehicle?:   { avgMpg: number; fuelPricePerGallon: string };
@@ -252,6 +258,7 @@ function pushSummarySelects(opts: {
   h.selectQueue.push([{ id: jobId, manHours: null, includeMileageInJobCosts: opts.includeMileageInJobCosts }]);
   h.selectQueue.push(opts.sprRows ?? []);
   h.selectQueue.push(opts.reversedSprRows ?? []);
+  h.selectQueue.push(opts.hourlyPaymentFallbackRows ?? []);
   // accrued bonus grouped by jobId
   h.selectQueue.push(opts.accruedBonus && opts.accruedBonus !== "0"
     ? [{ jobId, total: opts.accruedBonus }] : []);
@@ -274,6 +281,7 @@ function pushBatchSummarySelects(opts: {
   manHoursRows: { id: number; manHours: string | null; includeMileageInJobCosts?: boolean }[];
   sprRows?: { jobId: number; compType: string; total: string }[];
   sprPaymentRows?: { jobId: number; compType: "fixed" | "allocation"; amount: string; isReversal?: boolean | null }[];
+  hourlyPaymentFallbackRows?: { jobId: number; total: string }[];
   accruedBonusRows?: { jobId: number; total: string }[];
   fuelSettings?: { companyAddress?: string | null; companyCity?: string | null; companyState?: string | null };
   fuelVehicle?: { avgMpg: number; fuelPricePerGallon: string };
@@ -341,6 +349,7 @@ function pushBatchSummarySelects(opts: {
     h.selectQueue.push(opts.sprRows ?? []);
     h.selectQueue.push([]);
   }
+  h.selectQueue.push(opts.hourlyPaymentFallbackRows ?? []);
   h.selectQueue.push(opts.accruedBonusRows ?? []);
   // Fuel enrichment reads one shared settings row, vehicle row, and all job addresses.
   h.selectQueue.push(opts.fuelSettings ? [opts.fuelSettings] : []);
@@ -792,10 +801,9 @@ describe("GET /jobs/:id/profit — accrued bonus included in subLaborCost", () =
 
 describe("GET /jobs/:id/profit — no double-count after a payment is recorded", () => {
 
-  it("does NOT add hourly sub_payment_records to subLaborCost (filtered by compType)", async () => {
+  it("does NOT add an hourly payment a second time when job-hour accrual already exists", async () => {
     // After pay-worker records $275 for an hourly sub, sub_payment_records has a row.
-    // The profit query uses WHERE compType IN ('fixed','allocation'), so the hourly
-    // row never reaches sprRows — the mock correctly returns an empty sprRows array.
+    // The hourly fallback query excludes it because matching job-hour rows exist.
     // subLaborCost should remain hours($200) + bonus($75) = $275, not $550.
     pushProfitSelects({
       sprRows:        [], // hourly payment excluded at DB level by compType filter
@@ -808,6 +816,21 @@ describe("GET /jobs/:id/profit — no double-count after a payment is recorded",
 
     expect(res.status).toBe(200);
     expect(res.body.subLaborCost).toBeCloseTo(275); // NOT 550
+  });
+
+  it("uses a non-reversed hourly payment when no assignment amount or job hours exist", async () => {
+    pushProfitSelects({
+      invoices: [{ total: "1406.27", status: "paid" }],
+      expenses: [{ amount: "387.57", category: "Tools/Equipment", countsTowardJobProfit: true }],
+      hourlyPaymentFallback: "320.00",
+    });
+
+    const res = await request(app).get("/jobs/38/profit");
+
+    expect(res.status).toBe(200);
+    expect(res.body.subLaborCost).toBeCloseTo(320);
+    expect(res.body.totalSubHours).toBe(0);
+    expect(res.body.netProfit).toBeCloseTo(698.70);
   });
 
   it("adds a fixed-sub payment to subLaborCost without affecting the hourly accrued bonus", async () => {
@@ -848,6 +871,34 @@ describe("GET /jobs/:id/profit — no double-count after a payment is recorded",
 });
 
 describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () => {
+
+  it("keeps the confirmed historical Jobs 38 and 45 costs isolated", async () => {
+    pushBatchSummarySelects({
+      invoices: [
+        { jobId: 38, total: "1406.27", status: "paid" },
+        { jobId: 45, total: "182.27", status: "paid" },
+      ],
+      expenses: [
+        { jobId: 38, id: 178, amount: "387.57", category: "Tools/Equipment", countsTowardJobProfit: true },
+      ],
+      hourlyPaymentFallbackRows: [{ jobId: 38, total: "320.00" }],
+      manHoursRows: [
+        { id: 38, manHours: null },
+        { id: 45, manHours: null },
+      ],
+    });
+
+    const res = await request(app).get("/jobs/profit-summary?jobIds=38,45");
+
+    expect(res.status).toBe(200);
+    expect(res.body[38].subLaborCost).toBeCloseTo(320);
+    expect(res.body[38].totalSubHours).toBe(0);
+    expect(res.body[38].netProfit).toBeCloseTo(698.70);
+    expect(res.body[45].subLaborCost).toBe(0);
+    expect(res.body[45].totalSubHours).toBe(0);
+    expect(res.body[45].netProfit).toBeCloseTo(182.27);
+    expect(res.body[38].subLaborCost).not.toBeCloseTo(res.body[45].subLaborCost);
+  });
 
   it("keeps payroll advances in the shared calculation fields on both response paths", async () => {
     pushProfitSelects({

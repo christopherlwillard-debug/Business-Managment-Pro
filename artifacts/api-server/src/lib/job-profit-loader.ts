@@ -45,6 +45,7 @@ export async function loadJobProfitByJob(jobIds: number[]): Promise<Map<number, 
     jobRows,
     paymentRows,
     reversedPaymentRows,
+    hourlyPaymentFallbackRows,
     accruedBonusRows,
   ] = await Promise.all([
     db.select({
@@ -165,6 +166,30 @@ export async function loadJobProfitByJob(jobIds: number[]): Promise<Map<number, 
       ))
       .groupBy(subPaymentRecordsTable.jobId, jobSubcontractorsTable.compensationType),
     db.select({
+      jobId: subPaymentRecordsTable.jobId,
+      total: sql<string>`COALESCE(SUM(
+        ${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)
+      ), 0)`,
+    })
+      .from(subPaymentRecordsTable)
+      .innerJoin(jobSubcontractorsTable, and(
+        eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
+        eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
+      ))
+      .where(and(
+        inArray(subPaymentRecordsTable.jobId, jobIds),
+        sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+        eq(jobSubcontractorsTable.compensationType, "hourly"),
+        isNull(jobSubcontractorsTable.amountOwed),
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM job_sub_hours h
+          WHERE h.job_id = ${subPaymentRecordsTable.jobId}
+            AND h.subcontractor_id = ${subPaymentRecordsTable.subcontractorId}
+        )`,
+      ))
+      .groupBy(subPaymentRecordsTable.jobId),
+    db.select({
       jobId: jobSubcontractorsTable.jobId,
       total: sql<string>`COALESCE(SUM(${jobSubcontractorsTable.accruedBonus}), 0)`,
     })
@@ -180,6 +205,9 @@ export async function loadJobProfitByJob(jobIds: number[]): Promise<Map<number, 
   const accruedBonusMap = new Map(accruedBonusRows.map((row) => [row.jobId, Number(row.total ?? 0)]));
   const fixedPaymentMap = new Map<number, number>();
   const allocationPaymentMap = new Map<number, number>();
+  const hourlyPaymentFallbackMap = new Map<number, number>(
+    hourlyPaymentFallbackRows.map((row) => [row.jobId, Number(row.total ?? 0)]),
+  );
   for (const row of paymentRows) {
     const total = Number(row.total ?? 0);
     if (row.compType === "fixed") {
@@ -233,6 +261,7 @@ export async function loadJobProfitByJob(jobIds: number[]): Promise<Map<number, 
         (row) => row.category === "Fuel/Travel" && row.countsTowardJobProfit !== false,
       ),
       hourlyLaborCost: hoursMap.get(jobId) ?? 0,
+      hourlySubcontractorPaymentFallbackCost: hourlyPaymentFallbackMap.get(jobId) ?? 0,
       totalSubHours: hoursCountMap.get(jobId) ?? 0,
       fixedSubCost: fixedPaymentMap.get(jobId) ?? 0,
       accruedBonus: accruedBonusMap.get(jobId) ?? 0,

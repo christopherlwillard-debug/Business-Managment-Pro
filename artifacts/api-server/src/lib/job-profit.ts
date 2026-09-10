@@ -7,7 +7,7 @@ import type {
 // Increment when the canonical wire response changes in a way that can make
 // an older API/UI pair display a misleading financial value. Clients reject
 // responses without the current marker instead of rendering stale arithmetic.
-export const CANONICAL_JOB_PROFIT_RESPONSE_VERSION = 3;
+export const CANONICAL_JOB_PROFIT_RESPONSE_VERSION = 4;
 
 export type JobProfitExpenseRow = {
   id?: number | null;
@@ -179,6 +179,8 @@ export function calculateJobProfit(input: {
   includeMileageInJobCosts?: boolean;
   hasActualFuelExpense?: boolean;
   hourlyLaborCost?: number;
+  /** Paid hourly subcontractor cost used only when no authoritative accrual exists. */
+  hourlySubcontractorPaymentFallbackCost?: number;
   totalSubHours?: number;
   fixedSubCost?: number;
   accruedBonus?: number;
@@ -257,16 +259,17 @@ export function calculateJobProfit(input: {
       : 0;
 
   const hourlyLaborCost = money(input.hourlyLaborCost);
+  const hourlySubcontractorPaymentFallbackCost = money(input.hourlySubcontractorPaymentFallbackCost);
   const fixedSubCost = money(input.fixedSubCost);
   const accruedBonus = money(input.accruedBonus);
   const reversedFixedPayouts = money(input.reversedFixedPayout);
   const reversedAllocationPayouts = money(input.reversedAllocationPayout);
   const nonHoursSubCost = fixedSubCost > 0
     ? fixedSubCost
-    : hourlyLaborCost > 0
+    : hourlyLaborCost > 0 || hourlySubcontractorPaymentFallbackCost > 0
       ? 0
       : legacySubcontractorExpense;
-  const subLaborCost = hourlyLaborCost + nonHoursSubCost + accruedBonus;
+  const subLaborCost = hourlyLaborCost + hourlySubcontractorPaymentFallbackCost + nonHoursSubCost + accruedBonus;
   const allocPaid = money(input.allocPaid);
   const jobExpenses = directExpenseTotal + allocatedExpenseTotal + mileageReimbursement + estimatedFuelCost;
   const includedCostTotal = jobExpenses + subLaborCost + allocPaid;
