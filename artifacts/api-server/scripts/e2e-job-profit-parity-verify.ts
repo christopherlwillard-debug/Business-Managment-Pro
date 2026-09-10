@@ -216,6 +216,24 @@ async function clickRouteStopActionById(page: Page, stopId: number, action: stri
   }, { routeStopId: stopId, buttonTitle: action });
 }
 
+async function moveRouteStopToDate(page: Page, stopId: number, scheduledDate: string): Promise<boolean> {
+  const clickedEdit = await clickRouteStopActionById(page, stopId, "Edit");
+  if (!clickedEdit) return false;
+  const editFormReady = await page.waitForFunction(
+    () => document.querySelector("input[type='date']") != null,
+    { timeout: 20_000 },
+  ).then(() => true).catch(() => false);
+  if (!editFormReady) return false;
+  await setRouteControlValue(page, "input[type='date']", scheduledDate);
+  return page.evaluate(() => {
+    const saveButton = [...document.querySelectorAll<HTMLButtonElement>("button")]
+      .find(button => button.textContent?.trim() === "Save");
+    if (!saveButton) return false;
+    saveButton.click();
+    return true;
+  });
+}
+
 async function dragRouteStop(page: Page, sourceTitle: string, targetTitle: string): Promise<boolean> {
   return page.evaluate(({ source, target }) => {
     const cards = [...document.querySelectorAll<HTMLElement>("[draggable='true']")];
@@ -1980,6 +1998,111 @@ async function main() {
         && returnedWeekRefreshed
         && nearlyEqual(returnedWeekDisplayed, returnedWeekExpected.netProfit),
       `jobIds=${returnedWeekExpected.jobIds.join(",")}, displayed=${returnedWeekDisplayed ?? "missing"}, canonical=${returnedWeekExpected.netProfit}`,
+    );
+
+    const weekDuplicateSource = routeStops.find(stop => stop.jobId === firstJobId);
+    if (!weekDuplicateSource) {
+      throw new Error("Week duplicate route-stop source was removed before Week deduplication coverage");
+    }
+    const weekDuplicateStops = [94001, 94002].map((id, index) => ({
+      ...weekDuplicateSource,
+      id,
+      title: `E2E Week Duplicate ${index + 1}`,
+      scheduledDate: today,
+      sortOrder: Math.max(...routeStops.map(stop => stop.sortOrder), -1) + index + 1,
+    }));
+    routeStops.push(...weekDuplicateStops);
+    await page.reload({
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
+    const weekDuplicateDateSelected = await selectCalendarDate(page, today);
+    const weekDuplicateViewSelected = await clickButtonByText(page, "Week");
+    const beforeWeekDuplicateMove = expectedRouteProfitBetween(visibleWeekStart, visibleWeekEnd);
+    const beforeWeekDuplicateRefreshed = await waitForRouteProfit(page, beforeWeekDuplicateMove.netProfit);
+    const beforeWeekDuplicateRows = await page.$$eval(
+      '[data-testid^="route-profit-job-row-"]',
+      (rows, jobId) => rows.filter(row => Number(row.getAttribute("data-job-id")) === jobId).length,
+      firstJobId,
+    );
+    const beforeWeekDuplicateText = await page.$eval(
+      '[data-testid="route-profit-week-scope"]',
+      scope => scope.textContent?.replace(/\s+/g, " ").trim() ?? "",
+    );
+    record(
+      "Week view deduplicates duplicate linked stops before date moves",
+      weekDuplicateDateSelected
+        && weekDuplicateViewSelected
+        && beforeWeekDuplicateRefreshed
+        && beforeWeekDuplicateMove.jobIds.includes(firstJobId)
+        && beforeWeekDuplicateRows === 1
+        && beforeWeekDuplicateText.includes("E2E Profit Parity One")
+        && beforeWeekDuplicateText.includes("Included"),
+      `jobIds=${beforeWeekDuplicateMove.jobIds.join(",")}, displayedRowsForFirstJob=${beforeWeekDuplicateRows}, ` +
+      `canonical=${beforeWeekDuplicateMove.netProfit}, scope=${beforeWeekDuplicateText}`,
+    );
+
+    const oneWeekDuplicateMoved = await moveRouteStopToDate(page, weekDuplicateStops[0].id, weekMoveDate);
+    const oneWeekDuplicateMoveApplied = await waitForCondition(
+      () => routeStops.some(stop => stop.id === weekDuplicateStops[0].id && stop.scheduledDate === weekMoveDate),
+    );
+    const afterOneWeekDuplicateMove = expectedRouteProfitBetween(visibleWeekStart, visibleWeekEnd);
+    const afterOneWeekDuplicateRefreshed = await waitForRouteProfit(page, afterOneWeekDuplicateMove.netProfit);
+    const afterOneWeekDuplicateRows = await page.$$eval(
+      '[data-testid^="route-profit-job-row-"]',
+      (rows, jobId) => rows.filter(row => Number(row.getAttribute("data-job-id")) === jobId).length,
+      firstJobId,
+    );
+    const afterOneWeekDuplicateDisplayed = await readRoutePanelNetProfit(page);
+    const afterOneWeekDuplicateText = await page.$eval(
+      '[data-testid="route-profit-week-scope"]',
+      scope => scope.textContent?.replace(/\s+/g, " ").trim() ?? "",
+    );
+    record(
+      "Moving one Week duplicate outside the selected week keeps that job included once",
+      oneWeekDuplicateMoved
+        && oneWeekDuplicateMoveApplied
+        && afterOneWeekDuplicateRefreshed
+        && afterOneWeekDuplicateMove.jobIds.includes(firstJobId)
+        && afterOneWeekDuplicateRows === 1
+        && nearlyEqual(afterOneWeekDuplicateDisplayed, beforeWeekDuplicateMove.netProfit)
+        && nearlyEqual(afterOneWeekDuplicateDisplayed, afterOneWeekDuplicateMove.netProfit)
+        && afterOneWeekDuplicateText.includes("E2E Profit Parity One")
+        && afterOneWeekDuplicateText.includes("Included"),
+      `jobIds=${afterOneWeekDuplicateMove.jobIds.join(",")}, rowsForFirstJob=${afterOneWeekDuplicateRows}, ` +
+      `displayed=${afterOneWeekDuplicateDisplayed ?? "missing"}, canonicalBefore=${beforeWeekDuplicateMove.netProfit}, ` +
+      `canonicalAfter=${afterOneWeekDuplicateMove.netProfit}, scope=${afterOneWeekDuplicateText}`,
+    );
+
+    const finalWeekDuplicateMoved = await moveRouteStopToDate(page, weekDuplicateStops[1].id, weekMoveDate);
+    const finalWeekDuplicateMoveApplied = await waitForCondition(
+      () => routeStops.some(stop => stop.id === weekDuplicateStops[1].id && stop.scheduledDate === weekMoveDate),
+    );
+    const afterFinalWeekDuplicateMove = expectedRouteProfitBetween(visibleWeekStart, visibleWeekEnd);
+    const afterFinalWeekDuplicateRefreshed = await waitForRouteProfit(page, afterFinalWeekDuplicateMove.netProfit);
+    const afterFinalWeekDuplicateRows = await page.$$eval(
+      '[data-testid^="route-profit-job-row-"]',
+      (rows, jobId) => rows.filter(row => Number(row.getAttribute("data-job-id")) === jobId).length,
+      firstJobId,
+    );
+    const afterFinalWeekDuplicateDisplayed = await readRoutePanelNetProfit(page);
+    const afterFinalWeekDuplicateText = await page.$eval(
+      '[data-testid="route-profit-week-scope"]',
+      scope => scope.textContent?.replace(/\s+/g, " ").trim() ?? "",
+    );
+    record(
+      "Moving the final Week duplicate outside removes that job and refreshes the canonical total",
+      finalWeekDuplicateMoved
+        && finalWeekDuplicateMoveApplied
+        && afterFinalWeekDuplicateRefreshed
+        && !afterFinalWeekDuplicateMove.jobIds.includes(firstJobId)
+        && afterFinalWeekDuplicateRows === 0
+        && nearlyEqual(afterFinalWeekDuplicateDisplayed, afterFinalWeekDuplicateMove.netProfit)
+        && !afterFinalWeekDuplicateText.includes("E2E Profit Parity One")
+        && afterFinalWeekDuplicateText.includes("Stops outside this week excluded."),
+      `jobIds=${afterFinalWeekDuplicateMove.jobIds.join(",")}, rowsForFirstJob=${afterFinalWeekDuplicateRows}, ` +
+      `displayed=${afterFinalWeekDuplicateDisplayed ?? "missing"}, canonical=${afterFinalWeekDuplicateMove.netProfit}, ` +
+      `scope=${afterFinalWeekDuplicateText}`,
     );
 
     delayedProfitJobId = firstJobId;
