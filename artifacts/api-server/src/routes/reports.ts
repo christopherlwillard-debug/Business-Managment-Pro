@@ -10,10 +10,13 @@ import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { calculateOwnerPayFromJobProfit } from "../lib/job-profit-reports.js";
 import { loadJobProfitByJob } from "../lib/job-profit-loader.js";
-import { resolveMutationBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
+import { requestedBusiness, resolveMutationBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 import {
   filterCashReceipts,
   filterDashboardRevenueInvoices,
+  getCashReceiptAmount,
+  getDashboardRevenueDate,
+  isDashboardRevenueDateEstimated,
   sumCashReceipts,
   sumDashboardRevenue,
 } from "../lib/cash-revenue.js";
@@ -42,6 +45,59 @@ const dashboardInvoiceSelection = {
       AND ${invoiceCommunicationEventsTable.completedAt} IS NOT NULL
   )`.as("verified_sent_at"),
 };
+
+router.get("/invoice-send-date-audit", sectionGuard("invoices"), async (req, res) => {
+  try {
+    const requestedScope = req.query.businessId != null || req.query.businessLine != null;
+    const scope = await requestedBusiness(req);
+    if (requestedScope && !scope) return res.status(400).json({ error: "Unknown business" });
+
+    const rows = await db
+      .select({
+        id: invoicesTable.id,
+        invoiceNumber: invoicesTable.invoiceNumber,
+        status: invoicesTable.status,
+        issueDate: invoicesTable.issueDate,
+        total: invoicesTable.total,
+        amountPaid: invoicesTable.amountPaid,
+        businessId: invoicesTable.businessId,
+        businessLine: invoicesTable.businessLine,
+        clientName: clientsTable.name,
+        jobTitle: jobsTable.title,
+        verifiedSentAt: dashboardInvoiceSelection.verifiedSentAt,
+      })
+      .from(invoicesTable)
+      .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
+      .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
+      .where(and(
+        eq(invoicesTable.status, "paid"),
+        scope ? mutationBusinessPredicate(invoicesTable, scope) : undefined,
+      ))
+      .orderBy(desc(invoicesTable.issueDate), desc(invoicesTable.id));
+
+    const estimatedSendDateInvoices = rows
+      .filter(isDashboardRevenueDateEstimated)
+      .map(invoice => ({
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        clientName: invoice.clientName,
+        jobTitle: invoice.jobTitle,
+        issueDate: invoice.issueDate,
+        dashboardRevenueDate: getDashboardRevenueDate(invoice),
+        amount: getCashReceiptAmount(invoice),
+        businessId: invoice.businessId,
+        businessLine: invoice.businessLine,
+      }));
+
+    res.json({
+      estimatedSendDateInvoices,
+      totalCount: estimatedSendDateInvoices.length,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to get invoice send-date audit" });
+  }
+});
 
 router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
   try {

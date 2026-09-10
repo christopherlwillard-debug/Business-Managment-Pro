@@ -12,7 +12,7 @@ import {
   Invoice,
   type InvoiceDraft,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -123,7 +123,7 @@ const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 export default function Invoices() {
   const queryClient = useQueryClient();
   const { activeBusiness, businesses } = useBusiness();
-  const [activeTab, setActiveTab] = useState<"all" | "tax">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "tax" | "audit">("all");
   const [filterStatus, setFilterStatus] = useState<"active" | "all" | "approved" | "sent" | "partiallyPaid" | "overdue" | "paid">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -155,6 +155,31 @@ export default function Invoices() {
     prevInvoiceStatuses.current = next;
   }, [invoices, toast]);
   const { data: taxReport, isLoading: loadingTax } = useGetInvoiceTaxReport();
+  const invoiceSendDateAudit = useQuery<{
+    estimatedSendDateInvoices: Array<{
+      id: number;
+      invoiceNumber: string;
+      clientName: string | null;
+      jobTitle: string | null;
+      issueDate: string | null;
+      dashboardRevenueDate: string;
+      amount: number;
+      businessId: number | null;
+      businessLine: string | null;
+    }>;
+    totalCount: number;
+  }>({
+    queryKey: ["/api/reports/invoice-send-date-audit", activeBusiness?.id ?? null],
+    queryFn: async ({ signal }) => {
+      const params = activeBusiness ? `?businessId=${activeBusiness.id}` : "";
+      const response = await fetch(`${BASE_URL}/api/reports/invoice-send-date-audit${params}`, {
+        credentials: "include",
+        signal,
+      });
+      if (!response.ok) throw new Error("Failed to load invoice send-date audit");
+      return response.json();
+    },
+  });
   const { data: settings }   = useGetSettings();
   const updateStatus         = useUpdateInvoiceStatus();
   const deleteInvoice        = useDeleteInvoice();
@@ -448,15 +473,84 @@ export default function Invoices() {
 
       {/* Tabs */}
       <div className="flex p-1 bg-muted/50 rounded-xl w-fit border border-border/50">
-        {(["all", "tax"] as const).map(t => (
+        {(["all", "tax", "audit"] as const).map(t => (
           <button key={t} onClick={() => setActiveTab(t)}
             className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${
               activeTab === t ? "bg-card text-foreground shadow-sm border border-border/50" : "text-muted-foreground hover:text-foreground"
             }`}>
-            {t === "all" ? "All Invoices" : "Tax Report (By City)"}
+            {t === "all" ? "All Invoices" : t === "tax" ? "Tax Report (By City)" : "Revenue Date Audit"}
           </button>
         ))}
       </div>
+
+      {activeTab === "audit" && (
+        <Card className="border-border/50 shadow-md overflow-hidden bg-card">
+          <div className="border-b border-amber-200 bg-amber-50 px-6 py-5">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <div>
+                <h2 className="text-base font-bold text-amber-950">Paid invoices using an estimated send date</h2>
+                <p className="mt-1 max-w-3xl text-sm text-amber-900">
+                  These older paid invoices do not have finalized Gmail delivery evidence. Dashboard revenue uses each invoice&apos;s issue date as the send-date fallback. This view is read-only and does not change invoice, payment, communication, or accounting records.
+                </p>
+              </div>
+            </div>
+          </div>
+          {invoiceSendDateAudit.isLoading ? (
+            <div className="px-6 py-10 text-center text-muted-foreground animate-pulse">Loading audit records…</div>
+          ) : invoiceSendDateAudit.isError ? (
+            <div className="px-6 py-10 text-center text-sm text-destructive">Unable to load the revenue date audit.</div>
+          ) : !invoiceSendDateAudit.data?.estimatedSendDateInvoices.length ? (
+            <div className="px-6 py-10 text-center text-muted-foreground">
+              No paid invoices are currently using the issue-date fallback.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
+                  <tr>
+                    <th className="px-6 py-4">Invoice #</th>
+                    <th className="px-6 py-4">Client / Job</th>
+                    <th className="px-6 py-4">Issue date</th>
+                    <th className="px-6 py-4">Dashboard revenue date</th>
+                    <th className="px-6 py-4 text-right">Paid amount</th>
+                    <th className="px-6 py-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {invoiceSendDateAudit.data.estimatedSendDateInvoices.map(invoice => (
+                    <tr key={invoice.id} className="hover:bg-muted/30">
+                      <td className="px-6 py-4 font-semibold text-foreground">{invoice.invoiceNumber}</td>
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-foreground">{invoice.clientName ?? "No client"}</div>
+                        {invoice.jobTitle && <div className="text-xs text-muted-foreground">{invoice.jobTitle}</div>}
+                      </td>
+                      <td className="px-6 py-4 text-muted-foreground">{formatDate(invoice.issueDate)}</td>
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-amber-700">{formatDate(invoice.dashboardRevenueDate)}</div>
+                        <div className="text-xs text-muted-foreground">Issue date fallback</div>
+                      </td>
+                      <td className="px-6 py-4 text-right font-semibold text-foreground">{formatCurrency(invoice.amount)}</td>
+                      <td className="px-6 py-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matchingInvoice = allInvoices.find((candidate: any) => candidate.id === invoice.id);
+                            if (matchingInvoice) setViewInvoice(matchingInvoice);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-muted"
+                        >
+                          <Eye className="h-3.5 w-3.5" /> View
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Search + status filter (All Invoices tab only) */}
       {activeTab === "all" && (
@@ -543,7 +637,7 @@ export default function Invoices() {
       )}
 
       {/* Invoice list / tax table */}
-      <Card className="border-border/50 shadow-md overflow-hidden bg-card">
+      {activeTab !== "audit" && <Card className="border-border/50 shadow-md overflow-hidden bg-card">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 text-muted-foreground text-xs uppercase font-semibold border-b border-border">
@@ -783,7 +877,7 @@ export default function Invoices() {
             </tbody>
           </table>
         </div>
-      </Card>
+      </Card>}
 
       {/* New Invoice Panel */}
       <InvoicePanel

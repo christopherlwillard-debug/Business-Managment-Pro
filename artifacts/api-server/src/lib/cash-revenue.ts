@@ -71,15 +71,30 @@ export function sumCashReceipts(
  * getEffectivePaymentDate instead.
  */
 export function getDashboardRevenueDate(invoice: CashRevenueInvoice): string {
-  const verifiedSentAt = invoice.verifiedSentAt;
-  if (verifiedSentAt instanceof Date && Number.isFinite(verifiedSentAt.getTime())) {
-    return verifiedSentAt.toISOString().slice(0, 10);
-  }
-  if (typeof verifiedSentAt === "string" && verifiedSentAt.length >= 10) {
-    const parsed = new Date(verifiedSentAt);
-    if (Number.isFinite(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  if (hasVerifiedDashboardRevenueDate(invoice)) {
+    const verifiedSentAt = invoice.verifiedSentAt;
+    if (verifiedSentAt instanceof Date) return verifiedSentAt.toISOString().slice(0, 10);
+    return new Date(verifiedSentAt as string).toISOString().slice(0, 10);
   }
   return invoice.issueDate ?? "";
+}
+
+/**
+ * Whether an invoice has finalized delivery evidence suitable for Dashboard
+ * revenue attribution. The legacy invoices.sentAt compatibility field is
+ * intentionally not considered evidence here.
+ */
+export function hasVerifiedDashboardRevenueDate(invoice: CashRevenueInvoice): boolean {
+  const verifiedSentAt = invoice.verifiedSentAt;
+  if (verifiedSentAt instanceof Date) return Number.isFinite(verifiedSentAt.getTime());
+  if (typeof verifiedSentAt === "string" && verifiedSentAt.length >= 10) {
+    return Number.isFinite(new Date(verifiedSentAt).getTime());
+  }
+  return false;
+}
+
+export function isDashboardRevenueDateEstimated(invoice: CashRevenueInvoice): boolean {
+  return invoice.status === "paid" && !hasVerifiedDashboardRevenueDate(invoice);
 }
 
 export function isDashboardRevenueInPeriod(

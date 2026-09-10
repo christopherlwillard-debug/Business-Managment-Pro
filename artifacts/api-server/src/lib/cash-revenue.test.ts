@@ -4,6 +4,8 @@ import {
   getDashboardRevenueDate,
   getEffectivePaymentDate,
   getCashReceiptAmount,
+  hasVerifiedDashboardRevenueDate,
+  isDashboardRevenueDateEstimated,
   sumDashboardRevenue,
   sumCashReceipts,
   sumCashReceiptEvents,
@@ -43,6 +45,10 @@ describe("cash revenue reconciliation", () => {
 
     expect(getDashboardRevenueDate(deliveredInvoice)).toBe(`${YEAR - 1}-12-31`);
     expect(getDashboardRevenueDate(legacyInvoice)).toBe(`${YEAR - 1}-12-15`);
+    expect(hasVerifiedDashboardRevenueDate(deliveredInvoice)).toBe(true);
+    expect(hasVerifiedDashboardRevenueDate(legacyInvoice)).toBe(false);
+    expect(isDashboardRevenueDateEstimated(deliveredInvoice)).toBe(false);
+    expect(isDashboardRevenueDateEstimated(legacyInvoice)).toBe(true);
     expect(sumDashboardRevenue(
       [deliveredInvoice, legacyInvoice],
       `${YEAR - 1}-01-01`,
@@ -53,6 +59,18 @@ describe("cash revenue reconciliation", () => {
       `${YEAR}-01-01`,
       `${YEAR}-12-31`,
     )).toBe(0);
+  });
+
+  it("does not treat invalid delivery timestamps as verified evidence", () => {
+    const invoice = {
+      status: "paid",
+      issueDate: `${YEAR}-08-01`,
+      verifiedSentAt: "not-a-date",
+    };
+
+    expect(hasVerifiedDashboardRevenueDate(invoice)).toBe(false);
+    expect(isDashboardRevenueDateEstimated(invoice)).toBe(true);
+    expect(getDashboardRevenueDate(invoice)).toBe(`${YEAR}-08-01`);
   });
 
   it("uses Square before the issue-date fallback and excludes unpaid invoices", () => {
