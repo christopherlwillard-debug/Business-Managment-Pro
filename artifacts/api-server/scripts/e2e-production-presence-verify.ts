@@ -16,6 +16,7 @@ const BASE = process.env.BUILDPRO_E2E_BASE_URL ?? "http://localhost:80";
 const SHOTS = "/tmp/e2e-production-presence";
 const JOB_ID = 9201;
 const JOB_TITLE = "Production Presence Browser Fixture";
+const ALTERNATE_DATES = ["2026-07-01", "2026-07-02", "2026-07-03"];
 const CHECKLIST_ONLY_JOB_ID = 9202;
 const CHECKLIST_ONLY_JOB_TITLE = "Checklist-only Presence Browser Fixture";
 const CHECKLIST_ONLY_ENTRY_ID = 92021;
@@ -120,7 +121,7 @@ function snapshot() {
   };
 }
 
-function scheduleFixture() {
+function scheduleFixture(dates = DATES) {
   return {
     from: "2026-08-01",
     to: "2026-09-30",
@@ -129,8 +130,8 @@ function scheduleFixture() {
       title: JOB_TITLE,
       status: "completed",
       jobType: "general_contracting",
-      startDate: DATES[0],
-      endDate: DATES[2],
+       startDate: dates[0],
+       endDate: dates[2],
       daysOnJob: 3,
       planningState: "completed",
       priority: "normal",
@@ -252,6 +253,19 @@ async function clickVisible(page: Page, selector: string) {
     }
   }
   throw new Error(`No visible element found for ${selector}`);
+}
+
+async function setDateInput(page: Page, selector: string, value: string) {
+  await page.$eval(
+    selector,
+    (element, nextValue) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(element, nextValue);
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    value,
+  );
 }
 
 async function verifyOpenPanelRefresh(page: Page) {
@@ -405,10 +419,11 @@ async function main() {
       }
 
       if (url.includes("/api/jobs/schedule-history?")) {
+        const historyRange = new URL(url).searchParams.get("from");
         void request.respond({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify(scheduleFixture()),
+          body: JSON.stringify(scheduleFixture(historyRange === ALTERNATE_DATES[0] ? ALTERNATE_DATES : DATES)),
         });
         return;
       }
@@ -737,6 +752,56 @@ async function main() {
         (await page.$eval('[data-testid="job-presence-save-error"]', element => element.textContent?.includes("Could not save this day") ?? false)),
       `${timingBeforeFailure} -> ${timingAfterFailure}`,
     );
+
+    remoteRefreshDate = DATES[0];
+    remoteRefreshState = "here";
+    failNextPresenceRefresh = true;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.waitForSelector('[data-testid="job-presence-refresh-stale"]', { timeout: 15_000 });
+    const firstRangeRefreshTimestamp = await page.$eval(
+      '[data-testid="job-presence-last-refreshed"] [data-last-refreshed-at]',
+      element => element.getAttribute("data-last-refreshed-at") ?? "",
+    );
+
+    await setDateInput(page, '[data-testid="schedule-history-from"]', ALTERNATE_DATES[0]);
+    await setDateInput(page, '[data-testid="schedule-history-to"]', ALTERNATE_DATES[2]);
+    await page.click('[data-testid="schedule-history-load"]');
+    await waitForText(page, "Jul 1, 2026");
+    await page.waitForSelector(`[data-testid="job-presence-day-${ALTERNATE_DATES[0]}"]`, { timeout: 15_000 });
+    await page.waitForFunction(
+      () =>
+        !document.querySelector('[data-testid="job-presence-refresh-stale"]') &&
+        !document.querySelector('[data-testid="job-presence-last-refreshed"]'),
+      { timeout: 15_000 },
+    );
+    recordResult(
+      "Schedule History clears refresh age when a new range loads",
+      firstRangeRefreshTimestamp !== "" &&
+        await page.$('[data-testid="job-presence-refresh-stale"]') === null &&
+        await page.$('[data-testid="job-presence-last-refreshed"]') === null,
+    );
+
+    remoteRefreshDate = ALTERNATE_DATES[0];
+    remoteRefreshState = "not_here";
+    failNextPresenceRefresh = true;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.waitForSelector('[data-testid="job-presence-refresh-stale"]', { timeout: 15_000 });
+    const secondRangeRefreshTimestamp = await page.$eval(
+      '[data-testid="job-presence-last-refreshed"] [data-last-refreshed-at]',
+      element => element.getAttribute("data-last-refreshed-at") ?? "",
+    );
+    recordResult(
+      "Schedule History establishes a new refresh age for the new range",
+      secondRangeRefreshTimestamp !== "" && secondRangeRefreshTimestamp !== firstRangeRefreshTimestamp,
+    );
+    remoteRefreshState = "here";
+    await page.click('[data-testid="job-presence-refresh-retry"]');
+    await page.waitForFunction(
+      selector => !document.querySelector(selector),
+      { timeout: 15_000 },
+      '[data-testid="job-presence-refresh-stale"]',
+    );
+
     await page.screenshot({ path: `${SHOTS}/02-presence-error.png`, fullPage: true });
   } finally {
     if (sessionId) await deleteSession(sessionId).catch(() => undefined);

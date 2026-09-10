@@ -314,6 +314,7 @@ export function JobScheduleHistory({
                 type="date"
                 value={from}
                 onChange={event => setFrom(event.target.value)}
+                data-testid="schedule-history-from"
                 className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-normal text-foreground"
               />
             </label>
@@ -323,6 +324,7 @@ export function JobScheduleHistory({
                 type="date"
                 value={to}
                 onChange={event => setTo(event.target.value)}
+                data-testid="schedule-history-to"
                 className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-normal text-foreground"
               />
             </label>
@@ -334,7 +336,7 @@ export function JobScheduleHistory({
             <button type="button" onClick={() => applyPreset(365)} className="rounded-xl border border-border px-3 py-2.5 text-xs font-bold text-muted-foreground hover:bg-background hover:text-foreground">
               Last year
             </button>
-            <button type="submit" className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800">
+            <button type="submit" data-testid="schedule-history-load" className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800">
               Load history
             </button>
           </div>
