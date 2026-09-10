@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * Read-only check of the development database against the canonical
- * business-ownership contract.
+ * Read-only check of the target database against release-critical schema
+ * contracts.
  *
  * This deliberately does not run migrations, DDL, backfills, or data queries.
  * It is a release prerequisite: source-code schema validation alone cannot
  * prove that the active database has the columns the application will query.
  */
 import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 
 const requireFromDb = createRequire(new URL("../lib/db/package.json", import.meta.url));
 const { Pool } = requireFromDb("pg");
@@ -18,16 +19,67 @@ const REQUIRED_OWNERSHIP_COLUMNS = [
   "estimates.business_id",
   "prospects.business_id",
   "assets.business_id",
+  "estimated_tax_payments.business_id",
+  "sub_payment_records.business_id",
+  "payments.business_id",
+  "square_payments.business_id",
 ].map((qualifiedName) => {
   const [tableName, columnName] = qualifiedName.split(".");
   return { tableName, columnName, qualifiedName };
 });
+const PAY_WORKER_REQUIRED_COLUMNS = [
+  "sub_payment_records.id",
+  "sub_payment_records.job_id",
+  "sub_payment_records.subcontractor_id",
+  "sub_payment_records.business_id",
+  "sub_payment_records.business_line",
+  "sub_payment_records.amount",
+  "sub_payment_records.payment_date",
+  "sub_payment_records.description",
+  "sub_payment_records.created_from",
+  "sub_payment_records.idempotency_key",
+  "sub_payment_records.agreed_owed_snapshot",
+  "sub_payment_records.is_reversal",
+  "sub_payment_records.work_hours",
+  "sub_payment_records.work_rate",
+  "sub_payment_records.travel_hours",
+  "sub_payment_records.travel_rate",
+  "sub_payment_records.bonus_amount",
+  "sub_payment_records.bonus_note",
+  "sub_payment_records.advance_amount",
+  "sub_payment_records.advance_note",
+  "sub_payment_records.net_paid",
+  "sub_payment_records.payment_method",
+  "sub_payment_records.reference_number",
+].map((qualifiedName) => {
+  const [tableName, columnName] = qualifiedName.split(".");
+  return { tableName, columnName, qualifiedName };
+});
+const REQUIRED_SCHEMA_COLUMNS = [
+  ...new Map(
+    [...REQUIRED_OWNERSHIP_COLUMNS, ...PAY_WORKER_REQUIRED_COLUMNS]
+      .map((requirement) => [requirement.qualifiedName, requirement]),
+  ).values(),
+];
+const OWNERSHIP_COLUMN_NAMES = new Set(
+  REQUIRED_OWNERSHIP_COLUMNS.map(({ qualifiedName }) => qualifiedName),
+);
+const PAY_WORKER_COLUMN_NAMES = new Set(
+  PAY_WORKER_REQUIRED_COLUMNS.map(({ qualifiedName }) => qualifiedName),
+);
 
 const DATABASE_SCHEMA = "public";
 
 function formatForeignKey(row) {
   if (!row) return "missing foreign key";
   return `references ${row.referenced_table}.${row.referenced_column} with ON DELETE ${row.delete_action}`;
+}
+
+function describeRequirement(qualifiedName) {
+  const requiredBy = [];
+  if (OWNERSHIP_COLUMN_NAMES.has(qualifiedName)) requiredBy.push("business ownership contract");
+  if (PAY_WORKER_COLUMN_NAMES.has(qualifiedName)) requiredBy.push("POST /api/jobs/:id/pay-worker");
+  return requiredBy.join(" and ");
 }
 
 function validateMetadata({ tables, columns, foreignKeys }) {
@@ -44,19 +96,24 @@ function validateMetadata({ tables, columns, foreignKeys }) {
   }
 
   const errors = [];
-  for (const requirement of REQUIRED_OWNERSHIP_COLUMNS) {
+  for (const requirement of REQUIRED_SCHEMA_COLUMNS) {
+    const context = describeRequirement(requirement.qualifiedName);
     if (!tableNames.has(requirement.tableName)) {
       errors.push(
-        `${requirement.qualifiedName}: table is missing from schema ${DATABASE_SCHEMA}`,
+        `${requirement.qualifiedName}: table is missing from schema ${DATABASE_SCHEMA} (required by ${context})`,
       );
       continue;
     }
 
     const column = columnByName.get(requirement.qualifiedName);
     if (!column) {
-      errors.push(`${requirement.qualifiedName}: column is missing`);
+      const migration = requirement.qualifiedName === "sub_payment_records.business_id"
+        ? "; apply lib/db/migrations/0069_financial_business_ownership.sql"
+        : "";
+      errors.push(`${requirement.qualifiedName}: column is missing (required by ${context}${migration})`);
       continue;
     }
+    if (!OWNERSHIP_COLUMN_NAMES.has(requirement.qualifiedName)) continue;
 
     if (column.data_type !== "integer" || column.udt_name !== "int4") {
       errors.push(
@@ -89,13 +146,13 @@ function validateMetadata({ tables, columns, foreignKeys }) {
 async function main() {
   if (!process.env.DATABASE_URL) {
     throw new Error(
-      "DATABASE_URL is not set. The live development schema check cannot run; no schema changes were attempted.",
+      "DATABASE_URL is not set. The target database schema check cannot run; no schema changes were attempted.",
     );
   }
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
   try {
-    const tableNames = REQUIRED_OWNERSHIP_COLUMNS.map(({ tableName }) => tableName);
+    const tableNames = [...new Set(REQUIRED_SCHEMA_COLUMNS.map(({ tableName }) => tableName))];
     const [{ rows: tables }, { rows: columns }, { rows: foreignKeys }] = await Promise.all([
       pool.query(
         `SELECT table_name
@@ -153,7 +210,7 @@ async function main() {
     if (errors.length) {
       console.error(
         [
-          "Live development schema contract check failed.",
+          "Target database schema contract check failed.",
           "This is a read-only check; no schema or data changes were attempted.",
           ...errors.map((error) => `- ${error}`),
           "If post-merge reported a synchronization warning, this is the resulting database mismatch.",
@@ -165,16 +222,25 @@ async function main() {
     }
 
     console.log(
-      `Live development schema contract check passed: ${REQUIRED_OWNERSHIP_COLUMNS.length} ownership columns verified as nullable INTEGER foreign keys to businesses.id with ON DELETE SET NULL.`,
+      `Target database schema contract check passed: ${REQUIRED_OWNERSHIP_COLUMNS.length} ownership columns and ${PAY_WORKER_REQUIRED_COLUMNS.length} pay-worker columns verified.`,
     );
   } finally {
     await pool.end();
   }
 }
 
-main().catch((error) => {
-  console.error(
-    `Live development schema contract check could not complete: ${error instanceof Error ? error.message : String(error)}`,
-  );
-  process.exitCode = 1;
-});
+export {
+  PAY_WORKER_REQUIRED_COLUMNS,
+  REQUIRED_OWNERSHIP_COLUMNS,
+  REQUIRED_SCHEMA_COLUMNS,
+  validateMetadata,
+};
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(
+      `Target database schema contract check could not complete: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exitCode = 1;
+  });
+}

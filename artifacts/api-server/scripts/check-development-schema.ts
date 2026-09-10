@@ -29,6 +29,11 @@ const migrationHints: Record<string, string> = {
   "sub_payment_records.reversal_reason": "0048_financial_correction_history.sql",
   "invoices.voided_at": "0048_financial_correction_history.sql",
   "invoices.void_reason": "0048_financial_correction_history.sql",
+  // 0069_financial_business_ownership.sql
+  "estimated_tax_payments.business_id": "0069_financial_business_ownership.sql",
+  "sub_payment_records.business_id": "0069_financial_business_ownership.sql",
+  "payments.business_id": "0069_financial_business_ownership.sql",
+  "square_payments.business_id": "0069_financial_business_ownership.sql",
 };
 
 function getRequiredColumns(): RequiredColumn[] {

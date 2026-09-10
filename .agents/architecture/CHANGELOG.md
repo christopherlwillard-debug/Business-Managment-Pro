@@ -14,6 +14,15 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ## 2026-09-10
 
+### Target-schema guard covers subcontractor payments
+
+- The existing read-only release schema contract now verifies every column used
+  by the pay-worker transaction before application code is promoted.
+- Migration 0069 ownership columns are also verified as nullable integer foreign
+  keys to `businesses.id` with `ON DELETE SET NULL`.
+- Failures name the blocked pay-worker route and point a missing payroll
+  `business_id` to the canonical migration; no payment, DDL, or data write occurs.
+
 ### Canonical split pool includes agreed fixed-worker obligations
 
 - Individual Job Financials now consumes the same canonical allocation pool as
