@@ -841,6 +841,22 @@ async function main() {
     await waitForText(page, "Could not load schedule history.");
     await page.waitForFunction(
       () =>
+        document.querySelector('[data-testid="schedule-history-error"]') !== null &&
+        document.querySelector('[data-testid="schedule-history-loading-range"]') === null,
+      { timeout: 15_000 },
+    );
+    recordResult(
+      "Failed Schedule History range replaces loading status and keeps the applied range",
+      await page.$('[data-testid="schedule-history-error"]') !== null &&
+        await page.$('[data-testid="schedule-history-loading-range"]') === null &&
+        await page.$eval(
+          '[data-testid="schedule-history-applied-range"]',
+          element => element.textContent?.includes("Sep 1, 2026") === true &&
+            element.textContent?.includes("Sep 3, 2026") === true,
+        ),
+    );
+    await page.waitForFunction(
+      () =>
         !document.querySelector('[data-testid="job-presence-refresh-stale"]') &&
         !document.querySelector('[data-testid="job-presence-last-refreshed"]'),
       { timeout: 15_000 },
