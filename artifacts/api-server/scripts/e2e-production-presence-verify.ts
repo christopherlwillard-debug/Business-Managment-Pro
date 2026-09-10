@@ -885,7 +885,17 @@ async function main() {
     await page.click('[data-testid="schedule-history-load"]');
     await setDateInput(page, '[data-testid="schedule-history-from"]', DATES[0]);
     await setDateInput(page, '[data-testid="schedule-history-to"]', DATES[2]);
+    delayNextHistoryRange = DATES[0];
     await page.click('[data-testid="schedule-history-load"]');
+    await page.waitForSelector('[data-testid="schedule-history-loading-range"]', { timeout: 15_000 });
+    recordResult(
+      "Schedule History loading status names the newest applied range",
+      await page.$eval(
+        '[data-testid="schedule-history-loading-range"]',
+        element => element.textContent?.includes("Sep 1, 2026") === true &&
+          element.textContent?.includes("Sep 3, 2026") === true,
+      ),
+    );
     await waitForText(page, "Sep 1, 2026");
     await waitForText(page, "Confirmed manually");
     await new Promise(resolve => setTimeout(resolve, 400));
@@ -893,7 +903,8 @@ async function main() {
       "Rapid Schedule History changes keep the newest range",
       await page.$(`[data-testid="job-presence-day-${DATES[0]}"]`) !== null &&
         await page.$(`[data-testid="job-presence-day-${ALTERNATE_DATES[0]}"]`) === null &&
-        await page.$eval(`[data-testid="schedule-history-job-${JOB_ID}"]`, element => element.textContent?.includes("Sep 1, 2026") ?? false),
+        await page.$eval(`[data-testid="schedule-history-job-${JOB_ID}"]`, element => element.textContent?.includes("Sep 1, 2026") ?? false) &&
+        await page.$eval('[data-testid="schedule-history-applied-range"]', element => element.textContent?.includes("Sep 1, 2026") ?? false),
     );
 
     await new Promise(resolve => setTimeout(resolve, 25));

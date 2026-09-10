@@ -344,7 +344,16 @@ export function JobScheduleHistory({
           </div>
         </form>
         {rangeError && <p className="mt-2 text-xs font-semibold text-red-700">{rangeError}</p>}
-        <p className="mt-2 text-xs text-muted-foreground">
+        {loading && (
+          <p
+            className="mt-2 text-xs font-semibold text-slate-700"
+            role="status"
+            data-testid="schedule-history-loading-range"
+          >
+            Loading history for {formatScheduleDate(appliedRange.from)} through {formatScheduleDate(appliedRange.to)}…
+          </p>
+        )}
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="schedule-history-applied-range">
           Showing {formatScheduleDate(appliedRange.from)} through {formatScheduleDate(appliedRange.to)}. History never edits the source job or checklist records.
         </p>
       </div>
