@@ -14,6 +14,19 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ## 2026-09-10
 
+### Canonical split pool includes agreed fixed-worker obligations
+
+- Individual Job Financials now consumes the same canonical allocation pool as
+  Job Payroll, outstanding subcontractor balances, and close-job flows.
+- The allocation engine deducts unpaid fixed-worker obligations from the pool
+  using the agreed assignment amount, while retaining posted fixed payments
+  only as a compatibility fallback when no agreed amount exists.
+- Growth Reserve remains calculated before non-allocation worker obligations;
+  no payroll ledger, payment mechanics, P&L structure, or persisted financial
+  records changed.
+- Focused API and frontend financial regressions, route tests, source
+  typechecks, and job-profit contract guards pass.
+
 ### Server-backed invoice delivery repair
 
 - The authenticated Contractor Management App now repairs unresolved invoice

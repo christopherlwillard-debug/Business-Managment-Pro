@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { calculateAllocationSplitPool, computeSubOwed } from "./allocation";
+import {
+  calculateAllocationSplitPool,
+  computeSubOwed,
+  resolveSplitPoolLaborCost,
+} from "./allocation";
 
 describe("computeSubOwed", () => {
   it("uses an agreed hourly amount instead of the raw hours calculation", () => {
@@ -43,12 +47,19 @@ describe("computeSubOwed", () => {
 });
 
 describe("calculateAllocationSplitPool", () => {
-  it("deducts agreed hourly worker pay before calculating 50% shares", () => {
+  it("deducts agreed fixed worker pay before calculating 50% shares", () => {
+    const laborCost = resolveSplitPoolLaborCost({
+      hourlyAssignmentCost: 0,
+      fixedAssignmentCost: 800,
+      fixedPaymentFallbackCost: 0,
+      legacyFlatSubCost: 0,
+      accruedBonusCost: 0,
+    });
     const result = calculateAllocationSplitPool({
       revenue: 2500,
       directExpenses: 0,
       allocatedExpenses: 0,
-      subLaborCost: 800,
+      subLaborCost: laborCost,
       growthReservePct: 5,
     });
 
@@ -60,8 +71,36 @@ describe("calculateAllocationSplitPool", () => {
     }, result.splitPool);
 
     expect(result.growthReserve).toBeCloseTo(125, 2);
+    expect(result.subLaborCost).toBeCloseTo(800, 2);
     expect(result.splitPool).toBeCloseTo(1575, 2);
     expect(jamesDue).toBeCloseTo(787.50, 2);
+  });
+
+  it("does not count a fixed obligation and its payment fallback twice", () => {
+    expect(resolveSplitPoolLaborCost({
+      hourlyAssignmentCost: 0,
+      fixedAssignmentCost: 800,
+      fixedPaymentFallbackCost: 800,
+      legacyFlatSubCost: 0,
+      accruedBonusCost: 0,
+    })).toBe(800);
+  });
+
+  it("retains fixed payment and legacy fallbacks when no agreed assignment amount exists", () => {
+    expect(resolveSplitPoolLaborCost({
+      hourlyAssignmentCost: 0,
+      fixedAssignmentCost: 0,
+      fixedPaymentFallbackCost: 800,
+      legacyFlatSubCost: 1200,
+      accruedBonusCost: 0,
+    })).toBe(800);
+    expect(resolveSplitPoolLaborCost({
+      hourlyAssignmentCost: 0,
+      fixedAssignmentCost: 0,
+      fixedPaymentFallbackCost: 0,
+      legacyFlatSubCost: 1200,
+      accruedBonusCost: 0,
+    })).toBe(1200);
   });
 
   it("includes job-only allocations in the same expense base as Job Financials", () => {

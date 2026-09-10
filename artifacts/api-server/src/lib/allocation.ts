@@ -45,13 +45,37 @@ export function calculateAllocationSplitPool(input: {
   };
 }
 
+export function resolveSplitPoolLaborCost(input: {
+  hourlyAssignmentCost: number;
+  fixedAssignmentCost: number;
+  fixedPaymentFallbackCost: number;
+  legacyFlatSubCost: number;
+  accruedBonusCost: number;
+}): number {
+  const hourlyAssignmentCost = Math.max(0, input.hourlyAssignmentCost);
+  const fixedAssignmentCost = Math.max(0, input.fixedAssignmentCost);
+  const fixedPaymentFallbackCost = Math.max(0, input.fixedPaymentFallbackCost);
+  const fixedLaborCost = fixedAssignmentCost > 0
+    ? fixedAssignmentCost
+    : fixedPaymentFallbackCost;
+  const legacyFlatSubCost = hourlyAssignmentCost > 0 || fixedLaborCost > 0
+    ? 0
+    : Math.max(0, input.legacyFlatSubCost);
+
+  return hourlyAssignmentCost
+    + fixedLaborCost
+    + legacyFlatSubCost
+    + Math.max(0, input.accruedBonusCost);
+}
+
 /**
  * Batch variant — primary implementation, avoids N+1 queries.
  * Computes the allocation split pool for each jobId using the same formula as
  * GET /:id/profit:
  *   grossInvoiced (ALL invoices, not just paid) + job-linked other income
  *   - jobExpenses  (non-Owner-Draw, non-Subcontractor category)
- *   - subLaborCost (hourly labor + fixed payroll ledger payments + accrued bonuses;
+ *   - subLaborCost (hourly obligations + agreed fixed obligations + accrued bonuses;
+ *     fixed payroll rows remain a fallback when no agreed fixed amount exists;
  *     legacy Subcontractor-category expenses are used only when no tracked labor or
  *     fixed payroll exists)
  *   - configured percentage of income after all job costs (growth reserve)
@@ -64,7 +88,7 @@ export async function computeAllocationSplitPools(
 ): Promise<Map<number, AllocationSplitPool>> {
   if (jobIds.length === 0) return new Map();
 
-  const [poolInvs, poolOtherIncome, poolExps, poolAllocatedExps, poolReimbursements, poolJobs, poolHours, poolFixedPayments, poolAccruedBonuses, settingsRows] = await Promise.all([
+  const [poolInvs, poolOtherIncome, poolExps, poolAllocatedExps, poolReimbursements, poolJobs, poolWorkerAssignments, poolFixedPayments, poolAccruedBonuses, settingsRows] = await Promise.all([
     db
       .select({ jobId: invoicesTable.jobId, total: invoicesTable.total })
       .from(invoicesTable)
@@ -120,7 +144,7 @@ export async function computeAllocationSplitPools(
     db
       .select({
         jobId: jobSubcontractorsTable.jobId,
-        total: sql<string>`COALESCE(SUM(
+        hourlyTotal: sql<string>`COALESCE(SUM(
           CASE
             WHEN ${jobSubcontractorsTable.compensationType} = 'hourly'
               AND ${jobSubcontractorsTable.amountOwed} IS NOT NULL
@@ -132,6 +156,17 @@ export async function computeAllocationSplitPools(
               WHERE h.job_id = ${jobSubcontractorsTable.jobId}
                 AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
             ), 0)
+            ELSE 0
+          END
+        ), 0)`,
+        fixedTotal: sql<string>`COALESCE(SUM(
+          CASE
+            WHEN ${jobSubcontractorsTable.compensationType} = 'fixed'
+            THEN COALESCE(
+              ${jobSubcontractorsTable.amountOwed},
+              ${jobSubcontractorsTable.fixedAmount},
+              0
+            )
             ELSE 0
           END
         ), 0)`,
@@ -171,8 +206,11 @@ export async function computeAllocationSplitPools(
     ? parseFloat(String(settingsRows[0].growthReservePct))
     : 5;
 
-  const hoursMap = new Map(
-    poolHours.map((r) => [r.jobId, parseFloat(r.total ?? "0")]),
+  const hourlyAssignmentCostMap = new Map(
+    poolWorkerAssignments.map((r) => [r.jobId, parseFloat(r.hourlyTotal ?? "0")]),
+  );
+  const fixedAssignmentCostMap = new Map(
+    poolWorkerAssignments.map((r) => [r.jobId, parseFloat(r.fixedTotal ?? "0")]),
   );
   const fixedPaymentMap = new Map(
     poolFixedPayments.map((r) => [r.jobId, parseFloat(r.total ?? "0")]),
@@ -230,13 +268,13 @@ export async function computeAllocationSplitPools(
       expenses += reimbursementMap.get(jobId) ?? 0;
     }
 
-    const hoursLaborCost = hoursMap.get(jobId) ?? 0;
-    const fixedPaymentCost = fixedPaymentMap.get(jobId) ?? 0;
-    const accruedBonusCost = accruedBonusMap.get(jobId) ?? 0;
-    const nonHoursCost = fixedPaymentCost > 0
-      ? fixedPaymentCost
-      : (hoursLaborCost > 0 ? 0 : flatSubCost);
-    const subLaborCost = hoursLaborCost + nonHoursCost + accruedBonusCost;
+    const subLaborCost = resolveSplitPoolLaborCost({
+      hourlyAssignmentCost: hourlyAssignmentCostMap.get(jobId) ?? 0,
+      fixedAssignmentCost: fixedAssignmentCostMap.get(jobId) ?? 0,
+      fixedPaymentFallbackCost: fixedPaymentMap.get(jobId) ?? 0,
+      legacyFlatSubCost: flatSubCost,
+      accruedBonusCost: accruedBonusMap.get(jobId) ?? 0,
+    });
     result.set(jobId, calculateAllocationSplitPool({
       revenue,
       directExpenses: expenses,
