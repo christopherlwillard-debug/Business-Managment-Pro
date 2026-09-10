@@ -587,7 +587,8 @@ describe("GET /:id — confirmed Gmail delivery reconciliation", () => {
     }));
   });
 
-  it("does not reconcile accepted Gmail evidence without the server verification marker", async () => {
+  it("reconciles Gmail acceptance with a provider message ID without a metadata marker", async () => {
+    const completedAt = new Date("2026-09-02T19:57:42.023Z");
     h.selectQueue.push(
       [fakeInvoice({ status: "approved", sentAt: null, sentMethod: null })],
       [{
@@ -597,16 +598,20 @@ describe("GET /:id — confirmed Gmail delivery reconciliation", () => {
         provider: "gmail",
         providerMessageId: "unverified-message",
         metadata: {},
-        completedAt: new Date("2026-09-02T19:57:42.023Z"),
+        completedAt,
       }],
     );
 
     const res = await request(app).get("/42");
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("approved");
-    expect(res.body.sentAt).toBeNull();
-    expect(h.updates).toHaveLength(0);
+    expect(res.body.status).toBe("sent");
+    expect(res.body.sentAt).toBe(completedAt.toISOString());
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "sent",
+      sentMethod: "gmail",
+      sentAt: completedAt,
+    }));
   });
 
   it("does not reconcile an invoice from a pending Gmail event", async () => {
@@ -847,53 +852,30 @@ describe("POST /:id/communications/:eventId/finalize", () => {
     expect(h.updates).not.toContainEqual(expect.objectContaining({ status: "sent" }));
   });
 
-  it.each([
-    ["message id", verifiedGmailResponse({ id: "different-message" })],
-    ["Sent label", verifiedGmailResponse({ labelIds: ["INBOX"] })],
-    ["delivery correlation", verifiedGmailResponse({
-      payload: { headers: [
-        { name: "To", value: "client@example.com" },
-        { name: "Subject", value: "Invoice INV-1001" },
-        { name: "X-BuildPro-Delivery-ID", value: "999" },
-      ] },
-    })],
-    ["recipient", verifiedGmailResponse({
-      payload: { headers: [
-        { name: "To", value: "someone-else@example.com" },
-        { name: "Subject", value: "Invoice INV-1001" },
-        { name: "X-BuildPro-Delivery-ID", value: "77" },
-      ] },
-    })],
-    ["subject", verifiedGmailResponse({
-      payload: { headers: [
-        { name: "To", value: "client@example.com" },
-        { name: "Subject", value: "Unrelated message" },
-        { name: "X-BuildPro-Delivery-ID", value: "77" },
-      ] },
-    })],
-  ])("rejects accepted Gmail evidence with a mismatched %s", async (_field, gmailResponse) => {
+  it("finalizes Gmail acceptance without making a secondary metadata request", async () => {
     h.selectQueue.push([pendingEvent()], [{ status: "approved" }]);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(gmailResponse));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
 
     const res = await request(app)
       .post("/42/communications/77/finalize")
       .send({
         status: "accepted",
         providerMessageId: "gmail-message-1",
-        gmailAccessToken: "gmail-token",
+        providerThreadId: "gmail-thread-1",
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/could not verify/i);
+    expect(res.status).toBe(200);
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(h.updates).toContainEqual(expect.objectContaining({
-      provider: "gmail",
-      providerMessageId: "gmail-message-1",
-    }));
-    expect(h.updates).not.toContainEqual(expect.objectContaining({
       status: "accepted",
+      providerMessageId: "gmail-message-1",
+      providerThreadId: "gmail-thread-1",
+      metadata: expect.objectContaining({ gmailAcceptanceRecorded: true }),
     }));
-    expect(h.updates).not.toContainEqual(expect.objectContaining({
+    expect(h.updates).toContainEqual(expect.objectContaining({
       status: "sent",
+      sentMethod: "gmail",
     }));
   });
 
@@ -940,9 +922,10 @@ describe("POST /:id/communications/:eventId/finalize", () => {
     expect(h.updates).toHaveLength(0);
   });
 
-  it("sets SENT only after all Gmail evidence matches the prepared event", async () => {
+  it("sets SENT from Gmail acceptance and the returned message ID", async () => {
     h.selectQueue.push([pendingEvent()], [{ status: "approved" }]);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(verifiedGmailResponse()));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
 
     const res = await request(app)
       .post("/42/communications/77/finalize")
@@ -950,10 +933,10 @@ describe("POST /:id/communications/:eventId/finalize", () => {
         status: "accepted",
         providerMessageId: "gmail-message-1",
         providerThreadId: "gmail-thread-1",
-        gmailAccessToken: "gmail-token",
       });
 
     expect(res.status).toBe(200);
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(h.updates).toContainEqual(expect.objectContaining({
       status: "accepted",
       providerMessageId: "gmail-message-1",
@@ -1016,7 +999,7 @@ describe("POST /:id/communications/:eventId/finalize", () => {
     expect(h.updates).toHaveLength(0);
   });
 
-  it("re-verifies legacy accepted Gmail evidence before repairing SENT", async () => {
+  it("repairs SENT in place from a legacy accepted event with a Gmail message ID", async () => {
     const completedAt = new Date("2026-09-02T19:57:42.023Z");
     h.selectQueue.push([pendingEvent({
       status: "accepted",
@@ -1024,20 +1007,18 @@ describe("POST /:id/communications/:eventId/finalize", () => {
       completedAt,
       metadata: {},
     })]);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(verifiedGmailResponse()));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
 
     const res = await request(app)
       .post("/42/communications/77/finalize")
       .send({
         status: "accepted",
         providerMessageId: "gmail-message-1",
-        gmailAccessToken: "gmail-token",
       });
 
     expect(res.status).toBe(200);
-    expect(h.updates).toContainEqual(expect.objectContaining({
-      metadata: expect.objectContaining({ gmailEvidenceVerified: true }),
-    }));
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(h.updates).toContainEqual(expect.objectContaining({
       status: "sent",
       sentMethod: "gmail",

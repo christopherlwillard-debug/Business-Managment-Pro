@@ -14,6 +14,21 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ## 2026-09-10
 
+### Gmail acceptance finalizes invoice delivery
+
+- Browser Gmail acceptance plus its returned message ID now finalizes the same
+  prepared communication event and updates the invoice Sent compatibility fields.
+- A secondary Gmail metadata read no longer blocks new sends or known-message
+  repair; no automatic resend is introduced.
+- Exact message ID, Sent label, delivery header, recipient, and subject matching
+  remains available for bounded recovery when an interrupted event has no saved
+  provider message ID.
+- Accepted Gmail invoice events with provider message IDs are labeled sent in
+  the communication timeline even when they predate the optional audit marker.
+- Focused API and frontend regressions and API typecheck pass. The complete
+  frontend test typecheck remains blocked by unrelated stale profit fixtures
+  missing the required response version.
+
 ### One-app Website Studio deployment identity
 
 - Renamed the web artifact to `Contractor Management App + Website Studio` to make clear that Website Studio is an internal module of the same multi-business application.
@@ -488,10 +503,8 @@ Created the four-document architecture governance system:
 ### Recoverable Gmail invoice finalization
 
 - Gmail message and thread identifiers are checkpointed on the existing pending
-  communication event before strict Sent-folder verification begins.
+  communication event before finalization.
 - Finalization and repair reuse that event idempotently, including in-place
-  verification of legacy accepted events that lack the evidence marker.
-- Expired Gmail authentication is distinguished from missing metadata scope,
-  and reconnect hands the fresh token directly to repair without resending.
-- Invoice compatibility status still changes only after the exact Gmail message,
-  Sent label, delivery header, recipient, and subject have been verified.
+  repair of legacy accepted events that lack the optional audit marker.
+- The former mandatory Sent-folder verification threshold was superseded on
+  2026-09-10; strict metadata matching remains only for no-message-ID recovery.

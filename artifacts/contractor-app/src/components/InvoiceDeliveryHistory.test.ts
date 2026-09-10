@@ -112,7 +112,7 @@ describe("InvoiceDeliveryHistory", () => {
     expect(markup).toContain("Find Sent Email &amp; Repair");
   });
 
-  it("does not offer pending-message recovery for an accepted event", () => {
+  it("offers recovery for an accepted event that has no Gmail message ID", () => {
     const acceptedWithoutEvidence = {
       ...event,
       providerMessageId: null,
@@ -122,11 +122,11 @@ describe("InvoiceDeliveryHistory", () => {
       onRepairGmail: () => undefined,
     }));
 
-    expect(markup).not.toContain("Find Sent Email &amp; Repair");
+    expect(markup).toContain("Find Sent Email &amp; Repair");
   });
 
-  it("labels pending, failed, and unverified accepted sends as delivery attempts", () => {
-    for (const status of ["pending", "failed", "accepted"] as const) {
+  it("labels pending and failed sends as delivery attempts", () => {
+    for (const status of ["pending", "failed"] as const) {
       const markup = renderToStaticMarkup(InvoiceDeliveryHistory({
         events: [{
           ...event,
@@ -139,6 +139,15 @@ describe("InvoiceDeliveryHistory", () => {
       expect(markup).toContain("Invoice delivery attempt");
       expect(markup).not.toContain("Invoice sent");
     }
+  });
+
+  it("labels accepted sends with a Gmail message ID as sent without a metadata marker", () => {
+    const markup = renderToStaticMarkup(InvoiceDeliveryHistory({
+      events: [{ ...event, metadata: {} }],
+    }));
+
+    expect(markup).toContain("Invoice sent");
+    expect(markup).not.toContain("Find Sent Email &amp; Repair");
   });
 
   it("offers recovery from the event's own pending state", () => {

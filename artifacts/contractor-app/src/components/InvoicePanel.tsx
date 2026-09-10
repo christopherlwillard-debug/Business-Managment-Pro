@@ -366,18 +366,7 @@ export function InvoicePanel({
         event.channel === "gmail" &&
         event.provider === "gmail" &&
         ["initial_invoice", "resend_invoice"].includes(event.eventType) &&
-        (
-          event.status === "pending"
-          || (
-            event.status === "accepted"
-            && (
-              !event.providerMessageId
-              || !event.metadata
-              || typeof event.metadata !== "object"
-              || (event.metadata as Record<string, unknown>).gmailEvidenceVerified !== true
-            )
-          )
-        ) &&
+        (event.status === "pending" || (event.status === "accepted" && !event.providerMessageId)) &&
         new Date(event.requestedAt).getTime() >= acceptedAt
       )
       .at(-1);
@@ -409,7 +398,6 @@ export function InvoicePanel({
 
   async function finalizeGmailDelivery(
     recovery: GmailFinalizationRecovery,
-    gmailAccessToken: string,
   ): Promise<{ ok: boolean; result: Record<string, any> }> {
     let result: Record<string, any> = {};
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -423,15 +411,12 @@ export function InvoicePanel({
             status: "accepted",
             providerMessageId: recovery.providerMessageId,
             providerThreadId: recovery.providerThreadId,
-            gmailAccessToken,
           }),
         },
       );
       result = await response.json().catch(() => ({}));
       if (response.ok) return { ok: true, result };
-      const verificationMayBeDelayed = response.status === 400
-        && /could not verify/i.test(String(result.error ?? ""));
-      if (!verificationMayBeDelayed || attempt === 2) break;
+      if (attempt === 2 || response.status === 409) break;
       await new Promise(resolve => window.setTimeout(resolve, 700 * (attempt + 1)));
     }
     return { ok: false, result };
@@ -1090,7 +1075,7 @@ export function InvoicePanel({
         });
         return;
       }
-      const finalization = await finalizeGmailDelivery(recovery, token);
+      const finalization = await finalizeGmailDelivery(recovery);
       if (!finalization.ok) {
         if (["gmail_authentication_required", "gmail_metadata_permission"].includes(finalization.result.errorCode)) {
           setGmailReconnectRequired(true);
@@ -1133,7 +1118,6 @@ export function InvoicePanel({
       : gmailPendingEventId;
     setGmailSending(true);
     try {
-      const token = gmailAccessTokenOverride ?? await getToken();
       const directPendingEventId = typeof eventIdOverride === "number"
         ? eventIdOverride
         : null;
@@ -1150,7 +1134,7 @@ export function InvoicePanel({
         : null;
       if (directPendingEventId || (!gmailFinalizationRecovery && pendingEventId)) {
         if (directRecovery) {
-          const finalization = await finalizeGmailDelivery(directRecovery, token);
+          const finalization = await finalizeGmailDelivery(directRecovery);
           if (!finalization.ok) {
             const error = new Error(finalization.result.error ?? "Delivery history could not be repaired.") as Error & { gmailPermission?: boolean };
             error.gmailPermission = ["gmail_authentication_required", "gmail_metadata_permission"]
@@ -1161,6 +1145,7 @@ export function InvoicePanel({
           toast({ title: "Delivery history repaired", description: "The invoice is now marked Sent." });
           return;
         }
+        const token = gmailAccessTokenOverride ?? await getToken();
         const recoveryEventId = directPendingEventId ?? pendingEventId!;
         const response = await fetch(
           `${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${recoveryEventId}/recover-gmail`,
@@ -1196,6 +1181,7 @@ export function InvoicePanel({
       }
       if (!gmailFinalizationRecovery) return;
       if (!gmailFinalizationRecovery.providerMessageId) {
+        const token = gmailAccessTokenOverride ?? await getToken();
         const response = await fetch(
           `${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${gmailFinalizationRecovery.eventId}/recover-gmail`,
           {
@@ -1228,7 +1214,7 @@ export function InvoicePanel({
             });
         return;
       }
-      const finalization = await finalizeGmailDelivery(gmailFinalizationRecovery, token);
+      const finalization = await finalizeGmailDelivery(gmailFinalizationRecovery);
       if (!finalization.ok) {
         const error = new Error(finalization.result.error ?? "Delivery history could not be repaired.") as Error & { gmailPermission?: boolean };
         error.gmailPermission = ["gmail_authentication_required", "gmail_metadata_permission"]
@@ -1340,9 +1326,7 @@ export function InvoicePanel({
     ["initial_invoice", "resend_invoice"].includes(event.eventType) &&
     event.status === "accepted" &&
     event.provider === "gmail" &&
-    Boolean(event.providerMessageId) &&
-    Boolean(event.metadata && typeof event.metadata === "object"
-      && (event.metadata as Record<string, unknown>).gmailEvidenceVerified === true)
+    Boolean(event.providerMessageId)
   ));
   const invoiceHasBeenSent = effectiveExistingInvoice?.status !== "approved"
     || Boolean(effectiveExistingInvoice?.sentAt)

@@ -289,17 +289,19 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Title:** Invoice communication history is an append-only delivery-attempt ledger
 
-**Decision:** Record initial sends, resends, reminders, payment-link emails, and payment receipts in `invoice_communication_events`. Each attempt is created as `pending` and finalized as `accepted`, `failed`, or `unknown`; provider metadata and errors remain on the event. Existing invoice sent/reminder fields remain compatibility summaries, not the complete history. SENT and reminder eligibility require a verified Gmail invoice send tied to the prepared delivery event; manual status changes, SMTP sends, and payment-link creation do not qualify.
+**Decision:** Record initial sends, resends, reminders, payment-link emails, and payment receipts in `invoice_communication_events`. Each attempt is created as `pending` and finalized as `accepted`, `failed`, or `unknown`; provider metadata and errors remain on the event. Existing invoice sent/reminder fields remain compatibility summaries, not the complete history. For browser Gmail sends, provider acceptance plus the returned Gmail message ID finalizes the prepared event and qualifies the invoice as SENT; this is provider acceptance, not confirmed inbox delivery. A secondary Gmail metadata read is optional audit/reconciliation evidence and must not block successful sending. When an interrupted send has no saved message ID, recovery remains a bounded Sent-folder search requiring exact delivery header, recipient, and subject matches. Manual status changes, SMTP sends, and payment-link creation do not qualify.
 
-**Reason:** Invoice financials and lifecycle belong to `invoices`, while delivery history needs multiple recipients, providers, message IDs, attempts, and failures without changing revenue, payment, or job calculations. A pending event also makes uncertain browser/provider outcomes visible instead of silently losing the audit trail.
+**Reason:** Invoice financials and lifecycle belong to `invoices`, while delivery history needs multiple recipients, providers, message IDs, attempts, and failures without changing revenue, payment, or job calculations. Gmail already returns the provider message ID when it accepts a send; making a second metadata-scoped request a mandatory lifecycle gate caused accepted messages to remain pending and invoices to remain Approved. A pending event still makes genuinely uncertain browser/provider outcomes visible instead of silently losing the audit trail.
 
 **Rejected Alternatives:**
 - Overloading `sentAt`, `sentMethod`, or `remindersSentAt` as the full history
 - Writing delivery attempts to payment or revenue ledgers
 - Describing provider acceptance as confirmed inbox delivery
+- Requiring a second Gmail metadata read after every accepted send
 
 **Status:** Accepted
 **Date:** 2026-08-31
+**Amended:** 2026-09-10 — Gmail provider acceptance plus its returned message ID supersedes the former mandatory metadata-verification threshold.
 
 ---
 

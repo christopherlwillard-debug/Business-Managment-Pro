@@ -780,38 +780,6 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
             error: "This Gmail delivery has no message evidence and cannot mark the invoice SENT.",
           });
         }
-        const existingMetadata = existing.metadata && typeof existing.metadata === "object"
-          ? existing.metadata as Record<string, unknown>
-          : {};
-        if (existingMetadata.gmailEvidenceVerified !== true) {
-          const gmailAccessToken = typeof req.body?.gmailAccessToken === "string"
-            ? req.body.gmailAccessToken
-            : "";
-          const verified = await verifyGmailSentMessage({
-            accessToken: gmailAccessToken,
-            messageId: existing.providerMessageId,
-            deliveryId: String(existing.id),
-            recipient: existing.recipient ?? "",
-            subject: existing.subject ?? "",
-          });
-          if (!verified) {
-            return res.status(400).json({
-              error: "Gmail could not re-verify this message in the Sent folder, so the invoice remains unsent.",
-            });
-          }
-          await db.update(invoiceCommunicationEventsTable)
-            .set({
-              metadata: {
-                ...existingMetadata,
-                gmailEvidenceVerified: true,
-                gmailEvidenceVerifiedAt: new Date().toISOString(),
-              },
-            })
-            .where(and(
-              eq(invoiceCommunicationEventsTable.id, eventId),
-              eq(invoiceCommunicationEventsTable.invoiceId, invoiceId),
-            ));
-        }
         await updateCompatibilitySentFields(invoiceId, "gmail", existing.completedAt);
       }
       return res.json(existing);
@@ -838,40 +806,6 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
         error: "Gmail did not return a message ID, so this invoice cannot be marked SENT.",
       });
     }
-    if (
-      status === "accepted" &&
-      existing.channel === "gmail" &&
-      ["initial_invoice", "resend_invoice"].includes(existing.eventType)
-    ) {
-      const gmailAccessToken = typeof req.body?.gmailAccessToken === "string"
-        ? req.body.gmailAccessToken
-        : "";
-      const verified = await verifyGmailSentMessage({
-        accessToken: gmailAccessToken,
-        messageId: providerMessageId,
-        deliveryId: String(existing.id),
-        recipient: existing.recipient ?? "",
-        subject: existing.subject ?? "",
-      });
-      if (!verified) {
-        await db.update(invoiceCommunicationEventsTable)
-          .set({
-            provider: "gmail",
-            providerMessageId,
-            providerThreadId: typeof req.body?.providerThreadId === "string"
-              ? req.body.providerThreadId
-              : null,
-          })
-          .where(and(
-            eq(invoiceCommunicationEventsTable.id, eventId),
-            eq(invoiceCommunicationEventsTable.invoiceId, invoiceId),
-            eq(invoiceCommunicationEventsTable.status, "pending"),
-          ));
-        return res.status(400).json({
-          error: "Gmail could not verify this message in the Sent folder, so the invoice remains unsent.",
-        });
-      }
-    }
     const event = await finalizeInvoiceCommunication(eventId, invoiceId, {
       status,
       provider: existing.provider,
@@ -886,8 +820,8 @@ router.post("/:id/communications/:eventId/finalize", async (req, res) => {
             ...(existing.metadata && typeof existing.metadata === "object"
               ? existing.metadata as Record<string, unknown>
               : {}),
-            gmailEvidenceVerified: true,
-            gmailEvidenceVerifiedAt: new Date().toISOString(),
+            gmailAcceptanceRecorded: true,
+            gmailAcceptanceRecordedAt: new Date().toISOString(),
           }
         : undefined,
     });

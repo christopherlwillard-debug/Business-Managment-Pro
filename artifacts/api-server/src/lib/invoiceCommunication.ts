@@ -151,15 +151,11 @@ export async function gmailRepairRequiredInvoiceIds(
     rows.filter(isConfirmedGmailInvoiceEvent).map(row => row.invoiceId),
   );
   return new Set(rows.filter(row => {
-    const metadata = row.metadata && typeof row.metadata === "object"
-      ? row.metadata as Record<string, unknown>
-      : {};
     return !confirmedInvoiceIds.has(row.invoiceId)
       && (row.eventType === "initial_invoice" || row.eventType === "resend_invoice")
       && (row.status === "pending" || row.status === "accepted")
       && row.provider === "gmail"
-      && (row.status === "pending" || Boolean(row.providerMessageId))
-      && metadata.gmailEvidenceVerified !== true
+      && (row.status === "pending" || !row.providerMessageId)
       && new Date(row.requestedAt).getTime() >= (acceptedAtByInvoiceId.get(row.invoiceId) ?? 0);
   }).map(row => row.invoiceId));
 }
@@ -172,22 +168,18 @@ function isConfirmedGmailInvoiceEvent(row: {
   providerMessageId: string | null;
   metadata: unknown;
 }): boolean {
-  const metadata = row.metadata && typeof row.metadata === "object"
-    ? row.metadata as Record<string, unknown>
-    : {};
   return (row.eventType === "initial_invoice" || row.eventType === "resend_invoice")
     && row.status === "accepted"
     && row.provider === "gmail"
-    && Boolean(row.providerMessageId)
-    && metadata.gmailEvidenceVerified === true;
+    && Boolean(row.providerMessageId);
 }
 
 /**
  * Return the latest verified Gmail delivery for each invoice.
  *
- * Provider acceptance alone is not enough: the event must have a Gmail
- * provider message ID, which is only recorded after the browser verifies the
- * message in Gmail's Sent folder.
+ * Gmail acceptance plus its returned provider message ID is sufficient
+ * delivery evidence. Optional metadata reconciliation may add a stricter
+ * audit marker, but does not gate the accepted event.
  */
 export async function confirmedGmailInvoiceDeliveries(invoiceIds?: number[]): Promise<Map<number, ConfirmedGmailInvoiceDelivery>> {
   if (invoiceIds && invoiceIds.length === 0) return new Map();
