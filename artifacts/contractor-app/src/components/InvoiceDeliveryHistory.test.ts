@@ -109,7 +109,7 @@ describe("InvoiceDeliveryHistory", () => {
       onRepairGmail: () => undefined,
     }));
 
-    expect(markup).toContain("Find Sent Email &amp; Repair");
+    expect(markup).toContain("Repair delivery history");
   });
 
   it("uses the known-message repair action without offering Gmail reconnect", () => {
@@ -121,14 +121,10 @@ describe("InvoiceDeliveryHistory", () => {
     } satisfies InvoiceCommunicationEvent;
     const markup = renderToStaticMarkup(InvoiceDeliveryHistory({
       events: [pendingEvent],
-      knownGmailRecoveryEventId: pendingEvent.id,
-      needsGmailReconnect: true,
       onRepairGmail: () => undefined,
-      onReconnectGmail: () => undefined,
     }));
 
     expect(markup).toContain("Repair delivery history");
-    expect(markup).not.toContain("Find Sent Email &amp; Repair");
     expect(markup).not.toContain("Reconnect Gmail");
   });
 
@@ -142,7 +138,7 @@ describe("InvoiceDeliveryHistory", () => {
       onRepairGmail: () => undefined,
     }));
 
-    expect(markup).toContain("Find Sent Email &amp; Repair");
+    expect(markup).toContain("Repair delivery history");
   });
 
   it("labels pending and failed sends as delivery attempts", () => {
@@ -182,6 +178,6 @@ describe("InvoiceDeliveryHistory", () => {
       onRepairGmail: () => undefined,
     }));
 
-    expect(markup).toContain("Find Sent Email &amp; Repair");
+    expect(markup).toContain("Repair delivery history");
   });
 });

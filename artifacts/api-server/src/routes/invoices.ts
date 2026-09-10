@@ -28,13 +28,14 @@ import {
   InvoiceCommunicationConflictError,
   GmailAuthenticationError,
   GmailMetadataPermissionError,
+  GmailServerConnectionError,
   confirmedGmailInvoiceIds,
   sendAndRecordInvoiceCommunication,
   updateCompatibilitySentFields,
   reconcileConfirmedGmailInvoiceDelivery,
   reconcileConfirmedGmailInvoiceDeliveries,
   gmailRepairRequiredInvoiceIds,
-  recoverGmailSentMessage,
+  recoverGmailSentMessageFromConnector,
   verifyGmailSentMessage,
   type InvoiceCommunicationType,
 } from "../lib/invoiceCommunication";
@@ -887,11 +888,7 @@ router.post("/:id/communications/:eventId/recover-gmail", async (req, res) => {
       });
     }
 
-    const gmailAccessToken = typeof req.body?.gmailAccessToken === "string"
-      ? req.body.gmailAccessToken
-      : "";
-    const recovered = await recoverGmailSentMessage({
-      accessToken: gmailAccessToken,
+    const recovered = await recoverGmailSentMessageFromConnector({
       deliveryId: String(existing.id),
       recipient: existing.recipient ?? "",
       subject: existing.subject ?? "",
@@ -952,6 +949,12 @@ router.post("/:id/communications/:eventId/recover-gmail", async (req, res) => {
     if (err instanceof GmailMetadataPermissionError) {
       return res.status(403).json({
         errorCode: "gmail_metadata_permission",
+        error: err.message,
+      });
+    }
+    if (err instanceof GmailServerConnectionError) {
+      return res.status(503).json({
+        errorCode: "gmail_server_connection_unavailable",
         error: err.message,
       });
     }

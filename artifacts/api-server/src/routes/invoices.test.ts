@@ -29,6 +29,7 @@ const h = vi.hoisted(() => ({
   canonicalOwner: undefined as any,
   // Controls whether isSquareConfigured() returns true in a given test.
   squareConfigured: false,
+  gmailProxy: vi.fn(),
   scenario: "no request",
 }));
 
@@ -91,6 +92,11 @@ vi.mock("../lib/square.js", () => ({
 }));
 vi.mock("../lib/invoiceEmail", () => ({
   sendInvoiceEmail: vi.fn(),
+}));
+vi.mock("@replit/connectors-sdk", () => ({
+  ReplitConnectors: class {
+    proxy = h.gmailProxy;
+  },
 }));
 vi.mock("./material-lists", () => ({
   syncMaterialsToJobInvoice: vi.fn(),
@@ -194,6 +200,7 @@ beforeEach(() => {
   h.updateReturningOverride = undefined;
   h.canonicalOwner = { state: "blank" };
   h.squareConfigured = false;
+  h.gmailProxy.mockReset();
   deleteSquarePaymentLink.mockClear();
   sendInvoiceEmail.mockReset();
   h.scenario = "no request";
@@ -785,30 +792,57 @@ describe("POST /:id/communications/:eventId/finalize", () => {
     const requestedAt = new Date("2026-09-05T12:00:00.000Z");
     h.selectQueue.push([pendingEvent({ requestedAt })]);
     h.updateReturningOverride = [];
-    vi.stubGlobal("fetch", vi.fn()
+    h.gmailProxy
       .mockResolvedValueOnce(recoveredGmailResponses(requestedAt)[0])
-      .mockResolvedValueOnce(recoveredGmailResponses(requestedAt)[1]));
+      .mockResolvedValueOnce(recoveredGmailResponses(requestedAt)[1]);
 
     const res = await request(app)
       .post("/42/communications/77/recover-gmail")
-      .send({ gmailAccessToken: "gmail-token" });
+      .send({});
 
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/already resolved/i);
     expect(h.updates).not.toContainEqual(expect.objectContaining({ status: "sent" }));
   });
 
-  it("clears a stale pending event when no exact Gmail message exists", async () => {
+  it("reconciles the existing event and invoice from one exact server Gmail match", async () => {
     const requestedAt = new Date("2026-09-05T12:00:00.000Z");
     h.selectQueue.push([pendingEvent({ requestedAt })]);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ messages: [] }),
-    }));
+    h.gmailProxy
+      .mockResolvedValueOnce(recoveredGmailResponses(requestedAt)[0])
+      .mockResolvedValueOnce(recoveredGmailResponses(requestedAt)[1]);
 
     const res = await request(app)
       .post("/42/communications/77/recover-gmail")
-      .send({ gmailAccessToken: "gmail-token" });
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.recovered).toBe(true);
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "accepted",
+      provider: "gmail",
+      providerMessageId: "gmail-message-1",
+      providerThreadId: "gmail-thread-1",
+    }));
+    expect(h.updates).toContainEqual(expect.objectContaining({
+      status: "sent",
+      sentMethod: "gmail",
+    }));
+    expect(h.inserts).toHaveLength(0);
+    expect(h.gmailProxy.mock.calls.every(([, path]) => !String(path).includes("/send"))).toBe(true);
+  });
+
+  it("clears a stale pending event when no exact Gmail message exists", async () => {
+    const requestedAt = new Date("2026-09-05T12:00:00.000Z");
+    h.selectQueue.push([pendingEvent({ requestedAt })]);
+    h.gmailProxy.mockResolvedValue({
+      ok: true,
+      json: async () => ({ messages: [] }),
+    });
+
+    const res = await request(app)
+      .post("/42/communications/77/recover-gmail")
+      .send({});
 
     expect(res.status).toBe(200);
     expect(res.body.recovered).toBe(false);
@@ -819,7 +853,7 @@ describe("POST /:id/communications/:eventId/finalize", () => {
     }));
     expect(h.updates).not.toContainEqual(expect.objectContaining({ status: "sent" }));
     expect(h.inserts).toHaveLength(0);
-    expect(vi.mocked(fetch).mock.calls.every(([url]) => !String(url).includes("/send"))).toBe(true);
+    expect(h.gmailProxy.mock.calls.every(([, path]) => !String(path).includes("/send"))).toBe(true);
   });
 
   it.each(["failed", "unknown"] as const)(

@@ -26,6 +26,12 @@ export class GmailMetadataPermissionError extends Error {
     this.name = "GmailMetadataPermissionError";
   }
 }
+export class GmailServerConnectionError extends Error {
+  constructor() {
+    super("The server Gmail connection is unavailable. No delivery history was changed.");
+    this.name = "GmailServerConnectionError";
+  }
+}
 export type InvoiceCommunicationType =
   | "initial_invoice"
   | "resend_invoice"
@@ -382,6 +388,74 @@ export async function recoverGmailSentMessage(input: {
       await throwForGmailMetadataAccess(response);
       continue;
      }
+    const message = await response.json().catch(() => null) as GmailMessageMetadata | null;
+    const sentMs = Number(message?.internalDate);
+    if (!Number.isFinite(sentMs) || Math.abs(sentMs - requestedMs) > windowMs) continue;
+    if (!matchesGmailSentMessage(message, { deliveryId, recipient, subject })) continue;
+    matches.push({
+      messageId: message!.id!,
+      threadId: message?.threadId ?? candidate.threadId ?? null,
+    });
+  }
+
+  if (matches.length > 1) {
+    throw new Error("Multiple Gmail messages matched this delivery. No history was changed.");
+  }
+  return matches[0] ?? null;
+}
+
+export async function recoverGmailSentMessageFromConnector(input: {
+  deliveryId: string;
+  recipient: string;
+  subject: string;
+  requestedAt: Date | string;
+  windowHours?: number;
+}): Promise<{ messageId: string; threadId: string | null } | null> {
+  const { deliveryId, recipient, subject, requestedAt } = input;
+  if (![deliveryId, recipient, subject].every(value => value.trim())) return null;
+  const requestedMs = new Date(requestedAt).getTime();
+  if (!Number.isFinite(requestedMs)) return null;
+
+  const windowMs = Math.min(Math.max(input.windowHours ?? 48, 1), 168) * 60 * 60 * 1000;
+  const after = new Date(requestedMs - windowMs).toISOString().slice(0, 10).replaceAll("-", "/");
+  const before = new Date(requestedMs + windowMs + 24 * 60 * 60 * 1000).toISOString().slice(0, 10).replaceAll("-", "/");
+  const quote = (value: string) => `"${value.replace(/[\\"]/g, " ").trim()}"`;
+  const query = `in:sent to:${quote(recipient)} subject:${quote(subject)} after:${after} before:${before}`;
+  const { ReplitConnectors } = await import("@replit/connectors-sdk");
+  const connectors = new ReplitConnectors();
+  const request = async (path: string) => {
+    const response = await connectors.proxy("google-mail", path, { method: "GET" });
+    if (response.status === 401 || response.status === 403) {
+      throw new GmailServerConnectionError();
+    }
+    return response;
+  };
+
+  const searchResponse = await request(
+    `/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=50&fields=messages(id,threadId),nextPageToken`,
+  );
+  if (!searchResponse.ok) {
+    throw new Error("The server Gmail search failed. No delivery history was changed.");
+  }
+  const search = await searchResponse.json().catch(() => null) as {
+    messages?: Array<{ id?: string; threadId?: string }>;
+    nextPageToken?: string;
+  } | null;
+  if (search?.nextPageToken) {
+    throw new Error("The bounded Gmail search was incomplete. No delivery history was changed.");
+  }
+  const candidates = [...new Map(
+    (search?.messages ?? [])
+      .filter((message): message is { id: string; threadId?: string } => Boolean(message.id))
+      .map(message => [message.id, message]),
+  ).values()];
+
+  const matches: Array<{ messageId: string; threadId: string | null }> = [];
+  for (const candidate of candidates) {
+    const response = await request(
+      `/gmail/v1/users/me/messages/${encodeURIComponent(candidate.id)}?format=metadata&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=X-BuildPro-Delivery-ID&fields=id,threadId,internalDate,labelIds,payload/headers`,
+    );
+    if (!response.ok) continue;
     const message = await response.json().catch(() => null) as GmailMessageMetadata | null;
     const sentMs = Number(message?.internalDate);
     if (!Number.isFinite(sentMs) || Math.abs(sentMs - requestedMs) > windowMs) continue;

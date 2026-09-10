@@ -14,6 +14,19 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ## 2026-09-10
 
+### Server-backed invoice delivery repair
+
+- The authenticated Contractor Management App now repairs unresolved invoice
+  delivery history through the existing server-side read-only Gmail connection.
+- Recovery performs a bounded Sent search and requires one exact delivery-header,
+  recipient, subject, label, and time-window match before finalizing the existing
+  communication event.
+- Repair no longer depends on browser localStorage, Developer Tools, the public
+  Website Studio site, or another Google reconnect; no send path or new event is
+  introduced.
+- Focused API and frontend tests, API typecheck, and Contractor App source
+  typecheck pass.
+
 ### Gmail acceptance finalizes invoice delivery
 
 - Browser Gmail acceptance plus its returned message ID now finalizes the same

@@ -3,8 +3,19 @@ import {
   GmailAuthenticationError,
   GmailMetadataPermissionError,
   recoverGmailSentMessage,
+  recoverGmailSentMessageFromConnector,
   verifyGmailSentMessage,
 } from "./invoiceCommunication";
+
+const connector = vi.hoisted(() => ({
+  proxy: vi.fn(),
+}));
+
+vi.mock("@replit/connectors-sdk", () => ({
+  ReplitConnectors: class {
+    proxy = connector.proxy;
+  },
+}));
 
 describe("verifyGmailSentMessage", () => {
   afterEach(() => {
@@ -86,6 +97,7 @@ describe("verifyGmailSentMessage", () => {
 describe("recoverGmailSentMessage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    connector.proxy.mockReset();
   });
 
   it("recovers exactly one in-window Sent message with matching delivery evidence", async () => {
@@ -167,5 +179,95 @@ describe("recoverGmailSentMessage", () => {
       subject: "Invoice Wil-1049",
       requestedAt: "2026-09-05T19:29:40.000Z",
     })).rejects.toThrow(/metadata permission/i);
+  });
+});
+
+describe("recoverGmailSentMessageFromConnector", () => {
+  afterEach(() => {
+    connector.proxy.mockReset();
+  });
+
+  it("uses the server Gmail connector for one bounded exact Sent match", async () => {
+    const requestedAt = "2026-09-05T15:46:15.663Z";
+    connector.proxy
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          messages: [{ id: "1a0723fd0a12bb27", threadId: "1a0723fd0a12bb27" }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: "1a0723fd0a12bb27",
+          threadId: "1a0723fd0a12bb27",
+          internalDate: String(new Date(requestedAt).getTime() + 3_337),
+          labelIds: ["SENT"],
+          payload: {
+            headers: [
+              { name: "To", value: "Lejend.Wilborn@claytonhomes.com" },
+              { name: "Subject", value: "Invoice Wil-1047 from Willard's General Contracting, LLC" },
+              { name: "X-BuildPro-Delivery-ID", value: "6" },
+            ],
+          },
+        }),
+      });
+
+    await expect(recoverGmailSentMessageFromConnector({
+      deliveryId: "6",
+      recipient: "Lejend.Wilborn@claytonhomes.com",
+      subject: "Invoice Wil-1047 from Willard's General Contracting, LLC",
+      requestedAt,
+    })).resolves.toEqual({
+      messageId: "1a0723fd0a12bb27",
+      threadId: "1a0723fd0a12bb27",
+    });
+    expect(connector.proxy).toHaveBeenCalledTimes(2);
+    expect(connector.proxy.mock.calls[0]?.[0]).toBe("google-mail");
+    expect(String(connector.proxy.mock.calls[0]?.[1])).toContain("messages?q=");
+    expect(connector.proxy.mock.calls.every(([, path]) => !String(path).includes("/send"))).toBe(true);
+  });
+
+  it("does not reconcile ambiguous connector matches", async () => {
+    const requestedAt = "2026-09-05T19:32:11.233Z";
+    connector.proxy
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          messages: [
+            { id: "message-1", threadId: "thread-1" },
+            { id: "message-2", threadId: "thread-2" },
+          ],
+        }),
+      });
+    for (const id of ["message-1", "message-2"]) {
+      connector.proxy.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id,
+          threadId: id.replace("message", "thread"),
+          internalDate: String(new Date(requestedAt).getTime()),
+          labelIds: ["SENT"],
+          payload: {
+            headers: [
+              { name: "To", value: "client@example.com" },
+              { name: "Subject", value: "Invoice Wil-1049" },
+              { name: "X-BuildPro-Delivery-ID", value: "7" },
+            ],
+          },
+        }),
+      });
+    }
+
+    await expect(recoverGmailSentMessageFromConnector({
+      deliveryId: "7",
+      recipient: "client@example.com",
+      subject: "Invoice Wil-1049",
+      requestedAt,
+    })).rejects.toThrow(/Multiple Gmail messages matched/);
   });
 });
