@@ -80,6 +80,7 @@ let nextRecordId = 1;
 let failNextSave = false;
 let failNextPresenceRefresh = false;
 let failNextHistoryLoad = false;
+let failHistoryRange: string | null = null;
 let delayNextHistoryRange: string | null = null;
 let failDelayedHistoryRange = false;
 let remoteRefreshState: PresenceState | null = null;
@@ -422,6 +423,7 @@ async function main() {
       }
 
       if (url.includes("/api/jobs/schedule-history?")) {
+        const historyRange = new URL(url).searchParams.get("from");
         if (failNextHistoryLoad) {
           failNextHistoryLoad = false;
           void request.respond({
@@ -431,7 +433,15 @@ async function main() {
           });
           return;
         }
-        const historyRange = new URL(url).searchParams.get("from");
+        if (failHistoryRange === historyRange) {
+          failHistoryRange = null;
+          void request.respond({
+            status: 503,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "simulated newer schedule history failure" }),
+          });
+          return;
+        }
         const historyResponse = {
           status: 200,
           contentType: "application/json",
@@ -997,6 +1007,37 @@ async function main() {
       { timeout: 15_000 },
       '[data-testid="job-presence-refresh-stale"]',
     );
+
+    remoteRefreshDate = DATES[0];
+    remoteRefreshState = "here";
+    delayNextHistoryRange = ALTERNATE_DATES[0];
+    failHistoryRange = DATES[0];
+    await setDateInput(page, '[data-testid="schedule-history-from"]', ALTERNATE_DATES[0]);
+    await setDateInput(page, '[data-testid="schedule-history-to"]', ALTERNATE_DATES[2]);
+    await page.click('[data-testid="schedule-history-load"]');
+    await setDateInput(page, '[data-testid="schedule-history-from"]', DATES[0]);
+    await setDateInput(page, '[data-testid="schedule-history-to"]', DATES[2]);
+    await page.click('[data-testid="schedule-history-load"]');
+    await page.waitForSelector('[data-testid="schedule-history-error"]', { timeout: 15_000 });
+    await new Promise(resolve => setTimeout(resolve, 400));
+    recordResult(
+      "Failed newer History range remains authoritative after rapid submission",
+      await page.$('[data-testid="schedule-history-error"]') !== null &&
+        await page.$('[data-testid="schedule-history-loading-range"]') === null &&
+        await page.$('[data-testid="schedule-history-job-' + JOB_ID + '"]') === null &&
+        await page.$(`[data-testid="job-presence-day-${ALTERNATE_DATES[0]}"]`) === null &&
+        await page.$('[data-testid="job-presence-refresh-stale"]') === null &&
+        await page.$('[data-testid="job-presence-last-refreshed"]') === null &&
+        await page.$eval(
+          '[data-testid="schedule-history-applied-range"]',
+          element => element.textContent?.includes("Sep 1, 2026") === true &&
+            element.textContent?.includes("Sep 3, 2026") === true,
+        ),
+    );
+    await page.click('[data-testid="schedule-history-error"] button');
+    await waitForText(page, "Sep 1, 2026");
+    await page.waitForSelector(`[data-testid="job-presence-day-${DATES[0]}"]`, { timeout: 15_000 });
+    await waitForText(page, "Confirmed manually");
 
     await page.screenshot({ path: `${SHOTS}/02-presence-error.png`, fullPage: true });
   } finally {
