@@ -60,7 +60,7 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
-function ProductionObservationCard({ modelId }: { modelId: number }) {
+export function ProductionObservationCard({ modelId }: { modelId: number }) {
   const { activeBusiness } = useBusiness();
   const { toast } = useToast();
   const observations = useMfhProductionObservations(modelId, activeBusiness?.id ?? null);

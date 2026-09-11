@@ -1,0 +1,172 @@
+// @vitest-environment happy-dom
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const h = vi.hoisted(() => ({
+  observations: {
+    isLoading: false,
+    isError: false,
+    data: undefined as any,
+    refetch: vi.fn(),
+  },
+  reviews: { data: [] as any[] },
+  toast: vi.fn(),
+  activeBusiness: null as { id: number } | null,
+}));
+
+vi.mock("@workspace/api-client-react", () => ({
+  useMfhProductionObservations: () => h.observations,
+  useMfhProductionBenchmarkReviews: () => h.reviews,
+  useCreateMfhProductionBenchmarkReview: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useApproveMfhProductionBenchmarkReview: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRejectMfhProductionBenchmarkReview: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
+vi.mock("@/contexts/BusinessContext", () => ({
+  useBusiness: () => ({ activeBusiness: h.activeBusiness }),
+}));
+
+vi.mock("@/hooks/use-toast", () => ({
+  useToast: () => ({ toast: h.toast }),
+}));
+
+const { ProductionObservationCard } = await import("./MfhKnowledgeBase");
+
+let host: HTMLDivElement;
+let root: Root;
+
+beforeEach(() => {
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  h.observations = { isLoading: false, isError: false, data: undefined, refetch: vi.fn() };
+  h.reviews = { data: [] };
+  h.toast.mockReset();
+  h.activeBusiness = null;
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  host.remove();
+});
+
+async function renderCard() {
+  await act(async () => {
+    root.render(<ProductionObservationCard modelId={7} />);
+  });
+}
+
+function text() {
+  return host.textContent ?? "";
+}
+
+function button(label: string) {
+  const match = Array.from(host.querySelectorAll("button")).find((candidate) => candidate.textContent?.includes(label));
+  if (!match) throw new Error(`Button not found: ${label}`);
+  return match as HTMLButtonElement;
+}
+
+const populated = {
+  modelId: 7,
+  benchmark: { id: 11, jobType: "MFH Trim-Out", estimatedHours: 24 },
+  sample: {
+    eligibleJobCount: 3,
+    minimumJobsRequired: 3,
+    sufficient: true,
+    lastObservedDate: "2026-09-10",
+  },
+  observed: {
+    productionDaysMedian: 2,
+    productionDaysRange: { min: 1, max: 3 },
+    calendarSpanMedian: 3,
+    calendarSpanRange: { min: 2, max: 4 },
+    explicitPauseDaysTotal: 1,
+    serviceScopes: [{ id: 101, name: "Trim-Out", jobCount: 3 }],
+  },
+  jobs: [{
+    id: 101,
+    title: "Oak Ridge 28x76",
+    status: "completed",
+    productionDays: 2,
+    calendarSpanDays: 3,
+    explicitPauseDays: 1,
+    unrecordedDays: 0,
+    firstProductionDate: "2026-09-08",
+    lastProductionDate: "2026-09-10",
+    serviceScopes: [{ id: 101, name: "Trim-Out" }],
+    exclusionReason: null,
+  }],
+};
+
+describe("ProductionObservationCard response states", () => {
+  it("renders the loading state without dereferencing the response", async () => {
+    h.observations.isLoading = true;
+    await renderCard();
+
+    expect(host.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+    expect(text()).not.toContain("Observed Production History");
+  });
+
+  it("renders populated observations with the benchmark context and expandable evidence", async () => {
+    h.observations.data = populated;
+    await renderCard();
+
+    expect(text()).toContain("Observed Production History");
+    expect(text()).toContain("Learned production days");
+    expect(text()).toContain("2.0");
+    expect(text()).toContain("Existing benchmark: 24.0 hours");
+    expect(text()).not.toContain("Oak Ridge 28x76");
+
+    await act(async () => button("Why this observation?").click());
+
+    expect(text()).toContain("Oak Ridge 28x76");
+    expect(text()).toContain("Trim-Out");
+    expect(text()).toContain("1 pause");
+  });
+
+  it("explains an insufficient sample and a sample with no confirmed presence", async () => {
+    h.observations.data = {
+      ...populated,
+      sample: { ...populated.sample, eligibleJobCount: 1, sufficient: false },
+      jobs: [{ ...populated.jobs[0], exclusionReason: "no_confirmed_presence" }],
+    };
+    await renderCard();
+    expect(text()).toContain("2 more eligible jobs with confirmed presence are needed.");
+
+    h.observations.data = {
+      ...populated,
+      sample: { ...populated.sample, eligibleJobCount: 0, sufficient: false },
+      jobs: [{ ...populated.jobs[0], exclusionReason: "no_confirmed_presence" }],
+    };
+    await renderCard();
+    expect(text()).toContain("These jobs have no confirmed here record yet");
+  });
+
+  it("renders the empty state separately from insufficient evidence", async () => {
+    h.observations.data = { ...populated, jobs: [], sample: { ...populated.sample, eligibleJobCount: 0, sufficient: false } };
+    await renderCard();
+
+    expect(text()).toContain("No completed production history is available for this model.");
+    expect(text()).not.toContain("Not enough history to show a learned baseline.");
+  });
+
+  it("retries only the observation query from the error state", async () => {
+    h.observations.isError = true;
+    await renderCard();
+
+    expect(text()).toContain("Production history unavailable");
+    await act(async () => button("Retry").click());
+    expect(h.observations.refetch).toHaveBeenCalledTimes(1);
+    expect(h.toast).not.toHaveBeenCalled();
+  });
+
+  it("keeps business-scoped history read-only and does not show global review controls", async () => {
+    h.activeBusiness = { id: 42 };
+    h.observations.data = populated;
+    await renderCard();
+
+    expect(text()).toContain("Benchmark review is available from the all-business view only");
+    expect(text()).not.toContain("Review baseline");
+  });
+});
