@@ -84,6 +84,21 @@ async function clickButton(page: Page, label: string) {
   }, label);
 }
 
+async function clickButtonStartingWith(page: Page, prefix: string) {
+  await page.waitForFunction(
+    expected => Array.from(document.querySelectorAll("button"))
+      .some(button => button.textContent?.trim().startsWith(expected) && !(button as HTMLButtonElement).disabled),
+    { timeout: 30_000 },
+    prefix,
+  );
+  await page.evaluate(expected => {
+    const button = Array.from(document.querySelectorAll("button"))
+      .find(candidate => candidate.textContent?.trim().startsWith(expected)) as HTMLButtonElement | undefined;
+    if (!button) throw new Error(`Could not find button starting with: ${expected}`);
+    button.click();
+  }, prefix);
+}
+
 async function fillInput(page: Page, selector: string, value: string) {
   await page.waitForSelector(selector, { timeout: 15_000 });
   await page.click(selector, { clickCount: 3 });
@@ -502,7 +517,17 @@ async function main() {
       rejected.status() === 200
         && await page.$eval("body", body => body.innerText.includes("Existing benchmark: 10.0 hours")),
     );
-    await clickButton(page, "Rejected 26.0 hours · 3 jobs");
+    await page.reload({ waitUntil: "networkidle0" });
+    await waitForText(page, fixture.modelName);
+    await page.evaluate(expected => {
+      const row = Array.from(document.querySelectorAll("tr"))
+        .find(candidate => candidate.textContent?.includes(expected)) as HTMLTableRowElement | undefined;
+      if (!row) throw new Error(`Could not find model row: ${expected}`);
+      row.click();
+    }, fixture.modelName);
+    await waitForText(page, "Observed Production History");
+    await waitForText(page, "REVIEW HISTORY");
+    await clickButtonStartingWith(page, "Rejected 26.0 hours · 3 jobs");
     const rejectedSourceLabels = await page.$$eval(
       'button[title="Show this job in production evidence"]',
       buttons => buttons.map(button => button.textContent?.trim() ?? ""),
@@ -515,6 +540,7 @@ async function main() {
         && !rejectedSourceLabels.some(label => label.startsWith(`Job #${fixture.noPresenceJobId} ·`)),
       JSON.stringify(rejectedSourceLabels),
     );
+    await clickButton(page, "Why this observation?");
     recordResult(
       "No-presence job remains traceable as evidence only",
       await page.$eval(
