@@ -8,6 +8,10 @@ import {
   useMfhKnowledgeBase,
   useMfhModelDetail,
   useMfhProductionObservations,
+  useMfhProductionBenchmarkReviews,
+  useCreateMfhProductionBenchmarkReview,
+  useApproveMfhProductionBenchmarkReview,
+  useRejectMfhProductionBenchmarkReview,
   useSetMfhClientPrice,
   useUpdateMfhClientPrice,
   useDeleteMfhClientPrice,
@@ -58,8 +62,18 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
 
 function ProductionObservationCard({ modelId }: { modelId: number }) {
   const { activeBusiness } = useBusiness();
+  const { toast } = useToast();
   const observations = useMfhProductionObservations(modelId, activeBusiness?.id ?? null);
+  const isAllBusiness = activeBusiness == null;
+  const reviews = useMfhProductionBenchmarkReviews(modelId, isAllBusiness);
+  const createReview = useCreateMfhProductionBenchmarkReview();
+  const approveReview = useApproveMfhProductionBenchmarkReview();
+  const rejectReview = useRejectMfhProductionBenchmarkReview();
   const [showEvidence, setShowEvidence] = useState(false);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviewHours, setReviewHours] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
+  const [decisionNote, setDecisionNote] = useState("");
 
   if (observations.isLoading) {
     return (
@@ -96,6 +110,56 @@ function ProductionObservationCard({ modelId }: { modelId: number }) {
 
   const hasLearnedBaseline = data.sample.sufficient && data.observed.productionDaysMedian != null && data.observed.productionDaysRange != null;
   const remaining = Math.max(data.sample.minimumJobsRequired - data.sample.eligibleJobCount, 0);
+  const pendingReview = reviews.data?.find((review) => review.status === "pending") ?? null;
+  const historicalReviews = reviews.data?.filter((review) => review.status !== "pending") ?? [];
+
+  async function handleCreateReview() {
+    const hours = Number(reviewHours);
+    if (!Number.isFinite(hours) || hours <= 0) {
+      toast({ title: "Enter a positive benchmark hour value", variant: "destructive" });
+      return;
+    }
+    try {
+      await createReview.mutateAsync({
+        modelId,
+        proposedBenchmarkHours: hours,
+        reviewerNote: reviewNote.trim() || null,
+      });
+      setShowReviewForm(false);
+      setReviewHours("");
+      setReviewNote("");
+      toast({ title: "Baseline review created" });
+    } catch {
+      toast({ title: "Could not create baseline review", variant: "destructive" });
+    }
+  }
+
+  async function handleApproveReview() {
+    if (!pendingReview || !window.confirm(`Approve ${fmt(pendingReview.proposedBenchmarkHours, "decimal")} hours as the new benchmark?`)) return;
+    try {
+      await approveReview.mutateAsync({ modelId, revisionId: pendingReview.id });
+      setDecisionNote("");
+      toast({ title: "Production benchmark approved" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The benchmark may have changed since this review was created.";
+      toast({ title: "Could not approve benchmark", description: message, variant: "destructive" });
+    }
+  }
+
+  async function handleRejectReview() {
+    if (!pendingReview || !window.confirm("Reject this proposed production benchmark?")) return;
+    try {
+      await rejectReview.mutateAsync({
+        modelId,
+        revisionId: pendingReview.id,
+        reviewerNote: decisionNote.trim() || null,
+      });
+      setDecisionNote("");
+      toast({ title: "Baseline review rejected" });
+    } catch {
+      toast({ title: "Could not reject baseline review", variant: "destructive" });
+    }
+  }
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -152,6 +216,131 @@ function ProductionObservationCard({ modelId }: { modelId: number }) {
               Existing benchmark: <span className="font-semibold text-foreground">{fmt(data.benchmark.estimatedHours, "decimal")} hours</span>
               {data.benchmark.jobType ? ` (${data.benchmark.jobType})` : ""}
               {" "}— unchanged by this observation.
+            </p>
+          )}
+
+          {isAllBusiness ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-amber-950">Benchmark review</p>
+                  <p className="text-[11px] text-amber-900/80 mt-1">
+                    Production history is measured in days. Willard must enter benchmark hours explicitly; no days-to-hours conversion is applied.
+                  </p>
+                </div>
+                {hasLearnedBaseline && !pendingReview && data.benchmark.id != null && !showReviewForm && (
+                  <button
+                    onClick={() => {
+                      setReviewHours(data.benchmark.estimatedHours != null ? String(data.benchmark.estimatedHours) : "");
+                      setShowReviewForm(true);
+                    }}
+                    className="shrink-0 px-2.5 py-1.5 rounded-lg bg-amber-500 text-white text-[11px] font-semibold hover:bg-amber-600 transition-colors"
+                  >
+                    Review baseline
+                  </button>
+                )}
+              </div>
+
+              {showReviewForm && (
+                <div className="border-t border-amber-200 pt-3 space-y-2">
+                  <label className="block text-[11px] font-semibold text-amber-950">
+                    Proposed benchmark hours
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.25"
+                      value={reviewHours}
+                      onChange={(event) => setReviewHours(event.target.value)}
+                      className="mt-1 w-full px-2.5 py-2 rounded-lg border border-amber-300 bg-background text-sm text-foreground"
+                      placeholder="Enter hours explicitly"
+                    />
+                  </label>
+                  <label className="block text-[11px] font-semibold text-amber-950">
+                    Reviewer note (optional)
+                    <textarea
+                      value={reviewNote}
+                      onChange={(event) => setReviewNote(event.target.value)}
+                      rows={2}
+                      maxLength={2000}
+                      className="mt-1 w-full px-2.5 py-2 rounded-lg border border-amber-300 bg-background text-xs text-foreground resize-none"
+                      placeholder="Why should this benchmark change?"
+                    />
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleCreateReview}
+                      disabled={createReview.isPending}
+                      className="px-2.5 py-1.5 rounded-lg bg-amber-500 text-white text-[11px] font-semibold hover:bg-amber-600 disabled:opacity-50"
+                    >
+                      {createReview.isPending ? "Saving…" : "Create pending review"}
+                    </button>
+                    <button
+                      onClick={() => setShowReviewForm(false)}
+                      className="px-2.5 py-1.5 rounded-lg border border-amber-300 text-[11px] font-semibold text-amber-900 hover:bg-amber-100"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {pendingReview && (
+                <div className="border-t border-amber-200 pt-3 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold text-amber-950">Pending approval: {fmt(pendingReview.proposedBenchmarkHours, "decimal")} hours</p>
+                      <p className="text-[11px] text-amber-900/80 mt-1">
+                        Based on {pendingReview.sampleSize} jobs and a {fmt(pendingReview.observedProductionDaysMedian, "decimal")}-day median.
+                        {pendingReview.createdByName ? ` Created by ${pendingReview.createdByName}.` : ""}
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">Pending</span>
+                  </div>
+                  {pendingReview.reviewerNote && <p className="text-[11px] text-amber-900 italic">“{pendingReview.reviewerNote}”</p>}
+                  <textarea
+                    value={decisionNote}
+                    onChange={(event) => setDecisionNote(event.target.value)}
+                    rows={2}
+                    maxLength={2000}
+                    className="w-full px-2.5 py-2 rounded-lg border border-amber-300 bg-background text-xs text-foreground resize-none"
+                    placeholder="Optional rejection note"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleApproveReview}
+                      disabled={approveReview.isPending || rejectReview.isPending}
+                      className="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {approveReview.isPending ? "Approving…" : "Approve"}
+                    </button>
+                    <button
+                      onClick={handleRejectReview}
+                      disabled={approveReview.isPending || rejectReview.isPending}
+                      className="px-2.5 py-1.5 rounded-lg border border-red-300 text-[11px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {rejectReview.isPending ? "Rejecting…" : "Reject"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {historicalReviews.length > 0 && (
+                <div className="border-t border-amber-200 pt-2 space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-900/70">Review history</p>
+                  {historicalReviews.map((review) => (
+                    <div key={review.id} className="flex items-center justify-between gap-2 text-[11px] text-amber-900/80">
+                      <span>
+                        {review.status === "approved" ? "Approved" : "Rejected"} {fmt(review.proposedBenchmarkHours, "decimal")} hours · {review.sampleSize} jobs
+                      </span>
+                      <span className="text-[10px]">{review.reviewedByName ?? "Willard"}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">
+              Benchmark review is available from the all-business view only because this benchmark is shared globally.
             </p>
           )}
 
