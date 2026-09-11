@@ -71,6 +71,12 @@ vi.mock("@workspace/db", () => {
 
 vi.mock("../lib/business-scope", () => ({
   requestedBusiness: async () => h.scope,
+  hasRequestedBusiness: (req: { query?: Record<string, unknown>; body?: Record<string, unknown> }) => (
+    req.query?.businessId != null
+    || req.query?.businessLine != null
+    || req.body?.businessId != null
+    || req.body?.businessLine != null
+  ),
   invalidBusinessScope: () => false,
   businessPredicate: () => undefined,
 }));
