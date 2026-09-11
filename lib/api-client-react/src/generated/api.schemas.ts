@@ -333,6 +333,8 @@ export interface JobReadinessCondition {
 export type ReadyToStartJob = Job & {
   productionComponents: ProductionComponent[];
   activeReadinessCondition: JobReadinessCondition | null;
+  /** @minimum 1 */
+  queueOrder: number;
 };
 
 export interface ReadyToStartResponse {

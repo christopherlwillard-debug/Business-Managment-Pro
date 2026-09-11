@@ -708,6 +708,7 @@ export const GetReadyToStartJobsResponse = zod.object({
               clearedByName: zod.string().nullish(),
             })
             .nullable(),
+          queueOrder: zod.number().min(1),
         }),
       ),
   ),
@@ -945,6 +946,7 @@ export const GetReadyToStartJobsResponse = zod.object({
               clearedByName: zod.string().nullish(),
             })
             .nullable(),
+          queueOrder: zod.number().min(1),
         }),
       ),
   ),

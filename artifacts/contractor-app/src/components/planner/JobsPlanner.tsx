@@ -376,7 +376,10 @@ function ReadyToStartArea({
                         {job.endDate ? `Planned end: ${formatScheduleDate(job.endDate)}` : "No planned end date"}
                       </p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-800">Ready</span>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">Queue #{job.queueOrder ?? "—"}</span>
+                      <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-800">Ready</span>
+                    </div>
                   </div>
                   <p className="mt-3 text-[11px] font-bold uppercase tracking-wide text-slate-500">Production components</p>
                   {renderComponents(job)}
@@ -413,7 +416,10 @@ function ReadyToStartArea({
                   <div key={job.id} className="rounded-xl border border-orange-200 bg-white/80 p-3">
                     <div className="flex items-start justify-between gap-2">
                       <p className="min-w-0 truncate text-sm font-bold text-orange-950">{job.title}</p>
-                      <span className="shrink-0 text-[10px] font-bold uppercase text-orange-700">Waiting</span>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <span className="text-[10px] font-bold uppercase text-slate-500">#{job.queueOrder ?? "—"}</span>
+                        <span className="text-[10px] font-bold uppercase text-orange-700">Waiting</span>
+                      </div>
                     </div>
                     {renderComponents(job)}
                     {renderNotes(job, "waiting")}

@@ -12,4 +12,6 @@ import type { ProductionComponent } from "./productionComponent";
 export type ReadyToStartJob = Job & {
   productionComponents: ProductionComponent[];
   activeReadinessCondition: JobReadinessCondition | null;
+  /** @minimum 1 */
+  queueOrder: number;
 };
