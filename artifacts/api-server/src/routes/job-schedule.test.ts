@@ -237,6 +237,34 @@ describe("GET /jobs/ready-to-start", () => {
         endDate: "2026-09-20",
         closedAt: null,
         planningState: "ready",
+        queuePosition: null,
+        createdAt: new Date("2026-09-12T09:00:00Z"),
+      },
+      {
+        id: 23,
+        title: "Explicitly first job",
+        status: "scheduled",
+        businessId: 1,
+        businessLine: "general_contracting",
+        startDate: null,
+        endDate: null,
+        closedAt: null,
+        planningState: "ready",
+        queuePosition: 1,
+        createdAt: new Date("2026-09-20T09:00:00Z"),
+      },
+      {
+        id: 24,
+        title: "Created before ready job",
+        status: "scheduled",
+        businessId: 1,
+        businessLine: "general_contracting",
+        startDate: null,
+        endDate: null,
+        closedAt: null,
+        planningState: "ready",
+        queuePosition: null,
+        createdAt: new Date("2026-09-11T09:00:00Z"),
       },
       {
         id: 22,
@@ -248,6 +276,8 @@ describe("GET /jobs/ready-to-start", () => {
         endDate: null,
         closedAt: null,
         planningState: "waiting",
+        queuePosition: 5,
+        createdAt: new Date("2026-09-10T09:00:00Z"),
       },
     ]);
     h.selectQueue.push([{
@@ -263,9 +293,11 @@ describe("GET /jobs/ready-to-start", () => {
     const response = await request(app).get("/jobs/ready-to-start?businessId=1");
 
     expect(response.status).toBe(200);
-    expect(response.body.readyJobs.map((job: any) => job.id)).toEqual([21]);
+    expect(response.body.readyJobs.map((job: any) => job.id)).toEqual([23, 24, 21]);
+    expect(response.body.readyJobs.map((job: any) => job.queueOrder)).toEqual([1, 3, 4]);
     expect(response.body.readyJobs[0].productionComponents[0].componentLabel).toBe("Siding");
     expect(response.body.waitingJobs.map((job: any) => job.id)).toEqual([22]);
+    expect(response.body.waitingJobs[0].queueOrder).toBe(2);
     expect(response.body.waitingJobs[0].activeReadinessCondition).toEqual(expect.objectContaining({
       reason: "materials",
       detail: "Waiting for siding delivery",
