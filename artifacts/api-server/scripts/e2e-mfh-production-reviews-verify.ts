@@ -46,6 +46,7 @@ if (baseUrl.protocol !== "http:" || !["localhost", "127.0.0.1", "::1"].includes(
 type Fixture = {
   modelId: number;
   benchmarkId: number;
+  scopedBusinessId: number;
   jobIds: number[];
   excludedJobId: number;
   noPresenceJobId: number;
@@ -142,6 +143,14 @@ async function createFixture(): Promise<Fixture> {
     const modelName = `E2E Review Model ${suffix}`;
     const jobType = `E2E Review Benchmark ${suffix}`;
     const benchmarkHours = "10.00";
+    const [scopedBusiness] = await db.insert(businessesTable).values({
+      name: `E2E Scoped Business ${suffix}`,
+      slug: `e2e_scoped_business_${suffix.replace(/[^a-zA-Z0-9_]/g, "_")}`,
+      type: "other",
+      parentBusinessId: business.id,
+    }).returning({ id: businessesTable.id });
+    if (!scopedBusiness) throw new Error("Failed to create scoped business fixture");
+    partial.scopedBusinessId = scopedBusiness.id;
 
     const [benchmark] = await db.insert(jobTypeBenchmarksTable).values({
       jobType,
@@ -167,8 +176,8 @@ async function createFixture(): Promise<Fixture> {
           ? `${modelName} No Presence Job`
           : `${modelName} Job ${index}`,
       status: "completed",
-      businessId: business.id,
-      businessLine: business.slug,
+       businessId: index <= 2 ? scopedBusiness.id : business.id,
+       businessLine: index <= 2 ? `e2e_scoped_business_${suffix.replace(/[^a-zA-Z0-9_]/g, "_")}` : business.slug,
       workflow: "mh_production",
       mfhModelId: model.id,
       mhProductionServices: [service.id],
@@ -239,6 +248,7 @@ async function createFixture(): Promise<Fixture> {
     return {
       modelId: model.id,
       benchmarkId: benchmark.id,
+      scopedBusinessId: scopedBusiness.id,
       jobIds: jobs.map(job => job.id),
       excludedJobId: jobs[3].id,
       noPresenceJobId: jobs[4].id,
@@ -263,6 +273,9 @@ async function cleanupFixture(fixture: Partial<Fixture>) {
   }
   if (fixture.benchmarkId != null) {
     await db.delete(jobTypeBenchmarksTable).where(eq(jobTypeBenchmarksTable.id, fixture.benchmarkId));
+  }
+  if (fixture.scopedBusinessId != null) {
+    await db.delete(businessesTable).where(eq(businessesTable.id, fixture.scopedBusinessId));
   }
 }
 
@@ -557,6 +570,37 @@ async function main() {
       "All-business Knowledge Center opens the benchmark review panel",
       await page.$eval("body", body => body.innerText.includes("Benchmark review"))
         && !await page.$eval("body", body => body.innerText.includes("Benchmark review is available from the all-business view only")),
+    );
+    const scopedObservations = await page.evaluate(async ({ modelId, businessId }) => {
+      const response = await fetch(`/api/mfh/knowledge-base/${modelId}/production-observations?businessId=${businessId}`);
+      if (!response.ok) throw new Error(`Scoped observation request failed with ${response.status}`);
+      return response.json();
+    }, { modelId: fixture.modelId, businessId: fixture.scopedBusinessId });
+    const scopedJobs = scopedObservations.jobs as Array<{
+      id: number;
+      presence: Array<{
+        date: string;
+        state: string;
+        provenance: string;
+        notHereReason: string | null;
+        notes: string | null;
+      }>;
+    }>;
+    const scopedJobIds = scopedJobs.map(job => job.id).sort((a, b) => a - b);
+    const scopedJobById = new Map(scopedJobs.map(job => [job.id, job]));
+    const scopedSecondJob = scopedJobById.get(fixture.jobIds[1]);
+    recordResult(
+      "Business-scoped observations preserve ordering, metadata, and isolation",
+      JSON.stringify(scopedJobIds) === JSON.stringify([...fixture.jobIds.slice(0, 2)].sort((a, b) => a - b))
+        && scopedJobs.length === 2
+        && JSON.stringify(scopedJobById.get(fixture.jobIds[0])?.presence.map(record => record.date))
+          === JSON.stringify(["2025-01-11", "2025-01-12", "2025-01-13"])
+        && JSON.stringify(scopedSecondJob?.presence.map(record => record.date))
+          === JSON.stringify(["2025-01-13", "2025-01-14", "2025-01-15"])
+        && scopedSecondJob?.presence[0]?.state === "not_here"
+        && scopedSecondJob.presence[0].provenance === "confirmed"
+        && scopedSecondJob.presence[0].notHereReason === "weather"
+        && scopedSecondJob.presence[0].notes === "Second job weather note",
     );
     await page.screenshot({ path: `${SHOTS}/01-review-panel.png`, fullPage: true });
 
