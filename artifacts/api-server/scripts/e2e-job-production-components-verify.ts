@@ -61,44 +61,6 @@ async function waitForText(page: Page, text: string) {
   );
 }
 
-async function clickJobCardButton(page: Page, title: string, label: string) {
-  await page.waitForFunction(
-    ({ expectedTitle, expectedLabel }) => Array.from(document.querySelectorAll("h3"))
-      .some(heading => {
-        if (heading.textContent?.trim() !== expectedTitle) return false;
-        let scope: HTMLElement | null = heading.parentElement;
-        while (scope) {
-          if (Array.from(scope.querySelectorAll("button"))
-            .some(button => button.textContent?.trim() === expectedLabel)) return true;
-          scope = scope.parentElement;
-        }
-        return false;
-      }),
-    { timeout: 30_000 },
-    { expectedTitle: title, expectedLabel: label },
-  );
-
-  await page.evaluate(
-    ({ expectedTitle, expectedLabel }) => {
-      const heading = Array.from(document.querySelectorAll("h3"))
-        .find(candidate => candidate.textContent?.trim() === expectedTitle);
-      if (!heading) throw new Error(`Could not find job heading: ${expectedTitle}`);
-      let scope: HTMLElement | null = heading.parentElement;
-      while (scope) {
-        const button = Array.from(scope.querySelectorAll("button"))
-          .find(candidate => candidate.textContent?.trim() === expectedLabel);
-        if (button) {
-          button.click();
-          return;
-        }
-        scope = scope.parentElement;
-      }
-      throw new Error(`Could not find ${expectedLabel} for job: ${expectedTitle}`);
-    },
-    { expectedTitle: title, expectedLabel: label },
-  );
-}
-
 async function createFixture(): Promise<Partial<Fixture>> {
   const fixture: Partial<Fixture> = {};
   const [scopedBusiness] = await db
@@ -255,11 +217,19 @@ async function main() {
 
     await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
     await waitForText(page, JOB_TITLE);
-    await clickJobCardButton(page, JOB_TITLE, "Open Job Card");
-    await page.waitForSelector('select[aria-label="Siding status"]', { timeout: 30_000 });
+    const statusSelector = `[data-testid="production-component-status-${fixture.jobId}-siding:unspecified"]`;
+    const historyToggleSelector = `[data-testid="production-component-history-toggle-${fixture.jobId}"]`;
+    const historyPanelSelector = `[data-testid="production-component-snapshot-history-${fixture.jobId}"]`;
+    const snapshotRowSelector = `[data-testid^="production-component-snapshot-row-${fixture.jobId}-"]`;
+    await page.waitForSelector(
+      `[data-testid="job-card-open-${fixture.jobId}"]`,
+      { timeout: 30_000 },
+    );
+    await page.click(`[data-testid="job-card-open-${fixture.jobId}"]`);
+    await page.waitForSelector(statusSelector, { timeout: 30_000 });
 
     const currentStatus = await page.$eval(
-      'select[aria-label="Siding status"]',
+      statusSelector,
       element => ({
         value: (element as HTMLSelectElement).value,
         disabled: (element as HTMLSelectElement).disabled,
@@ -271,46 +241,31 @@ async function main() {
       `value=${currentStatus.value} disabled=${currentStatus.disabled}`,
     );
 
-    await clickJobCardButton(page, JOB_TITLE, "View history");
-    await page.waitForFunction(
-      title => Array.from(document.querySelectorAll("h3"))
-        .some(heading => heading.textContent?.trim() === title
-          && Array.from(heading.closest("div")?.parentElement?.parentElement?.parentElement?.querySelectorAll("button") ?? [])
-            .some(button => button.textContent?.trim() === "Hide history")),
-      { timeout: 30_000 },
-      JOB_TITLE,
-    );
+    await page.click(historyToggleSelector);
+    await page.waitForSelector(historyPanelSelector, { timeout: 30_000 });
+    await page.waitForSelector(snapshotRowSelector, { timeout: 30_000 });
     await waitForText(page, "SNAPSHOT HISTORY");
-    const historyView = await page.evaluate(title => {
-      const heading = Array.from(document.querySelectorAll("h3"))
-        .find(candidate => candidate.textContent?.trim() === title);
-      if (!heading) return null;
-      let card: HTMLElement | null = heading.parentElement;
-      while (card && !card.querySelector('select[aria-label="Siding status"]')) {
-        card = card.parentElement;
-      }
-      const historyHeading = card
-        ? Array.from(card.querySelectorAll("div"))
-          .reverse()
-          .find(candidate => candidate.textContent?.trim() === "Snapshot history")
-        : null;
-      const historyPanel = historyHeading?.parentElement?.parentElement;
-      const supersededRow = historyPanel
-        ? Array.from(historyPanel.querySelectorAll("div"))
-          .filter(candidate => {
-            const text = candidate.textContent ?? "";
-            return text.includes("Version 1")
-              && text.includes("Superseded")
-              && text.includes("Source services");
-          })
-          .sort((a, b) => (a.textContent?.length ?? 0) - (b.textContent?.length ?? 0))[0]
-        : null;
+    const historyView = await page.evaluate(({
+      jobId,
+      statusSelector,
+      historyPanelSelector,
+      snapshotRowSelector,
+    }) => {
+      const historyPanel = document.querySelector(historyPanelSelector);
+      const supersededRow = historyPanel?.querySelector(
+        `${snapshotRowSelector}[data-snapshot-version="1"]`,
+      );
       return {
-        currentSelectorCount: card?.querySelectorAll('select[aria-label="Siding status"]').length ?? 0,
+        currentSelectorCount: document.querySelectorAll(statusSelector).length,
         supersededRowSelectCount: supersededRow?.querySelectorAll("select").length ?? -1,
         text: historyPanel?.textContent ?? "",
       };
-    }, JOB_TITLE);
+    }, {
+      jobId: fixture.jobId,
+      statusSelector,
+      historyPanelSelector,
+      snapshotRowSelector,
+    });
 
     recordResult(
       "Snapshot history shows current and superseded state without historical controls",

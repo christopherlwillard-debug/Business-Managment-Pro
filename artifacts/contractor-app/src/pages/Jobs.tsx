@@ -6362,6 +6362,7 @@ function JobCard({
                   type="button"
                   onClick={() => setProductionComponentHistoryOpen(open => !open)}
                   aria-expanded={productionComponentHistoryOpen}
+                  data-testid={`production-component-history-toggle-${job.id}`}
                   className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold text-amber-800 hover:bg-amber-100"
                 >
                   <History className="h-3 w-3" />
@@ -6378,6 +6379,7 @@ function JobCard({
                     </span>
                     <select
                       aria-label={`${component.componentLabel} status`}
+                      data-testid={`production-component-status-${job.id}-${component.componentInstanceKey}`}
                       value={component.status}
                       disabled={updatingComponentKey === component.componentInstanceKey}
                       onChange={event => {
@@ -6398,7 +6400,10 @@ function JobCard({
                 ))}
               </div>
               {productionComponentHistoryOpen && (
-                <div className="mt-2 border-t border-amber-200/80 pt-2">
+                <div
+                  className="mt-2 border-t border-amber-200/80 pt-2"
+                  data-testid={`production-component-snapshot-history-${job.id}`}
+                >
                   <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
                     <History className="h-3 w-3" />
                     Snapshot history
@@ -6416,6 +6421,10 @@ function JobCard({
                         return (
                           <div
                             key={`${component.componentInstanceKey}:${component.snapshotVersion}`}
+                            data-testid={`production-component-snapshot-row-${job.id}-${component.componentInstanceKey}-${component.snapshotVersion}`}
+                            data-component-instance-key={component.componentInstanceKey}
+                            data-snapshot-version={component.snapshotVersion}
+                            data-snapshot-state={isCurrent ? "current" : "superseded"}
                             className="rounded-md border border-border/70 bg-background/70 px-2 py-1.5 text-[11px]"
                           >
                             <div className="flex items-start justify-between gap-2">
@@ -7000,6 +7009,7 @@ function JobCard({
           <button
             type="button"
             onClick={() => setCompactExpanded(true)}
+            data-testid={`job-card-open-${job.id}`}
             className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/20 text-xs font-semibold text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
           >
             <Eye className="w-3.5 h-3.5" /> Open Job Card
