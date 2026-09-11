@@ -182,6 +182,16 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Source of truth:** `job_daily_presence` owns explicitly recorded per-job/per-day presence state, not-here reason, optional notes, source, and provenance. Timing concepts are calculated live from this table plus existing job dates and expected-duration input.
 - **Rule:** `unrecorded`, `here`, and `not_here` remain distinct. Presence never creates or updates payroll, expenses, mileage, invoices, payments, profit, checklists, daily logs, or labor-hour rows.
 
+## Production Intelligence / Benchmark Review
+
+- **Tables:** `job_type_benchmarks` (active benchmark), `job_type_benchmark_revisions` (append-only review history)
+- **Schemas:** `lib/db/src/schema/job-type-benchmarks.ts`, `lib/db/src/schema/job-type-benchmark-revisions.ts`
+- **API:** `artifacts/api-server/src/routes/mfh.ts` (`/knowledge-base/:modelId/production-observations` and `/production-reviews`)
+- **UI:** `artifacts/contractor-app/src/pages/MfhKnowledgeBase.tsx` → Observed Production History
+- **Reports:** None; approved hours remain the existing benchmark input for future consumers.
+- **Source of truth:** `job_type_benchmarks.estimated_hours` remains the active benchmark. Revision rows preserve the proposed change, observed evidence, reviewer, and decision history.
+- **Rule:** Reviews require a sufficient all-business observation, never convert production days to hours automatically, and approval must compare the captured prior value before updating the existing benchmark. Business-scoped observations cannot update a shared global benchmark.
+
 ---
 
 ## Clients / Customers
