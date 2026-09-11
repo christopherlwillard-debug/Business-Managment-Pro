@@ -23,11 +23,14 @@ import {
   jobKnowledgeRecordsTable,
   jobDailyPresenceTable,
   productionServiceTypesTable,
+  mfhCustomProductionProfilesTable,
+  mfhCustomProductionProfileServicesTable,
 } from "@workspace/db/schema";
 import { eq, and, asc, desc, inArray, sql, ilike, or, isNull } from "drizzle-orm";
 import crypto from "crypto";
-import { requestedBusiness, invalidBusinessScope, businessPredicate } from "../lib/business-scope";
+import { requestedBusiness, invalidBusinessScope, businessPredicate, resolveMutationBusiness } from "../lib/business-scope";
 import { buildProductionObservationResponse, type ObservationPresenceState } from "../lib/production-observations";
+import { isEligibleForProductionLearning } from "../lib/production-intelligence-contract";
 import { getRequestUser } from "./guards";
 
 // ── Seed ──────────────────────────────────────────────────────────────────────
@@ -828,6 +831,7 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
       title: jobsTable.title,
       status: jobsTable.status,
       workflow: jobsTable.workflow,
+      businessId: jobsTable.businessId,
       mhProductionServices: jobsTable.mhProductionServices,
     }).from(jobsTable).where(and(
       eq(jobsTable.mfhModelId, modelId),
@@ -855,7 +859,31 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
           : undefined,
       ))
       : [];
+  const profileServiceRows = serviceIds.length > 0
+    ? await db.select({
+        businessId: mfhCustomProductionProfileServicesTable.businessId,
+        serviceTypeId: mfhCustomProductionProfileServicesTable.serviceTypeId,
+        profileId: mfhCustomProductionProfilesTable.id,
+        profileKey: mfhCustomProductionProfilesTable.profileKey,
+        profileName: mfhCustomProductionProfilesTable.name,
+      }).from(mfhCustomProductionProfileServicesTable)
+        .innerJoin(
+          mfhCustomProductionProfilesTable,
+          eq(mfhCustomProductionProfileServicesTable.profileId, mfhCustomProductionProfilesTable.id),
+        )
+        .where(and(
+          inArray(mfhCustomProductionProfileServicesTable.serviceTypeId, serviceIds),
+          eq(mfhCustomProductionProfilesTable.active, true),
+          scope ? eq(mfhCustomProductionProfileServicesTable.businessId, scope.id) : undefined,
+        ))
+    : [];
   const serviceById = new Map(serviceRows.map((service) => [service.id, service]));
+  const profileByBusinessService = new Map(
+    profileServiceRows.map((profile) => [
+      `${profile.businessId}:${profile.serviceTypeId}`,
+      { id: profile.profileId, key: profile.profileKey, name: profile.profileName },
+    ]),
+  );
   const jobIds = candidateJobs.map((job) => job.id);
   const presenceRows = jobIds.length > 0
       ? await db.select({
@@ -881,11 +909,20 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
         workflow: job.workflow,
         serviceScopes: Array.from(new Map(
           (Array.isArray(job.mhProductionServices) ? job.mhProductionServices : [])
-            .map((serviceId) => serviceById.get(serviceId))
-            .filter((service): service is NonNullable<typeof service> =>
-              service != null && service.appliesTo === "production" && service.itemKey !== "custom",
-            )
-            .map((service) => [service.id, { id: service.id, name: service.name }] as const),
+             .map((serviceId) => {
+               const service = serviceById.get(serviceId);
+               if (!service || service.appliesTo !== "production") return null;
+               const customProfile = service.itemKey === "custom"
+                 ? profileByBusinessService.get(`${scope?.id ?? job.businessId}:${service.id}`) ?? null
+                 : null;
+               if (service.itemKey === "custom" && !isEligibleForProductionLearning({
+                 workType: "production",
+                 componentKey: "custom",
+                 hasNamedCustomProfile: customProfile != null,
+               })) return null;
+               return [service.id, { id: service.id, name: service.name, customProfile }] as const;
+             })
+             .filter((entry): entry is readonly [number, { id: number; name: string; customProfile: { id: number; key: string; name: string } | null }] => entry != null),
         ).values()),
         presence: (presenceByJob.get(job.id) ?? []).map((row) => ({
           date: row.date,
