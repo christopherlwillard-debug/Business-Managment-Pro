@@ -141,6 +141,31 @@ describe("production observations", () => {
     expect(response.jobs[0].productionDays).toBeNull();
   });
 
+  it("returns unordered presence facts chronologically without losing provenance metadata", () => {
+    const response = buildProductionObservationResponse(
+      23,
+      [{
+        id: 11,
+        title: "Out-of-order presence",
+        status: "completed",
+        workflow: "mh_production",
+        serviceScopes: service(),
+        presence: [
+          { date: "2026-09-03", state: "here", provenance: "inferred", notHereReason: null, notes: "Schedule-derived presence" },
+          { date: "2026-09-01", state: "not_here", provenance: "confirmed", notHereReason: "weather", notes: "Rain before mobilization" },
+          { date: "2026-09-02", state: "unrecorded", provenance: "confirmed", notHereReason: null, notes: "No daily entry" },
+        ],
+      }],
+      { id: null, jobType: null, estimatedHours: null },
+    );
+
+    expect(response.jobs[0].presence).toEqual([
+      { date: "2026-09-01", state: "not_here", provenance: "confirmed", notHereReason: "weather", notes: "Rain before mobilization" },
+      { date: "2026-09-02", state: "unrecorded", provenance: "confirmed", notHereReason: null, notes: "No daily entry" },
+      { date: "2026-09-03", state: "here", provenance: "inferred", notHereReason: null, notes: "Schedule-derived presence" },
+    ]);
+  });
+
   it("selects the strongest same-day provenance and the latest equal-strength correction", () => {
     const response = buildProductionObservationResponse(
       23,
