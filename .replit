@@ -62,6 +62,10 @@ args = "production-presence"
 task = "workflow.run"
 args = "production-components"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "component-baseline-reviews"
+
 [[workflows.workflow]]
 name = "Contractor App"
 author = "agent"
@@ -172,6 +176,17 @@ isValidation = true
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/api-server run verify:production-components"
+
+[[workflows.workflow]]
+name = "component-baseline-reviews"
+author = "agent"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/api-server run verify:component-baseline-reviews"
 
 [agent]
 stack = "PNPM_WORKSPACE"

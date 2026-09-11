@@ -546,7 +546,11 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                     ? "No component work-session evidence is eligible yet."
                     : `${Math.max(component.minimumJobsRequired - component.eligibleJobCount, 0)} more eligible job${component.minimumJobsRequired - component.eligibleJobCount === 1 ? "" : "s"} needed.`;
                   return (
-                    <div key={component.learningKey} className="rounded-lg border border-border/70 bg-muted/10 overflow-hidden">
+                    <div
+                      key={component.learningKey}
+                      data-testid={`mfh-component-learning-${component.learningKey}`}
+                      className="rounded-lg border border-border/70 bg-muted/10 overflow-hidden"
+                    >
                       <button
                         type="button"
                         onClick={() => setExpandedComponentKey((current) => current === component.learningKey ? null : component.learningKey)}
@@ -626,6 +630,7 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                                  {canProposeComponentBaseline && componentReviewFormKey !== component.learningKey && (
                                    <button
                                      type="button"
+                                      data-testid={`mfh-component-baseline-propose-${component.learningKey}`}
                                      onClick={() => {
                                        setComponentReviewFormKey(component.learningKey);
                                        setComponentReviewDays(String(component.actualWorkDaysMedian ?? ""));
@@ -646,6 +651,7 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                                        Proposed production days
                                        <input
                                          type="number"
+                                          data-testid={`mfh-component-baseline-days-${component.learningKey}`}
                                          min="0.01"
                                          step="0.5"
                                          value={componentReviewDays}
@@ -667,6 +673,7 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                                      <div className="flex gap-2">
                                        <button
                                          type="button"
+                                          data-testid={`mfh-component-baseline-create-${component.learningKey}`}
                                          onClick={() => handleCreateComponentReview(component.learningKey, component.actualWorkDaysMedian)}
                                          disabled={createComponentReview.isPending}
                                          className="px-2.5 py-1.5 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50"
@@ -684,7 +691,11 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                                    </div>
                                  )}
                                  {pendingComponentReview && (
-                                   <div className="border-t border-blue-200 pt-2 space-y-2">
+                                    <div
+                                      data-testid={`mfh-component-baseline-pending-${component.learningKey}`}
+                                      data-review-id={pendingComponentReview.id}
+                                      className="border-t border-blue-200 pt-2 space-y-2"
+                                    >
                                      <div className="flex items-start justify-between gap-2">
                                        <p className="text-[10px] text-blue-900">
                                          Pending: <span className="font-semibold">{fmt(pendingComponentReview.proposedProductionDays, "decimal")} days</span>
@@ -704,6 +715,7 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                                      <div className="flex gap-2">
                                        <button
                                          type="button"
+                                          data-testid={`mfh-component-baseline-approve-${component.learningKey}`}
                                          onClick={() => handleApproveComponentReview(pendingComponentReview)}
                                          disabled={approveComponentReview.isPending || rejectComponentReview.isPending}
                                          className="px-2.5 py-1.5 rounded-md bg-emerald-600 text-white text-[10px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
@@ -712,6 +724,7 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                                        </button>
                                        <button
                                          type="button"
+                                          data-testid={`mfh-component-baseline-reject-${component.learningKey}`}
                                          onClick={() => handleRejectComponentReview(pendingComponentReview)}
                                          disabled={approveComponentReview.isPending || rejectComponentReview.isPending}
                                          className="px-2.5 py-1.5 rounded-md border border-red-300 text-[10px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
@@ -725,7 +738,12 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                                    <div className="border-t border-blue-200 pt-2 space-y-1.5">
                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-900/70">Component review history</p>
                                      {historicalComponentReviews.map((review) => (
-                                       <div key={review.id} className="rounded-md border border-blue-200/70 bg-background/40 overflow-hidden">
+                                        <div
+                                          key={review.id}
+                                          data-testid={`mfh-component-baseline-history-${review.id}`}
+                                          data-review-status={review.status}
+                                          className="rounded-md border border-blue-200/70 bg-background/40 overflow-hidden"
+                                        >
                                          <button
                                            type="button"
                                            onClick={() => setExpandedComponentReviewId((current) => current === review.id ? null : review.id)}
