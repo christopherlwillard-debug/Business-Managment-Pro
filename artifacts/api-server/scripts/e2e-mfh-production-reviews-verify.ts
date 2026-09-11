@@ -46,6 +46,7 @@ type Fixture = {
   modelId: number;
   benchmarkId: number;
   jobIds: number[];
+  excludedJobId: number;
   modelName: string;
   benchmarkHours: string;
 };
@@ -142,32 +143,59 @@ async function createFixture(): Promise<Fixture> {
     if (!model) throw new Error("Failed to create model fixture");
     partial.modelId = model.id;
 
-    const jobs = await db.insert(jobsTable).values([1, 2, 3].map(index => ({
-      title: `${modelName} Job ${index}`,
+    const jobs = await db.insert(jobsTable).values([1, 2, 3, 4].map(index => ({
+      title: index === 4 ? `${modelName} Excluded Job` : `${modelName} Job ${index}`,
       status: "completed",
       businessId: business.id,
       businessLine: business.slug,
       workflow: "mh_production",
       mfhModelId: model.id,
       mhProductionServices: [service.id],
-      startDate: `2025-01-0${index}`,
-      endDate: `2025-01-0${index}`,
+      startDate: index === 4 ? "2025-01-21" : `2025-01-0${index}`,
+      endDate: index === 4 ? "2025-01-23" : `2025-01-0${index}`,
     }))).returning({ id: jobsTable.id });
-    if (jobs.length !== 3) throw new Error("Failed to create all job fixtures");
+    if (jobs.length !== 4) throw new Error("Failed to create all job fixtures");
     partial.jobIds = jobs.map(job => job.id);
+    partial.excludedJobId = jobs[3].id;
 
-    await db.insert(jobDailyPresenceTable).values(jobs.map((job, index) => ({
+    await db.insert(jobDailyPresenceTable).values([
+      ...jobs.slice(0, 3).map((job, index) => ({
       jobId: job.id,
       date: `2025-01-1${index + 1}`,
       state: "here",
       source: "manual_presence",
       provenance: "confirmed",
-    })));
+      })),
+      {
+        jobId: jobs[3].id,
+        date: "2025-01-21",
+        state: "not_here",
+        notHereReason: "weather",
+        notes: "Rain delay before the first workday",
+        source: "manual_presence",
+        provenance: "confirmed",
+      },
+      {
+        jobId: jobs[3].id,
+        date: "2025-01-22",
+        state: "unrecorded",
+        source: "manual_presence",
+        provenance: "confirmed",
+      },
+      {
+        jobId: jobs[3].id,
+        date: "2025-01-23",
+        state: "here",
+        source: "job_schedule",
+        provenance: "inferred",
+      },
+    ]);
 
     return {
       modelId: model.id,
       benchmarkId: benchmark.id,
       jobIds: jobs.map(job => job.id),
+      excludedJobId: jobs[3].id,
       modelName,
       benchmarkHours,
     };
@@ -254,6 +282,84 @@ async function main() {
     }, fixture.modelName);
     await waitForText(page, "Observed Production History");
     await waitForText(page, "Benchmark review");
+    const beforeObservationRead = {
+      benchmark: await db.select({ estimatedHours: jobTypeBenchmarksTable.estimatedHours })
+        .from(jobTypeBenchmarksTable)
+        .where(eq(jobTypeBenchmarksTable.id, fixture.benchmarkId!))
+        .limit(1),
+      jobs: await db.select({
+        id: jobsTable.id,
+        status: jobsTable.status,
+        startDate: jobsTable.startDate,
+        endDate: jobsTable.endDate,
+        workflow: jobsTable.workflow,
+        mhProductionServices: jobsTable.mhProductionServices,
+      }).from(jobsTable).where(inArray(jobsTable.id, fixture.jobIds!)).orderBy(jobsTable.id),
+      presence: await db.select({
+        jobId: jobDailyPresenceTable.jobId,
+        date: jobDailyPresenceTable.date,
+        state: jobDailyPresenceTable.state,
+        notHereReason: jobDailyPresenceTable.notHereReason,
+        notes: jobDailyPresenceTable.notes,
+        provenance: jobDailyPresenceTable.provenance,
+      }).from(jobDailyPresenceTable).where(inArray(jobDailyPresenceTable.jobId, fixture.jobIds!)).orderBy(jobDailyPresenceTable.jobId, jobDailyPresenceTable.date),
+    };
+
+    await clickButton(page, "Why this observation?");
+    const excludedEvidence = await page.$eval(
+      `#mfh-evidence-job-${fixture.excludedJobId}`,
+      element => element.textContent ?? "",
+    );
+    recordResult(
+      "Excluded job evidence shows confirmed not-here provenance",
+      excludedEvidence.includes("Excluded Job")
+        && excludedEvidence.includes("01/21/2025")
+        && excludedEvidence.includes("Weather")
+        && excludedEvidence.includes("Rain delay before the first workday")
+        && excludedEvidence.includes("No confirmed here record was recorded"),
+    );
+    recordResult(
+      "Excluded evidence does not promote inferred or unrecorded rows",
+      !excludedEvidence.includes("01/22/2025")
+        && !excludedEvidence.includes("01/23/2025")
+        && excludedEvidence.includes("Unrecorded or inferred rows are not treated as here or not here"),
+    );
+    recordResult(
+      "Excluded evidence links to the source job",
+      await page.$eval(
+        `#mfh-evidence-job-${fixture.excludedJobId}`,
+        element => (element.closest("a") as HTMLAnchorElement | null)?.getAttribute("href") ?? "",
+      ) === `/jobs?openJob=${fixture.excludedJobId}`,
+    );
+    const afterObservationRead = {
+      benchmark: await db.select({ estimatedHours: jobTypeBenchmarksTable.estimatedHours })
+        .from(jobTypeBenchmarksTable)
+        .where(eq(jobTypeBenchmarksTable.id, fixture.benchmarkId!))
+        .limit(1),
+      jobs: await db.select({
+        id: jobsTable.id,
+        status: jobsTable.status,
+        startDate: jobsTable.startDate,
+        endDate: jobsTable.endDate,
+        workflow: jobsTable.workflow,
+        mhProductionServices: jobsTable.mhProductionServices,
+      }).from(jobsTable).where(inArray(jobsTable.id, fixture.jobIds!)).orderBy(jobsTable.id),
+      presence: await db.select({
+        jobId: jobDailyPresenceTable.jobId,
+        date: jobDailyPresenceTable.date,
+        state: jobDailyPresenceTable.state,
+        notHereReason: jobDailyPresenceTable.notHereReason,
+        notes: jobDailyPresenceTable.notes,
+        provenance: jobDailyPresenceTable.provenance,
+      }).from(jobDailyPresenceTable).where(inArray(jobDailyPresenceTable.jobId, fixture.jobIds!)).orderBy(jobDailyPresenceTable.jobId, jobDailyPresenceTable.date),
+    };
+    recordResult(
+      "Reading excluded evidence does not write production or benchmark data",
+      JSON.stringify(afterObservationRead) === JSON.stringify(beforeObservationRead)
+        && blockedWrites.length === 0
+        && browserWrites.length === 0,
+      blockedWrites.length ? blockedWrites.join(", ") : "database snapshots unchanged",
+    );
     recordResult(
       "All-business Knowledge Center opens the benchmark review panel",
       await page.$eval("body", body => body.innerText.includes("Benchmark review"))
