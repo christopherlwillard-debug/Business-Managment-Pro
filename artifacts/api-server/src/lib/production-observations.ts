@@ -164,7 +164,7 @@ export function buildProductionObservationResponse(
   const sufficient = eligibleJobs.length >= MINIMUM_SAMPLE_SIZE;
   const range = (values: number[]): { min: number; max: number } | null =>
     values.length > 0 ? { min: Math.min(...values), max: Math.max(...values) } : null;
-  const serviceCounts = new Map<number, { id: number; name: string; jobCount: number }>();
+  const serviceCounts = new Map<number, ObservationServiceScope & { jobCount: number }>();
   for (const job of eligibleJobs) {
     for (const service of job.serviceScopes) {
       const existing = serviceCounts.get(service.id);
