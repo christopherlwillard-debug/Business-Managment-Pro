@@ -414,6 +414,25 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 **Status:** Accepted
 **Date:** 2026-09-10
 
+## ADR-024
+
+**Title:** Production baseline learning requires explicit global benchmark review
+
+**Decision:** Keep `job_type_benchmarks.estimated_hours` as the only active benchmark source. Store proposed, approved, and rejected changes in `job_type_benchmark_revisions` with the observed production-day summary, sample job IDs, reviewer identity, and captured prior value. Reviews and approvals are available only in the all-business view. Willard must enter benchmark hours explicitly; the system never converts production days into hours.
+
+**Reason:** Production observations are measured in days while the existing benchmark is measured in hours, and the codebase has no documented hours-per-day rule. Existing benchmarks are global, so a business-scoped sample must not silently change shared knowledge. A separate review history preserves evidence without turning observations into an operational or financial ledger.
+
+**Approval safeguard:** Approval is transactional and rejects stale reviews when the current benchmark no longer matches the captured prior value. Rejection leaves the active benchmark unchanged, and only one pending review may exist for a model/benchmark pair.
+
+**Rejected Alternatives:**
+- Automatically converting observed days to hours
+- Letting a business-scoped observation update the shared benchmark
+- Replacing the benchmark table with a learned-value table
+- Updating the benchmark without preserving the prior value and source jobs
+
+**Status:** Accepted
+**Date:** 2026-09-10
+
 ## ADR-023
 
 **Title:** Persistent daily production presence is a Jobs-owned operational fact

@@ -30,6 +30,19 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 - Kept Active Schedule, checklist scheduling, daily logs, labor hours,
   financial behavior, and Knowledge Center learning unchanged.
 
+### Production Intelligence Phase 3: reviewed production baselines
+
+- Added `job_type_benchmark_revisions` as append-only review history while
+  keeping `job_type_benchmarks.estimated_hours` as the active source of truth.
+- Added all-business-only review creation, pending review listing, approval,
+  rejection, duplicate-pending protection, and stale benchmark conflict handling.
+- Approval updates the existing benchmark transactionally and records the prior
+  value, observed production-day summary, source job IDs, reviewer, and decision
+  timestamps; rejection leaves the active benchmark unchanged.
+- Added Knowledge Center controls for explicit benchmark-hour entry, pending
+  approval/rejection, and review history. No automatic days-to-hours conversion
+  or business-scoped global benchmark mutation is allowed.
+
 ### Production Intelligence Phase 2 follow-up: Active Schedule entry point
 
 - Reused the existing `JobPresencePanel` and business-scoped production-presence
