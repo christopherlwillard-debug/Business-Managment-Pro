@@ -140,4 +140,36 @@ describe("production observations", () => {
     });
     expect(response.jobs[0].productionDays).toBeNull();
   });
+
+  it("selects the strongest same-day provenance and the latest equal-strength correction", () => {
+    const response = buildProductionObservationResponse(
+      23,
+      [{
+        id: 10,
+        title: "Corrected same-day presence",
+        status: "completed",
+        workflow: "mh_production",
+        serviceScopes: service(),
+        presence: [
+          { date: "2026-09-02", state: "here", provenance: "inferred", notHereReason: null, notes: "Inferred schedule presence" },
+          { date: "2026-09-01", state: "not_here", provenance: "confirmed", notHereReason: "weather", notes: "Initial weather note" },
+          { date: "2026-09-02", state: "not_here", provenance: "confirmed", notHereReason: "customer_delay", notes: "Confirmed customer correction" },
+          { date: "2026-09-01", state: "not_here", provenance: "confirmed", notHereReason: "material_delay", notes: "Latest confirmed correction" },
+          { date: "2026-09-03", state: "here", provenance: "confirmed", notHereReason: null, notes: null },
+        ],
+      }],
+      { id: null, jobType: null, estimatedHours: null },
+    );
+
+    expect(response.jobs[0]).toMatchObject({
+      exclusionReason: null,
+      presence: [
+        { date: "2026-09-01", state: "not_here", provenance: "confirmed", notHereReason: "material_delay", notes: "Latest confirmed correction" },
+        { date: "2026-09-02", state: "not_here", provenance: "confirmed", notHereReason: "customer_delay", notes: "Confirmed customer correction" },
+        { date: "2026-09-03", state: "here", provenance: "confirmed" },
+      ],
+      productionDays: 1,
+      explicitPauseDays: 2,
+    });
+  });
 });

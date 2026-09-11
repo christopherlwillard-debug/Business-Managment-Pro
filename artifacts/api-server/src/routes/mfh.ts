@@ -897,7 +897,9 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
         provenance: jobDailyPresenceTable.provenance,
         notHereReason: jobDailyPresenceTable.notHereReason,
         notes: jobDailyPresenceTable.notes,
-      }).from(jobDailyPresenceTable).where(inArray(jobDailyPresenceTable.jobId, jobIds))
+      }).from(jobDailyPresenceTable)
+        .where(inArray(jobDailyPresenceTable.jobId, jobIds))
+        .orderBy(asc(jobDailyPresenceTable.jobId), asc(jobDailyPresenceTable.date))
       : [];
   const presenceByJob = new Map<number, typeof presenceRows>();
   for (const row of presenceRows) {
