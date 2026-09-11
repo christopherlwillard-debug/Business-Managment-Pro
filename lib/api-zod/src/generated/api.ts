@@ -467,6 +467,640 @@ export const CreateJobBody = zod.object({
 });
 
 /**
+ * @summary Get open jobs without a definite start date and their production readiness details
+ */
+export const GetReadyToStartJobsQueryParams = zod.object({
+  businessId: zod.coerce.number().optional(),
+});
+
+export const GetReadyToStartJobsResponse = zod.object({
+  readyJobs: zod.array(
+    zod
+      .object({
+        id: zod.number(),
+        title: zod.string(),
+        description: zod.string().nullish(),
+        clientId: zod.number().nullish(),
+        clientName: zod.string().nullish(),
+        subcontractorIds: zod.array(zod.number()).optional(),
+        subcontractorNames: zod.array(zod.string()).optional(),
+        status: zod.enum([
+          "scheduled",
+          "in_progress",
+          "awaiting_approval",
+          "completed",
+          "invoiced",
+          "cancelled",
+          "closed",
+        ]),
+        jobType: zod.string().nullish(),
+        address: zod.string().nullish(),
+        city: zod.string().nullish(),
+        state: zod.string().nullish(),
+        locationName: zod.string().nullish(),
+        startDate: zod.string().nullish(),
+        endDate: zod.string().nullish(),
+        notes: zod.string().nullish(),
+        businessLine: zod.string().nullish(),
+        businessId: zod.number().nullish(),
+        workflow: zod.string().nullish(),
+        planningState: zod
+          .enum(["ready", "scheduled", "waiting", "queue"])
+          .optional(),
+        priority: zod.enum(["urgent", "high", "normal", "low"]).optional(),
+        resourceDemand: zod
+          .enum(["standard", "large_crew", "all_hands"])
+          .optional(),
+        queuePosition: zod.number().nullish(),
+        subPaid: zod.boolean().optional(),
+        includeMileageInJobCosts: zod.boolean().optional(),
+        sqFt: zod.number().nullish(),
+        coats: zod.number().nullish(),
+        phases: zod
+          .array(
+            zod.object({
+              name: zod.string(),
+              completed: zod.boolean(),
+            }),
+          )
+          .nullish(),
+        serviceBilling: zod
+          .object({
+            profileId: zod.number().nullish(),
+            profileName: zod.string().nullish(),
+            techCount: zod.number(),
+            repairHours: zod.number(),
+            driveHours: zod.number(),
+            mileage: zod.number(),
+            parts: zod.array(
+              zod.object({
+                description: zod.string(),
+                quantity: zod.number(),
+                unitCost: zod.number(),
+                reimbursable: zod.boolean(),
+              }),
+            ),
+            rateSnapshot: zod
+              .object({
+                repairRate1Tech: zod.number().nullish(),
+                repairRate2Tech: zod.number().nullish(),
+                driveRate1Tech: zod.number().nullish(),
+                driveRate2Tech: zod.number().nullish(),
+                mileageRate: zod.number().nullish(),
+              })
+              .nullish(),
+            internalLaborRate: zod.number().nullish(),
+            fuelEstimate: zod.number().nullish(),
+            workType: zod.string().nullish(),
+          })
+          .nullish(),
+        permitChecklist: zod.record(zod.string(), zod.unknown()).nullish(),
+        mfhManufacturerId: zod.number().nullish(),
+        mfhModelId: zod.number().nullish(),
+        mfhManufacturerName: zod.string().nullish(),
+        mfhModelName: zod.string().nullish(),
+        mfhModelYear: zod.number().nullish(),
+        mfhConstructionType: zod.string().nullish(),
+        mhProductionServices: zod.array(zod.number()).nullish(),
+        productionComponents: zod
+          .array(
+            zod.object({
+              id: zod.number().nullable(),
+              jobId: zod.number(),
+              businessId: zod.number().nullable(),
+              componentKey: zod.enum([
+                "interior_finish",
+                "siding",
+                "plumbing",
+                "skirting",
+                "custom",
+              ]),
+              componentInstanceKey: zod.string(),
+              componentLabel: zod.string(),
+              variant: zod.enum(["vog", "hybrid", "drywall"]).nullable(),
+              sourceServiceIds: zod.array(zod.number()),
+              sourceServices: zod.array(
+                zod.record(zod.string(), zod.unknown()),
+              ),
+              snapshotVersion: zod.number(),
+              status: zod.enum([
+                "planned",
+                "in_progress",
+                "paused",
+                "completed",
+                "not_applicable",
+              ]),
+              expectedLaborHours: zod.number().nullable(),
+              expectedDurationDays: zod.number().nullable(),
+              expectedCrewSize: zod.number().nullable(),
+              checklistContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              materialContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              pricingContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              knowledgeContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              capturedAt: zod.string().nullable(),
+              supersededAt: zod.string().nullable(),
+              persisted: zod.boolean(),
+              previousSnapshotVersion: zod.number().nullable(),
+              changesFromPrevious: zod.array(
+                zod.object({
+                  field: zod.string(),
+                  label: zod.string(),
+                  before: zod.string(),
+                  after: zod.string(),
+                }),
+              ),
+            }),
+          )
+          .optional(),
+        manHours: zod.number().nullish(),
+        homeModel: zod.string().nullish(),
+        jobNumber: zod.string().nullish(),
+        closedAt: zod.string().nullish(),
+        createdAt: zod.string(),
+      })
+      .and(
+        zod.object({
+          productionComponents: zod.array(
+            zod.object({
+              id: zod.number().nullable(),
+              jobId: zod.number(),
+              businessId: zod.number().nullable(),
+              componentKey: zod.enum([
+                "interior_finish",
+                "siding",
+                "plumbing",
+                "skirting",
+                "custom",
+              ]),
+              componentInstanceKey: zod.string(),
+              componentLabel: zod.string(),
+              variant: zod.enum(["vog", "hybrid", "drywall"]).nullable(),
+              sourceServiceIds: zod.array(zod.number()),
+              sourceServices: zod.array(
+                zod.record(zod.string(), zod.unknown()),
+              ),
+              snapshotVersion: zod.number(),
+              status: zod.enum([
+                "planned",
+                "in_progress",
+                "paused",
+                "completed",
+                "not_applicable",
+              ]),
+              expectedLaborHours: zod.number().nullable(),
+              expectedDurationDays: zod.number().nullable(),
+              expectedCrewSize: zod.number().nullable(),
+              checklistContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              materialContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              pricingContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              knowledgeContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              capturedAt: zod.string().nullable(),
+              supersededAt: zod.string().nullable(),
+              persisted: zod.boolean(),
+              previousSnapshotVersion: zod.number().nullable(),
+              changesFromPrevious: zod.array(
+                zod.object({
+                  field: zod.string(),
+                  label: zod.string(),
+                  before: zod.string(),
+                  after: zod.string(),
+                }),
+              ),
+            }),
+          ),
+          activeReadinessCondition: zod
+            .object({
+              id: zod.number(),
+              jobId: zod.number(),
+              businessId: zod.number(),
+              reason: zod.enum([
+                "electricity",
+                "water",
+                "materials",
+                "inspection",
+                "crew",
+                "access",
+                "other",
+              ]),
+              detail: zod.string().nullish(),
+              expectedDate: zod.date().nullish(),
+              createdAt: zod.date(),
+              createdByUserId: zod.string().nullish(),
+              createdByName: zod.string().nullish(),
+              clearedAt: zod.date().nullish(),
+              clearedByUserId: zod.string().nullish(),
+              clearedByName: zod.string().nullish(),
+            })
+            .nullable(),
+        }),
+      ),
+  ),
+  waitingJobs: zod.array(
+    zod
+      .object({
+        id: zod.number(),
+        title: zod.string(),
+        description: zod.string().nullish(),
+        clientId: zod.number().nullish(),
+        clientName: zod.string().nullish(),
+        subcontractorIds: zod.array(zod.number()).optional(),
+        subcontractorNames: zod.array(zod.string()).optional(),
+        status: zod.enum([
+          "scheduled",
+          "in_progress",
+          "awaiting_approval",
+          "completed",
+          "invoiced",
+          "cancelled",
+          "closed",
+        ]),
+        jobType: zod.string().nullish(),
+        address: zod.string().nullish(),
+        city: zod.string().nullish(),
+        state: zod.string().nullish(),
+        locationName: zod.string().nullish(),
+        startDate: zod.string().nullish(),
+        endDate: zod.string().nullish(),
+        notes: zod.string().nullish(),
+        businessLine: zod.string().nullish(),
+        businessId: zod.number().nullish(),
+        workflow: zod.string().nullish(),
+        planningState: zod
+          .enum(["ready", "scheduled", "waiting", "queue"])
+          .optional(),
+        priority: zod.enum(["urgent", "high", "normal", "low"]).optional(),
+        resourceDemand: zod
+          .enum(["standard", "large_crew", "all_hands"])
+          .optional(),
+        queuePosition: zod.number().nullish(),
+        subPaid: zod.boolean().optional(),
+        includeMileageInJobCosts: zod.boolean().optional(),
+        sqFt: zod.number().nullish(),
+        coats: zod.number().nullish(),
+        phases: zod
+          .array(
+            zod.object({
+              name: zod.string(),
+              completed: zod.boolean(),
+            }),
+          )
+          .nullish(),
+        serviceBilling: zod
+          .object({
+            profileId: zod.number().nullish(),
+            profileName: zod.string().nullish(),
+            techCount: zod.number(),
+            repairHours: zod.number(),
+            driveHours: zod.number(),
+            mileage: zod.number(),
+            parts: zod.array(
+              zod.object({
+                description: zod.string(),
+                quantity: zod.number(),
+                unitCost: zod.number(),
+                reimbursable: zod.boolean(),
+              }),
+            ),
+            rateSnapshot: zod
+              .object({
+                repairRate1Tech: zod.number().nullish(),
+                repairRate2Tech: zod.number().nullish(),
+                driveRate1Tech: zod.number().nullish(),
+                driveRate2Tech: zod.number().nullish(),
+                mileageRate: zod.number().nullish(),
+              })
+              .nullish(),
+            internalLaborRate: zod.number().nullish(),
+            fuelEstimate: zod.number().nullish(),
+            workType: zod.string().nullish(),
+          })
+          .nullish(),
+        permitChecklist: zod.record(zod.string(), zod.unknown()).nullish(),
+        mfhManufacturerId: zod.number().nullish(),
+        mfhModelId: zod.number().nullish(),
+        mfhManufacturerName: zod.string().nullish(),
+        mfhModelName: zod.string().nullish(),
+        mfhModelYear: zod.number().nullish(),
+        mfhConstructionType: zod.string().nullish(),
+        mhProductionServices: zod.array(zod.number()).nullish(),
+        productionComponents: zod
+          .array(
+            zod.object({
+              id: zod.number().nullable(),
+              jobId: zod.number(),
+              businessId: zod.number().nullable(),
+              componentKey: zod.enum([
+                "interior_finish",
+                "siding",
+                "plumbing",
+                "skirting",
+                "custom",
+              ]),
+              componentInstanceKey: zod.string(),
+              componentLabel: zod.string(),
+              variant: zod.enum(["vog", "hybrid", "drywall"]).nullable(),
+              sourceServiceIds: zod.array(zod.number()),
+              sourceServices: zod.array(
+                zod.record(zod.string(), zod.unknown()),
+              ),
+              snapshotVersion: zod.number(),
+              status: zod.enum([
+                "planned",
+                "in_progress",
+                "paused",
+                "completed",
+                "not_applicable",
+              ]),
+              expectedLaborHours: zod.number().nullable(),
+              expectedDurationDays: zod.number().nullable(),
+              expectedCrewSize: zod.number().nullable(),
+              checklistContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              materialContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              pricingContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              knowledgeContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              capturedAt: zod.string().nullable(),
+              supersededAt: zod.string().nullable(),
+              persisted: zod.boolean(),
+              previousSnapshotVersion: zod.number().nullable(),
+              changesFromPrevious: zod.array(
+                zod.object({
+                  field: zod.string(),
+                  label: zod.string(),
+                  before: zod.string(),
+                  after: zod.string(),
+                }),
+              ),
+            }),
+          )
+          .optional(),
+        manHours: zod.number().nullish(),
+        homeModel: zod.string().nullish(),
+        jobNumber: zod.string().nullish(),
+        closedAt: zod.string().nullish(),
+        createdAt: zod.string(),
+      })
+      .and(
+        zod.object({
+          productionComponents: zod.array(
+            zod.object({
+              id: zod.number().nullable(),
+              jobId: zod.number(),
+              businessId: zod.number().nullable(),
+              componentKey: zod.enum([
+                "interior_finish",
+                "siding",
+                "plumbing",
+                "skirting",
+                "custom",
+              ]),
+              componentInstanceKey: zod.string(),
+              componentLabel: zod.string(),
+              variant: zod.enum(["vog", "hybrid", "drywall"]).nullable(),
+              sourceServiceIds: zod.array(zod.number()),
+              sourceServices: zod.array(
+                zod.record(zod.string(), zod.unknown()),
+              ),
+              snapshotVersion: zod.number(),
+              status: zod.enum([
+                "planned",
+                "in_progress",
+                "paused",
+                "completed",
+                "not_applicable",
+              ]),
+              expectedLaborHours: zod.number().nullable(),
+              expectedDurationDays: zod.number().nullable(),
+              expectedCrewSize: zod.number().nullable(),
+              checklistContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              materialContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              pricingContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              knowledgeContext: zod
+                .record(zod.string(), zod.unknown())
+                .nullable(),
+              capturedAt: zod.string().nullable(),
+              supersededAt: zod.string().nullable(),
+              persisted: zod.boolean(),
+              previousSnapshotVersion: zod.number().nullable(),
+              changesFromPrevious: zod.array(
+                zod.object({
+                  field: zod.string(),
+                  label: zod.string(),
+                  before: zod.string(),
+                  after: zod.string(),
+                }),
+              ),
+            }),
+          ),
+          activeReadinessCondition: zod
+            .object({
+              id: zod.number(),
+              jobId: zod.number(),
+              businessId: zod.number(),
+              reason: zod.enum([
+                "electricity",
+                "water",
+                "materials",
+                "inspection",
+                "crew",
+                "access",
+                "other",
+              ]),
+              detail: zod.string().nullish(),
+              expectedDate: zod.date().nullish(),
+              createdAt: zod.date(),
+              createdByUserId: zod.string().nullish(),
+              createdByName: zod.string().nullish(),
+              clearedAt: zod.date().nullish(),
+              clearedByUserId: zod.string().nullish(),
+              clearedByName: zod.string().nullish(),
+            })
+            .nullable(),
+        }),
+      ),
+  ),
+});
+
+/**
+ * @summary Assign an actual start date and move a ready job into the active schedule
+ */
+export const StartJobParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const StartJobBody = zod.object({
+  startDate: zod.date(),
+});
+
+export const StartJobResponse = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  description: zod.string().nullish(),
+  clientId: zod.number().nullish(),
+  clientName: zod.string().nullish(),
+  subcontractorIds: zod.array(zod.number()).optional(),
+  subcontractorNames: zod.array(zod.string()).optional(),
+  status: zod.enum([
+    "scheduled",
+    "in_progress",
+    "awaiting_approval",
+    "completed",
+    "invoiced",
+    "cancelled",
+    "closed",
+  ]),
+  jobType: zod.string().nullish(),
+  address: zod.string().nullish(),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
+  locationName: zod.string().nullish(),
+  startDate: zod.string().nullish(),
+  endDate: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  businessLine: zod.string().nullish(),
+  businessId: zod.number().nullish(),
+  workflow: zod.string().nullish(),
+  planningState: zod
+    .enum(["ready", "scheduled", "waiting", "queue"])
+    .optional(),
+  priority: zod.enum(["urgent", "high", "normal", "low"]).optional(),
+  resourceDemand: zod.enum(["standard", "large_crew", "all_hands"]).optional(),
+  queuePosition: zod.number().nullish(),
+  subPaid: zod.boolean().optional(),
+  includeMileageInJobCosts: zod.boolean().optional(),
+  sqFt: zod.number().nullish(),
+  coats: zod.number().nullish(),
+  phases: zod
+    .array(
+      zod.object({
+        name: zod.string(),
+        completed: zod.boolean(),
+      }),
+    )
+    .nullish(),
+  serviceBilling: zod
+    .object({
+      profileId: zod.number().nullish(),
+      profileName: zod.string().nullish(),
+      techCount: zod.number(),
+      repairHours: zod.number(),
+      driveHours: zod.number(),
+      mileage: zod.number(),
+      parts: zod.array(
+        zod.object({
+          description: zod.string(),
+          quantity: zod.number(),
+          unitCost: zod.number(),
+          reimbursable: zod.boolean(),
+        }),
+      ),
+      rateSnapshot: zod
+        .object({
+          repairRate1Tech: zod.number().nullish(),
+          repairRate2Tech: zod.number().nullish(),
+          driveRate1Tech: zod.number().nullish(),
+          driveRate2Tech: zod.number().nullish(),
+          mileageRate: zod.number().nullish(),
+        })
+        .nullish(),
+      internalLaborRate: zod.number().nullish(),
+      fuelEstimate: zod.number().nullish(),
+      workType: zod.string().nullish(),
+    })
+    .nullish(),
+  permitChecklist: zod.record(zod.string(), zod.unknown()).nullish(),
+  mfhManufacturerId: zod.number().nullish(),
+  mfhModelId: zod.number().nullish(),
+  mfhManufacturerName: zod.string().nullish(),
+  mfhModelName: zod.string().nullish(),
+  mfhModelYear: zod.number().nullish(),
+  mfhConstructionType: zod.string().nullish(),
+  mhProductionServices: zod.array(zod.number()).nullish(),
+  productionComponents: zod
+    .array(
+      zod.object({
+        id: zod.number().nullable(),
+        jobId: zod.number(),
+        businessId: zod.number().nullable(),
+        componentKey: zod.enum([
+          "interior_finish",
+          "siding",
+          "plumbing",
+          "skirting",
+          "custom",
+        ]),
+        componentInstanceKey: zod.string(),
+        componentLabel: zod.string(),
+        variant: zod.enum(["vog", "hybrid", "drywall"]).nullable(),
+        sourceServiceIds: zod.array(zod.number()),
+        sourceServices: zod.array(zod.record(zod.string(), zod.unknown())),
+        snapshotVersion: zod.number(),
+        status: zod.enum([
+          "planned",
+          "in_progress",
+          "paused",
+          "completed",
+          "not_applicable",
+        ]),
+        expectedLaborHours: zod.number().nullable(),
+        expectedDurationDays: zod.number().nullable(),
+        expectedCrewSize: zod.number().nullable(),
+        checklistContext: zod.record(zod.string(), zod.unknown()).nullable(),
+        materialContext: zod.record(zod.string(), zod.unknown()).nullable(),
+        pricingContext: zod.record(zod.string(), zod.unknown()).nullable(),
+        knowledgeContext: zod.record(zod.string(), zod.unknown()).nullable(),
+        capturedAt: zod.string().nullable(),
+        supersededAt: zod.string().nullable(),
+        persisted: zod.boolean(),
+        previousSnapshotVersion: zod.number().nullable(),
+        changesFromPrevious: zod.array(
+          zod.object({
+            field: zod.string(),
+            label: zod.string(),
+            before: zod.string(),
+            after: zod.string(),
+          }),
+        ),
+      }),
+    )
+    .optional(),
+  manHours: zod.number().nullish(),
+  homeModel: zod.string().nullish(),
+  jobNumber: zod.string().nullish(),
+  closedAt: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
  * @summary Get the canonical profit calculation for one job
  */
 export const GetJobProfitParams = zod.object({

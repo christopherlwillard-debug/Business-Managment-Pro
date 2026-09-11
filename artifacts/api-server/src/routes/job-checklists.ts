@@ -19,6 +19,7 @@ import {
   jobSubcontractorsTable,
   subcontractorsTable,
   settingsTable,
+  jobReadinessConditionsTable,
 } from "@workspace/db/schema";
 import { eq, asc, desc, and, inArray, isNull } from "drizzle-orm";
 import { getRequestUser } from "./guards";
@@ -26,6 +27,7 @@ import crypto from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { requestedBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { calculateChecklistProgress } from "../lib/checklist-progress.js";
+import { getJobProductionComponents } from "../lib/job-production-components.js";
 
 const photoUpload = multer({
   storage: multer.memoryStorage(),
@@ -275,6 +277,52 @@ router.get("/checklist-summaries", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load checklist summaries" });
+  }
+});
+
+// ── GET /ready-to-start ────────────────────────────────────────────────────────
+// Read-only readiness view for open jobs without a definite start date. It
+// includes production snapshots and active blockers, but never creates presence
+// records or changes planning state.
+router.get("/ready-to-start", async (req, res) => {
+  try {
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+
+    const allJobs = await db.select().from(jobsTable);
+    const candidateJobs = allJobs.filter(job =>
+      belongsToBusiness(job, scope) &&
+      job.status !== "completed" &&
+      job.status !== "invoiced" &&
+      job.status !== "closed" &&
+      job.closedAt == null &&
+      !job.startDate &&
+      (job.planningState === "ready" || job.planningState === "waiting"),
+    );
+    if (candidateJobs.length === 0) return res.json({ readyJobs: [], waitingJobs: [] });
+
+    const activeConditions = await db.select().from(jobReadinessConditionsTable)
+      .where(and(
+        inArray(jobReadinessConditionsTable.jobId, candidateJobs.map(job => job.id)),
+        isNull(jobReadinessConditionsTable.clearedAt),
+      ))
+      .orderBy(desc(jobReadinessConditionsTable.createdAt));
+    const activeByJob = new Map<number, typeof activeConditions[number]>();
+    for (const condition of activeConditions) {
+      if (!activeByJob.has(condition.jobId)) activeByJob.set(condition.jobId, condition);
+    }
+
+    const enriched = await Promise.all(candidateJobs.map(async job => ({
+      ...job,
+      productionComponents: await getJobProductionComponents(job),
+      activeReadinessCondition: activeByJob.get(job.id) ?? null,
+    })));
+    const waitingJobs = enriched.filter(job => job.planningState === "waiting" || job.activeReadinessCondition != null);
+    const readyJobs = enriched.filter(job => !waitingJobs.includes(job));
+    res.json({ readyJobs, waitingJobs });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load ready-to-start jobs" });
   }
 });
 

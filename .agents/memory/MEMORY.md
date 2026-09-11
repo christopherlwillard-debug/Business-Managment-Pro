@@ -74,3 +74,4 @@
 - [Client business scope](client-business-scope.md) — client list/profile reads use canonical business_id with business_line fallback; related owned rows stay scoped
 - [Production intelligence boundaries](production-intelligence-boundaries.md) — Scheduling owns presence/history; Knowledge Center learns from it; Willard has five production components and Service stays separate
 - [Production learning Phase 3](production-learning-phase3.md) — first learning slice is read-only model/benchmark observation from confirmed presence, with service selections as context
+- [Ready-to-start scheduling boundary](ready-to-start-scheduling-boundary.md) — starting a no-date job only assigns its requested date/state; presence and readiness remain separate

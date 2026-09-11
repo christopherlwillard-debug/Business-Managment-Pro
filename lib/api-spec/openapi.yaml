@@ -303,6 +303,47 @@ paths:
               schema:
                 $ref: "#/components/schemas/Job"
 
+  /jobs/ready-to-start:
+    get:
+      operationId: getReadyToStartJobs
+      tags: [jobs]
+      summary: Get open jobs without a definite start date and their production readiness details
+      parameters:
+        - name: businessId
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Jobs ready to start or waiting on a dependency
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyToStartResponse"
+
+  /jobs/{id}/start:
+    post:
+      operationId: startJob
+      tags: [jobs]
+      summary: Assign an actual start date and move a ready job into the active schedule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartJobRequest"
+      responses:
+        "200":
+          description: Job moved into the active schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
   /jobs/{id}/profit:
     get:
       operationId: getJobProfit
@@ -2165,6 +2206,40 @@ components:
         createdAt:
           type: string
       required: [id, title, status, createdAt]
+
+    StartJobRequest:
+      type: object
+      properties:
+        startDate: { type: string, format: date }
+      required: [startDate]
+
+    ReadyToStartJob:
+      allOf:
+        - $ref: "#/components/schemas/Job"
+        - type: object
+          properties:
+            productionComponents:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProductionComponent"
+            activeReadinessCondition:
+              allOf:
+                - $ref: "#/components/schemas/JobReadinessCondition"
+              nullable: true
+          required: [productionComponents, activeReadinessCondition]
+
+    ReadyToStartResponse:
+      type: object
+      properties:
+        readyJobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadyToStartJob"
+        waitingJobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReadyToStartJob"
+      required: [readyJobs, waitingJobs]
 
     ProductionComponentChange:
       type: object

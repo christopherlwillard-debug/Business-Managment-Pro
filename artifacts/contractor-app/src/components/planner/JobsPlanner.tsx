@@ -8,14 +8,17 @@ import {
   Clock3,
   Layers3,
   ListTodo,
+  Play,
   Settings2,
   Users,
+  X,
 } from "lucide-react";
 import type { Job } from "@workspace/api-client-react";
 import type { ScheduleJob } from "@/pages/Jobs";
 import { localDateString } from "@/lib/utils";
 import { JobPresencePanel, type JobPresenceSnapshot } from "./JobPresencePanel";
 import { JobScheduleHistory } from "./JobScheduleHistory";
+import { useToast } from "@/hooks/use-toast";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -257,6 +260,221 @@ function presenceStatusClassName(state: PresenceState): string {
   return "bg-slate-100 text-slate-700";
 }
 
+function ReadyToStartArea({
+  readyJobs,
+  waitingJobs,
+  loading,
+  error,
+  onStarted,
+}: {
+  readyJobs: ScheduleJob[];
+  waitingJobs: ScheduleJob[];
+  loading: boolean;
+  error: boolean;
+  onStarted: () => void;
+}) {
+  const today = localDateString();
+  const [selectedJob, setSelectedJob] = useState<ScheduleJob | null>(null);
+  const [startMode, setStartMode] = useState<"today" | "specific">("today");
+  const [specificDate, setSpecificDate] = useState(today);
+  const [starting, setStarting] = useState(false);
+  const { toast } = useToast();
+
+  function openStartDialog(job: ScheduleJob) {
+    setSelectedJob(job);
+    setStartMode("today");
+    setSpecificDate(today);
+  }
+
+  async function handleStartJob() {
+    if (!selectedJob) return;
+    const startDate = startMode === "today" ? today : specificDate;
+    if (!startDate) return;
+    setStarting(true);
+    try {
+      const response = await fetch(`${BASE}/api/jobs/${selectedJob.id}/start`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startDate }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(payload?.error || "The job could not be started");
+      toast({ title: "Job moved to Active Schedule", description: `${selectedJob.title} starts ${formatScheduleDate(startDate)}.` });
+      setSelectedJob(null);
+      onStarted();
+    } catch (error) {
+      toast({
+        title: "Job was not started",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  function renderComponents(job: ScheduleJob) {
+    const components = job.productionComponents ?? [];
+    if (components.length === 0) {
+      return <p className="text-xs text-slate-500">No production components captured for this job.</p>;
+    }
+    return (
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {components.map(component => (
+          <span key={component.componentInstanceKey} className="rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-inset ring-slate-200">
+            {component.componentLabel}{component.variant ? ` · ${component.variant.toUpperCase()}` : ""}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  function renderNotes(job: ScheduleJob, tone: "ready" | "waiting") {
+    const blocker = getBlocker(job);
+    const notes = job.notes?.trim();
+    if (!blocker && !notes) return null;
+    return (
+      <div className={`mt-2 space-y-1 text-xs ${tone === "waiting" ? "text-orange-900" : "text-slate-600"}`}>
+        {blocker && <p><span className="font-bold">Dependency:</span> {blocker}</p>}
+        {notes && <p><span className="font-bold">Job notes:</span> {notes}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <section className="border-t border-border bg-slate-50/70 px-4 py-5 sm:px-7" data-testid="planner-ready-to-start">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700">Scheduling follow-up</p>
+          <h3 className="mt-1 text-lg font-bold text-slate-950">Ready to Start / No Start Date</h3>
+          <p className="mt-1 max-w-2xl text-xs text-slate-600">
+            Start a job only when it is ready to work. Starting assigns a real calendar date and does not record daily presence or clear readiness blockers.
+          </p>
+        </div>
+        {!loading && !error && (
+          <span className="text-xs font-bold text-slate-500">
+            {readyJobs.length} ready · {waitingJobs.length} waiting
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <p className="mt-4 text-sm text-slate-500">Loading jobs without start dates…</p>
+      ) : error ? (
+        <p className="mt-4 text-sm text-red-700">Could not load jobs without start dates.</p>
+      ) : (
+        <>
+          {readyJobs.length > 0 ? (
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              {readyJobs.map(job => (
+                <article key={job.id} className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h4 className="truncate font-bold text-slate-950">{job.title}</h4>
+                      <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                        {job.endDate ? `Planned end: ${formatScheduleDate(job.endDate)}` : "No planned end date"}
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-800">Ready</span>
+                  </div>
+                  <p className="mt-3 text-[11px] font-bold uppercase tracking-wide text-slate-500">Production components</p>
+                  {renderComponents(job)}
+                  {renderNotes(job, "ready")}
+                  <button
+                    type="button"
+                    onClick={() => openStartDialog(job)}
+                    className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-emerald-800"
+                    data-testid={`start-job-${job.id}`}
+                  >
+                    <Play className="h-3.5 w-3.5 fill-current" />
+                    Start Job
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 rounded-xl border border-dashed border-emerald-200 bg-white/70 px-4 py-3 text-sm text-slate-600">
+              No ready jobs are waiting for a start date.
+            </p>
+          )}
+
+          {waitingJobs.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-orange-200 bg-orange-50/70 p-4">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-orange-700" />
+                <h4 className="text-sm font-bold text-orange-950">Waiting on a dependency</h4>
+              </div>
+              <p className="mt-1 text-xs text-orange-800">
+                These jobs stay out of Active Schedule until their readiness state is resolved. Starting them here would not clear the dependency.
+              </p>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {waitingJobs.map(job => (
+                  <div key={job.id} className="rounded-xl border border-orange-200 bg-white/80 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="min-w-0 truncate text-sm font-bold text-orange-950">{job.title}</p>
+                      <span className="shrink-0 text-[10px] font-bold uppercase text-orange-700">Waiting</span>
+                    </div>
+                    {renderComponents(job)}
+                    {renderNotes(job, "waiting")}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {selectedJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button type="button" aria-label="Close start job dialog" className="absolute inset-0 bg-black/60" onClick={() => !starting && setSelectedJob(null)} />
+          <div className="relative w-full max-w-md rounded-2xl bg-card p-5 shadow-2xl" data-testid="start-job-dialog">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Start Job</p>
+                <h4 className="mt-1 text-lg font-bold text-foreground">{selectedJob.title}</h4>
+              </div>
+              <button type="button" onClick={() => !starting && setSelectedJob(null)} className="rounded-lg p-1 text-muted-foreground hover:bg-muted" aria-label="Close start job dialog">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Choose the actual date this job should enter Active Schedule. This will not create a presence record.
+            </p>
+            <div className="mt-4 grid gap-2">
+              <label className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm ${startMode === "today" ? "border-emerald-300 bg-emerald-50" : "border-border"}`}>
+                <input type="radio" name="start-date-mode" checked={startMode === "today"} onChange={() => setStartMode("today")} />
+                <span className="font-semibold">Today ({formatScheduleDate(today)})</span>
+              </label>
+              <label className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm ${startMode === "specific" ? "border-emerald-300 bg-emerald-50" : "border-border"}`}>
+                <input type="radio" name="start-date-mode" checked={startMode === "specific"} onChange={() => setStartMode("specific")} />
+                <span className="font-semibold">Specific date</span>
+              </label>
+              {startMode === "specific" && (
+                <input
+                  type="date"
+                  value={specificDate}
+                  onChange={event => setSpecificDate(event.target.value)}
+                  className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                  aria-label="Specific actual start date"
+                />
+              )}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setSelectedJob(null)} disabled={starting} className="rounded-xl border border-border px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted">
+                Cancel
+              </button>
+              <button type="button" onClick={() => void handleStartJob()} disabled={starting || (startMode === "specific" && !specificDate)} className="rounded-xl bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:opacity-50" data-testid="confirm-start-job">
+                {starting ? "Starting…" : "Start Job"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function JobsPlanner({
   businessId,
   allJobs,
@@ -285,6 +503,11 @@ export function JobsPlanner({
   const [view, setView] = useState<PlannerView>("week");
   const [cursor, setCursor] = useState(today);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [readyToStartJobs, setReadyToStartJobs] = useState<ScheduleJob[]>([]);
+  const [waitingToStartJobs, setWaitingToStartJobs] = useState<ScheduleJob[]>([]);
+  const [readyToStartLoading, setReadyToStartLoading] = useState(true);
+  const [readyToStartError, setReadyToStartError] = useState(false);
+  const [localRefreshKey, setLocalRefreshKey] = useState(0);
   const [presenceJobId, setPresenceJobId] = useState<number | null>(null);
   const [presenceSnapshots, setPresenceSnapshots] = useState<Record<number, JobPresenceSnapshot>>({});
   const [presenceLoading, setPresenceLoading] = useState(false);
@@ -371,7 +594,41 @@ export function JobsPlanner({
     return () => controller.abort();
     // onLoaded is intentionally excluded so parent renders do not refetch the schedule.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [businessId, today, requestEnd, retryKey, refreshKey, scheduleMode]);
+  }, [businessId, today, requestEnd, retryKey, refreshKey, localRefreshKey, scheduleMode]);
+
+  useEffect(() => {
+    if (scheduleMode !== "active") return;
+    const controller = new AbortController();
+    const params = new URLSearchParams();
+    if (businessId != null) params.set("businessId", String(businessId));
+    setReadyToStartLoading(true);
+    setReadyToStartError(false);
+    fetch(`${BASE}/api/jobs/ready-to-start${params.toString() ? `?${params.toString()}` : ""}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(response =>
+        response.ok
+          ? response.json() as Promise<{ readyJobs: ScheduleJob[]; waitingJobs: ScheduleJob[] }>
+          : Promise.reject(new Error("Ready-to-start request failed"))
+      )
+      .then(data => {
+        if (controller.signal.aborted) return;
+        setReadyToStartJobs(data.readyJobs);
+        setWaitingToStartJobs(data.waitingJobs);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setReadyToStartJobs([]);
+          setWaitingToStartJobs([]);
+          setReadyToStartError(true);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setReadyToStartLoading(false);
+      });
+    return () => controller.abort();
+  }, [businessId, localRefreshKey, scheduleMode]);
 
   const scheduleJobs = schedule?.jobs ?? [];
   const entries = useMemo(() => createPlannerEntries(scheduleJobs), [scheduleJobs]);
@@ -821,6 +1078,16 @@ export function JobsPlanner({
           </>
         )}
       </div>
+
+      {!loading && !error && (
+        <ReadyToStartArea
+          readyJobs={readyToStartJobs}
+          waitingJobs={waitingToStartJobs}
+          loading={readyToStartLoading}
+          error={readyToStartError}
+          onStarted={() => setLocalRefreshKey(key => key + 1)}
+        />
+      )}
 
       {!loading && !error && (
         <div className="grid gap-3 border-t border-border bg-muted/10 p-4 sm:grid-cols-3 sm:p-5">

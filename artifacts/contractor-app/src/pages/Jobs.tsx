@@ -96,6 +96,7 @@ import { JobMarginCard } from "@/components/JobMarginCard";
 import { JobPlanningDialog } from "@/components/planner/JobPlanningDialog";
 import { ExtendedJob } from "@/components/planner/types";
 import { JobsPlanner } from "@/components/planner/JobsPlanner";
+import type { ReadinessBlocker } from "@/components/planner/types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -133,6 +134,8 @@ type ScheduleItem = {
 export type ScheduleJob = Job & {
   checklistItems: ScheduleItem[];
   unscheduledChecklistItems: ScheduleItem[];
+  productionComponents?: ProductionComponent[];
+  activeReadinessCondition?: ReadinessBlocker | null;
 };
 
 function scheduleDate(date: string): Date {

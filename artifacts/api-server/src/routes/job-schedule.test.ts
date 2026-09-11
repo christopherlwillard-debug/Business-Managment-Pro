@@ -52,6 +52,13 @@ vi.mock("../lib/business-scope.js", () => ({
 }));
 
 vi.mock("./guards", () => ({ getRequestUser: () => ({ id: "user_1", firstName: "Test", lastName: "User" }) }));
+vi.mock("../lib/job-production-components.js", () => ({
+  getJobProductionComponents: async (job: { id: number }) => [{
+    componentInstanceKey: `component:${job.id}`,
+    componentLabel: "Siding",
+    variant: null,
+  }],
+}));
 vi.mock("../lib/objectStorage.js", () => ({ ObjectStorageService: class {} }));
 
 const { default: jobChecklistsRouter } = await import("./job-checklists");
@@ -214,6 +221,55 @@ describe("GET /jobs/schedule-overview", () => {
     expect(response.body.jobs).toHaveLength(1);
     expect(response.body.jobs[0].checklistItems.map((item: any) => item.id)).toEqual([404]);
     expect(response.body.jobs[0].unscheduledChecklistItems).toEqual([]);
+  });
+});
+
+describe("GET /jobs/ready-to-start", () => {
+  it("returns ready and waiting no-date jobs with components and active dependency details", async () => {
+    h.selectQueue.push([
+      {
+        id: 21,
+        title: "Ready production job",
+        status: "scheduled",
+        businessId: 1,
+        businessLine: "general_contracting",
+        startDate: null,
+        endDate: "2026-09-20",
+        closedAt: null,
+        planningState: "ready",
+      },
+      {
+        id: 22,
+        title: "Waiting production job",
+        status: "scheduled",
+        businessId: 1,
+        businessLine: "general_contracting",
+        startDate: null,
+        endDate: null,
+        closedAt: null,
+        planningState: "waiting",
+      },
+    ]);
+    h.selectQueue.push([{
+      id: 220,
+      jobId: 22,
+      businessId: 1,
+      reason: "materials",
+      detail: "Waiting for siding delivery",
+      expectedDate: "2026-09-18",
+      clearedAt: null,
+    }]);
+
+    const response = await request(app).get("/jobs/ready-to-start?businessId=1");
+
+    expect(response.status).toBe(200);
+    expect(response.body.readyJobs.map((job: any) => job.id)).toEqual([21]);
+    expect(response.body.readyJobs[0].productionComponents[0].componentLabel).toBe("Siding");
+    expect(response.body.waitingJobs.map((job: any) => job.id)).toEqual([22]);
+    expect(response.body.waitingJobs[0].activeReadinessCondition).toEqual(expect.objectContaining({
+      reason: "materials",
+      detail: "Waiting for siding delivery",
+    }));
   });
 });
 

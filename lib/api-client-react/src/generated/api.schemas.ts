@@ -298,6 +298,48 @@ export interface Job {
   [key: string]: unknown;
 }
 
+export interface StartJobRequest {
+  startDate: string;
+}
+
+export type JobReadinessConditionReason =
+  (typeof JobReadinessConditionReason)[keyof typeof JobReadinessConditionReason];
+
+export const JobReadinessConditionReason = {
+  electricity: "electricity",
+  water: "water",
+  materials: "materials",
+  inspection: "inspection",
+  crew: "crew",
+  access: "access",
+  other: "other",
+} as const;
+
+export interface JobReadinessCondition {
+  id: number;
+  jobId: number;
+  businessId: number;
+  reason: JobReadinessConditionReason;
+  detail?: string | null;
+  expectedDate?: string | null;
+  createdAt: string;
+  createdByUserId?: string | null;
+  createdByName?: string | null;
+  clearedAt?: string | null;
+  clearedByUserId?: string | null;
+  clearedByName?: string | null;
+}
+
+export type ReadyToStartJob = Job & {
+  productionComponents: ProductionComponent[];
+  activeReadinessCondition: JobReadinessCondition | null;
+};
+
+export interface ReadyToStartResponse {
+  readyJobs: ReadyToStartJob[];
+  waitingJobs: ReadyToStartJob[];
+}
+
 export type UpdateProductionComponentStatusRequestStatus =
   (typeof UpdateProductionComponentStatusRequestStatus)[keyof typeof UpdateProductionComponentStatusRequestStatus];
 
@@ -644,34 +686,6 @@ export interface CreateJobRequest {
   permitChecklist?: CreateJobRequestPermitChecklist;
   includeMileageInJobCosts?: boolean;
   [key: string]: unknown;
-}
-
-export type JobReadinessConditionReason =
-  (typeof JobReadinessConditionReason)[keyof typeof JobReadinessConditionReason];
-
-export const JobReadinessConditionReason = {
-  electricity: "electricity",
-  water: "water",
-  materials: "materials",
-  inspection: "inspection",
-  crew: "crew",
-  access: "access",
-  other: "other",
-} as const;
-
-export interface JobReadinessCondition {
-  id: number;
-  jobId: number;
-  businessId: number;
-  reason: JobReadinessConditionReason;
-  detail?: string | null;
-  expectedDate?: string | null;
-  createdAt: string;
-  createdByUserId?: string | null;
-  createdByName?: string | null;
-  clearedAt?: string | null;
-  clearedByUserId?: string | null;
-  clearedByName?: string | null;
 }
 
 export type JobReadinessConditionInputReason =
@@ -1776,6 +1790,10 @@ export type ListClientsParams = {
 export type ListJobsParams = {
   status?: string;
   clientId?: number;
+};
+
+export type GetReadyToStartJobsParams = {
+  businessId?: number;
 };
 
 export type GetJobsProfitSummaryParams = {

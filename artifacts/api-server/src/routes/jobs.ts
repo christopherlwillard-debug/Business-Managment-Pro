@@ -37,6 +37,13 @@ import {
 
 const router = Router();
 
+function isDateOnly(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 function catalogPhotoUrl(objectPath: string | null | undefined): string | null {
   if (!objectPath) return null;
   if (objectPath.startsWith("/objects/")) {
@@ -2378,6 +2385,51 @@ router.post("/:id/readiness/:conditionId/clear", async (req, res) => {
   } catch (err) {
     (req as typeof req & { log: { error: (data: unknown, message: string) => void } }).log.error({ err }, "Failed to clear job readiness condition");
     res.status(500).json({ error: "Failed to clear readiness condition" });
+  }
+});
+
+// Start is a scheduling transition only. It assigns the requested real start
+// date and moves the planning state to scheduled; it never writes presence or
+// clears readiness conditions.
+router.post("/:id/start", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid job id" });
+    const startDate = req.body?.startDate;
+    if (!isDateOnly(startDate)) return res.status(400).json({ error: "startDate must be a valid YYYY-MM-DD date" });
+
+    const scope = await requestedBusiness(req);
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!job || !scope || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
+    if (job.status === "completed" || job.status === "invoiced" || job.status === "closed" || job.closedAt != null) {
+      return res.status(409).json({ error: "Closed jobs cannot be started from the active schedule" });
+    }
+    if (job.startDate) return res.status(409).json({ error: "Job already has a start date" });
+    if (job.planningState !== "ready") {
+      return res.status(409).json({ error: "Only jobs marked ready to schedule can be started" });
+    }
+
+    const [activeCondition] = await db.select({ id: jobReadinessConditionsTable.id })
+      .from(jobReadinessConditionsTable)
+      .where(and(
+        eq(jobReadinessConditionsTable.jobId, id),
+        eq(jobReadinessConditionsTable.businessId, scope.id),
+        isNull(jobReadinessConditionsTable.clearedAt),
+      ))
+      .limit(1);
+    if (activeCondition) {
+      return res.status(409).json({ error: "Clear the active readiness blocker before starting this job" });
+    }
+
+    const [updated] = await db.update(jobsTable)
+      .set({ startDate, planningState: "scheduled" })
+      .where(and(eq(jobsTable.id, id), isNull(jobsTable.startDate)))
+      .returning();
+    if (!updated) return res.status(409).json({ error: "Job changed before it could be started" });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to start job" });
   }
 });
 

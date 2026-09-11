@@ -45,6 +45,7 @@ import type {
   GetJobsProfitSummary200,
   GetJobsProfitSummaryParams,
   GetMileageSummaryParams,
+  GetReadyToStartJobsParams,
   GetTrimOutCatalogParams,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
@@ -78,8 +79,10 @@ import type {
   PrepareInvoiceCommunicationRequest,
   ProductionComponent,
   ProductionScopeSectionInput,
+  ReadyToStartResponse,
   RecurringExpense,
   ResetPortalPin200,
+  StartJobRequest,
   Subcontractor,
   TaxReportRow,
   TrimOutCatalogResponse,
@@ -1316,6 +1319,193 @@ export const useCreateJob = <
   TContext
 > => {
   return useMutation(getCreateJobMutationOptions(options));
+};
+
+/**
+ * @summary Get open jobs without a definite start date and their production readiness details
+ */
+export const getGetReadyToStartJobsUrl = (
+  params?: GetReadyToStartJobsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/ready-to-start?${stringifiedParams}`
+    : `/api/jobs/ready-to-start`;
+};
+
+export const getReadyToStartJobs = async (
+  params?: GetReadyToStartJobsParams,
+  options?: RequestInit,
+): Promise<ReadyToStartResponse> => {
+  return customFetch<ReadyToStartResponse>(getGetReadyToStartJobsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetReadyToStartJobsQueryKey = (
+  params?: GetReadyToStartJobsParams,
+) => {
+  return [`/api/jobs/ready-to-start`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetReadyToStartJobsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getReadyToStartJobs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetReadyToStartJobsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReadyToStartJobs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetReadyToStartJobsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getReadyToStartJobs>>
+  > = ({ signal }) =>
+    getReadyToStartJobs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getReadyToStartJobs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetReadyToStartJobsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getReadyToStartJobs>>
+>;
+export type GetReadyToStartJobsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get open jobs without a definite start date and their production readiness details
+ */
+
+export function useGetReadyToStartJobs<
+  TData = Awaited<ReturnType<typeof getReadyToStartJobs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetReadyToStartJobsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReadyToStartJobs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetReadyToStartJobsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Assign an actual start date and move a ready job into the active schedule
+ */
+export const getStartJobUrl = (id: number) => {
+  return `/api/jobs/${id}/start`;
+};
+
+export const startJob = async (
+  id: number,
+  startJobRequest: StartJobRequest,
+  options?: RequestInit,
+): Promise<Job> => {
+  return customFetch<Job>(getStartJobUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(startJobRequest),
+  });
+};
+
+export const getStartJobMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startJob>>,
+    TError,
+    { id: number; data: BodyType<StartJobRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof startJob>>,
+  TError,
+  { id: number; data: BodyType<StartJobRequest> },
+  TContext
+> => {
+  const mutationKey = ["startJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof startJob>>,
+    { id: number; data: BodyType<StartJobRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return startJob(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StartJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof startJob>>
+>;
+export type StartJobMutationBody = BodyType<StartJobRequest>;
+export type StartJobMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Assign an actual start date and move a ready job into the active schedule
+ */
+export const useStartJob = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startJob>>,
+    TError,
+    { id: number; data: BodyType<StartJobRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof startJob>>,
+  TError,
+  { id: number; data: BodyType<StartJobRequest> },
+  TContext
+> => {
+  return useMutation(getStartJobMutationOptions(options));
 };
 
 /**
