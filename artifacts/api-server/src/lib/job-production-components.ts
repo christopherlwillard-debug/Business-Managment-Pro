@@ -54,6 +54,15 @@ export type ProductionComponentView = {
   capturedAt: string | null;
   supersededAt: string | null;
   persisted: boolean;
+  previousSnapshotVersion: number | null;
+  changesFromPrevious: ProductionComponentChange[];
+};
+
+export type ProductionComponentChange = {
+  field: string;
+  label: string;
+  before: string;
+  after: string;
 };
 
 type ComponentDraft = {
@@ -167,7 +176,113 @@ function iso(value: Date | null | undefined): string | null {
   return value instanceof Date ? value.toISOString() : value ? new Date(value).toISOString() : null;
 }
 
-function rowToView(row: JobProductionComponent): ProductionComponentView {
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
+}
+
+function sourceServiceSummary(row: JobProductionComponent): string {
+  const services = row.sourceServices ?? [];
+  if (!services.length) return "None";
+  return services.map(service => {
+    const details = [service.itemKey, service.category].filter(Boolean).join(" · ");
+    return details ? `${service.name} (${details})` : service.name;
+  }).join(", ");
+}
+
+function contextSummary(value: Record<string, unknown> | null): string {
+  if (!value || Object.keys(value).length === 0) return "Not set";
+  const summary = stableStringify(value);
+  return summary.length > 240 ? `${summary.slice(0, 237)}…` : summary;
+}
+
+function comparisonFields(row: JobProductionComponent): Array<{
+  field: string;
+  label: string;
+  comparisonValue: unknown;
+  displayValue: string;
+}> {
+  return [
+    {
+      field: "sourceServices",
+      label: "Source services",
+      comparisonValue: {
+        sourceServiceIds: row.sourceServiceIds ?? [],
+        sourceServices: row.sourceServices ?? [],
+      },
+      displayValue: sourceServiceSummary(row),
+    },
+    {
+      field: "expectedLaborHours",
+      label: "Expected labor hours",
+      comparisonValue: row.expectedLaborHours,
+      displayValue: row.expectedLaborHours == null ? "Not set" : `${row.expectedLaborHours} hours`,
+    },
+    {
+      field: "expectedDurationDays",
+      label: "Expected duration",
+      comparisonValue: row.expectedDurationDays,
+      displayValue: row.expectedDurationDays == null ? "Not set" : `${row.expectedDurationDays} days`,
+    },
+    {
+      field: "expectedCrewSize",
+      label: "Expected crew size",
+      comparisonValue: row.expectedCrewSize,
+      displayValue: row.expectedCrewSize == null ? "Not set" : `${row.expectedCrewSize} people`,
+    },
+    {
+      field: "checklistContext",
+      label: "Checklist context",
+      comparisonValue: row.checklistContext,
+      displayValue: contextSummary(row.checklistContext),
+    },
+    {
+      field: "materialContext",
+      label: "Material context",
+      comparisonValue: row.materialContext,
+      displayValue: contextSummary(row.materialContext),
+    },
+    {
+      field: "pricingContext",
+      label: "Pricing context",
+      comparisonValue: row.pricingContext,
+      displayValue: contextSummary(row.pricingContext),
+    },
+    {
+      field: "knowledgeContext",
+      label: "Knowledge Center context",
+      comparisonValue: row.knowledgeContext,
+      displayValue: contextSummary(row.knowledgeContext),
+    },
+  ];
+}
+
+function changesFromPrevious(
+  previous: JobProductionComponent | null,
+  current: JobProductionComponent,
+): ProductionComponentChange[] {
+  if (!previous) return [];
+  const previousFields = comparisonFields(previous);
+  return comparisonFields(current)
+    .map((field, index) => {
+      const before = previousFields[index];
+      if (stableStringify(before.comparisonValue) === stableStringify(field.comparisonValue)) return null;
+      return {
+        field: field.field,
+        label: field.label,
+        before: before.displayValue,
+        after: field.displayValue,
+      };
+    })
+    .filter((change): change is ProductionComponentChange => change != null);
+}
+
+function rowToView(
+  row: JobProductionComponent,
+  previous: JobProductionComponent | null = null,
+): ProductionComponentView {
   return {
     id: row.id,
     jobId: row.jobId,
@@ -190,6 +305,8 @@ function rowToView(row: JobProductionComponent): ProductionComponentView {
     capturedAt: iso(row.capturedAt),
     supersededAt: iso(row.supersededAt),
     persisted: true,
+    previousSnapshotVersion: previous?.snapshotVersion ?? null,
+    changesFromPrevious: changesFromPrevious(previous, row),
   };
 }
 
@@ -418,13 +535,25 @@ export async function getJobProductionComponentHistory(job: Job): Promise<Produc
     .where(eq(jobProductionComponentsTable.jobId, job.id))
     .orderBy(asc(jobProductionComponentsTable.componentInstanceKey), desc(jobProductionComponentsTable.snapshotVersion));
 
-  if (rows.length) return rows.map(rowToView);
+  if (rows.length) {
+    const rowsByInstance = new Map<string, JobProductionComponent[]>();
+    for (const row of rows) {
+      const instanceRows = rowsByInstance.get(row.componentInstanceKey) ?? [];
+      instanceRows.push(row);
+      rowsByInstance.set(row.componentInstanceKey, instanceRows);
+    }
+    return rows.map(row => {
+      const previous = rowsByInstance.get(row.componentInstanceKey)
+        ?.find(candidate => candidate.snapshotVersion < row.snapshotVersion) ?? null;
+      return rowToView(row, previous);
+    });
+  }
   return getJobProductionComponents(job);
 }
 
 export async function getJobProductionComponents(job: Job): Promise<ProductionComponentView[]> {
   const current = await getCurrentJobProductionComponents(job.id);
-  if (current.length) return current.map(rowToView);
+  if (current.length) return current.map(row => rowToView(row));
 
   const drafts = await buildDrafts(job);
   return drafts.map((draft): ProductionComponentView => ({
@@ -449,6 +578,8 @@ export async function getJobProductionComponents(job: Job): Promise<ProductionCo
     capturedAt: null,
     supersededAt: null,
     persisted: false,
+    previousSnapshotVersion: null,
+    changesFromPrevious: [],
   }));
 }
 
@@ -509,7 +640,7 @@ export async function syncJobProductionComponents(job: Job): Promise<ProductionC
   });
 
   const current = await getCurrentJobProductionComponents(job.id);
-  return current.map(rowToView);
+  return current.map(row => rowToView(row));
 }
 
 export async function setJobProductionComponentStatus(

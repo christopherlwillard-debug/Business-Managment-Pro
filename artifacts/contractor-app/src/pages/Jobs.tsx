@@ -6062,6 +6062,23 @@ function JobCard({
                             <div className="mt-0.5 text-[10px] leading-4 text-muted-foreground">
                               Source services: {productionSourceLabel(component)}
                             </div>
+                            {component.previousSnapshotVersion != null && component.changesFromPrevious.length > 0 && (
+                              <div className="mt-1.5 rounded border border-blue-200/80 bg-blue-50/50 px-1.5 py-1 text-[10px] leading-4 text-blue-950">
+                                <div className="font-bold text-blue-800">
+                                  Changed from version {component.previousSnapshotVersion}
+                                </div>
+                                <div className="mt-0.5 grid gap-0.5">
+                                  {component.changesFromPrevious.map(change => (
+                                    <div key={change.field} className="break-words">
+                                      <span className="font-semibold">{change.label}:</span>{" "}
+                                      <span className="text-blue-800">{change.before}</span>
+                                      {" → "}
+                                      <span className="font-medium">{change.after}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}

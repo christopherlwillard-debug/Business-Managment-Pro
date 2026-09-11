@@ -136,6 +136,7 @@ export * from "./prepareInvoiceCommunicationRequest";
 export * from "./prepareInvoiceCommunicationRequestEventType";
 export * from "./prepareInvoiceCommunicationRequestMetadata";
 export * from "./productionComponent";
+export * from "./productionComponentChange";
 export * from "./productionComponentChecklistContext";
 export * from "./productionComponentComponentKey";
 export * from "./productionComponentKnowledgeContext";

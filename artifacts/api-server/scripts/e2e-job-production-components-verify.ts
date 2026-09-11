@@ -322,7 +322,11 @@ async function main() {
         && historyView.text.includes("Current")
         && historyView.text.includes("Superseded")
         && historyView.text.includes("Captured")
-        && historyView.text.includes("Source services"),
+        && historyView.text.includes("Source services")
+        && historyView.text.includes("Changed from version 1")
+        && historyView.text.includes("Expected duration:")
+        && historyView.text.includes("2 days")
+        && historyView.text.includes("3 days"),
       historyView
         ? `superseded row selects=${historyView.supersededRowSelectCount}`
         : "history panel not found",

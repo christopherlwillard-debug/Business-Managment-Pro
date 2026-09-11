@@ -359,6 +359,15 @@ export const ListJobsResponseItem = zod.object({
         capturedAt: zod.string().nullable(),
         supersededAt: zod.string().nullable(),
         persisted: zod.boolean(),
+        previousSnapshotVersion: zod.number().nullable(),
+        changesFromPrevious: zod.array(
+          zod.object({
+            field: zod.string(),
+            label: zod.string(),
+            before: zod.string(),
+            after: zod.string(),
+          }),
+        ),
       }),
     )
     .optional(),
@@ -607,6 +616,15 @@ export const GetJobProductionComponentsResponseItem = zod.object({
   capturedAt: zod.string().nullable(),
   supersededAt: zod.string().nullable(),
   persisted: zod.boolean(),
+  previousSnapshotVersion: zod.number().nullable(),
+  changesFromPrevious: zod.array(
+    zod.object({
+      field: zod.string(),
+      label: zod.string(),
+      before: zod.string(),
+      after: zod.string(),
+    }),
+  ),
 });
 export const GetJobProductionComponentsResponse = zod.array(
   GetJobProductionComponentsResponseItem,
@@ -660,6 +678,15 @@ export const GetJobProductionComponentHistoryResponseItem = zod.object({
   capturedAt: zod.string().nullable(),
   supersededAt: zod.string().nullable(),
   persisted: zod.boolean(),
+  previousSnapshotVersion: zod.number().nullable(),
+  changesFromPrevious: zod.array(
+    zod.object({
+      field: zod.string(),
+      label: zod.string(),
+      before: zod.string(),
+      after: zod.string(),
+    }),
+  ),
 });
 export const GetJobProductionComponentHistoryResponse = zod.array(
   GetJobProductionComponentHistoryResponseItem,
@@ -717,6 +744,15 @@ export const UpdateJobProductionComponentStatusResponse = zod.object({
   capturedAt: zod.string().nullable(),
   supersededAt: zod.string().nullable(),
   persisted: zod.boolean(),
+  previousSnapshotVersion: zod.number().nullable(),
+  changesFromPrevious: zod.array(
+    zod.object({
+      field: zod.string(),
+      label: zod.string(),
+      before: zod.string(),
+      after: zod.string(),
+    }),
+  ),
 });
 
 /**
@@ -1135,6 +1171,15 @@ export const GetJobResponse = zod.object({
         capturedAt: zod.string().nullable(),
         supersededAt: zod.string().nullable(),
         persisted: zod.boolean(),
+        previousSnapshotVersion: zod.number().nullable(),
+        changesFromPrevious: zod.array(
+          zod.object({
+            field: zod.string(),
+            label: zod.string(),
+            before: zod.string(),
+            after: zod.string(),
+          }),
+        ),
       }),
     )
     .optional(),
@@ -1356,6 +1401,15 @@ export const UpdateJobResponse = zod.object({
         capturedAt: zod.string().nullable(),
         supersededAt: zod.string().nullable(),
         persisted: zod.boolean(),
+        previousSnapshotVersion: zod.number().nullable(),
+        changesFromPrevious: zod.array(
+          zod.object({
+            field: zod.string(),
+            label: zod.string(),
+            before: zod.string(),
+            after: zod.string(),
+          }),
+        ),
       }),
     )
     .optional(),
@@ -3229,6 +3283,15 @@ export const GetDashboardStatsResponse = zod.object({
             capturedAt: zod.string().nullable(),
             supersededAt: zod.string().nullable(),
             persisted: zod.boolean(),
+            previousSnapshotVersion: zod.number().nullable(),
+            changesFromPrevious: zod.array(
+              zod.object({
+                field: zod.string(),
+                label: zod.string(),
+                before: zod.string(),
+                after: zod.string(),
+              }),
+            ),
           }),
         )
         .optional(),

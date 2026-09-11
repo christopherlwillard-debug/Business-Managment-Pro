@@ -2166,6 +2166,15 @@ components:
           type: string
       required: [id, title, status, createdAt]
 
+    ProductionComponentChange:
+      type: object
+      properties:
+        field: { type: string }
+        label: { type: string }
+        before: { type: string }
+        after: { type: string }
+      required: [field, label, before, after]
+
     ProductionComponent:
       type: object
       properties:
@@ -2203,6 +2212,11 @@ components:
         capturedAt: { type: string, nullable: true }
         supersededAt: { type: string, nullable: true }
         persisted: { type: boolean }
+        previousSnapshotVersion: { type: integer, nullable: true }
+        changesFromPrevious:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductionComponentChange"
       required:
         - id
         - jobId
@@ -2225,6 +2239,8 @@ components:
         - capturedAt
         - supersededAt
         - persisted
+        - previousSnapshotVersion
+        - changesFromPrevious
 
     UpdateProductionComponentStatusRequest:
       type: object

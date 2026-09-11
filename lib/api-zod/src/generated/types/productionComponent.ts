@@ -5,6 +5,7 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { ProductionComponentChange } from "./productionComponentChange";
 import type { ProductionComponentChecklistContext } from "./productionComponentChecklistContext";
 import type { ProductionComponentComponentKey } from "./productionComponentComponentKey";
 import type { ProductionComponentKnowledgeContext } from "./productionComponentKnowledgeContext";
@@ -36,4 +37,6 @@ export interface ProductionComponent {
   capturedAt: string | null;
   supersededAt: string | null;
   persisted: boolean;
+  previousSnapshotVersion: number | null;
+  changesFromPrevious: ProductionComponentChange[];
 }

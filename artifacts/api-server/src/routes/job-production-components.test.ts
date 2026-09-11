@@ -522,8 +522,8 @@ describe("authenticated production component Jobs API", () => {
         expectedLaborHours: "12",
         expectedDurationDays: 2,
         expectedCrewSize: 2,
-        checklistContext: null,
-        materialContext: null,
+        checklistContext: { templateName: "Base checklist" },
+        materialContext: { listName: "Base materials" },
         pricingContext: null,
         knowledgeContext: null,
         capturedAt: new Date("2026-09-10T12:00:00Z"),
@@ -544,8 +544,8 @@ describe("authenticated production component Jobs API", () => {
         expectedLaborHours: "14",
         expectedDurationDays: 3,
         expectedCrewSize: 2,
-        checklistContext: null,
-        materialContext: null,
+        checklistContext: { templateName: "Revised checklist" },
+        materialContext: { listName: "Revised materials" },
         pricingContext: null,
         knowledgeContext: null,
         capturedAt: new Date("2026-09-11T12:00:00Z"),
@@ -562,12 +562,47 @@ describe("authenticated production component Jobs API", () => {
     expect(current).toEqual(expect.objectContaining({
       snapshotVersion: 2,
       supersededAt: null,
+      previousSnapshotVersion: 1,
       capturedAt: "2026-09-11T12:00:00.000Z",
       sourceServices: [expect.objectContaining({ name: "VOG Interior Finish — revised" })],
     }));
+    expect(current.changesFromPrevious).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        field: "sourceServices",
+        label: "Source services",
+        before: expect.stringContaining("VOG Interior Finish"),
+        after: expect.stringContaining("VOG Interior Finish — revised"),
+      }),
+      expect.objectContaining({
+        field: "expectedLaborHours",
+        label: "Expected labor hours",
+        before: "12 hours",
+        after: "14 hours",
+      }),
+      expect.objectContaining({
+        field: "expectedDurationDays",
+        label: "Expected duration",
+        before: "2 days",
+        after: "3 days",
+      }),
+      expect.objectContaining({
+        field: "checklistContext",
+        label: "Checklist context",
+        before: expect.stringContaining("Base checklist"),
+        after: expect.stringContaining("Revised checklist"),
+      }),
+      expect.objectContaining({
+        field: "materialContext",
+        label: "Material context",
+        before: expect.stringContaining("Base materials"),
+        after: expect.stringContaining("Revised materials"),
+      }),
+    ]));
     expect(superseded).toEqual(expect.objectContaining({
       snapshotVersion: 1,
       supersededAt: "2026-09-11T12:00:00.000Z",
+      previousSnapshotVersion: null,
+      changesFromPrevious: [],
       sourceServices: [expect.objectContaining({ name: "VOG Interior Finish" })],
     }));
 

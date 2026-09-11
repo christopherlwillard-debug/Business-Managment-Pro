@@ -200,6 +200,13 @@ export const ProductionComponentStatus = {
   not_applicable: "not_applicable",
 } as const;
 
+export interface ProductionComponentChange {
+  field: string;
+  label: string;
+  before: string;
+  after: string;
+}
+
 export type ProductionComponentSourceServicesItem = { [key: string]: unknown };
 
 export type ProductionComponentChecklistContext = {
@@ -240,6 +247,8 @@ export interface ProductionComponent {
   capturedAt: string | null;
   supersededAt: string | null;
   persisted: boolean;
+  previousSnapshotVersion: number | null;
+  changesFromPrevious: ProductionComponentChange[];
 }
 
 export interface Job {
