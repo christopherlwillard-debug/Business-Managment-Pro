@@ -169,7 +169,7 @@ describe("production observations", () => {
         { date: "2026-09-03", state: "here", provenance: "confirmed" },
       ],
       productionDays: 1,
-      explicitPauseDays: 2,
+      explicitPauseDays: 0,
     });
   });
 });

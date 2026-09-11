@@ -68,6 +68,28 @@ export type ProductionObservationResponse = {
 
 export const MINIMUM_SAMPLE_SIZE = 3;
 
+const PRESENCE_PROVENANCE_RANK: Record<string, number> = {
+  snapshot: 0,
+  derived: 1,
+  inferred: 2,
+  confirmed: 3,
+};
+
+export function normalizeObservationPresence(records: ObservationPresenceRecord[]): ObservationPresenceRecord[] {
+  const recordByDate = new Map<string, ObservationPresenceRecord>();
+  for (const record of records) {
+    const current = recordByDate.get(record.date);
+    if (!current) {
+      recordByDate.set(record.date, record);
+      continue;
+    }
+    const currentRank = PRESENCE_PROVENANCE_RANK[current.provenance] ?? -1;
+    const nextRank = PRESENCE_PROVENANCE_RANK[record.provenance] ?? -1;
+    if (nextRank >= currentRank) recordByDate.set(record.date, record);
+  }
+  return [...recordByDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
 function parseDate(date: string): Date {
   return new Date(`${date}T00:00:00Z`);
 }
@@ -103,9 +125,8 @@ export function calculateProductionObservation(records: ObservationPresenceRecor
   firstProductionDate: string;
   lastProductionDate: string;
 } | null {
-  const confirmed = records
-    .filter((record) => record.provenance === "confirmed")
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const confirmed = normalizeObservationPresence(records)
+    .filter((record) => record.provenance === "confirmed");
   const hereDates = confirmed.filter((record) => record.state === "here").map((record) => record.date);
   if (hereDates.length === 0) return null;
 
@@ -145,12 +166,13 @@ export function buildProductionObservationResponse(
   for (const job of jobs) {
     if (job.status !== "completed" && job.status !== "invoiced") continue;
     if (job.workflow !== "mh_production" || job.serviceScopes.length === 0) continue;
-    const observation = calculateProductionObservation(job.presence);
+    const presence = normalizeObservationPresence(job.presence);
+    const observation = calculateProductionObservation(presence);
     observedJobs.push({
       id: job.id,
       title: job.title,
       status: job.status,
-      presence: job.presence,
+      presence,
       productionDays: observation?.productionDays ?? null,
       calendarSpanDays: observation?.calendarSpanDays ?? null,
       explicitPauseDays: observation?.explicitPauseDays ?? 0,
