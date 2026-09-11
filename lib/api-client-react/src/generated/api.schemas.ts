@@ -238,6 +238,7 @@ export interface ProductionComponent {
   pricingContext: ProductionComponentPricingContext;
   knowledgeContext: ProductionComponentKnowledgeContext;
   capturedAt: string | null;
+  supersededAt: string | null;
   persisted: boolean;
 }
 

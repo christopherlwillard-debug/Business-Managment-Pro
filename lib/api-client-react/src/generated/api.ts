@@ -1587,6 +1587,101 @@ export const useSnapshotJobProductionComponents = <
 };
 
 /**
+ * @summary Get current and superseded job-specific production component snapshots
+ */
+export const getGetJobProductionComponentHistoryUrl = (id: number) => {
+  return `/api/jobs/${id}/production-components/history`;
+};
+
+export const getJobProductionComponentHistory = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ProductionComponent[]> => {
+  return customFetch<ProductionComponent[]>(
+    getGetJobProductionComponentHistoryUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetJobProductionComponentHistoryQueryKey = (id: number) => {
+  return [`/api/jobs/${id}/production-components/history`] as const;
+};
+
+export const getGetJobProductionComponentHistoryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getJobProductionComponentHistory>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobProductionComponentHistory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetJobProductionComponentHistoryQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getJobProductionComponentHistory>>
+  > = ({ signal }) =>
+    getJobProductionComponentHistory(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getJobProductionComponentHistory>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetJobProductionComponentHistoryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getJobProductionComponentHistory>>
+>;
+export type GetJobProductionComponentHistoryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get current and superseded job-specific production component snapshots
+ */
+
+export function useGetJobProductionComponentHistory<
+  TData = Awaited<ReturnType<typeof getJobProductionComponentHistory>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobProductionComponentHistory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetJobProductionComponentHistoryQueryOptions(
+    id,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Update one production component status
  */
 export const getUpdateJobProductionComponentStatusUrl = (id: number) => {

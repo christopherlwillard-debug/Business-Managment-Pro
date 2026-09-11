@@ -454,6 +454,78 @@ describe("authenticated production component Jobs API", () => {
     expect(h.updatePayloads).toHaveLength(0);
   });
 
+  it("returns current and superseded snapshots with source services and denies cross-business history reads", async () => {
+    h.jobs.push(jobDefaults({ id: 40 }));
+    h.components.push(
+      {
+        id: 1,
+        jobId: 40,
+        businessId: 1,
+        componentKey: "interior_finish",
+        componentInstanceKey: "interior_finish:vog",
+        componentLabel: "Interior Finish",
+        variant: "vog",
+        sourceServiceIds: [101],
+        sourceServices: [h.services[0]],
+        snapshotVersion: 1,
+        status: "planned",
+        expectedLaborHours: "12",
+        expectedDurationDays: 2,
+        expectedCrewSize: 2,
+        checklistContext: null,
+        materialContext: null,
+        pricingContext: null,
+        knowledgeContext: null,
+        capturedAt: new Date("2026-09-10T12:00:00Z"),
+        supersededAt: new Date("2026-09-11T12:00:00Z"),
+      },
+      {
+        id: 2,
+        jobId: 40,
+        businessId: 1,
+        componentKey: "interior_finish",
+        componentInstanceKey: "interior_finish:vog",
+        componentLabel: "Interior Finish",
+        variant: "vog",
+        sourceServiceIds: [101],
+        sourceServices: [{ ...h.services[0], name: "VOG Interior Finish — revised" }],
+        snapshotVersion: 2,
+        status: "in_progress",
+        expectedLaborHours: "14",
+        expectedDurationDays: 3,
+        expectedCrewSize: 2,
+        checklistContext: null,
+        materialContext: null,
+        pricingContext: null,
+        knowledgeContext: null,
+        capturedAt: new Date("2026-09-11T12:00:00Z"),
+        supersededAt: null,
+      },
+    );
+
+    const response = await request(app).get("/jobs/40/production-components/history?businessId=1");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveLength(2);
+    const current = response.body.find((component: any) => component.snapshotVersion === 2);
+    const superseded = response.body.find((component: any) => component.snapshotVersion === 1);
+    expect(current).toEqual(expect.objectContaining({
+      snapshotVersion: 2,
+      supersededAt: null,
+      capturedAt: "2026-09-11T12:00:00.000Z",
+      sourceServices: [expect.objectContaining({ name: "VOG Interior Finish — revised" })],
+    }));
+    expect(superseded).toEqual(expect.objectContaining({
+      snapshotVersion: 1,
+      supersededAt: "2026-09-11T12:00:00.000Z",
+      sourceServices: [expect.objectContaining({ name: "VOG Interior Finish" })],
+    }));
+
+    h.jobs[0].businessId = 2;
+    const denied = await request(app).get("/jobs/40/production-components/history?businessId=1");
+    expect(denied.status).toBe(404);
+  });
+
   it("keeps legacy service selections readable after the persisted component projection is queried", async () => {
     h.jobs.push(jobDefaults({ id: 30, mhProductionServices: [101, 102, 103, 104] }));
 

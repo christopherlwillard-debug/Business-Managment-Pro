@@ -52,6 +52,7 @@ export type ProductionComponentView = {
   pricingContext: Record<string, unknown> | null;
   knowledgeContext: Record<string, unknown> | null;
   capturedAt: string | null;
+  supersededAt: string | null;
   persisted: boolean;
 };
 
@@ -187,6 +188,7 @@ function rowToView(row: JobProductionComponent): ProductionComponentView {
     pricingContext: row.pricingContext ?? null,
     knowledgeContext: row.knowledgeContext ?? null,
     capturedAt: iso(row.capturedAt),
+    supersededAt: iso(row.supersededAt),
     persisted: true,
   };
 }
@@ -409,6 +411,17 @@ export async function getCurrentJobProductionComponents(jobId: number): Promise<
     .orderBy(asc(jobProductionComponentsTable.id));
 }
 
+export async function getJobProductionComponentHistory(job: Job): Promise<ProductionComponentView[]> {
+  const rows = await db
+    .select()
+    .from(jobProductionComponentsTable)
+    .where(eq(jobProductionComponentsTable.jobId, job.id))
+    .orderBy(asc(jobProductionComponentsTable.componentInstanceKey), desc(jobProductionComponentsTable.snapshotVersion));
+
+  if (rows.length) return rows.map(rowToView);
+  return getJobProductionComponents(job);
+}
+
 export async function getJobProductionComponents(job: Job): Promise<ProductionComponentView[]> {
   const current = await getCurrentJobProductionComponents(job.id);
   if (current.length) return current.map(rowToView);
@@ -434,6 +447,7 @@ export async function getJobProductionComponents(job: Job): Promise<ProductionCo
     pricingContext: draft.pricingContext,
     knowledgeContext: draft.knowledgeContext,
     capturedAt: null,
+    supersededAt: null,
     persisted: false,
   }));
 }

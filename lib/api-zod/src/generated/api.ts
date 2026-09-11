@@ -357,6 +357,7 @@ export const ListJobsResponseItem = zod.object({
         pricingContext: zod.record(zod.string(), zod.unknown()).nullable(),
         knowledgeContext: zod.record(zod.string(), zod.unknown()).nullable(),
         capturedAt: zod.string().nullable(),
+        supersededAt: zod.string().nullable(),
         persisted: zod.boolean(),
       }),
     )
@@ -604,6 +605,7 @@ export const GetJobProductionComponentsResponseItem = zod.object({
   pricingContext: zod.record(zod.string(), zod.unknown()).nullable(),
   knowledgeContext: zod.record(zod.string(), zod.unknown()).nullable(),
   capturedAt: zod.string().nullable(),
+  supersededAt: zod.string().nullable(),
   persisted: zod.boolean(),
 });
 export const GetJobProductionComponentsResponse = zod.array(
@@ -616,6 +618,52 @@ export const GetJobProductionComponentsResponse = zod.array(
 export const SnapshotJobProductionComponentsParams = zod.object({
   id: zod.coerce.number(),
 });
+
+/**
+ * @summary Get current and superseded job-specific production component snapshots
+ */
+export const GetJobProductionComponentHistoryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetJobProductionComponentHistoryResponseItem = zod.object({
+  id: zod.number().nullable(),
+  jobId: zod.number(),
+  businessId: zod.number().nullable(),
+  componentKey: zod.enum([
+    "interior_finish",
+    "siding",
+    "plumbing",
+    "skirting",
+    "custom",
+  ]),
+  componentInstanceKey: zod.string(),
+  componentLabel: zod.string(),
+  variant: zod.enum(["vog", "hybrid", "drywall"]).nullable(),
+  sourceServiceIds: zod.array(zod.number()),
+  sourceServices: zod.array(zod.record(zod.string(), zod.unknown())),
+  snapshotVersion: zod.number(),
+  status: zod.enum([
+    "planned",
+    "in_progress",
+    "paused",
+    "completed",
+    "not_applicable",
+  ]),
+  expectedLaborHours: zod.number().nullable(),
+  expectedDurationDays: zod.number().nullable(),
+  expectedCrewSize: zod.number().nullable(),
+  checklistContext: zod.record(zod.string(), zod.unknown()).nullable(),
+  materialContext: zod.record(zod.string(), zod.unknown()).nullable(),
+  pricingContext: zod.record(zod.string(), zod.unknown()).nullable(),
+  knowledgeContext: zod.record(zod.string(), zod.unknown()).nullable(),
+  capturedAt: zod.string().nullable(),
+  supersededAt: zod.string().nullable(),
+  persisted: zod.boolean(),
+});
+export const GetJobProductionComponentHistoryResponse = zod.array(
+  GetJobProductionComponentHistoryResponseItem,
+);
 
 /**
  * @summary Update one production component status
@@ -667,6 +715,7 @@ export const UpdateJobProductionComponentStatusResponse = zod.object({
   pricingContext: zod.record(zod.string(), zod.unknown()).nullable(),
   knowledgeContext: zod.record(zod.string(), zod.unknown()).nullable(),
   capturedAt: zod.string().nullable(),
+  supersededAt: zod.string().nullable(),
   persisted: zod.boolean(),
 });
 
@@ -1084,6 +1133,7 @@ export const GetJobResponse = zod.object({
         pricingContext: zod.record(zod.string(), zod.unknown()).nullable(),
         knowledgeContext: zod.record(zod.string(), zod.unknown()).nullable(),
         capturedAt: zod.string().nullable(),
+        supersededAt: zod.string().nullable(),
         persisted: zod.boolean(),
       }),
     )
@@ -1304,6 +1354,7 @@ export const UpdateJobResponse = zod.object({
         pricingContext: zod.record(zod.string(), zod.unknown()).nullable(),
         knowledgeContext: zod.record(zod.string(), zod.unknown()).nullable(),
         capturedAt: zod.string().nullable(),
+        supersededAt: zod.string().nullable(),
         persisted: zod.boolean(),
       }),
     )
@@ -3176,6 +3227,7 @@ export const GetDashboardStatsResponse = zod.object({
               .record(zod.string(), zod.unknown())
               .nullable(),
             capturedAt: zod.string().nullable(),
+            supersededAt: zod.string().nullable(),
             persisted: zod.boolean(),
           }),
         )

@@ -22,7 +22,8 @@ import {
   useCreateMfhManufacturer, useUpdateMfhManufacturer, useCreateMfhModel,
   useListProductionServiceTypes, useCreateProductionServiceType,
   useUpdateProductionServiceType, useDeleteProductionServiceType,
-  useGetJobProductionComponents, useUpdateJobProductionComponentStatus,
+  useGetJobProductionComponents, useGetJobProductionComponentHistory,
+  useUpdateJobProductionComponentStatus,
   useListServiceAddonPrompts, type ServiceAddonPrompt,
 } from "@workspace/api-client-react";
 import type {
@@ -74,7 +75,7 @@ import {
   AlertCircle, ArrowLeft, Eye, Package, ListChecks, Search,
   Calculator, DollarSign, Receipt, Layers, TrendingUp,
   CreditCard, Copy, ExternalLink, Bell, ArrowRight, Wand2,
-  Timer, BarChart2, PieChart, Pencil, Archive, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench, Navigation, Fuel, Truck, RefreshCw,
+  Timer, BarChart2, PieChart, Pencil, Archive, History, RotateCcw, ImageIcon, Download, CheckSquare, Home, Wrench, Navigation, Fuel, Truck, RefreshCw,
   CalendarDays, ChevronLeft, ChevronRight, ListTodo, Settings2,
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
@@ -152,6 +153,28 @@ function addScheduleDays(date: string, amount: number): string {
 
 function formatScheduleDate(date: string): string {
   return scheduleDate(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function formatProductionSnapshotDate(date: string | null): string {
+  if (!date) return "Not captured";
+  return new Date(date).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function productionSourceLabel(component: ProductionComponent): string {
+  const names = component.sourceServices
+    .map(service => typeof service.name === "string" ? service.name : null)
+    .filter((name): name is string => Boolean(name));
+  if (names.length) return names.join(", ");
+  if (component.sourceServiceIds.length) {
+    return component.sourceServiceIds.map(id => `Service #${id}`).join(", ");
+  }
+  return "No source services";
 }
 
 function startOfScheduleWeek(date: Date): Date {
@@ -5595,10 +5618,20 @@ function JobCard({
       staleTime: 60_000,
     },
   });
+  const [productionComponentHistoryOpen, setProductionComponentHistoryOpen] = useState(false);
+  const productionComponentHistoryQuery = useGetJobProductionComponentHistory(job.id, {
+    query: {
+      queryKey: [`/api/jobs/${job.id}/production-components/history`],
+      enabled: jobWorkflow === "mh_production" && !overviewOnly && productionComponentHistoryOpen,
+      staleTime: 60_000,
+    },
+  });
   const updateProductionComponentStatus = useUpdateJobProductionComponentStatus();
   const [updatingComponentKey, setUpdatingComponentKey] = useState<string | null>(null);
   const productionComponents: ProductionComponent[] =
     productionComponentsQuery.data ?? job.productionComponents ?? [];
+  const productionComponentHistory: ProductionComponent[] =
+    productionComponentHistoryQuery.data ?? [];
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
   useEffect(() => {
@@ -5940,9 +5973,21 @@ function JobCard({
           )}
           {!overviewOnly && jobWorkflow === "mh_production" && productionComponents.length > 0 && (
             <div className="mt-1 rounded-lg border border-amber-200/80 bg-amber-50/40 px-2.5 py-2">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
-                <Home className="w-3 h-3" />
-                Production components
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                  <Home className="w-3 h-3" />
+                  Production components
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProductionComponentHistoryOpen(open => !open)}
+                  aria-expanded={productionComponentHistoryOpen}
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold text-amber-800 hover:bg-amber-100"
+                >
+                  <History className="h-3 w-3" />
+                  {productionComponentHistoryOpen ? "Hide history" : "View history"}
+                  {productionComponentHistoryOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
               </div>
               <div className="mt-1.5 grid gap-1.5">
                 {productionComponents.map(component => (
@@ -5972,6 +6017,58 @@ function JobCard({
                   </div>
                 ))}
               </div>
+              {productionComponentHistoryOpen && (
+                <div className="mt-2 border-t border-amber-200/80 pt-2">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                    <History className="h-3 w-3" />
+                    Snapshot history
+                  </div>
+                  {productionComponentHistoryQuery.isLoading ? (
+                    <p className="mt-1 text-[11px] text-muted-foreground">Loading snapshot history…</p>
+                  ) : productionComponentHistoryQuery.isError ? (
+                    <p className="mt-1 text-[11px] text-red-600">Snapshot history could not be loaded.</p>
+                  ) : productionComponentHistory.length === 0 ? (
+                    <p className="mt-1 text-[11px] text-muted-foreground">No captured snapshots yet.</p>
+                  ) : (
+                    <div className="mt-1.5 grid gap-1.5">
+                      {productionComponentHistory.map(component => {
+                        const isCurrent = component.supersededAt == null;
+                        return (
+                          <div
+                            key={`${component.componentInstanceKey}:${component.snapshotVersion}`}
+                            className="rounded-md border border-border/70 bg-background/70 px-2 py-1.5 text-[11px]"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="min-w-0 truncate font-semibold text-foreground">
+                                {component.componentLabel}
+                                {component.variant ? ` · ${component.variant.toUpperCase()}` : ""}
+                              </span>
+                              <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                                isCurrent
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}>
+                                {isCurrent ? "Current" : "Superseded"}
+                              </span>
+                            </div>
+                            <div className="mt-0.5 text-[10px] leading-4 text-muted-foreground">
+                              Version {component.snapshotVersion} · Captured {formatProductionSnapshotDate(component.capturedAt)}
+                            </div>
+                            {!isCurrent && component.supersededAt && (
+                              <div className="text-[10px] leading-4 text-muted-foreground">
+                                Superseded {formatProductionSnapshotDate(component.supersededAt)}
+                              </div>
+                            )}
+                            <div className="mt-0.5 text-[10px] leading-4 text-muted-foreground">
+                              Source services: {productionSourceLabel(component)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {(job.subcontractorNames?.length ?? 0) > 0 && (
