@@ -419,6 +419,45 @@ async function main() {
         && narrowEvidence.text.includes("No confirmed here record was recorded"),
       JSON.stringify(narrowEvidence),
     );
+    const narrowNoPresenceEvidence = await page.$eval(
+      `#mfh-evidence-job-${fixture.noPresenceJobId}`,
+      element => {
+        const rect = element.getBoundingClientRect();
+        const link = element.closest("a") as HTMLAnchorElement | null;
+        const linkRect = link?.getBoundingClientRect() ?? null;
+        return {
+          text: element.textContent ?? "",
+          evidenceLeft: rect.left,
+          evidenceRight: rect.right,
+          evidenceWidth: rect.width,
+          evidenceHeight: rect.height,
+          evidenceScrollWidth: element.scrollWidth,
+          evidenceClientWidth: element.clientWidth,
+          linkHref: link?.getAttribute("href") ?? "",
+          linkWidth: linkRect?.width ?? 0,
+          linkHeight: linkRect?.height ?? 0,
+        };
+      },
+    );
+    recordResult(
+      "No-presence evidence remains readable at a narrow viewport",
+      narrowNoPresenceEvidence.evidenceLeft >= 0
+        && narrowNoPresenceEvidence.evidenceRight <= 390
+        && narrowNoPresenceEvidence.evidenceWidth > 0
+        && narrowNoPresenceEvidence.evidenceHeight > 0
+        && narrowNoPresenceEvidence.evidenceScrollWidth <= narrowNoPresenceEvidence.evidenceClientWidth + 1
+        && narrowNoPresenceEvidence.linkWidth > 0
+        && narrowNoPresenceEvidence.linkHeight > 0
+        && narrowNoPresenceEvidence.linkHref === `/jobs?openJob=${fixture.noPresenceJobId}`
+        && narrowNoPresenceEvidence.text.includes("Confirmed here: None recorded")
+        && narrowNoPresenceEvidence.text.includes("Confirmed not here: None recorded")
+        && narrowNoPresenceEvidence.text.includes("No confirmed here record was recorded")
+        && !narrowNoPresenceEvidence.text.includes("01/24/2025")
+        && !narrowNoPresenceEvidence.text.includes("01/25/2025")
+        && !narrowNoPresenceEvidence.text.includes("Weather")
+        && !narrowNoPresenceEvidence.text.includes("Rain delay"),
+      JSON.stringify(narrowNoPresenceEvidence),
+    );
     await page.screenshot({ path: `${SHOTS}/03-narrow-provenance.png`, fullPage: true });
     await page.setViewport({ width: 1440, height: 1200 });
     recordResult(
