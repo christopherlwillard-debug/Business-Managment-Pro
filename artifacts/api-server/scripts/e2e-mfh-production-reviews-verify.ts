@@ -28,6 +28,7 @@ import { launchBrowser } from "../src/lib/launchBrowser";
 
 const BASE = process.env.BUILDPRO_E2E_BASE_URL ?? "http://localhost:80";
 const SHOTS = "/tmp/e2e-mfh-production-reviews";
+const LONG_DELAY_NOTE = "Customer requested a later start after the site access window changed and the crew coordinator confirmed the revised arrival plan";
 
 if (process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT) {
   throw new Error("Refusing to run Production Reviews E2E verification against a production deployment");
@@ -201,7 +202,7 @@ async function createFixture(): Promise<Fixture> {
         date: "2025-01-22",
         state: "not_here",
         notHereReason: "customer_delay",
-        notes: "Customer requested a later start",
+        notes: LONG_DELAY_NOTE,
         source: "manual_presence",
         provenance: "confirmed",
       },
@@ -445,7 +446,7 @@ async function main() {
         && narrowEvidence.text.includes("Weather")
         && narrowEvidence.text.includes("Rain delay before the first workday")
         && narrowEvidence.text.includes("Customer Delay")
-        && narrowEvidence.text.includes("Customer requested a later start")
+        && narrowEvidence.text.includes(LONG_DELAY_NOTE)
         && !narrowEvidence.text.includes("01/23/2025")
         && !narrowEvidence.text.includes("01/24/2025")
         && narrowEvidence.text.includes("No confirmed here record was recorded"),
