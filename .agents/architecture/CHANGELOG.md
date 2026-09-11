@@ -12,6 +12,23 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-09-11
+
+### Production Intelligence Phase 4: job-specific production components
+
+- Added the versioned `job_production_components` snapshot table while preserving
+  `jobs.mh_production_services` as the backward-compatible selection source.
+- Added one centralized classifier for Interior Finish (VOG/Hybrid/Drywall),
+  Siding, Plumbing, Skirting, and Custom; Service and travel-surcharge rows
+  remain outside production components.
+- Added business-scoped Jobs API reads, snapshot sync, and independent component
+  status updates. Snapshots retain expected values and checklist, materials,
+  pricing, and Knowledge Center context without entering financial, payroll,
+  mileage, invoice, profit, presence, or benchmark calculations.
+- Added compact responsive component/status controls to the Jobs UI and focused
+  classifier regression coverage. Development schema and typechecks were
+  verified; existing jobs were not bulk-backfilled.
+
 ## 2026-09-10
 
 ### Production Intelligence Phase 2: persistent daily presence

@@ -192,6 +192,16 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Source of truth:** `job_type_benchmarks.estimated_hours` remains the active benchmark. Revision rows preserve the proposed change, observed evidence, reviewer, and decision history.
 - **Rule:** Reviews require a sufficient all-business observation, never convert production days to hours automatically, and approval must compare the captured prior value before updating the existing benchmark. Business-scoped observations cannot update a shared global benchmark. Custom services are excluded unless explicitly mapped to an active business-scoped named profile; free-text names never infer learning categories.
 
+## Production Intelligence / Job Components
+
+- **Tables:** `jobs` (selected production services) and `job_production_components` (versioned job-specific snapshots)
+- **Schemas:** `lib/db/src/schema/jobs.ts`, `lib/db/src/schema/job-production-components.ts`
+- **API:** `artifacts/api-server/src/routes/jobs.ts` (`/:id/production-components` and `/:id/production-components/status`)
+- **UI:** `artifacts/contractor-app/src/pages/Jobs.tsx` → Production components
+- **Reports:** None; component snapshots are operational context only and never enter financial, payroll, mileage, invoice, or benchmark calculations.
+- **Source of truth:** `jobs.mh_production_services` remains the selected-service source; `job_production_components` owns versioned component context and independent component status.
+- **Rule:** The classifier exposes only Interior Finish (VOG/Hybrid/Drywall), Siding, Plumbing, Skirting, and Custom. Service-only and travel-surcharge catalog rows are excluded. Historical snapshots are superseded rather than rewritten.
+
 ---
 
 ## Clients / Customers

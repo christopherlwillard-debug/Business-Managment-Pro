@@ -168,6 +168,79 @@ export interface ServiceBilling {
   [key: string]: unknown;
 }
 
+export type ProductionComponentComponentKey =
+  (typeof ProductionComponentComponentKey)[keyof typeof ProductionComponentComponentKey];
+
+export const ProductionComponentComponentKey = {
+  interior_finish: "interior_finish",
+  siding: "siding",
+  plumbing: "plumbing",
+  skirting: "skirting",
+  custom: "custom",
+} as const;
+
+export type ProductionComponentVariant =
+  | (typeof ProductionComponentVariant)[keyof typeof ProductionComponentVariant]
+  | null;
+
+export const ProductionComponentVariant = {
+  vog: "vog",
+  hybrid: "hybrid",
+  drywall: "drywall",
+} as const;
+
+export type ProductionComponentStatus =
+  (typeof ProductionComponentStatus)[keyof typeof ProductionComponentStatus];
+
+export const ProductionComponentStatus = {
+  planned: "planned",
+  in_progress: "in_progress",
+  paused: "paused",
+  completed: "completed",
+  not_applicable: "not_applicable",
+} as const;
+
+export type ProductionComponentSourceServicesItem = { [key: string]: unknown };
+
+export type ProductionComponentChecklistContext = {
+  [key: string]: unknown;
+} | null;
+
+export type ProductionComponentMaterialContext = {
+  [key: string]: unknown;
+} | null;
+
+export type ProductionComponentPricingContext = {
+  [key: string]: unknown;
+} | null;
+
+export type ProductionComponentKnowledgeContext = {
+  [key: string]: unknown;
+} | null;
+
+export interface ProductionComponent {
+  id: number | null;
+  jobId: number;
+  businessId: number | null;
+  componentKey: ProductionComponentComponentKey;
+  componentInstanceKey: string;
+  componentLabel: string;
+  variant: ProductionComponentVariant;
+  sourceServiceIds: number[];
+  sourceServices: ProductionComponentSourceServicesItem[];
+  snapshotVersion: number;
+  status: ProductionComponentStatus;
+  expectedLaborHours: number | null;
+  expectedDurationDays: number | null;
+  expectedCrewSize: number | null;
+  checklistContext: ProductionComponentChecklistContext;
+  materialContext: ProductionComponentMaterialContext;
+  pricingContext: ProductionComponentPricingContext;
+  knowledgeContext: ProductionComponentKnowledgeContext;
+  capturedAt: string | null;
+  persisted: boolean;
+}
+
 export interface Job {
   id: number;
   title: string;
@@ -206,12 +279,29 @@ export interface Job {
   mfhModelYear?: number | null;
   mfhConstructionType?: string | null;
   mhProductionServices?: number[] | null;
+  productionComponents?: ProductionComponent[];
   manHours?: number | null;
   homeModel?: string | null;
   jobNumber?: string | null;
   closedAt?: string | null;
   createdAt: string;
   [key: string]: unknown;
+}
+
+export type UpdateProductionComponentStatusRequestStatus =
+  (typeof UpdateProductionComponentStatusRequestStatus)[keyof typeof UpdateProductionComponentStatusRequestStatus];
+
+export const UpdateProductionComponentStatusRequestStatus = {
+  planned: "planned",
+  in_progress: "in_progress",
+  paused: "paused",
+  completed: "completed",
+  not_applicable: "not_applicable",
+} as const;
+
+export interface UpdateProductionComponentStatusRequest {
+  componentInstanceKey: string;
+  status: UpdateProductionComponentStatusRequestStatus;
 }
 
 export type JobProfitMileageReimbursementRecipientType =

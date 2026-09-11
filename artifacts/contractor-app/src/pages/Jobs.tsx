@@ -22,11 +22,14 @@ import {
   useCreateMfhManufacturer, useUpdateMfhManufacturer, useCreateMfhModel,
   useListProductionServiceTypes, useCreateProductionServiceType,
   useUpdateProductionServiceType, useDeleteProductionServiceType,
+  useGetJobProductionComponents, useUpdateJobProductionComponentStatus,
   useListServiceAddonPrompts, type ServiceAddonPrompt,
 } from "@workspace/api-client-react";
 import type {
   JobProfitResponse,
   JobProfitSummaryResponse,
+  ProductionComponent,
+  ProductionComponentStatus,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -5585,6 +5588,17 @@ function JobCard({
     ? (job as unknown as Record<string, unknown>).mhProductionServices as number[]
     : [];
   const visibleProductionServiceIds = overviewOnly ? productionServiceIds.slice(0, 2) : productionServiceIds;
+  const productionComponentsQuery = useGetJobProductionComponents(job.id, {
+    query: {
+      queryKey: [`/api/jobs/${job.id}/production-components`],
+      enabled: jobWorkflow === "mh_production" && !overviewOnly,
+      staleTime: 60_000,
+    },
+  });
+  const updateProductionComponentStatus = useUpdateJobProductionComponentStatus();
+  const [updatingComponentKey, setUpdatingComponentKey] = useState<string | null>(null);
+  const productionComponents: ProductionComponent[] =
+    productionComponentsQuery.data ?? job.productionComponents ?? [];
   const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
   useEffect(() => {
@@ -5714,6 +5728,30 @@ function JobCard({
       });
     } finally {
       setMarkingSubId(null);
+    }
+  }
+
+  async function handleProductionComponentStatusChange(
+    componentInstanceKey: string,
+    status: ProductionComponentStatus,
+  ) {
+    setUpdatingComponentKey(componentInstanceKey);
+    try {
+      await updateProductionComponentStatus.mutateAsync({
+        id: job.id,
+        data: { componentInstanceKey, status },
+      });
+      await qc.invalidateQueries({ queryKey: [`/api/jobs/${job.id}/production-components`] });
+      await qc.invalidateQueries({ queryKey: [`/api/jobs/${job.id}`] });
+      toast({ title: "Production component updated" });
+    } catch (error) {
+      toast({
+        title: "Could not update production component",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingComponentKey(null);
     }
   }
 
@@ -5898,6 +5936,42 @@ function JobCard({
               ) : (
                 <p className="mt-0.5 text-[11px] leading-4 font-medium">Job dates not set</p>
               )}
+            </div>
+          )}
+          {!overviewOnly && jobWorkflow === "mh_production" && productionComponents.length > 0 && (
+            <div className="mt-1 rounded-lg border border-amber-200/80 bg-amber-50/40 px-2.5 py-2">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                <Home className="w-3 h-3" />
+                Production components
+              </div>
+              <div className="mt-1.5 grid gap-1.5">
+                {productionComponents.map(component => (
+                  <div key={component.componentInstanceKey} className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="min-w-0 truncate font-medium text-foreground">
+                      {component.componentLabel}
+                      {component.variant ? ` · ${component.variant.toUpperCase()}` : ""}
+                    </span>
+                    <select
+                      aria-label={`${component.componentLabel} status`}
+                      value={component.status}
+                      disabled={updatingComponentKey === component.componentInstanceKey}
+                      onChange={event => {
+                        void handleProductionComponentStatusChange(
+                          component.componentInstanceKey,
+                          event.target.value as ProductionComponentStatus,
+                        );
+                      }}
+                      className="h-7 max-w-[130px] rounded-md border border-amber-200 bg-background px-1.5 text-[10px] text-foreground"
+                    >
+                      <option value="planned">Planned</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="paused">Paused</option>
+                      <option value="completed">Completed</option>
+                      <option value="not_applicable">Not applicable</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {(job.subcontractorNames?.length ?? 0) > 0 && (

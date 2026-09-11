@@ -11,6 +11,7 @@ import type { JobPriority } from "./jobPriority";
 import type { JobResourceDemand } from "./jobResourceDemand";
 import type { JobStatus } from "./jobStatus";
 import type { PhaseItem } from "./phaseItem";
+import type { ProductionComponent } from "./productionComponent";
 import type { ServiceBilling } from "./serviceBilling";
 
 export interface Job {
@@ -51,6 +52,7 @@ export interface Job {
   mfhModelYear?: number | null;
   mfhConstructionType?: string | null;
   mhProductionServices?: number[] | null;
+  productionComponents?: ProductionComponent[];
   manHours?: number | null;
   homeModel?: string | null;
   jobNumber?: string | null;

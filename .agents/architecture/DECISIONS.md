@@ -468,3 +468,20 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-09-10
+
+## ADR-026
+
+**Title:** Job-specific production components are versioned operational snapshots
+
+**Decision:** Extend Jobs with `job_production_components` as a versioned snapshot of selected MH Production work. Keep `jobs.mh_production_services` as the backward-compatible selection source and classify catalog rows centrally into only Interior Finish (VOG/Hybrid/Drywall), Siding, Plumbing, Skirting, or Custom. Service-only and travel-surcharge rows are excluded. Component status is independently mutable; expected labor, duration, crew, checklist/material, pricing, and Knowledge Center context are snapshots and never financial or learning ledgers.
+
+**Reason:** The existing service catalog and Jobs JSONB selection must remain compatible, while Knowledge Center and operational UI need stable job-specific context that does not change when catalog or knowledge definitions change. Superseded snapshots preserve traceability without creating a parallel pricing, checklist, payroll, expense, mileage, invoice, profit, presence, or benchmark system.
+
+**Rejected Alternatives:**
+- Replacing `jobs.mh_production_services`
+- Recomputing historical component identity from the live catalog
+- Creating component-specific pricing, checklist, payroll, expense, profit, or learning tables
+- Exposing prohibited legacy service names as top-level components
+
+**Status:** Accepted
+**Date:** 2026-09-11

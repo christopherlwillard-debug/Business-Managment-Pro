@@ -322,6 +322,71 @@ paths:
               schema:
                 $ref: "#/components/schemas/JobProfitResponse"
 
+  /jobs/{id}/production-components:
+    get:
+      operationId: getJobProductionComponents
+      tags: [jobs]
+      summary: Get the job-specific production components
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Production component snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductionComponent"
+    post:
+      operationId: snapshotJobProductionComponents
+      tags: [jobs]
+      summary: Create or refresh job-specific production component snapshots
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Production component snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductionComponent"
+
+  /jobs/{id}/production-components/status:
+    patch:
+      operationId: updateJobProductionComponentStatus
+      tags: [jobs]
+      summary: Update one production component status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductionComponentStatusRequest"
+      responses:
+        "200":
+          description: Updated production component
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductionComponent"
+
   /jobs/profit-summary:
     get:
       operationId: getJobsProfitSummary
@@ -2068,6 +2133,10 @@ components:
         mfhModelYear: { type: integer, nullable: true }
         mfhConstructionType: { type: string, nullable: true }
         mhProductionServices: { type: array, nullable: true, items: { type: integer } }
+        productionComponents:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductionComponent"
         manHours: { type: number, nullable: true }
         homeModel: { type: string, nullable: true }
         jobNumber: { type: string, nullable: true }
@@ -2075,6 +2144,73 @@ components:
         createdAt:
           type: string
       required: [id, title, status, createdAt]
+
+    ProductionComponent:
+      type: object
+      properties:
+        id: { type: integer, nullable: true }
+        jobId: { type: integer }
+        businessId: { type: integer, nullable: true }
+        componentKey:
+          type: string
+          enum: [interior_finish, siding, plumbing, skirting, custom]
+        componentInstanceKey: { type: string }
+        componentLabel: { type: string }
+        variant:
+          type: string
+          enum: [vog, hybrid, drywall]
+          nullable: true
+        sourceServiceIds:
+          type: array
+          items: { type: integer }
+        sourceServices:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        snapshotVersion: { type: integer }
+        status:
+          type: string
+          enum: [planned, in_progress, paused, completed, not_applicable]
+        expectedLaborHours: { type: number, nullable: true }
+        expectedDurationDays: { type: number, nullable: true }
+        expectedCrewSize: { type: number, nullable: true }
+        checklistContext: { type: object, nullable: true, additionalProperties: true }
+        materialContext: { type: object, nullable: true, additionalProperties: true }
+        pricingContext: { type: object, nullable: true, additionalProperties: true }
+        knowledgeContext: { type: object, nullable: true, additionalProperties: true }
+        capturedAt: { type: string, nullable: true }
+        persisted: { type: boolean }
+      required:
+        - id
+        - jobId
+        - businessId
+        - componentKey
+        - componentInstanceKey
+        - componentLabel
+        - variant
+        - sourceServiceIds
+        - sourceServices
+        - snapshotVersion
+        - status
+        - expectedLaborHours
+        - expectedDurationDays
+        - expectedCrewSize
+        - checklistContext
+        - materialContext
+        - pricingContext
+        - knowledgeContext
+        - capturedAt
+        - persisted
+
+    UpdateProductionComponentStatusRequest:
+      type: object
+      properties:
+        componentInstanceKey: { type: string }
+        status:
+          type: string
+          enum: [planned, in_progress, paused, completed, not_applicable]
+      required: [componentInstanceKey, status]
 
     JobProfitMileageReimbursement:
       type: object

@@ -26,6 +26,13 @@ import type {
 import { loadJobProfitByJob } from "../lib/job-profit-loader.js";
 import { buildClosedJobExportRow } from "../lib/job-profit-reports.js";
 import { getRequestUser } from "./guards";
+import {
+  getJobProductionComponents,
+  isProductionComponentStatus,
+  setJobProductionComponentStatus,
+  syncJobProductionComponents,
+  type ProductionComponentView,
+} from "../lib/job-production-components.js";
 
 const router = Router();
 
@@ -319,6 +326,7 @@ type FormattedJob = Omit<JobRow, "createdAt" | "subcontractorId" | "subcontracto
   createdAt: string;
   subcontractorIds: number[];
   subcontractorNames: string[];
+  productionComponents?: ProductionComponentView[];
 };
 
 function formatJob(row: JobRow & { subcontractorIds: number[]; subcontractorNames: string[] }): FormattedJob {
@@ -396,7 +404,12 @@ async function getJobWithSubs(jobId: number) {
     }
   }
 
-  return formatJob({ ...base, subcontractorIds, subcontractorNames } as any);
+  const [sourceJob] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+  const productionComponents = sourceJob ? await getJobProductionComponents(sourceJob) : [];
+  return {
+    ...formatJob({ ...base, subcontractorIds, subcontractorNames } as any),
+    productionComponents,
+  };
 }
 
 async function replaceSubcontractors(jobId: number, ids: number[]) {
@@ -735,11 +748,68 @@ router.post("/", async (req, res) => {
       await replaceSubcontractors(job.id, subcontractorIds);
     }
 
+    if (job.workflow === "mh_production") {
+      await syncJobProductionComponents(job);
+    }
+
     const result = await getJobWithSubs(job.id);
     res.status(201).json(result);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create job" });
+  }
+});
+
+// Production components are job-scoped projections of the existing production
+// service selection. This explicit write endpoint is also the safe backfill
+// path for legacy jobs that predate the snapshot table.
+router.post("/:id/production-components/snapshot", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid job id" });
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    const components = await syncJobProductionComponents(job);
+    res.status(201).json(components);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to snapshot production components" });
+  }
+});
+
+router.get("/:id/production-components", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid job id" });
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    res.json(await getJobProductionComponents(job));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch production components" });
+  }
+});
+
+router.patch("/:id/production-components/status", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid job id" });
+    const componentInstanceKey = typeof req.body?.componentInstanceKey === "string"
+      ? req.body.componentInstanceKey.trim()
+      : "";
+    const status = req.body?.status;
+    if (!componentInstanceKey || !isProductionComponentStatus(status)) {
+      return res.status(400).json({ error: "componentInstanceKey and a valid status are required" });
+    }
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    await syncJobProductionComponents(job);
+    const component = await setJobProductionComponentStatus(id, componentInstanceKey, status);
+    if (!component) return res.status(404).json({ error: "Production component not found" });
+    res.json(component);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update production component status" });
   }
 });
 
@@ -2440,6 +2510,10 @@ router.put("/:id", async (req, res) => {
     // latest materials totals so it's ready to review without extra steps.
     if (status === "completed" || status === "invoiced") {
       await syncMaterialsToJobInvoice(id);
+    }
+
+    if (job.workflow === "mh_production") {
+      await syncJobProductionComponents(job);
     }
 
     const result = await getJobWithSubs(id);

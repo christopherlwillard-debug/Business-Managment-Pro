@@ -76,6 +76,7 @@ import type {
   PortalVerifyPin401,
   PortalVerifyPinBody,
   PrepareInvoiceCommunicationRequest,
+  ProductionComponent,
   ProductionScopeSectionInput,
   RecurringExpense,
   ResetPortalPin200,
@@ -84,6 +85,7 @@ import type {
   TrimOutCatalogResponse,
   UpdateClientBillingProfileRequest,
   UpdateInvoiceStatusBody,
+  UpdateProductionComponentStatusRequest,
   UpdateRecurringExpenseRequest,
   UploadExpenseReceiptBody,
   UploadFileBody,
@@ -1402,6 +1404,281 @@ export function useGetJobProfit<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Get the job-specific production components
+ */
+export const getGetJobProductionComponentsUrl = (id: number) => {
+  return `/api/jobs/${id}/production-components`;
+};
+
+export const getJobProductionComponents = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ProductionComponent[]> => {
+  return customFetch<ProductionComponent[]>(
+    getGetJobProductionComponentsUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetJobProductionComponentsQueryKey = (id: number) => {
+  return [`/api/jobs/${id}/production-components`] as const;
+};
+
+export const getGetJobProductionComponentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getJobProductionComponents>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobProductionComponents>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetJobProductionComponentsQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getJobProductionComponents>>
+  > = ({ signal }) =>
+    getJobProductionComponents(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getJobProductionComponents>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetJobProductionComponentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getJobProductionComponents>>
+>;
+export type GetJobProductionComponentsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get the job-specific production components
+ */
+
+export function useGetJobProductionComponents<
+  TData = Awaited<ReturnType<typeof getJobProductionComponents>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobProductionComponents>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetJobProductionComponentsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create or refresh job-specific production component snapshots
+ */
+export const getSnapshotJobProductionComponentsUrl = (id: number) => {
+  return `/api/jobs/${id}/production-components`;
+};
+
+export const snapshotJobProductionComponents = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ProductionComponent[]> => {
+  return customFetch<ProductionComponent[]>(
+    getSnapshotJobProductionComponentsUrl(id),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getSnapshotJobProductionComponentsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof snapshotJobProductionComponents>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof snapshotJobProductionComponents>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["snapshotJobProductionComponents"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof snapshotJobProductionComponents>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return snapshotJobProductionComponents(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SnapshotJobProductionComponentsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof snapshotJobProductionComponents>>
+>;
+
+export type SnapshotJobProductionComponentsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create or refresh job-specific production component snapshots
+ */
+export const useSnapshotJobProductionComponents = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof snapshotJobProductionComponents>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof snapshotJobProductionComponents>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(
+    getSnapshotJobProductionComponentsMutationOptions(options),
+  );
+};
+
+/**
+ * @summary Update one production component status
+ */
+export const getUpdateJobProductionComponentStatusUrl = (id: number) => {
+  return `/api/jobs/${id}/production-components/status`;
+};
+
+export const updateJobProductionComponentStatus = async (
+  id: number,
+  updateProductionComponentStatusRequest: UpdateProductionComponentStatusRequest,
+  options?: RequestInit,
+): Promise<ProductionComponent> => {
+  return customFetch<ProductionComponent>(
+    getUpdateJobProductionComponentStatusUrl(id),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(updateProductionComponentStatusRequest),
+    },
+  );
+};
+
+export const getUpdateJobProductionComponentStatusMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateJobProductionComponentStatus>>,
+    TError,
+    { id: number; data: BodyType<UpdateProductionComponentStatusRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateJobProductionComponentStatus>>,
+  TError,
+  { id: number; data: BodyType<UpdateProductionComponentStatusRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateJobProductionComponentStatus"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateJobProductionComponentStatus>>,
+    { id: number; data: BodyType<UpdateProductionComponentStatusRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateJobProductionComponentStatus(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateJobProductionComponentStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateJobProductionComponentStatus>>
+>;
+export type UpdateJobProductionComponentStatusMutationBody =
+  BodyType<UpdateProductionComponentStatusRequest>;
+export type UpdateJobProductionComponentStatusMutationError =
+  ErrorType<unknown>;
+
+/**
+ * @summary Update one production component status
+ */
+export const useUpdateJobProductionComponentStatus = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateJobProductionComponentStatus>>,
+    TError,
+    { id: number; data: BodyType<UpdateProductionComponentStatusRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateJobProductionComponentStatus>>,
+  TError,
+  { id: number; data: BodyType<UpdateProductionComponentStatusRequest> },
+  TContext
+> => {
+  return useMutation(
+    getUpdateJobProductionComponentStatusMutationOptions(options),
+  );
+};
 
 /**
  * @summary Get canonical profit calculations for multiple jobs
