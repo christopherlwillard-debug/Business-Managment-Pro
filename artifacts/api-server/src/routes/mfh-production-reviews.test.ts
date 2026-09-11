@@ -17,6 +17,7 @@ vi.mock("@workspace/db", () => {
     const chain: any = {
       from: () => chain,
       leftJoin: () => chain,
+      innerJoin: () => chain,
       where: () => chain,
       orderBy: () => chain,
       limit: () => chain,
@@ -96,6 +97,7 @@ const jobs = [1, 2, 3].map((id) => ({
   title: `Production job ${id}`,
   status: "completed",
   workflow: "mh_production",
+  businessId: null,
   mhProductionServices: [101],
 }));
 
@@ -143,7 +145,25 @@ afterEach(() => {
 });
 
 function queueObservation() {
-  h.selectQueue.push([model], jobs, [{ id: 101, name: "Trim-Out", itemKey: "trim-out", appliesTo: "production", businessId: null }], presence);
+  h.selectQueue.push(
+    [model],
+    jobs,
+    [{ id: 101, name: "Trim-Out", itemKey: "trim-out", appliesTo: "production", businessId: null }],
+    [],
+    presence,
+  );
+}
+
+function queueCustomObservation({
+  jobs: observationJobs,
+  profiles = [],
+  services = [{ id: 201, name: "Custom Exterior", itemKey: "custom", appliesTo: "production", businessId: null }],
+}: {
+  jobs: any[];
+  profiles?: any[];
+  services?: any[];
+}) {
+  h.selectQueue.push([model], observationJobs, services, profiles, presence);
 }
 
 describe("production benchmark reviews", () => {
@@ -174,6 +194,58 @@ describe("production benchmark reviews", () => {
 
     expect(response.status).toBe(403);
     expect(h.consumedSlots).toBe(0);
+  });
+
+  it("includes a custom service only when its business has an explicit profile mapping", async () => {
+    h.scope = { id: 1, slug: "general_contracting" };
+    queueCustomObservation({
+      jobs: [{
+        ...jobs[0],
+        businessId: 1,
+        mhProductionServices: [201],
+      }],
+      profiles: [{
+        businessId: 1,
+        serviceTypeId: 201,
+        profileId: 31,
+        profileKey: "custom_exterior",
+        profileName: "Custom Exterior",
+      }],
+    });
+
+    const response = await request(app)
+      .get("/mfh/knowledge-base/7/production-observations")
+      .query({ businessId: 1 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.jobs[0].serviceScopes).toEqual([{
+      id: 201,
+      name: "Custom Exterior",
+      customProfile: { id: 31, key: "custom_exterior", name: "Custom Exterior" },
+    }]);
+  });
+
+  it("excludes unmapped custom services and keeps mappings isolated by business", async () => {
+    queueCustomObservation({
+      jobs: [
+        { ...jobs[0], id: 1, businessId: 1, mhProductionServices: [201] },
+        { ...jobs[1], id: 2, businessId: 2, mhProductionServices: [201] },
+      ],
+      profiles: [{
+        businessId: 1,
+        serviceTypeId: 201,
+        profileId: 31,
+        profileKey: "custom_exterior",
+        profileName: "Custom Exterior",
+      }],
+    });
+
+    const response = await request(app)
+      .get("/mfh/knowledge-base/7/production-observations");
+
+    expect(response.status).toBe(200);
+    expect(response.body.jobs[0].serviceScopes[0].customProfile.name).toBe("Custom Exterior");
+    expect(response.body.jobs.map((job: { id: number }) => job.id)).toEqual([1]);
   });
 
   it("rejects a pending review without changing the active benchmark", async () => {

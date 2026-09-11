@@ -32,7 +32,7 @@ export interface MfhProductionObservationJob {
   unrecordedDays: number;
   firstProductionDate: string | null;
   lastProductionDate: string | null;
-  serviceScopes: Array<{ id: number; name: string }>;
+  serviceScopes: Array<{ id: number; name: string; customProfile?: { id: number; key: string; name: string } }>;
   exclusionReason: "no_confirmed_presence" | null;
 }
 
@@ -55,7 +55,7 @@ export interface MfhProductionObservationSummary {
     calendarSpanMedian: number | null;
     calendarSpanRange: { min: number; max: number } | null;
     explicitPauseDaysTotal: number;
-    serviceScopes: Array<{ id: number; name: string; jobCount: number }>;
+    serviceScopes: Array<{ id: number; name: string; jobCount: number; customProfile?: { id: number; key: string; name: string } }>;
   };
   jobs: MfhProductionObservationJob[];
 }

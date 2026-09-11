@@ -353,7 +353,7 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
             <div className="flex flex-wrap gap-1.5">
               {data.observed.serviceScopes.map((service) => (
                 <span key={service.id} className="text-[10px] font-semibold px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                  {service.name} · {service.jobCount}
+                  {service.customProfile?.name ?? service.name} · {service.jobCount}
                 </span>
               ))}
             </div>
@@ -383,7 +383,7 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                     <p className="text-[10px] text-muted-foreground mt-1">
                       {job.exclusionReason
                         ? "Daily presence must include a confirmed here record before this job can contribute."
-                        : `${job.firstProductionDate} to ${job.lastProductionDate} · ${job.serviceScopes.map((service) => service.name).join(", ")}`}
+                        : `${job.firstProductionDate} to ${job.lastProductionDate} · ${job.serviceScopes.map((service) => service.customProfile?.name ?? service.name).join(", ")}`}
                     </p>
                     {!job.exclusionReason && (
                       <p className="text-[10px] text-muted-foreground">

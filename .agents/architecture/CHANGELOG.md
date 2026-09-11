@@ -617,3 +617,11 @@ Created the four-document architecture governance system:
   repair of legacy accepted events that lack the optional audit marker.
 - The former mandatory Sent-folder verification threshold was superseded on
   2026-09-10; strict metadata matching remains only for no-message-ID recovery.
+
+### Explicit custom production learning profiles
+
+- Added business-scoped custom production profiles and service mappings.
+- Production observations now include only mapped custom services and expose the
+  resolved profile in evidence.
+- Added profile creation/listing API operations with business ownership
+  validation; unmapped custom services remain excluded.

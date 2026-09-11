@@ -874,6 +874,10 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
         .where(and(
           inArray(mfhCustomProductionProfileServicesTable.serviceTypeId, serviceIds),
           eq(mfhCustomProductionProfilesTable.active, true),
+          eq(
+            mfhCustomProductionProfilesTable.businessId,
+            mfhCustomProductionProfileServicesTable.businessId,
+          ),
           scope ? eq(mfhCustomProductionProfileServicesTable.businessId, scope.id) : undefined,
         ))
     : [];
@@ -920,9 +924,12 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
                  componentKey: "custom",
                  hasNamedCustomProfile: customProfile != null,
                })) return null;
-               return [service.id, { id: service.id, name: service.name, customProfile }] as const;
+               const entry = customProfile
+                 ? { id: service.id, name: service.name, customProfile }
+                 : { id: service.id, name: service.name };
+               return [service.id, entry] as const;
              })
-             .filter((entry): entry is readonly [number, { id: number; name: string; customProfile: { id: number; key: string; name: string } | null }] => entry != null),
+             .filter((entry): entry is readonly [number, { id: number; name: string; customProfile?: { id: number; key: string; name: string } }] => entry != null),
         ).values()),
         presence: (presenceByJob.get(job.id) ?? []).map((row) => ({
           date: row.date,
@@ -986,6 +993,138 @@ function sameHours(a: string | number | null, b: string | number | null): boolea
   if (a == null || b == null) return a == null && b == null;
   return Number(a) === Number(b);
 }
+
+function normalizeCustomProfileKey(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
+}
+
+// Custom production services are learning-eligible only after an owner assigns
+// them to an explicit named profile. Profiles are business-scoped because a
+// free-text custom service name must never become a global learning category.
+mfhLibraryRouter.get("/custom-production-profiles", async (req, res) => {
+  try {
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+    if (!scope) return res.status(400).json({ error: "businessId or businessLine is required" });
+
+    const rows = await db.select({
+      id: mfhCustomProductionProfilesTable.id,
+      businessId: mfhCustomProductionProfilesTable.businessId,
+      profileKey: mfhCustomProductionProfilesTable.profileKey,
+      name: mfhCustomProductionProfilesTable.name,
+      active: mfhCustomProductionProfilesTable.active,
+      serviceTypeId: mfhCustomProductionProfileServicesTable.serviceTypeId,
+      serviceName: productionServiceTypesTable.name,
+    }).from(mfhCustomProductionProfilesTable)
+      .leftJoin(
+        mfhCustomProductionProfileServicesTable,
+        eq(mfhCustomProductionProfileServicesTable.profileId, mfhCustomProductionProfilesTable.id),
+      )
+      .leftJoin(
+        productionServiceTypesTable,
+        eq(productionServiceTypesTable.id, mfhCustomProductionProfileServicesTable.serviceTypeId),
+      )
+      .where(eq(mfhCustomProductionProfilesTable.businessId, scope.id))
+      .orderBy(asc(mfhCustomProductionProfilesTable.name));
+
+    const profiles = new Map<number, {
+      id: number;
+      businessId: number;
+      profileKey: string;
+      name: string;
+      active: boolean;
+      services: { id: number; name: string }[];
+    }>();
+    for (const row of rows) {
+      const profile = profiles.get(row.id) ?? {
+        id: row.id,
+        businessId: row.businessId,
+        profileKey: row.profileKey,
+        name: row.name,
+        active: row.active,
+        services: [],
+      };
+      if (row.serviceTypeId != null && row.serviceName != null) {
+        profile.services.push({ id: row.serviceTypeId, name: row.serviceName });
+      }
+      profiles.set(row.id, profile);
+    }
+    res.json(Array.from(profiles.values()));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load custom production profiles" });
+  }
+});
+
+mfhLibraryRouter.post("/custom-production-profiles", async (req, res) => {
+  try {
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const profileKey = normalizeCustomProfileKey(req.body?.profileKey || name);
+    const serviceTypeIds: number[] = Array.from(new Set<number>(
+      Array.isArray(req.body?.serviceTypeIds)
+        ? req.body.serviceTypeIds.map((value: unknown) => Number(value)).filter((id: number): id is number => Number.isInteger(id) && id > 0)
+        : [],
+    ));
+    if (!name || !profileKey) return res.status(400).json({ error: "name is required" });
+    if (serviceTypeIds.length === 0) {
+      return res.status(400).json({ error: "At least one custom production service is required" });
+    }
+
+    const serviceRows = await db.select({
+      id: productionServiceTypesTable.id,
+      name: productionServiceTypesTable.name,
+      businessId: productionServiceTypesTable.businessId,
+      itemKey: productionServiceTypesTable.itemKey,
+      appliesTo: productionServiceTypesTable.appliesTo,
+    }).from(productionServiceTypesTable).where(and(
+      inArray(productionServiceTypesTable.id, serviceTypeIds),
+      eq(productionServiceTypesTable.itemKey, "custom"),
+      eq(productionServiceTypesTable.appliesTo, "production"),
+      or(isNull(productionServiceTypesTable.businessId), eq(productionServiceTypesTable.businessId, ownership.business.id)),
+    ));
+    if (serviceRows.length !== serviceTypeIds.length) {
+      return res.status(400).json({ error: "Every service must be a production custom service in the selected business" });
+    }
+
+    const created = await db.transaction(async (tx) => {
+      const [profile] = await tx.insert(mfhCustomProductionProfilesTable).values({
+        businessId: ownership.business.id,
+        profileKey,
+        name,
+      }).returning();
+      if (!profile) throw new Error("Failed to create custom production profile");
+      await tx.insert(mfhCustomProductionProfileServicesTable).values(serviceTypeIds.map((serviceTypeId) => ({
+        businessId: ownership.business.id,
+        profileId: profile.id,
+        serviceTypeId,
+      })));
+      return profile;
+    });
+
+    res.status(201).json({
+      id: created.id,
+      businessId: created.businessId,
+      profileKey: created.profileKey,
+      name: created.name,
+      active: created.active,
+      services: serviceRows.map((service) => ({ id: service.id, name: service.name })),
+    });
+  } catch (err) {
+    if ((err as { code?: string })?.code === "23505") {
+      return res.status(409).json({ error: "A custom production profile with that name or key already exists" });
+    }
+    console.error(err);
+    res.status(500).json({ error: "Failed to create custom production profile" });
+  }
+});
 
 // GET /api/mfh/knowledge-base/:modelId/production-observations — read-only,
 // business-scoped learning from confirmed daily presence.

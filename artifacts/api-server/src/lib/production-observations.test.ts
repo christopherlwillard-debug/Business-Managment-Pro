@@ -5,7 +5,7 @@ import {
   median,
 } from "./production-observations";
 
-const service = (name = "Interior Finish", id = 1) => [{ id, name, customProfile: null }];
+const service = (name = "Interior Finish", id = 1) => [{ id, name }];
 
 describe("production observations", () => {
   it("counts only confirmed here days and keeps pauses separate from missing evidence", () => {

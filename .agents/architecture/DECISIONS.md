@@ -451,3 +451,20 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-09-10
+
+## ADR-025
+
+**Title:** Custom production services require explicit business-scoped learning profiles
+
+**Decision:** Keep custom production service names as display/catalog data only. A custom service can enter production observations only when its service ID is explicitly mapped to an active named profile owned by the same business. Store profiles and mappings separately from the service catalog, and include the resolved profile metadata in observation traceability. Unmapped custom services remain excluded.
+
+**Reason:** Free-text service names are not stable production categories and the same name can mean different work in different businesses. An explicit mapping gives Willard a reviewable boundary for learning while preserving the existing observation engine and preventing cross-business leakage.
+
+**Rejected Alternatives:**
+- Inferring a profile from a custom service name
+- Making custom service names global learning keys
+- Allowing a mapping from one business to another business's profile
+- Treating unmapped custom services as standard production components
+
+**Status:** Accepted
+**Date:** 2026-09-10

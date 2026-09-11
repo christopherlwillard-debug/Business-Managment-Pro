@@ -184,13 +184,13 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ## Production Intelligence / Benchmark Review
 
-- **Tables:** `job_type_benchmarks` (active benchmark), `job_type_benchmark_revisions` (append-only review history)
-- **Schemas:** `lib/db/src/schema/job-type-benchmarks.ts`, `lib/db/src/schema/job-type-benchmark-revisions.ts`
-- **API:** `artifacts/api-server/src/routes/mfh.ts` (`/knowledge-base/:modelId/production-observations` and `/production-reviews`)
+- **Tables:** `job_type_benchmarks` (active benchmark), `job_type_benchmark_revisions` (append-only review history), `mfh_custom_production_profiles` and `mfh_custom_production_profile_services` (business-scoped custom-service learning names)
+- **Schemas:** `lib/db/src/schema/job-type-benchmarks.ts`, `lib/db/src/schema/job-type-benchmark-revisions.ts`, `lib/db/src/schema/mfh.ts`
+- **API:** `artifacts/api-server/src/routes/mfh.ts` (`/knowledge-base/:modelId/production-observations`, `/production-reviews`, and `/custom-production-profiles`)
 - **UI:** `artifacts/contractor-app/src/pages/MfhKnowledgeBase.tsx` → Observed Production History
 - **Reports:** None; approved hours remain the existing benchmark input for future consumers.
 - **Source of truth:** `job_type_benchmarks.estimated_hours` remains the active benchmark. Revision rows preserve the proposed change, observed evidence, reviewer, and decision history.
-- **Rule:** Reviews require a sufficient all-business observation, never convert production days to hours automatically, and approval must compare the captured prior value before updating the existing benchmark. Business-scoped observations cannot update a shared global benchmark.
+- **Rule:** Reviews require a sufficient all-business observation, never convert production days to hours automatically, and approval must compare the captured prior value before updating the existing benchmark. Business-scoped observations cannot update a shared global benchmark. Custom services are excluded unless explicitly mapped to an active business-scoped named profile; free-text names never infer learning categories.
 
 ---
 
