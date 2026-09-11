@@ -2,11 +2,12 @@ import { useState, useMemo } from "react";
 import {
   Home, ChevronRight, BarChart2, Briefcase,
   Plus, Trash2, ArrowLeft, TrendingUp, Users, Pencil,
-  BookOpen, ChevronDown, ChevronUp, ArrowUpDown, Brain,
+  BookOpen, ChevronDown, ChevronUp, ArrowUpDown, Brain, Clock3, RefreshCw, AlertTriangle,
 } from "lucide-react";
 import {
   useMfhKnowledgeBase,
   useMfhModelDetail,
+  useMfhProductionObservations,
   useSetMfhClientPrice,
   useUpdateMfhClientPrice,
   useDeleteMfhClientPrice,
@@ -18,6 +19,7 @@ import {
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { useBusiness } from "@/contexts/BusinessContext";
 
 function fmt(n: number | string | null | undefined, style: "currency" | "decimal" = "currency") {
   if (n == null || n === "") return "—";
@@ -50,6 +52,162 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
       <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
       <p className="font-bold text-foreground text-base leading-tight">{value}</p>
       {sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+function ProductionObservationCard({ modelId }: { modelId: number }) {
+  const { activeBusiness } = useBusiness();
+  const observations = useMfhProductionObservations(modelId, activeBusiness?.id ?? null);
+  const [showEvidence, setShowEvidence] = useState(false);
+
+  if (observations.isLoading) {
+    return (
+      <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+        <div className="h-4 w-52 bg-muted/50 rounded animate-pulse" />
+        <div className="h-10 w-full bg-muted/30 rounded animate-pulse" />
+        <div className="h-3 w-64 bg-muted/30 rounded animate-pulse" />
+      </div>
+    );
+  }
+
+  if (observations.isError) {
+    return (
+      <div className="bg-card border border-red-200 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="font-semibold text-sm text-foreground">Production history unavailable</p>
+            <p className="text-xs text-muted-foreground mt-1">The Knowledge Center could not load confirmed production observations.</p>
+            <button
+              onClick={() => observations.refetch()}
+              className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted/50"
+            >
+              <RefreshCw className="w-3 h-3" /> Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const data = observations.data;
+  if (!data) return null;
+
+  const hasLearnedBaseline = data.sample.sufficient && data.observed.productionDaysMedian != null && data.observed.productionDaysRange != null;
+  const remaining = Math.max(data.sample.minimumJobsRequired - data.sample.eligibleJobCount, 0);
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-border">
+        <div className="flex items-start gap-2">
+          <Clock3 className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-semibold text-foreground text-sm">Observed Production History</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Read-only observations from completed production jobs</p>
+          </div>
+        </div>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap">
+          {data.sample.eligibleJobCount} eligible
+        </span>
+      </div>
+
+      {data.jobs.length === 0 ? (
+        <div className="px-4 py-5 text-center">
+          <p className="text-sm font-medium text-foreground">No completed production history is available for this model.</p>
+          <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+            Completed or invoiced production jobs with a named production service and confirmed daily presence can inform this model.
+          </p>
+        </div>
+      ) : (
+        <div className="p-4 space-y-4">
+          {hasLearnedBaseline ? (
+            <div className="grid grid-cols-2 gap-2">
+              <StatTile
+                label="Learned production days"
+                value={fmt(data.observed.productionDaysMedian, "decimal")}
+                sub={data.observed.productionDaysRange ? `${fmt(data.observed.productionDaysRange.min, "decimal")}–${fmt(data.observed.productionDaysRange.max, "decimal")} day range` : "median"}
+              />
+              <StatTile
+                label="Calendar span"
+                value={fmt(data.observed.calendarSpanMedian, "decimal")}
+                sub={data.observed.calendarSpanRange ? `${fmt(data.observed.calendarSpanRange.min, "decimal")}–${fmt(data.observed.calendarSpanRange.max, "decimal")} day range` : "median days"}
+              />
+            </div>
+          ) : (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
+              <p className="text-sm font-semibold text-amber-900">Not enough history to show a learned baseline.</p>
+              <p className="text-xs text-amber-800 mt-1">
+                {data.sample.eligibleJobCount === 0
+                  ? "These jobs have no confirmed here record yet, so they cannot contribute to learning."
+                  : remaining > 0
+                  ? `${remaining} more eligible job${remaining === 1 ? "" : "s"} with confirmed presence ${remaining === 1 ? "is" : "are"} needed.`
+                  : "The eligible sample is still being checked for a stable baseline."}
+              </p>
+            </div>
+          )}
+
+          {data.benchmark.estimatedHours != null && (
+            <p className="text-xs text-muted-foreground">
+              Existing benchmark: <span className="font-semibold text-foreground">{fmt(data.benchmark.estimatedHours, "decimal")} hours</span>
+              {data.benchmark.jobType ? ` (${data.benchmark.jobType})` : ""}
+              {" "}— unchanged by this observation.
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>{data.observed.explicitPauseDaysTotal} explicit pause day{data.observed.explicitPauseDaysTotal === 1 ? "" : "s"}</span>
+            <span>Last observed {fmtDate(data.sample.lastObservedDate)}</span>
+          </div>
+
+          {data.observed.serviceScopes.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {data.observed.serviceScopes.map((service) => (
+                <span key={service.id} className="text-[10px] font-semibold px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                  {service.name} · {service.jobCount}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="border-t border-border pt-3">
+            <button
+              onClick={() => setShowEvidence((value) => !value)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground hover:text-amber-600"
+            >
+              {showEvidence ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              {showEvidence ? "Hide evidence" : "Why this observation?"}
+            </button>
+            {showEvidence && (
+              <div className="mt-3 space-y-2">
+                <p className="text-[11px] text-muted-foreground">
+                  Only confirmed <span className="font-semibold">here</span> and <span className="font-semibold">not here</span> records inside each job’s first and last confirmed workday are included.
+                </p>
+                {data.jobs.map((job) => (
+                  <div key={job.id} className="rounded-lg bg-muted/20 border border-border/70 px-3 py-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs font-semibold text-foreground">{job.title}</p>
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                        {job.exclusionReason ? "Not included" : `${job.productionDays} production days`}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {job.exclusionReason
+                        ? "Daily presence must include a confirmed here record before this job can contribute."
+                        : `${job.firstProductionDate} to ${job.lastProductionDate} · ${job.serviceScopes.map((service) => service.name).join(", ")}`}
+                    </p>
+                    {!job.exclusionReason && (
+                      <p className="text-[10px] text-muted-foreground">
+                        {job.explicitPauseDays} pause · {job.unrecordedDays} missing evidence · {job.calendarSpanDays} calendar days
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -337,6 +495,8 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
           <p className="text-sm text-foreground whitespace-pre-wrap">{model.notes}</p>
         </div>
       )}
+
+      <ProductionObservationCard modelId={modelId} />
 
       {/* Client pricing */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">

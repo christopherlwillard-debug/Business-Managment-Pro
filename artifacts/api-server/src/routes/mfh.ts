@@ -20,9 +20,13 @@ import {
   invoicesTable,
   clientsTable,
   jobKnowledgeRecordsTable,
+  jobDailyPresenceTable,
+  productionServiceTypesTable,
 } from "@workspace/db/schema";
-import { eq, and, asc, desc, inArray, sql, ilike, or } from "drizzle-orm";
+import { eq, and, asc, desc, inArray, sql, ilike, or, isNull } from "drizzle-orm";
 import crypto from "crypto";
+import { requestedBusiness, invalidBusinessScope, businessPredicate } from "../lib/business-scope";
+import { buildProductionObservationResponse, type ObservationPresenceState } from "../lib/production-observations";
 
 // ── Seed ──────────────────────────────────────────────────────────────────────
 let seeded = false;
@@ -800,6 +804,112 @@ mfhLibraryRouter.get("/knowledge-base", async (_req, res) => {
 
     res.json(result);
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
+});
+
+// GET /api/mfh/knowledge-base/:modelId/production-observations — read-only,
+// business-scoped learning from confirmed daily presence.
+mfhLibraryRouter.get("/knowledge-base/:modelId/production-observations", async (req, res) => {
+  try {
+    const modelId = parseInt(req.params.modelId);
+    if (isNaN(modelId)) return res.status(400).json({ error: "Invalid modelId" });
+
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+
+    const [model] = await db.select({
+      id: mfhModelsTable.id,
+      benchmarkId: mfhModelsTable.benchmarkId,
+      benchmarkJobType: jobTypeBenchmarksTable.jobType,
+      benchmarkHours: jobTypeBenchmarksTable.estimatedHours,
+    }).from(mfhModelsTable)
+      .leftJoin(jobTypeBenchmarksTable, eq(mfhModelsTable.benchmarkId, jobTypeBenchmarksTable.id))
+      .where(eq(mfhModelsTable.id, modelId));
+
+    if (!model) return res.status(404).json({ error: "Model not found" });
+
+    const jobBusinessFilter = businessPredicate(jobsTable, scope);
+    const candidateJobs = await db.select({
+      id: jobsTable.id,
+      title: jobsTable.title,
+      status: jobsTable.status,
+      workflow: jobsTable.workflow,
+      mhProductionServices: jobsTable.mhProductionServices,
+    }).from(jobsTable).where(and(
+      eq(jobsTable.mfhModelId, modelId),
+      inArray(jobsTable.status, ["completed", "invoiced"]),
+      eq(jobsTable.workflow, "mh_production"),
+      jobBusinessFilter,
+    ));
+
+    const serviceIds = Array.from(new Set(candidateJobs.flatMap((job) =>
+      Array.isArray(job.mhProductionServices)
+        ? job.mhProductionServices.filter((id): id is number => Number.isInteger(id))
+        : [],
+    )));
+    const serviceRows = serviceIds.length > 0
+      ? await db.select({
+        id: productionServiceTypesTable.id,
+        name: productionServiceTypesTable.name,
+        itemKey: productionServiceTypesTable.itemKey,
+        appliesTo: productionServiceTypesTable.appliesTo,
+        businessId: productionServiceTypesTable.businessId,
+      }).from(productionServiceTypesTable).where(and(
+        inArray(productionServiceTypesTable.id, serviceIds),
+        scope
+          ? or(isNull(productionServiceTypesTable.businessId), eq(productionServiceTypesTable.businessId, scope.id))
+          : undefined,
+      ))
+      : [];
+    const serviceById = new Map(serviceRows.map((service) => [service.id, service]));
+    const jobIds = candidateJobs.map((job) => job.id);
+    const presenceRows = jobIds.length > 0
+      ? await db.select({
+        jobId: jobDailyPresenceTable.jobId,
+        date: jobDailyPresenceTable.date,
+        state: jobDailyPresenceTable.state,
+        provenance: jobDailyPresenceTable.provenance,
+      }).from(jobDailyPresenceTable).where(inArray(jobDailyPresenceTable.jobId, jobIds))
+      : [];
+    const presenceByJob = new Map<number, typeof presenceRows>();
+    for (const row of presenceRows) {
+      const rows = presenceByJob.get(row.jobId) ?? [];
+      rows.push(row);
+      presenceByJob.set(row.jobId, rows);
+    }
+
+    const summary = buildProductionObservationResponse(
+      model.id,
+      candidateJobs.map((job) => ({
+        id: job.id,
+        title: job.title,
+        status: job.status,
+        workflow: job.workflow,
+        serviceScopes: Array.from(new Map(
+          (Array.isArray(job.mhProductionServices) ? job.mhProductionServices : [])
+            .map((serviceId) => serviceById.get(serviceId))
+            .filter((service): service is NonNullable<typeof service> =>
+              service != null && service.appliesTo === "production" && service.itemKey !== "custom",
+            )
+            .map((service) => [service.id, { id: service.id, name: service.name }] as const),
+        ).values()),
+        presence: (presenceByJob.get(job.id) ?? []).map((row) => ({
+          date: row.date,
+          state: row.state as ObservationPresenceState,
+          provenance: row.provenance,
+        })),
+      })),
+      {
+        id: model.benchmarkId ?? null,
+        jobType: model.benchmarkJobType ?? null,
+        estimatedHours: model.benchmarkHours == null ? null : parseFloat(model.benchmarkHours),
+      },
+    );
+
+    res.json(summary);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load production observations" });
+  }
 });
 
 // GET /api/mfh/knowledge-base/:modelId — model detail with stats + related completed jobs

@@ -22,6 +22,44 @@ export interface MfhModel {
   discontinuedYear?: number | null;
 }
 
+export interface MfhProductionObservationJob {
+  id: number;
+  title: string;
+  status: string;
+  productionDays: number | null;
+  calendarSpanDays: number | null;
+  explicitPauseDays: number;
+  unrecordedDays: number;
+  firstProductionDate: string | null;
+  lastProductionDate: string | null;
+  serviceScopes: Array<{ id: number; name: string }>;
+  exclusionReason: "no_confirmed_presence" | null;
+}
+
+export interface MfhProductionObservationSummary {
+  modelId: number;
+  benchmark: {
+    id: number | null;
+    jobType: string | null;
+    estimatedHours: number | null;
+  };
+  sample: {
+    eligibleJobCount: number;
+    minimumJobsRequired: number;
+    sufficient: boolean;
+    lastObservedDate: string | null;
+  };
+  observed: {
+    productionDaysMedian: number | null;
+    productionDaysRange: { min: number; max: number } | null;
+    calendarSpanMedian: number | null;
+    calendarSpanRange: { min: number; max: number } | null;
+    explicitPauseDaysTotal: number;
+    serviceScopes: Array<{ id: number; name: string; jobCount: number }>;
+  };
+  jobs: MfhProductionObservationJob[];
+}
+
 export interface LaborEntry {
   id: number;
   jobId: number;
@@ -416,6 +454,18 @@ export function useMfhModelDetail(modelId: number | null) {
   return useQuery({
     queryKey: ["/api/mfh/knowledge-base", modelId],
     queryFn: () => customFetch<MfhModelDetail>(`/api/mfh/knowledge-base/${modelId}`, { method: "GET" }),
+    enabled: modelId != null,
+  });
+}
+
+export function useMfhProductionObservations(modelId: number | null, businessId?: number | null) {
+  const query = businessId != null ? `?businessId=${encodeURIComponent(String(businessId))}` : "";
+  return useQuery({
+    queryKey: ["/api/mfh/knowledge-base", modelId, "production-observations", businessId ?? "all"],
+    queryFn: () => customFetch<MfhProductionObservationSummary>(
+      `/api/mfh/knowledge-base/${modelId}/production-observations${query}`,
+      { method: "GET" },
+    ),
     enabled: modelId != null,
   });
 }
