@@ -28,6 +28,9 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 - Added compact responsive component/status controls to the Jobs UI and focused
   classifier regression coverage. Development schema and typechecks were
   verified; existing jobs were not bulk-backfilled.
+- Snapshot synchronization now serializes per job inside the existing transaction
+  before reading versions, preventing concurrent writers from producing conflicting
+  current rows. Focused concurrent API coverage verifies deterministic versioning.
 
 ## 2026-09-10
 

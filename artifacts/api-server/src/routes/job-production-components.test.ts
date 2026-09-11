@@ -14,6 +14,8 @@ const h = vi.hoisted(() => ({
   supersedeKey: null as string | null,
   statusTarget: null as string | null,
   updatePayloads: [] as Record<string, unknown>[],
+  lockTail: Promise.resolve(),
+  lockCalls: 0,
 }));
 
 vi.mock("@workspace/db", async () => {
@@ -215,7 +217,27 @@ vi.mock("@workspace/db", async () => {
     insert: (table: any) => insertChain(table),
     update: (table: any) => updateChain(table),
     delete: () => ({ where: () => Promise.resolve() }),
-    transaction: async (callback: (tx: any) => Promise<void>) => callback(db),
+    transaction: async (callback: (tx: any) => Promise<void>) => {
+      let release: any = null;
+      let acquired = false;
+      const tx = {
+        ...db,
+        execute: async () => {
+          await h.lockTail;
+          h.lockCalls += 1;
+          h.lockTail = new Promise<void>(resolve => {
+            release = resolve;
+          });
+          acquired = true;
+        },
+      };
+      try {
+        return await callback(tx);
+      } finally {
+        const unlock = release;
+        if (acquired && unlock) unlock();
+      }
+    },
   };
 
   return { ...actual, db };
@@ -355,6 +377,8 @@ beforeEach(() => {
   h.supersedeKey = null;
   h.statusTarget = null;
   h.updatePayloads.length = 0;
+  h.lockTail = Promise.resolve();
+  h.lockCalls = 0;
 });
 
 afterEach(() => {
@@ -428,6 +452,32 @@ describe("authenticated production component Jobs API", () => {
     expect(response.body.status).toBe("completed");
     expect(h.components.find(row => row.componentInstanceKey === "siding:unspecified")?.status).toBe("completed");
     expect(h.components.find(row => row.componentInstanceKey === "interior_finish:vog")?.status).toBe("planned");
+  });
+
+  it("serializes concurrent snapshots so one component instance has one deterministic current version", async () => {
+    h.jobs.push(jobDefaults({ id: 15 }));
+
+    const [first, second] = await Promise.all([
+      request(app).post("/jobs/15/production-components/snapshot").send({ businessId: 1 }),
+      request(app).post("/jobs/15/production-components/snapshot").send({ businessId: 1 }),
+    ]);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(h.lockCalls).toBe(2);
+    expect(h.components).toHaveLength(2);
+
+    const byInstance = new Map<string, any[]>();
+    for (const row of h.components) {
+      const rows = byInstance.get(row.componentInstanceKey) ?? [];
+      rows.push(row);
+      byInstance.set(row.componentInstanceKey, rows);
+    }
+    for (const rows of byInstance.values()) {
+      expect(rows).toHaveLength(1);
+      expect(rows[0].snapshotVersion).toBe(1);
+      expect(rows[0].supersededAt).toBeNull();
+    }
   });
 
   it("denies reads, snapshots, and status mutations for a job owned by another business", async () => {

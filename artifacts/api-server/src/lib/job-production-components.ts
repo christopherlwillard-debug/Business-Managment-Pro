@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   businessesTable,
@@ -454,16 +454,20 @@ export async function getJobProductionComponents(job: Job): Promise<ProductionCo
 
 export async function syncJobProductionComponents(job: Job): Promise<ProductionComponentView[]> {
   const drafts = await buildDrafts(job);
-  const existingRows = await db
-    .select()
-    .from(jobProductionComponentsTable)
-    .where(eq(jobProductionComponentsTable.jobId, job.id));
-  const currentByInstance = new Map(
-    existingRows.filter(row => row.supersededAt == null).map(row => [row.componentInstanceKey, row]),
-  );
   const draftsByInstance = new Map(drafts.map(draft => [draft.componentInstanceKey, draft]));
 
   await db.transaction(async (tx) => {
+    // Serialize all component snapshot writers for this job. The reads that
+    // determine the next version must happen after the lock is acquired;
+    // otherwise two callers can both calculate the same version.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('job-production-components'), ${job.id})`);
+    const existingRows = await tx
+      .select()
+      .from(jobProductionComponentsTable)
+      .where(eq(jobProductionComponentsTable.jobId, job.id));
+    const currentByInstance = new Map(
+      existingRows.filter(row => row.supersededAt == null).map(row => [row.componentInstanceKey, row]),
+    );
     const now = new Date();
     for (const draft of drafts) {
       const current = currentByInstance.get(draft.componentInstanceKey);

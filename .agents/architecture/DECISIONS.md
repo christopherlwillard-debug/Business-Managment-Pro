@@ -485,3 +485,20 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-09-11
+
+## ADR-027
+
+**Title:** Job production snapshot sync serializes by job
+
+**Decision:** Production component snapshot synchronization acquires a transaction-scoped PostgreSQL advisory lock keyed to the job before reading existing component rows. Version calculation and supersession happen after the lock; the existing unique `(job_id, component_instance_key, snapshot_version)` constraint remains the final database guard.
+
+**Reason:** Concurrent catalog or job edits must not calculate the same next snapshot version from stale reads or leave more than one current row for a component instance. Job-scoped serialization preserves the existing append-only snapshot model and makes concurrent sync outcomes deterministic without adding another table or API.
+
+**Rejected Alternatives:**
+- Calculating versions from reads performed before the transaction
+- Adding a second synchronization or snapshot table
+- Removing the existing unique-version constraint
+- Relying on UI request ordering for data integrity
+
+**Status:** Accepted
+**Date:** 2026-09-11
