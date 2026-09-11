@@ -58,6 +58,10 @@ args = "job-profit-client"
 task = "workflow.run"
 args = "production-presence"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "production-components"
+
 [[workflows.workflow]]
 name = "Contractor App"
 author = "agent"
@@ -157,6 +161,17 @@ args = "pnpm --filter @workspace/api-server run verify:production-presence"
 
 [workflows.workflow.metadata]
 isValidation = true
+
+[[workflows.workflow]]
+name = "production-components"
+author = "agent"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/api-server run verify:production-components"
 
 [agent]
 stack = "PNPM_WORKSPACE"

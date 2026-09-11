@@ -15,6 +15,7 @@
     "verify:production-presence": "tsx ./scripts/e2e-production-presence-verify.ts",
     "verify:production-reviews": "tsx ./scripts/e2e-mfh-production-reviews-verify.ts",
     "verify:job-production-components": "tsx ./scripts/e2e-job-production-components-verify.ts",
+    "verify:production-components": "tsx ./scripts/e2e-job-production-components-verify.ts",
     "verify:ready-to-start": "tsx ./scripts/e2e-ready-to-start-verify.ts",
     "verify:closed-jobs-release": "node ../../scripts/check-closed-jobs-release.mjs",
     "verify:job-profit-parity": "tsx ./scripts/e2e-job-profit-parity-verify.ts",
