@@ -454,35 +454,62 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                   Only confirmed <span className="font-semibold">here</span> and <span className="font-semibold">not here</span> records inside each job’s first and last confirmed workday are included.
                 </p>
                 {data.jobs.map((job) => (
-                  <Link
-                    href={`/jobs?openJob=${job.id}`}
-                    aria-label={`Open job details for ${job.title}`}
-                    key={job.id}
-                    id={`mfh-evidence-job-${job.id}`}
-                    className={`group block rounded-lg border px-3 py-2 transition-colors ${
-                      highlightedEvidenceJobId === job.id
-                        ? "bg-amber-50 border-amber-400 ring-1 ring-amber-300"
-                        : "bg-muted/20 border-border/70 hover:border-amber-300 hover:bg-amber-50/40"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-xs font-semibold text-foreground group-hover:text-amber-700">{job.title}</p>
-                      <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap">
-                        {job.exclusionReason ? "Not included" : `${job.productionDays} production days`}
-                        <ChevronRight className="w-3 h-3" />
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      {job.exclusionReason
-                        ? "Daily presence must include a confirmed here record before this job can contribute."
-                        : `${job.firstProductionDate} to ${job.lastProductionDate} · ${job.serviceScopes.map((service) => service.customProfile?.name ?? service.name).join(", ")}`}
-                    </p>
-                    {!job.exclusionReason && (
-                      <p className="text-[10px] text-muted-foreground">
-                        {job.explicitPauseDays} pause · {job.unrecordedDays} missing evidence · {job.calendarSpanDays} calendar days
-                      </p>
-                    )}
-                  </Link>
+                  (() => {
+                    const confirmedPresence = job.presence.filter((record) => record.provenance === "confirmed");
+                    const confirmedHereDates = confirmedPresence
+                      .filter((record) => record.state === "here")
+                      .map((record) => record.date)
+                      .sort();
+                    const confirmedNotHereDates = confirmedPresence
+                      .filter((record) => record.state === "not_here")
+                      .map((record) => record.date)
+                      .sort();
+                    const dateList = (dates: string[]) => dates.length > 0 ? dates.map(fmtDate).join(", ") : "None recorded";
+
+                    return (
+                      <Link
+                        href={`/jobs?openJob=${job.id}`}
+                        aria-label={`Open job details for ${job.title}`}
+                        key={job.id}
+                        id={`mfh-evidence-job-${job.id}`}
+                        className={`group block rounded-lg border px-3 py-2 transition-colors ${
+                          highlightedEvidenceJobId === job.id
+                            ? "bg-amber-50 border-amber-400 ring-1 ring-amber-300"
+                            : "bg-muted/20 border-border/70 hover:border-amber-300 hover:bg-amber-50/40"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-xs font-semibold text-foreground group-hover:text-amber-700">{job.title}</p>
+                          <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap">
+                            {job.exclusionReason ? "Not included" : `${job.productionDays} production days`}
+                            <ChevronRight className="w-3 h-3" />
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          {job.exclusionReason
+                            ? "Daily presence must include a confirmed here record before this job can contribute."
+                            : `${job.firstProductionDate} to ${job.lastProductionDate} · ${job.serviceScopes.map((service) => service.customProfile?.name ?? service.name).join(", ")}`}
+                        </p>
+                        {!job.exclusionReason && (
+                          <p className="text-[10px] text-muted-foreground">
+                            {job.explicitPauseDays} pause · {job.unrecordedDays} missing evidence · {job.calendarSpanDays} calendar days
+                          </p>
+                        )}
+                        {job.exclusionReason && (
+                          <div className="mt-2 border-t border-amber-200/70 pt-2 space-y-1.5">
+                            <p className="text-[10px] font-semibold text-amber-900">Presence provenance</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[10px] text-muted-foreground">
+                              <p><span className="font-semibold text-foreground">Confirmed here:</span> {dateList(confirmedHereDates)}</p>
+                              <p><span className="font-semibold text-foreground">Confirmed not here:</span> {dateList(confirmedNotHereDates)}</p>
+                            </div>
+                            <p className="text-[10px] text-amber-800">
+                              <span className="font-semibold">Missing evidence:</span> No confirmed here record was recorded. Unrecorded or inferred rows are not treated as here or not here.
+                            </p>
+                          </div>
+                        )}
+                      </Link>
+                    );
+                  })()
                 ))}
               </div>
             )}

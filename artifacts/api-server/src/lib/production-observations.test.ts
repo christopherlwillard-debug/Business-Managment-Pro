@@ -86,4 +86,33 @@ describe("production observations", () => {
       { id: 2, name: "Siding", jobCount: 1 },
     ]);
   });
+
+  it("preserves presence facts for an excluded job without inferring absence", () => {
+    const response = buildProductionObservationResponse(
+      22,
+      [{
+        id: 9,
+        title: "Excluded",
+        status: "completed",
+        workflow: "mh_production",
+        serviceScopes: service(),
+        presence: [
+          { date: "2026-09-01", state: "not_here", provenance: "confirmed" },
+          { date: "2026-09-02", state: "unrecorded", provenance: "confirmed" },
+          { date: "2026-09-03", state: "here", provenance: "inferred" },
+        ],
+      }],
+      { id: null, jobType: null, estimatedHours: null },
+    );
+
+    expect(response.jobs[0]).toMatchObject({
+      exclusionReason: "no_confirmed_presence",
+      presence: [
+        { date: "2026-09-01", state: "not_here", provenance: "confirmed" },
+        { date: "2026-09-02", state: "unrecorded", provenance: "confirmed" },
+        { date: "2026-09-03", state: "here", provenance: "inferred" },
+      ],
+    });
+    expect(response.jobs[0].productionDays).toBeNull();
+  });
 });

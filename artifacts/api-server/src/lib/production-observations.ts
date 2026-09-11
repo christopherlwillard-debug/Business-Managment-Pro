@@ -29,6 +29,7 @@ export type ProductionObservationJob = {
   id: number;
   title: string;
   status: string;
+  presence: ObservationPresenceRecord[];
   productionDays: number | null;
   calendarSpanDays: number | null;
   explicitPauseDays: number;
@@ -147,6 +148,7 @@ export function buildProductionObservationResponse(
       id: job.id,
       title: job.title,
       status: job.status,
+      presence: job.presence,
       productionDays: observation?.productionDays ?? null,
       calendarSpanDays: observation?.calendarSpanDays ?? null,
       explicitPauseDays: observation?.explicitPauseDays ?? 0,

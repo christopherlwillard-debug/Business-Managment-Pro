@@ -22,6 +22,7 @@
 - [Testing subagent stale block](testing-subagent-block.md) — runTest errors with a bogus cached "Clerk auth" blockage; don't retry, verify via architect review + screenshots instead
 - [Mileage import monthly expense](mileage-monthly-expense.md) — imported trips get ONE expense per month via expenses.mileage_import_id + recalcImportExpenses; manual logs keep per-trip expenses
 - [Stale lib/db dist types](stale-db-dist-types.md) — phantom TS2339 on new schema columns comes from stale lib/db/dist declarations; fix with `pnpm exec tsc -b lib/db`
+- [Stale API client dist types](stale-api-client-dist-types.md) — new response fields can be missing from app typechecks until `lib/api-client-react` declarations are rebuilt
 - [Travel audit-trail flag](travel-audit-trail.md) — expenses.countsTowardJobProfit=false links an expense to a job for tax records without reducing job profit; jobs.ts routes false rows to auditTrailTotal (returned but not in netProfit calc)
 - [Production billing seed is lazy](production-billing-seed.md) — MH Production catalog/overrides seed only fires on first authed GET /production-service-types; dev DB shows stale legacy rows until triggered; verify via tsx script, don't trust raw snapshot
 - [Sub pay dual rates & advances](sub-pay-dual-rates.md) — sub_payment_records has work/travel/bonus/advance breakdown columns; pay-worker derives netPaid from breakdown when workHours+workRate sent; subcontractors.travel_pay_rate = profile default; job_subcontractors.travel_rate = job-level override

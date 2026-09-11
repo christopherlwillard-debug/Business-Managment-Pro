@@ -94,6 +94,11 @@ const populated = {
     unrecordedDays: 0,
     firstProductionDate: "2026-09-08",
     lastProductionDate: "2026-09-10",
+    presence: [
+      { date: "2026-09-08", state: "not_here", provenance: "confirmed" },
+      { date: "2026-09-09", state: "unrecorded", provenance: "confirmed" },
+      { date: "2026-09-10", state: "here", provenance: "inferred" },
+    ],
     serviceScopes: [{ id: 101, name: "Trim-Out" }],
     exclusionReason: null,
   }],
@@ -183,6 +188,10 @@ describe("ProductionObservationCard response states", () => {
     expect(text()).toContain("These jobs have no confirmed here record yet");
     await act(async () => button("Why this observation?").click());
     expect(text()).toContain("Daily presence must include a confirmed here record before this job can contribute.");
+    expect(text()).toContain("Presence provenance");
+    expect(text()).toContain("Confirmed here: None recorded");
+    expect(text()).toContain("Confirmed not here: 09/08/2026");
+    expect(text()).toContain("Unrecorded or inferred rows are not treated as here or not here.");
     expect(host.querySelector('a[href="/jobs?openJob=101"]')?.getAttribute("aria-label"))
       .toBe("Open job details for Oak Ridge 28x76");
   });

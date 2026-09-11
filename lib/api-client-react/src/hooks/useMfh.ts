@@ -26,6 +26,11 @@ export interface MfhProductionObservationJob {
   id: number;
   title: string;
   status: string;
+  presence: Array<{
+    date: string;
+    state: "unrecorded" | "here" | "not_here";
+    provenance: string;
+  }>;
   productionDays: number | null;
   calendarSpanDays: number | null;
   explicitPauseDays: number;
