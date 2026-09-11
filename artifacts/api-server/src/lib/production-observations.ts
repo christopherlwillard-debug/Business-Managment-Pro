@@ -9,6 +9,11 @@ export type ObservationPresenceRecord = {
 export type ObservationServiceScope = {
   id: number;
   name: string;
+  customProfile: {
+    id: number;
+    key: string;
+    name: string;
+  } | null;
 };
 
 export type ProductionObservationJobInput = {

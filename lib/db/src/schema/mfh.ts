@@ -4,6 +4,7 @@ import { checklistTemplatesTable } from "./job-checklists";
 import { clientsTable } from "./clients";
 import { jobsTable } from "./jobs";
 import { subcontractorsTable } from "./subcontractors";
+import { businessesTable } from "./businesses";
 
 export const mfhConstructionTypesTable = pgTable("mfh_construction_types", {
   id: serial("id").primaryKey(),
@@ -152,6 +153,30 @@ export const productionServiceTypesTable = pgTable("production_service_types", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const mfhCustomProductionProfilesTable = pgTable("mfh_custom_production_profiles", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").notNull().references(() => businessesTable.id, { onDelete: "cascade" }),
+  profileKey: text("profile_key").notNull(),
+  name: text("name").notNull(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueBusinessKey: unique().on(table.businessId, table.profileKey),
+  uniqueBusinessName: unique().on(table.businessId, table.name),
+}));
+
+export const mfhCustomProductionProfileServicesTable = pgTable("mfh_custom_production_profile_services", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").notNull().references(() => businessesTable.id, { onDelete: "cascade" }),
+  profileId: integer("profile_id").notNull().references(() => mfhCustomProductionProfilesTable.id, { onDelete: "cascade" }),
+  serviceTypeId: integer("service_type_id").notNull().references(() => productionServiceTypesTable.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueBusinessService: unique().on(table.businessId, table.serviceTypeId),
+  uniqueProfileService: unique().on(table.profileId, table.serviceTypeId),
+}));
+
 // Per-client Production pricing profile: stores ONLY prices that differ from the
 // master catalog. profileKind allows future Service/Contracting profiles on the
 // same client without new client records or engine changes. A null price* column
@@ -185,6 +210,8 @@ export type JobLaborEntry = typeof jobLaborEntriesTable.$inferSelect;
 export type JobKnowledgeRecord = typeof jobKnowledgeRecordsTable.$inferSelect;
 export type JobKnowledgeRecordVersion = typeof jobKnowledgeRecordVersionsTable.$inferSelect;
 export type ProductionServiceType = typeof productionServiceTypesTable.$inferSelect;
+export type MfhCustomProductionProfile = typeof mfhCustomProductionProfilesTable.$inferSelect;
+export type MfhCustomProductionProfileService = typeof mfhCustomProductionProfileServicesTable.$inferSelect;
 export type ProductionPriceOverride = typeof productionPriceOverridesTable.$inferSelect;
 
 // Configurable service add-on prompts.  When a trigger service is checked in the
